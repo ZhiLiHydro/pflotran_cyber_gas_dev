@@ -283,6 +283,7 @@ set(CHEM_SOURCES
 )
 
 set(GRID_SOURCES
+	anisodata.F90
 	connection.F90
 	communicator_base.F90
 	communicator_structured.F90

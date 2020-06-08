@@ -190,7 +190,7 @@ subroutine MaterialAuxVarInit(auxvar,option)
   auxvar%tortuosity = UNINITIALIZED_DOUBLE
   auxvar%soil_particle_density = UNINITIALIZED_DOUBLE
   if (option%iflowmode /= NULL_MODE) then
-    allocate(auxvar%permeability(3))
+    allocate(auxvar%permeability(6))
     auxvar%permeability = UNINITIALIZED_DOUBLE
   else
     nullify(auxvar%permeability)

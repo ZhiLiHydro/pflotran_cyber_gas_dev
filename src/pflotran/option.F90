@@ -226,6 +226,8 @@ module Option_module
     PetscReal :: inline_surface_Mannings_coeff
     character(len=MAXSTRINGLENGTH) :: inline_surface_region_name
     
+    ! flag to control whether grid connections should compute anisotropy data
+    PetscBool :: connections_with_aniso_data
 
   end type option_type
 
@@ -606,6 +608,8 @@ subroutine OptionInitRealization(option)
   option%inline_surface_Mannings_coeff = 0.02d0
   option%inline_surface_region_name    = ""
   
+
+  option%connections_with_aniso_data = PETSC_FALSE
 
 end subroutine OptionInitRealization
 

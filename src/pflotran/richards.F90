@@ -37,6 +37,7 @@ module Richards_module
          RichardsSetup, &
          RichardsInitializeTimestep, &
          RichardsUpdateAuxVars, &
+         RichardsUpdateAnisoData, &
          RichardsMaxChange, &
          RichardsUpdateSolution, &
          RichardsComputeMassBalance, &
@@ -172,8 +173,11 @@ subroutine RichardsSetupPatch(realization)
       option%io_buffer = 'ERROR: Non-initialized porosity.'
       call PrintMsg(option)
     endif
-    if (minval(material_auxvars(ghosted_id)%permeability) < 0.d0 .and. &
-        flag(5) == 0) then
+    !  Off-diagonal permeability terms can be negative - check only diag terms.
+    if ( (material_auxvars(ghosted_id)%permeability(1) < 0.d0 .or. &
+          material_auxvars(ghosted_id)%permeability(2) < 0.d0 .or. &
+          material_auxvars(ghosted_id)%permeability(3) < 0.d0) &
+         .and. flag(5) == 0) then
       option%io_buffer = 'ERROR: Non-initialized permeability.'
       call PrintMsg(option)
       flag(5) = 1
@@ -694,6 +698,67 @@ subroutine RichardsUpdateAuxVars(realization)
   call RichardsUpdateAuxVarsPatch(realization)
 
 end subroutine RichardsUpdateAuxVars
+
+! ************************************************************************** !
+
+subroutine RichardsUpdateAnisoData(global_auxvars,aniso_data)
+  !
+  ! Updates the adjacent pressure etc in the anisotropy_data structure
+  ! the Richards problem
+  !
+  ! Author: Steve Benbow
+  ! Date: 05/12/19
+  !
+
+  use Global_Aux_module
+  use Anisotropy_Data_module
+
+  implicit none
+
+  type(global_auxvar_type), pointer :: global_auxvars(:)
+  type(aniso_data_type), pointer :: aniso_data
+
+  PetscInt :: ghosted_id_adj(1:12)
+  PetscReal :: ghosted_pres_adj(1:12)
+
+  integer :: gi
+
+  ! temporarily store ghosted ids in an array to simplify conditional logic for assigning pressures
+  ghosted_id_adj(1)  = aniso_data%id_up_adjXm
+  ghosted_id_adj(2)  = aniso_data%id_up_adjXp
+  ghosted_id_adj(3)  = aniso_data%id_dn_adjXm
+  ghosted_id_adj(4)  = aniso_data%id_dn_adjXp
+  ghosted_id_adj(5)  = aniso_data%id_up_adjYm
+  ghosted_id_adj(6)  = aniso_data%id_up_adjYp
+  ghosted_id_adj(7)  = aniso_data%id_dn_adjYm
+  ghosted_id_adj(8)  = aniso_data%id_dn_adjYp
+  ghosted_id_adj(9)  = aniso_data%id_up_adjZm
+  ghosted_id_adj(10) = aniso_data%id_up_adjZp
+  ghosted_id_adj(11) = aniso_data%id_dn_adjZm
+  ghosted_id_adj(12) = aniso_data%id_dn_adjZp
+
+  do gi=1,12
+    if (ghosted_id_adj(gi) == -1) then
+      ghosted_pres_adj(gi) = 0
+    else
+      ghosted_pres_adj(gi) = global_auxvars(ghosted_id_adj(gi))%pres(1)
+    endif
+  end do
+
+  aniso_data%pres_up_adjXm = ghosted_pres_adj(1)
+  aniso_data%pres_up_adjXp = ghosted_pres_adj(2)
+  aniso_data%pres_dn_adjXm = ghosted_pres_adj(3)
+  aniso_data%pres_dn_adjXp = ghosted_pres_adj(4)
+  aniso_data%pres_up_adjYm = ghosted_pres_adj(5)
+  aniso_data%pres_up_adjYp = ghosted_pres_adj(6)
+  aniso_data%pres_dn_adjYm = ghosted_pres_adj(7)
+  aniso_data%pres_dn_adjYp = ghosted_pres_adj(8)
+  aniso_data%pres_up_adjZm = ghosted_pres_adj(9)
+  aniso_data%pres_up_adjZp = ghosted_pres_adj(10)
+  aniso_data%pres_dn_adjZm = ghosted_pres_adj(11)
+  aniso_data%pres_dn_adjZp = ghosted_pres_adj(12)
+
+end subroutine RichardsUpdateAnisoData
 
 ! ************************************************************************** !
 
@@ -1413,6 +1478,7 @@ subroutine RichardsResidualInternalConn(r,realization,skip_conn_type,ierr)
   ! 
 
   use Connection_module
+  use Anisotropy_Data_module
   use Realization_Subsurface_class
   use Patch_module
   use Grid_module
@@ -1439,6 +1505,7 @@ subroutine RichardsResidualInternalConn(r,realization,skip_conn_type,ierr)
   type(inlinesurface_auxvar_type), pointer :: insurf_auxvars(:)
   type(connection_set_list_type), pointer :: connection_set_list
   type(connection_set_type), pointer :: cur_connection_set
+  type(aniso_data_type), pointer :: aniso_data
 
   PetscInt :: istart
   PetscInt :: local_id_up
@@ -1453,6 +1520,8 @@ subroutine RichardsResidualInternalConn(r,realization,skip_conn_type,ierr)
   PetscReal :: Res(realization%option%nflowdof)
   PetscReal :: v_darcy
   PetscReal, pointer :: r_p(:)
+
+  nullify(aniso_data) ! default - not used
 
   patch => realization%patch
   grid => patch%grid
@@ -1492,6 +1561,12 @@ subroutine RichardsResidualInternalConn(r,realization,skip_conn_type,ierr)
       icap_up = patch%sat_func_id(ghosted_id_up)
       icap_dn = patch%sat_func_id(ghosted_id_dn)
 
+      if (associated(cur_connection_set%aniso_data)) then
+        aniso_data => cur_connection_set%aniso_data(iconn)
+        call RichardsUpdateAnisoData(global_auxvars,aniso_data)
+      endif
+
+
       call RichardsFlux(rich_auxvars(ghosted_id_up), &
                       global_auxvars(ghosted_id_up), &
                       material_auxvars(ghosted_id_up), &
@@ -1500,6 +1575,7 @@ subroutine RichardsResidualInternalConn(r,realization,skip_conn_type,ierr)
                       material_auxvars(ghosted_id_dn), &
                       cur_connection_set%area(iconn), &
                       cur_connection_set%dist(:,iconn), &
+                      aniso_data, &
                       option,v_darcy,Res)
 
       patch%internal_velocities(1,sum_connection) = v_darcy
@@ -2155,6 +2231,7 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
   ! 
        
   use Connection_module
+  use Anisotropy_Data_module
   use Realization_Subsurface_class
   use Option_module
   use Patch_module
@@ -2184,6 +2261,7 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
   type(coupler_type), pointer :: boundary_condition, source_sink
   type(connection_set_list_type), pointer :: connection_set_list
   type(connection_set_type), pointer :: cur_connection_set
+  type(aniso_data_type), pointer :: aniso_data
   PetscInt :: iconn
   PetscInt :: sum_connection
   type(grid_type), pointer :: grid
@@ -2200,6 +2278,8 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
   character(len=MAXSTRINGLENGTH) :: string
 
   PetscViewer :: viewer
+
+  nullify(aniso_data) ! default - not used
 
   patch => realization%patch
   grid => patch%grid
@@ -2252,6 +2332,11 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
       icap_up = patch%sat_func_id(ghosted_id_up)
       icap_dn = patch%sat_func_id(ghosted_id_dn)
 
+      if (associated(cur_connection_set%aniso_data)) then
+        aniso_data => cur_connection_set%aniso_data(iconn)
+        call RichardsUpdateAnisoData(global_auxvars,aniso_data)
+      endif
+
       call RichardsFluxDerivative(rich_auxvars(ghosted_id_up), &
                      global_auxvars(ghosted_id_up), &
                      material_auxvars(ghosted_id_up), &
@@ -2260,6 +2345,7 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
                      material_auxvars(ghosted_id_dn), &
                      cur_connection_set%area(iconn), &
                      cur_connection_set%dist(-1:3,iconn),&
+                     aniso_data, &
                      option,&
                      patch%characteristic_curves_array(icap_up)%ptr, &
                      patch%characteristic_curves_array(icap_dn)%ptr, &
@@ -2282,6 +2368,72 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
                                         Jup,ADD_VALUES,ierr);CHKERRQ(ierr)
           call MatSetValuesLocal(A,1,istart_up-1,1,istart_dn-1, &
                                         Jdn,ADD_VALUES,ierr);CHKERRQ(ierr)
+
+          if(associated(aniso_data)) then
+            ! J terms are stored in aniso_data%Jup/dn_adj...
+            ! aniso_data%id_... are ghosted ids(?), 1-indexed
+            if(aniso_data%id_up_adjXm .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_up-1, &
+                                     1, (aniso_data%id_up_adjXm-1)*option%nflowdof, aniso_data%Jup_adjXm, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_dn_adjXm .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_up-1, &
+                                     1, (aniso_data%id_dn_adjXm-1)*option%nflowdof, aniso_data%Jdn_adjXm, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_up_adjXp .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_up-1, &
+                                     1, (aniso_data%id_up_adjXp-1)*option%nflowdof, aniso_data%Jup_adjXp, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_dn_adjXp .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_up-1, &
+                                     1, (aniso_data%id_dn_adjXp-1)*option%nflowdof, aniso_data%Jdn_adjXp, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_up_adjYm .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_up-1, &
+                                     1, (aniso_data%id_up_adjYm-1)*option%nflowdof, aniso_data%Jup_adjYm, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_dn_adjYm .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_up-1, &
+                                     1, (aniso_data%id_dn_adjYm-1)*option%nflowdof, aniso_data%Jdn_adjYm, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_up_adjYp .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_up-1, &
+                                     1, (aniso_data%id_up_adjYp-1)*option%nflowdof, aniso_data%Jup_adjYp, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_dn_adjYp .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_up-1, &
+                                     1, (aniso_data%id_dn_adjYp-1)*option%nflowdof, aniso_data%Jdn_adjYp, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_up_adjZm .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_up-1, &
+                                     1, (aniso_data%id_up_adjZm-1)*option%nflowdof, aniso_data%Jup_adjZm, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_dn_adjZm .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_up-1, &
+                                     1, (aniso_data%id_dn_adjZm-1)*option%nflowdof, aniso_data%Jdn_adjZm, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_up_adjZp .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_up-1, &
+                                     1, (aniso_data%id_up_adjZp-1)*option%nflowdof, aniso_data%Jup_adjZp, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_dn_adjZp .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_up-1, &
+                                     1, (aniso_data%id_dn_adjZp-1)*option%nflowdof, aniso_data%Jdn_adjZp, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+          endif
+
 #ifdef BUFFER_MATRIX
         endif
 #endif
@@ -2305,6 +2457,73 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
                                         Jdn,ADD_VALUES,ierr);CHKERRQ(ierr)
           call MatSetValuesLocal(A,1,istart_dn-1,1,istart_up-1, &
                                         Jup,ADD_VALUES,ierr);CHKERRQ(ierr)
+
+          if(associated(aniso_data)) then
+            ! J terms are stored in aniso_data%Jup/dn_adj...
+            ! aniso_data%id_... are ghosted ids(?), 1-indexed
+            if(aniso_data%id_up_adjXm .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_dn-1, &
+                                     1, (aniso_data%id_up_adjXm-1)*option%nflowdof, -1.d0 * aniso_data%Jup_adjXm, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_dn_adjXm .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_dn-1, &
+                                     1, (aniso_data%id_dn_adjXm-1)*option%nflowdof, -1.d0 * aniso_data%Jdn_adjXm, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_up_adjXp .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_dn-1, &
+                                     1, (aniso_data%id_up_adjXp-1)*option%nflowdof, -1.d0 * aniso_data%Jup_adjXp, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_dn_adjXp .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_dn-1, &
+                                     1, (aniso_data%id_dn_adjXp-1)*option%nflowdof, -1.d0 * aniso_data%Jdn_adjXp, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_up_adjYm .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_dn-1, &
+                                     1, (aniso_data%id_up_adjYm-1)*option%nflowdof, -1.d0 * aniso_data%Jup_adjYm, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_dn_adjYm .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_dn-1, &
+                                     1, (aniso_data%id_dn_adjYm-1)*option%nflowdof, -1.d0 * aniso_data%Jdn_adjYm, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_up_adjYp .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_dn-1, &
+                                     1, (aniso_data%id_up_adjYp-1)*option%nflowdof, -1.d0 * aniso_data%Jup_adjYp, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_dn_adjYp .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_dn-1, &
+                                     1, (aniso_data%id_dn_adjYp-1)*option%nflowdof, -1.d0 * aniso_data%Jdn_adjYp, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_up_adjZm .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_dn-1, &
+                                     1, (aniso_data%id_up_adjZm-1)*option%nflowdof, -1.d0 * aniso_data%Jup_adjZm, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_dn_adjZm .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_dn-1, &
+                                     1, (aniso_data%id_dn_adjZm-1)*option%nflowdof, -1.d0 * aniso_data%Jdn_adjZm, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_up_adjZp .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_dn-1, &
+                                     1, (aniso_data%id_up_adjZp-1)*option%nflowdof, -1.d0 * aniso_data%Jup_adjZp, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+            if(aniso_data%id_dn_adjZp .GE. 0) then
+              call MatSetValuesLocal(A,1,istart_dn-1, &
+                                     1, (aniso_data%id_dn_adjZp-1)*option%nflowdof, -1.d0 * aniso_data%Jdn_adjZp, &
+                                     ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+          endif
+
+
 #ifdef BUFFER_MATRIX
         endif
 #endif

@@ -155,6 +155,7 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
                                   rich_auxvar_dn,global_auxvar_dn, &
                                   material_auxvar_dn, &
                                   area, dist, &
+                                  aniso_data, &
                                   option, &
                                   characteristic_curves_up, &
                                   characteristic_curves_dn, &
@@ -170,14 +171,16 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
   use Characteristic_Curves_module
   use Material_Aux_class
   use Connection_module
+  use Anisotropy_Data_module
   
   implicit none
   
   type(richards_auxvar_type) :: rich_auxvar_up, rich_auxvar_dn
   type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
   class(material_auxvar_type) :: material_auxvar_up, material_auxvar_dn
+  type(aniso_data_type), pointer :: aniso_data
   type(option_type) :: option
-  PetscReal :: v_darcy, area, dist(-1:3)
+  PetscReal :: v_darcy, v_darcy_aniso, area, dist(-1:3)
   type(characteristic_curves_type) :: characteristic_curves_up
   type(characteristic_curves_type) :: characteristic_curves_dn
   PetscReal :: Jup(option%nflowdof,option%nflowdof)
@@ -198,6 +201,10 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
 !  PetscReal :: dukvr_z_dp_up, dukvr_z_dp_dn
   PetscReal :: dq_dp_up, dq_dp_dn
 
+  PetscReal :: dq_dp_up_adjXm, dq_dp_dn_adjXm, dq_dp_up_adjXp, dq_dp_dn_adjXp
+  PetscReal :: dq_dp_up_adjYm, dq_dp_dn_adjYm, dq_dp_up_adjYp, dq_dp_dn_adjYp
+  PetscReal :: dq_dp_up_adjZm, dq_dp_dn_adjZm, dq_dp_up_adjZp, dq_dp_dn_adjZp
+
   PetscInt :: iphase, ideriv
   type(richards_auxvar_type) :: rich_auxvar_pert_up, rich_auxvar_pert_dn
   type(global_auxvar_type) :: global_auxvar_pert_up, global_auxvar_pert_dn
@@ -206,7 +213,8 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
   PetscReal :: x_up(1), x_dn(1), x_pert_up(1), x_pert_dn(1), pert_up, pert_dn, &
             res(1), res_pert_up(1), res_pert_dn(1), J_pert_up(1,1), J_pert_dn(1,1)
   
-  v_darcy = 0.D0  
+  v_darcy = 0.d0  
+  v_darcy_aniso = 0.d0
   ukvr = 0.d0
   
   Jup = 0.d0
@@ -264,13 +272,62 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
    
     if (ukvr>floweps) then
       v_darcy= Dq * ukvr * dphi
+
+      ! add anisotropic contributions
+      if(associated(aniso_data)) then
+        Call RichardsFluxAniso(aniso_data,material_auxvar_up,material_auxvar_dn,&
+                                global_auxvar_up,global_auxvar_dn,&
+                                option,dist,ukvr,&
+                                dukvr_dp_up,dukvr_dp_dn,PETSC_TRUE,v_darcy_aniso)
+        v_darcy = v_darcy + v_darcy_aniso
+        ! dv_darcy_aniso/dp_... terms are stored in aniso_data
+      endif
+
+
    
       q = v_darcy * area
       dq_dp_up = Dq*(dukvr_dp_up*dphi+ukvr*dphi_dp_up)*area
       dq_dp_dn = Dq*(dukvr_dp_dn*dphi+ukvr*dphi_dp_dn)*area
       
+      if(associated(aniso_data)) then
+        ! add aniso terms to dq_dp_up/dn
+        ! (note ukvr and dukvr_dp_up/dn already taken account of in RichardsFluxAniso())
+        dq_dp_up = dq_dp_up + aniso_data%dv_darcy_aniso_dp_up * area
+        dq_dp_dn = dq_dp_dn + aniso_data%dv_darcy_aniso_dp_dn * area
+        ! additional aniso terms for dv_darcy_aniso_dp_up/dn_adjX/Y/Z/pm
+        dq_dp_up_adjXm = aniso_data%dv_darcy_aniso_dp_up_adjXm * area
+        dq_dp_dn_adjXm = aniso_data%dv_darcy_aniso_dp_dn_adjXm * area
+        dq_dp_up_adjXp = aniso_data%dv_darcy_aniso_dp_up_adjXp * area
+        dq_dp_dn_adjXp = aniso_data%dv_darcy_aniso_dp_dn_adjXp * area
+        dq_dp_up_adjYm = aniso_data%dv_darcy_aniso_dp_up_adjYm * area
+        dq_dp_dn_adjYm = aniso_data%dv_darcy_aniso_dp_dn_adjYm * area
+        dq_dp_up_adjYp = aniso_data%dv_darcy_aniso_dp_up_adjYp * area
+        dq_dp_dn_adjYp = aniso_data%dv_darcy_aniso_dp_dn_adjYp * area
+        dq_dp_up_adjZm = aniso_data%dv_darcy_aniso_dp_up_adjZm * area
+        dq_dp_dn_adjZm = aniso_data%dv_darcy_aniso_dp_dn_adjZm * area
+        dq_dp_up_adjZp = aniso_data%dv_darcy_aniso_dp_up_adjZp * area
+        dq_dp_dn_adjZp = aniso_data%dv_darcy_aniso_dp_dn_adjZp * area
+      endif
+      
+      ! flux = q*density_ave, hence density_ave terms below
       Jup(1,1) = (dq_dp_up*density_ave+q*dden_ave_dp_up)
       Jdn(1,1) = (dq_dp_dn*density_ave+q*dden_ave_dp_dn)
+
+      if(associated(aniso_data)) then
+        ! note dden_ave_dp_up_adjXm etc. = 0 so no dden_... terms below
+        aniso_data%Jup_adjXm = dq_dp_up_adjXm * density_ave
+        aniso_data%Jdn_adjXm = dq_dp_dn_adjXm * density_ave
+        aniso_data%Jup_adjXp = dq_dp_up_adjXp * density_ave
+        aniso_data%Jdn_adjXp = dq_dp_dn_adjXp * density_ave
+        aniso_data%Jup_adjYm = dq_dp_up_adjYm * density_ave
+        aniso_data%Jdn_adjYm = dq_dp_dn_adjYm * density_ave
+        aniso_data%Jup_adjYp = dq_dp_up_adjYp * density_ave
+        aniso_data%Jdn_adjYp = dq_dp_dn_adjYp * density_ave
+        aniso_data%Jup_adjZm = dq_dp_up_adjZm * density_ave
+        aniso_data%Jdn_adjZm = dq_dp_dn_adjZm * density_ave
+        aniso_data%Jup_adjZp = dq_dp_up_adjZp * density_ave
+        aniso_data%Jdn_adjZp = dq_dp_dn_adjZp * density_ave
+      endif
     endif
   endif
 
@@ -293,6 +350,7 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
     call RichardsFlux(rich_auxvar_up,global_auxvar_up,material_auxvar_up, &
                       rich_auxvar_dn,global_auxvar_dn,material_auxvar_dn, &
                       area, dist, &
+                      aniso_data, &
                       option,v_darcy,res)
     ideriv = 1
 !    pert_up = x_up(ideriv)*perturbation_tolerance
@@ -322,12 +380,14 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
                       rich_auxvar_dn,global_auxvar_dn, &
                       material_auxvar_dn, &
                       area, dist, &
+                      aniso_data, &
                       option,v_darcy,res_pert_up)
     call RichardsFlux(rich_auxvar_up,global_auxvar_up, &
                       material_auxvar_up, &
                       rich_auxvar_pert_dn,global_auxvar_pert_dn, &
                       material_auxvar_pert_dn, &
                       area, dist, &
+                      aniso_data, &
                       option,v_darcy,res_pert_dn)
     J_pert_up(1,ideriv) = (res_pert_up(1)-res(1))/pert_up
     J_pert_dn(1,ideriv) = (res_pert_dn(1)-res(1))/pert_dn
@@ -343,11 +403,464 @@ end subroutine RichardsFluxDerivative
 
 ! ************************************************************************** !
 
+subroutine RichardsFluxAniso(aniso_data, &
+                            material_auxvar_up,material_auxvar_dn, &
+                            global_auxvar_up,global_auxvar_dn, &
+                            option, &
+                            dist, ukvr, &
+                            dukvr_dp_up, dukvr_dp_dn, & ! only needed if calculating derivatives, o/w set zero
+                            calc_derivs, &
+                            v_darcy_aniso)
+!
+! Computes the contributions to internal flux terms and Jacobian arising
+! from pressure gradients perpendicular to cell-centre connections due
+! to anisotropic permeability terms
+!
+! Author: Steve Benbow
+! Date: 01/06/20
+!
+  use Option_module
+  use Material_Aux_class
+  use Anisotropy_Data_module
+  use Variables_module
+  use Connection_module
+
+
+  ! inputs
+  type(aniso_data_type), pointer :: aniso_data
+  class(material_auxvar_type) :: material_auxvar_up, material_auxvar_dn
+  type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
+  type(option_type) :: option
+  PetscReal :: dist(-1:3)
+  PetscReal :: ukvr
+
+  PetscReal :: dukvr_dp_up, dukvr_dp_dn
+  PetscBool :: calc_derivs ! terms are stored in aniso_data%dv_darcy_aniso_...
+
+  ! outputs
+  PetscReal :: v_darcy_aniso
+
+  ! local
+  PetscReal :: k_up_xx, k_up_yy, k_up_zz, k_up_xy, k_up_yz, k_up_xz
+  PetscReal :: k_dn_xx, k_dn_yy, k_dn_zz, k_dn_xy, k_dn_yz, k_dn_xz
+  PetscReal :: dphi_x_up, dphi_x_dn, dphi_y_up, dphi_y_dn, dphi_z_up, dphi_z_dn
+  PetscReal :: mu_up, mu_dn, rho_up, rho_dn, dummy
+  PetscReal :: v_darcy_aniso_up, v_darcy_aniso_dn
+  PetscReal :: dist_gravity  ! distance along gravity vector
+  PetscReal :: gravity
+
+  ! work data for calculations of anisotropic derivatives
+  type(aniso_deriv_data_type), pointer :: aniso_dd
+
+
+  if(calc_derivs .EQV. PETSC_TRUE) then
+    allocate(aniso_dd)
+  endif
+
+  ! components of grad P on connection, in the plane of the interface
+  dphi_x_up = 0.d0
+  dphi_x_dn = 0.d0
+  dphi_y_up = 0.d0
+  dphi_y_dn = 0.d0
+  dphi_z_up = 0.d0
+  dphi_z_dn = 0.d0
+
+  if (calc_derivs .EQV. PETSC_TRUE) then
+    aniso_dd%ddphi_x_dp_up_adjXm = 0.d0
+    aniso_dd%ddphi_x_dp_dn_adjXm = 0.d0
+    aniso_dd%ddphi_x_dp_up_adjXp = 0.d0
+    aniso_dd%ddphi_x_dp_dn_adjXp = 0.d0
+    aniso_dd%ddphi_x_dp_up       = 0.d0
+    aniso_dd%ddphi_x_dp_dn       = 0.d0
+
+    aniso_dd%ddphi_y_dp_up_adjYm = 0.d0
+    aniso_dd%ddphi_y_dp_dn_adjYm = 0.d0
+    aniso_dd%ddphi_y_dp_up_adjYp = 0.d0
+    aniso_dd%ddphi_y_dp_dn_adjYp = 0.d0
+    aniso_dd%ddphi_y_dp_up       = 0.d0
+    aniso_dd%ddphi_y_dp_dn       = 0.d0
+
+    aniso_dd%ddphi_z_dp_up_adjZm = 0.d0
+    aniso_dd%ddphi_z_dp_dn_adjZm = 0.d0
+    aniso_dd%ddphi_z_dp_up_adjZp = 0.d0
+    aniso_dd%ddphi_z_dp_dn_adjZp = 0.d0
+    aniso_dd%ddphi_z_dp_up       = 0.d0
+    aniso_dd%ddphi_z_dp_dn       = 0.d0
+  endif
+
+  ! Ideally would have these for adjacent cells too
+  rho_up = global_auxvar_up%den(1) * FMWH2O
+  rho_dn = global_auxvar_dn%den(1) * FMWH2O
+
+
+  ! P gradient in x-dir - upstream
+  if( aniso_data%id_up_adjXp .NE. -1 .AND. aniso_data%id_up_adjXm .NE. -1 ) then ! has contribution in x-dir with adj p/m cells
+    dphi_x_up = ((aniso_data%pres_up_adjXp - rho_up * aniso_data%loc_gravity_up_adjXp) &
+                    - (aniso_data%pres_up_adjXm - rho_up * aniso_data%loc_gravity_up_adjXm)) &
+                    / (aniso_data%dist_up_adjXp + aniso_data%dist_up_adjXm)
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%ddphi_x_dp_up_adjXm = -1.d0 / (aniso_data%dist_up_adjXp + aniso_data%dist_up_adjXm)
+      aniso_dd%ddphi_x_dp_up_adjXp =  1.d0 / (aniso_data%dist_up_adjXp + aniso_data%dist_up_adjXm)
+      aniso_dd%ddphi_x_dp_up       =  0.d0
+    endif
+  else if ( aniso_data%id_up_adjXp .NE. -1 ) then ! has contribution in x-dir with adj p cell
+    dphi_x_up = ((aniso_data%pres_up_adjXp - rho_up * aniso_data%loc_gravity_up_adjXp) &
+                  - (global_auxvar_up%pres(1) - rho_up * aniso_data%loc_gravity_up)) &
+                  / aniso_data%dist_up_adjXp
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%ddphi_x_dp_up_adjXm =  0.d0
+      aniso_dd%ddphi_x_dp_up_adjXp =  1.d0 / aniso_data%dist_up_adjXp
+      aniso_dd%ddphi_x_dp_up       = -1.d0 / aniso_data%dist_up_adjXp
+    endif
+  else if ( aniso_data%id_up_adjXm .NE. -1 ) then ! has contribution in x-dir with adj m cell
+    dphi_x_up = ((global_auxvar_up%pres(1) - rho_up * aniso_data%loc_gravity_up) &
+                  - (aniso_data%pres_up_adjXm - rho_up * aniso_data%loc_gravity_up_adjXm)) &
+                  / aniso_data%dist_up_adjXm
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%ddphi_x_dp_up_adjXm = -1.d0 / aniso_data%dist_up_adjXm
+      aniso_dd%ddphi_x_dp_up_adjXp =  0.d0
+      aniso_dd%ddphi_x_dp_up       =  1.d0 / aniso_data%dist_up_adjXm
+    endif
+  endif
+
+  ! P gradient in x-dir - dnstream
+  if( aniso_data%id_dn_adjXp .NE. -1 .AND. aniso_data%id_dn_adjXm .NE. -1 ) then ! has contribution in x-dir with adj p/m cells
+    dphi_x_dn = ((aniso_data%pres_dn_adjXp - rho_dn * aniso_data%loc_gravity_dn_adjXp) &
+                  - (aniso_data%pres_dn_adjXm - rho_dn * aniso_data%loc_gravity_dn_adjXm)) &
+                  / (aniso_data%dist_dn_adjXp + aniso_data%dist_dn_adjXm)
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%ddphi_x_dp_dn_adjXm = -1.d0 / (aniso_data%dist_dn_adjXp + aniso_data%dist_dn_adjXm)
+      aniso_dd%ddphi_x_dp_dn_adjXp =  1.d0 / (aniso_data%dist_dn_adjXp + aniso_data%dist_dn_adjXm)
+      aniso_dd%ddphi_x_dp_dn       =  0.d0
+    endif
+  else if ( aniso_data%id_dn_adjXp .NE. -1 ) then ! has contribution in x-dir with adj p cell
+    dphi_x_dn = ((aniso_data%pres_dn_adjXp - rho_dn * aniso_data%loc_gravity_dn_adjXp) &
+                - (global_auxvar_dn%pres(1) - rho_dn * aniso_data%loc_gravity_dn)) &
+                / aniso_data%dist_dn_adjXp
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%ddphi_x_dp_dn_adjXm =  0.d0
+      aniso_dd%ddphi_x_dp_dn_adjXp =  1.d0 / aniso_data%dist_dn_adjXp
+      aniso_dd%ddphi_x_dp_dn       = -1.d0 / aniso_data%dist_dn_adjXp
+    endif
+  else if ( aniso_data%id_dn_adjXm .NE. -1 ) then ! has contribution in x-dir with adj m cell
+    dphi_x_dn = ((global_auxvar_dn%pres(1) - rho_dn * aniso_data%loc_gravity_dn) &
+                - (aniso_data%pres_dn_adjXm - rho_dn * aniso_data%loc_gravity_dn_adjXm)) &
+                / aniso_data%dist_dn_adjXm
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%ddphi_x_dp_dn_adjXm = -1.d0 / aniso_data%dist_dn_adjXm
+      aniso_dd%ddphi_x_dp_dn_adjXp =  0.d0
+      aniso_dd%ddphi_x_dp_dn       =  1.d0 / aniso_data%dist_dn_adjXm
+    endif
+  endif
+
+
+  ! P gradient in y-dir - upstream
+  if( aniso_data%id_up_adjYp .NE. -1 .AND. aniso_data%id_up_adjYm .NE. -1 ) then ! has contribution in y-dir with adj p/m cells
+    dphi_y_up = ((aniso_data%pres_up_adjYp - rho_up * aniso_data%loc_gravity_up_adjYp) &
+                  - (aniso_data%pres_up_adjYm - rho_up * aniso_data%loc_gravity_up_adjYm)) &
+                  / (aniso_data%dist_up_adjYp + aniso_data%dist_up_adjYm)
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%ddphi_y_dp_up_adjYm = -1.d0 / (aniso_data%dist_up_adjYp + aniso_data%dist_up_adjYm)
+      aniso_dd%ddphi_y_dp_up_adjYp =  1.d0 / (aniso_data%dist_up_adjYp + aniso_data%dist_up_adjYm)
+      aniso_dd%ddphi_y_dp_up       =  0.d0
+    endif
+  else if ( aniso_data%id_up_adjYp .NE. -1 ) then ! has contribution in y-dir with adj p cell
+    dphi_y_up = ((aniso_data%pres_up_adjYp - rho_up * aniso_data%loc_gravity_up_adjYp) &
+                - (global_auxvar_up%pres(1) - rho_up * aniso_data%loc_gravity_up)) &
+                / aniso_data%dist_up_adjYp
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%ddphi_y_dp_up_adjYm =  0.d0
+      aniso_dd%ddphi_y_dp_up_adjYp =  1.d0 / aniso_data%dist_up_adjYp
+      aniso_dd%ddphi_y_dp_up       = -1.d0 / aniso_data%dist_up_adjYp
+    endif
+  else if ( aniso_data%id_up_adjYm .NE. -1 ) then ! has contribution in y-dir with adj m cell
+    dphi_y_up = ((global_auxvar_up%pres(1) - rho_up * aniso_data%loc_gravity_up) &
+                - (aniso_data%pres_up_adjYm - rho_up * aniso_data%loc_gravity_up_adjYm)) &
+                / aniso_data%dist_up_adjYm
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%ddphi_y_dp_up_adjYm = -1.d0 / aniso_data%dist_up_adjYm
+      aniso_dd%ddphi_y_dp_up_adjYp =  0.d0
+      aniso_dd%ddphi_y_dp_up       =  1.d0 / aniso_data%dist_up_adjYm
+    endif
+  endif
+
+  ! P gradient in y-dir - dnstream
+  if( aniso_data%id_dn_adjYp .NE. -1 .AND. aniso_data%id_dn_adjYm .NE. -1 ) then ! has contribution in y-dir with adj p/m cells
+    dphi_y_dn = ((aniso_data%pres_dn_adjYp - rho_dn * aniso_data%loc_gravity_dn_adjYp) &
+                  - (aniso_data%pres_dn_adjYm - rho_dn * aniso_data%loc_gravity_dn_adjYm)) &
+                  / (aniso_data%dist_dn_adjYp + aniso_data%dist_dn_adjYm)
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%ddphi_y_dp_dn_adjYm = -1.d0 / (aniso_data%dist_dn_adjYp + aniso_data%dist_dn_adjYm)
+      aniso_dd%ddphi_y_dp_dn_adjYp =  1.d0 / (aniso_data%dist_dn_adjYp + aniso_data%dist_dn_adjYm)
+      aniso_dd%ddphi_y_dp_dn       =  0.d0
+    endif
+  else if ( aniso_data%id_dn_adjYp .NE. -1 ) then ! has contribution in y-dir with adj p cell
+    dphi_y_dn = ((aniso_data%pres_dn_adjYp - rho_dn * aniso_data%loc_gravity_dn_adjYp) &
+              - (global_auxvar_dn%pres(1) - rho_dn * aniso_data%loc_gravity_dn)) &
+              / aniso_data%dist_dn_adjYp
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%ddphi_y_dp_dn_adjYm =  0.d0
+      aniso_dd%ddphi_y_dp_dn_adjYp =  1.d0 / aniso_data%dist_dn_adjYp
+      aniso_dd%ddphi_y_dp_dn       = -1.d0 / aniso_data%dist_dn_adjYp
+    endif
+  else if ( aniso_data%id_dn_adjYm .NE. -1 ) then ! has contribution in y-dir with adj m cell
+    dphi_y_dn = ((global_auxvar_dn%pres(1) - rho_dn * aniso_data%loc_gravity_dn) &
+              - (aniso_data%pres_dn_adjYm - rho_dn * aniso_data%loc_gravity_dn_adjYm)) &
+              / aniso_data%dist_dn_adjYm
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%ddphi_y_dp_dn_adjYm = -1.d0 / aniso_data%dist_dn_adjYm
+      aniso_dd%ddphi_y_dp_dn_adjYp =  0.d0
+      aniso_dd%ddphi_y_dp_dn       =  1.d0 / aniso_data%dist_dn_adjYm
+    endif
+  endif
+
+
+  ! P gradient in z-dir - upstream
+  if( aniso_data%id_up_adjZp .NE. -1 .AND. aniso_data%id_up_adjZm .NE. -1 ) then ! has contribution in z-dir with adj p/m cells
+    dphi_z_up = ((aniso_data%pres_up_adjZp - rho_up * aniso_data%loc_gravity_up_adjZp) &
+                - (aniso_data%pres_up_adjZm - rho_up * aniso_data%loc_gravity_up_adjZm)) &
+                / (aniso_data%dist_up_adjZp + aniso_data%dist_up_adjZm)
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%ddphi_z_dp_up_adjZm = -1.d0 / (aniso_data%dist_up_adjZp + aniso_data%dist_up_adjZm)
+      aniso_dd%ddphi_z_dp_up_adjZp =  1.d0 / (aniso_data%dist_up_adjZp + aniso_data%dist_up_adjZm)
+      aniso_dd%ddphi_z_dp_up       =  0.d0
+    endif
+  else if ( aniso_data%id_up_adjZp .NE. -1 ) then ! has contribution in z-dir with adj p cell
+    dphi_z_up = ((aniso_data%pres_up_adjZp - rho_up * aniso_data%loc_gravity_up_adjZp) &
+              - (global_auxvar_up%pres(1) - rho_up * aniso_data%loc_gravity_up)) &
+              / aniso_data%dist_up_adjZp
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%ddphi_z_dp_up_adjZm =  0.d0
+      aniso_dd%ddphi_z_dp_up_adjZp =  1.d0 / aniso_data%dist_up_adjZp
+      aniso_dd%ddphi_z_dp_up       = -1.d0 / aniso_data%dist_up_adjZp
+    endif
+  else if ( aniso_data%id_up_adjZm .NE. -1 ) then ! has contribution in z-dir with adj m cell
+    dphi_z_up = ((global_auxvar_up%pres(1) - rho_up * aniso_data%loc_gravity_up) &
+              - (aniso_data%pres_up_adjZm - rho_up * aniso_data%loc_gravity_up_adjZm)) &
+              / aniso_data%dist_up_adjZm
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%ddphi_z_dp_up_adjZm = -1.d0 / aniso_data%dist_up_adjZm
+      aniso_dd%ddphi_z_dp_up_adjZp =  0.d0
+      aniso_dd%ddphi_z_dp_up       =  1.d0 / aniso_data%dist_up_adjZm
+    endif
+  endif
+
+  ! P gradient in z-dir - dnstream
+  if( aniso_data%id_dn_adjZp .NE. -1 .AND. aniso_data%id_dn_adjZm .NE. -1 ) then ! has contribution in z-dir with adj p/m cells
+    dphi_z_dn = ((aniso_data%pres_dn_adjZp - rho_dn * aniso_data%loc_gravity_dn_adjZp) &
+                - (aniso_data%pres_dn_adjZm - rho_dn * aniso_data%loc_gravity_dn_adjZm)) &
+                / (aniso_data%dist_dn_adjZp + aniso_data%dist_dn_adjZm)
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%ddphi_z_dp_dn_adjZm = -1.d0 / (aniso_data%dist_dn_adjZp + aniso_data%dist_dn_adjZm)
+      aniso_dd%ddphi_z_dp_dn_adjZp =  1.d0 / (aniso_data%dist_dn_adjZp + aniso_data%dist_dn_adjZm)
+      aniso_dd%ddphi_z_dp_dn       =  0.d0
+    endif
+  else if ( aniso_data%id_dn_adjZp .NE. -1 ) then ! has contribution in z-dir with adj p cell
+    dphi_z_dn = ((aniso_data%pres_dn_adjZp - rho_dn * aniso_data%loc_gravity_dn_adjZp) &
+            - (global_auxvar_dn%pres(1) - rho_dn * aniso_data%loc_gravity_dn)) &
+            / aniso_data%dist_dn_adjZp
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%ddphi_z_dp_dn_adjZm =  0.d0
+      aniso_dd%ddphi_z_dp_dn_adjZp =  1.d0 / aniso_data%dist_dn_adjZp
+      aniso_dd%ddphi_z_dp_dn       = -1.d0 / aniso_data%dist_dn_adjZp
+    endif
+  else if ( aniso_data%id_dn_adjZm .NE. -1 ) then ! has contribution in z-dir with adj m cell
+    dphi_z_dn = ((global_auxvar_dn%pres(1) - rho_dn * aniso_data%loc_gravity_dn) &
+            - (aniso_data%pres_dn_adjZm - rho_dn * aniso_data%loc_gravity_dn_adjZm)) &
+            / aniso_data%dist_dn_adjZm
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%ddphi_z_dp_dn_adjZm = -1.d0 / aniso_data%dist_dn_adjZm
+      aniso_dd%ddphi_z_dp_dn_adjZp =  0.d0
+      aniso_dd%ddphi_z_dp_dn       =  1.d0 / aniso_data%dist_dn_adjZm
+    endif
+  endif
+
+
+
+  ! Permeability tensor to up/dn cells
+  k_up_xx = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_X)
+  k_up_yy = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_Y)
+  k_up_zz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_Z)
+  k_up_xy = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_XY)
+  k_up_yz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_YZ)
+  k_up_xz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_XZ)
+
+  k_dn_xx = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_X)
+  k_dn_yy = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_Y)
+  k_dn_zz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_Z)
+  k_dn_xy = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_XY)
+  k_dn_yz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_YZ)
+  k_dn_xz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_XZ)
+
+  ! allow off-diagonal terms to be uninitialised, in which case set to zero
+  if ( k_up_xy == UNINITIALIZED_DOUBLE ) then
+    k_up_xy = 0.d0
+  endif
+  if ( k_up_yz == UNINITIALIZED_DOUBLE ) then
+    k_up_yz = 0.d0
+  endif
+  if ( k_up_xz == UNINITIALIZED_DOUBLE ) then
+    k_up_xz = 0.d0
+  endif
+  if ( k_dn_xy == UNINITIALIZED_DOUBLE ) then
+    k_dn_xy = 0.d0
+  endif
+  if ( k_dn_yz == UNINITIALIZED_DOUBLE ) then
+    k_dn_yz = 0.d0
+  endif
+  if ( k_dn_xz == UNINITIALIZED_DOUBLE ) then
+    k_dn_xz = 0.d0
+  endif
+
+
+  ! Calculate anisotropic darcy contribution for given orientation
+  v_darcy_aniso = 0.d0
+  if ( aniso_data%orientation .eq. 'X' ) then
+    v_darcy_aniso_up = -1.d0 * (k_up_xy * dphi_y_up + k_up_xz * dphi_z_up) * ukvr
+    v_darcy_aniso_dn = -1.d0 * (k_dn_xy * dphi_y_dn + k_dn_xz * dphi_z_dn) * ukvr
+    mu_up =       dist(-1) *dist(0)/k_up_xx  ! weight - up (dist part = dist to interface)
+    mu_dn = (1.d0-dist(-1))*dist(0)/k_dn_xx  ! weight - dn (dist part = dist to interface)
+    ! average up/dn components to obtain a consistent interface midpoint pressure
+    v_darcy_aniso = (mu_up*v_darcy_aniso_up + mu_dn*v_darcy_aniso_dn) / (mu_up + mu_dn)
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%dv_darcy_aniso_up_dp_up_adjXm = 0.d0
+      aniso_dd%dv_darcy_aniso_up_dp_up_adjXp = 0.d0
+
+      aniso_dd%dv_darcy_aniso_up_dp_up_adjYm = -1.0d0 * k_up_xy * aniso_dd%ddphi_y_dp_up_adjYm * ukvr
+      aniso_dd%dv_darcy_aniso_up_dp_up_adjYp = -1.0d0 * k_up_xy * aniso_dd%ddphi_y_dp_up_adjYp * ukvr
+
+      aniso_dd%dv_darcy_aniso_up_dp_up_adjZm = -1.0d0 * k_up_xz * aniso_dd%ddphi_z_dp_up_adjZm * ukvr
+      aniso_dd%dv_darcy_aniso_up_dp_up_adjZp = -1.0d0 * k_up_xz * aniso_dd%ddphi_z_dp_up_adjZp * ukvr
+
+      aniso_dd%dv_darcy_aniso_up_dp_up = -1.d0 * ((k_up_xy * aniso_dd%ddphi_y_dp_up + k_up_xz * aniso_dd%ddphi_z_dp_up) * ukvr &
+                                        + (k_up_xy * dphi_y_up +  k_up_xz * dphi_z_up) * dukvr_dp_up)
+
+      aniso_dd%dv_darcy_aniso_dn_dp_dn_adjXm = 0.d0
+      aniso_dd%dv_darcy_aniso_dn_dp_dn_adjXp = 0.d0
+
+      aniso_dd%dv_darcy_aniso_dn_dp_dn_adjYm = -1.0d0 * k_dn_xy * aniso_dd%ddphi_y_dp_dn_adjYm * ukvr
+      aniso_dd%dv_darcy_aniso_dn_dp_dn_adjYp = -1.0d0 * k_dn_xy * aniso_dd%ddphi_y_dp_dn_adjYp * ukvr
+
+      aniso_dd%dv_darcy_aniso_dn_dp_dn_adjZm = -1.0d0 * k_dn_xz * aniso_dd%ddphi_z_dp_dn_adjZm * ukvr
+      aniso_dd%dv_darcy_aniso_dn_dp_dn_adjZp = -1.0d0 * k_dn_xz * aniso_dd%ddphi_z_dp_dn_adjZp * ukvr
+
+      aniso_dd%dv_darcy_aniso_dn_dp_dn = -1.d0 * ((k_dn_xy * aniso_dd%ddphi_y_dp_dn + k_dn_xz * aniso_dd%ddphi_z_dp_dn) * ukvr &
+                                        + (k_dn_xy * dphi_y_dn +  k_dn_xz * dphi_z_dn) * dukvr_dp_dn)
+    endif
+  endif
+  if ( aniso_data%orientation .eq. 'Y' ) then
+    v_darcy_aniso_up = -1.d0 * (k_up_xy * dphi_x_up + k_up_yz * dphi_z_up) * ukvr
+    v_darcy_aniso_dn = -1.d0 * (k_dn_xy * dphi_x_dn + k_dn_yz * dphi_z_dn) * ukvr
+    mu_up =       dist(-1) *dist(0)/k_up_yy  ! weight - up (dist part = dist to interface)
+    mu_dn = (1.d0-dist(-1))*dist(0)/k_dn_yy  ! weight - dn (dist part = dist to interface)
+    ! average up/dn components to obtain a consistent interface midpoint pressure
+    v_darcy_aniso = (mu_up*v_darcy_aniso_up + mu_dn*v_darcy_aniso_dn) / (mu_up + mu_dn)
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%dv_darcy_aniso_up_dp_up_adjXm = -1.0d0 * k_up_xy * aniso_dd%ddphi_x_dp_up_adjXm * ukvr
+      aniso_dd%dv_darcy_aniso_up_dp_up_adjXp = -1.0d0 * k_up_xy * aniso_dd%ddphi_x_dp_up_adjXp * ukvr
+
+      aniso_dd%dv_darcy_aniso_up_dp_up_adjYm = 0.d0
+      aniso_dd%dv_darcy_aniso_up_dp_up_adjYp = 0.d0
+
+      aniso_dd%dv_darcy_aniso_up_dp_up_adjZm = -1.0d0 * k_up_yz * aniso_dd%ddphi_z_dp_up_adjZm * ukvr
+      aniso_dd%dv_darcy_aniso_up_dp_up_adjZp = -1.0d0 * k_up_yz * aniso_dd%ddphi_z_dp_up_adjZp * ukvr
+
+      aniso_dd%dv_darcy_aniso_up_dp_up = -1.d0 * ((k_up_xy * aniso_dd%ddphi_x_dp_up + k_up_yz * aniso_dd%ddphi_z_dp_up) * ukvr &
+                                        + (k_up_xy * dphi_x_up +  k_up_yz * dphi_z_up) * dukvr_dp_up)
+
+      aniso_dd%dv_darcy_aniso_dn_dp_dn_adjXm = -1.0d0 * k_dn_xy * aniso_dd%ddphi_x_dp_dn_adjXm * ukvr
+      aniso_dd%dv_darcy_aniso_dn_dp_dn_adjXp = -1.0d0 * k_dn_xy * aniso_dd%ddphi_x_dp_dn_adjXp * ukvr
+
+      aniso_dd%dv_darcy_aniso_dn_dp_dn_adjYm = 0.d0
+      aniso_dd%dv_darcy_aniso_dn_dp_dn_adjYp = 0.d0
+
+      aniso_dd%dv_darcy_aniso_dn_dp_dn_adjZm = -1.0d0 * k_dn_yz * aniso_dd%ddphi_z_dp_dn_adjZm * ukvr
+      aniso_dd%dv_darcy_aniso_dn_dp_dn_adjZp = -1.0d0 * k_dn_yz * aniso_dd%ddphi_z_dp_dn_adjZp * ukvr
+
+      aniso_dd%dv_darcy_aniso_dn_dp_dn = -1.d0 * ((k_dn_xy * aniso_dd%ddphi_x_dp_dn + k_dn_yz * aniso_dd%ddphi_z_dp_dn) * ukvr &
+                                        + (k_dn_xy * dphi_x_dn +  k_dn_yz * dphi_z_dn) * dukvr_dp_dn)
+    endif
+  endif
+  if ( aniso_data%orientation .eq. 'Z' ) then
+    v_darcy_aniso_up = -1.d0 * (k_up_xz * dphi_x_up + k_up_yz * dphi_y_up) * ukvr
+    v_darcy_aniso_dn = -1.d0 * (k_dn_xz * dphi_x_dn + k_dn_yz * dphi_y_dn) * ukvr
+    mu_up =       dist(-1) *dist(0)/k_up_zz  ! weight - up (dist part = dist to interface)
+    mu_dn = (1.d0-dist(-1))*dist(0)/k_dn_zz  ! weight - dn (dist part = dist to interface)
+    ! average up/dn components to obtain a consistent interface midpoint pressure
+    v_darcy_aniso = (mu_up*v_darcy_aniso_up + mu_dn*v_darcy_aniso_dn) / (mu_up + mu_dn)
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_dd%dv_darcy_aniso_up_dp_up_adjXm = -1.0d0 * k_up_xz * aniso_dd%ddphi_x_dp_up_adjXm * ukvr
+      aniso_dd%dv_darcy_aniso_up_dp_up_adjXp = -1.0d0 * k_up_xz * aniso_dd%ddphi_x_dp_up_adjXp * ukvr
+
+      aniso_dd%dv_darcy_aniso_up_dp_up_adjYm = -1.0d0 * k_up_yz * aniso_dd%ddphi_y_dp_up_adjYm * ukvr
+      aniso_dd%dv_darcy_aniso_up_dp_up_adjYp = -1.0d0 * k_up_yz * aniso_dd%ddphi_y_dp_up_adjYp * ukvr
+
+      aniso_dd%dv_darcy_aniso_up_dp_up_adjZm = 0.d0
+      aniso_dd%dv_darcy_aniso_up_dp_up_adjZp = 0.d0
+
+      aniso_dd%dv_darcy_aniso_up_dp_up = -1.d0 * ((k_up_xz * aniso_dd%ddphi_x_dp_up + k_up_yz * aniso_dd%ddphi_y_dp_up) * ukvr &
+                                        + (k_up_xz * dphi_x_up +  k_up_yz * dphi_y_up) * dukvr_dp_up)
+
+      aniso_dd%dv_darcy_aniso_dn_dp_dn_adjXm = -1.0d0 * k_dn_xz * aniso_dd%ddphi_x_dp_dn_adjXm * ukvr
+      aniso_dd%dv_darcy_aniso_dn_dp_dn_adjXp = -1.0d0 * k_dn_xz * aniso_dd%ddphi_x_dp_dn_adjXp * ukvr
+
+      aniso_dd%dv_darcy_aniso_dn_dp_dn_adjYm = -1.0d0 * k_dn_yz * aniso_dd%ddphi_y_dp_dn_adjYm * ukvr
+      aniso_dd%dv_darcy_aniso_dn_dp_dn_adjYp = -1.0d0 * k_dn_yz * aniso_dd%ddphi_y_dp_dn_adjYp * ukvr
+
+      aniso_dd%dv_darcy_aniso_dn_dp_dn_adjZm = 0.d0
+      aniso_dd%dv_darcy_aniso_dn_dp_dn_adjZp = 0.d0
+
+      aniso_dd%dv_darcy_aniso_dn_dp_dn = -1.d0 * ((k_dn_xz * aniso_dd%ddphi_x_dp_dn + k_dn_yz * aniso_dd%ddphi_y_dp_dn) * ukvr &
+                                        + (k_dn_xz * dphi_x_dn +  k_dn_yz * dphi_y_dn) * dukvr_dp_dn)
+    endif
+  endif
+
+  if (calc_derivs .EQV. PETSC_TRUE) then
+    aniso_data%dv_darcy_aniso_dp_up_adjXm = (mu_up * aniso_dd%dv_darcy_aniso_up_dp_up_adjXm) &
+                                            / (mu_up + mu_dn)
+    aniso_data%dv_darcy_aniso_dp_dn_adjXm = (mu_dn * aniso_dd%dv_darcy_aniso_dn_dp_dn_adjXm) &
+                                            / (mu_up + mu_dn)
+    aniso_data%dv_darcy_aniso_dp_up_adjXp = (mu_up * aniso_dd%dv_darcy_aniso_up_dp_up_adjXp) &
+                                            / (mu_up + mu_dn)
+    aniso_data%dv_darcy_aniso_dp_dn_adjXp = (mu_dn * aniso_dd%dv_darcy_aniso_dn_dp_dn_adjXp) &
+                                            / (mu_up + mu_dn)
+
+    aniso_data%dv_darcy_aniso_dp_up_adjYm = (mu_up * aniso_dd%dv_darcy_aniso_up_dp_up_adjYm) &
+                                            / (mu_up + mu_dn)
+    aniso_data%dv_darcy_aniso_dp_dn_adjYm = (mu_dn * aniso_dd%dv_darcy_aniso_dn_dp_dn_adjYm) &
+                                            / (mu_up + mu_dn)
+    aniso_data%dv_darcy_aniso_dp_up_adjYp = (mu_up * aniso_dd%dv_darcy_aniso_up_dp_up_adjYp) &
+                                            / (mu_up + mu_dn)
+    aniso_data%dv_darcy_aniso_dp_dn_adjYp = (mu_dn * aniso_dd%dv_darcy_aniso_dn_dp_dn_adjYp) &
+                                            / (mu_up + mu_dn)
+
+    aniso_data%dv_darcy_aniso_dp_up_adjZm = (mu_up * aniso_dd%dv_darcy_aniso_up_dp_up_adjZm) &
+                                            / (mu_up + mu_dn)
+    aniso_data%dv_darcy_aniso_dp_dn_adjZm = (mu_dn * aniso_dd%dv_darcy_aniso_dn_dp_dn_adjZm) &
+                                            / (mu_up + mu_dn)
+    aniso_data%dv_darcy_aniso_dp_up_adjZp = (mu_up * aniso_dd%dv_darcy_aniso_up_dp_up_adjZp) &
+                                            / (mu_up + mu_dn)
+    aniso_data%dv_darcy_aniso_dp_dn_adjZp = (mu_dn * aniso_dd%dv_darcy_aniso_dn_dp_dn_adjZp) &
+                                            / (mu_up + mu_dn)
+
+    aniso_data%dv_darcy_aniso_dp_up = (mu_up * aniso_dd%dv_darcy_aniso_up_dp_up) / (mu_up + mu_dn)
+    aniso_data%dv_darcy_aniso_dp_dn = (mu_dn * aniso_dd%dv_darcy_aniso_dn_dp_dn) / (mu_up + mu_dn)
+  endif
+
+  if(calc_derivs .EQV. PETSC_TRUE) then
+    deallocate(aniso_dd)
+  endif
+
+end subroutine RichardsFluxAniso
+
+! ************************************************************************** !
+
 subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
                         material_auxvar_up, &
                         rich_auxvar_dn,global_auxvar_dn, &
                         material_auxvar_dn, &
                         area, dist, &
+                        aniso_data, &
                         option,v_darcy,Res)
   ! 
   ! Computes the internal flux terms for the residual
@@ -358,12 +871,14 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
   use Option_module
   use Material_Aux_class
   use Connection_module
+  use Anisotropy_Data_module
   
   implicit none
   
   type(richards_auxvar_type) :: rich_auxvar_up, rich_auxvar_dn
   type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
   class(material_auxvar_type) :: material_auxvar_up, material_auxvar_dn
+  type(aniso_data_type), pointer :: aniso_data
   type(option_type) :: option
   PetscReal :: v_darcy, area, dist(-1:3)
   PetscReal :: Res(1:option%nflowdof) 
@@ -375,6 +890,8 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
   PetscReal :: ukvr,Dq
   PetscReal :: upweight, density_ave, cond, gravity, dphi
   
+  PetscReal :: v_darcy_aniso
+
   fluxm = 0.d0
   v_darcy = 0.D0  
   ukvr = 0.d0
@@ -414,10 +931,21 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
     if (ukvr>floweps) then
       v_darcy= Dq * ukvr * dphi
    
-      q = v_darcy * area
-
-      fluxm = q*density_ave       
+      ! add anisotropic contributions
+      if(associated(aniso_data)) then
+        ! Call PrintAnisoData(aniso_data)
+        Call RichardsFluxAniso(aniso_data,material_auxvar_up,material_auxvar_dn,&
+                                  global_auxvar_up,global_auxvar_dn,&
+                                  option,dist,ukvr,0.d0,0.d0,PETSC_FALSE,v_darcy_aniso)
+        ! note ukvr*... is included in v_darcy_aniso
+        v_darcy = v_darcy + v_darcy_aniso
+      endif
     endif
+
+
+    q = v_darcy * area
+
+    fluxm = q*density_ave
   endif 
 
   Res(1) = fluxm

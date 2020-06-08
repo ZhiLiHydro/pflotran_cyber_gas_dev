@@ -858,6 +858,10 @@ function StructGridComputeInternConnect(structured_grid, xc, yc, zc, option)
   PetscReal :: r1, r2
   type(connection_set_type), pointer :: connections, connections_2
 
+  ! these used in aniso calcs
+  PetscReal :: distvec(1:3)
+  PetscInt :: id
+
   PetscErrorCode :: ierr
   PetscReal, pointer :: radius(:)
   PetscInt, pointer :: int_array1(:), int_array2(:),int_array3(:),int_array4(:),int_array5(:),index(:)
@@ -886,6 +890,10 @@ function StructGridComputeInternConnect(structured_grid, xc, yc, zc, option)
     allocate(connections%id_dn2(size(connections%id_dn)))
     connections%id_up2 = 0
     connections%id_dn2 = 0
+  endif
+
+  if (option%connections_with_aniso_data .eqv. PETSC_TRUE) then
+    allocate(connections%aniso_data(size(connections%id_up)))
   endif
 
   iconn = 0
@@ -932,6 +940,161 @@ function StructGridComputeInternConnect(structured_grid, xc, yc, zc, option)
               connections%dist(1,iconn) = 1.d0  ! x component of unit vector
               connections%area(iconn) = structured_grid%dy(id_up)* &
                                         structured_grid%dz(id_up)
+
+              if (associated(connections%aniso_data)) then
+                connections%aniso_data(iconn)%orientation = 'X'
+                ! Set up ids of cells adjacent to the up and dn cells
+                connections%aniso_data(iconn)%id_up_adjXm = -1 ! N/A connection in x-dir.
+                connections%aniso_data(iconn)%id_up_adjXp = -1 ! N/A connection in x-dir.
+                connections%aniso_data(iconn)%id_dn_adjXm = -1 ! N/A connection in x-dir.
+                connections%aniso_data(iconn)%id_dn_adjXp = -1 ! N/A connection in x-dir.
+                connections%aniso_data(iconn)%dist_up_adjXm = 0.d0 ! N/A
+                connections%aniso_data(iconn)%dist_up_adjXp = 0.d0 ! N/A
+                connections%aniso_data(iconn)%dist_dn_adjXm = 0.d0 ! N/A
+                connections%aniso_data(iconn)%dist_dn_adjXp = 0.d0 ! N/A
+                if (j==0) then
+                  connections%aniso_data(iconn)%id_up_adjYm = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%id_dn_adjYm = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%dist_up_adjYm = 0.d0 ! N/A
+                  connections%aniso_data(iconn)%dist_dn_adjYm = 0.d0 ! N/A
+                else
+                  connections%aniso_data(iconn)%id_up_adjYm = i + (j-1) * structured_grid%ngx + k * structured_grid%ngxy
+                  connections%aniso_data(iconn)%id_dn_adjYm = connections%aniso_data(iconn)%id_up_adjYm + 1
+                  connections%aniso_data(iconn)%dist_up_adjYm = 0.5 * (structured_grid%dy(id_up) + &
+                                                          structured_grid%dy(connections%aniso_data(iconn)%id_up_adjYm))
+                  connections%aniso_data(iconn)%dist_dn_adjYm = 0.5 * (structured_grid%dy(id_dn) + &
+                                                          structured_grid%dy(connections%aniso_data(iconn)%id_dn_adjYm))
+                endif
+                if (j==structured_grid%ngy-1) then
+                  connections%aniso_data(iconn)%id_up_adjYp = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%id_dn_adjYp = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%dist_up_adjYp = 0.d0 ! N/A
+                  connections%aniso_data(iconn)%dist_dn_adjYp = 0.d0 ! N/A
+                else
+                  connections%aniso_data(iconn)%id_up_adjYp = i + (j+1) * structured_grid%ngx + k * structured_grid%ngxy
+                  connections%aniso_data(iconn)%id_dn_adjYp = connections%aniso_data(iconn)%id_up_adjYp + 1
+                  connections%aniso_data(iconn)%dist_up_adjYp = 0.5 * (structured_grid%dy(id_up) + &
+                                                          structured_grid%dy(connections%aniso_data(iconn)%id_up_adjYp))
+                  connections%aniso_data(iconn)%dist_dn_adjYp = 0.5 * (structured_grid%dy(id_dn) + &
+                                                          structured_grid%dy(connections%aniso_data(iconn)%id_dn_adjYp))
+                endif
+                if (k==0) then
+                  connections%aniso_data(iconn)%id_up_adjZm = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%id_dn_adjZm = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%dist_up_adjZm = 0.d0 ! N/A
+                  connections%aniso_data(iconn)%dist_dn_adjZm = 0.d0 ! N/A
+                else
+                  connections%aniso_data(iconn)%id_up_adjZm = i + j * structured_grid%ngx + (k-1) * structured_grid%ngxy
+                  connections%aniso_data(iconn)%id_dn_adjZm = connections%aniso_data(iconn)%id_up_adjZm + 1
+                  connections%aniso_data(iconn)%dist_up_adjZm = 0.5 * (structured_grid%dz(id_up) + &
+                                                          structured_grid%dz(connections%aniso_data(iconn)%id_up_adjZm))
+                  connections%aniso_data(iconn)%dist_dn_adjZm = 0.5 * (structured_grid%dz(id_dn) + &
+                                                          structured_grid%dz(connections%aniso_data(iconn)%id_dn_adjZm))
+                endif
+                if (k==structured_grid%ngz-1) then
+                  connections%aniso_data(iconn)%id_up_adjZp = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%id_dn_adjZp = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%dist_up_adjZp = 0.d0 ! N/A
+                  connections%aniso_data(iconn)%dist_dn_adjZp = 0.d0 ! N/A
+                else
+                  connections%aniso_data(iconn)%id_up_adjZp = i + j * structured_grid%ngx + (k+1) * structured_grid%ngxy
+                  connections%aniso_data(iconn)%id_dn_adjZp = connections%aniso_data(iconn)%id_up_adjZp + 1
+                  connections%aniso_data(iconn)%dist_up_adjZp = 0.5 * (structured_grid%dz(id_up) + &
+                                                          structured_grid%dz(connections%aniso_data(iconn)%id_up_adjZp))
+                  connections%aniso_data(iconn)%dist_dn_adjZp = 0.5 * (structured_grid%dz(id_dn) + &
+                                                          structured_grid%dz(connections%aniso_data(iconn)%id_dn_adjZp))
+                endif
+
+                ! Gravity terms
+                distvec = (/ xc(id_up),yc(id_up),zc(id_up) /)
+                connections%aniso_data(iconn)%loc_gravity_up = dot_product(option%gravity,distvec)
+                distvec = (/ xc(id_dn),yc(id_dn),zc(id_dn) /)
+                connections%aniso_data(iconn)%loc_gravity_dn = dot_product(option%gravity,distvec)
+                if( connections%aniso_data(iconn)%id_up_adjXm .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_up_adjXm
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_up_adjXm = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_up_adjXm = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_up_adjXp .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_up_adjXp
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_up_adjXp = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_up_adjXp = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_dn_adjXm .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_dn_adjXm
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjXm = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjXm = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_dn_adjXp .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_dn_adjXp
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjXp = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjXp = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_up_adjYm .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_up_adjYm
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_up_adjYm = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_up_adjYm = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_up_adjYp .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_up_adjYp
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_up_adjYp = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_up_adjYp = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_dn_adjYm .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_dn_adjYm
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjYm = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjYm = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_dn_adjYp .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_dn_adjYp
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjYp = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjYp = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_up_adjZm .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_up_adjZm
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_up_adjZm = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_up_adjZm = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_up_adjZp .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_up_adjZp
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_up_adjZp = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_up_adjZp = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_dn_adjZm .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_dn_adjZm
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjZm = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjZm = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_dn_adjZp .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_dn_adjZp
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjZp = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjZp = 0.d0
+                endif
+              endif
             enddo
           enddo
         enddo
@@ -1022,6 +1185,161 @@ function StructGridComputeInternConnect(structured_grid, xc, yc, zc, option)
               connections%dist(2,iconn) = 1.d0  ! y component of unit vector
               connections%area(iconn) = structured_grid%dx(id_up)* &
                                     structured_grid%dz(id_up)
+
+              if (associated(connections%aniso_data)) then
+                connections%aniso_data(iconn)%orientation = 'Y'
+                ! Set up ids of cells adjacent to the up and dn cells
+                connections%aniso_data(iconn)%id_up_adjYm = -1 ! N/A connection in y-dir.
+                connections%aniso_data(iconn)%id_up_adjYp = -1 ! N/A connection in y-dir.
+                connections%aniso_data(iconn)%id_dn_adjYm = -1 ! N/A connection in y-dir.
+                connections%aniso_data(iconn)%id_dn_adjYp = -1 ! N/A connection in y-dir.
+                connections%aniso_data(iconn)%dist_up_adjYm = 0.d0 ! N/A
+                connections%aniso_data(iconn)%dist_up_adjYp = 0.d0 ! N/A
+                connections%aniso_data(iconn)%dist_dn_adjYm = 0.d0 ! N/A
+                connections%aniso_data(iconn)%dist_dn_adjYp = 0.d0 ! N/A
+                if (i==0) then
+                  connections%aniso_data(iconn)%id_up_adjXm = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%id_dn_adjXm = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%dist_up_adjXm = 0.d0 ! N/A
+                  connections%aniso_data(iconn)%dist_dn_adjXm = 0.d0 ! N/A
+                else
+                  connections%aniso_data(iconn)%id_up_adjXm = (i-1) + 1 + (j-1) * structured_grid%ngx + k * structured_grid%ngxy
+                  connections%aniso_data(iconn)%id_dn_adjXm = connections%aniso_data(iconn)%id_up_adjXm + structured_grid%ngx
+                  connections%aniso_data(iconn)%dist_up_adjXm = 0.5 * (structured_grid%dx(id_up) + &
+                                                          structured_grid%dx(connections%aniso_data(iconn)%id_up_adjXm))
+                  connections%aniso_data(iconn)%dist_dn_adjXm = 0.5 * (structured_grid%dx(id_dn) + &
+                                                          structured_grid%dx(connections%aniso_data(iconn)%id_dn_adjXm))
+                endif
+                if (i==structured_grid%ngx-1) then
+                  connections%aniso_data(iconn)%id_up_adjXp = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%id_dn_adjXp = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%dist_up_adjXp = 0.d0 ! N/A
+                  connections%aniso_data(iconn)%dist_dn_adjXp = 0.d0 ! N/A
+                else
+                  connections%aniso_data(iconn)%id_up_adjXp = (i+1) + 1 + (j-1) * structured_grid%ngx + k * structured_grid%ngxy
+                  connections%aniso_data(iconn)%id_dn_adjXp = connections%aniso_data(iconn)%id_up_adjXp + structured_grid%ngx
+                  connections%aniso_data(iconn)%dist_up_adjXp = 0.5 * (structured_grid%dx(id_up) + &
+                                                          structured_grid%dx(connections%aniso_data(iconn)%id_up_adjXp))
+                  connections%aniso_data(iconn)%dist_dn_adjXp = 0.5 * (structured_grid%dx(id_dn) + &
+                                                          structured_grid%dx(connections%aniso_data(iconn)%id_dn_adjXp))
+                endif
+                if (k==0) then
+                  connections%aniso_data(iconn)%id_up_adjZm = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%id_dn_adjZm = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%dist_up_adjZm = 0.d0 ! N/A
+                  connections%aniso_data(iconn)%dist_dn_adjZm = 0.d0 ! N/A
+                else
+                  connections%aniso_data(iconn)%id_up_adjZm = i + 1 + (j-1) * structured_grid%ngx + (k-1) * structured_grid%ngxy
+                  connections%aniso_data(iconn)%id_dn_adjZm = connections%aniso_data(iconn)%id_up_adjZm + structured_grid%ngx
+                  connections%aniso_data(iconn)%dist_up_adjZm = 0.5 * (structured_grid%dz(id_up) + &
+                                                          structured_grid%dz(connections%aniso_data(iconn)%id_up_adjZm))
+                  connections%aniso_data(iconn)%dist_dn_adjZm = 0.5 * (structured_grid%dz(id_dn) + &
+                                                          structured_grid%dz(connections%aniso_data(iconn)%id_dn_adjZm))
+                endif
+                if (k==structured_grid%ngz-1) then
+                  connections%aniso_data(iconn)%id_up_adjZp = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%id_dn_adjZp = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%dist_up_adjZp = 0.d0 ! N/A
+                  connections%aniso_data(iconn)%dist_dn_adjZp = 0.d0 ! N/A
+                else
+                  connections%aniso_data(iconn)%id_up_adjZp = i + 1 + (j-1) * structured_grid%ngx + (k+1) * structured_grid%ngxy
+                  connections%aniso_data(iconn)%id_dn_adjZp = connections%aniso_data(iconn)%id_up_adjZp + structured_grid%ngx
+                  connections%aniso_data(iconn)%dist_up_adjZp = 0.5 * (structured_grid%dz(id_up) + &
+                                                          structured_grid%dz(connections%aniso_data(iconn)%id_up_adjZp))
+                  connections%aniso_data(iconn)%dist_dn_adjZp = 0.5 * (structured_grid%dz(id_dn) + &
+                                                          structured_grid%dz(connections%aniso_data(iconn)%id_dn_adjZp))
+                endif
+
+                ! Gravity terms
+                distvec = (/ xc(id_up),yc(id_up),zc(id_up) /)
+                connections%aniso_data(iconn)%loc_gravity_up = dot_product(option%gravity,distvec)
+                distvec = (/ xc(id_dn),yc(id_dn),zc(id_dn) /)
+                connections%aniso_data(iconn)%loc_gravity_dn = dot_product(option%gravity,distvec)
+                if( connections%aniso_data(iconn)%id_up_adjXm .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_up_adjXm
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_up_adjXm = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_up_adjXm = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_up_adjXp .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_up_adjXp
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_up_adjXp = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_up_adjXp = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_dn_adjXm .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_dn_adjXm
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjXm = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjXm = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_dn_adjXp .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_dn_adjXp
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjXp = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjXp = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_up_adjYm .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_up_adjYm
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_up_adjYm = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_up_adjYm = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_up_adjYp .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_up_adjYp
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_up_adjYp = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_up_adjYp = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_dn_adjYm .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_dn_adjYm
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjYm = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjYm = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_dn_adjYp .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_dn_adjYp
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjYp = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjYp = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_up_adjZm .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_up_adjZm
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_up_adjZm = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_up_adjZm = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_up_adjZp .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_up_adjZp
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_up_adjZp = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_up_adjZp = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_dn_adjZm .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_dn_adjZm
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjZm = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjZm = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_dn_adjZp .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_dn_adjZp
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjZp = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjZp = 0.d0
+                endif
+              endif
             enddo
           enddo
         enddo
@@ -1080,6 +1398,161 @@ function StructGridComputeInternConnect(structured_grid, xc, yc, zc, option)
               connections%dist(3,iconn) = 1.d0  ! z component of unit vector
               connections%area(iconn) = structured_grid%dx(id_up) * &
                                         structured_grid%dy(id_up)
+
+              if (associated(connections%aniso_data)) then
+                connections%aniso_data(iconn)%orientation = 'Z'
+                ! Set up ids of cells adjacent to the up and dn cells
+                connections%aniso_data(iconn)%id_up_adjZm = -1 ! N/A connection in z-dir.
+                connections%aniso_data(iconn)%id_up_adjZp = -1 ! N/A connection in z-dir.
+                connections%aniso_data(iconn)%id_dn_adjZm = -1 ! N/A connection in z-dir.
+                connections%aniso_data(iconn)%id_dn_adjZp = -1 ! N/A connection in z-dir.
+                connections%aniso_data(iconn)%dist_up_adjZm = 0.d0 ! N/A
+                connections%aniso_data(iconn)%dist_up_adjZp = 0.d0 ! N/A
+                connections%aniso_data(iconn)%dist_dn_adjZm = 0.d0 ! N/A
+                connections%aniso_data(iconn)%dist_dn_adjZp = 0.d0 ! N/A
+                if (i==0) then
+                  connections%aniso_data(iconn)%id_up_adjXm = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%id_dn_adjXm = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%dist_up_adjXm = 0.d0 ! N/A
+                  connections%aniso_data(iconn)%dist_dn_adjXm = 0.d0 ! N/A
+                else
+                  connections%aniso_data(iconn)%id_up_adjXm = (i-1) + 1 + j * structured_grid%ngx + (k-1) * structured_grid%ngxy
+                  connections%aniso_data(iconn)%id_dn_adjXm = connections%aniso_data(iconn)%id_up_adjXm + structured_grid%ngxy
+                  connections%aniso_data(iconn)%dist_up_adjXm = 0.5 * (structured_grid%dx(id_up) + &
+                                                          structured_grid%dx(connections%aniso_data(iconn)%id_up_adjXm))
+                  connections%aniso_data(iconn)%dist_dn_adjXm = 0.5 * (structured_grid%dx(id_dn) + &
+                                                          structured_grid%dx(connections%aniso_data(iconn)%id_dn_adjXm))
+                endif
+                if (i==structured_grid%ngx-1) then
+                  connections%aniso_data(iconn)%id_up_adjXp = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%id_dn_adjXp = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%dist_up_adjXp = 0.d0 ! N/A
+                  connections%aniso_data(iconn)%dist_dn_adjXp = 0.d0 ! N/A
+                else
+                  connections%aniso_data(iconn)%id_up_adjXp = (i+1) + 1 + j * structured_grid%ngx + (k-1) * structured_grid%ngxy
+                  connections%aniso_data(iconn)%id_dn_adjXp = connections%aniso_data(iconn)%id_up_adjXp + structured_grid%ngxy
+                  connections%aniso_data(iconn)%dist_up_adjXp = 0.5 * (structured_grid%dx(id_up) + &
+                                                          structured_grid%dx(connections%aniso_data(iconn)%id_up_adjXp))
+                  connections%aniso_data(iconn)%dist_dn_adjXp = 0.5 * (structured_grid%dx(id_dn) + &
+                                                          structured_grid%dx(connections%aniso_data(iconn)%id_dn_adjXp))
+                endif
+                if (j==0) then
+                  connections%aniso_data(iconn)%id_up_adjYm = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%id_dn_adjYm = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%dist_up_adjYm = 0.d0 ! N/A
+                  connections%aniso_data(iconn)%dist_dn_adjYm = 0.d0 ! N/A
+                else
+                  connections%aniso_data(iconn)%id_up_adjYm = i + 1 + (j-1) * structured_grid%ngx + (k-1) * structured_grid%ngxy
+                  connections%aniso_data(iconn)%id_dn_adjYm = connections%aniso_data(iconn)%id_up_adjYm + structured_grid%ngxy
+                  connections%aniso_data(iconn)%dist_up_adjYm = 0.5 * (structured_grid%dy(id_up) + &
+                                                          structured_grid%dy(connections%aniso_data(iconn)%id_up_adjYm))
+                  connections%aniso_data(iconn)%dist_dn_adjYm = 0.5 * (structured_grid%dy(id_dn) + &
+                                                          structured_grid%dy(connections%aniso_data(iconn)%id_dn_adjYm))
+                endif
+                if (j==structured_grid%ngy-1) then
+                  connections%aniso_data(iconn)%id_up_adjYp = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%id_dn_adjYp = -1 ! -1 => no such cell
+                  connections%aniso_data(iconn)%dist_up_adjYp = 0.d0 ! N/A
+                  connections%aniso_data(iconn)%dist_dn_adjYp = 0.d0 ! N/A
+                else
+                  connections%aniso_data(iconn)%id_up_adjYp = i + 1 + (j+1) * structured_grid%ngx + (k-1) * structured_grid%ngxy
+                  connections%aniso_data(iconn)%id_dn_adjYp = connections%aniso_data(iconn)%id_up_adjYp + structured_grid%ngxy
+                  connections%aniso_data(iconn)%dist_up_adjYp = 0.5 * (structured_grid%dy(id_up) + &
+                                                          structured_grid%dy(connections%aniso_data(iconn)%id_up_adjYp))
+                  connections%aniso_data(iconn)%dist_dn_adjYp = 0.5 * (structured_grid%dy(id_dn) + &
+                                                          structured_grid%dy(connections%aniso_data(iconn)%id_dn_adjYp))
+                endif
+
+                ! Gravity terms
+                distvec = (/ xc(id_up),yc(id_up),zc(id_up) /)
+                connections%aniso_data(iconn)%loc_gravity_up = dot_product(option%gravity,distvec)
+                distvec = (/ xc(id_dn),yc(id_dn),zc(id_dn) /)
+                connections%aniso_data(iconn)%loc_gravity_dn = dot_product(option%gravity,distvec)
+                if( connections%aniso_data(iconn)%id_up_adjXm .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_up_adjXm
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_up_adjXm = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_up_adjXm = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_up_adjXp .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_up_adjXp
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_up_adjXp = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_up_adjXp = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_dn_adjXm .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_dn_adjXm
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjXm = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjXm = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_dn_adjXp .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_dn_adjXp
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjXp = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjXp = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_up_adjYm .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_up_adjYm
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_up_adjYm = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_up_adjYm = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_up_adjYp .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_up_adjYp
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_up_adjYp = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_up_adjYp = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_dn_adjYm .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_dn_adjYm
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjYm = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjYm = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_dn_adjYp .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_dn_adjYp
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjYp = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjYp = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_up_adjZm .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_up_adjZm
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_up_adjZm = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_up_adjZm = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_up_adjZp .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_up_adjZp
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_up_adjZp = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_up_adjZp = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_dn_adjZm .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_dn_adjZm
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjZm = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjZm = 0.d0
+                endif
+                if( connections%aniso_data(iconn)%id_dn_adjZp .NE. -1 ) then
+                    id = connections%aniso_data(iconn)%id_dn_adjZp
+                    distvec = (/ xc(id),yc(id),zc(id) /)
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjZp = dot_product(option%gravity,distvec)
+                else
+                    connections%aniso_data(iconn)%loc_gravity_dn_adjZp = 0.d0
+                endif
+              endif
             enddo
           enddo
         enddo

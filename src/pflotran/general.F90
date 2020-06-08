@@ -123,8 +123,11 @@ subroutine GeneralSetup(realization)
       option%io_buffer = 'ERROR: Non-initialized soil particle density.'
       call PrintMsg(option)
     endif
-    if (minval(material_auxvars(ghosted_id)%permeability) < 0.d0 .and. &
-        flag(5) == 0) then
+    !  Off-diagonal permeability terms can be negative - check only diag terms.
+    if ( (material_auxvars(ghosted_id)%permeability(1) < 0.d0 .or. &
+          material_auxvars(ghosted_id)%permeability(2) < 0.d0 .or. &
+          material_auxvars(ghosted_id)%permeability(3) < 0.d0) &
+         .and. flag(5) == 0) then
       option%io_buffer = 'ERROR: Non-initialized permeability.'
       call PrintMsg(option)
       flag(5) = 1
