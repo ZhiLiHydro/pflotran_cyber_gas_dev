@@ -309,9 +309,9 @@ subroutine InitSubsurfAssignMatProperties(realization)
     call VecGetArrayF90(field%perm0_yy,perm_yy_p,ierr);CHKERRQ(ierr)
     call VecGetArrayF90(field%perm0_zz,perm_zz_p,ierr);CHKERRQ(ierr)
     if (option%flow%full_perm_tensor) then
-    call VecGetArrayF90(field%perm0_xy,perm_xy_p,ierr);CHKERRQ(ierr)
-    call VecGetArrayF90(field%perm0_xz,perm_xz_p,ierr);CHKERRQ(ierr)
-    call VecGetArrayF90(field%perm0_yz,perm_yz_p,ierr);CHKERRQ(ierr)
+      call VecGetArrayF90(field%perm0_xy,perm_xy_p,ierr);CHKERRQ(ierr)
+      call VecGetArrayF90(field%perm0_xz,perm_xz_p,ierr);CHKERRQ(ierr)
+      call VecGetArrayF90(field%perm0_yz,perm_yz_p,ierr);CHKERRQ(ierr)
     endif
     if (soil_compressibility_index > 0) then
       call VecGetArrayF90(field%compressibility0,compress_p,ierr);CHKERRQ(ierr)
@@ -412,9 +412,9 @@ subroutine InitSubsurfAssignMatProperties(realization)
       perm_yy_p(local_id) = material_property%permeability(2,2)
       perm_zz_p(local_id) = material_property%permeability(3,3)
       if (option%flow%full_perm_tensor) then
-      perm_xy_p(local_id) = material_property%permeability(1,2)
-      perm_xz_p(local_id) = material_property%permeability(1,3)
-      perm_yz_p(local_id) = material_property%permeability(2,3)
+        perm_xy_p(local_id) = material_property%permeability(1,2)
+        perm_xz_p(local_id) = material_property%permeability(1,3)
+        perm_yz_p(local_id) = material_property%permeability(2,3)
       endif
       if (soil_compressibility_index > 0) then
         compress_p(local_id) = material_property%soil_compressibility
@@ -485,9 +485,9 @@ subroutine InitSubsurfAssignMatProperties(realization)
     call VecRestoreArrayF90(field%perm0_yy,perm_yy_p,ierr);CHKERRQ(ierr)
     call VecRestoreArrayF90(field%perm0_zz,perm_zz_p,ierr);CHKERRQ(ierr)
     if (option%flow%full_perm_tensor) then
-    call VecRestoreArrayF90(field%perm0_xy,perm_xy_p,ierr);CHKERRQ(ierr)
-    call VecRestoreArrayF90(field%perm0_xz,perm_xz_p,ierr);CHKERRQ(ierr)
-    call VecRestoreArrayF90(field%perm0_yz,perm_yz_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArrayF90(field%perm0_xy,perm_xy_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArrayF90(field%perm0_xz,perm_xz_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArrayF90(field%perm0_yz,perm_yz_p,ierr);CHKERRQ(ierr)
     endif
     if (soil_compressibility_index > 0) then
       call VecRestoreArrayF90(field%compressibility0,compress_p, &
@@ -547,29 +547,29 @@ subroutine InitSubsurfAssignMatProperties(realization)
     call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
                                  PERMEABILITY_X,ZERO_INTEGER)
     call DiscretizationGlobalToLocal(discretization,field%perm0_yy, &
-                                     field%work_loc,ONEDOF)  
+                                     field%work_loc,ONEDOF)
     call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
                                  PERMEABILITY_Y,ZERO_INTEGER)
     call DiscretizationGlobalToLocal(discretization,field%perm0_zz, &
-                                     field%work_loc,ONEDOF)   
+                                     field%work_loc,ONEDOF)
     call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
                                  PERMEABILITY_Z,ZERO_INTEGER)
     if (option%flow%full_perm_tensor) then
-    call DiscretizationGlobalToLocal(discretization,field%perm0_xy, &
-                                     field%work_loc,ONEDOF)
-    call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                 PERMEABILITY_XY,ZERO_INTEGER)
-    call DiscretizationGlobalToLocal(discretization,field%perm0_xz, &
-                                     field%work_loc,ONEDOF)
-    call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                 PERMEABILITY_XZ,ZERO_INTEGER)
-    call DiscretizationGlobalToLocal(discretization,field%perm0_yz, &
-                                     field%work_loc,ONEDOF)
-    call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                 PERMEABILITY_YZ,ZERO_INTEGER)
+      call DiscretizationGlobalToLocal(discretization,field%perm0_xy, &
+                                       field%work_loc,ONEDOF)
+      call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
+                                   PERMEABILITY_XY,ZERO_INTEGER)
+      call DiscretizationGlobalToLocal(discretization,field%perm0_xz, &
+                                       field%work_loc,ONEDOF)
+      call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
+                                   PERMEABILITY_XZ,ZERO_INTEGER)
+      call DiscretizationGlobalToLocal(discretization,field%perm0_yz, &
+                                       field%work_loc,ONEDOF)
+      call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
+                                   PERMEABILITY_YZ,ZERO_INTEGER)
     endif
     call DiscretizationLocalToLocal(discretization,field%icap_loc, &
-                                    field%icap_loc,ONEDOF)   
+                                    field%icap_loc,ONEDOF)
     call DiscretizationLocalToLocal(discretization,field%ithrm_loc, &
                                     field%ithrm_loc,ONEDOF)
     call RealLocalToLocalWithArray(realization,SATURATION_FUNCTION_ID_ARRAY)
@@ -783,9 +783,9 @@ subroutine SubsurfReadPermsFromFile(realization,material_property)
   call VecGetArrayF90(field%perm0_yy,perm_yy_p,ierr);CHKERRQ(ierr)
   call VecGetArrayF90(field%perm0_zz,perm_zz_p,ierr);CHKERRQ(ierr)
   if (option%flow%full_perm_tensor) then
-  call VecGetArrayF90(field%perm0_xy,perm_xy_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(field%perm0_xz,perm_xz_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(field%perm0_yz,perm_yz_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayF90(field%perm0_xy,perm_xy_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayF90(field%perm0_xz,perm_xz_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayF90(field%perm0_yz,perm_yz_p,ierr);CHKERRQ(ierr)
   endif
   
   call DiscretizationCreateVector(discretization,ONEDOF,global_vec,GLOBAL, &
@@ -820,9 +820,9 @@ subroutine SubsurfReadPermsFromFile(realization,material_property)
         perm_yy_p(local_id) = vec_p(local_id)*scale
         perm_zz_p(local_id) = vec_p(local_id)*ratio*scale
         if (option%flow%full_perm_tensor) then 
-        perm_xy_p(local_id) = 0.d0
-        perm_xz_p(local_id) = 0.d0
-        perm_yz_p(local_id) = 0.d0
+          perm_xy_p(local_id) = 0.d0
+          perm_xz_p(local_id) = 0.d0
+          perm_yz_p(local_id) = 0.d0
         endif
       endif
     enddo
@@ -830,10 +830,10 @@ subroutine SubsurfReadPermsFromFile(realization,material_property)
   else
     if (material_property%full_permeability_tensor) then
       temp_int = YZ_DIRECTION
-  else
-    temp_int = Z_DIRECTION
+    else
+      temp_int = Z_DIRECTION
     endif
-    do idirection = X_DIRECTION,temp_int
+    do idirection = X_DIRECTION, temp_int
       select case(idirection)
         case(X_DIRECTION)
           dataset_common_hdf5_ptr => &
@@ -870,12 +870,12 @@ subroutine SubsurfReadPermsFromFile(realization,material_property)
                                            material_property%internal_id, &
                                            PETSC_FALSE,global_vec)
       call VecGetArrayF90(global_vec,vec_p,ierr);CHKERRQ(ierr)
-          do local_id = 1, grid%nlmax
-            if (patch%imat(grid%nL2G(local_id)) == &
-                material_property%internal_id) then
+      do local_id = 1, grid%nlmax
+        if (patch%imat(grid%nL2G(local_id)) == &
+            material_property%internal_id) then
           perm_ptr(local_id) = vec_p(local_id)
-            endif
-          enddo
+        endif
+      enddo
       call VecRestoreArrayF90(global_vec,vec_p,ierr);CHKERRQ(ierr)
     enddo
   endif
@@ -885,9 +885,9 @@ subroutine SubsurfReadPermsFromFile(realization,material_property)
   call VecRestoreArrayF90(field%perm0_yy,perm_yy_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayF90(field%perm0_zz,perm_zz_p,ierr);CHKERRQ(ierr)
   if (option%flow%full_perm_tensor) then
-  call VecRestoreArrayF90(field%perm0_xy,perm_xy_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(field%perm0_xz,perm_xz_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(field%perm0_yz,perm_yz_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayF90(field%perm0_xy,perm_xy_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayF90(field%perm0_xz,perm_xz_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayF90(field%perm0_yz,perm_yz_p,ierr);CHKERRQ(ierr)
   endif
   
 end subroutine SubsurfReadPermsFromFile
@@ -1097,7 +1097,7 @@ subroutine InitSubsurfaceSetupZeroArrays(realization)
   type(patch_type), pointer :: patch
   PetscBool, allocatable :: dof_is_active(:)
   PetscInt :: ndof
-  
+
   type(matrix_zeroing_type), pointer :: matrix_zeroing
   PetscBool :: inactive_cells_exist
 
@@ -1217,7 +1217,7 @@ subroutine InitSubsurfaceSetupZeroArrays(realization)
     end select
     call InitSubsurfaceCreateZeroArray(patch,dof_is_active,matrix_zeroing, &
                                        inactive_cells_exist,option)
-        deallocate(dof_is_active)
+    deallocate(dof_is_active)
     select case(option%itranmode)
       case(RT_MODE,EXPLICIT_ADVECTION)
         patch%aux%RT%matrix_zeroing => matrix_zeroing

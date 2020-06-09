@@ -555,10 +555,6 @@ subroutine MaterialPropertyRead(material_property,input,option)
               material_property%permeability(1,1) = 10.d0**tempreal
               material_property%permeability(2,2) = 10.d0**tempreal
               material_property%permeability(3,3) = 10.d0**tempreal
-              ! isotropic case
-              material_property%permeability(1,2) = 0.d0
-              material_property%permeability(1,3) = 0.d0
-              material_property%permeability(2,3) = 0.d0
             case('PERM_ISO')
               call InputReadDouble(input,option, &
                                    material_property%permeability(1,1))
@@ -568,10 +564,6 @@ subroutine MaterialPropertyRead(material_property,input,option)
                 material_property%permeability(1,1)
               material_property%permeability(3,3) = &
                 material_property%permeability(1,1)
-              ! isotropic case
-              material_property%permeability(1,2) = 0.d0
-              material_property%permeability(1,3) = 0.d0
-              material_property%permeability(2,3) = 0.d0
             case('RANDOM_DATASET')
               option%io_buffer = 'RANDOM_DATASET is no longer supported.  ' // &
                 'Please use the new DATASET object in the input file and ' // &
