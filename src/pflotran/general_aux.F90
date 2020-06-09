@@ -3,6 +3,7 @@ module General_Aux_module
 #include "petsc/finclude/petscsys.h"
   use petscsys
   use PFLOTRAN_Constants_module
+  use Matrix_Zeroing_module
 
   implicit none
   
@@ -195,17 +196,14 @@ module General_Aux_module
   end type general_parameter_type
 
   type, public :: general_type
-    PetscInt :: n_inactive_rows
-    PetscInt, pointer :: inactive_rows_local(:), inactive_rows_local_ghosted(:)
-    PetscInt, pointer :: row_zeroing_array(:)
-
     PetscBool :: auxvars_up_to_date
     PetscBool :: inactive_cells_exist
     PetscInt :: num_aux, num_aux_bc, num_aux_ss
     type(general_parameter_type), pointer :: general_parameter
     type(general_auxvar_type), pointer :: auxvars(:,:)
     type(general_auxvar_type), pointer :: auxvars_bc(:)
-    type(general_auxvar_type), pointer :: auxvars_ss(:)
+    type(general_auxvar_type), pointer :: auxvars_ss(:,:)
+    type(matrix_zeroing_type), pointer :: matrix_zeroing
   end type general_type
 
   interface GeneralAuxVarDestroy
@@ -272,10 +270,7 @@ function GeneralAuxCreate(option)
   nullify(aux%auxvars)
   nullify(aux%auxvars_bc)
   nullify(aux%auxvars_ss)
-  aux%n_inactive_rows = 0
-  nullify(aux%inactive_rows_local)
-  nullify(aux%inactive_rows_local_ghosted)
-  nullify(aux%row_zeroing_array)
+  nullify(aux%matrix_zeroing)
 
   allocate(aux%general_parameter)
   allocate(aux%general_parameter%diffusion_coefficient(option%nphase))
@@ -422,6 +417,7 @@ subroutine GeneralAuxVarCopy(auxvar,auxvar2,option)
   type(option_type) :: option
 
   auxvar2%istate_store = auxvar%istate_store
+  auxvar2%istatechng = auxvar%istatechng
   auxvar2%pres = auxvar%pres
   auxvar2%temp = auxvar%temp
   auxvar2%sat = auxvar%sat
@@ -1691,15 +1687,9 @@ subroutine GeneralAuxVarPerturb(gen_auxvar,global_auxvar, &
          min_perturbation
        if (x(GENERAL_LIQUID_STATE_X_MOLE_DOF) > &
            1.d3 * perturbation_tolerance) then
-!         I think it should be what's below, has to confirm with M. Nole. -hdp
-         pert(GENERAL_LIQUID_STATE_X_MOLE_DOF) = -1.d0 * & 
-                   (perturbation_tolerance * x(GENERAL_LIQUID_STATE_X_MOLE_DOF)&
-                    + min_mole_fraction_pert)
+         pert(GENERAL_LIQUID_STATE_X_MOLE_DOF) = -1.d0 * perturbation_tolerance
        else
-!         I think it should be what's below, has to confirm with M. Nole. -hdp         
-         pert(GENERAL_LIQUID_STATE_X_MOLE_DOF) = perturbation_tolerance * &
-                                     x(GENERAL_LIQUID_STATE_X_MOLE_DOF) + &
-                                     min_mole_fraction_pert
+         pert(GENERAL_LIQUID_STATE_X_MOLE_DOF) = perturbation_tolerance
        endif
        pert(GENERAL_ENERGY_DOF) = -1.d0 * &
          (perturbation_tolerance*x(GENERAL_ENERGY_DOF) + min_perturbation)
@@ -2641,9 +2631,7 @@ subroutine GeneralAuxDestroy(aux)
   call GeneralAuxVarDestroy(aux%auxvars_bc)
   call GeneralAuxVarDestroy(aux%auxvars_ss)
 
-  call DeallocateArray(aux%inactive_rows_local)
-  call DeallocateArray(aux%inactive_rows_local_ghosted)
-  call DeallocateArray(aux%row_zeroing_array)
+  call MatrixZeroingDestroy(aux%matrix_zeroing)
 
   if (associated(aux%general_parameter)) then
     call DeallocateArray(aux%general_parameter%diffusion_coefficient)

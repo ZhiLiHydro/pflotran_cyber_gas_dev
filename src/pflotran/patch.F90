@@ -102,8 +102,6 @@ module Patch_module
     type(surface_field_type), pointer :: surf_field
     type(surface_auxiliary_type) :: surf_aux
 
-    type(methanogenesis_type), pointer :: methanogenesis
-
   end type patch_type
 
   ! pointer data structure required for making an array of patch pointers in F90
@@ -230,9 +228,6 @@ function PatchCreate()
   nullify(patch%surf_material_property_array)
   nullify(patch%surf_field)
   call SurfaceAuxInit(patch%surf_aux)
-
-  nullify(patch%methanogenesis)
-
 
   PatchCreate => patch
 
@@ -673,7 +668,7 @@ subroutine PatchProcessCouplers(patch,flow_conditions,transport_conditions, &
     if (.not.associated(observation)) exit
     next_observation => observation%next
     select case(observation%itype)
-      case(OBSERVATION_SCALAR)
+      case(OBSERVATION_SCALAR,OBSERVATION_AGGREGATE)
         ! pointer to region
         observation%region => RegionGetPtrFromList(observation%linkage_name, &
                                                     patch%region_list)
@@ -694,13 +689,14 @@ subroutine PatchProcessCouplers(patch,flow_conditions,transport_conditions, &
             &model domain.'
           call PrintErrMsg(option)
         endif
-        if (observation%region%num_cells == 0) then
+        if (observation%region%num_cells == 0 .and. observation%itype == &
+            OBSERVATION_SCALAR) then
           ! remove the observation object
           call ObservationRemoveFromList(observation,patch%observation_list)
         endif
       case(OBSERVATION_FLUX)
         coupler => CouplerGetPtrFromList(observation%linkage_name, &
-                                         patch%boundary_condition_list)
+                                         patch%boundary_condition_list,option)
         if (associated(coupler)) then
           observation%connection_set => coupler%connection_set
         else
@@ -6754,26 +6750,46 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
           do local_id=1,grid%nlmax
             vec_ptr(local_id) = &
             patch%aux%NWT%auxvars(grid%nL2G(local_id))%total_bulk_conc(isubvar)
+            if ( (patch%aux%NWT%truncate_output) .and. &
+                 ((vec_ptr(local_id) < 1.d-99) .and. (vec_ptr(local_id) > 0.d0)) ) then
+              vec_ptr(local_id) = 1.d-99
+            endif
           enddo
         case(AQUEOUS_EQ_CONC)
           do local_id=1,grid%nlmax
             vec_ptr(local_id) = &
-            patch%aux%NWT%auxvars(grid%nL2G(local_id))%aqueous_eq_conc(isubvar)
+              patch%aux%NWT%auxvars(grid%nL2G(local_id))%aqueous_eq_conc(isubvar)
+            if ( (patch%aux%NWT%truncate_output) .and. &
+                 ((vec_ptr(local_id) < 1.d-99) .and. (vec_ptr(local_id) > 0.d0)) ) then
+              vec_ptr(local_id) = 1.d-99
+            endif
           enddo
         case(MNRL_EQ_CONC)
           do local_id=1,grid%nlmax
             vec_ptr(local_id) = &
               patch%aux%NWT%auxvars(grid%nL2G(local_id))%mnrl_eq_conc(isubvar)
+            if ( (patch%aux%NWT%truncate_output) .and. &
+                 ((vec_ptr(local_id) < 1.d-99) .and. (vec_ptr(local_id) > 0.d0)) ) then
+              vec_ptr(local_id) = 1.d-99
+            endif
           enddo
         case(SORB_EQ_CONC)
           do local_id=1,grid%nlmax
             vec_ptr(local_id) = &
               patch%aux%NWT%auxvars(grid%nL2G(local_id))%sorb_eq_conc(isubvar)
+            if ( (patch%aux%NWT%truncate_output) .and. &
+                 ((vec_ptr(local_id) < 1.d-99) .and. (vec_ptr(local_id) > 0.d0)) ) then
+              vec_ptr(local_id) = 1.d-99
+            endif
           enddo
         case(MNRL_VOLUME_FRACTION)
           do local_id=1,grid%nlmax
             vec_ptr(local_id) = &
               patch%aux%NWT%auxvars(grid%nL2G(local_id))%mnrl_vol_frac(isubvar)
+            if ( (patch%aux%NWT%truncate_output) .and. &
+                 ((vec_ptr(local_id) < 1.d-99) .and. (vec_ptr(local_id) > 0.d0)) ) then
+              vec_ptr(local_id) = 1.d-99
+            endif
           enddo
       end select
     
@@ -6989,9 +7005,15 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
             enddo
           endif
         case(GAS_CONCENTRATION)
+          iphase = 2
           do local_id=1,grid%nlmax
-            vec_ptr(local_id) = &
-              patch%aux%RT%auxvars(grid%nL2G(local_id))%gas_pp(isubvar)
+            ghosted_id = grid%nL2G(local_id)
+            if (patch%aux%Global%auxvars(ghosted_id)%sat(iphase) > 0.d0) then
+              vec_ptr(local_id) = &
+                patch%aux%RT%auxvars(ghosted_id)%gas_pp(isubvar)
+            else
+              vec_ptr(local_id) = 0.d0
+            endif
           enddo
         case(MINERAL_VOLUME_FRACTION)
           do local_id=1,grid%nlmax
@@ -8251,7 +8273,11 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
         case(MNRL_VOLUME_FRACTION)
           value = patch%aux%NWT%auxvars(ghosted_id)%mnrl_vol_frac(isubvar)
       end select
-    
+      if ( (patch%aux%NWT%truncate_output) .and. &
+           ((value < 1.d-99) .and. (value > 0.d0)) ) then
+        value = 1.d-99
+      endif
+          
     case(PH,PE,EH,O2,PRIMARY_MOLALITY,PRIMARY_MOLARITY,SECONDARY_MOLALITY, &
          SECONDARY_MOLARITY, TOTAL_MOLALITY,TOTAL_MOLARITY, &
          MINERAL_VOLUME_FRACTION,MINERAL_RATE,MINERAL_SATURATION_INDEX, &
@@ -8388,7 +8414,12 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
             endif
           endif
         case(GAS_CONCENTRATION)
-          value = patch%aux%RT%auxvars(ghosted_id)%gas_pp(isubvar)
+          iphase = 2
+          if (patch%aux%Global%auxvars(ghosted_id)%sat(iphase) > 0.d0) then
+            value = patch%aux%RT%auxvars(ghosted_id)%gas_pp(isubvar)
+          else
+            value = 0.d0
+          endif
         case(MINERAL_VOLUME_FRACTION)
           value = patch%aux%RT%auxvars(ghosted_id)%mnrl_volfrac(isubvar)
         case(MINERAL_SURFACE_AREA)
@@ -10067,6 +10098,7 @@ subroutine PatchGetIntegralFluxConnections(patch,integral_flux,option)
   ! Date: 10/20/14, 01/31/18
   !
   use Option_module
+  use String_module
   use Integral_Flux_module
   use Geometry_module
   use Utility_module
@@ -10085,12 +10117,12 @@ subroutine PatchGetIntegralFluxConnections(patch,integral_flux,option)
   type(plane_type), pointer :: plane
   PetscReal,pointer :: coordinates_and_directions(:,:)
   PetscInt,pointer :: vertices(:,:)
+  PetscInt,pointer :: by_cell_ids(:,:)
   type(grid_type), pointer :: grid
   type(connection_set_list_type), pointer :: connection_set_list
   type(connection_set_type), pointer :: cur_connection_set
   type(coupler_type), pointer :: boundary_condition
 
-  character(len=MAXWORDLENGTH) :: word
   PetscInt, pointer :: connections(:)
   PetscInt :: idir
   PetscInt :: icount
@@ -10101,9 +10133,10 @@ subroutine PatchGetIntegralFluxConnections(patch,integral_flux,option)
   PetscInt :: i, ii
   PetscInt :: face_id
   PetscInt :: local_id
-  PetscInt :: local_id_up
+  PetscInt :: local_id_up, local_id_dn
   PetscInt :: ghosted_id
-  PetscInt :: ghosted_id_up
+  PetscInt :: ghosted_id_up, ghosted_id_dn
+  PetscInt :: natural_id_up, natural_id_dn
   PetscReal :: fraction_upwind
   PetscReal :: magnitude
   PetscReal :: v1(3), v2(3), cp(3)
@@ -10123,6 +10156,7 @@ subroutine PatchGetIntegralFluxConnections(patch,integral_flux,option)
   PetscInt :: iv1, iv2
   PetscInt :: num_vertices1, num_vertices2
   PetscInt :: num_to_be_found
+  character(len=MAXSTRINGLENGTH) :: error_string
   PetscErrorCode :: ierr
 
   nullify(yet_to_be_found)
@@ -10133,9 +10167,19 @@ subroutine PatchGetIntegralFluxConnections(patch,integral_flux,option)
   plane => integral_flux%plane
   coordinates_and_directions => integral_flux%coordinates_and_directions
   vertices => integral_flux%vertices
+  by_cell_ids => integral_flux%cell_ids
   num_to_be_found = 0
 
+  error_string = 'error string missing in PatchGetIntegralFluxConnections'
+
+  if (associated(plane)) then
+    error_string = 'plane coincides with an internal cell boundary &
+      &or a boundary condition'
+  endif
+
   if (associated(polygon)) then
+    error_string = 'polygon coincides with an internal cell boundary &
+      &or a boundary condition'
     ! determine orientation of polygon
     allocate(plane)
     if (size(polygon) > 2) then
@@ -10198,12 +10242,16 @@ subroutine PatchGetIntegralFluxConnections(patch,integral_flux,option)
   endif
 
   if (associated(coordinates_and_directions)) then
+    error_string = 'coordinates and directions coincide with an internal &
+      &cell boundary or a boundary condition'
     num_to_be_found = size(coordinates_and_directions,2)
     allocate(yet_to_be_found(num_to_be_found))
     yet_to_be_found = PETSC_TRUE
   endif
 
   if (associated(vertices)) then
+    error_string = 'vertices match the face and are ordered properly &
+      &(clockwise or counter-clockwise)'
     if (grid%itype /= IMPLICIT_UNSTRUCTURED_GRID) then
       option%io_buffer = 'INTEGRAL_FLUXES defined by VERTICES are only &
         &supported for implicit unstructured grids: ' // &
@@ -10211,6 +10259,13 @@ subroutine PatchGetIntegralFluxConnections(patch,integral_flux,option)
       call PrintErrMsg(option)
     endif
     num_to_be_found = size(vertices,2)
+    allocate(yet_to_be_found(num_to_be_found))
+    yet_to_be_found = PETSC_TRUE
+  endif
+  
+  if (associated(by_cell_ids)) then
+    error_string = 'cell ids match the an actual face between these cells'
+    num_to_be_found = size(by_cell_ids,2)
     allocate(yet_to_be_found(num_to_be_found))
     yet_to_be_found = PETSC_TRUE
   endif
@@ -10228,13 +10283,17 @@ subroutine PatchGetIntegralFluxConnections(patch,integral_flux,option)
         sum_connection = 0
         icount = 0
       case(2) ! boundary connections
-        ! sets up first boundayr condition in list
+        ! sets up first boundary condition in list
         if (.not.associated(boundary_condition)) then
           boundary_condition => patch%boundary_condition_list%first
           sum_connection = 0
           icount = 0
         endif
-        cur_connection_set => boundary_condition%connection_set
+        if (associated(boundary_condition)) then
+          cur_connection_set => boundary_condition%connection_set
+        else
+          nullify(cur_connection_set)
+        endif
     end select
     do
       if (.not.associated(cur_connection_set)) exit
@@ -10246,10 +10305,27 @@ subroutine PatchGetIntegralFluxConnections(patch,integral_flux,option)
         select case(ipass)
           case(1) ! internal connections
             ghosted_id_up = cur_connection_set%id_up(iconn)
+            ghosted_id_dn = cur_connection_set%id_dn(iconn)
             local_id_up = grid%nG2L(ghosted_id_up) ! = zero for ghost nodes
+            local_id_dn = grid%nG2L(ghosted_id_dn)
+            ! natural ids are used to ensure that a connection is only mapped
+            ! on one process if running in parallel
+            natural_id_up = grid%nG2A(ghosted_id_up)
+            natural_id_dn = grid%nG2A(ghosted_id_dn)
             ! if one of the cells is ghosted, the process stores the flux only
             ! when the upwind cell is non-ghosted.
-            if (local_id_up <= 0) cycle
+            if (local_id_up <= 0 .or. local_id_dn <= 0) then
+              ! we are on a ghost boundary. we cannot rely on local or ghost
+              ! numbering to determine on which process to store the
+              ! connection as these numbering schemes vary across
+              ! processes. use natural numbering and only store if the
+              ! on process cell has the lower number
+              if ((local_id_up > 0 .and. natural_id_up > natural_id_dn) .or. &
+                  (local_id_dn > 0 .and. natural_id_dn > natural_id_up)) then
+                ! skip this connection on this process
+                cycle
+              endif
+            endif
             fraction_upwind = cur_connection_set%dist(-1,iconn)
             x = grid%x(ghosted_id_up) + fraction_upwind * magnitude * &
                                         unit_direction(X_DIRECTION)
@@ -10306,9 +10382,18 @@ subroutine PatchGetIntegralFluxConnections(patch,integral_flux,option)
           enddo
         endif
         if (.not.found .and. associated(vertices)) then
-          face_id = grid%unstructured_grid%connection_to_face(iconn)
-          face_vertices_natural = &
-            grid%unstructured_grid%face_to_vertex_natural(:,face_id)
+          select case(ipass)
+            case(1) ! internal connections
+              face_id = grid%unstructured_grid%connection_to_face(iconn)
+            case(2) ! boundary connections
+              face_id = boundary_condition%connection_set%face_id(iconn)
+          end select
+          do ivert = 1, MAX_VERT_PER_FACE
+            face_vertices_natural(ivert) = &
+              grid%unstructured_grid% &
+                vertex_ids_natural(grid%unstructured_grid% &
+                                     face_to_vertex(ivert,face_id))
+          enddo
           num_vertices1 = MAX_VERT_PER_FACE
           do
             if (face_vertices_natural(num_vertices1) > 0) exit
@@ -10323,6 +10408,7 @@ subroutine PatchGetIntegralFluxConnections(patch,integral_flux,option)
             enddo
             if (num_vertices1 /= num_vertices2) cycle
             found2 = PETSC_FALSE
+            ! find the first vertex
             do ivert1 = 1, num_vertices1
               do ivert2 = 1, num_vertices2
                 if (face_vertices_natural(ivert1) == vertices(ivert2,i)) then
@@ -10330,6 +10416,7 @@ subroutine PatchGetIntegralFluxConnections(patch,integral_flux,option)
                   exit
                 endif
               enddo
+              if (found2) exit
             enddo
             if (found2) then
               reverse_direction = PETSC_FALSE
@@ -10339,6 +10426,7 @@ subroutine PatchGetIntegralFluxConnections(patch,integral_flux,option)
               do ii = 1, num_vertices1
                 if (face_vertices_natural(iv1) /= vertices(iv2,i)) then
                   found2 = PETSC_FALSE
+                  exit
                 endif
                 iv1 = iv1 + 1
                 if (iv1 > num_vertices1) iv1 = 1
@@ -10346,7 +10434,7 @@ subroutine PatchGetIntegralFluxConnections(patch,integral_flux,option)
                 if (iv2 > num_vertices1) iv2 = 1
               enddo
               ! search backward direction
-              if (.not.found) then
+              if (.not.found2) then
                 reverse_direction = PETSC_TRUE
                 found2 = PETSC_TRUE
                 iv1 = ivert1
@@ -10354,6 +10442,7 @@ subroutine PatchGetIntegralFluxConnections(patch,integral_flux,option)
                 do ii = 1, num_vertices1
                   if (face_vertices_natural(iv1) /= vertices(iv2,i)) then
                     found2 = PETSC_FALSE
+                    exit
                   endif
                   iv1 = iv1 + 1
                   if (iv1 > num_vertices1) iv1 = 1
@@ -10369,6 +10458,27 @@ subroutine PatchGetIntegralFluxConnections(patch,integral_flux,option)
               exit
             endif
           enddo
+        endif
+        if (.not.found .and. associated(by_cell_ids)) then
+          select case(ipass)
+            case(1) ! internal connections
+              do i = 1, num_to_be_found
+                if (natural_id_dn == by_cell_ids(1,i) .and. &
+                    natural_id_up == by_cell_ids(2,i)) then
+                  yet_to_be_found(i) = PETSC_FALSE
+                  same_direction = PETSC_FALSE
+                  found = PETSC_TRUE
+                  exit
+                elseif (natural_id_up == by_cell_ids(1,i) .and. &
+                        natural_id_dn == by_cell_ids(2,i)) then
+                  yet_to_be_found(i) = PETSC_FALSE
+                  found = PETSC_TRUE
+                  exit
+                endif
+              enddo
+            case(2) ! boundary connections
+              ! not yet supported
+          end select
         endif
         if (found) then
           icount = icount + 1
@@ -10393,7 +10503,9 @@ subroutine PatchGetIntegralFluxConnections(patch,integral_flux,option)
         icount = 0
         ipass = ipass + 1
       case(2) ! boundary connections
-        boundary_condition => boundary_condition%next
+        if (associated(boundary_condition)) then
+          boundary_condition => boundary_condition%next
+        endif
         if (.not.associated(boundary_condition)) then
           if (icount > 0) then
             allocate(integral_flux%boundary_connections(icount))
@@ -10419,25 +10531,33 @@ subroutine PatchGetIntegralFluxConnections(patch,integral_flux,option)
   if (icount == 0) then
     option%io_buffer = 'Zero connections found for INTEGRAL_FLUX "' // &
       trim(adjustl(integral_flux%name)) // &
-      '".  Please ensure that the polygon coincides with an internal &
-      &cell boundary or a boundary condition.'
+      '".  Please ensure that the ' // trim(error_string) // '.'
     call PrintErrMsg(option)
   else if (num_to_be_found > 0 .and. icount /= num_to_be_found) then
-    write(word,*) num_to_be_found - icount
-    option%io_buffer = trim(adjustl(word)) // &
-      ' face(s) missed for INTEGRAL_FLUX "' // &
-      trim(adjustl(integral_flux%name)) // &
-      '".  Please ensure that the polygon coincides with an internal &
-      &cell boundary or a boundary condition.'
+    if (icount > num_to_be_found) then
+      option%io_buffer = trim(StringWrite(icount-num_to_be_found)) // &
+        ' extra face(s) [beyond ' // trim(StringWrite(num_to_be_found)) // &
+        '] found for INTEGRAL_FLUX "' // &
+        trim(adjustl(integral_flux%name)) // &
+        '".  There is likely an issue with the parallel implementation. &
+        &Please email pflotran-dev@googlegroups.com.'
+    else
+      option%io_buffer = trim(StringWrite(num_to_be_found-icount)) // &
+        ' face(s) of ' // trim(StringWrite(num_to_be_found)) // &
+        ' missed for INTEGRAL_FLUX "' // &
+        trim(adjustl(integral_flux%name)) // &
+        '".  Please ensure that the ' // trim(error_string) // '.'
+    endif
     call PrintErrMsg(option)
   else
     write(option%io_buffer,*) icount
-    option%io_buffer = trim(adjustl(option%io_buffer)) // ' connections found &
+    option%io_buffer = trim(StringWrite(icount)) // ' connections found &
       &for integral flux "' // trim(adjustl(integral_flux%name)) // '".'
     call PrintMsg(option)
   endif
 
 end subroutine PatchGetIntegralFluxConnections
+
 ! **************************************************************************** !
 
 subroutine PatchCouplerInputRecord(patch)

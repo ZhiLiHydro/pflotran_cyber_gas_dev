@@ -15,6 +15,7 @@ module Material_module
 
   private
 
+  PetscInt, public :: UNMAPPED_MATERIAL_ID = -888
 
   type, public :: material_property_type
     PetscInt :: external_id
@@ -141,8 +142,6 @@ function MaterialPropertyCreate()
   ! Author: Glenn Hammond
   ! Date: 11/02/07
   ! 
-
-  
   implicit none
 
   type(material_property_type), pointer :: MaterialPropertyCreate
@@ -469,12 +468,13 @@ subroutine MaterialPropertyRead(material_property,input,option)
               ! tensor to scalar operations)
               ! Note. Presence of this keyword in a single permeability block
               ! will enable off-diagonal terms on all connections, not just
-              ! connections in/djacent to the relevant material.
+              ! connections in/adjacent to the relevant material.
               ! 'FULL_TENSOR' may be a better keyword, but it is already in use
-              ! for data management, rather than control of functionality
+              ! for tensor_to_scalar functionality below.
               option%connections_with_aniso_data = PETSC_TRUE
             case('FULL_TENSOR')
               material_property%full_permeability_tensor = PETSC_TRUE
+              option%flow%full_perm_tensor = PETSC_TRUE
             case('VERTICAL_ANISOTROPY_RATIO')
               material_property%isotropic_permeability = PETSC_FALSE
               call InputReadDouble(input,option, &
@@ -518,31 +518,31 @@ subroutine MaterialPropertyRead(material_property,input,option)
               call InputErrorMsg(input,option,'log10 z permeability', &
                                  'MATERIAL_PROPERTY,PERMEABILITY')
               material_property%permeability(3,3) = 10.d0**tempreal
-            case('PERM_XZ')
-              call InputReadDouble(input,option, &
-                                   material_property%permeability(1,3))
-              call InputErrorMsg(input,option,'xz permeability', &
-                                 'MATERIAL_PROPERTY,PERMEABILITY')
             case('PERM_XY')
               call InputReadDouble(input,option, &
                                    material_property%permeability(1,2))
               call InputErrorMsg(input,option,'xy permeability', &
+                                 'MATERIAL_PROPERTY,PERMEABILITY')
+            case('PERM_XZ')
+              call InputReadDouble(input,option, &
+                                   material_property%permeability(1,3))
+              call InputErrorMsg(input,option,'xz permeability', &
                                  'MATERIAL_PROPERTY,PERMEABILITY')
             case('PERM_YZ')
               call InputReadDouble(input,option, &
                                    material_property%permeability(2,3))
               call InputErrorMsg(input,option,'yz permeability', &
                                  'MATERIAL_PROPERTY,PERMEABILITY')
-            case('PERM_XZ_LOG10')
-              call InputReadDouble(input,option, tempreal)
-              call InputErrorMsg(input,option,'log10 xz permeability', &
-                                 'MATERIAL_PROPERTY,PERMEABILITY')
-              material_property%permeability(1,3) = 10.d0**tempreal
             case('PERM_XY_LOG10')
               call InputReadDouble(input,option, tempreal)
               call InputErrorMsg(input,option,'log10 xy permeability', &
                                  'MATERIAL_PROPERTY,PERMEABILITY')
               material_property%permeability(1,2) = 10.d0**tempreal
+            case('PERM_XZ_LOG10')
+              call InputReadDouble(input,option, tempreal)
+              call InputErrorMsg(input,option,'log10 xz permeability', &
+                                 'MATERIAL_PROPERTY,PERMEABILITY')
+              material_property%permeability(1,3) = 10.d0**tempreal
             case('PERM_YZ_LOG10')
               call InputReadDouble(input,option, tempreal)
               call InputErrorMsg(input,option,'log10 yz permeability', &
@@ -598,21 +598,71 @@ subroutine MaterialPropertyRead(material_property,input,option)
                  material_property%permeability(3,3)) > 1.d-40) then
           material_property%isotropic_permeability = PETSC_FALSE
         endif
-        if ( (dabs(material_property%permeability(1,2)) > 1.d-40 &
-              .and. material_property%permeability(1,2) .ne. UNINITIALIZED_DOUBLE) &
-             .or. &
-             (dabs(material_property%permeability(1,3)) > 1.d-40 &
-              .and. material_property%permeability(1,3) .ne. UNINITIALIZED_DOUBLE) &
-             .or. &
-             (dabs(material_property%permeability(2,3)) > 1.d-40 &
-              .and. material_property%permeability(2,3) .ne. UNINITIALIZED_DOUBLE)) then
+
+        if (Initialized(material_property%permeability(1,2)) .or. &
+            Initialized(material_property%permeability(1,3)) .or. &
+            Initialized(material_property%permeability(2,3))) then
+          ! if one off-diagonal value is initialized, all must be.
+          if (Uninitialized(material_property%permeability(1,2)) .or. &
+              Uninitialized(material_property%permeability(1,3)) .or. &
+              Uninitialized(material_property%permeability(2,3))) then
+            option%io_buffer = 'All off-diagonal permeabilities must be &
+              &initialized when using full tensor permeability.'
+            call PrintErrMsg(option)
+          endif
+          select case(option%iflowmode)
+            case(RICHARDS_MODE)
+            case default
+              option%io_buffer = "The full permeability tensor option &
+                &has only been tested in RICHARDS_MODE. Only remove this &
+                &error message when the desired flow mode has been tested."
+              call PrintErrMsg(option)
+          end select
+          option%io_buffer = "XY, XZ and YZ permeabilities provided, &
+            &full_permeability_tensor switch automatically set to PETSC_TRUE."
+          call PrintMsg(option)
           material_property%full_permeability_tensor = PETSC_TRUE
           material_property%isotropic_permeability = PETSC_FALSE
+          option%flow%full_perm_tensor = PETSC_TRUE
         else
+          ! diagonal tensor
           material_property%permeability(1,2) = 0.d0
           material_property%permeability(1,3) = 0.d0
           material_property%permeability(2,3) = 0.d0
         endif
+#if 0
+      case('PERM_PRINCIPAL_DIRECTION')
+      ! Specify the principal direction of permeability and compute 
+      ! The off diagonal permeability tensor component
+      ! Option: Azimut/Dip for kx and ky equal
+      !         normal vector to the strata (z vector) for kx = ky
+      !         Spherical coordinate theta/phi for general case
+      ! Added by Moise Rousseau, Polytechnique Montreal, 09/04/19
+        material_property%isotropic_permeability = PETSC_FALSE
+        do
+          call InputReadPflotranString(input,option)
+          call InputReadStringErrorMsg(input,option, &
+                                       'MATERIAL_PROPERTY,PERM_PRINCIPAL_DIRECTION')
+
+          if (InputCheckExit(input,option)) exit
+
+          if (InputError(input)) exit
+          call InputReadWord(input,option,word,PETSC_TRUE)
+          call InputErrorMsg(input,option,'keyword', &
+                             'MATERIAL_PROPERTY,PERM_FACTOR')
+          select case(trim(word))
+            case('AZIMUT_DIP')
+              !To be complete
+            case('Z_DIRECTION')
+              !To be complete
+            case('SPHERICAL_TRANSFORMATION')
+              !To be complete
+         ! Add test for full_tensor flag in perm_tens_to_scal_model
+         ! and test for anisotropy flag
+         end select
+       enddo
+#endif
+
       case('PERM_FACTOR') 
       ! Permfactor is the multiplier to permeability to increase perm
       ! The perm increase could be due to pressure or other variable
@@ -1152,7 +1202,7 @@ subroutine MaterialCreateExtToIntMapping(material_property_array,mapping)
   PetscInt :: i
   
   allocate(mapping(0:MaterialGetMaxExternalID(material_property_array)))
-  mapping = -888
+  mapping = UNMAPPED_MATERIAL_ID
   mapping(0) = 0
   
   do i = 1, size(material_property_array)
@@ -1185,7 +1235,8 @@ subroutine MaterialApplyMapping(mapping,array)
     if (array(i) <= mapping_size) then
       mapped_id = mapping(array(i))
     else
-      mapped_id = -888 ! indicates corresponding mapped value does not exist.
+                  ! indicates corresponding mapped value does not exist.
+      mapped_id = UNMAPPED_MATERIAL_ID
     endif
     array(i) = mapped_id
   enddo
