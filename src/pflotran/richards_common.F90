@@ -414,7 +414,7 @@ subroutine RichardsFluxAniso(aniso_data, &
 !
 ! Computes the contributions to internal flux terms and Jacobian arising
 ! from pressure gradients perpendicular to cell-centre connections due
-! to anisotropic permeability terms
+! to anisotropic permeability terms (structured grids only)
 !
 ! Author: Steve Benbow
 ! Date: 01/06/20
