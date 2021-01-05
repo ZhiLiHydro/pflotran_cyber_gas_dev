@@ -11,8 +11,7 @@ module Anisotropy_Data_module
 
   public :: PrintAnisoData
 
-  private
-  type, public :: aniso_data_type
+  type, public :: aniso_data_structured_type
 
     !  For calculating flux across interface marked '---->'.
     !  Including data from cells 'up' and 'dn' only allows flux based on permeability components
@@ -37,7 +36,7 @@ module Anisotropy_Data_module
     !  .......................
     !
     !  Note. X_A, X_B should be ordered so that the coordinate X(=X,Y,orZ)is increasing the
-    !  direction A->B, in order to make sense of direction of gradients.  In aniso_data this is
+    !  direction A->B, in order to make sense of direction of gradients.  In aniso_data the
     !  p(lus) and m(inus) suffix indicates this.
     !
     !  Note. residual equations do not need additional terms local_id_up_A, local_id_dn_A, ... etc.
@@ -136,10 +135,10 @@ module Anisotropy_Data_module
     PetscReal :: Jup_adjZp ! J contribution from upwind   cell adjacent in the Z +ve direction
     PetscReal :: Jdn_adjZp ! J contribution from downwind cell adjacent in the Z +ve direction
 
-  end type aniso_data_type
+  end type aniso_data_structured_type
 
 
-  type, public :: aniso_deriv_data_type
+  type, public :: aniso_deriv_data_structured_type
     !structure for storing work data for anisotropic derivative calculations
     PetscReal :: ddphi_x_dp_up_adjXm, ddphi_x_dp_dn_adjXm, ddphi_x_dp_up_adjXp, ddphi_x_dp_dn_adjXp
     PetscReal :: ddphi_y_dp_up_adjYm, ddphi_y_dp_dn_adjYm, ddphi_y_dp_up_adjYp, ddphi_y_dp_dn_adjYp
@@ -161,7 +160,12 @@ module Anisotropy_Data_module
     PetscReal :: dv_darcy_aniso_dn_dp_dn_adjZm
     PetscReal :: dv_darcy_aniso_dn_dp_dn_adjZp
     PetscReal :: dv_darcy_aniso_dn_dp_dn
-  end type aniso_deriv_data_type
+  end type aniso_deriv_data_structured_type
+
+  type, public :: aniso_data_type
+    type( aniso_data_structured_type), pointer :: struct => null()
+    !type( aniso_data_unstructured_type), pointer :: unstruct => null()
+  end type aniso_data_type
 
 
 
@@ -169,27 +173,27 @@ module Anisotropy_Data_module
     subroutine PrintAnisoData( aniso_data )
 
       type( aniso_data_type ), pointer :: aniso_data
-
       integer ierr,rank,size
 
-      call MPI_Comm_rank(MPI_COMM_WORLD,rank,ierr)
-      call MPI_Comm_size(MPI_COMM_WORLD,size,ierr)
+      if(associated(aniso_data%struct)) then
+        call MPI_Comm_rank(MPI_COMM_WORLD,rank,ierr)
+        call MPI_Comm_size(MPI_COMM_WORLD,size,ierr)
 
-      write(*, "('aniso_data ids [',i3,'/',i3,'] = ', 12i4)") &
-        rank,size, &
-        aniso_data%id_up_adjXm, &
-        aniso_data%id_up_adjXp, &
-        aniso_data%id_dn_adjXm, &
-        aniso_data%id_dn_adjXp, &
-        aniso_data%id_up_adjYm, &
-        aniso_data%id_up_adjYp, &
-        aniso_data%id_dn_adjYm, &
-        aniso_data%id_dn_adjYp, &
-        aniso_data%id_up_adjZm, &
-        aniso_data%id_up_adjZp, &
-        aniso_data%id_dn_adjZm, &
-        aniso_data%id_dn_adjZp
-
+        write(*, "('aniso_data structured ids [',i3,'/',i3,'] = ', 12i4)") &
+          rank,size, &
+          aniso_data%struct%id_up_adjXm, &
+          aniso_data%struct%id_up_adjXp, &
+          aniso_data%struct%id_dn_adjXm, &
+          aniso_data%struct%id_dn_adjXp, &
+          aniso_data%struct%id_up_adjYm, &
+          aniso_data%struct%id_up_adjYp, &
+          aniso_data%struct%id_dn_adjYm, &
+          aniso_data%struct%id_dn_adjYp, &
+          aniso_data%struct%id_up_adjZm, &
+          aniso_data%struct%id_up_adjZp, &
+          aniso_data%struct%id_dn_adjZm, &
+          aniso_data%struct%id_dn_adjZp
+      endif
     end subroutine
 
 
