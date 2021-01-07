@@ -8,6 +8,8 @@ module Grid_Unstructured_module
   
   use PFLOTRAN_Constants_module
 
+  use Anisotropy_Data_module
+
   implicit none
 
   private 
@@ -1845,6 +1847,10 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
   type(point3d_type) :: point_up, point_dn
   type(point3d_type) :: intercept1, intercept2, intercept
 
+  type( aniso_data_type), pointer :: aniso_data
+  type( aniso_data_unstructured_type), pointer :: aniso_data_unstruct
+  PetscInt :: count_up_adj, count_dn_adj, iupdn
+
   character(len=MAXSTRINGLENGTH) :: string  
   
   ! create mappings of [cells,faces,vertices] to [cells,faces,vertices]
@@ -1892,7 +1898,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
   ! Remove duplicate faces:
   !
   ! A cell (cell_id) and Neighboring-Cell (cell_id2) will only share ONE face.
-  ! Find the face that cell_id ane cell_id2 share and remove it.
+  ! Find the face that cell_id and cell_id2 share and remove it.
   !
   ! Method:
   !        - Pick i-th face (iface) of cell_id and check if ALL the vertices of
@@ -2273,6 +2279,10 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
             v2(1) = point3%x-point4%x
             v2(2) = point3%y-point4%y
             v2(3) = point3%z-point4%z
+            ! sjb - missing 'vcross = CrossProduct(v1,v2)' ??
+            !       without this, area2 below = area 1 above ??
+            !       (nb. area2=area1 if quad face is rectangular, but not otherwise)
+            ! sjb - pull request submitted (https://bitbucket.org/pflotran/pflotran/pull-requests/376)
             magnitude = sqrt(DotProduct(vcross,vcross))
             n2 = vcross/magnitude
             area2 = 0.5d0*magnitude
@@ -2315,7 +2325,102 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
       endif
     enddo
   enddo
-  
+
+  if (option%connections_with_aniso_data .eqv. PETSC_TRUE) then
+    allocate(connections%aniso_data(nconn))
+
+    ! Populate aniso_data
+
+    ! Loop over connections
+    do iconn = 1,nconn
+      if (.not.associated(connections%aniso_data(iconn)%unstruct)) then
+        allocate(connections%aniso_data(iconn)%unstruct)
+        allocate(connections%aniso_data(iconn)%unstruct%cell_id_up_adj(MAX_VERT_PER_FACE))
+        allocate(connections%aniso_data(iconn)%unstruct%cell_id_dn_adj(MAX_VERT_PER_FACE))
+        allocate(connections%aniso_data(iconn)%unstruct%face_id_up_adj(MAX_VERT_PER_FACE))
+        allocate(connections%aniso_data(iconn)%unstruct%face_id_dn_adj(MAX_VERT_PER_FACE))
+        connections%aniso_data(iconn)%unstruct%cell_id_up_adj = 0
+        connections%aniso_data(iconn)%unstruct%cell_id_dn_adj = 0
+        connections%aniso_data(iconn)%unstruct%face_id_up_adj = 0
+        connections%aniso_data(iconn)%unstruct%face_id_dn_adj = 0
+      endif
+      aniso_data_unstruct => connections%aniso_data(iconn)%unstruct
+
+      aniso_data_unstruct%conn_face_id = connections%face_id(iconn)
+
+      face_id = connections%face_id(iconn)
+
+      do iupdn = 1,2
+        if (iupdn==1) then
+          ! determining upstream adjacency
+          count_up_adj = 0
+          local_id = connections%id_up(iconn)
+        else
+          ! determining upstream adjacency
+          count_dn_adj = 0
+          local_id = connections%id_dn(iconn)
+        endif
+        ! Loop over faces of cell
+        do iface = 1, unstructured_grid%cell_vertices(0,local_id)
+          face_id2 = cell_to_face(iface,local_id)
+          ! Identify faces that share an edge (vertex) with current connection.  Skip the connection face
+          if (face_id2 == face_id) cycle
+          found = PETSC_FALSE
+          do ivertex = 1,MAX_VERT_PER_FACE
+            if (found) then
+              exit
+            endif
+            vertex_id = unstructured_grid%face_to_vertex(ivertex,face_id)
+            if (vertex_id == 0) cycle
+            do ivertex2 =1,MAX_VERT_PER_FACE
+              vertex_id2 = unstructured_grid%face_to_vertex(ivertex2,face_id2)
+              if (vertex_id2 == 0) cycle
+              if (vertex_id == vertex_id2) then
+                ! faces share a vertex, and therefore an edge
+                found = PETSC_TRUE
+                exit
+              endif
+            enddo
+          enddo
+          if (found) then
+            ! faces share a vertex, and therefore an edge
+            found = PETSC_FALSE
+            do iside = 1,2
+              cell_id2 = face_to_cell(iside,face_id2)
+              if (cell_id2 .ne. local_id) then
+                found = PETSC_TRUE
+                exit
+              endif
+            enddo
+            if (found) then
+              ! cell_id2 is adjacent - Record geometry info. for anisotropy calcs
+              if (iupdn==1) then
+                count_up_adj = count_up_adj + 1
+                aniso_data_unstruct%cell_id_up = local_id
+                aniso_data_unstruct%cell_id_up_adj(count_up_adj) = cell_id2
+                aniso_data_unstruct%face_id_up_adj(count_up_adj) = face_id2
+              else
+                count_dn_adj = count_dn_adj + 1
+                aniso_data_unstruct%cell_id_dn = local_id
+                aniso_data_unstruct%cell_id_dn_adj(count_dn_adj) = cell_id2
+                aniso_data_unstruct%face_id_dn_adj(count_dn_adj) = face_id2
+              endif
+            else
+              write(string,*) option%myrank,local_id,dual_local_id
+              option%io_buffer = 'adjacent aniso cell not found in connection loop' // trim(string)
+              call PrintErrMsg(option)
+            endif
+          endif
+        enddo
+      enddo
+    enddo
+
+    !do iconn = 1,nconn
+    !  aniso_data => connections%aniso_data(iconn)
+    !  Call PrintAnisoData(aniso_data)
+    !enddo
+  endif
+
   ! Save area and centroid of faces
   allocate(unstructured_grid%face_centroid(face_count))
   do iface = 1,face_count

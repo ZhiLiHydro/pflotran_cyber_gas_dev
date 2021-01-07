@@ -275,6 +275,7 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
 
       ! add anisotropic contributions
       if(associated(aniso_data)) then
+        ! Call RichardsFluxAniso with calc_derivs=PETSC_TRUE
         Call RichardsFluxAniso(aniso_data,material_auxvar_up,material_auxvar_dn,&
                                 global_auxvar_up,global_auxvar_dn,&
                                 option,dist,ukvr,&
@@ -331,6 +332,7 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
           aniso_data%struct%Jdn_adjZm = dq_dp_dn_adjZm * density_ave
           aniso_data%struct%Jup_adjZp = dq_dp_up_adjZp * density_ave
           aniso_data%struct%Jdn_adjZp = dq_dp_dn_adjZp * density_ave
+          ! The above quantities are used in RichardsJacobianInternalConn when constructing J
         endif
       endif
     endif
@@ -457,19 +459,52 @@ subroutine RichardsFluxAniso(aniso_data, &
   ! work data for calculations of anisotropic derivatives
   type(aniso_data_structured_type), pointer :: aniso_ds
   type(aniso_deriv_data_structured_type), pointer :: aniso_dds
-
-
   nullify(aniso_ds)
+  nullify(aniso_dds)
 
-  if(calc_derivs .EQV. PETSC_TRUE) then
-    if(associated(aniso_data%struct)) then
-      allocate(aniso_dds)
-    endif
-  endif
+  ! Initialise output
+  v_darcy_aniso = 0.d0
 
   ! Ideally would have these for adjacent cells too
   rho_up = global_auxvar_up%den(1) * FMWH2O
   rho_dn = global_auxvar_dn%den(1) * FMWH2O
+
+
+  ! Permeability tensor to up/dn cells
+  k_up_xx = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_X)
+  k_up_yy = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_Y)
+  k_up_zz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_Z)
+  k_up_xy = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_XY)
+  k_up_yz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_YZ)
+  k_up_xz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_XZ)
+
+  k_dn_xx = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_X)
+  k_dn_yy = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_Y)
+  k_dn_zz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_Z)
+  k_dn_xy = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_XY)
+  k_dn_yz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_YZ)
+  k_dn_xz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_XZ)
+
+  ! allow off-diagonal terms to be uninitialised, in which case set to zero
+  if ( k_up_xy == UNINITIALIZED_DOUBLE ) then
+    k_up_xy = 0.d0
+  endif
+  if ( k_up_yz == UNINITIALIZED_DOUBLE ) then
+    k_up_yz = 0.d0
+  endif
+  if ( k_up_xz == UNINITIALIZED_DOUBLE ) then
+    k_up_xz = 0.d0
+  endif
+  if ( k_dn_xy == UNINITIALIZED_DOUBLE ) then
+    k_dn_xy = 0.d0
+  endif
+  if ( k_dn_yz == UNINITIALIZED_DOUBLE ) then
+    k_dn_yz = 0.d0
+  endif
+  if ( k_dn_xz == UNINITIALIZED_DOUBLE ) then
+    k_dn_xz = 0.d0
+  endif
+
 
   if(associated(aniso_data%struct)) then
     ! structured grid case
@@ -484,6 +519,8 @@ subroutine RichardsFluxAniso(aniso_data, &
     dphi_z_dn = 0.d0
 
     if (calc_derivs .EQV. PETSC_TRUE) then
+      allocate(aniso_dds)
+
       aniso_dds%ddphi_x_dp_up_adjXm = 0.d0
       aniso_dds%ddphi_x_dp_dn_adjXm = 0.d0
       aniso_dds%ddphi_x_dp_up_adjXp = 0.d0
@@ -685,182 +722,149 @@ subroutine RichardsFluxAniso(aniso_data, &
         aniso_dds%ddphi_z_dp_dn       =  1.d0 / aniso_ds%dist_dn_adjZm
       endif
     endif
-  endif
 
-  ! Permeability tensor to up/dn cells
-  k_up_xx = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_X)
-  k_up_yy = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_Y)
-  k_up_zz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_Z)
-  k_up_xy = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_XY)
-  k_up_yz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_YZ)
-  k_up_xz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_XZ)
+    ! Calculate anisotropic darcy contribution for given orientation
+    if ( aniso_ds%orientation .eq. 'X' ) then
+      v_darcy_aniso_up = -1.d0 * (k_up_xy * dphi_y_up + k_up_xz * dphi_z_up) * ukvr
+      v_darcy_aniso_dn = -1.d0 * (k_dn_xy * dphi_y_dn + k_dn_xz * dphi_z_dn) * ukvr
+      mu_up =       dist(-1) *dist(0)/k_up_xx  ! weight - up (dist part = dist to interface)
+      mu_dn = (1.d0-dist(-1))*dist(0)/k_dn_xx  ! weight - dn (dist part = dist to interface)
+      ! average up/dn components to obtain a consistent interface midpoint pressure
+      v_darcy_aniso = (mu_up*v_darcy_aniso_up + mu_dn*v_darcy_aniso_dn) / (mu_up + mu_dn)
+      if (calc_derivs .EQV. PETSC_TRUE) then
+        aniso_dds%dv_darcy_aniso_up_dp_up_adjXm = 0.d0
+        aniso_dds%dv_darcy_aniso_up_dp_up_adjXp = 0.d0
 
-  k_dn_xx = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_X)
-  k_dn_yy = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_Y)
-  k_dn_zz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_Z)
-  k_dn_xy = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_XY)
-  k_dn_yz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_YZ)
-  k_dn_xz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_XZ)
+        aniso_dds%dv_darcy_aniso_up_dp_up_adjYm = -1.0d0 * k_up_xy * aniso_dds%ddphi_y_dp_up_adjYm * ukvr
+        aniso_dds%dv_darcy_aniso_up_dp_up_adjYp = -1.0d0 * k_up_xy * aniso_dds%ddphi_y_dp_up_adjYp * ukvr
 
-  ! allow off-diagonal terms to be uninitialised, in which case set to zero
-  if ( k_up_xy == UNINITIALIZED_DOUBLE ) then
-    k_up_xy = 0.d0
-  endif
-  if ( k_up_yz == UNINITIALIZED_DOUBLE ) then
-    k_up_yz = 0.d0
-  endif
-  if ( k_up_xz == UNINITIALIZED_DOUBLE ) then
-    k_up_xz = 0.d0
-  endif
-  if ( k_dn_xy == UNINITIALIZED_DOUBLE ) then
-    k_dn_xy = 0.d0
-  endif
-  if ( k_dn_yz == UNINITIALIZED_DOUBLE ) then
-    k_dn_yz = 0.d0
-  endif
-  if ( k_dn_xz == UNINITIALIZED_DOUBLE ) then
-    k_dn_xz = 0.d0
-  endif
+        aniso_dds%dv_darcy_aniso_up_dp_up_adjZm = -1.0d0 * k_up_xz * aniso_dds%ddphi_z_dp_up_adjZm * ukvr
+        aniso_dds%dv_darcy_aniso_up_dp_up_adjZp = -1.0d0 * k_up_xz * aniso_dds%ddphi_z_dp_up_adjZp * ukvr
 
+        aniso_dds%dv_darcy_aniso_up_dp_up = &
+              -1.d0 * ((k_up_xy * aniso_dds%ddphi_y_dp_up + k_up_xz * aniso_dds%ddphi_z_dp_up) * ukvr &
+              + (k_up_xy * dphi_y_up +  k_up_xz * dphi_z_up) * dukvr_dp_up)
 
-  ! Calculate anisotropic darcy contribution for given orientation
-  v_darcy_aniso = 0.d0
-  if ( aniso_ds%orientation .eq. 'X' ) then
-    v_darcy_aniso_up = -1.d0 * (k_up_xy * dphi_y_up + k_up_xz * dphi_z_up) * ukvr
-    v_darcy_aniso_dn = -1.d0 * (k_dn_xy * dphi_y_dn + k_dn_xz * dphi_z_dn) * ukvr
-    mu_up =       dist(-1) *dist(0)/k_up_xx  ! weight - up (dist part = dist to interface)
-    mu_dn = (1.d0-dist(-1))*dist(0)/k_dn_xx  ! weight - dn (dist part = dist to interface)
-    ! average up/dn components to obtain a consistent interface midpoint pressure
-    v_darcy_aniso = (mu_up*v_darcy_aniso_up + mu_dn*v_darcy_aniso_dn) / (mu_up + mu_dn)
-    if (calc_derivs .EQV. PETSC_TRUE) then
-      aniso_dds%dv_darcy_aniso_up_dp_up_adjXm = 0.d0
-      aniso_dds%dv_darcy_aniso_up_dp_up_adjXp = 0.d0
+        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXm = 0.d0
+        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXp = 0.d0
 
-      aniso_dds%dv_darcy_aniso_up_dp_up_adjYm = -1.0d0 * k_up_xy * aniso_dds%ddphi_y_dp_up_adjYm * ukvr
-      aniso_dds%dv_darcy_aniso_up_dp_up_adjYp = -1.0d0 * k_up_xy * aniso_dds%ddphi_y_dp_up_adjYp * ukvr
+        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYm = -1.0d0 * k_dn_xy * aniso_dds%ddphi_y_dp_dn_adjYm * ukvr
+        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYp = -1.0d0 * k_dn_xy * aniso_dds%ddphi_y_dp_dn_adjYp * ukvr
 
-      aniso_dds%dv_darcy_aniso_up_dp_up_adjZm = -1.0d0 * k_up_xz * aniso_dds%ddphi_z_dp_up_adjZm * ukvr
-      aniso_dds%dv_darcy_aniso_up_dp_up_adjZp = -1.0d0 * k_up_xz * aniso_dds%ddphi_z_dp_up_adjZp * ukvr
+        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZm = -1.0d0 * k_dn_xz * aniso_dds%ddphi_z_dp_dn_adjZm * ukvr
+        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZp = -1.0d0 * k_dn_xz * aniso_dds%ddphi_z_dp_dn_adjZp * ukvr
 
-      aniso_dds%dv_darcy_aniso_up_dp_up = -1.d0 * ((k_up_xy * aniso_dds%ddphi_y_dp_up + k_up_xz * aniso_dds%ddphi_z_dp_up) * ukvr &
-                                        + (k_up_xy * dphi_y_up +  k_up_xz * dphi_z_up) * dukvr_dp_up)
-
-      aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXm = 0.d0
-      aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXp = 0.d0
-
-      aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYm = -1.0d0 * k_dn_xy * aniso_dds%ddphi_y_dp_dn_adjYm * ukvr
-      aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYp = -1.0d0 * k_dn_xy * aniso_dds%ddphi_y_dp_dn_adjYp * ukvr
-
-      aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZm = -1.0d0 * k_dn_xz * aniso_dds%ddphi_z_dp_dn_adjZm * ukvr
-      aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZp = -1.0d0 * k_dn_xz * aniso_dds%ddphi_z_dp_dn_adjZp * ukvr
-
-      aniso_dds%dv_darcy_aniso_dn_dp_dn = -1.d0 * ((k_dn_xy * aniso_dds%ddphi_y_dp_dn + k_dn_xz * aniso_dds%ddphi_z_dp_dn) * ukvr &
-                                        + (k_dn_xy * dphi_y_dn +  k_dn_xz * dphi_z_dn) * dukvr_dp_dn)
+        aniso_dds%dv_darcy_aniso_dn_dp_dn = &
+              -1.d0 * ((k_dn_xy * aniso_dds%ddphi_y_dp_dn + k_dn_xz * aniso_dds%ddphi_z_dp_dn) * ukvr &
+              + (k_dn_xy * dphi_y_dn +  k_dn_xz * dphi_z_dn) * dukvr_dp_dn)
+      endif
     endif
-  endif
-  if ( aniso_ds%orientation .eq. 'Y' ) then
-    v_darcy_aniso_up = -1.d0 * (k_up_xy * dphi_x_up + k_up_yz * dphi_z_up) * ukvr
-    v_darcy_aniso_dn = -1.d0 * (k_dn_xy * dphi_x_dn + k_dn_yz * dphi_z_dn) * ukvr
-    mu_up =       dist(-1) *dist(0)/k_up_yy  ! weight - up (dist part = dist to interface)
-    mu_dn = (1.d0-dist(-1))*dist(0)/k_dn_yy  ! weight - dn (dist part = dist to interface)
-    ! average up/dn components to obtain a consistent interface midpoint pressure
-    v_darcy_aniso = (mu_up*v_darcy_aniso_up + mu_dn*v_darcy_aniso_dn) / (mu_up + mu_dn)
-    if (calc_derivs .EQV. PETSC_TRUE) then
-      aniso_dds%dv_darcy_aniso_up_dp_up_adjXm = -1.0d0 * k_up_xy * aniso_dds%ddphi_x_dp_up_adjXm * ukvr
-      aniso_dds%dv_darcy_aniso_up_dp_up_adjXp = -1.0d0 * k_up_xy * aniso_dds%ddphi_x_dp_up_adjXp * ukvr
+    if ( aniso_ds%orientation .eq. 'Y' ) then
+      v_darcy_aniso_up = -1.d0 * (k_up_xy * dphi_x_up + k_up_yz * dphi_z_up) * ukvr
+      v_darcy_aniso_dn = -1.d0 * (k_dn_xy * dphi_x_dn + k_dn_yz * dphi_z_dn) * ukvr
+      mu_up =       dist(-1) *dist(0)/k_up_yy  ! weight - up (dist part = dist to interface)
+      mu_dn = (1.d0-dist(-1))*dist(0)/k_dn_yy  ! weight - dn (dist part = dist to interface)
+      ! average up/dn components to obtain a consistent interface midpoint pressure
+      v_darcy_aniso = (mu_up*v_darcy_aniso_up + mu_dn*v_darcy_aniso_dn) / (mu_up + mu_dn)
+      if (calc_derivs .EQV. PETSC_TRUE) then
+        aniso_dds%dv_darcy_aniso_up_dp_up_adjXm = -1.0d0 * k_up_xy * aniso_dds%ddphi_x_dp_up_adjXm * ukvr
+        aniso_dds%dv_darcy_aniso_up_dp_up_adjXp = -1.0d0 * k_up_xy * aniso_dds%ddphi_x_dp_up_adjXp * ukvr
 
-      aniso_dds%dv_darcy_aniso_up_dp_up_adjYm = 0.d0
-      aniso_dds%dv_darcy_aniso_up_dp_up_adjYp = 0.d0
+        aniso_dds%dv_darcy_aniso_up_dp_up_adjYm = 0.d0
+        aniso_dds%dv_darcy_aniso_up_dp_up_adjYp = 0.d0
 
-      aniso_dds%dv_darcy_aniso_up_dp_up_adjZm = -1.0d0 * k_up_yz * aniso_dds%ddphi_z_dp_up_adjZm * ukvr
-      aniso_dds%dv_darcy_aniso_up_dp_up_adjZp = -1.0d0 * k_up_yz * aniso_dds%ddphi_z_dp_up_adjZp * ukvr
+        aniso_dds%dv_darcy_aniso_up_dp_up_adjZm = -1.0d0 * k_up_yz * aniso_dds%ddphi_z_dp_up_adjZm * ukvr
+        aniso_dds%dv_darcy_aniso_up_dp_up_adjZp = -1.0d0 * k_up_yz * aniso_dds%ddphi_z_dp_up_adjZp * ukvr
 
-      aniso_dds%dv_darcy_aniso_up_dp_up = -1.d0 * ((k_up_xy * aniso_dds%ddphi_x_dp_up + k_up_yz * aniso_dds%ddphi_z_dp_up) * ukvr &
-                                        + (k_up_xy * dphi_x_up +  k_up_yz * dphi_z_up) * dukvr_dp_up)
+        aniso_dds%dv_darcy_aniso_up_dp_up = &
+              -1.d0 * ((k_up_xy * aniso_dds%ddphi_x_dp_up + k_up_yz * aniso_dds%ddphi_z_dp_up) * ukvr &
+              + (k_up_xy * dphi_x_up +  k_up_yz * dphi_z_up) * dukvr_dp_up)
 
-      aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXm = -1.0d0 * k_dn_xy * aniso_dds%ddphi_x_dp_dn_adjXm * ukvr
-      aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXp = -1.0d0 * k_dn_xy * aniso_dds%ddphi_x_dp_dn_adjXp * ukvr
+        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXm = -1.0d0 * k_dn_xy * aniso_dds%ddphi_x_dp_dn_adjXm * ukvr
+        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXp = -1.0d0 * k_dn_xy * aniso_dds%ddphi_x_dp_dn_adjXp * ukvr
 
-      aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYm = 0.d0
-      aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYp = 0.d0
+        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYm = 0.d0
+        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYp = 0.d0
 
-      aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZm = -1.0d0 * k_dn_yz * aniso_dds%ddphi_z_dp_dn_adjZm * ukvr
-      aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZp = -1.0d0 * k_dn_yz * aniso_dds%ddphi_z_dp_dn_adjZp * ukvr
+        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZm = -1.0d0 * k_dn_yz * aniso_dds%ddphi_z_dp_dn_adjZm * ukvr
+        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZp = -1.0d0 * k_dn_yz * aniso_dds%ddphi_z_dp_dn_adjZp * ukvr
 
-      aniso_dds%dv_darcy_aniso_dn_dp_dn = -1.d0 * ((k_dn_xy * aniso_dds%ddphi_x_dp_dn + k_dn_yz * aniso_dds%ddphi_z_dp_dn) * ukvr &
-                                        + (k_dn_xy * dphi_x_dn +  k_dn_yz * dphi_z_dn) * dukvr_dp_dn)
+        aniso_dds%dv_darcy_aniso_dn_dp_dn = &
+              -1.d0 * ((k_dn_xy * aniso_dds%ddphi_x_dp_dn + k_dn_yz * aniso_dds%ddphi_z_dp_dn) * ukvr &
+              + (k_dn_xy * dphi_x_dn +  k_dn_yz * dphi_z_dn) * dukvr_dp_dn)
+      endif
     endif
-  endif
-  if ( aniso_ds%orientation .eq. 'Z' ) then
-    v_darcy_aniso_up = -1.d0 * (k_up_xz * dphi_x_up + k_up_yz * dphi_y_up) * ukvr
-    v_darcy_aniso_dn = -1.d0 * (k_dn_xz * dphi_x_dn + k_dn_yz * dphi_y_dn) * ukvr
-    mu_up =       dist(-1) *dist(0)/k_up_zz  ! weight - up (dist part = dist to interface)
-    mu_dn = (1.d0-dist(-1))*dist(0)/k_dn_zz  ! weight - dn (dist part = dist to interface)
-    ! average up/dn components to obtain a consistent interface midpoint pressure
-    v_darcy_aniso = (mu_up*v_darcy_aniso_up + mu_dn*v_darcy_aniso_dn) / (mu_up + mu_dn)
-    if (calc_derivs .EQV. PETSC_TRUE) then
-      aniso_dds%dv_darcy_aniso_up_dp_up_adjXm = -1.0d0 * k_up_xz * aniso_dds%ddphi_x_dp_up_adjXm * ukvr
-      aniso_dds%dv_darcy_aniso_up_dp_up_adjXp = -1.0d0 * k_up_xz * aniso_dds%ddphi_x_dp_up_adjXp * ukvr
+    if ( aniso_ds%orientation .eq. 'Z' ) then
+      v_darcy_aniso_up = -1.d0 * (k_up_xz * dphi_x_up + k_up_yz * dphi_y_up) * ukvr
+      v_darcy_aniso_dn = -1.d0 * (k_dn_xz * dphi_x_dn + k_dn_yz * dphi_y_dn) * ukvr
+      mu_up =       dist(-1) *dist(0)/k_up_zz  ! weight - up (dist part = dist to interface)
+      mu_dn = (1.d0-dist(-1))*dist(0)/k_dn_zz  ! weight - dn (dist part = dist to interface)
+      ! average up/dn components to obtain a consistent interface midpoint pressure
+      v_darcy_aniso = (mu_up*v_darcy_aniso_up + mu_dn*v_darcy_aniso_dn) / (mu_up + mu_dn)
+      if (calc_derivs .EQV. PETSC_TRUE) then
+        aniso_dds%dv_darcy_aniso_up_dp_up_adjXm = -1.0d0 * k_up_xz * aniso_dds%ddphi_x_dp_up_adjXm * ukvr
+        aniso_dds%dv_darcy_aniso_up_dp_up_adjXp = -1.0d0 * k_up_xz * aniso_dds%ddphi_x_dp_up_adjXp * ukvr
 
-      aniso_dds%dv_darcy_aniso_up_dp_up_adjYm = -1.0d0 * k_up_yz * aniso_dds%ddphi_y_dp_up_adjYm * ukvr
-      aniso_dds%dv_darcy_aniso_up_dp_up_adjYp = -1.0d0 * k_up_yz * aniso_dds%ddphi_y_dp_up_adjYp * ukvr
+        aniso_dds%dv_darcy_aniso_up_dp_up_adjYm = -1.0d0 * k_up_yz * aniso_dds%ddphi_y_dp_up_adjYm * ukvr
+        aniso_dds%dv_darcy_aniso_up_dp_up_adjYp = -1.0d0 * k_up_yz * aniso_dds%ddphi_y_dp_up_adjYp * ukvr
 
-      aniso_dds%dv_darcy_aniso_up_dp_up_adjZm = 0.d0
-      aniso_dds%dv_darcy_aniso_up_dp_up_adjZp = 0.d0
+        aniso_dds%dv_darcy_aniso_up_dp_up_adjZm = 0.d0
+        aniso_dds%dv_darcy_aniso_up_dp_up_adjZp = 0.d0
 
-      aniso_dds%dv_darcy_aniso_up_dp_up = -1.d0 * ((k_up_xz * aniso_dds%ddphi_x_dp_up + k_up_yz * aniso_dds%ddphi_y_dp_up) * ukvr &
-                                        + (k_up_xz * dphi_x_up +  k_up_yz * dphi_y_up) * dukvr_dp_up)
+        aniso_dds%dv_darcy_aniso_up_dp_up = &
+              -1.d0 * ((k_up_xz * aniso_dds%ddphi_x_dp_up + k_up_yz * aniso_dds%ddphi_y_dp_up) * ukvr &
+              + (k_up_xz * dphi_x_up +  k_up_yz * dphi_y_up) * dukvr_dp_up)
 
-      aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXm = -1.0d0 * k_dn_xz * aniso_dds%ddphi_x_dp_dn_adjXm * ukvr
-      aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXp = -1.0d0 * k_dn_xz * aniso_dds%ddphi_x_dp_dn_adjXp * ukvr
+        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXm = -1.0d0 * k_dn_xz * aniso_dds%ddphi_x_dp_dn_adjXm * ukvr
+        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXp = -1.0d0 * k_dn_xz * aniso_dds%ddphi_x_dp_dn_adjXp * ukvr
 
-      aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYm = -1.0d0 * k_dn_yz * aniso_dds%ddphi_y_dp_dn_adjYm * ukvr
-      aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYp = -1.0d0 * k_dn_yz * aniso_dds%ddphi_y_dp_dn_adjYp * ukvr
+        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYm = -1.0d0 * k_dn_yz * aniso_dds%ddphi_y_dp_dn_adjYm * ukvr
+        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYp = -1.0d0 * k_dn_yz * aniso_dds%ddphi_y_dp_dn_adjYp * ukvr
 
-      aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZm = 0.d0
-      aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZp = 0.d0
+        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZm = 0.d0
+        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZp = 0.d0
 
-      aniso_dds%dv_darcy_aniso_dn_dp_dn = -1.d0 * ((k_dn_xz * aniso_dds%ddphi_x_dp_dn + k_dn_yz * aniso_dds%ddphi_y_dp_dn) * ukvr &
-                                        + (k_dn_xz * dphi_x_dn +  k_dn_yz * dphi_y_dn) * dukvr_dp_dn)
+        aniso_dds%dv_darcy_aniso_dn_dp_dn = &
+              -1.d0 * ((k_dn_xz * aniso_dds%ddphi_x_dp_dn + k_dn_yz * aniso_dds%ddphi_y_dp_dn) * ukvr &
+              + (k_dn_xz * dphi_x_dn +  k_dn_yz * dphi_y_dn) * dukvr_dp_dn)
+      endif
     endif
+
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_ds%dv_darcy_aniso_dp_up_adjXm = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up_adjXm) &
+                                              / (mu_up + mu_dn)
+      aniso_ds%dv_darcy_aniso_dp_dn_adjXm = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXm) &
+                                              / (mu_up + mu_dn)
+      aniso_ds%dv_darcy_aniso_dp_up_adjXp = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up_adjXp) &
+                                              / (mu_up + mu_dn)
+      aniso_ds%dv_darcy_aniso_dp_dn_adjXp = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXp) &
+                                              / (mu_up + mu_dn)
+
+      aniso_ds%dv_darcy_aniso_dp_up_adjYm = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up_adjYm) &
+                                              / (mu_up + mu_dn)
+      aniso_ds%dv_darcy_aniso_dp_dn_adjYm = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYm) &
+                                              / (mu_up + mu_dn)
+      aniso_ds%dv_darcy_aniso_dp_up_adjYp = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up_adjYp) &
+                                              / (mu_up + mu_dn)
+      aniso_ds%dv_darcy_aniso_dp_dn_adjYp = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYp) &
+                                              / (mu_up + mu_dn)
+
+      aniso_ds%dv_darcy_aniso_dp_up_adjZm = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up_adjZm) &
+                                              / (mu_up + mu_dn)
+      aniso_ds%dv_darcy_aniso_dp_dn_adjZm = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZm) &
+                                              / (mu_up + mu_dn)
+      aniso_ds%dv_darcy_aniso_dp_up_adjZp = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up_adjZp) &
+                                              / (mu_up + mu_dn)
+      aniso_ds%dv_darcy_aniso_dp_dn_adjZp = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZp) &
+                                              / (mu_up + mu_dn)
+
+      aniso_ds%dv_darcy_aniso_dp_up = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up) / (mu_up + mu_dn)
+      aniso_ds%dv_darcy_aniso_dp_dn = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn) / (mu_up + mu_dn)
+
+      deallocate(aniso_dds)
+    endif
+
   endif
-
-  if (calc_derivs .EQV. PETSC_TRUE) then
-    aniso_ds%dv_darcy_aniso_dp_up_adjXm = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up_adjXm) &
-                                            / (mu_up + mu_dn)
-    aniso_ds%dv_darcy_aniso_dp_dn_adjXm = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXm) &
-                                            / (mu_up + mu_dn)
-    aniso_ds%dv_darcy_aniso_dp_up_adjXp = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up_adjXp) &
-                                            / (mu_up + mu_dn)
-    aniso_ds%dv_darcy_aniso_dp_dn_adjXp = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXp) &
-                                            / (mu_up + mu_dn)
-
-    aniso_ds%dv_darcy_aniso_dp_up_adjYm = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up_adjYm) &
-                                            / (mu_up + mu_dn)
-    aniso_ds%dv_darcy_aniso_dp_dn_adjYm = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYm) &
-                                            / (mu_up + mu_dn)
-    aniso_ds%dv_darcy_aniso_dp_up_adjYp = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up_adjYp) &
-                                            / (mu_up + mu_dn)
-    aniso_ds%dv_darcy_aniso_dp_dn_adjYp = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYp) &
-                                            / (mu_up + mu_dn)
-
-    aniso_ds%dv_darcy_aniso_dp_up_adjZm = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up_adjZm) &
-                                            / (mu_up + mu_dn)
-    aniso_ds%dv_darcy_aniso_dp_dn_adjZm = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZm) &
-                                            / (mu_up + mu_dn)
-    aniso_ds%dv_darcy_aniso_dp_up_adjZp = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up_adjZp) &
-                                            / (mu_up + mu_dn)
-    aniso_ds%dv_darcy_aniso_dp_dn_adjZp = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZp) &
-                                            / (mu_up + mu_dn)
-
-    aniso_ds%dv_darcy_aniso_dp_up = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up) / (mu_up + mu_dn)
-    aniso_ds%dv_darcy_aniso_dp_dn = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn) / (mu_up + mu_dn)
-  endif
-
-  if(calc_derivs .EQV. PETSC_TRUE) then
-    deallocate(aniso_dds)
-  endif
-
 end subroutine RichardsFluxAniso
 
 ! ************************************************************************** !

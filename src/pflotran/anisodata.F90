@@ -162,9 +162,19 @@ module Anisotropy_Data_module
     PetscReal :: dv_darcy_aniso_dn_dp_dn
   end type aniso_deriv_data_structured_type
 
+  type, public :: aniso_data_unstructured_type
+    PetscInt :: conn_face_id      ! id of connection face
+    PetscInt :: cell_id_up        ! id of upstream cell
+    PetscInt :: cell_id_dn        ! id of downstream cell
+    PetscInt, pointer :: cell_id_up_adj(:) ! ids of cells adjacent to the upwind   cell that share a vertex with the connection face
+    PetscInt, pointer :: cell_id_dn_adj(:) ! ids of cells adjacent to the downwind cell that share a vertex with the connection face
+    PetscInt, pointer :: face_id_up_adj(:) ! ids of faces of the upwind   cell that share a vertex with the connection face
+    PetscInt, pointer :: face_id_dn_adj(:) ! ids of faces of the downwind cell that share a vertex with the connection face
+  end type aniso_data_unstructured_type
+
   type, public :: aniso_data_type
     type( aniso_data_structured_type), pointer :: struct => null()
-    !type( aniso_data_unstructured_type), pointer :: unstruct => null()
+    type( aniso_data_unstructured_type), pointer :: unstruct => null()
   end type aniso_data_type
 
 
@@ -173,12 +183,12 @@ module Anisotropy_Data_module
     subroutine PrintAnisoData( aniso_data )
 
       type( aniso_data_type ), pointer :: aniso_data
-      integer ierr,rank,size
+      integer ierr,rank,size,i
+
+      call MPI_Comm_rank(MPI_COMM_WORLD,rank,ierr)
+      call MPI_Comm_size(MPI_COMM_WORLD,size,ierr)
 
       if(associated(aniso_data%struct)) then
-        call MPI_Comm_rank(MPI_COMM_WORLD,rank,ierr)
-        call MPI_Comm_size(MPI_COMM_WORLD,size,ierr)
-
         write(*, "('aniso_data structured ids [',i3,'/',i3,'] = ', 12i4)") &
           rank,size, &
           aniso_data%struct%id_up_adjXm, &
@@ -194,8 +204,26 @@ module Anisotropy_Data_module
           aniso_data%struct%id_dn_adjZm, &
           aniso_data%struct%id_dn_adjZp
       endif
-    end subroutine
 
+      if(associated(aniso_data%unstruct)) then
+        write(*, "('aniso_data unstructured [',i3,'/',i3,'] face_id = ', i4)") &
+          rank,size,aniso_data%unstruct%conn_face_id
+        write(*, "('  cell_id_up = ', i4)") aniso_data%unstruct%cell_id_up
+        write(*, "('  cell_id_dn = ', i4)") aniso_data%unstruct%cell_id_dn
+        write(*, "('  upstream')")
+        do i=1,4 ! 4=MAX_VERT_PER_FACE
+          if (aniso_data%unstruct%cell_id_up_adj(i) == 0) cycle
+          write(*, "('    ',i2,'. adj_cell_id=',i4,' adj_face_id=',i4)") &
+            i,aniso_data%unstruct%cell_id_up_adj(i), aniso_data%unstruct%face_id_up_adj(i)
+        enddo
+        write(*, "('  downstream')")
+        do i=1,4 !4=MAX_VERT_PER_FACE
+          if (aniso_data%unstruct%cell_id_up_adj(i) == 0) cycle
+          write(*, "('    ',i2,'. adj_cell_id=',i4,' adj_face_id=',i4)") &
+            i,aniso_data%unstruct%cell_id_dn_adj(i), aniso_data%unstruct%face_id_dn_adj(i)
+        enddo
+      endif
+    end subroutine
 
 
 end module Anisotropy_Data_module
