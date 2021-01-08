@@ -243,6 +243,7 @@ module Anisotropy_Data_module
       if(associated(aniso_data%unstruct)) then
         write(*, "('aniso_data unstructured [',i3,'/',i3,'] face_id = ', i4)") &
           rank,size,aniso_data%unstruct%conn_face_id
+        ! geometry
         write(*, "('  cell_id_up = ', i4)") aniso_data%unstruct%cell_id_up
         write(*, "('  cell_id_dn = ', i4)") aniso_data%unstruct%cell_id_dn
         write(*, "('  upstream')")
@@ -257,6 +258,7 @@ module Anisotropy_Data_module
           write(*, "('    ',i2,'. adj_cell_id=',i4,' adj_face_id=',i4)") &
             i,aniso_data%unstruct%cell_id_dn_adj(i), aniso_data%unstruct%face_id_dn_adj(i)
         enddo
+        ! transformed coords for face
         write(*, "('  local coords')")
         write(*, "('    u = (',e10.3,',',e10.3,',',e10.3,')')") &
           aniso_data%unstruct%uvec(1),aniso_data%unstruct%uvec(2),aniso_data%unstruct%uvec(3)
@@ -264,6 +266,21 @@ module Anisotropy_Data_module
           aniso_data%unstruct%vvec(1),aniso_data%unstruct%vvec(2),aniso_data%unstruct%vvec(3)
         write(*, "('    w = (',e10.3,',',e10.3,',',e10.3,')')") &
           aniso_data%unstruct%wvec(1),aniso_data%unstruct%wvec(2),aniso_data%unstruct%wvec(3)
+        ! transformed perm for face
+        write(*, "('  perm up,dn')")
+        write(*, "('    perm_uu = ',e10.3,',',e10.3)") &
+          aniso_data%unstruct%perm_up_uu, aniso_data%unstruct%perm_dn_uu
+        write(*, "('    perm_vv = ',e10.3,',',e10.3)") &
+          aniso_data%unstruct%perm_up_vv, aniso_data%unstruct%perm_dn_vv
+        write(*, "('    perm_ww = ',e10.3,',',e10.3)") &
+          aniso_data%unstruct%perm_up_ww, aniso_data%unstruct%perm_dn_ww
+        write(*, "('    perm_uv = ',e10.3,',',e10.3)") &
+          aniso_data%unstruct%perm_up_uv, aniso_data%unstruct%perm_dn_uv
+        write(*, "('    perm_uw = ',e10.3,',',e10.3)") &
+          aniso_data%unstruct%perm_up_uw, aniso_data%unstruct%perm_dn_uw
+        write(*, "('    perm_vw = ',e10.3,',',e10.3)") &
+          aniso_data%unstruct%perm_up_vw, aniso_data%unstruct%perm_dn_vw
+
       endif
     end subroutine
 

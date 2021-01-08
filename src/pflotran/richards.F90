@@ -770,6 +770,8 @@ subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_data)
 
 
   elseif (associated(aniso_data%unstruct)) then
+    ! unstructured grid case
+
     ! compute K' = J K J^T in up/dnstream cells, where J = transformation (x,y,z) -> (u,v,w)
     ! NOTE performing this update for every step - expensive.  Could omit if permeabilty was known to be const.
 
@@ -816,6 +818,8 @@ subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_data)
     aniso_data%unstruct%perm_dn_vw = PermInnerProd(aniso_data%unstruct%vvec,aniso_data%unstruct%wvec, &
       perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
       perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
+
+    ! Call PrintAnisoData(aniso_data)
   endif
 end subroutine RichardsUpdateAnisoData
 
