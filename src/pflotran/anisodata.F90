@@ -9,6 +9,7 @@ module Anisotropy_Data_module
 
   implicit none
 
+  public :: PermInnerProd
   public :: PrintAnisoData
 
   type, public :: aniso_data_structured_type
@@ -163,13 +164,33 @@ module Anisotropy_Data_module
   end type aniso_deriv_data_structured_type
 
   type, public :: aniso_data_unstructured_type
+    ! not strictly necessary here - could be inferred from parent connection_set, but convenient to pass with single ptr
     PetscInt :: conn_face_id      ! id of connection face
     PetscInt :: cell_id_up        ! id of upstream cell
     PetscInt :: cell_id_dn        ! id of downstream cell
+    ! adjacency info to up/dnstream cells
     PetscInt, pointer :: cell_id_up_adj(:) ! ids of cells adjacent to the upwind   cell that share a vertex with the connection face
     PetscInt, pointer :: cell_id_dn_adj(:) ! ids of cells adjacent to the downwind cell that share a vertex with the connection face
     PetscInt, pointer :: face_id_up_adj(:) ! ids of faces of the upwind   cell that share a vertex with the connection face
     PetscInt, pointer :: face_id_dn_adj(:) ! ids of faces of the downwind cell that share a vertex with the connection face
+    ! (u,v,w) is a coord system relative to face.
+    PetscReal, pointer :: uvec(:)      ! u-direction unit vector (normal to face, +ve dnstream) - in (x,y,z) coords
+    PetscReal, pointer :: vvec(:)      ! v-direction unit vector (in plane of face) - in (x,y,z) coords
+    PetscReal, pointer :: wvec(:)      ! w-direction unit vector (in plane of face) - in (x,y,z) coords
+
+    ! Permeability w.r.t. (u,v,w) coords in up/dnstream cells - working data, overwritten throughout simulation (in case timedep)
+    PetscReal :: perm_up_uu
+    PetscReal :: perm_up_vv
+    PetscReal :: perm_up_ww
+    PetscReal :: perm_up_uv
+    PetscReal :: perm_up_uw
+    PetscReal :: perm_up_vw
+    PetscReal :: perm_dn_uu
+    PetscReal :: perm_dn_vv
+    PetscReal :: perm_dn_ww
+    PetscReal :: perm_dn_uv
+    PetscReal :: perm_dn_uw
+    PetscReal :: perm_dn_vw
   end type aniso_data_unstructured_type
 
   type, public :: aniso_data_type
@@ -180,6 +201,20 @@ module Anisotropy_Data_module
 
 
   CONTAINS
+    function PermInnerProd( u, v, K_xx, K_yy, K_zz, K_xy, K_xz, K_yz )
+      ! compute u^T K v, with K symmetric
+
+      PetscReal :: u(3)
+      PetscReal :: v(3)
+      PetscReal :: K_xx,K_yy,K_zz,K_xy,K_xz,K_yz
+      PetscReal :: PermInnerProd
+
+      PermInnerProd =  u(1) * (K_xx*v(1) + K_xy*v(2) + K_xz*v(3)) &
+                     + u(2) * (K_xy*v(1) + K_yy*v(2) + K_yz*v(3)) &
+                     + u(3) * (K_xz*v(1) + K_yz*v(2) + K_zz*v(3))
+    end function PermInnerProd
+
+    ! for debugging:
     subroutine PrintAnisoData( aniso_data )
 
       type( aniso_data_type ), pointer :: aniso_data
@@ -222,6 +257,13 @@ module Anisotropy_Data_module
           write(*, "('    ',i2,'. adj_cell_id=',i4,' adj_face_id=',i4)") &
             i,aniso_data%unstruct%cell_id_dn_adj(i), aniso_data%unstruct%face_id_dn_adj(i)
         enddo
+        write(*, "('  local coords')")
+        write(*, "('    u = (',e10.3,',',e10.3,',',e10.3,')')") &
+          aniso_data%unstruct%uvec(1),aniso_data%unstruct%uvec(2),aniso_data%unstruct%uvec(3)
+        write(*, "('    v = (',e10.3,',',e10.3,',',e10.3,')')") &
+          aniso_data%unstruct%vvec(1),aniso_data%unstruct%vvec(2),aniso_data%unstruct%vvec(3)
+        write(*, "('    w = (',e10.3,',',e10.3,',',e10.3,')')") &
+          aniso_data%unstruct%wvec(1),aniso_data%unstruct%wvec(2),aniso_data%unstruct%wvec(3)
       endif
     end subroutine
 

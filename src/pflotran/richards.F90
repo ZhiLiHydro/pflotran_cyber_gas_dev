@@ -703,7 +703,7 @@ end subroutine RichardsUpdateAuxVars
 
 ! ************************************************************************** !
 
-subroutine RichardsUpdateAnisoData(global_auxvars,aniso_data)
+subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_data)
   !
   ! Updates the adjacent pressure etc in the anisotropy_data structure
   ! the Richards problem
@@ -714,16 +714,21 @@ subroutine RichardsUpdateAnisoData(global_auxvars,aniso_data)
 
   use Global_Aux_module
   use Anisotropy_Data_module
+  use Material_Aux_class
 
   implicit none
 
   type(global_auxvar_type), pointer :: global_auxvars(:)
   type(aniso_data_type), pointer :: aniso_data
+  type(material_auxvar_type), pointer ::material_auxvars(:)
 
   PetscInt :: ghosted_id_adj(1:12)
   PetscReal :: ghosted_pres_adj(1:12)
+  PetscInt :: gi
 
-  integer :: gi
+  PetscReal, pointer :: perm(:)
+  PetscInt :: ghosted_id
+  PetscInt :: iside
 
   if(associated(aniso_data%struct)) then
     ! structured grid case
@@ -762,6 +767,55 @@ subroutine RichardsUpdateAnisoData(global_auxvars,aniso_data)
     aniso_data%struct%pres_up_adjZp = ghosted_pres_adj(10)
     aniso_data%struct%pres_dn_adjZm = ghosted_pres_adj(11)
     aniso_data%struct%pres_dn_adjZp = ghosted_pres_adj(12)
+
+
+  elseif (associated(aniso_data%unstruct)) then
+    ! compute K' = J K J^T in up/dnstream cells, where J = transformation (x,y,z) -> (u,v,w)
+    ! NOTE performing this update for every step - expensive.  Could omit if permeabilty was known to be const.
+
+    ! up
+    ghosted_id = aniso_data%unstruct%cell_id_up
+    perm => material_auxvars(ghosted_id)%permeability
+    aniso_data%unstruct%perm_up_uu = PermInnerProd(aniso_data%unstruct%uvec,aniso_data%unstruct%uvec, &
+      perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
+      perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
+    aniso_data%unstruct%perm_up_vv = PermInnerProd(aniso_data%unstruct%vvec,aniso_data%unstruct%vvec, &
+      perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
+      perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
+    aniso_data%unstruct%perm_up_ww = PermInnerProd(aniso_data%unstruct%wvec,aniso_data%unstruct%wvec, &
+      perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
+      perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
+    aniso_data%unstruct%perm_up_uv = PermInnerProd(aniso_data%unstruct%uvec,aniso_data%unstruct%vvec, &
+      perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
+      perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
+    aniso_data%unstruct%perm_up_uw = PermInnerProd(aniso_data%unstruct%uvec,aniso_data%unstruct%wvec, &
+      perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
+      perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
+    aniso_data%unstruct%perm_up_vw = PermInnerProd(aniso_data%unstruct%vvec,aniso_data%unstruct%wvec, &
+      perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
+      perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
+
+    ! dn
+    ghosted_id = aniso_data%unstruct%cell_id_dn
+    perm => material_auxvars(ghosted_id)%permeability
+    aniso_data%unstruct%perm_dn_uu = PermInnerProd(aniso_data%unstruct%uvec,aniso_data%unstruct%uvec, &
+      perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
+      perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
+    aniso_data%unstruct%perm_dn_vv = PermInnerProd(aniso_data%unstruct%vvec,aniso_data%unstruct%vvec, &
+      perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
+      perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
+    aniso_data%unstruct%perm_dn_ww = PermInnerProd(aniso_data%unstruct%wvec,aniso_data%unstruct%wvec, &
+      perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
+      perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
+    aniso_data%unstruct%perm_dn_uv = PermInnerProd(aniso_data%unstruct%uvec,aniso_data%unstruct%vvec, &
+      perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
+      perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
+    aniso_data%unstruct%perm_dn_uw = PermInnerProd(aniso_data%unstruct%uvec,aniso_data%unstruct%wvec, &
+      perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
+      perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
+    aniso_data%unstruct%perm_dn_vw = PermInnerProd(aniso_data%unstruct%vvec,aniso_data%unstruct%wvec, &
+      perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
+      perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
   endif
 end subroutine RichardsUpdateAnisoData
 
@@ -1568,7 +1622,7 @@ subroutine RichardsResidualInternalConn(r,realization,skip_conn_type,ierr)
 
       if (associated(cur_connection_set%aniso_data)) then
         aniso_data => cur_connection_set%aniso_data(iconn)
-        call RichardsUpdateAnisoData(global_auxvars,aniso_data)
+        call RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_data)
       endif
 
 
@@ -2339,7 +2393,7 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
 
       if (associated(cur_connection_set%aniso_data)) then
         aniso_data => cur_connection_set%aniso_data(iconn)
-        call RichardsUpdateAnisoData(global_auxvars,aniso_data)
+        call RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_data)
       endif
 
       call RichardsFluxDerivative(rich_auxvars(ghosted_id_up), &

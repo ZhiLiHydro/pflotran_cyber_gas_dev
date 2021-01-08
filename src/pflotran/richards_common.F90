@@ -912,6 +912,10 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
   
   call ConnectionCalculateDistances(dist,option%gravity,dd_up,dd_dn, &
                                     dist_gravity,upweight)
+  ! sjb - The following calls to PermeabilityTensorToScalar require dist and perm
+  !       to be expressed in (u,v,w) coords in the unstructured anisotropy case
+  !       This perm data is stored in aniso_data%unstruct%perm_up_uu etc.
+  !       (The standard versions of dist are perpendicular to the face, so can be used directly.)
   call material_auxvar_up%PermeabilityTensorToScalar(dist,perm_up)
   call material_auxvar_dn%PermeabilityTensorToScalar(dist,perm_dn)
 

@@ -1850,6 +1850,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
   type( aniso_data_type), pointer :: aniso_data
   type( aniso_data_unstructured_type), pointer :: aniso_data_unstruct
   PetscInt :: count_up_adj, count_dn_adj, iupdn
+  PetscReal :: dot
 
   character(len=MAXSTRINGLENGTH) :: string  
   
@@ -2335,6 +2336,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
     do iconn = 1,nconn
       if (.not.associated(connections%aniso_data(iconn)%unstruct)) then
         allocate(connections%aniso_data(iconn)%unstruct)
+        ! allocate adjacency info
         allocate(connections%aniso_data(iconn)%unstruct%cell_id_up_adj(MAX_VERT_PER_FACE))
         allocate(connections%aniso_data(iconn)%unstruct%cell_id_dn_adj(MAX_VERT_PER_FACE))
         allocate(connections%aniso_data(iconn)%unstruct%face_id_up_adj(MAX_VERT_PER_FACE))
@@ -2343,12 +2345,19 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
         connections%aniso_data(iconn)%unstruct%cell_id_dn_adj = 0
         connections%aniso_data(iconn)%unstruct%face_id_up_adj = 0
         connections%aniso_data(iconn)%unstruct%face_id_dn_adj = 0
+        ! allocate (u,v,w) coords
+        allocate(connections%aniso_data(iconn)%unstruct%uvec(1:3))
+        allocate(connections%aniso_data(iconn)%unstruct%vvec(1:3))
+        allocate(connections%aniso_data(iconn)%unstruct%wvec(1:3))
+        connections%aniso_data(iconn)%unstruct%uvec = 0
+        connections%aniso_data(iconn)%unstruct%vvec = 0
+        connections%aniso_data(iconn)%unstruct%wvec = 0
       endif
       aniso_data_unstruct => connections%aniso_data(iconn)%unstruct
 
-      aniso_data_unstruct%conn_face_id = connections%face_id(iconn)
-
+      ! store face_id
       face_id = connections%face_id(iconn)
+      aniso_data_unstruct%conn_face_id = face_id
 
       do iupdn = 1,2
         if (iupdn==1) then
@@ -2393,7 +2402,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
               endif
             enddo
             if (found) then
-              ! cell_id2 is adjacent - Record geometry info. for anisotropy calcs
+              ! record adjacency info. (cell_id2 is adjacent)
               if (iupdn==1) then
                 count_up_adj = count_up_adj + 1
                 aniso_data_unstruct%cell_id_up = local_id
@@ -2413,6 +2422,49 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
           endif
         enddo
       enddo
+
+      ! compute (u,v,w) coord vecs (u +ve dnstream)
+      point_up%x = grid_x(aniso_data_unstruct%cell_id_up)
+      point_up%y = grid_y(aniso_data_unstruct%cell_id_up)
+      point_up%z = grid_z(aniso_data_unstruct%cell_id_up)
+      point_dn%x = grid_x(aniso_data_unstruct%cell_id_dn)
+      point_dn%y = grid_y(aniso_data_unstruct%cell_id_dn)
+      point_dn%z = grid_z(aniso_data_unstruct%cell_id_dn)
+      v1(1) = point_dn%x-point_up%x
+      v1(2) = point_dn%y-point_up%y
+      v1(3) = point_dn%z-point_up%z
+      n_up_dn = v1 / sqrt(DotProduct(v1,v1))
+
+      point1 = unstructured_grid%vertices(unstructured_grid%face_to_vertex(1,face_id))
+      point2 = unstructured_grid%vertices(unstructured_grid%face_to_vertex(2,face_id))
+      point3 = unstructured_grid%vertices(unstructured_grid%face_to_vertex(3,face_id))
+
+      v1(1) = point3%x-point2%x
+      v1(2) = point3%y-point2%y
+      v1(3) = point3%z-point2%z
+      v2(1) = point1%x-point2%x
+      v2(2) = point1%y-point2%y
+      v2(3) = point1%z-point2%z
+      vcross = CrossProduct(v1,v2)
+      magnitude = sqrt(DotProduct(vcross,vcross))
+
+      !  (u +ve dnstream)
+      dot = DotProduct(vcross,n_up_dn)
+      if (dot > 0) then
+        aniso_data_unstruct%uvec = vcross/magnitude
+      elseif (dot < 0) then
+        aniso_data_unstruct%uvec = -vcross/magnitude
+      else
+        write(string,*) option%myrank,local_id,dual_local_id
+        option%io_buffer = 'uvec for connection parallel to face' // trim(string)
+        call PrintErrMsg(option)
+      endif
+
+      ! choose v = P2->P3, and w = u x v
+      aniso_data_unstruct%vvec = v1 / sqrt(DotProduct(v1,v1))
+
+      vcross = CrossProduct(aniso_data_unstruct%uvec,aniso_data_unstruct%vvec)
+      aniso_data_unstruct%wvec = vcross / sqrt(DotProduct(vcross,vcross)) ! (should have mag=1 anyway)
     enddo
 
     !do iconn = 1,nconn
