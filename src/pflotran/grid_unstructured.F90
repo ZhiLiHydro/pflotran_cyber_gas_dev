@@ -2346,8 +2346,6 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
         allocate(connections%aniso_data(iconn)%unstruct%dn%cell_id_adj(MAX_VERT_PER_FACE))
         allocate(connections%aniso_data(iconn)%unstruct%up%face_id_adj(MAX_VERT_PER_FACE))
         allocate(connections%aniso_data(iconn)%unstruct%dn%face_id_adj(MAX_VERT_PER_FACE))
-        allocate(connections%aniso_data(iconn)%unstruct%up%cell_is_face_up_adj(MAX_VERT_PER_FACE))
-        allocate(connections%aniso_data(iconn)%unstruct%dn%cell_is_face_up_adj(MAX_VERT_PER_FACE))
         allocate(connections%aniso_data(iconn)%unstruct%up%adu_face_adj(MAX_VERT_PER_FACE))
         allocate(connections%aniso_data(iconn)%unstruct%dn%adu_face_adj(MAX_VERT_PER_FACE))
         allocate(connections%aniso_data(iconn)%unstruct%up%adu_cell_adj(MAX_VERT_PER_FACE))
@@ -2356,8 +2354,6 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
         connections%aniso_data(iconn)%unstruct%dn%cell_id_adj = 0
         connections%aniso_data(iconn)%unstruct%up%face_id_adj = 0
         connections%aniso_data(iconn)%unstruct%dn%face_id_adj = 0
-        connections%aniso_data(iconn)%unstruct%up%cell_is_face_up_adj = PETSC_FALSE
-        connections%aniso_data(iconn)%unstruct%dn%cell_is_face_up_adj = PETSC_FALSE
         ! allocate (u,v,w) coords
         allocate(connections%aniso_data(iconn)%unstruct%uvec(1:3))
         allocate(connections%aniso_data(iconn)%unstruct%vvec(1:3))
@@ -2441,20 +2437,10 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
                   count_up_adj = count_up_adj + 1
                   aniso_data_unstruct%up%cell_id_adj(count_up_adj) = cell_id2
                   aniso_data_unstruct%up%face_id_adj(count_up_adj) = face_id2
-                  if(connections%id_up(face_id2) == local_id) then
-                    aniso_data_unstruct%up%cell_is_face_up_adj = PETSC_TRUE
-                  else
-                    aniso_data_unstruct%up%cell_is_face_up_adj = PETSC_FALSE
-                  endif
                 else
                   count_dn_adj = count_dn_adj + 1
                   aniso_data_unstruct%dn%cell_id_adj(count_dn_adj) = cell_id2
                   aniso_data_unstruct%dn%face_id_adj(count_dn_adj) = face_id2
-                  if(connections%id_up(face_id2) == local_id) then
-                    aniso_data_unstruct%dn%cell_is_face_up_adj = PETSC_TRUE
-                  else
-                    aniso_data_unstruct%dn%cell_is_face_up_adj = PETSC_FALSE
-                  endif
                 endif
               endif
             else

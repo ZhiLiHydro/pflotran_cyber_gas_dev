@@ -140,7 +140,7 @@ module Anisotropy_Data_module
 
 
   type, public :: aniso_deriv_data_structured_type
-    !structure for storing work data for anisotropic derivative calculations
+    ! structure for storing work data for anisotropic derivative calculations - structured case
     PetscReal :: ddphi_x_dp_up_adjXm, ddphi_x_dp_dn_adjXm, ddphi_x_dp_up_adjXp, ddphi_x_dp_dn_adjXp
     PetscReal :: ddphi_y_dp_up_adjYm, ddphi_y_dp_dn_adjYm, ddphi_y_dp_up_adjYp, ddphi_y_dp_dn_adjYp
     PetscReal :: ddphi_z_dp_up_adjZm, ddphi_z_dp_dn_adjZm, ddphi_z_dp_up_adjZp, ddphi_z_dp_dn_adjZp
@@ -167,20 +167,19 @@ module Anisotropy_Data_module
   type, public :: adu_ptr_container
     type(aniso_data_unstructured_type), pointer:: ptr => null()
   end type adu_ptr_container
-  type, public :: adu_partial_ptr_container
-    type(aniso_data_unstructured_partial_type), pointer:: ptr => null()
-  end type adu_partial_ptr_container
+  type, public :: aduc_ptr_container
+    type(aniso_data_unstructured_cell_type), pointer:: ptr => null()
+  end type aduc_ptr_container
 
   ! represents adjacency data for one of the cells (up or dn) on an interface
-  type, public :: aniso_data_unstructured_partial_type
+  type, public :: aniso_data_unstructured_cell_type
     PetscInt :: cell_id        ! id of neighbouring cell (up or dn)
     ! adjacency info
     PetscInt, pointer :: cell_id_adj(:) ! ids of adjacent cells that share a vertex with the connection face
     PetscInt, pointer :: face_id_adj(:) ! ids of faces neighbouring cell that share a vertex with the connection face
-    PetscBool, pointer :: cell_is_face_up_adj(:) ! true if cell_id is the upstream cell of face_id_adj
 
     type(adu_ptr_container), pointer :: adu_face_adj(:) ! aniso data for face_id_adj(:)
-    type(adu_partial_ptr_container), pointer :: adu_cell_adj(:) ! aniso data for cell_id_adj(:)
+    type(aduc_ptr_container), pointer :: adu_cell_adj(:) ! aniso data for cell_id_adj(:)
 
     ! g.c, where c is cell centre (this are differenced to get g.d, where d is distance between points)
     PetscReal :: loc_gravity
@@ -199,20 +198,36 @@ module Anisotropy_Data_module
     ! Adjacent pressure data - working data, overwritten throughout simulation
     PetscReal, pointer :: pres_adj(:) ! pressure adjacent to upwind cell
 
-  end type aniso_data_unstructured_partial_type
+  end type aniso_data_unstructured_cell_type
 
   type, public :: aniso_data_unstructured_type
     ! not strictly necessary here - could be inferred from parent connection_set, but convenient to pass with single ptr
     PetscInt :: conn_face_id      ! id of connection face
 
-    type(aniso_data_unstructured_partial_type), pointer :: up => null()
-    type(aniso_data_unstructured_partial_type), pointer :: dn => null()
+    type(aniso_data_unstructured_cell_type), pointer :: up => null()
+    type(aniso_data_unstructured_cell_type), pointer :: dn => null()
 
     ! (u,v,w) is a coord system relative to face.
     PetscReal, pointer :: uvec(:)      ! u-direction unit vector (normal to face, +ve dnstream) - in (x,y,z) coords
     PetscReal, pointer :: vvec(:)      ! v-direction unit vector (in plane of face) - in (x,y,z) coords
     PetscReal, pointer :: wvec(:)      ! w-direction unit vector (in plane of face) - in (x,y,z) coords
   end type aniso_data_unstructured_type
+
+  type, public :: aniso_deriv_data_unstructured_type
+    ! structure for storing work data for anisotropic derivative calculations - unstrcutured case
+    PetscReal :: ddphi_v_dp_up
+    PetscReal, pointer :: ddphi_v_dp_up_adj(:)
+    PetscReal :: ddphi_w_dp_up
+    PetscReal, pointer :: ddphi_w_dp_up_adj(:)
+    PetscReal :: ddphi_v_dp_dn
+    PetscReal, pointer :: ddphi_v_dp_dn_adj(:)
+    PetscReal :: ddphi_w_dp_dn
+    PetscReal, pointer :: ddphi_w_dp_dn_adj(:)
+    PetscReal :: dv_darcy_aniso_up_dp_up
+    PetscReal :: dv_darcy_aniso_dn_dp_dn
+    PetscReal, pointer :: dv_darcy_aniso_up_dp_up_adj(:)
+    PetscReal, pointer :: dv_darcy_aniso_dn_dp_dn_adj(:)
+  end type aniso_deriv_data_unstructured_type
 
   type, public :: aniso_data_type
     type( aniso_data_structured_type), pointer :: struct => null()
