@@ -466,9 +466,11 @@ subroutine RichardsFluxAniso(aniso_data, &
   type(aniso_data_structured_type), pointer :: aniso_ds
   type(aniso_deriv_data_structured_type), pointer :: aniso_dds
   type(aniso_data_unstructured_type), pointer :: aniso_du
+  type(aniso_data_unstructured_type), pointer :: aniso_du_adj
   nullify(aniso_ds)
   nullify(aniso_dds)
   nullify(aniso_du)
+  nullify(aniso_du_adj)
 
   ! Initialise output
   v_darcy_aniso = 0.d0
@@ -886,25 +888,29 @@ subroutine RichardsFluxAniso(aniso_data, &
 !    aniso_ddu%ddphi_v_dp_up_adj = 0 ! array
 
     ! upstream side - v
-    sum_wt_v_up = 0
-    do i=1,4  ! 4=MAX_VERT_PER_FACE
-      if (aniso_du%cell_id_up_adj(i) == 0) cycle
-      loc_gravity_up_adj = ... ! upstream adj gravity term
-      face_dist_up_adj = ... ! distance from face to upstream centroid
-      facenorm_dot_v = ... ! n.v where n is normal to face = cos(angle) since both are unit vecs
-      if( abs(facenorm_dot_v) > cos_tt ) then
-        wt_up = abs(facenorm_dot_v)
-        dphi_v_up = dphi_v_up + wt_up * ((aniso_du%pres_up_adj(i) - rho_up * loc_gravity_up_adj) &
-                                         - (global_auxvar_up%pres(1) - rho_up * aniso_du%loc_gravity_up) ) &
-                                      / ((aniso_du%face_dist_up+face_dist_up_adj) * facenorm_dot_v)
-        sum_wt_v_up = sum_wt_up + wt_up
-        if (calc_derivs .EQV. PETSC_TRUE) then
-          aniso_ddu%ddphi_v_dp_up        = -1.d0 * wt_up / ((aniso_du%face_dist_up+face_dist_up_adj) * facenorm_dot_v)
-          aniso_ddu%ddphi_v_dp_up_adj(i) =         wt_up / ((aniso_du%face_dist_up+face_dist_up_adj) * facenorm_dot_v)
-        endif
-      endif
-    enddo
-    dphi_v_up = dphi_v_up / sum_wt_v_up
+!    sum_wt_v_up = 0
+!    do i=1,4  ! 4=MAX_VERT_PER_FACE
+!      if (aniso_du%cell_id_up_adj(i) == 0) cycle
+!
+!      aniso_du_adj =>  aniso_du%aniso_data_unstructured_up_adj(i)
+!
+!      loc_gravity_up_adj = ... ! upstream adj gravity term
+!      face_dist_up_adj = ... ! distance from face to upstream centroid
+!      facenorm_dot_v = ... ! n.v where n is normal to face = cos(angle) since both are unit vecs
+!      if( abs(facenorm_dot_v) > cos_tt ) then
+!        wt_up = abs(facenorm_dot_v)
+!        dphi_v_up = dphi_v_up + wt_up * ((aniso_du%pres_up_adj(i) - rho_up * loc_gravity_up_adj) &
+!                                         - (global_auxvar_up%pres(1) - rho_up * aniso_du%loc_gravity_up) ) &
+!                                      / ((aniso_du%face_dist_up+face_dist_up_adj) * facenorm_dot_v)
+!        sum_wt_v_up = sum_wt_up + wt_up
+!        if (calc_derivs .EQV. PETSC_TRUE) then
+!          aniso_ddu%ddphi_v_dp_up        = -1.d0 * wt_up / ((aniso_du%face_dist_up+face_dist_up_adj) * facenorm_dot_v)
+!          aniso_ddu%ddphi_v_dp_up_adj(i) =         wt_up / ((aniso_du%face_dist_up+face_dist_up_adj) * facenorm_dot_v)
+!        endif
+!        nullify(aniso_data_unstructured_up_adj)
+!      endif
+!    enddo
+!    dphi_v_up = dphi_v_up / sum_wt_v_up
     if (calc_derivs .EQV. PETSC_TRUE) then
 !      aniso_ddu%ddphi_v_dp_up        = aniso_ddu%ddphi_v_dp_up / sum_wt_v_up
 !      do i=1,4  ! 4=MAX_VERT_PER_FACE
@@ -922,12 +928,12 @@ subroutine RichardsFluxAniso(aniso_data, &
     ! dnstream side - w
 
     ! Calculate anisotropic darcy contribution in up/dn cells
-    v_darcy_aniso_up = -1.d0 * (k_up_uv * dphi_v_up + k_up_uw * dphi_w_up) * ukvr
-    v_darcy_aniso_dn = -1.d0 * (k_dn_uv * dphi_v_dn + k_dn_uw * dphi_w_dn) * ukvr
-    mu_up =       dist(-1) *dist(0)/k_up_uu  ! weight - up (dist part = dist to interface)
-   mu_dn = (1.d0-dist(-1))*dist(0)/k_dn_uu  ! weight - dn (dist part = dist to interface)
-    ! average up/dn components to obtain a consistent interface midpoint pressure
-    v_darcy_aniso = (mu_up*v_darcy_aniso_up + mu_dn*v_darcy_aniso_dn) / (mu_up + mu_dn)
+!    v_darcy_aniso_up = -1.d0 * (k_up_uv * dphi_v_up + k_up_uw * dphi_w_up) * ukvr
+!    v_darcy_aniso_dn = -1.d0 * (k_dn_uv * dphi_v_dn + k_dn_uw * dphi_w_dn) * ukvr
+!    mu_up =       dist(-1) *dist(0)/k_up_uu  ! weight - up (dist part = dist to interface)
+!    mu_dn = (1.d0-dist(-1))*dist(0)/k_dn_uu  ! weight - dn (dist part = dist to interface)
+!    ! average up/dn components to obtain a consistent interface midpoint pressure
+!    v_darcy_aniso = (mu_up*v_darcy_aniso_up + mu_dn*v_darcy_aniso_dn) / (mu_up + mu_dn)
 
     if (calc_derivs .EQV. PETSC_TRUE) then
 !      ! CAN AVOID THESE aniso_ddu TERMS SINCE THEY ARE USED IMMEDIATELY BELOW - REPLACE WITH TMPs
@@ -948,8 +954,8 @@ subroutine RichardsFluxAniso(aniso_data, &
 !        aniso_du%dv_darcy_aniso_dp_up_adj(i) = (mu_up/(mu_up+mu_dn))*aniso_ddu%dv_darcy_aniso_up_dp_up_adj(i)
 !        aniso_du%dv_darcy_aniso_dp_dn_adj(i) = (mu_dn/(mu_up+mu_dn))*aniso_ddu%dv_darcy_aniso_dn_dp_dn_adj(i)
 !      enddo
-!    endif
-!
+    endif
+
 !    deallocate(aniso_ddu)
   endif
 end subroutine RichardsFluxAniso
@@ -1017,8 +1023,8 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
       call material_auxvar_dn%PermeabilityTensorToScalar(dist,perm_dn)
     else
       ! u-direction is chosen to be normal to the interface, so
-      perm_up = aniso_data%unstruct%perm_up_uu
-      perm_dn = aniso_data%unstruct%perm_dn_uu
+      perm_up = aniso_data%unstruct%up%perm_uu
+      perm_dn = aniso_data%unstruct%dn%perm_uu
     endif
   endif
 

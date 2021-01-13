@@ -774,11 +774,11 @@ subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_data)
 
     ! Pressure adjacency data
     do i=1,4 ! MAX_VERT_PER_FACE
-      if( aniso_data%unstruct%cell_id_up_adj(i) .ne. 0 ) then
-        aniso_data%unstruct%pres_up_adj(i) = global_auxvars(aniso_data%unstruct%cell_id_up_adj(i))%pres(1)
+      if( aniso_data%unstruct%up%cell_id_adj(i) .ne. 0 ) then
+        aniso_data%unstruct%up%pres_adj(i) = global_auxvars(aniso_data%unstruct%up%cell_id_adj(i))%pres(1)
       endif
-      if( aniso_data%unstruct%cell_id_dn_adj(i) .ne. 0 ) then
-        aniso_data%unstruct%pres_dn_adj(i) = global_auxvars(aniso_data%unstruct%cell_id_dn_adj(i))%pres(1)
+      if( aniso_data%unstruct%dn%cell_id_adj(i) .ne. 0 ) then
+        aniso_data%unstruct%dn%pres_adj(i) = global_auxvars(aniso_data%unstruct%dn%cell_id_adj(i))%pres(1)
       endif
     enddo
 
@@ -786,50 +786,50 @@ subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_data)
     ! NOTE performing this update for every step - expensive.  Could omit if permeabilty was known to be const.
 
     ! up
-    ghosted_id = aniso_data%unstruct%cell_id_up
+    ghosted_id = aniso_data%unstruct%up%cell_id
     perm => material_auxvars(ghosted_id)%permeability
-    aniso_data%unstruct%perm_up_uu = PermInnerProd(aniso_data%unstruct%uvec,aniso_data%unstruct%uvec, &
+    aniso_data%unstruct%up%perm_uu = PermInnerProd(aniso_data%unstruct%uvec,aniso_data%unstruct%uvec, &
       perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
       perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
-    aniso_data%unstruct%perm_up_vv = PermInnerProd(aniso_data%unstruct%vvec,aniso_data%unstruct%vvec, &
+    aniso_data%unstruct%up%perm_vv = PermInnerProd(aniso_data%unstruct%vvec,aniso_data%unstruct%vvec, &
       perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
       perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
-    aniso_data%unstruct%perm_up_ww = PermInnerProd(aniso_data%unstruct%wvec,aniso_data%unstruct%wvec, &
+    aniso_data%unstruct%up%perm_ww = PermInnerProd(aniso_data%unstruct%wvec,aniso_data%unstruct%wvec, &
       perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
       perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
-    aniso_data%unstruct%perm_up_uv = PermInnerProd(aniso_data%unstruct%uvec,aniso_data%unstruct%vvec, &
+    aniso_data%unstruct%up%perm_uv = PermInnerProd(aniso_data%unstruct%uvec,aniso_data%unstruct%vvec, &
       perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
       perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
-    aniso_data%unstruct%perm_up_uw = PermInnerProd(aniso_data%unstruct%uvec,aniso_data%unstruct%wvec, &
+    aniso_data%unstruct%up%perm_uw = PermInnerProd(aniso_data%unstruct%uvec,aniso_data%unstruct%wvec, &
       perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
       perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
-    aniso_data%unstruct%perm_up_vw = PermInnerProd(aniso_data%unstruct%vvec,aniso_data%unstruct%wvec, &
+    aniso_data%unstruct%up%perm_vw = PermInnerProd(aniso_data%unstruct%vvec,aniso_data%unstruct%wvec, &
       perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
       perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
 
     ! dn
-    ghosted_id = aniso_data%unstruct%cell_id_dn
+    ghosted_id = aniso_data%unstruct%dn%cell_id
     perm => material_auxvars(ghosted_id)%permeability
-    aniso_data%unstruct%perm_dn_uu = PermInnerProd(aniso_data%unstruct%uvec,aniso_data%unstruct%uvec, &
+    aniso_data%unstruct%dn%perm_uu = PermInnerProd(aniso_data%unstruct%uvec,aniso_data%unstruct%uvec, &
       perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
       perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
-    aniso_data%unstruct%perm_dn_vv = PermInnerProd(aniso_data%unstruct%vvec,aniso_data%unstruct%vvec, &
+    aniso_data%unstruct%dn%perm_vv = PermInnerProd(aniso_data%unstruct%vvec,aniso_data%unstruct%vvec, &
       perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
       perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
-    aniso_data%unstruct%perm_dn_ww = PermInnerProd(aniso_data%unstruct%wvec,aniso_data%unstruct%wvec, &
+    aniso_data%unstruct%dn%perm_ww = PermInnerProd(aniso_data%unstruct%wvec,aniso_data%unstruct%wvec, &
       perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
       perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
-    aniso_data%unstruct%perm_dn_uv = PermInnerProd(aniso_data%unstruct%uvec,aniso_data%unstruct%vvec, &
+    aniso_data%unstruct%dn%perm_uv = PermInnerProd(aniso_data%unstruct%uvec,aniso_data%unstruct%vvec, &
       perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
       perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
-    aniso_data%unstruct%perm_dn_uw = PermInnerProd(aniso_data%unstruct%uvec,aniso_data%unstruct%wvec, &
+    aniso_data%unstruct%dn%perm_uw = PermInnerProd(aniso_data%unstruct%uvec,aniso_data%unstruct%wvec, &
       perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
       perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
-    aniso_data%unstruct%perm_dn_vw = PermInnerProd(aniso_data%unstruct%vvec,aniso_data%unstruct%wvec, &
+    aniso_data%unstruct%dn%perm_vw = PermInnerProd(aniso_data%unstruct%vvec,aniso_data%unstruct%wvec, &
       perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
       perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
 
-    !Call PrintAnisoData(aniso_data)
+    Call PrintAnisoData(aniso_data)
   endif
 end subroutine RichardsUpdateAnisoData
 
