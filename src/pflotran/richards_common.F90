@@ -448,19 +448,27 @@ subroutine RichardsFluxAniso(aniso_data, &
   PetscReal :: v_darcy_aniso
 
   ! local
-  PetscReal :: k_up_xx, k_up_yy, k_up_zz, k_up_xy, k_up_yz, k_up_xz
-  PetscReal :: k_dn_xx, k_dn_yy, k_dn_zz, k_dn_xy, k_dn_yz, k_dn_xz
-  PetscReal :: dphi_x_up, dphi_x_dn, dphi_y_up, dphi_y_dn, dphi_z_up, dphi_z_dn
   PetscReal :: mu_up, mu_dn, rho_up, rho_dn, dummy
   PetscReal :: v_darcy_aniso_up, v_darcy_aniso_dn
   PetscReal :: dist_gravity  ! distance along gravity vector
   PetscReal :: gravity
 
+  ! local - structured grid case
+  PetscReal :: k_up_xx, k_up_yy, k_up_zz, k_up_xy, k_up_yz, k_up_xz
+  PetscReal :: k_dn_xx, k_dn_yy, k_dn_zz, k_dn_xy, k_dn_yz, k_dn_xz
+  PetscReal :: dphi_x_up, dphi_x_dn, dphi_y_up, dphi_y_dn, dphi_z_up, dphi_z_dn
+
+  ! local - unstructured grid case
+  PetscReal, pointer :: loc_gravity_up_adj(:), loc_gravity_dn_adj(:)
+  PetscReal :: dphi_v_up, dphi_v_dn, dphi_w_up, dphi_w_dn
+
   ! work data for calculations of anisotropic derivatives
   type(aniso_data_structured_type), pointer :: aniso_ds
   type(aniso_deriv_data_structured_type), pointer :: aniso_dds
+  type(aniso_data_unstructured_type), pointer :: aniso_du
   nullify(aniso_ds)
   nullify(aniso_dds)
+  nullify(aniso_du)
 
   ! Initialise output
   v_darcy_aniso = 0.d0
@@ -470,45 +478,44 @@ subroutine RichardsFluxAniso(aniso_data, &
   rho_dn = global_auxvar_dn%den(1) * FMWH2O
 
 
-  ! Permeability tensor to up/dn cells
-  k_up_xx = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_X)
-  k_up_yy = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_Y)
-  k_up_zz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_Z)
-  k_up_xy = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_XY)
-  k_up_yz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_YZ)
-  k_up_xz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_XZ)
-
-  k_dn_xx = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_X)
-  k_dn_yy = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_Y)
-  k_dn_zz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_Z)
-  k_dn_xy = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_XY)
-  k_dn_yz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_YZ)
-  k_dn_xz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_XZ)
-
-  ! allow off-diagonal terms to be uninitialised, in which case set to zero
-  if ( k_up_xy == UNINITIALIZED_DOUBLE ) then
-    k_up_xy = 0.d0
-  endif
-  if ( k_up_yz == UNINITIALIZED_DOUBLE ) then
-    k_up_yz = 0.d0
-  endif
-  if ( k_up_xz == UNINITIALIZED_DOUBLE ) then
-    k_up_xz = 0.d0
-  endif
-  if ( k_dn_xy == UNINITIALIZED_DOUBLE ) then
-    k_dn_xy = 0.d0
-  endif
-  if ( k_dn_yz == UNINITIALIZED_DOUBLE ) then
-    k_dn_yz = 0.d0
-  endif
-  if ( k_dn_xz == UNINITIALIZED_DOUBLE ) then
-    k_dn_xz = 0.d0
-  endif
-
-
   if(associated(aniso_data%struct)) then
     ! structured grid case
     aniso_ds => aniso_data%struct
+
+    ! Permeability tensor to up/dn cells
+    k_up_xx = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_X)
+    k_up_yy = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_Y)
+    k_up_zz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_Z)
+    k_up_xy = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_XY)
+    k_up_yz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_YZ)
+    k_up_xz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_XZ)
+
+    k_dn_xx = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_X)
+    k_dn_yy = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_Y)
+    k_dn_zz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_Z)
+    k_dn_xy = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_XY)
+    k_dn_yz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_YZ)
+    k_dn_xz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_XZ)
+
+    ! allow off-diagonal terms to be uninitialised, in which case set to zero
+    if ( k_up_xy == UNINITIALIZED_DOUBLE ) then
+      k_up_xy = 0.d0
+    endif
+    if ( k_up_yz == UNINITIALIZED_DOUBLE ) then
+      k_up_yz = 0.d0
+    endif
+    if ( k_up_xz == UNINITIALIZED_DOUBLE ) then
+      k_up_xz = 0.d0
+    endif
+    if ( k_dn_xy == UNINITIALIZED_DOUBLE ) then
+      k_dn_xy = 0.d0
+    endif
+    if ( k_dn_yz == UNINITIALIZED_DOUBLE ) then
+      k_dn_yz = 0.d0
+    endif
+    if ( k_dn_xz == UNINITIALIZED_DOUBLE ) then
+      k_dn_xz = 0.d0
+    endif
 
     ! components of grad P on connection, in the plane of the interface
     dphi_x_up = 0.d0
@@ -863,7 +870,87 @@ subroutine RichardsFluxAniso(aniso_data, &
 
       deallocate(aniso_dds)
     endif
+  else
+    ! unstructured grid case
+    aniso_du => aniso_data%unstruct
 
+!    theta_threshold = ... ! threshold angle for inclusion (radians)
+!    cos_tt = cos(theta_threshold)
+
+    dphi_v_up = 0
+    dphi_w_up = 0
+    dphi_v_dn = 0
+    dphi_w_dn = 0
+
+!    aniso_ddu%ddphi_v_dp_up     = 0 ! scalar
+!    aniso_ddu%ddphi_v_dp_up_adj = 0 ! array
+
+    ! upstream side - v
+    sum_wt_v_up = 0
+    do i=1,4  ! 4=MAX_VERT_PER_FACE
+      if (aniso_du%cell_id_up_adj(i) == 0) cycle
+      loc_gravity_up_adj = ... ! upstream adj gravity term
+      face_dist_up_adj = ... ! distance from face to upstream centroid
+      facenorm_dot_v = ... ! n.v where n is normal to face = cos(angle) since both are unit vecs
+      if( abs(facenorm_dot_v) > cos_tt ) then
+        wt_up = abs(facenorm_dot_v)
+        dphi_v_up = dphi_v_up + wt_up * ((aniso_du%pres_up_adj(i) - rho_up * loc_gravity_up_adj) &
+                                         - (global_auxvar_up%pres(1) - rho_up * aniso_du%loc_gravity_up) ) &
+                                      / ((aniso_du%face_dist_up+face_dist_up_adj) * facenorm_dot_v)
+        sum_wt_v_up = sum_wt_up + wt_up
+        if (calc_derivs .EQV. PETSC_TRUE) then
+          aniso_ddu%ddphi_v_dp_up        = -1.d0 * wt_up / ((aniso_du%face_dist_up+face_dist_up_adj) * facenorm_dot_v)
+          aniso_ddu%ddphi_v_dp_up_adj(i) =         wt_up / ((aniso_du%face_dist_up+face_dist_up_adj) * facenorm_dot_v)
+        endif
+      endif
+    enddo
+    dphi_v_up = dphi_v_up / sum_wt_v_up
+    if (calc_derivs .EQV. PETSC_TRUE) then
+!      aniso_ddu%ddphi_v_dp_up        = aniso_ddu%ddphi_v_dp_up / sum_wt_v_up
+!      do i=1,4  ! 4=MAX_VERT_PER_FACE
+!        facenorm_dot_v = ... ! n.v where n is normal to face = cos(angle) since both are unit vecs
+!        if( abs(facenorm_dot_v) > cos_tt ) then
+!          aniso_ddu%ddphi_v_dp_up_adj(i) = aniso_ddu%ddphi_v_dp_up_adj(i) / sum_wt_v_up
+!        endif
+!      enddo
+    endif
+
+    ! upstream side - w
+
+    ! upstream side - v
+
+    ! dnstream side - w
+
+    ! Calculate anisotropic darcy contribution in up/dn cells
+    v_darcy_aniso_up = -1.d0 * (k_up_uv * dphi_v_up + k_up_uw * dphi_w_up) * ukvr
+    v_darcy_aniso_dn = -1.d0 * (k_dn_uv * dphi_v_dn + k_dn_uw * dphi_w_dn) * ukvr
+    mu_up =       dist(-1) *dist(0)/k_up_uu  ! weight - up (dist part = dist to interface)
+   mu_dn = (1.d0-dist(-1))*dist(0)/k_dn_uu  ! weight - dn (dist part = dist to interface)
+    ! average up/dn components to obtain a consistent interface midpoint pressure
+    v_darcy_aniso = (mu_up*v_darcy_aniso_up + mu_dn*v_darcy_aniso_dn) / (mu_up + mu_dn)
+
+    if (calc_derivs .EQV. PETSC_TRUE) then
+!      ! CAN AVOID THESE aniso_ddu TERMS SINCE THEY ARE USED IMMEDIATELY BELOW - REPLACE WITH TMPs
+!      aniso_ddu%dv_darcy_aniso_up_dp_up = -1.0d0 * (k_up_uv * aniso_ddu%ddphi_v_dp_up &
+!                                                    k_up_uw * aniso_ddu%ddphi_w_dp_up) * ukvr
+!      aniso_ddu%dv_darcy_aniso_dn_dp_dn = -1.0d0 * (k_dn_uv * aniso_ddu%ddphi_v_dp_dn &
+!                                                    k_dn_uw * aniso_ddu%ddphi_w_dp_dn) * ukvr
+!      do i=1,4  ! 4=MAX_VERT_PER_FACE
+!        aniso_ddu%dv_darcy_aniso_up_dp_up_adj(i) = -1.0d0 * (k_up_uv * aniso_ddu%ddphi_v_dp_up_adj(i) &
+!                                                             k_up_uv * aniso_ddu%ddphi_v_dp_up_adj(i)) * ukvr
+!        aniso_ddu%dv_darcy_aniso_dn_dp_dn_adj(i) = -1.0d0 * (k_dn_uv * aniso_ddu%ddphi_v_dp_dn_adj(i) &
+!                                                             k_dn_uv * aniso_ddu%ddphi_v_dp_dn_adj(i)) * ukvr
+!      enddo
+!
+!      aniso_du%dv_darcy_aniso_dp_up = (mu_up/(mu_up+mu_dn))*aniso_ddu%dv_darcy_aniso_up_dp_up
+!      aniso_du%dv_darcy_aniso_dp_dn = (mu_dn/(mu_up+mu_dn))*aniso_ddu%dv_darcy_aniso_dn_dp_dn
+!      do i=1,4  ! 4=MAX_VERT_PER_FACE
+!        aniso_du%dv_darcy_aniso_dp_up_adj(i) = (mu_up/(mu_up+mu_dn))*aniso_ddu%dv_darcy_aniso_up_dp_up_adj(i)
+!        aniso_du%dv_darcy_aniso_dp_dn_adj(i) = (mu_dn/(mu_up+mu_dn))*aniso_ddu%dv_darcy_aniso_dn_dp_dn_adj(i)
+!      enddo
+!    endif
+!
+!    deallocate(aniso_ddu)
   endif
 end subroutine RichardsFluxAniso
 
@@ -912,12 +999,28 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
   
   call ConnectionCalculateDistances(dist,option%gravity,dd_up,dd_dn, &
                                     dist_gravity,upweight)
-  ! sjb - The following calls to PermeabilityTensorToScalar require dist and perm
-  !       to be expressed in (u,v,w) coords in the unstructured anisotropy case
-  !       This perm data is stored in aniso_data%unstruct%perm_up_uu etc.
-  !       (The standard versions of dist are perpendicular to the face, so can be used directly.)
-  call material_auxvar_up%PermeabilityTensorToScalar(dist,perm_up)
-  call material_auxvar_dn%PermeabilityTensorToScalar(dist,perm_dn)
+  if(.not. associated(aniso_data)) then
+    call material_auxvar_up%PermeabilityTensorToScalar(dist,perm_up)
+    call material_auxvar_dn%PermeabilityTensorToScalar(dist,perm_dn)
+  else
+    ! Flux component due head gradients directly across the interface can be
+    ! calculated using the isotropic approach provided that permeabilty is set
+    ! consistent with anisotropic calculation (avoid collapsing to scalar).
+    ! Additional anisotropic terms due to tangential head gradients are added
+    ! by later call to RichardsFluxAniso()
+    if(associated(aniso_data%struct)) then
+      ! sjb - can do same calls as isotropic case here, should just extract
+      !       k_xx, k_yy or k_zz depending on orientation
+      ! sjb - would be better to be specific here rather than rely on
+      !       TensorToScalar call to do the right thing
+      call material_auxvar_up%PermeabilityTensorToScalar(dist,perm_up)
+      call material_auxvar_dn%PermeabilityTensorToScalar(dist,perm_dn)
+    else
+      ! u-direction is chosen to be normal to the interface, so
+      perm_up = aniso_data%unstruct%perm_up_uu
+      perm_dn = aniso_data%unstruct%perm_dn_uu
+    endif
+  endif
 
   Dq = (perm_up * perm_dn)/(dd_up*perm_dn + dd_dn*perm_up)
   

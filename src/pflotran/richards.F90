@@ -724,7 +724,7 @@ subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_data)
 
   PetscInt :: ghosted_id_adj(1:12)
   PetscReal :: ghosted_pres_adj(1:12)
-  PetscInt :: gi
+  PetscInt :: i
 
   PetscReal, pointer :: perm(:)
   PetscInt :: ghosted_id
@@ -747,11 +747,11 @@ subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_data)
     ghosted_id_adj(11) = aniso_data%struct%id_dn_adjZm
     ghosted_id_adj(12) = aniso_data%struct%id_dn_adjZp
 
-    do gi=1,12
-      if (ghosted_id_adj(gi) == -1) then
-        ghosted_pres_adj(gi) = 0
+    do i=1,12
+      if (ghosted_id_adj(i) == -1) then
+        ghosted_pres_adj(i) = 0
       else
-        ghosted_pres_adj(gi) = global_auxvars(ghosted_id_adj(gi))%pres(1)
+        ghosted_pres_adj(i) = global_auxvars(ghosted_id_adj(i))%pres(1)
       endif
     end do
 
@@ -771,6 +771,16 @@ subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_data)
 
   elseif (associated(aniso_data%unstruct)) then
     ! unstructured grid case
+
+    ! Pressure adjacency data
+    do i=1,4 ! MAX_VERT_PER_FACE
+      if( aniso_data%unstruct%cell_id_up_adj(i) .ne. 0 ) then
+        aniso_data%unstruct%pres_up_adj(i) = global_auxvars(aniso_data%unstruct%cell_id_up_adj(i))%pres(1)
+      endif
+      if( aniso_data%unstruct%cell_id_dn_adj(i) .ne. 0 ) then
+        aniso_data%unstruct%pres_dn_adj(i) = global_auxvars(aniso_data%unstruct%cell_id_dn_adj(i))%pres(1)
+      endif
+    enddo
 
     ! compute K' = J K J^T in up/dnstream cells, where J = transformation (x,y,z) -> (u,v,w)
     ! NOTE performing this update for every step - expensive.  Could omit if permeabilty was known to be const.
@@ -819,7 +829,7 @@ subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_data)
       perm(perm_xx_index),perm(perm_yy_index),perm(perm_zz_index),&
       perm(perm_xy_index),perm(perm_xz_index),perm(perm_yz_index))
 
-    ! Call PrintAnisoData(aniso_data)
+    !Call PrintAnisoData(aniso_data)
   endif
 end subroutine RichardsUpdateAnisoData
 
