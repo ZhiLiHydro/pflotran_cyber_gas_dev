@@ -2339,6 +2339,14 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
     do iconn = 1,nconn
       if (.not.associated(connections%aniso_data(iconn)%unstruct)) then
         allocate(connections%aniso_data(iconn)%unstruct)
+        allocate(connections%aniso_data(iconn)%unstruct%dv_darcy_aniso_dp_up_adj(MAX_VERT_PER_FACE))
+        allocate(connections%aniso_data(iconn)%unstruct%dv_darcy_aniso_dp_dn_adj(MAX_VERT_PER_FACE))
+        allocate(connections%aniso_data(iconn)%unstruct%Jup_adj(MAX_VERT_PER_FACE))
+        allocate(connections%aniso_data(iconn)%unstruct%Jdn_adj(MAX_VERT_PER_FACE))
+        connections%aniso_data(iconn)%unstruct%dv_darcy_aniso_dp_up_adj = 0
+        connections%aniso_data(iconn)%unstruct%dv_darcy_aniso_dp_dn_adj = 0
+        connections%aniso_data(iconn)%unstruct%Jup_adj = 0
+        connections%aniso_data(iconn)%unstruct%Jdn_adj = 0
         ! allocate adjacency info
         allocate(connections%aniso_data(iconn)%unstruct%up)
         allocate(connections%aniso_data(iconn)%unstruct%dn)
@@ -2508,10 +2516,10 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
     enddo
 
     ! dbg
-    do iconn = 1,nconn
-      aniso_data => connections%aniso_data(iconn)
-      Call PrintAnisoData(aniso_data)
-    enddo
+!    do iconn = 1,nconn
+!      aniso_data => connections%aniso_data(iconn)
+!      Call PrintAnisoData(aniso_data)
+!    enddo
 
     ! Loop over connections again and store ptrs for to adjacent aniso_data_unstructured
     do iconn = 1,nconn
@@ -2545,10 +2553,10 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
     enddo
 
     ! dbg
-    do iconn = 1,nconn
-      aniso_data => connections%aniso_data(iconn)
-      Call PrintAnisoData(aniso_data)
-    enddo
+!    do iconn = 1,nconn
+!      aniso_data => connections%aniso_data(iconn)
+!      Call PrintAnisoData(aniso_data)
+!    enddo
   endif
 
   ! Save area and centroid of faces

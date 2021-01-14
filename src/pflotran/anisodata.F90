@@ -211,6 +211,14 @@ module Anisotropy_Data_module
     PetscReal, pointer :: uvec(:)      ! u-direction unit vector (normal to face, +ve dnstream) - in (x,y,z) coords
     PetscReal, pointer :: vvec(:)      ! v-direction unit vector (in plane of face) - in (x,y,z) coords
     PetscReal, pointer :: wvec(:)      ! w-direction unit vector (in plane of face) - in (x,y,z) coords
+
+    ! derivative data
+    PetscReal :: dv_darcy_aniso_dp_up
+    PetscReal :: dv_darcy_aniso_dp_dn
+    PetscReal, pointer :: dv_darcy_aniso_dp_up_adj(:)
+    PetscReal, pointer :: dv_darcy_aniso_dp_dn_adj(:)
+    PetscReal, pointer :: Jup_adj(:)
+    PetscReal, pointer :: Jdn_adj(:)
   end type aniso_data_unstructured_type
 
   type, public :: aniso_deriv_data_unstructured_type
@@ -223,10 +231,6 @@ module Anisotropy_Data_module
     PetscReal, pointer :: ddphi_v_dp_dn_adj(:)
     PetscReal :: ddphi_w_dp_dn
     PetscReal, pointer :: ddphi_w_dp_dn_adj(:)
-    PetscReal :: dv_darcy_aniso_up_dp_up
-    PetscReal :: dv_darcy_aniso_dn_dp_dn
-    PetscReal, pointer :: dv_darcy_aniso_up_dp_up_adj(:)
-    PetscReal, pointer :: dv_darcy_aniso_dn_dp_dn_adj(:)
   end type aniso_deriv_data_unstructured_type
 
   type, public :: aniso_data_type
