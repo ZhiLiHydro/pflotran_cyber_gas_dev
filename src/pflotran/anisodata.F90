@@ -140,7 +140,7 @@ module Anisotropy_Data_module
 
 
   type, public :: aniso_deriv_data_structured_type
-    !structure for storing work data for anisotropic derivative calculations
+    ! structure for storing work data for anisotropic derivative calculations - structured case
     PetscReal :: ddphi_x_dp_up_adjXm, ddphi_x_dp_dn_adjXm, ddphi_x_dp_up_adjXp, ddphi_x_dp_dn_adjXp
     PetscReal :: ddphi_y_dp_up_adjYm, ddphi_y_dp_dn_adjYm, ddphi_y_dp_up_adjYp, ddphi_y_dp_dn_adjYp
     PetscReal :: ddphi_z_dp_up_adjZm, ddphi_z_dp_dn_adjZm, ddphi_z_dp_up_adjZp, ddphi_z_dp_dn_adjZp
@@ -163,35 +163,75 @@ module Anisotropy_Data_module
     PetscReal :: dv_darcy_aniso_dn_dp_dn
   end type aniso_deriv_data_structured_type
 
+  ! workarounds to allow array of pointers to be stored
+  type, public :: adu_ptr_container
+    type(aniso_data_unstructured_type), pointer:: ptr => null()
+  end type adu_ptr_container
+  type, public :: aduc_ptr_container
+    type(aniso_data_unstructured_cell_type), pointer:: ptr => null()
+  end type aduc_ptr_container
+
+  ! represents adjacency data for one of the cells (up or dn) on an interface
+  type, public :: aniso_data_unstructured_cell_type
+    PetscInt :: cell_id        ! id of neighbouring cell (up or dn)
+    ! adjacency info
+    PetscInt, pointer :: cell_id_adj(:) ! ids of adjacent cells that share a vertex with the connection face
+    PetscInt, pointer :: face_id_adj(:) ! ids of faces neighbouring cell that share a vertex with the connection face
+
+    type(adu_ptr_container), pointer :: adu_face_adj(:) ! aniso data for face_id_adj(:)
+    type(aduc_ptr_container), pointer :: adu_cell_adj(:) ! aniso data for cell_id_adj(:)
+
+    ! g.c, where c is cell centre (this are differenced to get g.d, where d is distance between points)
+    PetscReal :: loc_gravity
+
+    ! distances from faces to cell centres
+    PetscReal :: face_dist
+
+    ! Permeability w.r.t. (u,v,w) coords in cells - working data, overwritten throughout simulation (in case timedep)
+    PetscReal :: perm_uu
+    PetscReal :: perm_vv
+    PetscReal :: perm_ww
+    PetscReal :: perm_uv
+    PetscReal :: perm_uw
+    PetscReal :: perm_vw
+
+    ! Adjacent pressure data - working data, overwritten throughout simulation
+    PetscReal, pointer :: pres_adj(:) ! pressure adjacent to upwind cell
+
+  end type aniso_data_unstructured_cell_type
+
   type, public :: aniso_data_unstructured_type
     ! not strictly necessary here - could be inferred from parent connection_set, but convenient to pass with single ptr
     PetscInt :: conn_face_id      ! id of connection face
-    PetscInt :: cell_id_up        ! id of upstream cell
-    PetscInt :: cell_id_dn        ! id of downstream cell
-    ! adjacency info to up/dnstream cells
-    PetscInt, pointer :: cell_id_up_adj(:) ! ids of cells adjacent to the upwind   cell that share a vertex with the connection face
-    PetscInt, pointer :: cell_id_dn_adj(:) ! ids of cells adjacent to the downwind cell that share a vertex with the connection face
-    PetscInt, pointer :: face_id_up_adj(:) ! ids of faces of the upwind   cell that share a vertex with the connection face
-    PetscInt, pointer :: face_id_dn_adj(:) ! ids of faces of the downwind cell that share a vertex with the connection face
+
+    type(aniso_data_unstructured_cell_type), pointer :: up => null()
+    type(aniso_data_unstructured_cell_type), pointer :: dn => null()
+
     ! (u,v,w) is a coord system relative to face.
     PetscReal, pointer :: uvec(:)      ! u-direction unit vector (normal to face, +ve dnstream) - in (x,y,z) coords
     PetscReal, pointer :: vvec(:)      ! v-direction unit vector (in plane of face) - in (x,y,z) coords
     PetscReal, pointer :: wvec(:)      ! w-direction unit vector (in plane of face) - in (x,y,z) coords
 
-    ! Permeability w.r.t. (u,v,w) coords in up/dnstream cells - working data, overwritten throughout simulation (in case timedep)
-    PetscReal :: perm_up_uu
-    PetscReal :: perm_up_vv
-    PetscReal :: perm_up_ww
-    PetscReal :: perm_up_uv
-    PetscReal :: perm_up_uw
-    PetscReal :: perm_up_vw
-    PetscReal :: perm_dn_uu
-    PetscReal :: perm_dn_vv
-    PetscReal :: perm_dn_ww
-    PetscReal :: perm_dn_uv
-    PetscReal :: perm_dn_uw
-    PetscReal :: perm_dn_vw
+    ! derivative data
+    PetscReal :: dv_darcy_aniso_dp_up
+    PetscReal :: dv_darcy_aniso_dp_dn
+    PetscReal, pointer :: dv_darcy_aniso_dp_up_adj(:)
+    PetscReal, pointer :: dv_darcy_aniso_dp_dn_adj(:)
+    PetscReal, pointer :: Jup_adj(:)
+    PetscReal, pointer :: Jdn_adj(:)
   end type aniso_data_unstructured_type
+
+  type, public :: aniso_deriv_data_unstructured_type
+    ! structure for storing work data for anisotropic derivative calculations - unstrcutured case
+    PetscReal :: ddphi_v_dp_up
+    PetscReal, pointer :: ddphi_v_dp_up_adj(:)
+    PetscReal :: ddphi_w_dp_up
+    PetscReal, pointer :: ddphi_w_dp_up_adj(:)
+    PetscReal :: ddphi_v_dp_dn
+    PetscReal, pointer :: ddphi_v_dp_dn_adj(:)
+    PetscReal :: ddphi_w_dp_dn
+    PetscReal, pointer :: ddphi_w_dp_dn_adj(:)
+  end type aniso_deriv_data_unstructured_type
 
   type, public :: aniso_data_type
     type( aniso_data_structured_type), pointer :: struct => null()
@@ -244,20 +284,26 @@ module Anisotropy_Data_module
         write(*, "('aniso_data unstructured [',i3,'/',i3,'] face_id = ', i4)") &
           rank,size,aniso_data%unstruct%conn_face_id
         ! geometry
-        write(*, "('  cell_id_up = ', i4)") aniso_data%unstruct%cell_id_up
-        write(*, "('  cell_id_dn = ', i4)") aniso_data%unstruct%cell_id_dn
+        write(*, "('  up cell_id = ', i4)") aniso_data%unstruct%up%cell_id
+        write(*, "('  dn cell_id = ', i4)") aniso_data%unstruct%dn%cell_id
         write(*, "('  upstream')")
         do i=1,4 ! 4=MAX_VERT_PER_FACE
-          if (aniso_data%unstruct%cell_id_up_adj(i) == 0) cycle
-          write(*, "('    ',i2,'. adj_cell_id=',i4,' adj_face_id=',i4)") &
-            i,aniso_data%unstruct%cell_id_up_adj(i), aniso_data%unstruct%face_id_up_adj(i)
+          if (aniso_data%unstruct%up%cell_id_adj(i) == 0) cycle
+          write(*, "('    ',i2,'. adj_cell_id=',i4,' adj_face_id=',i4,' (check=',i4,',',i4,')')") &
+            i,aniso_data%unstruct%up%cell_id_adj(i), aniso_data%unstruct%up%face_id_adj(i), &
+            aniso_data%unstruct%up%adu_cell_adj(i)%ptr%cell_id, aniso_data%unstruct%up%adu_face_adj(i)%ptr%conn_face_id
         enddo
         write(*, "('  downstream')")
         do i=1,4 !4=MAX_VERT_PER_FACE
-          if (aniso_data%unstruct%cell_id_up_adj(i) == 0) cycle
-          write(*, "('    ',i2,'. adj_cell_id=',i4,' adj_face_id=',i4)") &
-            i,aniso_data%unstruct%cell_id_dn_adj(i), aniso_data%unstruct%face_id_dn_adj(i)
+          if (aniso_data%unstruct%dn%cell_id_adj(i) == 0) cycle
+          write(*, "('    ',i2,'. adj_cell_id=',i4,' adj_face_id=',i4,' (check=',i4,',',i4,')')") &
+            i,aniso_data%unstruct%dn%cell_id_adj(i), aniso_data%unstruct%dn%face_id_adj(i), &
+            aniso_data%unstruct%dn%adu_cell_adj(i)%ptr%cell_id, aniso_data%unstruct%dn%adu_face_adj(i)%ptr%conn_face_id
         enddo
+        ! face - cell up/dn distance
+        write(*, "('  distances')")
+        write(*, "('    face->up = ',e10.3)") aniso_data%unstruct%up%face_dist
+        write(*, "('    face->dn = ',e10.3)") aniso_data%unstruct%dn%face_dist
         ! transformed coords for face
         write(*, "('  local coords')")
         write(*, "('    u = (',e10.3,',',e10.3,',',e10.3,')')") &
@@ -269,17 +315,28 @@ module Anisotropy_Data_module
         ! transformed perm for face
         write(*, "('  perm up,dn')")
         write(*, "('    perm_uu = ',e10.3,',',e10.3)") &
-          aniso_data%unstruct%perm_up_uu, aniso_data%unstruct%perm_dn_uu
+          aniso_data%unstruct%up%perm_uu, aniso_data%unstruct%dn%perm_uu
         write(*, "('    perm_vv = ',e10.3,',',e10.3)") &
-          aniso_data%unstruct%perm_up_vv, aniso_data%unstruct%perm_dn_vv
+          aniso_data%unstruct%up%perm_vv, aniso_data%unstruct%dn%perm_vv
         write(*, "('    perm_ww = ',e10.3,',',e10.3)") &
-          aniso_data%unstruct%perm_up_ww, aniso_data%unstruct%perm_dn_ww
+          aniso_data%unstruct%up%perm_ww, aniso_data%unstruct%dn%perm_ww
         write(*, "('    perm_uv = ',e10.3,',',e10.3)") &
-          aniso_data%unstruct%perm_up_uv, aniso_data%unstruct%perm_dn_uv
+          aniso_data%unstruct%up%perm_uv, aniso_data%unstruct%dn%perm_uv
         write(*, "('    perm_uw = ',e10.3,',',e10.3)") &
-          aniso_data%unstruct%perm_up_uw, aniso_data%unstruct%perm_dn_uw
+          aniso_data%unstruct%up%perm_uw, aniso_data%unstruct%dn%perm_uw
         write(*, "('    perm_vw = ',e10.3,',',e10.3)") &
-          aniso_data%unstruct%perm_up_vw, aniso_data%unstruct%perm_dn_vw
+          aniso_data%unstruct%up%perm_vw, aniso_data%unstruct%dn%perm_vw
+        ! pressures
+        write(*, "('  Pressures - upstream')")
+        do i=1,4 !4=MAX_VERT_PER_FACE
+          if (aniso_data%unstruct%up%cell_id_adj(i) == 0) cycle
+          write(*, "('    ',i2,'. pres_adj=',e10.3)") i,aniso_data%unstruct%up%pres_adj(i)
+        enddo
+        write(*, "('  Pressures - downstream')")
+        do i=1,4 !4=MAX_VERT_PER_FACE
+          if (aniso_data%unstruct%dn%cell_id_adj(i) == 0) cycle
+          write(*, "('    ',i2,'. pres_adj=',e10.3)") i,aniso_data%unstruct%dn%pres_adj(i)
+        enddo
 
       endif
     end subroutine

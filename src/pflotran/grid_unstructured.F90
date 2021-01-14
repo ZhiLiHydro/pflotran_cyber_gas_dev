@@ -1849,7 +1849,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
 
   type( aniso_data_type), pointer :: aniso_data
   type( aniso_data_unstructured_type), pointer :: aniso_data_unstruct
-  PetscInt :: count_up_adj, count_dn_adj, iupdn
+  PetscInt :: count_up_adj, count_dn_adj, iupdn, conn_id
   PetscReal :: dot
 
   character(len=MAXSTRINGLENGTH) :: string  
@@ -2145,7 +2145,9 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
   
   allocate(unstructured_grid%face_area(face_count))
   allocate(unstructured_grid%connection_to_face(nconn))
+  allocate(unstructured_grid%face_to_connection(face_count))
   unstructured_grid%connection_to_face = 0
+  unstructured_grid%face_to_connection = 0
 
   ! loop over connection again
   iconn = 0
@@ -2172,6 +2174,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
         enddo
         if (found) then
           unstructured_grid%connection_to_face(iconn) = face_id
+          unstructured_grid%face_to_connection(face_id) = iconn
         else
           write(string,*) option%myrank,local_id,dual_local_id 
           option%io_buffer = 'face not found in connection loop' // trim(string)
@@ -2336,22 +2339,41 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
     do iconn = 1,nconn
       if (.not.associated(connections%aniso_data(iconn)%unstruct)) then
         allocate(connections%aniso_data(iconn)%unstruct)
+        allocate(connections%aniso_data(iconn)%unstruct%dv_darcy_aniso_dp_up_adj(MAX_VERT_PER_FACE))
+        allocate(connections%aniso_data(iconn)%unstruct%dv_darcy_aniso_dp_dn_adj(MAX_VERT_PER_FACE))
+        allocate(connections%aniso_data(iconn)%unstruct%Jup_adj(MAX_VERT_PER_FACE))
+        allocate(connections%aniso_data(iconn)%unstruct%Jdn_adj(MAX_VERT_PER_FACE))
+        connections%aniso_data(iconn)%unstruct%dv_darcy_aniso_dp_up_adj = 0
+        connections%aniso_data(iconn)%unstruct%dv_darcy_aniso_dp_dn_adj = 0
+        connections%aniso_data(iconn)%unstruct%Jup_adj = 0
+        connections%aniso_data(iconn)%unstruct%Jdn_adj = 0
         ! allocate adjacency info
-        allocate(connections%aniso_data(iconn)%unstruct%cell_id_up_adj(MAX_VERT_PER_FACE))
-        allocate(connections%aniso_data(iconn)%unstruct%cell_id_dn_adj(MAX_VERT_PER_FACE))
-        allocate(connections%aniso_data(iconn)%unstruct%face_id_up_adj(MAX_VERT_PER_FACE))
-        allocate(connections%aniso_data(iconn)%unstruct%face_id_dn_adj(MAX_VERT_PER_FACE))
-        connections%aniso_data(iconn)%unstruct%cell_id_up_adj = 0
-        connections%aniso_data(iconn)%unstruct%cell_id_dn_adj = 0
-        connections%aniso_data(iconn)%unstruct%face_id_up_adj = 0
-        connections%aniso_data(iconn)%unstruct%face_id_dn_adj = 0
+        allocate(connections%aniso_data(iconn)%unstruct%up)
+        allocate(connections%aniso_data(iconn)%unstruct%dn)
+        allocate(connections%aniso_data(iconn)%unstruct%up%cell_id_adj(MAX_VERT_PER_FACE))
+        allocate(connections%aniso_data(iconn)%unstruct%dn%cell_id_adj(MAX_VERT_PER_FACE))
+        allocate(connections%aniso_data(iconn)%unstruct%up%face_id_adj(MAX_VERT_PER_FACE))
+        allocate(connections%aniso_data(iconn)%unstruct%dn%face_id_adj(MAX_VERT_PER_FACE))
+        allocate(connections%aniso_data(iconn)%unstruct%up%adu_face_adj(MAX_VERT_PER_FACE))
+        allocate(connections%aniso_data(iconn)%unstruct%dn%adu_face_adj(MAX_VERT_PER_FACE))
+        allocate(connections%aniso_data(iconn)%unstruct%up%adu_cell_adj(MAX_VERT_PER_FACE))
+        allocate(connections%aniso_data(iconn)%unstruct%dn%adu_cell_adj(MAX_VERT_PER_FACE))
+        connections%aniso_data(iconn)%unstruct%up%cell_id_adj = 0
+        connections%aniso_data(iconn)%unstruct%dn%cell_id_adj = 0
+        connections%aniso_data(iconn)%unstruct%up%face_id_adj = 0
+        connections%aniso_data(iconn)%unstruct%dn%face_id_adj = 0
         ! allocate (u,v,w) coords
         allocate(connections%aniso_data(iconn)%unstruct%uvec(1:3))
         allocate(connections%aniso_data(iconn)%unstruct%vvec(1:3))
         allocate(connections%aniso_data(iconn)%unstruct%wvec(1:3))
-        connections%aniso_data(iconn)%unstruct%uvec = 0
-        connections%aniso_data(iconn)%unstruct%vvec = 0
-        connections%aniso_data(iconn)%unstruct%wvec = 0
+        connections%aniso_data(iconn)%unstruct%uvec = 0.d0
+        connections%aniso_data(iconn)%unstruct%vvec = 0.d0
+        connections%aniso_data(iconn)%unstruct%wvec = 0.d0
+        ! allocate pressure adjacency data
+        allocate(connections%aniso_data(iconn)%unstruct%up%pres_adj(MAX_VERT_PER_FACE))
+        allocate(connections%aniso_data(iconn)%unstruct%dn%pres_adj(MAX_VERT_PER_FACE))
+        connections%aniso_data(iconn)%unstruct%up%pres_adj = 0.d0
+        connections%aniso_data(iconn)%unstruct%dn%pres_adj = 0.d0
       endif
       aniso_data_unstruct => connections%aniso_data(iconn)%unstruct
 
@@ -2361,16 +2383,31 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
 
       do iupdn = 1,2
         if (iupdn==1) then
-          ! determining upstream adjacency
+          ! upstream
           count_up_adj = 0
           local_id = connections%id_up(iconn)
         else
-          ! determining upstream adjacency
+          ! downstream
           count_dn_adj = 0
           local_id = connections%id_dn(iconn)
         endif
-        ! Loop over faces of cell
-        do iface = 1, unstructured_grid%cell_vertices(0,local_id)
+
+        ! Gravity terms up/dn
+        v1 = (/ grid_x(local_id), grid_y(local_id), grid_z(local_id) /)
+        if (iupdn==1) then
+          ! upstream
+          aniso_data_unstruct%up%cell_id = local_id
+          aniso_data_unstruct%up%loc_gravity = DotProduct(option%gravity,v1)
+        else
+          ! downstream
+          aniso_data_unstruct%dn%cell_id = local_id
+          aniso_data_unstruct%dn%loc_gravity = DotProduct(option%gravity,v1)
+        endif
+
+        ! Loop over faces of cell - determine adjacency
+        cell_type = unstructured_grid%cell_type(local_id)
+        nfaces = UCellGetNFaces(cell_type,option)
+        do iface = 1, nfaces
           face_id2 = cell_to_face(iface,local_id)
           ! Identify faces that share an edge (vertex) with current connection.  Skip the connection face
           if (face_id2 == face_id) cycle
@@ -2402,17 +2439,17 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
               endif
             enddo
             if (found) then
-              ! record adjacency info. (cell_id2 is adjacent)
-              if (iupdn==1) then
-                count_up_adj = count_up_adj + 1
-                aniso_data_unstruct%cell_id_up = local_id
-                aniso_data_unstruct%cell_id_up_adj(count_up_adj) = cell_id2
-                aniso_data_unstruct%face_id_up_adj(count_up_adj) = face_id2
-              else
-                count_dn_adj = count_dn_adj + 1
-                aniso_data_unstruct%cell_id_dn = local_id
-                aniso_data_unstruct%cell_id_dn_adj(count_dn_adj) = cell_id2
-                aniso_data_unstruct%face_id_dn_adj(count_dn_adj) = face_id2
+              if(cell_id2 .ne. 0) then ! only store interior interfaces - not boundaries
+                ! record adjacency info. (cell_id2 is adjacent)
+                if (iupdn==1) then
+                  count_up_adj = count_up_adj + 1
+                  aniso_data_unstruct%up%cell_id_adj(count_up_adj) = cell_id2
+                  aniso_data_unstruct%up%face_id_adj(count_up_adj) = face_id2
+                else
+                  count_dn_adj = count_dn_adj + 1
+                  aniso_data_unstruct%dn%cell_id_adj(count_dn_adj) = cell_id2
+                  aniso_data_unstruct%dn%face_id_adj(count_dn_adj) = face_id2
+                endif
               endif
             else
               write(string,*) option%myrank,local_id,dual_local_id
@@ -2424,12 +2461,12 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
       enddo
 
       ! compute (u,v,w) coord vecs (u +ve dnstream)
-      point_up%x = grid_x(aniso_data_unstruct%cell_id_up)
-      point_up%y = grid_y(aniso_data_unstruct%cell_id_up)
-      point_up%z = grid_z(aniso_data_unstruct%cell_id_up)
-      point_dn%x = grid_x(aniso_data_unstruct%cell_id_dn)
-      point_dn%y = grid_y(aniso_data_unstruct%cell_id_dn)
-      point_dn%z = grid_z(aniso_data_unstruct%cell_id_dn)
+      point_up%x = grid_x(aniso_data_unstruct%up%cell_id)
+      point_up%y = grid_y(aniso_data_unstruct%up%cell_id)
+      point_up%z = grid_z(aniso_data_unstruct%up%cell_id)
+      point_dn%x = grid_x(aniso_data_unstruct%dn%cell_id)
+      point_dn%y = grid_y(aniso_data_unstruct%dn%cell_id)
+      point_dn%z = grid_z(aniso_data_unstruct%dn%cell_id)
       v1(1) = point_dn%x-point_up%x
       v1(2) = point_dn%y-point_up%y
       v1(3) = point_dn%z-point_up%z
@@ -2465,12 +2502,61 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
 
       vcross = CrossProduct(aniso_data_unstruct%uvec,aniso_data_unstruct%vvec)
       aniso_data_unstruct%wvec = vcross / sqrt(DotProduct(vcross,vcross)) ! (should have mag=1 anyway)
+
+      ! Calculate distances face-centres
+      v1(1) = point_up%x-point1%x
+      v1(2) = point_up%y-point1%y
+      v1(3) = point_up%z-point1%z
+      aniso_data_unstruct%up%face_dist = abs(DotProduct(v1,aniso_data_unstruct%uvec)) ! | (P_up - P1).n |
+      v1(1) = point_dn%x-point1%x
+      v1(2) = point_dn%y-point1%y
+      v1(3) = point_dn%z-point1%z
+      aniso_data_unstruct%dn%face_dist = abs(DotProduct(v1,aniso_data_unstruct%uvec)) ! | (P_dn - P1).n |
+
     enddo
 
-    !do iconn = 1,nconn
-    !  aniso_data => connections%aniso_data(iconn)
-    !  Call PrintAnisoData(aniso_data)
-    !enddo
+    ! dbg
+!    do iconn = 1,nconn
+!      aniso_data => connections%aniso_data(iconn)
+!      Call PrintAnisoData(aniso_data)
+!    enddo
+
+    ! Loop over connections again and store ptrs for to adjacent aniso_data_unstructured
+    do iconn = 1,nconn
+      aniso_data_unstruct => connections%aniso_data(iconn)%unstruct
+      do iface = 1,MAX_VERT_PER_FACE
+        ! up
+        face_id = aniso_data_unstruct%up%face_id_adj(iface)
+        if(face_id .ne. 0) then
+          conn_id = unstructured_grid%face_to_connection(face_id)
+          aniso_data_unstruct%up%adu_face_adj(iface)%ptr => connections%aniso_data(conn_id)%unstruct
+          ! store ptr to aniso data for adjacent cell
+          if( aniso_data_unstruct%up%cell_id == connections%aniso_data(conn_id)%unstruct%up%cell_id ) then ! dn is adj
+            aniso_data_unstruct%up%adu_cell_adj(iface)%ptr => connections%aniso_data(conn_id)%unstruct%dn
+          else ! up is adj
+            aniso_data_unstruct%up%adu_cell_adj(iface)%ptr => connections%aniso_data(conn_id)%unstruct%up
+          endif
+        endif
+        ! dn
+        face_id = aniso_data_unstruct%dn%face_id_adj(iface)
+        if(face_id .ne. 0) then
+          conn_id = unstructured_grid%face_to_connection(face_id)
+          aniso_data_unstruct%dn%adu_face_adj(iface)%ptr => connections%aniso_data(conn_id)%unstruct
+          ! store ptr to aniso data for adjacent cell
+          if( aniso_data_unstruct%dn%cell_id == connections%aniso_data(conn_id)%unstruct%dn%cell_id ) then ! up is adj
+            aniso_data_unstruct%dn%adu_cell_adj(iface)%ptr => connections%aniso_data(conn_id)%unstruct%up
+          else ! dn is adj
+            aniso_data_unstruct%dn%adu_cell_adj(iface)%ptr => connections%aniso_data(conn_id)%unstruct%dn
+          endif
+        endif
+      enddo
+    enddo
+
+    ! dbg
+!    do iconn = 1,nconn
+!      aniso_data => connections%aniso_data(iconn)
+!      Call PrintAnisoData(aniso_data)
+!    enddo
   endif
 
   ! Save area and centroid of faces

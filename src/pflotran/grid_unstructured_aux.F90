@@ -47,6 +47,7 @@ module Grid_Unstructured_Aux_module
     PetscInt, pointer :: cell_vertices(:,:) ! vertices for each grid cell (NO LONGER zero-based)
     PetscInt, pointer :: face_to_cell_ghosted(:,:) !
     PetscInt, pointer :: connection_to_face(:)
+    PetscInt, pointer :: face_to_connection(:)
     PetscInt :: upwind_fraction_method ! method used to calculate upwind fraction
 !geh: Should not need face_to_vertex_nindex() as one could use face_to_vertex() 
 !     and vertex_ids_nindex() to get the same result.
@@ -270,6 +271,7 @@ function UGridCreate()
   nullify(unstructured_grid%vertices)
   nullify(unstructured_grid%cell_neighbors_local_ghosted)
   nullify(unstructured_grid%connection_to_face)
+  nullify(unstructured_grid%face_to_connection)
   nullify(unstructured_grid%face_centroid)
   nullify(unstructured_grid%face_area)
   nullify(unstructured_grid%nat_ids_of_other_grid)
@@ -2069,6 +2071,7 @@ subroutine UGridDestroy(unstructured_grid)
   call DeallocateArray(unstructured_grid%cell_vertices)
   call DeallocateArray(unstructured_grid%face_to_cell_ghosted)
   call DeallocateArray(unstructured_grid%connection_to_face)
+  call DeallocateArray(unstructured_grid%face_to_connection)
   call DeallocateArray(unstructured_grid%face_to_vertex_natural)
   call DeallocateArray(unstructured_grid%face_to_vertex)
   call DeallocateArray(unstructured_grid%cell_to_face_ghosted)

@@ -205,6 +205,10 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
   PetscReal :: dq_dp_up_adjYm, dq_dp_dn_adjYm, dq_dp_up_adjYp, dq_dp_dn_adjYp
   PetscReal :: dq_dp_up_adjZm, dq_dp_dn_adjZm, dq_dp_up_adjZp, dq_dp_dn_adjZp
 
+  PetscReal :: dq_dp_up_adj(4) !MAX_VERT_PER_FACE
+  PetscReal :: dq_dp_dn_adj(4) !MAX_VERT_PER_FACE
+  PetscInt :: i
+
   PetscInt :: iphase, ideriv
   type(richards_auxvar_type) :: rich_auxvar_pert_up, rich_auxvar_pert_dn
   type(global_auxvar_type) :: global_auxvar_pert_up, global_auxvar_pert_dn
@@ -291,10 +295,10 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
       dq_dp_dn = Dq*(dukvr_dp_dn*dphi+ukvr*dphi_dp_dn)*area
       
       if(associated(aniso_data)) then
-        ! add aniso terms to dq_dp_up/dn
         ! (note ukvr and dukvr_dp_up/dn already taken account of in RichardsFluxAniso())
         if(associated(aniso_data%struct)) then
           ! structured grid case
+          ! add aniso terms to dq_dp_up/dn
           dq_dp_up = dq_dp_up + aniso_data%struct%dv_darcy_aniso_dp_up * area
           dq_dp_dn = dq_dp_dn + aniso_data%struct%dv_darcy_aniso_dp_dn * area
           ! additional aniso terms for dv_darcy_aniso_dp_up/dn_adjX/Y/Z/pm
@@ -311,6 +315,17 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
           dq_dp_up_adjZp = aniso_data%struct%dv_darcy_aniso_dp_up_adjZp * area
           dq_dp_dn_adjZp = aniso_data%struct%dv_darcy_aniso_dp_dn_adjZp * area
         endif
+        if(associated(aniso_data%unstruct)) then
+          ! unstructured grid case
+          ! add aniso terms to dq_dp_up/dn
+          dq_dp_up = dq_dp_up + aniso_data%unstruct%dv_darcy_aniso_dp_up * area
+          dq_dp_dn = dq_dp_dn + aniso_data%unstruct%dv_darcy_aniso_dp_dn * area
+          ! additional aniso terms for dv_darcy_aniso_dp_up/dn_adj
+          do i=1,4 !MAX_VERT_PER_FACE
+            dq_dp_up_adj(i) = aniso_data%unstruct%dv_darcy_aniso_dp_up_adj(i) * area
+            dq_dp_dn_adj(i) = aniso_data%unstruct%dv_darcy_aniso_dp_dn_adj(i) * area
+          enddo
+        endif
       endif
       
       ! flux = q*density_ave, hence density_ave terms below
@@ -318,8 +333,9 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
       Jdn(1,1) = (dq_dp_dn*density_ave+q*dden_ave_dp_dn)
 
       if(associated(aniso_data)) then
+        ! Note dden_ave_dp_up_adj etc. assumed = 0 so no dden_... terms below
+        ! (The quantities below are used in RichardsJacobianInternalConn when constructing J)
         if(associated(aniso_data%struct)) then
-          ! note dden_ave_dp_up_adjXm etc. = 0 so no dden_... terms below
           aniso_data%struct%Jup_adjXm = dq_dp_up_adjXm * density_ave
           aniso_data%struct%Jdn_adjXm = dq_dp_dn_adjXm * density_ave
           aniso_data%struct%Jup_adjXp = dq_dp_up_adjXp * density_ave
@@ -332,7 +348,12 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
           aniso_data%struct%Jdn_adjZm = dq_dp_dn_adjZm * density_ave
           aniso_data%struct%Jup_adjZp = dq_dp_up_adjZp * density_ave
           aniso_data%struct%Jdn_adjZp = dq_dp_dn_adjZp * density_ave
-          ! The above quantities are used in RichardsJacobianInternalConn when constructing J
+        endif
+        if(associated(aniso_data%unstruct)) then
+          do i=1,4 !MAX_VERT_PER_FACE
+            aniso_data%unstruct%Jup_adj(i) = dq_dp_up_adj(i) * density_ave
+            aniso_data%unstruct%Jdn_adj(i) = dq_dp_dn_adj(i) * density_ave
+          enddo
         endif
       endif
     endif
@@ -448,19 +469,44 @@ subroutine RichardsFluxAniso(aniso_data, &
   PetscReal :: v_darcy_aniso
 
   ! local
-  PetscReal :: k_up_xx, k_up_yy, k_up_zz, k_up_xy, k_up_yz, k_up_xz
-  PetscReal :: k_dn_xx, k_dn_yy, k_dn_zz, k_dn_xy, k_dn_yz, k_dn_xz
-  PetscReal :: dphi_x_up, dphi_x_dn, dphi_y_up, dphi_y_dn, dphi_z_up, dphi_z_dn
   PetscReal :: mu_up, mu_dn, rho_up, rho_dn, dummy
   PetscReal :: v_darcy_aniso_up, v_darcy_aniso_dn
   PetscReal :: dist_gravity  ! distance along gravity vector
   PetscReal :: gravity
 
-  ! work data for calculations of anisotropic derivatives
+  ! local - structured grid case
   type(aniso_data_structured_type), pointer :: aniso_ds
   type(aniso_deriv_data_structured_type), pointer :: aniso_dds
+  PetscReal :: k_up_xx, k_up_yy, k_up_zz, k_up_xy, k_up_yz, k_up_xz
+  PetscReal :: k_dn_xx, k_dn_yy, k_dn_zz, k_dn_xy, k_dn_yz, k_dn_xz
+  PetscReal :: dphi_x_up, dphi_x_dn, dphi_y_up, dphi_y_dn, dphi_z_up, dphi_z_dn
+
+  ! local - unstructured grid case
+  type(aniso_data_unstructured_type), pointer :: aniso_du
+  type(aniso_data_unstructured_type), pointer :: aniso_du_adj
+  type(aniso_data_unstructured_cell_type), pointer :: aniso_duc
+  type(aniso_data_unstructured_cell_type), pointer :: aniso_duc_adj
+  type(aniso_deriv_data_unstructured_type), pointer :: aniso_ddu
+  PetscReal :: pres_updn, rho_updn
+  PetscReal, target :: dphi_v_up, dphi_v_dn, dphi_w_up, dphi_w_dn
+  PetscReal, pointer :: dphi, ddphi_dp, ddphi_dp_adj
+  PetscReal :: theta_threshold, cos_tt
+  PetscReal :: facenorm_dot_v, wt, sum_wt
+  PetscInt :: iorient, i
+  PetscReal :: tmpreal(10) ! TODO - remove
+
   nullify(aniso_ds)
   nullify(aniso_dds)
+
+  nullify(aniso_du)
+  nullify(aniso_du_adj)
+  nullify(aniso_duc)
+  nullify(aniso_duc_adj)
+  nullify(aniso_ddu)
+
+  nullify(dphi)
+  nullify(ddphi_dp)
+  nullify(ddphi_dp_adj)
 
   ! Initialise output
   v_darcy_aniso = 0.d0
@@ -470,45 +516,44 @@ subroutine RichardsFluxAniso(aniso_data, &
   rho_dn = global_auxvar_dn%den(1) * FMWH2O
 
 
-  ! Permeability tensor to up/dn cells
-  k_up_xx = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_X)
-  k_up_yy = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_Y)
-  k_up_zz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_Z)
-  k_up_xy = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_XY)
-  k_up_yz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_YZ)
-  k_up_xz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_XZ)
-
-  k_dn_xx = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_X)
-  k_dn_yy = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_Y)
-  k_dn_zz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_Z)
-  k_dn_xy = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_XY)
-  k_dn_yz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_YZ)
-  k_dn_xz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_XZ)
-
-  ! allow off-diagonal terms to be uninitialised, in which case set to zero
-  if ( k_up_xy == UNINITIALIZED_DOUBLE ) then
-    k_up_xy = 0.d0
-  endif
-  if ( k_up_yz == UNINITIALIZED_DOUBLE ) then
-    k_up_yz = 0.d0
-  endif
-  if ( k_up_xz == UNINITIALIZED_DOUBLE ) then
-    k_up_xz = 0.d0
-  endif
-  if ( k_dn_xy == UNINITIALIZED_DOUBLE ) then
-    k_dn_xy = 0.d0
-  endif
-  if ( k_dn_yz == UNINITIALIZED_DOUBLE ) then
-    k_dn_yz = 0.d0
-  endif
-  if ( k_dn_xz == UNINITIALIZED_DOUBLE ) then
-    k_dn_xz = 0.d0
-  endif
-
-
   if(associated(aniso_data%struct)) then
     ! structured grid case
     aniso_ds => aniso_data%struct
+
+    ! Permeability tensor to up/dn cells
+    k_up_xx = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_X)
+    k_up_yy = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_Y)
+    k_up_zz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_Z)
+    k_up_xy = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_XY)
+    k_up_yz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_YZ)
+    k_up_xz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_XZ)
+
+    k_dn_xx = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_X)
+    k_dn_yy = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_Y)
+    k_dn_zz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_Z)
+    k_dn_xy = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_XY)
+    k_dn_yz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_YZ)
+    k_dn_xz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_XZ)
+
+    ! allow off-diagonal terms to be uninitialised, in which case set to zero
+    if ( k_up_xy == UNINITIALIZED_DOUBLE ) then
+      k_up_xy = 0.d0
+    endif
+    if ( k_up_yz == UNINITIALIZED_DOUBLE ) then
+      k_up_yz = 0.d0
+    endif
+    if ( k_up_xz == UNINITIALIZED_DOUBLE ) then
+      k_up_xz = 0.d0
+    endif
+    if ( k_dn_xy == UNINITIALIZED_DOUBLE ) then
+      k_dn_xy = 0.d0
+    endif
+    if ( k_dn_yz == UNINITIALIZED_DOUBLE ) then
+      k_dn_yz = 0.d0
+    endif
+    if ( k_dn_xz == UNINITIALIZED_DOUBLE ) then
+      k_dn_xz = 0.d0
+    endif
 
     ! components of grad P on connection, in the plane of the interface
     dphi_x_up = 0.d0
@@ -863,7 +908,187 @@ subroutine RichardsFluxAniso(aniso_data, &
 
       deallocate(aniso_dds)
     endif
+  else
+    ! unstructured grid case
+    aniso_du => aniso_data%unstruct
 
+    ! adj interfaces are included when the angle between their normal (u) and the coordinate
+    ! direction under consideration (v) is less than a threshold
+    theta_threshold = 80.d0 ! threshold angle (degrees)
+    cos_tt = cos(theta_threshold*PI/180)
+
+    ! v,w are the coordinate vectors in the plane of the interface over which flux is being calculated
+    dphi_v_up = 0
+    dphi_w_up = 0
+    dphi_v_dn = 0
+    dphi_w_dn = 0
+
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      allocate(aniso_ddu)
+      allocate(aniso_ddu%ddphi_v_dp_up_adj(4)) !MAX_VERT_PER_FACE)
+      allocate(aniso_ddu%ddphi_w_dp_up_adj(4)) !MAX_VERT_PER_FACE)
+      allocate(aniso_ddu%ddphi_v_dp_dn_adj(4)) !MAX_VERT_PER_FACE)
+      allocate(aniso_ddu%ddphi_w_dp_dn_adj(4)) !MAX_VERT_PER_FACE)
+!      allocate(aniso_ddu%dv_darcy_aniso_up_dp_up_adj(4)) !MAX_VERT_PER_FACE)
+!      allocate(aniso_ddu%dv_darcy_aniso_dn_dp_dn_adj(4)) !MAX_VERT_PER_FACE)
+!      allocate(aniso_ddu%Jup_adj(4)) !MAX_VERT_PER_FACE)
+!      allocate(aniso_ddu%Jdn_adj(4)) !MAX_VERT_PER_FACE)
+      aniso_ddu%ddphi_v_dp_up     = 0 ! scalar
+      aniso_ddu%ddphi_v_dp_up_adj = 0 ! array
+      aniso_ddu%ddphi_w_dp_up     = 0 ! scalar
+      aniso_ddu%ddphi_w_dp_up_adj = 0 ! array
+      aniso_ddu%ddphi_v_dp_dn     = 0 ! scalar
+      aniso_ddu%ddphi_v_dp_dn_adj = 0 ! array
+      aniso_ddu%ddphi_w_dp_dn     = 0 ! scalar
+      aniso_ddu%ddphi_w_dp_dn_adj = 0 ! array
+!      aniso_ddu%dv_darcy_aniso_up_dp_up_adj = 0 ! array
+!      aniso_ddu%dv_darcy_aniso_dn_dp_dn_adj = 0 ! array
+!      aniso_ddu%Jup_adj = 0 ! array
+!      aniso_ddu%Jdn_adj = 0 ! array
+    endif
+
+    ! Common loop for up/dnstream v/w-dreiction derivaties
+    do iorient = 1,4
+      if (iorient==1) then
+        ! upstream side - v direction
+        aniso_duc => aniso_du%up  ! cell neighbouring interface on which flux is being calculated
+        pres_updn = global_auxvar_up%pres(1)
+        rho_updn = rho_up
+        dphi => dphi_v_up
+        if (calc_derivs .EQV. PETSC_TRUE) then
+          ddphi_dp => aniso_ddu%ddphi_v_dp_up
+        endif
+      elseif(iorient==2) then
+        ! upstream side - w direction
+        aniso_duc => aniso_du%up  ! cell neighbouring interface on which flux is being calculated
+        pres_updn = global_auxvar_up%pres(1)
+        rho_updn = rho_up
+        dphi => dphi_w_up
+        if (calc_derivs .EQV. PETSC_TRUE) then
+          ddphi_dp => aniso_ddu%ddphi_w_dp_up
+        endif
+      elseif(iorient==3) then
+        ! dnstream side - v direction
+        aniso_duc => aniso_du%dn  ! cell neighbouring interface on which flux is being calculated
+        pres_updn = global_auxvar_dn%pres(1)
+        rho_updn = rho_dn
+        dphi => dphi_v_dn
+        if (calc_derivs .EQV. PETSC_TRUE) then
+          ddphi_dp => aniso_ddu%ddphi_v_dp_dn
+        endif
+      elseif(iorient==4) then
+        ! dnstream side - w direction
+        aniso_duc => aniso_du%dn  ! cell neighbouring interface on which flux is being calculated
+        pres_updn = global_auxvar_dn%pres(1)
+        rho_updn = rho_dn
+        dphi => dphi_w_dn
+        if (calc_derivs .EQV. PETSC_TRUE) then
+          ddphi_dp => aniso_ddu%ddphi_w_dp_dn
+        endif
+      endif
+
+      sum_wt = 0
+      do i=1,4  ! 4=MAX_VERT_PER_FACE
+        if (aniso_duc%cell_id_adj(i) == 0) cycle
+
+        ! ptrs to aniso data for adjacent face and corresponding adjacent cell
+        aniso_du_adj  => aniso_duc%adu_face_adj(i)%ptr
+        aniso_duc_adj => aniso_duc%adu_cell_adj(i)%ptr
+
+        if (calc_derivs .EQV. PETSC_TRUE) then
+          if (iorient==1) then
+            ! upstream side - v direction
+            ddphi_dp_adj => aniso_ddu%ddphi_v_dp_up_adj(i)
+          elseif(iorient==2) then
+            ! upstream side - w direction
+            ddphi_dp_adj => aniso_ddu%ddphi_w_dp_up_adj(i)
+          elseif(iorient==3) then
+            ! dnstream side - v direction
+            ddphi_dp_adj => aniso_ddu%ddphi_v_dp_dn_adj(i)
+          elseif(iorient==4) then
+            ! dnstream side - w direction
+            ddphi_dp_adj => aniso_ddu%ddphi_w_dp_dn_adj(i)
+          endif
+        endif
+
+        ! n.v where n is normal to face = cos(angle) since both are unit vecs  (u=n on all faces)
+        ! TODO check sign here
+        if (iorient==1) then
+          ! upstream side - v direction
+          facenorm_dot_v = dot_product(aniso_du_adj%uvec,aniso_du%vvec)
+        elseif(iorient==2) then
+          ! upstream side - w direction
+          facenorm_dot_v = dot_product(aniso_du_adj%uvec,aniso_du%wvec)
+        elseif(iorient==3) then
+          ! dnstream side - v direction
+          facenorm_dot_v = dot_product(aniso_du_adj%uvec,aniso_du%vvec)
+        elseif(iorient==4) then
+          ! dnstream side - w direction
+          facenorm_dot_v = dot_product(aniso_du_adj%uvec,aniso_du%wvec)
+        endif
+
+
+        if( abs(facenorm_dot_v) > cos_tt ) then
+          wt = abs(facenorm_dot_v)
+          ! dphi in direction v across adj interface = (P_adj - P_up/dn) / ((dist_adj_face).v)
+!          tmpreal(1) = aniso_duc%pres_adj(i)
+!          tmpreal(2) = aniso_duc_adj%loc_gravity
+!          tmpreal(3) = aniso_duc%loc_gravity
+!          tmpreal(4) = aniso_du_adj%up%face_dist
+!          tmpreal(5) = aniso_du_adj%dn%face_dist
+!          write(*,"(e10.3,',',e10.3,',',e10.3,',',e10.3,',',e10.3)") &
+!               tmpreal(1), tmpreal(2), tmpreal(3), tmpreal(4), tmpreal(5)
+          dphi = dphi + wt * (  (aniso_duc%pres_adj(i)    - rho_updn * aniso_duc_adj%loc_gravity) &
+                              - (pres_updn                - rho_updn * aniso_duc%loc_gravity    ) ) &
+                           / ((aniso_du_adj%up%face_dist + aniso_du_adj%dn%face_dist) * facenorm_dot_v)
+          sum_wt = sum_wt + wt
+          if (calc_derivs .EQV. PETSC_TRUE) then
+            ddphi_dp     = ddphi_dp     -1.d0 * wt / ((aniso_du_adj%up%face_dist + aniso_du_adj%dn%face_dist) * facenorm_dot_v)
+            ddphi_dp_adj = ddphi_dp_adj +1.d0 * wt / ((aniso_du_adj%up%face_dist + aniso_du_adj%dn%face_dist) * facenorm_dot_v)
+          endif
+          nullify(aniso_du_adj)
+          nullify(aniso_duc_adj)
+        endif
+      enddo
+      if(sum_wt .ne. 0) then ! there may be no faces contributing a derivative in the desired direction (=> deriv=0)
+        dphi = dphi / sum_wt
+        if (calc_derivs .EQV. PETSC_TRUE) then
+          ddphi_dp        = ddphi_dp / sum_wt
+          do i=1,4  ! 4=MAX_VERT_PER_FACE  (some redundant 0.0/sum_wt here)
+            ddphi_dp_adj = ddphi_dp_adj / sum_wt
+          enddo
+        endif
+      endif
+    enddo
+
+    ! Calculate anisotropic darcy contribution in up/dn cells
+    v_darcy_aniso_up = -1.d0 * (aniso_du%up%perm_uv * dphi_v_up + aniso_du%up%perm_uw * dphi_w_up) * ukvr
+    v_darcy_aniso_dn = -1.d0 * (aniso_du%dn%perm_uv * dphi_v_dn + aniso_du%dn%perm_uw * dphi_w_dn) * ukvr
+    mu_up =       dist(-1) *dist(0)/aniso_du%up%perm_uu  ! weight - up (dist to interface/Kuu)
+    mu_dn = (1.d0-dist(-1))*dist(0)/aniso_du%dn%perm_uu  ! weight - dn (dist to interface/Kuu)
+    ! average up/dn components to obtain a consistent interface midpoint pressure
+    v_darcy_aniso = (mu_up*v_darcy_aniso_up + mu_dn*v_darcy_aniso_dn) / (mu_up + mu_dn)
+
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      aniso_du%dv_darcy_aniso_dp_up = (mu_up/(mu_up+mu_dn)) * &
+                                      -1.0d0 * (  aniso_du%up%perm_uv * aniso_ddu%ddphi_v_dp_up &
+                                                + aniso_du%up%perm_uw * aniso_ddu%ddphi_w_dp_up) * ukvr
+      aniso_du%dv_darcy_aniso_dp_dn = (mu_dn/(mu_up+mu_dn)) * &
+                                      -1.0d0 * (  aniso_du%dn%perm_uv * aniso_ddu%ddphi_v_dp_dn &
+                                                + aniso_du%dn%perm_uw * aniso_ddu%ddphi_w_dp_dn) * ukvr
+      do i=1,4  ! 4=MAX_VERT_PER_FACE
+        aniso_du%dv_darcy_aniso_dp_up_adj(i) = (mu_up/(mu_up+mu_dn)) * &
+                                               -1.0d0 * (  aniso_du%up%perm_uv * aniso_ddu%ddphi_v_dp_up_adj(i) &
+                                                         + aniso_du%up%perm_uw * aniso_ddu%ddphi_w_dp_up_adj(i)) * ukvr
+        aniso_du%dv_darcy_aniso_dp_dn_adj(i) = (mu_dn/(mu_up+mu_dn)) * &
+                                               -1.0d0 * (  aniso_du%dn%perm_uv * aniso_ddu%ddphi_v_dp_dn_adj(i) &
+                                                         + aniso_du%dn%perm_uw * aniso_ddu%ddphi_w_dp_dn_adj(i)) * ukvr
+      enddo
+    endif
+
+    if (calc_derivs .EQV. PETSC_TRUE) then
+      deallocate(aniso_ddu)
+    endif
   endif
 end subroutine RichardsFluxAniso
 
@@ -912,12 +1137,28 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
   
   call ConnectionCalculateDistances(dist,option%gravity,dd_up,dd_dn, &
                                     dist_gravity,upweight)
-  ! sjb - The following calls to PermeabilityTensorToScalar require dist and perm
-  !       to be expressed in (u,v,w) coords in the unstructured anisotropy case
-  !       This perm data is stored in aniso_data%unstruct%perm_up_uu etc.
-  !       (The standard versions of dist are perpendicular to the face, so can be used directly.)
-  call material_auxvar_up%PermeabilityTensorToScalar(dist,perm_up)
-  call material_auxvar_dn%PermeabilityTensorToScalar(dist,perm_dn)
+  if(.not. associated(aniso_data)) then
+    call material_auxvar_up%PermeabilityTensorToScalar(dist,perm_up)
+    call material_auxvar_dn%PermeabilityTensorToScalar(dist,perm_dn)
+  else
+    ! Flux component due head gradients directly across the interface can be
+    ! calculated using the isotropic approach provided that permeabilty is set
+    ! consistent with anisotropic calculation (avoid collapsing to scalar).
+    ! Additional anisotropic terms due to tangential head gradients are added
+    ! by later call to RichardsFluxAniso()
+    if(associated(aniso_data%struct)) then
+      ! sjb - can do same calls as isotropic case here, should just extract
+      !       k_xx, k_yy or k_zz depending on orientation
+      ! sjb - would be better to be specific here rather than rely on
+      !       TensorToScalar call to do the right thing
+      call material_auxvar_up%PermeabilityTensorToScalar(dist,perm_up)
+      call material_auxvar_dn%PermeabilityTensorToScalar(dist,perm_dn)
+    else
+      ! u-direction is chosen to be normal to the interface, so
+      perm_up = aniso_data%unstruct%up%perm_uu
+      perm_dn = aniso_data%unstruct%dn%perm_uu
+    endif
+  endif
 
   Dq = (perm_up * perm_dn)/(dd_up*perm_dn + dd_dn*perm_up)
   
