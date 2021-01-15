@@ -842,6 +842,12 @@ subroutine UGridDMCreateJacobian(unstructured_grid,ugdm,mat_type,J,option)
     enddo
   endif
 
+  ! add nnz terms for adjacent connections for anisotropy
+  if (option%connections_with_aniso_data .eqv. PETSC_TRUE) then
+    write(*,"('hello')")
+    stop
+  endif
+
   ndof_local = unstructured_grid%nlmax*ugdm%ndof
 
   call MatCreate(option%mycomm,J,ierr); CHKERRQ(ierr)

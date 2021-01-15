@@ -1292,9 +1292,17 @@ subroutine UGridDecompose(unstructured_grid,option)
     
   select case (unstructured_grid%grid_type)
     case(TWO_DIM_GRID)
-      num_common_vertices = 2 ! cells must share at least this number of vertices
+      if(option%connections_with_aniso_data .eqv. PETSC_FALSE) then
+        num_common_vertices = 2 ! cells must share at least this number of vertices
+      else
+        num_common_vertices = 1 ! cells must share at least this number of vertices
+      endif
     case(THREE_DIM_GRID)
-      num_common_vertices = 3 ! cells must share at least this number of vertices
+      if(option%connections_with_aniso_data .eqv. PETSC_FALSE) then
+        num_common_vertices = 3 ! cells must share at least this number of vertices
+      else
+        num_common_vertices = 2 ! cells must share at least this number of vertices
+      endif
     case default
         option%io_buffer = 'Grid type not recognized '
         call PrintErrMsg(option)
@@ -2283,10 +2291,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
             v2(1) = point3%x-point4%x
             v2(2) = point3%y-point4%y
             v2(3) = point3%z-point4%z
-            ! sjb - missing 'vcross = CrossProduct(v1,v2)' ??
-            !       without this, area2 below = area 1 above ??
-            !       (nb. area2=area1 if quad face is rectangular, but not otherwise)
-            ! sjb - pull request submitted (https://bitbucket.org/pflotran/pflotran/pull-requests/376)
+            vcross = CrossProduct(v1,v2)
             magnitude = sqrt(DotProduct(vcross,vcross))
             n2 = vcross/magnitude
             area2 = 0.5d0*magnitude
