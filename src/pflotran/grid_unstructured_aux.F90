@@ -63,6 +63,7 @@ module Grid_Unstructured_Aux_module
     PetscInt, pointer :: cell_to_face_ghosted(:,:)
     PetscInt, pointer :: vertex_ids_natural(:)
     PetscInt, pointer :: cell_neighbors_local_ghosted(:,:) ! local neighbors
+    PetscBool, pointer :: cell_neighbors_local_aniso(:,:) ! flag anisotropy neighbors
     type(point3d_type), pointer :: vertices(:)
     type(point3d_type), pointer :: face_centroid(:)
     PetscReal, pointer :: face_area(:)
@@ -270,6 +271,7 @@ function UGridCreate()
   nullify(unstructured_grid%vertex_ids_natural)
   nullify(unstructured_grid%vertices)
   nullify(unstructured_grid%cell_neighbors_local_ghosted)
+  nullify(unstructured_grid%cell_neighbors_local_aniso)
   nullify(unstructured_grid%connection_to_face)
   nullify(unstructured_grid%face_to_connection)
   nullify(unstructured_grid%face_centroid)
@@ -840,12 +842,6 @@ subroutine UGridDMCreateJacobian(unstructured_grid,ugdm,mat_type,J,option)
         endif
       enddo
     enddo
-  endif
-
-  ! add nnz terms for adjacent connections for anisotropy
-  if (option%connections_with_aniso_data .eqv. PETSC_TRUE) then
-    write(*,"('hello')")
-    stop
   endif
 
   ndof_local = unstructured_grid%nlmax*ugdm%ndof
@@ -2083,6 +2079,8 @@ subroutine UGridDestroy(unstructured_grid)
   call DeallocateArray(unstructured_grid%cell_to_face_ghosted)
   call DeallocateArray(unstructured_grid%vertex_ids_natural)
   call DeallocateArray(unstructured_grid%cell_neighbors_local_ghosted)
+  if (associated(unstructured_grid%cell_neighbors_local_aniso)) &
+    deallocate(unstructured_grid%cell_neighbors_local_aniso)
   if (associated(unstructured_grid%vertices)) &
     deallocate(unstructured_grid%vertices)
   nullify(unstructured_grid%vertices)  
