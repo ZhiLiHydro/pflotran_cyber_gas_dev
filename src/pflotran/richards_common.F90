@@ -493,7 +493,6 @@ subroutine RichardsFluxAniso(aniso_data, &
   PetscReal :: theta_threshold, cos_tt
   PetscReal :: facenorm_dot_v, wt, sum_wt
   PetscInt :: iorient, i
-  PetscReal :: tmpreal(10) ! TODO - remove
 
   nullify(aniso_ds)
   nullify(aniso_dds)
@@ -1031,13 +1030,6 @@ subroutine RichardsFluxAniso(aniso_data, &
         if( abs(facenorm_dot_v) > cos_tt ) then
           wt = abs(facenorm_dot_v)
           ! dphi in direction v across adj interface = (P_adj - P_up/dn) / ((dist_adj_face).v)
-!          tmpreal(1) = aniso_duc%pres_adj(i)
-!          tmpreal(2) = aniso_duc_adj%loc_gravity
-!          tmpreal(3) = aniso_duc%loc_gravity
-!          tmpreal(4) = aniso_du_adj%up%face_dist
-!          tmpreal(5) = aniso_du_adj%dn%face_dist
-!          write(*,"(e10.3,',',e10.3,',',e10.3,',',e10.3,',',e10.3)") &
-!               tmpreal(1), tmpreal(2), tmpreal(3), tmpreal(4), tmpreal(5)
           dphi = dphi + wt * (  (aniso_duc%pres_adj(i)    - rho_updn * aniso_duc_adj%loc_gravity) &
                               - (pres_updn                - rho_updn * aniso_duc%loc_gravity    ) ) &
                            / ((aniso_du_adj%up%face_dist + aniso_du_adj%dn%face_dist) * facenorm_dot_v)

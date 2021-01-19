@@ -1292,9 +1292,17 @@ subroutine UGridDecompose(unstructured_grid,option)
     
   select case (unstructured_grid%grid_type)
     case(TWO_DIM_GRID)
-      num_common_vertices = 2 ! cells must share at least this number of vertices
+      if(option%connections_with_aniso_data .eqv. PETSC_FALSE) then
+        num_common_vertices = 2 ! cells must share at least this number of vertices
+      else
+        num_common_vertices = 1 ! cells must share at least this number of vertices
+      endif
     case(THREE_DIM_GRID)
-      num_common_vertices = 3 ! cells must share at least this number of vertices
+      if(option%connections_with_aniso_data .eqv. PETSC_FALSE) then
+        num_common_vertices = 3 ! cells must share at least this number of vertices
+      else
+        num_common_vertices = 2 ! cells must share at least this number of vertices
+      endif
     case default
         option%io_buffer = 'Grid type not recognized '
         call PrintErrMsg(option)
@@ -1840,7 +1848,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
   PetscReal :: vcross(3), magnitude
   PetscReal :: area1, area2
   PetscReal :: dist_up, dist_dn
-  PetscInt :: ivert
+  PetscInt :: ivert, num_common_vertices, num_common_vertices_max
   
   type(plane_type) :: plane1, plane2
   type(point3d_type) :: point1, point2, point3, point4
@@ -1915,6 +1923,15 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
   ! NOTE: For a cell_type = WEDGE_TYPE, faces 1-3 have 4 vertices; while
   !       faces 4-5 have 3 vertices
   !
+
+  ! Neighbours by virtue of anisotropy must be marked.
+  ! Uses the same indexing as %cell_neighbors_local_ghosted
+  if (option%connections_with_aniso_data .eqv. PETSC_TRUE) then
+    allocate(unstructured_grid%cell_neighbors_local_aniso( &
+             0:unstructured_grid%max_ndual_per_cell,unstructured_grid%nlmax))
+    unstructured_grid%cell_neighbors_local_aniso = PETSC_FALSE
+  endif
+
   do local_id = 1, unstructured_grid%nlmax
     ! Selet a cell and find number of vertices
     cell_id = local_id
@@ -1933,10 +1950,12 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
       nfaces2 = UCellGetNFaces(cell_type2,option)
       ! Initialize
       face_found = PETSC_FALSE
+      num_common_vertices_max = 0
       do iface = 1, nfaces
         ! Select a face and find number of vertices forming the face
         face_id = cell_to_face(iface,cell_id)
         nvertices = UCellGetNFaceVertices(cell_type,iface,option)
+        num_common_vertices = 0
         do ivertex = 1, nvertices
           ! Select a vertex and initialize vertex_found
           vertex_id = face_to_vertex(ivertex,face_id) ! face_to_vertex is 1-based indexing
@@ -1945,19 +1964,25 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
             vertex_id2 = unstructured_grid%cell_vertices(ivertex2,cell_id2)
             if (vertex_id == vertex_id2) then
               vertex_found = PETSC_TRUE
+              num_common_vertices = num_common_vertices + 1
               exit
             endif
           enddo
+          num_common_vertices_max = max(num_common_vertices_max,num_common_vertices)
           !
           ! If ivertex of iface of the Cell is not present as vertices of the
           ! Neighboring-Cell, then iface is not the shared face. Skip iterating
           ! over the remaing vertices of iface
-          if (.not.vertex_found) exit
+          ! ..unless anisotropy connections are included, in which case only a common
+          ! edge will be shared between cells for off-diagonal connections and some
+          ! vertices will be missing.
+          if (.not.vertex_found .and. .not. option%connections_with_aniso_data) exit
         enddo
-        
-        if (vertex_found) then
-          ! All the vertices of iface are present in the Neighboring cells.
-          ! Thus, iface is the shared face.
+
+        ! If all vertices are found on both faces then iface is the shared face
+        ! (if num_common_vertices_max<nvertices then this is an anisotropy connection
+        ! without a common face)
+        if (num_common_vertices_max .eq. nvertices) then
           face_found = PETSC_TRUE
           
           ! Now, we have to find iface2 that corresponds to iface
@@ -2026,24 +2051,32 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
       
       ! Check that one shared face was found between the Cell and Neighboring-Cell
       if (.not.face_found) then
-        write(string,*) option%myrank
-        string = '(' // trim(adjustl(string)) // ')'
-        write(*,'(a,'' local_id = '',i6,'' natural_id = '',i6,&
-                  &''  vertices: '',8i6)') &
-                   trim(string), &
-                   cell_id,unstructured_grid%cell_ids_natural(cell_id), &
-                   (unstructured_grid%vertex_ids_natural( &
-                     unstructured_grid%cell_vertices(ivertex,cell_id)), &
-                     ivertex=1,unstructured_grid%cell_vertices(0,cell_id))
-        write(*,'(a,'' local_id2 = '',i6,'' natural_id2 = '',i6,&
-                  &''  vertices2: '',8i6)') &
-                   trim(string), &
-                   cell_id2,unstructured_grid%cell_ids_natural(cell_id2), &
-                   (unstructured_grid%vertex_ids_natural( &
-                     unstructured_grid%cell_vertices(ivertex2,cell_id2)), &
-                     ivertex2=1,unstructured_grid%cell_vertices(0,cell_id2))
-        option%io_buffer='No shared face found.'
-        call PrintErrMsgByRank(option)
+        if(option%connections_with_aniso_data .and. num_common_vertices_max .ge. 1) then
+          ! For additional anisotropy connections, cells only need to be joined by
+          ! an edge (or a vertex if 2-D).  In this case there is no face to delete.
+          ! NOTE, this is only populated for cases when the cell_id_dual>local_id
+          ! (wherecell_id_dual is the cell_id corresponding to idual)
+          unstructured_grid%cell_neighbors_local_aniso(idual,local_id) = PETSC_TRUE
+        else
+          write(string,*) option%myrank
+          string = '(' // trim(adjustl(string)) // ')'
+          write(*,'(a,'' local_id = '',i6,'' natural_id = '',i6,&
+                    &''  vertices: '',8i6)') &
+                     trim(string), &
+                     cell_id,unstructured_grid%cell_ids_natural(cell_id), &
+                     (unstructured_grid%vertex_ids_natural( &
+                       unstructured_grid%cell_vertices(ivertex,cell_id)), &
+                       ivertex=1,unstructured_grid%cell_vertices(0,cell_id))
+          write(*,'(a,'' local_id2 = '',i6,'' natural_id2 = '',i6,&
+                    &''  vertices2: '',8i6)') &
+                     trim(string), &
+                     cell_id2,unstructured_grid%cell_ids_natural(cell_id2), &
+                     (unstructured_grid%vertex_ids_natural( &
+                       unstructured_grid%cell_vertices(ivertex2,cell_id2)), &
+                       ivertex2=1,unstructured_grid%cell_vertices(0,cell_id2))
+          option%io_buffer='No shared face found.'
+          call PrintErrMsgByRank(option)
+        endif
       endif
     enddo ! idual-loop
   enddo  ! local_id-loop
@@ -2129,6 +2162,10 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
   do local_id = 1, unstructured_grid%nlmax
     do idual = 1, unstructured_grid%cell_neighbors_local_ghosted(0,local_id)
       dual_id = unstructured_grid%cell_neighbors_local_ghosted(idual,local_id)
+      ! additional anisotropic info. is stored within corresponding up/dn connection,
+      ! does not need a connection for itself
+      if(option%connections_with_aniso_data &
+         .and. unstructured_grid%cell_neighbors_local_aniso(idual,local_id)) cycle
       ! count all ghosted connections (dual_id < 0)
       ! only count connection with cells of larger ids to avoid double counts
 !geh: we need to cound all local connection, but just once (local_id < dual_id) and all
@@ -2155,6 +2192,8 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
     do idual = 1, unstructured_grid%cell_neighbors_local_ghosted(0,local_id)
       dual_local_id = &
         unstructured_grid%cell_neighbors_local_ghosted(idual,local_id)
+      if(option%connections_with_aniso_data &
+         .and. unstructured_grid%cell_neighbors_local_aniso(idual,local_id)) cycle
       ! abs(dual_local_id) to accommodate connections to ghost cells where 
       ! the dual id is < 0.
       if (local_id < abs(dual_local_id)) then 
@@ -2283,10 +2322,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
             v2(1) = point3%x-point4%x
             v2(2) = point3%y-point4%y
             v2(3) = point3%z-point4%z
-            ! sjb - missing 'vcross = CrossProduct(v1,v2)' ??
-            !       without this, area2 below = area 1 above ??
-            !       (nb. area2=area1 if quad face is rectangular, but not otherwise)
-            ! sjb - pull request submitted (https://bitbucket.org/pflotran/pflotran/pull-requests/376)
+            vcross = CrossProduct(v1,v2)
             magnitude = sqrt(DotProduct(vcross,vcross))
             n2 = vcross/magnitude
             area2 = 0.5d0*magnitude
