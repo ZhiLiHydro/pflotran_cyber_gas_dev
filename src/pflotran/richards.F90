@@ -2518,16 +2518,12 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
               ! J terms are stored in aniso_data%struct%Jup/dn_adj
               ! aniso_data%unstruct%up/dn%cell_id_adj are ghosted ids(?), 1-indexed
               do i=1,4 ! MAX_VERT_PER_FACE
-                if(aniso_data%unstruct%up%cell_id_adj(i) .ne. 0) then
-                  tmp_i = istart_up-1
-                  tmp_j = aniso_data%unstruct%up%cell_id_adj(i)-1
+                if(aniso_data%unstruct%Jup_adj(i) .ne. 0.d0) then
                   call MatSetValuesLocal(A,1,istart_up-1, &
                            1, (aniso_data%unstruct%up%cell_id_adj(i)-1)*option%nflowdof, aniso_data%unstruct%Jup_adj(i), &
                            ADD_VALUES,ierr);CHKERRQ(ierr)
                 endif
-                if(aniso_data%unstruct%dn%cell_id_adj(i) .ne. 0) then
-                  tmp_i = istart_up-1
-                  tmp_j = aniso_data%unstruct%dn%cell_id_adj(i)-1
+                if(aniso_data%unstruct%Jdn_adj(i) .ne. 0.d0) then
                   call MatSetValuesLocal(A,1,istart_up-1, &
                            1, (aniso_data%unstruct%dn%cell_id_adj(i)-1)*option%nflowdof, aniso_data%unstruct%Jdn_adj(i), &
                            ADD_VALUES,ierr);CHKERRQ(ierr)
@@ -2624,6 +2620,24 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
                                        1, (aniso_data%struct%id_dn_adjZp-1)*option%nflowdof, -1.d0 * aniso_data%struct%Jdn_adjZp, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
+            endif
+            if(associated(aniso_data%unstruct)) then
+              ! unstructured grid case
+
+              ! J terms are stored in aniso_data%struct%Jup/dn_adj
+              ! aniso_data%unstruct%up/dn%cell_id_adj are ghosted ids(?), 1-indexed
+              do i=1,4 ! MAX_VERT_PER_FACE
+                if(aniso_data%unstruct%Jup_adj(i) .ne. 0.d0) then
+                  call MatSetValuesLocal(A,1,istart_dn-1, &
+                           1, (aniso_data%unstruct%up%cell_id_adj(i)-1)*option%nflowdof, -1.d0 * aniso_data%unstruct%Jup_adj(i), &
+                           ADD_VALUES,ierr);CHKERRQ(ierr)
+                endif
+                if(aniso_data%unstruct%Jdn_adj(i) .ne. 0.d0) then
+                  call MatSetValuesLocal(A,1,istart_dn-1, &
+                           1, (aniso_data%unstruct%dn%cell_id_adj(i)-1)*option%nflowdof, -1.d0 * aniso_data%unstruct%Jdn_adj(i), &
+                           ADD_VALUES,ierr);CHKERRQ(ierr)
+                endif
+              enddo
             endif
           endif
 
