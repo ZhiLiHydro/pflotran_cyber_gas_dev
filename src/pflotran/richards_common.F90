@@ -217,6 +217,9 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
   PetscReal :: x_up(1), x_dn(1), x_pert_up(1), x_pert_dn(1), pert_up, pert_dn, &
             res(1), res_pert_up(1), res_pert_dn(1), J_pert_up(1,1), J_pert_dn(1,1)
   
+  ! ! dbg
+  ! PetscReal :: p_orig, v_darcy_aniso_orig, num_dv_darcy_aniso_dp, numdp
+
   v_darcy = 0.d0  
   v_darcy_aniso = 0.d0
   ukvr = 0.d0
@@ -237,9 +240,29 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
   
   call ConnectionCalculateDistances(dist,option%gravity,dd_up,dd_dn, &
                                     dist_gravity,upweight)
-  call material_auxvar_up%PermeabilityTensorToScalar(dist,perm_up)
-  call material_auxvar_dn%PermeabilityTensorToScalar(dist,perm_dn)
-  
+  if(.not. associated(aniso_data)) then
+    call material_auxvar_up%PermeabilityTensorToScalar(dist,perm_up)
+    call material_auxvar_dn%PermeabilityTensorToScalar(dist,perm_dn)
+  else
+    ! Flux component due head gradients directly across the interface can be
+    ! calculated using the isotropic approach provided that permeabilty is set
+    ! consistent with anisotropic calculation (avoid collapsing to scalar).
+    ! Additional anisotropic terms due to tangential head gradients are added
+    ! by later call to RichardsFluxAniso()
+    if(associated(aniso_data%struct)) then
+      ! sjb - can do same calls as isotropic case here, should just extract
+      !       k_xx, k_yy or k_zz depending on orientation
+      ! sjb - would be better to be specific here rather than rely on
+      !       TensorToScalar call to do the right thing
+      call material_auxvar_up%PermeabilityTensorToScalar(dist,perm_up)
+      call material_auxvar_dn%PermeabilityTensorToScalar(dist,perm_dn)
+    else
+      ! u-direction is chosen to be normal to the interface, so
+      perm_up = aniso_data%unstruct%up%perm_uu
+      perm_dn = aniso_data%unstruct%dn%perm_uu
+    endif
+  endif  
+
   Dq = (perm_up * perm_dn)/(dd_up*perm_dn + dd_dn*perm_up)
   
 ! Flow term
@@ -288,8 +311,42 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
         ! dv_darcy_aniso/dp_... terms are stored in aniso_data
       endif
 
+      ! ! check up deriv
+      ! numdp = 1d-5
+      ! p_orig = global_auxvar_up%pres(1)
+      ! v_darcy_aniso_orig = v_darcy_aniso
+      ! global_auxvar_up%pres(1) = (1+numdp) * global_auxvar_up%pres(1)
+      ! Call RichardsFluxAniso(aniso_data,material_auxvar_up,material_auxvar_dn,&
+      !                           global_auxvar_up,global_auxvar_dn,&
+      !                           option,dist,ukvr,&
+      !                           dukvr_dp_up,dukvr_dp_dn,PETSC_TRUE,v_darcy_aniso)
+      ! global_auxvar_up%pres(1) = p_orig
+      ! num_dv_darcy_aniso_dp = (v_darcy_aniso - v_darcy_aniso_orig) / (numdp*global_auxvar_up%pres(1))
+      ! v_darcy_aniso = v_darcy_aniso_orig
 
+      ! write(*,"('face=',i3,'up num=',e20.6,'  anal=',e20.6)") aniso_data%unstruct%conn_face_id, &
+      !   num_dv_darcy_aniso_dp, aniso_data%unstruct%dv_darcy_aniso_dp_up
+
+      ! !aniso_data%unstruct%dv_darcy_aniso_dp_up = num_dv_darcy_aniso_dp
+
+      ! ! check dn deriv
+      ! p_orig = global_auxvar_dn%pres(1)
+      ! v_darcy_aniso_orig = v_darcy_aniso
+      ! global_auxvar_dn%pres(1) = (1+numdp) * global_auxvar_dn%pres(1)
+      ! Call RichardsFluxAniso(aniso_data,material_auxvar_up,material_auxvar_dn,&
+      !                           global_auxvar_up,global_auxvar_dn,&
+      !                           option,dist,ukvr,&
+      !                           dukvr_dp_up,dukvr_dp_dn,PETSC_TRUE,v_darcy_aniso)
+      ! global_auxvar_dn%pres(1) = p_orig
+      ! num_dv_darcy_aniso_dp = (v_darcy_aniso - v_darcy_aniso_orig) / (numdp*global_auxvar_dn%pres(1))
+      ! v_darcy_aniso = v_darcy_aniso_orig
+
+      ! write(*,"('face=',i3,'dn num=',e20.6,'  anal=',e20.6)") aniso_data%unstruct%conn_face_id, &
+      !   num_dv_darcy_aniso_dp, aniso_data%unstruct%dv_darcy_aniso_dp_dn
    
+      ! !aniso_data%unstruct%dv_darcy_aniso_dp_dn = num_dv_darcy_aniso_dp
+
+
       q = v_darcy * area
       dq_dp_up = Dq*(dukvr_dp_up*dphi+ukvr*dphi_dp_up)*area
       dq_dp_dn = Dq*(dukvr_dp_dn*dphi+ukvr*dphi_dp_dn)*area
@@ -331,6 +388,9 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
       ! flux = q*density_ave, hence density_ave terms below
       Jup(1,1) = (dq_dp_up*density_ave+q*dden_ave_dp_up)
       Jdn(1,1) = (dq_dp_dn*density_ave+q*dden_ave_dp_dn)
+
+      ! write(*,"('face=',i3,' Jup=',e20.6,'  Jdn=',e20.6)") aniso_data%unstruct%conn_face_id, &
+      !   Jup(1,1), Jdn(1,1)
 
       if(associated(aniso_data)) then
         ! Note dden_ave_dp_up_adj etc. assumed = 0 so no dden_... terms below
@@ -421,6 +481,8 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
     J_pert_dn(1,ideriv) = (res_pert_dn(1)-res(1))/pert_dn
     Jup = J_pert_up
     Jdn = J_pert_dn
+    ! write(*,"('face=',i3,' Jup=',e20.6,'  Jdn=',e20.6,'  (NUMERICAL)')") aniso_data%unstruct%conn_face_id, &
+    !   Jup(1,1), Jdn(1,1)
     call GlobalAuxVarStrip(global_auxvar_pert_up)
     call GlobalAuxVarStrip(global_auxvar_pert_dn)    
     call MaterialAuxVarStrip(material_auxvar_pert_up)
@@ -932,10 +994,6 @@ subroutine RichardsFluxAniso(aniso_data, &
       allocate(aniso_ddu%ddphi_w_dp_up_adj(4)) !MAX_VERT_PER_FACE)
       allocate(aniso_ddu%ddphi_v_dp_dn_adj(4)) !MAX_VERT_PER_FACE)
       allocate(aniso_ddu%ddphi_w_dp_dn_adj(4)) !MAX_VERT_PER_FACE)
-!      allocate(aniso_ddu%dv_darcy_aniso_up_dp_up_adj(4)) !MAX_VERT_PER_FACE)
-!      allocate(aniso_ddu%dv_darcy_aniso_dn_dp_dn_adj(4)) !MAX_VERT_PER_FACE)
-!      allocate(aniso_ddu%Jup_adj(4)) !MAX_VERT_PER_FACE)
-!      allocate(aniso_ddu%Jdn_adj(4)) !MAX_VERT_PER_FACE)
       aniso_ddu%ddphi_v_dp_up     = 0 ! scalar
       aniso_ddu%ddphi_v_dp_up_adj = 0 ! array
       aniso_ddu%ddphi_w_dp_up     = 0 ! scalar
@@ -944,13 +1002,9 @@ subroutine RichardsFluxAniso(aniso_data, &
       aniso_ddu%ddphi_v_dp_dn_adj = 0 ! array
       aniso_ddu%ddphi_w_dp_dn     = 0 ! scalar
       aniso_ddu%ddphi_w_dp_dn_adj = 0 ! array
-!      aniso_ddu%dv_darcy_aniso_up_dp_up_adj = 0 ! array
-!      aniso_ddu%dv_darcy_aniso_dn_dp_dn_adj = 0 ! array
-!      aniso_ddu%Jup_adj = 0 ! array
-!      aniso_ddu%Jdn_adj = 0 ! array
     endif
 
-    ! Common loop for up/dnstream v/w-dreiction derivatives
+    ! Common loop for up/dnstream v/w-direction derivatives
     do iorient = 1,4
       if (iorient==1) then
         ! upstream side - v direction
@@ -999,6 +1053,7 @@ subroutine RichardsFluxAniso(aniso_data, &
         aniso_duc_adj => aniso_duc%adu_cell_adj(i)%ptr
 
         ! determine whether up/dn cell on flux face is up/dn cell on adjacent face
+        ! (used to determine outward normal direction in up/dn cells)
         if(aniso_duc%cell_id .eq. aniso_du_adj%up%cell_id) then
           sgn = 1
         else
@@ -1006,7 +1061,7 @@ subroutine RichardsFluxAniso(aniso_data, &
         endif
 
         ! n.v or n.w where n is normal to face = cos(angle) since both are unit vecs
-        ! NB. n=sgn*u is the outward normal
+        ! NB. uvec on each face is +ve in up->dn direction, so n=sgn*uvec is the outward normal
         if (iorient==1) then
           ! upstream side - v direction
           facenorm_dot_vw = sgn*dot_product(aniso_du_adj%uvec,aniso_du%vvec)
@@ -1087,11 +1142,11 @@ subroutine RichardsFluxAniso(aniso_data, &
     if (calc_derivs .EQV. PETSC_TRUE) then
       aniso_du%dv_darcy_aniso_dp_up = (mu_up/(mu_up+mu_dn)) * &
                                       (-1.0d0 * (  aniso_du%up%perm_uv * aniso_ddu%ddphi_v_dp_up &
-                                                + aniso_du%up%perm_uw * aniso_ddu%ddphi_w_dp_up) * ukvr &
+                                                 + aniso_du%up%perm_uw * aniso_ddu%ddphi_w_dp_up) * ukvr &
                                        -1.0d0 * (aniso_du%up%perm_uv * dphi_v_up + aniso_du%up%perm_uw * dphi_w_up) * dukvr_dp_up)
       aniso_du%dv_darcy_aniso_dp_dn = (mu_dn/(mu_up+mu_dn)) * &
                                       (-1.0d0 * (  aniso_du%dn%perm_uv * aniso_ddu%ddphi_v_dp_dn &
-                                                + aniso_du%dn%perm_uw * aniso_ddu%ddphi_w_dp_dn) * ukvr &
+                                                 + aniso_du%dn%perm_uw * aniso_ddu%ddphi_w_dp_dn) * ukvr &
                                        -1.0d0 * (aniso_du%dn%perm_uv * dphi_v_dn + aniso_du%dn%perm_uw * dphi_w_dn) * dukvr_dp_dn)
       do i=1,4  ! 4=MAX_VERT_PER_FACE
         aniso_du%dv_darcy_aniso_dp_up_adj(i) = (mu_up/(mu_up+mu_dn)) * &

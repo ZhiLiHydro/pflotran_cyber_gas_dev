@@ -2521,7 +2521,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
       vcross = CrossProduct(v1,v2)
       magnitude = sqrt(DotProduct(vcross,vcross))
 
-      !  (u +ve dnstream)
+      !  (u +ve in up->dn direction)
       dot = DotProduct(vcross,n_up_dn)
       if (dot > 0) then
         aniso_data_unstruct%uvec = vcross/magnitude
