@@ -174,7 +174,9 @@ module Anisotropy_Data_module
   ! represents adjacency data for one of the cells (up or dn) on an interface
   type, public :: aniso_data_unstructured_cell_type
     PetscInt :: cell_id        ! id of neighbouring cell (up or dn)
+    PetscReal :: cell_pos(3)   ! (x,y,z coord of cell centre)
     ! adjacency info
+    PetscInt :: num_adj ! number of adjacent cells (<=4)
     PetscInt, pointer :: cell_id_adj(:) ! ids of adjacent cells that share a vertex with the connection face
     PetscInt, pointer :: face_id_adj(:) ! ids of faces neighbouring cell that share a vertex with the connection face
 
@@ -211,6 +213,10 @@ module Anisotropy_Data_module
     PetscReal, pointer :: uvec(:)      ! u-direction unit vector (normal to face, +ve dnstream) - in (x,y,z) coords
     PetscReal, pointer :: vvec(:)      ! v-direction unit vector (in plane of face) - in (x,y,z) coords
     PetscReal, pointer :: wvec(:)      ! w-direction unit vector (in plane of face) - in (x,y,z) coords
+
+    ! dist_unit/mag is literal distance vector between cell centres (up->dn) - not normalised for face orienation
+    PetscReal, pointer :: dist_unit(:)
+    PetscReal :: dist_mag
 
     ! derivative data
     PetscReal :: dv_darcy_aniso_dp_up
@@ -284,8 +290,10 @@ module Anisotropy_Data_module
         write(*, "('aniso_data unstructured [',i3,'/',i3,'] face_id = ', i4)") &
           rank,size,aniso_data%unstruct%conn_face_id
         ! geometry
-        write(*, "('  up cell_id = ', i4)") aniso_data%unstruct%up%cell_id
-        write(*, "('  dn cell_id = ', i4)") aniso_data%unstruct%dn%cell_id
+        write(*, "('  up cell_id = ', i4,'  (',e10.3,',',e10.3,',',e10.3,')')") aniso_data%unstruct%up%cell_id, &
+          aniso_data%unstruct%up%cell_pos(1),aniso_data%unstruct%up%cell_pos(2),aniso_data%unstruct%up%cell_pos(3)
+        write(*, "('  dn cell_id = ', i4,'  (',e10.3,',',e10.3,',',e10.3,')')") aniso_data%unstruct%dn%cell_id, &
+          aniso_data%unstruct%dn%cell_pos(1),aniso_data%unstruct%dn%cell_pos(2),aniso_data%unstruct%dn%cell_pos(3)
         write(*, "('  upstream')")
         do i=1,4 ! 4=MAX_VERT_PER_FACE
           if (aniso_data%unstruct%up%cell_id_adj(i) == 0) cycle

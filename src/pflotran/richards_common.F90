@@ -553,8 +553,9 @@ subroutine RichardsFluxAniso(aniso_data, &
   PetscReal, target :: dphi_v_up, dphi_v_dn, dphi_w_up, dphi_w_dn
   PetscReal, pointer :: dphi, ddphi_dp, ddphi_dp_adj
   PetscReal :: theta_threshold, cos_tt
-  PetscReal :: facenorm_dot_vw, sgn, wt, sum_wt
+  PetscReal :: facenorm_dot_vw, sgn, wt, sum_wt, dist_unit_dot_vw, mult
   PetscInt :: iorient, i
+  PetscReal :: distvec(3), vwvec(3)
 
   nullify(aniso_ds)
   nullify(aniso_dds)
@@ -977,6 +978,9 @@ subroutine RichardsFluxAniso(aniso_data, &
     ! unstructured grid case
     aniso_du => aniso_data%unstruct
 
+    !dbg 
+    ! call PrintAnisoData(aniso_data)
+
     ! adj interfaces are included when the angle between their normal (u) and the coordinate
     ! direction under consideration (v) is less than a threshold
     theta_threshold = 80.d0 ! threshold angle (degrees)
@@ -1012,6 +1016,7 @@ subroutine RichardsFluxAniso(aniso_data, &
         pres_updn = global_auxvar_up%pres(1)
         rho_updn = rho_up
         dphi => dphi_v_up
+        vwvec = aniso_du%vvec
         if (calc_derivs .EQV. PETSC_TRUE) then
           ddphi_dp => aniso_ddu%ddphi_v_dp_up
         endif
@@ -1020,6 +1025,7 @@ subroutine RichardsFluxAniso(aniso_data, &
         aniso_duc => aniso_du%up  ! cell neighbouring interface on which flux is being calculated
         pres_updn = global_auxvar_up%pres(1)
         rho_updn = rho_up
+        vwvec = aniso_du%wvec
         dphi => dphi_w_up
         if (calc_derivs .EQV. PETSC_TRUE) then
           ddphi_dp => aniso_ddu%ddphi_w_dp_up
@@ -1030,6 +1036,7 @@ subroutine RichardsFluxAniso(aniso_data, &
         pres_updn = global_auxvar_dn%pres(1)
         rho_updn = rho_dn
         dphi => dphi_v_dn
+        vwvec = aniso_du%vvec
         if (calc_derivs .EQV. PETSC_TRUE) then
           ddphi_dp => aniso_ddu%ddphi_v_dp_dn
         endif
@@ -1039,10 +1046,52 @@ subroutine RichardsFluxAniso(aniso_data, &
         pres_updn = global_auxvar_dn%pres(1)
         rho_updn = rho_dn
         dphi => dphi_w_dn
+        vwvec = aniso_du%wvec
         if (calc_derivs .EQV. PETSC_TRUE) then
           ddphi_dp => aniso_ddu%ddphi_w_dp_dn
         endif
       endif
+
+      ! ! Simplified approaches - ineffective 
+      ! if(aniso_duc%num_adj .eq. 1) then
+      !   ! only one adjacent cell - (adj to bdry) calculate deriv using cell pressure
+      ! elseif(aniso_duc%num_adj .eq. 2) then
+      !   ! two adjacent cells - either 2-D or 3-D bdry case
+      !   distvec = aniso_duc%adu_cell_adj(1)%ptr%cell_pos - aniso_duc%adu_cell_adj(2)%ptr%cell_pos
+      !   if( abs(dot_product(distvec,vwvec))/sqrt(dot_product(distvec,distvec)) > cos_tt ) then
+      !     dphi = (  (aniso_duc%pres_adj(1) - rho_updn * aniso_duc%adu_cell_adj(1)%ptr%loc_gravity) &
+      !             - (aniso_duc%pres_adj(2) - rho_updn * aniso_duc%adu_cell_adj(2)%ptr%loc_gravity) ) &
+      !             / (dot_product(distvec,vwvec))
+      !     if (calc_derivs .EQV. PETSC_TRUE) then
+      !       if (iorient==1) then
+      !         ! upstream side - v direction
+      !         aniso_ddu%ddphi_v_dp_up_adj(1) =  1.d0 / (dot_product(distvec,vwvec))
+      !         aniso_ddu%ddphi_v_dp_up_adj(2) = -1.d0 / (dot_product(distvec,vwvec))
+      !       elseif(iorient==2) then
+      !         ! upstream side - w direction
+      !         aniso_ddu%ddphi_w_dp_up_adj(1) =  1.d0 / (dot_product(distvec,vwvec))
+      !         aniso_ddu%ddphi_w_dp_up_adj(2) = -1.d0 / (dot_product(distvec,vwvec))
+      !       elseif(iorient==3) then
+      !         ! dnstream side - v direction
+      !         aniso_ddu%ddphi_v_dp_dn_adj(1) =  1.d0 / (dot_product(distvec,vwvec))
+      !         aniso_ddu%ddphi_v_dp_dn_adj(2) = -1.d0 / (dot_product(distvec,vwvec))
+      !       elseif(iorient==4) then
+      !         ! dnstream side - w direction
+      !         aniso_ddu%ddphi_w_dp_dn_adj(1) =  1.d0 / (dot_product(distvec,vwvec))
+      !         aniso_ddu%ddphi_w_dp_dn_adj(2) = -1.d0 / (dot_product(distvec,vwvec))
+      !       endif
+      !     endif
+      !   endif
+      ! elseif(aniso_duc%num_adj .eq. 3) then
+      !   ! three adjacent cells - 3-D case (interior triangle or quad ajacent to bdry)
+      ! elseif(aniso_duc%num_adj .eq. 4) then
+      !   ! four adjacent cells - 3-D case (interior quad)
+      ! else
+      !   ! error - unhandled case
+      !   write(*,"('Unhandled num_adj')")
+      !   stop
+      ! endif
+      
 
       sum_wt = 0
       do i=1,4  ! 4=MAX_VERT_PER_FACE
@@ -1065,15 +1114,25 @@ subroutine RichardsFluxAniso(aniso_data, &
         if (iorient==1) then
           ! upstream side - v direction
           facenorm_dot_vw = sgn*dot_product(aniso_du_adj%uvec,aniso_du%vvec)
+          dist_unit_dot_vw = sgn*dot_product(aniso_du_adj%dist_unit,aniso_du%vvec)
         elseif(iorient==2) then
           ! upstream side - w direction
           facenorm_dot_vw = sgn*dot_product(aniso_du_adj%uvec,aniso_du%wvec)
+          dist_unit_dot_vw = sgn*dot_product(aniso_du_adj%dist_unit,aniso_du%wvec)
         elseif(iorient==3) then
           ! dnstream side - v direction
           facenorm_dot_vw = sgn*dot_product(aniso_du_adj%uvec,aniso_du%vvec)
+          dist_unit_dot_vw = sgn*dot_product(aniso_du_adj%dist_unit,aniso_du%vvec)
         elseif(iorient==4) then
           ! dnstream side - w direction
           facenorm_dot_vw = sgn*dot_product(aniso_du_adj%uvec,aniso_du%wvec)
+          dist_unit_dot_vw = sgn*dot_product(aniso_du_adj%dist_unit,aniso_du%wvec)
+        endif
+
+        if(dist_unit_dot_vw .ge. 0.d0) then
+          mult = 1
+        else
+          mult = -1
         endif
 
         if (calc_derivs .EQV. PETSC_TRUE) then
@@ -1092,16 +1151,23 @@ subroutine RichardsFluxAniso(aniso_data, &
           endif
         endif
 
-        if( abs(facenorm_dot_vw) > cos_tt ) then
+        if( abs(dist_unit_dot_vw) > cos_tt ) then
           wt = abs(facenorm_dot_vw)
+!          wt = 1.d0
           ! dphi in direction v across adj interface = (P_adj - P_up/dn) / ((dist_adj_face).v)
           dphi = dphi + wt * (  (aniso_duc%pres_adj(i)    - rho_updn * aniso_duc_adj%loc_gravity) &
                               - (pres_updn                - rho_updn * aniso_duc%loc_gravity    ) ) &
                            / ((aniso_du_adj%up%face_dist + aniso_du_adj%dn%face_dist) * facenorm_dot_vw)
+!                           / (dist_unit_dot_vw * aniso_du%dist_mag)
+!                           / (aniso_du%dist_mag * mult)
           sum_wt = sum_wt + wt
           if (calc_derivs .EQV. PETSC_TRUE) then
             ddphi_dp     = ddphi_dp     -1.d0 * wt / ((aniso_du_adj%up%face_dist + aniso_du_adj%dn%face_dist) * facenorm_dot_vw)
             ddphi_dp_adj = ddphi_dp_adj +1.d0 * wt / ((aniso_du_adj%up%face_dist + aniso_du_adj%dn%face_dist) * facenorm_dot_vw)
+!            ddphi_dp     = ddphi_dp     -1.d0 * wt / (dist_unit_dot_vw * aniso_du%dist_mag)
+!            ddphi_dp_adj = ddphi_dp_adj +1.d0 * wt / (dist_unit_dot_vw * aniso_du%dist_mag)
+!            ddphi_dp     = ddphi_dp     -1.d0 * wt / (aniso_du%dist_mag * mult)
+!            ddphi_dp_adj = ddphi_dp_adj +1.d0 * wt / (aniso_du%dist_mag * mult)
           endif
           nullify(aniso_du_adj)
           nullify(aniso_duc_adj)
@@ -1139,6 +1205,18 @@ subroutine RichardsFluxAniso(aniso_data, &
     ! average up/dn components to obtain a consistent interface midpoint pressure
     v_darcy_aniso = (mu_up*v_darcy_aniso_up + mu_dn*v_darcy_aniso_dn) / (mu_up + mu_dn)
 
+    ! dbg
+    ! write(*,"('        dphi_v_dn = ',e10.3)") dphi_v_dn
+    ! write(*,"('        dphi_v_up = ',e10.3)") dphi_v_up
+    ! write(*,"('        dphi_w_dn = ',e10.3)") dphi_w_dn
+    ! write(*,"('        dphi_w_up = ',e10.3)") dphi_w_up
+
+    ! write(*,"('        v_darcy_aniso_up = ',e10.3)") v_darcy_aniso_up
+    ! write(*,"('        v_darcy_aniso_dn = ',e10.3)") v_darcy_aniso_dn
+
+    ! write(*,"('        v_darcy_aniso    = ',e10.3)") v_darcy_aniso
+
+
     if (calc_derivs .EQV. PETSC_TRUE) then
       aniso_du%dv_darcy_aniso_dp_up = (mu_up/(mu_up+mu_dn)) * &
                                       (-1.0d0 * (  aniso_du%up%perm_uv * aniso_ddu%ddphi_v_dp_up &
@@ -1156,6 +1234,9 @@ subroutine RichardsFluxAniso(aniso_data, &
                                                -1.0d0 * (  aniso_du%dn%perm_uv * aniso_ddu%ddphi_v_dp_dn_adj(i) &
                                                          + aniso_du%dn%perm_uw * aniso_ddu%ddphi_w_dp_dn_adj(i)) * ukvr
       enddo
+      ! dbg
+      ! call PrintAnisoData(aniso_data)
+      ! write (*,"(' v_darcy_aniso=',e10.3)") v_darcy_aniso
     endif
 
     if (calc_derivs .EQV. PETSC_TRUE) then
@@ -1269,6 +1350,12 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
                                   global_auxvar_up,global_auxvar_dn,&
                                   option,dist,ukvr,0.d0,0.d0,PETSC_FALSE,v_darcy_aniso)
         ! note ukvr*... is included in v_darcy_aniso
+
+        ! dbg
+        ! write(*,"('        v_darcy (no aniso)= ',e10.3)") v_darcy
+        ! write(*,"('        v_darcy (aniso)   = ',e10.3)") v_darcy_aniso
+
+
         v_darcy = v_darcy + v_darcy_aniso
       endif
     endif

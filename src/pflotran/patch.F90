@@ -10036,8 +10036,19 @@ subroutine PatchGetCellCenteredVelocities(patch,iphase,velocities)
       local_id_up = grid%nG2L(ghosted_id_up) ! = zero for ghost nodes
       local_id_dn = grid%nG2L(ghosted_id_dn) ! = zero for ghost nodes
       ! velocities are stored as the downwind face of the upwind cell
-      area = cur_connection_set%area(iconn)* &
-             cur_connection_set%dist(1:3,iconn)
+      ! if (associated(cur_connection_set%aniso_data)) then
+      !   if(associated(cur_connection_set%aniso_data(iconn)%unstruct)) then
+      !     area = cur_connection_set%area(iconn)* &
+      !            cur_connection_set%aniso_data(iconn)%unstruct%uvec
+      !   else
+      !     ! structured case - proceed same as isotropic
+      !     area = cur_connection_set%area(iconn)* &
+      !            cur_connection_set%dist(1:3,iconn)
+      !   endif
+      ! else
+        area = cur_connection_set%area(iconn)* &
+               cur_connection_set%dist(1:3,iconn)
+      ! endif
       velocity = patch%internal_velocities(iphase,sum_connection)*area
       if (local_id_up > 0) then
         sum_velocity(:,local_id_up) = sum_velocity(:,local_id_up) + velocity

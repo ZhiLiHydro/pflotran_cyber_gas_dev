@@ -2398,6 +2398,8 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
         connections%aniso_data(iconn)%unstruct%dn%cell_id_adj = 0
         connections%aniso_data(iconn)%unstruct%up%face_id_adj = 0
         connections%aniso_data(iconn)%unstruct%dn%face_id_adj = 0
+        connections%aniso_data(iconn)%unstruct%up%num_adj = 0
+        connections%aniso_data(iconn)%unstruct%dn%num_adj = 0
         ! allocate (u,v,w) coords
         allocate(connections%aniso_data(iconn)%unstruct%uvec(1:3))
         allocate(connections%aniso_data(iconn)%unstruct%vvec(1:3))
@@ -2405,6 +2407,9 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
         connections%aniso_data(iconn)%unstruct%uvec = 0.d0
         connections%aniso_data(iconn)%unstruct%vvec = 0.d0
         connections%aniso_data(iconn)%unstruct%wvec = 0.d0
+        ! allocate dist_unit
+        allocate(connections%aniso_data(iconn)%unstruct%dist_unit(1:3))
+        connections%aniso_data(iconn)%unstruct%dist_unit = 0.d0
         ! allocate pressure adjacency data
         allocate(connections%aniso_data(iconn)%unstruct%up%pres_adj(MAX_VERT_PER_FACE))
         allocate(connections%aniso_data(iconn)%unstruct%dn%pres_adj(MAX_VERT_PER_FACE))
@@ -2433,10 +2438,12 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
         if (iupdn==1) then
           ! upstream
           aniso_data_unstruct%up%cell_id = local_id
+          aniso_data_unstruct%up%cell_pos = v1
           aniso_data_unstruct%up%loc_gravity = DotProduct(option%gravity,v1)
         else
           ! downstream
           aniso_data_unstruct%dn%cell_id = local_id
+          aniso_data_unstruct%dn%cell_pos = v1
           aniso_data_unstruct%dn%loc_gravity = DotProduct(option%gravity,v1)
         endif
 
@@ -2481,10 +2488,12 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
                   count_up_adj = count_up_adj + 1
                   aniso_data_unstruct%up%cell_id_adj(count_up_adj) = cell_id2
                   aniso_data_unstruct%up%face_id_adj(count_up_adj) = face_id2
+                  aniso_data_unstruct%up%num_adj = aniso_data_unstruct%up%num_adj + 1
                 else
                   count_dn_adj = count_dn_adj + 1
                   aniso_data_unstruct%dn%cell_id_adj(count_dn_adj) = cell_id2
                   aniso_data_unstruct%dn%face_id_adj(count_dn_adj) = face_id2
+                  aniso_data_unstruct%dn%num_adj = aniso_data_unstruct%dn%num_adj + 1
                 endif
               endif
             else
@@ -2538,6 +2547,13 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
 
       vcross = CrossProduct(aniso_data_unstruct%uvec,aniso_data_unstruct%vvec)
       aniso_data_unstruct%wvec = vcross / sqrt(DotProduct(vcross,vcross)) ! (should have mag=1 anyway)
+
+      ! dist_unit/mag
+      v1(1) = point_dn%x-point_up%x
+      v1(2) = point_dn%y-point_up%y
+      v1(3) = point_dn%z-point_up%z
+      aniso_data_unstruct%dist_mag = sqrt(DotProduct(v1,v1))
+      aniso_data_unstruct%dist_unit(1:3) = v1/aniso_data_unstruct%dist_mag
 
       ! Calculate distances face-centres
       v1(1) = point_up%x-point1%x
