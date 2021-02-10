@@ -197,6 +197,11 @@ module Anisotropy_Data_module
     PetscReal :: perm_uw
     PetscReal :: perm_vw
 
+    ! Interpolation machinery
+    PetscReal :: LSMatInv(2,2)
+    PetscReal, pointer :: dists_u(:) ! num_adj
+    PetscReal, pointer :: dists_vw(:,:) ! 2 x num_adj
+
     ! Adjacent pressure data - working data, overwritten throughout simulation
     PetscReal, pointer :: pres_adj(:) ! pressure adjacent to upwind cell
 

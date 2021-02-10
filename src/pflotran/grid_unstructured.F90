@@ -1855,10 +1855,13 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
   type(point3d_type) :: point_up, point_dn
   type(point3d_type) :: intercept1, intercept2, intercept
 
-  type( aniso_data_type), pointer :: aniso_data
-  type( aniso_data_unstructured_type), pointer :: aniso_data_unstruct
-  PetscInt :: count_up_adj, count_dn_adj, iupdn, conn_id
-  PetscReal :: dot
+  type(aniso_data_type), pointer :: aniso_data
+  type(aniso_data_unstructured_type), pointer :: aniso_data_unstruct
+  type(aniso_data_unstructured_cell_type), pointer :: aniso_updn
+  PetscInt :: count_up_adj, count_dn_adj, iupdn, iadj, conn_id
+  PetscReal :: dot, det
+  PetscReal :: MLS(2,2)
+  PetscBool :: no_v_contrib, no_w_contrib
 
   character(len=MAXSTRINGLENGTH) :: string  
   
@@ -2517,6 +2520,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
       v1(3) = point_dn%z-point_up%z
       n_up_dn = v1 / sqrt(DotProduct(v1,v1))
 
+      ! Sufficient to consider three verticies (assuming checked planar prior to here)
       point1 = unstructured_grid%vertices(unstructured_grid%face_to_vertex(1,face_id))
       point2 = unstructured_grid%vertices(unstructured_grid%face_to_vertex(2,face_id))
       point3 = unstructured_grid%vertices(unstructured_grid%face_to_vertex(3,face_id))
@@ -2564,7 +2568,6 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
       v1(2) = point_dn%y-point1%y
       v1(3) = point_dn%z-point1%z
       aniso_data_unstruct%dn%face_dist = abs(DotProduct(v1,aniso_data_unstruct%uvec)) ! | (P_dn - P1).n |
-
     enddo
 
     ! dbg
@@ -2573,7 +2576,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
 !      Call PrintAnisoData(aniso_data)
 !    enddo
 
-    ! Loop over connections again and store ptrs for to adjacent aniso_data_unstructured
+    ! Loop over connections again and construct interpolation machinery parameters
     do iconn = 1,nconn
       aniso_data_unstruct => connections%aniso_data(iconn)%unstruct
       do iface = 1,MAX_VERT_PER_FACE
@@ -2602,6 +2605,78 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
           endif
         endif
       enddo
+
+      ! construct interpolation machinery parameters
+      
+      ! (distances up/dn->adj in (u,v,w) coords)
+      do iupdn = 1,2
+        if (iupdn==1) then
+          ! upstream
+          aniso_updn => aniso_data_unstruct%up
+        else
+          ! downstream
+          aniso_updn => aniso_data_unstruct%dn
+        endif
+
+        allocate(aniso_updn%dists_u(1:aniso_updn%num_adj))
+        aniso_updn%dists_u = 0.d0 ! )
+
+        allocate(aniso_updn%dists_vw(1:2,1:aniso_updn%num_adj))
+        aniso_updn%dists_vw = 0.d0 ! )
+
+        point1%x = grid_x(aniso_updn%cell_id)
+        point1%y = grid_y(aniso_updn%cell_id)
+        point1%z = grid_z(aniso_updn%cell_id)
+        
+        no_v_contrib = PETSC_TRUE ! local
+        no_w_contrib = PETSC_TRUE ! local
+
+        ! loop over adjacent cells that will contribute to anisotropy, calculate (v,w) dist
+        do iadj = 1,aniso_updn%num_adj
+          point2%x = grid_x(aniso_updn%cell_id_adj(iadj))
+          point2%y = grid_y(aniso_updn%cell_id_adj(iadj))
+          point2%z = grid_z(aniso_updn%cell_id_adj(iadj))
+
+          v1(1) = point2%x - point1%x
+          v1(2) = point2%y - point1%y
+          v1(3) = point2%z - point1%z
+
+          aniso_updn%dists_u(iadj)    = DotProduct(v1,aniso_data_unstruct%uvec)
+          aniso_updn%dists_vw(1,iadj) = DotProduct(v1,aniso_data_unstruct%vvec)
+          aniso_updn%dists_vw(2,iadj) = DotProduct(v1,aniso_data_unstruct%wvec)
+
+          if(aniso_updn%dists_vw(1,iadj) .ne. 0.d0) no_v_contrib=PETSC_FALSE
+          if(aniso_updn%dists_vw(2,iadj) .ne. 0.d0) no_w_contrib=PETSC_FALSE
+        enddo
+
+        ! compute least-squares mtx (sum of outer product of dists_vw vectors)
+        MLS = 0.d0 ! local (2,2)
+        do iadj = 1,aniso_updn%num_adj
+          dot = aniso_updn%dists_vw(1,iadj)*aniso_updn%dists_vw(1,iadj) &
+                + aniso_updn%dists_vw(2,iadj)*aniso_updn%dists_vw(2,iadj)
+          MLS(1,1) = MLS(1,1) + aniso_updn%dists_vw(1,iadj)*aniso_updn%dists_vw(1,iadj)/dot
+          MLS(1,2) = MLS(1,2) + aniso_updn%dists_vw(1,iadj)*aniso_updn%dists_vw(2,iadj)/dot
+          MLS(2,1) = MLS(2,1) + aniso_updn%dists_vw(2,iadj)*aniso_updn%dists_vw(1,iadj)/dot
+          MLS(2,2) = MLS(2,2) + aniso_updn%dists_vw(2,iadj)*aniso_updn%dists_vw(2,iadj)/dot
+        enddo
+
+        ! invert least-squares mtx (handling singular cases - ok for LS solution)
+        if(no_v_contrib) then
+          aniso_updn%LSMatInv = 0
+          aniso_updn%LSMatInv(2,2) = 1.d0 / MLS(2,2)
+        elseif(no_w_contrib) then
+          aniso_updn%LSMatInv = 0
+          aniso_updn%LSMatInv(1,1) = 1.d0 / MLS(1,1)
+        else
+          ! 2x2 case
+          det = MLS(1,1)*MLS(2,2) - MLS(1,2)*MLS(2,1)
+          aniso_updn%LSMatInv(1,1) =  MLS(2,2) / det
+          aniso_updn%LSMatInv(1,2) = -MLS(1,2) / det
+          aniso_updn%LSMatInv(2,1) = -MLS(2,1) / det
+          aniso_updn%LSMatInv(2,2) =  MLS(1,1) / det
+        endif
+      enddo
+
     enddo
 
     ! dbg
