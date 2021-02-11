@@ -301,15 +301,17 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
     if (ukvr>floweps) then
       v_darcy= Dq * ukvr * dphi
 
+      dv_darcy_dp_up = Dq*(dukvr_dp_up*dphi+ukvr*dphi_dp_up)
+      dv_darcy_dp_dn = Dq*(dukvr_dp_dn*dphi+ukvr*dphi_dp_dn)
+
+
       ! add anisotropic contributions
       if(associated(aniso_data)) then
         ! Call RichardsFluxAniso with calc_derivs=PETSC_TRUE
-        dv_darcy_dp_up = Dq*(dukvr_dp_up*dphi+ukvr*dphi_dp_up)
-        dv_darcy_dp_dn = Dq*(dukvr_dp_dn*dphi+ukvr*dphi_dp_dn)
         Call RichardsFluxAniso(aniso_data,material_auxvar_up,material_auxvar_dn,&
                                 global_auxvar_up,global_auxvar_dn,&
-                                option,dist,ukvr,&
-                                dukvr_dp_up,dukvr_dp_dn,&
+                                option,dist,&
+                                ukvr,dukvr_dp_up,dukvr_dp_dn,&
                                 v_darcy, dv_darcy_dp_up, dv_darcy_dp_dn,&
                                 PETSC_TRUE,v_darcy_aniso)
         v_darcy_orig = v_darcy
@@ -317,7 +319,7 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
         ! dv_darcy_aniso/dp_... terms are stored in aniso_data
       endif
 
-      ! ! check up deriv
+      ! ! ! check up deriv
       ! numdp = 1d-5
       ! p_orig = global_auxvar_up%pres(1)
       ! v_darcy_aniso_orig = v_darcy_aniso
@@ -358,8 +360,8 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
 
 
       q = v_darcy * area
-      dq_dp_up = Dq*(dukvr_dp_up*dphi+ukvr*dphi_dp_up)*area
-      dq_dp_dn = Dq*(dukvr_dp_dn*dphi+ukvr*dphi_dp_dn)*area
+      dq_dp_up = dv_darcy_dp_up*area
+      dq_dp_dn = dv_darcy_dp_dn*area
       
       if(associated(aniso_data)) then
         ! (note ukvr and dukvr_dp_up/dn already taken account of in RichardsFluxAniso())
@@ -507,9 +509,9 @@ subroutine RichardsFluxAniso(aniso_data, &
                             material_auxvar_up,material_auxvar_dn, &
                             global_auxvar_up,global_auxvar_dn, &
                             option, &
-                            dist, ukvr, & ! kvr = krel/visc
-                            dukvr_dp_up, dukvr_dp_dn, & ! only needed if calculating derivatives, o/w set zero
-                            v_darcy, dv_darcy_dp_up, dv_darcy_dp_dn, & ! needed in unstructured case to determine dh/du 
+                            dist, & 
+                            ukvr, dukvr_dp_up, dukvr_dp_dn, & ! kvr = krel/visc (derivs only needed if calculating derivatives, o/w set zero)
+                            v_darcy_iso, dv_darcy_iso_dp_up, dv_darcy_iso_dp_dn, & ! needed in unstruct case for dphi/du (derivs only needed if calculating derivatives, o/w set zero)
                             calc_derivs, &
                             v_darcy_aniso)
 !
@@ -538,8 +540,8 @@ subroutine RichardsFluxAniso(aniso_data, &
   PetscReal :: dukvr_dp_up, dukvr_dp_dn
   PetscBool :: calc_derivs ! terms are stored in aniso_data%dv_darcy_aniso_...
 
-  PetscReal :: v_darcy ! v_darcy = Dq * ukvr * dphi, as calculated by RichardsFlux()
-  PetscReal :: dv_darcy_dp_up,dv_darcy_dp_dn ! derivs of above
+  PetscReal :: v_darcy_iso ! v_darcy = Dq * ukvr * dphi, as calculated by RichardsFlux()
+  PetscReal :: dv_darcy_iso_dp_up,dv_darcy_iso_dp_dn ! derivs of above
 
   ! outputs
   PetscReal :: v_darcy_aniso
@@ -1001,11 +1003,6 @@ subroutine RichardsFluxAniso(aniso_data, &
     ! !dbg 
     ! call PrintAnisoData(aniso_data)
 
-    ! adj interfaces are included when the angle between their normal (u) and the coordinate
-    ! direction under consideration (v) is less than a threshold
-    theta_threshold = 80.d0 ! threshold angle (degrees)
-    cos_tt = cos(theta_threshold*PI/180)
-
     ! v,w are the coordinate vectors in the plane of the interface over which flux is being calculated
     dphi_v_up = 0
     dphi_w_up = 0
@@ -1038,12 +1035,12 @@ subroutine RichardsFluxAniso(aniso_data, &
         rho_updn = rho_up
         ! Calculate ddphi_du from v_darcy (= Dq * ukvr * dphi) supplied by RichardsFlux(),
         ! where Dq = (perm_up * perm_dn)/(dd_up*perm_dn + dd_dn*perm_up)
-        ! (n.b ddphi_du is basically (P_interface-P_up)/dist_to_face)
-        dphi_du = -1.d0* v_darcy / (ukvr*aniso_updn%perm_uu)
+        ! (n.b ddphi_du is basically (P_up-P_dn)/dist)
+        dphi_du = -1.d0* v_darcy_iso / (ukvr*aniso_updn%perm_uu)
         ! d2phi_du_dp_up = dv_darcy_dp_up / (ukvr*aniso_updn%perm_uu)
         ! u is +ve in up->dn direction, so d2phi_du_dp_up is +ve 
-        d2phi_du_dp_up = -1.d0* ((1.d0 / (dist(-1)*dist(0)))  &
-                         - (v_darcy * dukvr_dp_up /ukvr/ukvr/aniso_updn%perm_uu))
+        d2phi_du_dp_up = -1.d0* dv_darcy_iso_dp_up / (ukvr*aniso_updn%perm_uu) &
+          + v_darcy_iso * dukvr_dp_up / (ukvr*ukvr*aniso_updn%perm_uu)
       else
         ! downstream
         aniso_updn => aniso_data%unstruct%dn
@@ -1052,14 +1049,12 @@ subroutine RichardsFluxAniso(aniso_data, &
         ! Calculate ddphi_du from v_darcy (= Dq * ukvr * dphi) supplied by RichardsFlux(),
         ! where Dq = (perm_up * perm_dn)/(dd_up*perm_dn + dd_dn*perm_up)
         ! (n.b ddphi_du is basically (P_dn-P_interface)/dist_to_face)
-        dphi_du = -1.d0* v_darcy / (ukvr*aniso_updn%perm_uu)
+        dphi_du = -1.d0* v_darcy_iso / (ukvr*aniso_updn%perm_uu)
         ! d2phi_du_dp_dn = dv_darcy_dp_dn / (ukvr*aniso_updn%perm_uu)
         ! u is +ve in up->dn direction, so d2phi_du_dp_dn is -ve 
-        d2phi_du_dp_dn = -1.d0* ((-1.d0 / (dist(0)-(dist(-1)*dist(0)))) &
-                         - (v_darcy * dukvr_dp_dn /ukvr/ukvr/aniso_updn%perm_uu))
+        d2phi_du_dp_dn = -1.d0* dv_darcy_iso_dp_dn / (ukvr*aniso_updn%perm_uu) &
+          + v_darcy_iso * dukvr_dp_dn / (ukvr*ukvr*aniso_updn%perm_uu)
       endif
-
-
 
       do iadj = 1,aniso_updn%num_adj
         ! Could form inv(M)*sum(rhs_terms) here, but it's easier to accumulate the derivative
@@ -1122,196 +1117,7 @@ subroutine RichardsFluxAniso(aniso_data, &
         endif
       enddo
 
-  enddo
-
-    ! Common loop for up/dnstream v/w-direction derivatives
-!     do iorient = 1,4
-!       if (iorient==1) then
-!         ! upstream side - v direction
-!         aniso_duc => aniso_du%up  ! cell neighbouring interface on which flux is being calculated
-!         pres_updn = global_auxvar_up%pres(1)
-!         rho_updn = rho_up
-!         dphi => dphi_v_up
-!         vwvec = aniso_du%vvec
-!         if (calc_derivs .EQV. PETSC_TRUE) then
-!           ddphi_dp => aniso_ddu%ddphi_v_dp_up
-!         endif
-!       elseif(iorient==2) then
-!         ! upstream side - w direction
-!         aniso_duc => aniso_du%up  ! cell neighbouring interface on which flux is being calculated
-!         pres_updn = global_auxvar_up%pres(1)
-!         rho_updn = rho_up
-!         vwvec = aniso_du%wvec
-!         dphi => dphi_w_up
-!         if (calc_derivs .EQV. PETSC_TRUE) then
-!           ddphi_dp => aniso_ddu%ddphi_w_dp_up
-!         endif
-!       elseif(iorient==3) then
-!         ! dnstream side - v direction
-!         aniso_duc => aniso_du%dn  ! cell neighbouring interface on which flux is being calculated
-!         pres_updn = global_auxvar_dn%pres(1)
-!         rho_updn = rho_dn
-!         dphi => dphi_v_dn
-!         vwvec = aniso_du%vvec
-!         if (calc_derivs .EQV. PETSC_TRUE) then
-!           ddphi_dp => aniso_ddu%ddphi_v_dp_dn
-!         endif
-!       elseif(iorient==4) then
-!         ! dnstream side - w direction
-!         aniso_duc => aniso_du%dn  ! cell neighbouring interface on which flux is being calculated
-!         pres_updn = global_auxvar_dn%pres(1)
-!         rho_updn = rho_dn
-!         dphi => dphi_w_dn
-!         vwvec = aniso_du%wvec
-!         if (calc_derivs .EQV. PETSC_TRUE) then
-!           ddphi_dp => aniso_ddu%ddphi_w_dp_dn
-!         endif
-!       endif
-
-!       ! ! Simplified approaches - ineffective 
-!       ! if(aniso_duc%num_adj .eq. 1) then
-!       !   ! only one adjacent cell - (adj to bdry) calculate deriv using cell pressure
-!       ! elseif(aniso_duc%num_adj .eq. 2) then
-!       !   ! two adjacent cells - either 2-D or 3-D bdry case
-!       !   distvec = aniso_duc%adu_cell_adj(1)%ptr%cell_pos - aniso_duc%adu_cell_adj(2)%ptr%cell_pos
-!       !   if( abs(dot_product(distvec,vwvec))/sqrt(dot_product(distvec,distvec)) > cos_tt ) then
-!       !     dphi = (  (aniso_duc%pres_adj(1) - rho_updn * aniso_duc%adu_cell_adj(1)%ptr%loc_gravity) &
-!       !             - (aniso_duc%pres_adj(2) - rho_updn * aniso_duc%adu_cell_adj(2)%ptr%loc_gravity) ) &
-!       !             / (dot_product(distvec,vwvec))
-!       !     if (calc_derivs .EQV. PETSC_TRUE) then
-!       !       if (iorient==1) then
-!       !         ! upstream side - v direction
-!       !         aniso_ddu%ddphi_v_dp_up_adj(1) =  1.d0 / (dot_product(distvec,vwvec))
-!       !         aniso_ddu%ddphi_v_dp_up_adj(2) = -1.d0 / (dot_product(distvec,vwvec))
-!       !       elseif(iorient==2) then
-!       !         ! upstream side - w direction
-!       !         aniso_ddu%ddphi_w_dp_up_adj(1) =  1.d0 / (dot_product(distvec,vwvec))
-!       !         aniso_ddu%ddphi_w_dp_up_adj(2) = -1.d0 / (dot_product(distvec,vwvec))
-!       !       elseif(iorient==3) then
-!       !         ! dnstream side - v direction
-!       !         aniso_ddu%ddphi_v_dp_dn_adj(1) =  1.d0 / (dot_product(distvec,vwvec))
-!       !         aniso_ddu%ddphi_v_dp_dn_adj(2) = -1.d0 / (dot_product(distvec,vwvec))
-!       !       elseif(iorient==4) then
-!       !         ! dnstream side - w direction
-!       !         aniso_ddu%ddphi_w_dp_dn_adj(1) =  1.d0 / (dot_product(distvec,vwvec))
-!       !         aniso_ddu%ddphi_w_dp_dn_adj(2) = -1.d0 / (dot_product(distvec,vwvec))
-!       !       endif
-!       !     endif
-!       !   endif
-!       ! elseif(aniso_duc%num_adj .eq. 3) then
-!       !   ! three adjacent cells - 3-D case (interior triangle or quad ajacent to bdry)
-!       ! elseif(aniso_duc%num_adj .eq. 4) then
-!       !   ! four adjacent cells - 3-D case (interior quad)
-!       ! else
-!       !   ! error - unhandled case
-!       !   write(*,"('Unhandled num_adj')")
-!       !   stop
-!       ! endif
-      
-
-!       sum_wt = 0
-!       do i=1,4  ! 4=MAX_VERT_PER_FACE
-!         if (aniso_duc%cell_id_adj(i) == 0) cycle
-
-!         ! ptrs to aniso data for adjacent face and corresponding adjacent cell
-!         aniso_du_adj  => aniso_duc%adu_face_adj(i)%ptr
-!         aniso_duc_adj => aniso_duc%adu_cell_adj(i)%ptr
-
-!         ! determine whether up/dn cell on flux face is up/dn cell on adjacent face
-!         ! (used to determine outward normal direction in up/dn cells)
-!         if(aniso_duc%cell_id .eq. aniso_du_adj%up%cell_id) then
-!           sgn = 1
-!         else
-!           sgn = -1
-!         endif
-
-!         ! n.v or n.w where n is normal to face = cos(angle) since both are unit vecs
-!         ! NB. uvec on each face is +ve in up->dn direction, so n=sgn*uvec is the outward normal
-!         if (iorient==1) then
-!           ! upstream side - v direction
-!           facenorm_dot_vw = sgn*dot_product(aniso_du_adj%uvec,aniso_du%vvec)
-!           dist_unit_dot_vw = sgn*dot_product(aniso_du_adj%dist_unit,aniso_du%vvec)
-!         elseif(iorient==2) then
-!           ! upstream side - w direction
-!           facenorm_dot_vw = sgn*dot_product(aniso_du_adj%uvec,aniso_du%wvec)
-!           dist_unit_dot_vw = sgn*dot_product(aniso_du_adj%dist_unit,aniso_du%wvec)
-!         elseif(iorient==3) then
-!           ! dnstream side - v direction
-!           facenorm_dot_vw = sgn*dot_product(aniso_du_adj%uvec,aniso_du%vvec)
-!           dist_unit_dot_vw = sgn*dot_product(aniso_du_adj%dist_unit,aniso_du%vvec)
-!         elseif(iorient==4) then
-!           ! dnstream side - w direction
-!           facenorm_dot_vw = sgn*dot_product(aniso_du_adj%uvec,aniso_du%wvec)
-!           dist_unit_dot_vw = sgn*dot_product(aniso_du_adj%dist_unit,aniso_du%wvec)
-!         endif
-
-!         if(dist_unit_dot_vw .ge. 0.d0) then
-!           mult = 1
-!         else
-!           mult = -1
-!         endif
-
-!         if (calc_derivs .EQV. PETSC_TRUE) then
-!           if (iorient==1) then
-!             ! upstream side - v direction
-!             ddphi_dp_adj => aniso_ddu%ddphi_v_dp_up_adj(i)
-!           elseif(iorient==2) then
-!             ! upstream side - w direction
-!             ddphi_dp_adj => aniso_ddu%ddphi_w_dp_up_adj(i)
-!           elseif(iorient==3) then
-!             ! dnstream side - v direction
-!             ddphi_dp_adj => aniso_ddu%ddphi_v_dp_dn_adj(i)
-!           elseif(iorient==4) then
-!             ! dnstream side - w direction
-!             ddphi_dp_adj => aniso_ddu%ddphi_w_dp_dn_adj(i)
-!           endif
-!         endif
-
-!         if( abs(dist_unit_dot_vw) > cos_tt ) then
-!           wt = abs(facenorm_dot_vw)
-! !          wt = 1.d0
-!           ! dphi in direction v across adj interface = (P_adj - P_up/dn) / ((dist_adj_face).v)
-!           dphi = dphi + wt * (  (aniso_duc%pres_adj(i)    - rho_updn * aniso_duc_adj%loc_gravity) &
-!                               - (pres_updn                - rho_updn * aniso_duc%loc_gravity    ) ) &
-!                            / ((aniso_du_adj%up%face_dist + aniso_du_adj%dn%face_dist) * facenorm_dot_vw)
-! !                           / (dist_unit_dot_vw * aniso_du%dist_mag)
-! !                           / (aniso_du%dist_mag * mult)
-!           sum_wt = sum_wt + wt
-!           if (calc_derivs .EQV. PETSC_TRUE) then
-!             ddphi_dp     = ddphi_dp     -1.d0 * wt / ((aniso_du_adj%up%face_dist + aniso_du_adj%dn%face_dist) * facenorm_dot_vw)
-!             ddphi_dp_adj = ddphi_dp_adj +1.d0 * wt / ((aniso_du_adj%up%face_dist + aniso_du_adj%dn%face_dist) * facenorm_dot_vw)
-! !            ddphi_dp     = ddphi_dp     -1.d0 * wt / (dist_unit_dot_vw * aniso_du%dist_mag)
-! !            ddphi_dp_adj = ddphi_dp_adj +1.d0 * wt / (dist_unit_dot_vw * aniso_du%dist_mag)
-! !            ddphi_dp     = ddphi_dp     -1.d0 * wt / (aniso_du%dist_mag * mult)
-! !            ddphi_dp_adj = ddphi_dp_adj +1.d0 * wt / (aniso_du%dist_mag * mult)
-!           endif
-!           nullify(aniso_du_adj)
-!           nullify(aniso_duc_adj)
-!         endif
-!       enddo
-!       if(sum_wt .ne. 0) then ! there may be no faces contributing a derivative in the desired direction (=> deriv=0)
-!         dphi = dphi / sum_wt
-!         if (calc_derivs .EQV. PETSC_TRUE) then
-!           ddphi_dp        = ddphi_dp / sum_wt
-!           do i=1,4  ! 4=MAX_VERT_PER_FACE  (some redundant 0.0/sum_wt here)
-!             if (iorient==1) then
-!               ! upstream side - v direction
-!               ddphi_dp_adj => aniso_ddu%ddphi_v_dp_up_adj(i)
-!             elseif(iorient==2) then
-!               ! upstream side - w direction
-!               ddphi_dp_adj => aniso_ddu%ddphi_w_dp_up_adj(i)
-!             elseif(iorient==3) then
-!               ! dnstream side - v direction
-!               ddphi_dp_adj => aniso_ddu%ddphi_v_dp_dn_adj(i)
-!             elseif(iorient==4) then
-!               ! dnstream side - w direction
-!               ddphi_dp_adj => aniso_ddu%ddphi_w_dp_dn_adj(i)
-!             endif  
-!             ddphi_dp_adj = ddphi_dp_adj / sum_wt
-!           enddo
-!         endif
-!       endif
-!     enddo
+    enddo
 
     ! Calculate anisotropic darcy contribution in up/dn cells
     v_darcy_aniso_up = -1.d0 * (aniso_du%up%perm_uv * dphi_v_up + aniso_du%up%perm_uw * dphi_w_up) * ukvr
@@ -1320,22 +1126,6 @@ subroutine RichardsFluxAniso(aniso_data, &
     mu_dn = (1.d0-dist(-1))*dist(0)/aniso_du%dn%perm_uu  ! weight - dn (dist to interface/Kuu)
     ! average up/dn components to obtain a consistent interface midpoint pressure
     v_darcy_aniso = (mu_up*v_darcy_aniso_up + mu_dn*v_darcy_aniso_dn) / (mu_up + mu_dn)
-
-    ! ! dbg
-    ! write(*,"('from = ',i4,'   to = ',i4)") aniso_du%up%cell_id, aniso_du%dn%cell_id
-    ! write(*,"('        press_dn  = ',e10.3)") global_auxvar_dn%pres(1)
-    ! write(*,"('        press_up  = ',e10.3)") global_auxvar_up%pres(1)
-    ! write(*,"('        dphi_du   = ',e10.3)") dphi_du
-    ! write(*,"('        dphi_v_dn = ',e10.3)") dphi_v_dn
-    ! write(*,"('        dphi_v_up = ',e10.3)") dphi_v_up
-    ! write(*,"('        dphi_w_dn = ',e10.3)") dphi_w_dn
-    ! write(*,"('        dphi_w_up = ',e10.3)") dphi_w_up
-
-    ! write(*,"('        v_darcy_aniso_up = ',e10.3)") v_darcy_aniso_up
-    ! write(*,"('        v_darcy_aniso_dn = ',e10.3)") v_darcy_aniso_dn
-
-    ! write(*,"('        v_darcy_aniso    = ',e10.3)") v_darcy_aniso
-
 
     if (calc_derivs .EQV. PETSC_TRUE) then
       aniso_du%dv_darcy_aniso_dp_up = (mu_up/(mu_up+mu_dn)) * &

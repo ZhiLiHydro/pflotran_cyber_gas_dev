@@ -2508,66 +2508,24 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
         enddo
       enddo
 
-      ! compute (u,v,w) coord vecs (u +ve dnstream)
-      point_up%x = grid_x(aniso_data_unstruct%up%cell_id)
-      point_up%y = grid_y(aniso_data_unstruct%up%cell_id)
-      point_up%z = grid_z(aniso_data_unstruct%up%cell_id)
-      point_dn%x = grid_x(aniso_data_unstruct%dn%cell_id)
-      point_dn%y = grid_y(aniso_data_unstruct%dn%cell_id)
-      point_dn%z = grid_z(aniso_data_unstruct%dn%cell_id)
-      v1(1) = point_dn%x-point_up%x
-      v1(2) = point_dn%y-point_up%y
-      v1(3) = point_dn%z-point_up%z
-      n_up_dn = v1 / sqrt(DotProduct(v1,v1))
+      ! compute (u,v,w) coord vecs (u +ve up->dn)
 
-      ! Sufficient to consider three verticies (assuming checked planar prior to here)
+      ! take u to be in the 'dist direction' in which the isotropic Darcy flux is notionally directed
+      v1 = connections%dist(1:3,iconn)
+      aniso_data_unstruct%uvec = v1/sqrt(DotProduct(v1,v1))
+
+      ! set v based on two of the face vertices, resolved to be perpendicular to u
       point1 = unstructured_grid%vertices(unstructured_grid%face_to_vertex(1,face_id))
       point2 = unstructured_grid%vertices(unstructured_grid%face_to_vertex(2,face_id))
-      point3 = unstructured_grid%vertices(unstructured_grid%face_to_vertex(3,face_id))
+      v1(1) = point2%x-point1%x
+      v1(2) = point2%y-point1%y
+      v1(3) = point2%z-point1%z
+      v2 = v1 - DotProduct(v1,aniso_data_unstruct%uvec)*aniso_data_unstruct%uvec
+      aniso_data_unstruct%vvec = v2/sqrt(DotProduct(v2,v2))
 
-      v1(1) = point3%x-point2%x
-      v1(2) = point3%y-point2%y
-      v1(3) = point3%z-point2%z
-      v2(1) = point1%x-point2%x
-      v2(2) = point1%y-point2%y
-      v2(3) = point1%z-point2%z
-      vcross = CrossProduct(v1,v2)
-      magnitude = sqrt(DotProduct(vcross,vcross))
-
-      !  (u +ve in up->dn direction)
-      dot = DotProduct(vcross,n_up_dn)
-      if (dot > 0) then
-        aniso_data_unstruct%uvec = vcross/magnitude
-      elseif (dot < 0) then
-        aniso_data_unstruct%uvec = -vcross/magnitude
-      else
-        write(string,*) option%myrank,local_id,dual_local_id
-        option%io_buffer = 'uvec for connection parallel to face' // trim(string)
-        call PrintErrMsg(option)
-      endif
-
-      ! choose v = P2->P3, and w = u x v
-      aniso_data_unstruct%vvec = v1 / sqrt(DotProduct(v1,v1))
-
+      ! set w perpendicular to u,v
       vcross = CrossProduct(aniso_data_unstruct%uvec,aniso_data_unstruct%vvec)
-      aniso_data_unstruct%wvec = vcross / sqrt(DotProduct(vcross,vcross)) ! (should have mag=1 anyway)
-
-      ! dist_unit/mag
-      v1(1) = point_dn%x-point_up%x
-      v1(2) = point_dn%y-point_up%y
-      v1(3) = point_dn%z-point_up%z
-      aniso_data_unstruct%dist_mag = sqrt(DotProduct(v1,v1))
-      aniso_data_unstruct%dist_unit(1:3) = v1/aniso_data_unstruct%dist_mag
-
-      ! Calculate distances face-centres
-      v1(1) = point_up%x-point1%x
-      v1(2) = point_up%y-point1%y
-      v1(3) = point_up%z-point1%z
-      aniso_data_unstruct%up%face_dist = abs(DotProduct(v1,aniso_data_unstruct%uvec)) ! | (P_up - P1).n |
-      v1(1) = point_dn%x-point1%x
-      v1(2) = point_dn%y-point1%y
-      v1(3) = point_dn%z-point1%z
-      aniso_data_unstruct%dn%face_dist = abs(DotProduct(v1,aniso_data_unstruct%uvec)) ! | (P_dn - P1).n |
+      aniso_data_unstruct%wvec = vcross / sqrt(DotProduct(vcross,vcross))
     enddo
 
     ! dbg
