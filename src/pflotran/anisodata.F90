@@ -234,14 +234,18 @@ module Anisotropy_Data_module
 
   type, public :: aniso_deriv_data_unstructured_type
     ! structure for storing work data for anisotropic derivative calculations - unstrcutured case
-    PetscReal :: ddphi_v_dp_up
-    PetscReal, pointer :: ddphi_v_dp_up_adj(:)
-    PetscReal :: ddphi_w_dp_up
-    PetscReal, pointer :: ddphi_w_dp_up_adj(:)
-    PetscReal :: ddphi_v_dp_dn
-    PetscReal, pointer :: ddphi_v_dp_dn_adj(:)
-    PetscReal :: ddphi_w_dp_dn
-    PetscReal, pointer :: ddphi_w_dp_dn_adj(:)
+    PetscReal :: ddphi_v_up_dp_up
+    PetscReal :: ddphi_v_up_dp_dn
+    PetscReal, pointer :: ddphi_v_up_dp_up_adj(:)
+    PetscReal :: ddphi_w_up_dp_up
+    PetscReal :: ddphi_w_up_dp_dn
+    PetscReal, pointer :: ddphi_w_up_dp_up_adj(:)
+    PetscReal :: ddphi_v_dn_dp_dn
+    PetscReal :: ddphi_v_dn_dp_up
+    PetscReal, pointer :: ddphi_v_dn_dp_dn_adj(:)
+    PetscReal :: ddphi_w_dn_dp_dn
+    PetscReal :: ddphi_w_dn_dp_up
+    PetscReal, pointer :: ddphi_w_dn_dp_dn_adj(:)
   end type aniso_deriv_data_unstructured_type
 
   type, public :: aniso_data_type

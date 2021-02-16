@@ -319,44 +319,44 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
         ! dv_darcy_aniso/dp_... terms are stored in aniso_data
       endif
 
-      ! ! ! check up deriv
-      ! numdp = 1d-5
-      ! p_orig = global_auxvar_up%pres(1)
-      ! v_darcy_aniso_orig = v_darcy_aniso
-      ! global_auxvar_up%pres(1) = (1+numdp) * global_auxvar_up%pres(1)
-      ! Call RichardsFluxAniso(aniso_data,material_auxvar_up,material_auxvar_dn,&
-      !                           global_auxvar_up,global_auxvar_dn,&
-      !                           option,dist,ukvr,&
-      !                           dukvr_dp_up,dukvr_dp_dn,&
-      !                           v_darcy_orig,0.d0,0.d0,&
-      !                           PETSC_FALSE,v_darcy_aniso)
-      ! global_auxvar_up%pres(1) = p_orig
-      ! num_dv_darcy_aniso_dp = (v_darcy_aniso - v_darcy_aniso_orig) / (numdp*global_auxvar_up%pres(1))
-      ! v_darcy_aniso = v_darcy_aniso_orig
+      ! check up deriv
+      numdp = 1d-5
+      p_orig = global_auxvar_up%pres(1)
+      v_darcy_aniso_orig = v_darcy_aniso
+      global_auxvar_up%pres(1) = (1+numdp) * global_auxvar_up%pres(1)
+      Call RichardsFluxAniso(aniso_data,material_auxvar_up,material_auxvar_dn,&
+                                global_auxvar_up,global_auxvar_dn,&
+                                option,dist,ukvr,&
+                                dukvr_dp_up,dukvr_dp_dn,&
+                                v_darcy_orig,0.d0,0.d0,&
+                                PETSC_FALSE,v_darcy_aniso)
+      global_auxvar_up%pres(1) = p_orig
+      num_dv_darcy_aniso_dp = (v_darcy_aniso - v_darcy_aniso_orig) / (numdp*global_auxvar_up%pres(1))
+      v_darcy_aniso = v_darcy_aniso_orig
 
-      ! write(*,"('face=',i3,'up num=',e20.6,'  anal=',e20.6)") aniso_data%unstruct%conn_face_id, &
-      !   num_dv_darcy_aniso_dp, aniso_data%unstruct%dv_darcy_aniso_dp_up
+      write(*,"('face=',i3,'up num=',e20.6,'  anal=',e20.6)") aniso_data%unstruct%conn_face_id, &
+        num_dv_darcy_aniso_dp, aniso_data%unstruct%dv_darcy_aniso_dp_up
 
-      ! aniso_data%unstruct%dv_darcy_aniso_dp_up = num_dv_darcy_aniso_dp
+      aniso_data%unstruct%dv_darcy_aniso_dp_up = num_dv_darcy_aniso_dp
 
-      ! ! check dn deriv
-      ! p_orig = global_auxvar_dn%pres(1)
-      ! v_darcy_aniso_orig = v_darcy_aniso
-      ! global_auxvar_dn%pres(1) = (1+numdp) * global_auxvar_dn%pres(1)
-      ! Call RichardsFluxAniso(aniso_data,material_auxvar_up,material_auxvar_dn,&
-      !                           global_auxvar_up,global_auxvar_dn,&
-      !                           option,dist,ukvr,&
-      !                           dukvr_dp_up,dukvr_dp_dn,&
-      !                           v_darcy_orig,0.d0,0.d0,&
-      !                           PETSC_FALSE,v_darcy_aniso)
-      ! global_auxvar_dn%pres(1) = p_orig
-      ! num_dv_darcy_aniso_dp = (v_darcy_aniso - v_darcy_aniso_orig) / (numdp*global_auxvar_dn%pres(1))
-      ! v_darcy_aniso = v_darcy_aniso_orig
+      ! check dn deriv
+      p_orig = global_auxvar_dn%pres(1)
+      v_darcy_aniso_orig = v_darcy_aniso
+      global_auxvar_dn%pres(1) = (1+numdp) * global_auxvar_dn%pres(1)
+      Call RichardsFluxAniso(aniso_data,material_auxvar_up,material_auxvar_dn,&
+                                global_auxvar_up,global_auxvar_dn,&
+                                option,dist,ukvr,&
+                                dukvr_dp_up,dukvr_dp_dn,&
+                                v_darcy_orig,0.d0,0.d0,&
+                                PETSC_FALSE,v_darcy_aniso)
+      global_auxvar_dn%pres(1) = p_orig
+      num_dv_darcy_aniso_dp = (v_darcy_aniso - v_darcy_aniso_orig) / (numdp*global_auxvar_dn%pres(1))
+      v_darcy_aniso = v_darcy_aniso_orig
 
-      ! write(*,"('face=',i3,'dn num=',e20.6,'  anal=',e20.6)") aniso_data%unstruct%conn_face_id, &
-      !   num_dv_darcy_aniso_dp, aniso_data%unstruct%dv_darcy_aniso_dp_dn
+      write(*,"('face=',i3,'dn num=',e20.6,'  anal=',e20.6)") aniso_data%unstruct%conn_face_id, &
+        num_dv_darcy_aniso_dp, aniso_data%unstruct%dv_darcy_aniso_dp_dn
    
-      ! aniso_data%unstruct%dv_darcy_aniso_dp_dn = num_dv_darcy_aniso_dp
+      aniso_data%unstruct%dv_darcy_aniso_dp_dn = num_dv_darcy_aniso_dp
 
 
       q = v_darcy * area
@@ -572,7 +572,7 @@ subroutine RichardsFluxAniso(aniso_data, &
   PetscReal :: theta_threshold, cos_tt
   PetscReal :: facenorm_dot_vw, sgn, wt, sum_wt, dist_unit_dot_vw, mult
   PetscInt :: iorient, i, iupdn, iadj
-  PetscReal :: distvec(3), vwvec(3), LSrhs(2), dot, tmp
+  PetscReal :: distvec(3), vwvec(3), LSrhs(2), dot, tmp, dtmp_dp_up, dtmp_dp_dn, dtmp_dp_adj
   PetscReal :: dphi_du, d2phi_du_dp_up, d2phi_du_dp_dn
 
   nullify(aniso_ds)
@@ -1011,18 +1011,26 @@ subroutine RichardsFluxAniso(aniso_data, &
 
     if (calc_derivs) then
       allocate(aniso_ddu)
-      allocate(aniso_ddu%ddphi_v_dp_up_adj(4)) !MAX_VERT_PER_FACE)
-      allocate(aniso_ddu%ddphi_w_dp_up_adj(4)) !MAX_VERT_PER_FACE)
-      allocate(aniso_ddu%ddphi_v_dp_dn_adj(4)) !MAX_VERT_PER_FACE)
-      allocate(aniso_ddu%ddphi_w_dp_dn_adj(4)) !MAX_VERT_PER_FACE)
-      aniso_ddu%ddphi_v_dp_up     = 0 ! scalar
-      aniso_ddu%ddphi_v_dp_up_adj = 0 ! array
-      aniso_ddu%ddphi_w_dp_up     = 0 ! scalar
-      aniso_ddu%ddphi_w_dp_up_adj = 0 ! array
-      aniso_ddu%ddphi_v_dp_dn     = 0 ! scalar
-      aniso_ddu%ddphi_v_dp_dn_adj = 0 ! array
-      aniso_ddu%ddphi_w_dp_dn     = 0 ! scalar
-      aniso_ddu%ddphi_w_dp_dn_adj = 0 ! array
+      allocate(aniso_ddu%ddphi_v_up_dp_up_adj(4)) !MAX_VERT_PER_FACE)
+      allocate(aniso_ddu%ddphi_w_up_dp_up_adj(4)) !MAX_VERT_PER_FACE)
+      allocate(aniso_ddu%ddphi_v_dn_dp_dn_adj(4)) !MAX_VERT_PER_FACE)
+      allocate(aniso_ddu%ddphi_w_dn_dp_dn_adj(4)) !MAX_VERT_PER_FACE)
+      aniso_ddu%ddphi_v_up_dp_up     = 0 ! scalar
+      aniso_ddu%ddphi_v_up_dp_dn     = 0 ! scalar
+      aniso_ddu%ddphi_v_up_dp_up_adj = 0 ! array
+      aniso_ddu%ddphi_w_up_dp_up     = 0 ! scalar
+      aniso_ddu%ddphi_w_up_dp_dn     = 0 ! scalar
+      aniso_ddu%ddphi_w_up_dp_up_adj = 0 ! array
+      aniso_ddu%ddphi_v_dn_dp_dn     = 0 ! scalar
+      aniso_ddu%ddphi_v_dn_dp_up     = 0 ! scalar
+      aniso_ddu%ddphi_v_dn_dp_dn_adj = 0 ! array
+      aniso_ddu%ddphi_w_dn_dp_dn     = 0 ! scalar
+      aniso_ddu%ddphi_w_dn_dp_up     = 0 ! scalar
+      aniso_ddu%ddphi_w_dn_dp_dn_adj = 0 ! array
+      ! dbg
+      if(aniso_du%conn_face_id==234) then
+        write(*,"('stop!')")
+      endif
     endif
 
 
@@ -1030,89 +1038,96 @@ subroutine RichardsFluxAniso(aniso_data, &
 
       if (iupdn==1) then
         ! upstream
-        aniso_updn => aniso_data%unstruct%up
+        aniso_updn => aniso_du%up
         pres_updn = global_auxvar_up%pres(1)
         rho_updn = rho_up
-        ! Calculate ddphi_du from v_darcy (= Dq * ukvr * dphi) supplied by RichardsFlux(),
-        ! where Dq = (perm_up * perm_dn)/(dd_up*perm_dn + dd_dn*perm_up)
-        ! (n.b ddphi_du is basically (P_up-P_dn)/dist)
-        dphi_du = -1.d0* v_darcy_iso / (ukvr*aniso_updn%perm_uu)
-        ! d2phi_du_dp_up = dv_darcy_dp_up / (ukvr*aniso_updn%perm_uu)
-        ! u is +ve in up->dn direction, so d2phi_du_dp_up is +ve 
-        d2phi_du_dp_up = -1.d0* dv_darcy_iso_dp_up / (ukvr*aniso_updn%perm_uu) &
-          + v_darcy_iso * dukvr_dp_up / (ukvr*ukvr*aniso_updn%perm_uu)
       else
         ! downstream
-        aniso_updn => aniso_data%unstruct%dn
+        aniso_updn => aniso_du%dn
         pres_updn = global_auxvar_dn%pres(1)
         rho_updn = rho_dn
-        ! Calculate ddphi_du from v_darcy (= Dq * ukvr * dphi) supplied by RichardsFlux(),
-        ! where Dq = (perm_up * perm_dn)/(dd_up*perm_dn + dd_dn*perm_up)
-        ! (n.b ddphi_du is basically (P_dn-P_interface)/dist_to_face)
-        dphi_du = -1.d0* v_darcy_iso / (ukvr*aniso_updn%perm_uu)
-        ! d2phi_du_dp_dn = dv_darcy_dp_dn / (ukvr*aniso_updn%perm_uu)
-        ! u is +ve in up->dn direction, so d2phi_du_dp_dn is -ve 
-        d2phi_du_dp_dn = -1.d0* dv_darcy_iso_dp_dn / (ukvr*aniso_updn%perm_uu) &
-          + v_darcy_iso * dukvr_dp_dn / (ukvr*ukvr*aniso_updn%perm_uu)
       endif
+
+      ! Calculate ddphi_du from v_darcy (= Dq * ukvr * dphi) supplied by RichardsFlux(),
+      ! where Dq = (perm_up * perm_dn)/(dd_up*perm_dn + dd_dn*perm_up)
+      ! (n.b ddphi_du is basically -(P_up-P_dn)/dist) + gravity terms)
+      dphi_du = -1.d0* v_darcy_iso / (ukvr*aniso_updn%perm_uu)
+      d2phi_du_dp_up = -1.d0* dv_darcy_iso_dp_up / (ukvr*aniso_updn%perm_uu) &
+                       + v_darcy_iso * dukvr_dp_up / (ukvr*ukvr*aniso_updn%perm_uu)
+      d2phi_du_dp_dn = -1.d0* dv_darcy_iso_dp_dn / (ukvr*aniso_updn%perm_uu) &
+                       + v_darcy_iso * dukvr_dp_dn / (ukvr*ukvr*aniso_updn%perm_uu)
 
       do iadj = 1,aniso_updn%num_adj
         ! Could form inv(M)*sum(rhs_terms) here, but it's easier to accumulate the derivative
         ! if written as sum(inv(M)*rhs_term)
         dot = aniso_updn%dists_vw(1,iadj)*aniso_updn%dists_vw(1,iadj) &
               + aniso_updn%dists_vw(2,iadj)*aniso_updn%dists_vw(2,iadj)
-        tmp = (1.d0/dot) &
-              * (  (aniso_updn%pres_adj(iadj) - rho_updn*aniso_updn%adu_cell_adj(iadj)%ptr%loc_gravity )&
+        tmp =  (aniso_updn%pres_adj(iadj) - rho_updn*aniso_updn%adu_cell_adj(iadj)%ptr%loc_gravity ) &
                  - (pres_updn - rho_updn*aniso_updn%loc_gravity) &
-                 - dphi_du*aniso_updn%dists_u(iadj))
-        LSrhs(1) = tmp * aniso_updn%dists_vw(1,iadj)
-        LSrhs(2) = tmp * aniso_updn%dists_vw(2,iadj)
+                 - dphi_du*aniso_updn%dists_u(iadj)
+
+        LSrhs(1) = (1.d0/dot) * aniso_updn%dists_vw(1,iadj)
+        LSrhs(2) = (1.d0/dot) * aniso_updn%dists_vw(2,iadj)
 
         if (iupdn==1) then
           ! upstream
           ! apply inverse of LS matrix-residual
-          dphi_v_up = dphi_v_up + aniso_updn%LSMatInv(1,1)*LSrhs(1) + aniso_updn%LSMatInv(1,2)*LSrhs(2)
-          dphi_w_up = dphi_w_up + aniso_updn%LSMatInv(2,1)*LSrhs(1) + aniso_updn%LSMatInv(2,2)*LSrhs(2)
+          dphi_v_up = dphi_v_up + aniso_updn%LSMatInv(1,1)*LSrhs(1)*tmp + aniso_updn%LSMatInv(1,2)*LSrhs(2)*tmp
+          dphi_w_up = dphi_w_up + aniso_updn%LSMatInv(2,1)*LSrhs(1)*tmp + aniso_updn%LSMatInv(2,2)*LSrhs(2)*tmp
           if (calc_derivs) then
-            aniso_ddu%ddphi_v_dp_up = aniso_ddu%ddphi_v_dp_up                                            &
-              - aniso_updn%LSMatInv(1,1) * (1.d0/dot) * (1.d0 + d2phi_du_dp_up*aniso_updn%dists_u(iadj)) &
-                                         * aniso_updn%dists_vw(1,iadj)                                   &
-              - aniso_updn%LSMatInv(1,2) * (1.d0/dot) * (1.d0 + d2phi_du_dp_up*aniso_updn%dists_u(iadj)) &
-                                         * aniso_updn%dists_vw(2,iadj) 
-            aniso_ddu%ddphi_w_dp_up = aniso_ddu%ddphi_w_dp_up                                            &
-              - aniso_updn%LSMatInv(2,1) * (1.d0/dot) * (1.d0 + d2phi_du_dp_up*aniso_updn%dists_u(iadj)) &
-                                         * aniso_updn%dists_vw(1,iadj)                                   &
-              - aniso_updn%LSMatInv(2,2) * (1.d0/dot) * (1.d0 + d2phi_du_dp_up*aniso_updn%dists_u(iadj)) &
-                                         * aniso_updn%dists_vw(2,iadj)
-            aniso_ddu%ddphi_v_dp_up_adj(iadj) =                                     &
-                aniso_updn%LSMatInv(1,1) * (1.d0/dot) * aniso_updn%dists_vw(1,iadj) &
-              + aniso_updn%LSMatInv(1,2) * (1.d0/dot) * aniso_updn%dists_vw(2,iadj)
-            aniso_ddu%ddphi_w_dp_up_adj(iadj) =                                     &
-                aniso_updn%LSMatInv(2,1) * (1.d0/dot) * aniso_updn%dists_vw(1,iadj) &
-              + aniso_updn%LSMatInv(2,2) * (1.d0/dot) * aniso_updn%dists_vw(2,iadj)
+
+            dtmp_dp_up  = -1.d0 - d2phi_du_dp_up*aniso_updn%dists_u(iadj)
+            dtmp_dp_dn  =       - d2phi_du_dp_dn*aniso_updn%dists_u(iadj)
+            dtmp_dp_adj =  1.d0
+    
+            aniso_ddu%ddphi_v_up_dp_up = aniso_ddu%ddphi_v_up_dp_up                         &
+                                         + aniso_updn%LSMatInv(1,1) * LSrhs(1) * dtmp_dp_up &
+                                         + aniso_updn%LSMatInv(1,2) * LSrhs(2) * dtmp_dp_up 
+            aniso_ddu%ddphi_v_up_dp_dn = aniso_ddu%ddphi_v_up_dp_dn                         &
+                                         + aniso_updn%LSMatInv(1,1) * LSrhs(1) * dtmp_dp_dn &
+                                         + aniso_updn%LSMatInv(1,2) * LSrhs(2) * dtmp_dp_dn 
+
+            aniso_ddu%ddphi_w_up_dp_up = aniso_ddu%ddphi_w_up_dp_up                         &
+                                         + aniso_updn%LSMatInv(2,1) * LSrhs(1) * dtmp_dp_up &
+                                         + aniso_updn%LSMatInv(2,2) * LSrhs(2) * dtmp_dp_up
+            aniso_ddu%ddphi_w_up_dp_dn = aniso_ddu%ddphi_w_up_dp_dn                         &
+                                         + aniso_updn%LSMatInv(2,1) * LSrhs(1) * dtmp_dp_dn &
+                                         + aniso_updn%LSMatInv(2,2) * LSrhs(2) * dtmp_dp_dn
+
+            aniso_ddu%ddphi_v_up_dp_up_adj(iadj) = aniso_updn%LSMatInv(1,1) * LSrhs(1) * dtmp_dp_adj &
+                                                 + aniso_updn%LSMatInv(1,2) * LSrhs(2) * dtmp_dp_adj
+            aniso_ddu%ddphi_w_up_dp_up_adj(iadj) = aniso_updn%LSMatInv(2,1) * LSrhs(1) * dtmp_dp_adj &
+                                                 + aniso_updn%LSMatInv(2,2) * LSrhs(2) * dtmp_dp_adj
           endif
         else
           ! downstream
           ! apply inverse of LS matrix-residual
-          dphi_v_dn = dphi_v_dn + aniso_updn%LSMatInv(1,1)*LSrhs(1) + aniso_updn%LSMatInv(1,2)*LSrhs(2)
-          dphi_w_dn = dphi_w_dn + aniso_updn%LSMatInv(2,1)*LSrhs(1) + aniso_updn%LSMatInv(2,2)*LSrhs(2)
+          dphi_v_dn = dphi_v_dn + aniso_updn%LSMatInv(1,1)*LSrhs(1)*tmp + aniso_updn%LSMatInv(1,2)*LSrhs(2)*tmp
+          dphi_w_dn = dphi_w_dn + aniso_updn%LSMatInv(2,1)*LSrhs(1)*tmp + aniso_updn%LSMatInv(2,2)*LSrhs(2)*tmp
           if (calc_derivs) then
-            aniso_ddu%ddphi_v_dp_dn = aniso_ddu%ddphi_v_dp_dn                                            &
-              - aniso_updn%LSMatInv(1,1) * (1.d0/dot) * (1.d0 + d2phi_du_dp_dn*aniso_updn%dists_u(iadj)) &
-                                         * aniso_updn%dists_vw(1,iadj)                                   &
-              - aniso_updn%LSMatInv(1,2) * (1.d0/dot) * (1.d0 + d2phi_du_dp_dn*aniso_updn%dists_u(iadj)) &
-                                         * aniso_updn%dists_vw(2,iadj) 
-            aniso_ddu%ddphi_w_dp_dn = aniso_ddu%ddphi_w_dp_dn                                            &
-              - aniso_updn%LSMatInv(2,1) * (1.d0/dot) * (1.d0 + d2phi_du_dp_dn*aniso_updn%dists_u(iadj)) &
-                                         * aniso_updn%dists_vw(1,iadj)                                   &
-              - aniso_updn%LSMatInv(2,2) * (1.d0/dot) * (1.d0 + d2phi_du_dp_dn*aniso_updn%dists_u(iadj)) &
-                                         * aniso_updn%dists_vw(2,iadj)
-            aniso_ddu%ddphi_v_dp_dn_adj(iadj) =                                     &
-                aniso_updn%LSMatInv(1,1) * (1.d0/dot) * aniso_updn%dists_vw(1,iadj) &
-              + aniso_updn%LSMatInv(1,2) * (1.d0/dot) * aniso_updn%dists_vw(2,iadj)
-            aniso_ddu%ddphi_w_dp_dn_adj(iadj) =                                     &
-                aniso_updn%LSMatInv(2,1) * (1.d0/dot) * aniso_updn%dists_vw(1,iadj) &
-              + aniso_updn%LSMatInv(2,2) * (1.d0/dot) * aniso_updn%dists_vw(2,iadj)
+
+            dtmp_dp_up  =       - d2phi_du_dp_up*aniso_updn%dists_u(iadj)
+            dtmp_dp_dn  = -1.d0 - d2phi_du_dp_dn*aniso_updn%dists_u(iadj)
+            dtmp_dp_adj =  1.d0
+    
+            aniso_ddu%ddphi_v_dn_dp_dn = aniso_ddu%ddphi_v_dn_dp_dn                         &
+                                         + aniso_updn%LSMatInv(1,1) * LSrhs(1) * dtmp_dp_dn &
+                                         + aniso_updn%LSMatInv(1,2) * LSrhs(2) * dtmp_dp_dn
+            aniso_ddu%ddphi_v_dn_dp_up = aniso_ddu%ddphi_v_dn_dp_up                         &
+                                         + aniso_updn%LSMatInv(1,1) * LSrhs(1) * dtmp_dp_up &
+                                         + aniso_updn%LSMatInv(1,2) * LSrhs(2) * dtmp_dp_up
+                                         
+            aniso_ddu%ddphi_w_dn_dp_dn = aniso_ddu%ddphi_w_dn_dp_dn                         &
+                                         + aniso_updn%LSMatInv(2,1) * LSrhs(1) * dtmp_dp_dn &
+                                         + aniso_updn%LSMatInv(2,2) * LSrhs(2) * dtmp_dp_dn
+            aniso_ddu%ddphi_w_dn_dp_up = aniso_ddu%ddphi_w_dn_dp_up                         &
+                                         + aniso_updn%LSMatInv(2,1) * LSrhs(1) * dtmp_dp_up &
+                                         + aniso_updn%LSMatInv(2,2) * LSrhs(2) * dtmp_dp_up
+                                        
+            aniso_ddu%ddphi_v_dn_dp_dn_adj(iadj) = aniso_updn%LSMatInv(1,1) * LSrhs(1) * dtmp_dp_adj &
+                                                 + aniso_updn%LSMatInv(1,2) * LSrhs(2) * dtmp_dp_adj
+            aniso_ddu%ddphi_w_dn_dp_dn_adj(iadj) = aniso_updn%LSMatInv(2,1) * LSrhs(1) * dtmp_dp_adj &
+                                                 + aniso_updn%LSMatInv(2,2) * LSrhs(2) * dtmp_dp_adj
           endif
         endif
       enddo
@@ -1129,20 +1144,28 @@ subroutine RichardsFluxAniso(aniso_data, &
 
     if (calc_derivs .EQV. PETSC_TRUE) then
       aniso_du%dv_darcy_aniso_dp_up = (mu_up/(mu_up+mu_dn)) * &
-                                      (-1.0d0 * (  aniso_du%up%perm_uv * aniso_ddu%ddphi_v_dp_up &
-                                                 + aniso_du%up%perm_uw * aniso_ddu%ddphi_w_dp_up) * ukvr &
-                                       -1.0d0 * (aniso_du%up%perm_uv * dphi_v_up + aniso_du%up%perm_uw * dphi_w_up) * dukvr_dp_up)
+                                      (-1.0d0 * (  aniso_du%up%perm_uv * aniso_ddu%ddphi_v_up_dp_up &
+                                                 + aniso_du%up%perm_uw * aniso_ddu%ddphi_w_up_dp_up) * ukvr &
+                                       -1.0d0 * (aniso_du%up%perm_uv * dphi_v_up + aniso_du%up%perm_uw * dphi_w_up) * dukvr_dp_up) &
+                                       + (mu_dn/(mu_up+mu_dn)) * &
+                                       (-1.0d0 * (  aniso_du%dn%perm_uv * aniso_ddu%ddphi_v_dn_dp_up &
+                                                  + aniso_du%dn%perm_uw * aniso_ddu%ddphi_w_dn_dp_up) * ukvr &
+                                       -1.0d0 * (aniso_du%dn%perm_uv * dphi_v_dn + aniso_du%dn%perm_uw * dphi_w_dn) * dukvr_dp_up)
       aniso_du%dv_darcy_aniso_dp_dn = (mu_dn/(mu_up+mu_dn)) * &
-                                      (-1.0d0 * (  aniso_du%dn%perm_uv * aniso_ddu%ddphi_v_dp_dn &
-                                                 + aniso_du%dn%perm_uw * aniso_ddu%ddphi_w_dp_dn) * ukvr &
-                                       -1.0d0 * (aniso_du%dn%perm_uv * dphi_v_dn + aniso_du%dn%perm_uw * dphi_w_dn) * dukvr_dp_dn)
+                                      (-1.0d0 * (  aniso_du%dn%perm_uv * aniso_ddu%ddphi_v_dn_dp_dn &
+                                                 + aniso_du%dn%perm_uw * aniso_ddu%ddphi_w_dn_dp_dn) * ukvr &
+                                       -1.0d0 * (aniso_du%dn%perm_uv * dphi_v_dn + aniso_du%dn%perm_uw * dphi_w_dn) * dukvr_dp_dn) &
+                                       + (mu_up/(mu_up+mu_dn)) * &
+                                       (-1.0d0 * (  aniso_du%up%perm_uv * aniso_ddu%ddphi_v_up_dp_dn &
+                                                  + aniso_du%up%perm_uw * aniso_ddu%ddphi_w_up_dp_dn) * ukvr &
+                                        -1.0d0 * (aniso_du%up%perm_uv * dphi_v_up + aniso_du%up%perm_uw * dphi_w_up) * dukvr_dp_dn) 
       do i=1,4  ! 4=MAX_VERT_PER_FACE
         aniso_du%dv_darcy_aniso_dp_up_adj(i) = (mu_up/(mu_up+mu_dn)) * &
-                                               -1.0d0 * (  aniso_du%up%perm_uv * aniso_ddu%ddphi_v_dp_up_adj(i) &
-                                                         + aniso_du%up%perm_uw * aniso_ddu%ddphi_w_dp_up_adj(i)) * ukvr
+                                               -1.0d0 * (  aniso_du%up%perm_uv * aniso_ddu%ddphi_v_up_dp_up_adj(i) &
+                                                         + aniso_du%up%perm_uw * aniso_ddu%ddphi_w_up_dp_up_adj(i)) * ukvr
         aniso_du%dv_darcy_aniso_dp_dn_adj(i) = (mu_dn/(mu_up+mu_dn)) * &
-                                               -1.0d0 * (  aniso_du%dn%perm_uv * aniso_ddu%ddphi_v_dp_dn_adj(i) &
-                                                         + aniso_du%dn%perm_uw * aniso_ddu%ddphi_w_dp_dn_adj(i)) * ukvr
+                                               -1.0d0 * (  aniso_du%dn%perm_uv * aniso_ddu%ddphi_v_dn_dp_dn_adj(i) &
+                                                         + aniso_du%dn%perm_uw * aniso_ddu%ddphi_w_dn_dp_dn_adj(i)) * ukvr
       enddo
       ! dbg
       ! call PrintAnisoData(aniso_data)
@@ -1258,7 +1281,8 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
         ! Call PrintAnisoData(aniso_data)
         Call RichardsFluxAniso(aniso_data,material_auxvar_up,material_auxvar_dn,&
                                   global_auxvar_up,global_auxvar_dn,&
-                                  option,dist,ukvr,0.d0,0.d0,&
+                                  option,dist,&
+                                  ukvr,0.d0,0.d0,&
                                   v_darcy,0.d0,0.d0,&
                                   PETSC_FALSE,v_darcy_aniso)
         ! note ukvr*... is included in v_darcy_aniso
