@@ -722,17 +722,19 @@ subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_data)
   type(aniso_data_type), pointer :: aniso_data
   type(material_auxvar_type), pointer ::material_auxvars(:)
 
-  PetscInt :: ghosted_id_adj(1:12)
-  PetscReal :: ghosted_pres_adj(1:12)
+  PetscInt, pointer :: ghosted_id_adj(:)
+  PetscReal, pointer :: ghosted_pres_adj(:)
   PetscInt :: i
 
   PetscReal, pointer :: perm(:)
   PetscInt :: ghosted_id
-  PetscInt :: iside
 
   if(associated(aniso_data%struct)) then
     ! structured grid case
 
+    allocate(ghosted_id_adj(12))
+    allocate(ghosted_pres_adj(12))
+  
     ! temporarily store ghosted ids in an array to simplify conditional logic for assigning pressures
     ghosted_id_adj(1)  = aniso_data%struct%id_up_adjXm
     ghosted_id_adj(2)  = aniso_data%struct%id_up_adjXp
@@ -768,18 +770,18 @@ subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_data)
     aniso_data%struct%pres_dn_adjZm = ghosted_pres_adj(11)
     aniso_data%struct%pres_dn_adjZp = ghosted_pres_adj(12)
 
+    deallocate(ghosted_id_adj)
+    deallocate(ghosted_pres_adj)
 
   elseif (associated(aniso_data%unstruct)) then
     ! unstructured grid case
 
     ! Pressure adjacency data
-    do i=1,4 ! MAX_VERT_PER_FACE
-      if( aniso_data%unstruct%up%cell_id_adj(i) .ne. 0 ) then
+    do i=1,aniso_data%unstruct%up%num_adj
         aniso_data%unstruct%up%pres_adj(i) = global_auxvars(aniso_data%unstruct%up%cell_id_adj(i))%pres(1)
-      endif
-      if( aniso_data%unstruct%dn%cell_id_adj(i) .ne. 0 ) then
-        aniso_data%unstruct%dn%pres_adj(i) = global_auxvars(aniso_data%unstruct%dn%cell_id_adj(i))%pres(1)
-      endif
+    enddo
+    do i=1,aniso_data%unstruct%dn%num_adj
+      aniso_data%unstruct%dn%pres_adj(i) = global_auxvars(aniso_data%unstruct%dn%cell_id_adj(i))%pres(1)
     enddo
 
     ! compute K' = J K J^T in up/dnstream cells, where J = transformation (x,y,z) -> (u,v,w)
