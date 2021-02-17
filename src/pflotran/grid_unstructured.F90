@@ -2410,9 +2410,6 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
         connections%aniso_data(iconn)%unstruct%uvec = 0.d0
         connections%aniso_data(iconn)%unstruct%vvec = 0.d0
         connections%aniso_data(iconn)%unstruct%wvec = 0.d0
-        ! allocate dist_unit
-        allocate(connections%aniso_data(iconn)%unstruct%dist_unit(1:3))
-        connections%aniso_data(iconn)%unstruct%dist_unit = 0.d0
         ! allocate pressure adjacency data
         allocate(connections%aniso_data(iconn)%unstruct%up%pres_adj(MAX_VERT_PER_FACE))
         allocate(connections%aniso_data(iconn)%unstruct%dn%pres_adj(MAX_VERT_PER_FACE))

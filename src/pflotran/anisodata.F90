@@ -186,9 +186,6 @@ module Anisotropy_Data_module
     ! g.c, where c is cell centre (this are differenced to get g.d, where d is distance between points)
     PetscReal :: loc_gravity
 
-    ! distances from faces to cell centres
-    PetscReal :: face_dist
-
     ! Permeability w.r.t. (u,v,w) coords in cells - working data, overwritten throughout simulation (in case timedep)
     PetscReal :: perm_uu
     PetscReal :: perm_vv
@@ -204,7 +201,6 @@ module Anisotropy_Data_module
 
     ! Adjacent pressure data - working data, overwritten throughout simulation
     PetscReal, pointer :: pres_adj(:) ! pressure adjacent to upwind cell
-
   end type aniso_data_unstructured_cell_type
 
   type, public :: aniso_data_unstructured_type
@@ -218,10 +214,6 @@ module Anisotropy_Data_module
     PetscReal, pointer :: uvec(:)      ! u-direction unit vector (normal to face, +ve dnstream) - in (x,y,z) coords
     PetscReal, pointer :: vvec(:)      ! v-direction unit vector (in plane of face) - in (x,y,z) coords
     PetscReal, pointer :: wvec(:)      ! w-direction unit vector (in plane of face) - in (x,y,z) coords
-
-    ! dist_unit/mag is literal distance vector between cell centres (up->dn) - not normalised for face orienation
-    PetscReal, pointer :: dist_unit(:)
-    PetscReal :: dist_mag
 
     ! derivative data
     PetscReal :: dv_darcy_aniso_dp_up
@@ -304,23 +296,19 @@ module Anisotropy_Data_module
         write(*, "('  dn cell_id = ', i4,'  (',e10.3,',',e10.3,',',e10.3,')')") aniso_data%unstruct%dn%cell_id, &
           aniso_data%unstruct%dn%cell_pos(1),aniso_data%unstruct%dn%cell_pos(2),aniso_data%unstruct%dn%cell_pos(3)
         write(*, "('  upstream')")
-        do i=1,4 ! 4=MAX_VERT_PER_FACE
+        do i=1,aniso_data%unstruct%up%num_adj
           if (aniso_data%unstruct%up%cell_id_adj(i) == 0) cycle
           write(*, "('    ',i2,'. adj_cell_id=',i4,' adj_face_id=',i4,' (check=',i4,',',i4,')')") &
             i,aniso_data%unstruct%up%cell_id_adj(i), aniso_data%unstruct%up%face_id_adj(i), &
             aniso_data%unstruct%up%adu_cell_adj(i)%ptr%cell_id, aniso_data%unstruct%up%adu_face_adj(i)%ptr%conn_face_id
         enddo
         write(*, "('  downstream')")
-        do i=1,4 !4=MAX_VERT_PER_FACE
+        do i=1,aniso_data%unstruct%dn%num_adj
           if (aniso_data%unstruct%dn%cell_id_adj(i) == 0) cycle
           write(*, "('    ',i2,'. adj_cell_id=',i4,' adj_face_id=',i4,' (check=',i4,',',i4,')')") &
             i,aniso_data%unstruct%dn%cell_id_adj(i), aniso_data%unstruct%dn%face_id_adj(i), &
             aniso_data%unstruct%dn%adu_cell_adj(i)%ptr%cell_id, aniso_data%unstruct%dn%adu_face_adj(i)%ptr%conn_face_id
         enddo
-        ! face - cell up/dn distance
-        write(*, "('  distances')")
-        write(*, "('    face->up = ',e10.3)") aniso_data%unstruct%up%face_dist
-        write(*, "('    face->dn = ',e10.3)") aniso_data%unstruct%dn%face_dist
         ! transformed coords for face
         write(*, "('  local coords')")
         write(*, "('    u = (',e10.3,',',e10.3,',',e10.3,')')") &
@@ -345,12 +333,12 @@ module Anisotropy_Data_module
           aniso_data%unstruct%up%perm_vw, aniso_data%unstruct%dn%perm_vw
         ! pressures
         write(*, "('  Pressures - upstream')")
-        do i=1,4 !4=MAX_VERT_PER_FACE
+        do i=1,aniso_data%unstruct%up%num_adj
           if (aniso_data%unstruct%up%cell_id_adj(i) == 0) cycle
           write(*, "('    ',i2,'. pres_adj=',e10.3)") i,aniso_data%unstruct%up%pres_adj(i)
         enddo
         write(*, "('  Pressures - downstream')")
-        do i=1,4 !4=MAX_VERT_PER_FACE
+        do i=1,aniso_data%unstruct%dn%num_adj
           if (aniso_data%unstruct%dn%cell_id_adj(i) == 0) cycle
           write(*, "('    ',i2,'. pres_adj=',e10.3)") i,aniso_data%unstruct%dn%pres_adj(i)
         enddo

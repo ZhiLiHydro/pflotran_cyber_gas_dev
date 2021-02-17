@@ -2451,62 +2451,62 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
 
               ! J terms are stored in aniso_data%struct%Jup/dn_adj...
               ! aniso_data%struct%id_... are ghosted ids(?), 1-indexed
-              if(aniso_data%struct%id_up_adjXm .GE. 0) then
+              if(aniso_data%struct%id_up_adjXm .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_up-1, &
                                        1, (aniso_data%struct%id_up_adjXm-1)*option%nflowdof, aniso_data%struct%Jup_adjXm, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_dn_adjXm .GE. 0) then
+              if(aniso_data%struct%id_dn_adjXm .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_up-1, &
                                        1, (aniso_data%struct%id_dn_adjXm-1)*option%nflowdof, aniso_data%struct%Jdn_adjXm, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_up_adjXp .GE. 0) then
+              if(aniso_data%struct%id_up_adjXp .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_up-1, &
                                        1, (aniso_data%struct%id_up_adjXp-1)*option%nflowdof, aniso_data%struct%Jup_adjXp, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_dn_adjXp .GE. 0) then
+              if(aniso_data%struct%id_dn_adjXp .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_up-1, &
                                        1, (aniso_data%struct%id_dn_adjXp-1)*option%nflowdof, aniso_data%struct%Jdn_adjXp, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_up_adjYm .GE. 0) then
+              if(aniso_data%struct%id_up_adjYm .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_up-1, &
                                        1, (aniso_data%struct%id_up_adjYm-1)*option%nflowdof, aniso_data%struct%Jup_adjYm, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_dn_adjYm .GE. 0) then
+              if(aniso_data%struct%id_dn_adjYm .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_up-1, &
                                        1, (aniso_data%struct%id_dn_adjYm-1)*option%nflowdof, aniso_data%struct%Jdn_adjYm, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_up_adjYp .GE. 0) then
+              if(aniso_data%struct%id_up_adjYp .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_up-1, &
                                        1, (aniso_data%struct%id_up_adjYp-1)*option%nflowdof, aniso_data%struct%Jup_adjYp, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_dn_adjYp .GE. 0) then
+              if(aniso_data%struct%id_dn_adjYp .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_up-1, &
                                        1, (aniso_data%struct%id_dn_adjYp-1)*option%nflowdof, aniso_data%struct%Jdn_adjYp, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_up_adjZm .GE. 0) then
+              if(aniso_data%struct%id_up_adjZm .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_up-1, &
                                        1, (aniso_data%struct%id_up_adjZm-1)*option%nflowdof, aniso_data%struct%Jup_adjZm, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_dn_adjZm .GE. 0) then
+              if(aniso_data%struct%id_dn_adjZm .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_up-1, &
                                        1, (aniso_data%struct%id_dn_adjZm-1)*option%nflowdof, aniso_data%struct%Jdn_adjZm, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_up_adjZp .GE. 0) then
+              if(aniso_data%struct%id_up_adjZp .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_up-1, &
                                        1, (aniso_data%struct%id_up_adjZp-1)*option%nflowdof, aniso_data%struct%Jup_adjZp, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_dn_adjZp .GE. 0) then
+              if(aniso_data%struct%id_dn_adjZp .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_up-1, &
                                        1, (aniso_data%struct%id_dn_adjZp-1)*option%nflowdof, aniso_data%struct%Jdn_adjZp, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
@@ -2560,62 +2560,62 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
             if(associated(aniso_data%struct)) then
               ! J terms are stored in aniso_data%struct%Jup/dn_adj...
               ! aniso_data%struct%id_... are ghosted ids(?), 1-indexed
-              if(aniso_data%struct%id_up_adjXm .GE. 0) then
+              if(aniso_data%struct%id_up_adjXm .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_dn-1, &
                                        1, (aniso_data%struct%id_up_adjXm-1)*option%nflowdof, -1.d0 * aniso_data%struct%Jup_adjXm, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_dn_adjXm .GE. 0) then
+              if(aniso_data%struct%id_dn_adjXm .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_dn-1, &
                                        1, (aniso_data%struct%id_dn_adjXm-1)*option%nflowdof, -1.d0 * aniso_data%struct%Jdn_adjXm, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_up_adjXp .GE. 0) then
+              if(aniso_data%struct%id_up_adjXp .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_dn-1, &
                                        1, (aniso_data%struct%id_up_adjXp-1)*option%nflowdof, -1.d0 * aniso_data%struct%Jup_adjXp, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_dn_adjXp .GE. 0) then
+              if(aniso_data%struct%id_dn_adjXp .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_dn-1, &
                                        1, (aniso_data%struct%id_dn_adjXp-1)*option%nflowdof, -1.d0 * aniso_data%struct%Jdn_adjXp, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_up_adjYm .GE. 0) then
+              if(aniso_data%struct%id_up_adjYm .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_dn-1, &
                                        1, (aniso_data%struct%id_up_adjYm-1)*option%nflowdof, -1.d0 * aniso_data%struct%Jup_adjYm, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_dn_adjYm .GE. 0) then
+              if(aniso_data%struct%id_dn_adjYm .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_dn-1, &
                                        1, (aniso_data%struct%id_dn_adjYm-1)*option%nflowdof, -1.d0 * aniso_data%struct%Jdn_adjYm, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_up_adjYp .GE. 0) then
+              if(aniso_data%struct%id_up_adjYp .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_dn-1, &
                                        1, (aniso_data%struct%id_up_adjYp-1)*option%nflowdof, -1.d0 * aniso_data%struct%Jup_adjYp, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_dn_adjYp .GE. 0) then
+              if(aniso_data%struct%id_dn_adjYp .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_dn-1, &
                                        1, (aniso_data%struct%id_dn_adjYp-1)*option%nflowdof, -1.d0 * aniso_data%struct%Jdn_adjYp, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_up_adjZm .GE. 0) then
+              if(aniso_data%struct%id_up_adjZm .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_dn-1, &
                                        1, (aniso_data%struct%id_up_adjZm-1)*option%nflowdof, -1.d0 * aniso_data%struct%Jup_adjZm, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_dn_adjZm .GE. 0) then
+              if(aniso_data%struct%id_dn_adjZm .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_dn-1, &
                                        1, (aniso_data%struct%id_dn_adjZm-1)*option%nflowdof, -1.d0 * aniso_data%struct%Jdn_adjZm, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_up_adjZp .GE. 0) then
+              if(aniso_data%struct%id_up_adjZp .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_dn-1, &
                                        1, (aniso_data%struct%id_up_adjZp-1)*option%nflowdof, -1.d0 * aniso_data%struct%Jup_adjZp, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
-              if(aniso_data%struct%id_dn_adjZp .GE. 0) then
+              if(aniso_data%struct%id_dn_adjZp .ne. 0) then
                 call MatSetValuesLocal(A,1,istart_dn-1, &
                                        1, (aniso_data%struct%id_dn_adjZp-1)*option%nflowdof, -1.d0 * aniso_data%struct%Jdn_adjZp, &
                                        ADD_VALUES,ierr);CHKERRQ(ierr)
