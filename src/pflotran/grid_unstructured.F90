@@ -2604,31 +2604,39 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
           if(aniso_updn%dists_vw(2,iadj) .ne. 0.d0) no_w_contrib=PETSC_FALSE
         enddo
 
-        ! compute least-squares mtx (sum of outer product of dists_vw vectors)
-        MLS = 0.d0 ! local (2,2)
-        do iadj = 1,aniso_updn%num_adj
-          dot = aniso_updn%dists_vw(1,iadj)*aniso_updn%dists_vw(1,iadj) &
-                + aniso_updn%dists_vw(2,iadj)*aniso_updn%dists_vw(2,iadj)
-          MLS(1,1) = MLS(1,1) + aniso_updn%dists_vw(1,iadj)*aniso_updn%dists_vw(1,iadj)/dot
-          MLS(1,2) = MLS(1,2) + aniso_updn%dists_vw(1,iadj)*aniso_updn%dists_vw(2,iadj)/dot
-          MLS(2,1) = MLS(2,1) + aniso_updn%dists_vw(2,iadj)*aniso_updn%dists_vw(1,iadj)/dot
-          MLS(2,2) = MLS(2,2) + aniso_updn%dists_vw(2,iadj)*aniso_updn%dists_vw(2,iadj)/dot
-        enddo
+        if(aniso_updn%num_adj>1) then
+          ! compute least-squares mtx (sum of outer product of dists_vw vectors)
+          MLS = 0.d0 ! local (2,2)
+          do iadj = 1,aniso_updn%num_adj
+            dot = aniso_updn%dists_vw(1,iadj)*aniso_updn%dists_vw(1,iadj) &
+                  + aniso_updn%dists_vw(2,iadj)*aniso_updn%dists_vw(2,iadj)
+            MLS(1,1) = MLS(1,1) + aniso_updn%dists_vw(1,iadj)*aniso_updn%dists_vw(1,iadj)/dot
+            MLS(1,2) = MLS(1,2) + aniso_updn%dists_vw(1,iadj)*aniso_updn%dists_vw(2,iadj)/dot
+            MLS(2,1) = MLS(2,1) + aniso_updn%dists_vw(2,iadj)*aniso_updn%dists_vw(1,iadj)/dot
+            MLS(2,2) = MLS(2,2) + aniso_updn%dists_vw(2,iadj)*aniso_updn%dists_vw(2,iadj)/dot
+          enddo
 
-        ! invert least-squares mtx (handling singular cases - ok for LS solution)
-        if(no_v_contrib) then
-          aniso_updn%LSMatInv = 0
-          aniso_updn%LSMatInv(2,2) = 1.d0 / MLS(2,2)
-        elseif(no_w_contrib) then
-          aniso_updn%LSMatInv = 0
-          aniso_updn%LSMatInv(1,1) = 1.d0 / MLS(1,1)
+          ! invert least-squares mtx (handling singular cases - ok for LS solution)
+          if(no_v_contrib) then
+            aniso_updn%LSMatInv = 0
+            aniso_updn%LSMatInv(2,2) = 1.d0 / MLS(2,2)
+          elseif(no_w_contrib) then
+            aniso_updn%LSMatInv = 0
+            aniso_updn%LSMatInv(1,1) = 1.d0 / MLS(1,1)
+          else
+            ! 2x2 case
+            det = MLS(1,1)*MLS(2,2) - MLS(1,2)*MLS(2,1)
+            aniso_updn%LSMatInv(1,1) =  MLS(2,2) / det
+            aniso_updn%LSMatInv(1,2) = -MLS(1,2) / det
+            aniso_updn%LSMatInv(2,1) = -MLS(2,1) / det
+            aniso_updn%LSMatInv(2,2) =  MLS(1,1) / det
+          endif
         else
-          ! 2x2 case
-          det = MLS(1,1)*MLS(2,2) - MLS(1,2)*MLS(2,1)
-          aniso_updn%LSMatInv(1,1) =  MLS(2,2) / det
-          aniso_updn%LSMatInv(1,2) = -MLS(1,2) / det
-          aniso_updn%LSMatInv(2,1) = -MLS(2,1) / det
-          aniso_updn%LSMatInv(2,2) =  MLS(1,1) / det
+          ! under-determined.  
+          ! Taking MLS=I will provide an estimate of the gradient in the same ratio as components of dists_vw.
+          aniso_updn%LSMatInv = 0
+          aniso_updn%LSMatInv(1,1) = 1.d0
+          aniso_updn%LSMatInv(2,2) = 1.d0
         endif
       enddo
 
