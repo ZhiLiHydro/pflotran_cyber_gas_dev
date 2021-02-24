@@ -471,10 +471,12 @@ subroutine MaterialPropertyRead(material_property,input,option)
               ! connections in/adjacent to the relevant material.
               ! 'FULL_TENSOR' may be a better keyword, but it is already in use
               ! for tensor_to_scalar functionality below.
-              ! NB. option%flow%full_perm_tensor = PETSC_TRUE still needed in this case
-              ! to allow off-diagonal data to be set/used.
+              ! NB. option%flow%full_perm_tensor = PETSC_TRUE and
+              !     material_property%full_permeability_tensor = PETSC_TRUE
+              ! are needed in this case to allow off-diagonal data to be set/used.
               option%connections_with_aniso_data = PETSC_TRUE
               option%flow%full_perm_tensor = PETSC_TRUE
+              material_property%full_permeability_tensor = PETSC_TRUE
             case('FULL_TENSOR')
               material_property%full_permeability_tensor = PETSC_TRUE
               option%flow%full_perm_tensor = PETSC_TRUE
