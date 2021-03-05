@@ -2617,15 +2617,22 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
           enddo
 
           ! invert least-squares mtx (handling singular cases - ok for LS solution)
-          if(no_v_contrib) then
+          if(no_v_contrib) then      ! MLS only has non-zero (2,2) entry
             aniso_updn%LSMatInv = 0
             aniso_updn%LSMatInv(2,2) = 1.d0 / MLS(2,2)
-          elseif(no_w_contrib) then
+          elseif(no_w_contrib) then  ! MLS only has non-zero (1,1) entry
             aniso_updn%LSMatInv = 0
             aniso_updn%LSMatInv(1,1) = 1.d0 / MLS(1,1)
           else
             ! 2x2 case
             det = MLS(1,1)*MLS(2,2) - MLS(1,2)*MLS(2,1)
+            if(det .eq. 0.d0) then
+              ! singular case - cell->neighbour vectors are parallel.
+              ! introduce a small perturbation
+              ! (could improve - e.g. calculate grad in cell->neighbour direction and assume zero orthogonal to this)
+              MLS(1,1) = MLS(1,1) * 1.001d0
+              det = MLS(1,1)*MLS(2,2) - MLS(1,2)*MLS(2,1)
+            endif
             aniso_updn%LSMatInv(1,1) =  MLS(2,2) / det
             aniso_updn%LSMatInv(1,2) = -MLS(1,2) / det
             aniso_updn%LSMatInv(2,1) = -MLS(2,1) / det
