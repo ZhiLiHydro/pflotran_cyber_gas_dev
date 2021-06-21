@@ -31,8 +31,6 @@ module Material_Aux_class
   PetscInt, parameter, public :: TENSOR_TO_SCALAR_LINEAR = 1
   PetscInt, parameter, public :: TENSOR_TO_SCALAR_FLOW = 2
   PetscInt, parameter, public :: TENSOR_TO_SCALAR_POTENTIAL = 3
-  PetscInt, parameter, public :: TENSOR_TO_SCALAR_FLOW_FT = 4
-  PetscInt, parameter, public :: TENSOR_TO_SCALAR_POTENTIAL_FT = 5
 
   ! flag to determine which model to use for tensor to scalar conversion 
   ! of permeability
@@ -65,8 +63,10 @@ module Material_Aux_class
 
 !    procedure(SaturationFunction), nopass, pointer :: SaturationFunction
   contains
-    procedure, public :: PermeabilityTensorToScalar
-    procedure, public :: PermeabilityTensorToScalarSafe
+    procedure, public :: PermeabilityTensorToScalar => &
+                           MaterialDiagPermTensorToScalar
+    procedure, public :: PermeabilityTensorToScalarSafe => &
+                           MaterialDiagPermTensorToScalarSafe
   end type material_auxvar_type
   
   type, public :: fracture_auxvar_type
@@ -74,6 +74,9 @@ module Material_Aux_class
     PetscReal :: initial_pressure
     PetscReal :: properties(4)
     PetscReal :: vector(3) ! < 0. 0. 0. >
+    PetscInt :: id
+    PetscBool :: unit_test
+    character(len=MAXSTRINGLENGTH) :: input_filename
   end type fracture_auxvar_type
  
   type, public :: material_parameter_type
@@ -116,7 +119,9 @@ module Material_Aux_class
             MaterialCompressSoilPoroExp, &
             MaterialCompressSoilLeijnse, &
             MaterialCompressSoilLinear, &
-            MaterialCompressSoilQuadratic
+            MaterialCompressSoilQuadratic, &
+            MaterialCompressSoilTest, &
+            MaterialCompressSoilUnitTest
   
   public :: MaterialAuxCreate, &
             MaterialAuxVarInit, &
@@ -193,7 +198,7 @@ subroutine MaterialAuxVarInit(auxvar,option)
     if (option%flow%full_perm_tensor) then
       allocate(auxvar%permeability(6))
     else
-      allocate(auxvar%permeability(3))
+    allocate(auxvar%permeability(3))
     endif
     auxvar%permeability = UNINITIALIZED_DOUBLE
   else
@@ -269,13 +274,11 @@ subroutine MaterialAuxSetPermTensorModel(model,option)
   !! it to this little list here too. 
   if (model == TENSOR_TO_SCALAR_LINEAR .OR. &
       model == TENSOR_TO_SCALAR_FLOW .OR. &
-      model == TENSOR_TO_SCALAR_POTENTIAL .OR. &
-      model == TENSOR_TO_SCALAR_FLOW_FT .OR. &
-      model == TENSOR_TO_SCALAR_POTENTIAL_FT) then
+      model == TENSOR_TO_SCALAR_POTENTIAL) then
     perm_tens_to_scal_model = model
   else
-    option%io_buffer  = 'MaterialAuxSetPermTensorModel: tensor to scalar &
-                         model type is not recognized.'
+    option%io_buffer  = 'MaterialDiagPermTensorToScalar: tensor to scalar &
+                         &model type is not recognized.'
     call PrintErrMsg(option)
   endif
 
@@ -283,15 +286,14 @@ end subroutine MaterialAuxSetPermTensorModel
 
 ! ************************************************************************** !
 
-subroutine PermeabilityTensorToScalar(material_auxvar,dist,scalar_permeability)
+subroutine MaterialDiagPermTensorToScalar(material_auxvar,dist, &
+                                      scalar_permeability)
   ! 
   ! Transforms a diagonal permeability tensor to a scalar through a dot 
   ! product.
   ! 
   ! Author: Glenn Hammond
   ! Date: 01/09/14
-  ! 
-  ! Modified by Moise Rousseau 09/04/19 for full tensor
   !
   use Utility_module, only : Equal
 
@@ -306,11 +308,17 @@ subroutine PermeabilityTensorToScalar(material_auxvar,dist,scalar_permeability)
   PetscReal, intent(in) :: dist(-1:3)
   PetscReal, intent(out) :: scalar_permeability
 
-  PetscReal :: kx, ky, kz, kxy, kxz, kyz
+  PetscReal :: kx, ky, kz
 
   kx = material_auxvar%permeability(perm_xx_index)
   ky = material_auxvar%permeability(perm_yy_index)
   kz = material_auxvar%permeability(perm_zz_index)
+#if 0
+  if (Equal(kx,ky) .and. Equal(ky,kz)) then
+    scalar_permeability = kx
+    return
+  endif
+#endif
 
   select case(perm_tens_to_scal_model)
     case(TENSOR_TO_SCALAR_LINEAR)
@@ -319,18 +327,6 @@ subroutine PermeabilityTensorToScalar(material_auxvar,dist,scalar_permeability)
       scalar_permeability = DiagPermTensorToScalar_Flow(kx,ky,kz,dist)
     case(TENSOR_TO_SCALAR_POTENTIAL)
       scalar_permeability = DiagPermTensortoScalar_Potential(kx,ky,kz,dist)
-    case(TENSOR_TO_SCALAR_FLOW_FT)
-      kxy = material_auxvar%permeability(perm_xy_index)
-      kxz = material_auxvar%permeability(perm_xz_index)
-      kyz = material_auxvar%permeability(perm_yz_index)
-      scalar_permeability = &
-        FullPermTensorToScalar_Flow(kx,ky,kz,kxy,kxz,kyz,dist)
-    case(TENSOR_TO_SCALAR_POTENTIAL_FT)
-      kxy = material_auxvar%permeability(perm_xy_index)
-      kxz = material_auxvar%permeability(perm_xz_index)
-      kyz = material_auxvar%permeability(perm_yz_index)
-      scalar_permeability = &
-        FullPermTensorToScalar_Pot(kx,ky,kz,kxy,kxz,kyz,dist)
     case default
       ! as default, just do linear 
       !scalar_permeability = DiagPermTensorToScalar_Linear(kx,ky,kz,dist)
@@ -341,11 +337,11 @@ subroutine PermeabilityTensorToScalar(material_auxvar,dist,scalar_permeability)
   end select
 
 
-end subroutine PermeabilityTensorToScalar
+end subroutine MaterialDiagPermTensorToScalar
 
 ! ************************************************************************** !
 
-subroutine PermeabilityTensorToScalarSafe(material_auxvar,dist, &
+subroutine MaterialDiagPermTensorToScalarSafe(material_auxvar,dist, &
                                       scalar_permeability)
   !
   ! Transforms a diagonal perm. tensor to a scalar through a dot product.
@@ -362,7 +358,7 @@ subroutine PermeabilityTensorToScalarSafe(material_auxvar,dist, &
   PetscReal, intent(in) :: dist(-1:3)
   PetscReal, intent(out) :: scalar_permeability
 
-  PetscReal :: kx, ky, kz, kxy, kxz, kyz
+  PetscReal :: kx, ky, kz
 
   kx = material_auxvar%permeability(perm_xx_index)
   ky = material_auxvar%permeability(perm_yy_index)
@@ -374,25 +370,12 @@ subroutine PermeabilityTensorToScalarSafe(material_auxvar,dist, &
     case(TENSOR_TO_SCALAR_FLOW)
       scalar_permeability = DiagPermTensorToScalar_Flow(kx,ky,kz,dist)
     case(TENSOR_TO_SCALAR_POTENTIAL)
-      scalar_permeability = DiagPermTensorToScalarPotSafe(kx,ky,kz,dist)
-    case(TENSOR_TO_SCALAR_FLOW_FT)
-      kxy = material_auxvar%permeability(perm_xy_index)
-      kxz = material_auxvar%permeability(perm_xz_index)
-      kyz = material_auxvar%permeability(perm_yz_index)
-      scalar_permeability = &
-        FullPermTensorToScalar_Flow(kx,ky,kz,kxy,kxz,kyz,dist)
-    case(TENSOR_TO_SCALAR_POTENTIAL_FT)
-      kxy = material_auxvar%permeability(perm_xy_index)
-      kxz = material_auxvar%permeability(perm_xz_index)
-      kyz = material_auxvar%permeability(perm_yz_index)
-      scalar_permeability = &
-        FullPermTensorToScalarPotSafe(kx,ky,kz,kxy,kxz,kyz,dist)
+      scalar_permeability = DiagPermTensortoScalar_PotentialSafe(kx,ky,kz,dist)
     case default
-      scalar_permeability = DiagPermTensorToScalarPotSafe(kx,ky,kz,dist)
+      scalar_permeability = DiagPermTensorToScalar_PotentialSafe(kx,ky,kz,dist)
   end select
 
-end subroutine PermeabilityTensorToScalarSafe
-
+end subroutine MaterialDiagPermTensorToScalarSafe
 ! ************************************************************************** !
 
 function DiagPermTensorToScalar_Linear(kx,ky,kz,dist)
@@ -425,31 +408,6 @@ end function DiagPermTensorToScalar_Flow
 
 ! ************************************************************************** !
 
-function FullPermTensorToScalar_Flow(kx,ky,kz,kxy,kxz,kyz,dist)
-
-  ! Permeability in the direction of flow
-  ! Include non diagonal term of the full symetric permeability tensor
-  ! 
-  ! Author: Moise Rousseau
-  ! Date: 08/26/19
-
-  implicit none
-
-  PetscReal :: FullPermTensorToScalar_Flow
-  PetscReal, intent(in) :: dist(-1:3)
-  PetscReal :: kx,ky,kz,kxy,kxz,kyz
-
-  FullPermTensorToScalar_Flow = kx*dabs(dist(1))**2.0 + &
-                                ky*dabs(dist(2))**2.0 + &
-                                kz*dabs(dist(3))**2.0 + &
-                                2*kxy*dist(1)*dist(2) + &
-                                2*kxz*dist(1)*dist(3) + &
-                                2*kyz*dist(2)*dist(3)
-
-end function FullPermTensorToScalar_Flow
-
-! ************************************************************************** !
-
 function DiagPermTensorToScalar_Potential(kx,ky,kz,dist)
   
   !Permeability in the direction of the potential gradient
@@ -467,32 +425,7 @@ end function DiagPermTensorToScalar_Potential
 
 ! ************************************************************************** !
 
-function FullPermTensorToScalar_Pot(kx,ky,kz,kxy,kxz,kyz,dist)
-
-  ! Permeability in the direction of the potential gradient
-  ! Include off diagonal term
-  ! Not working
-  ! 
-  ! Author: Moise Rousseau
-  ! Date: 08/26/19
-
-  implicit none
-  PetscReal :: FullPermTensorToScalar_Pot
-  PetscReal, intent(in) :: dist(-1:3)
-  PetscReal :: kx,ky,kz,kxy,kxz,kyz
-
-  FullPermTensorToScalar_Pot = 1.d0/(dist(1)*dist(1)/kx + &
-                               dist(2)*dist(2)/ky + &
-                               dist(3)*dist(3)/kz + &
-                               2*dist(1)*dist(2)/kxy + &
-                               2*dist(1)*dist(3)/kxz + &
-                               2*dist(2)*dist(3)/kyz)
-
-end function FullPermTensorToScalar_Pot
-
-! ************************************************************************** !
-
-function DiagPermTensorToScalarPotSafe(kx,ky,kz,dist)
+function DiagPermTensorToScalar_PotentialSafe(kx,ky,kz,dist)
 
   ! Permeability in the direction of the potential gradient
   ! This version will not generate NaNs for zero permeabilities
@@ -502,7 +435,7 @@ function DiagPermTensorToScalarPotSafe(kx,ky,kz,dist)
   !
 
   implicit none
-  PetscReal :: DiagPermTensorToScalarPotSafe
+  PetscReal :: DiagPermTensorToScalar_PotentialSafe
   PetscReal, intent(in) :: dist(-1:3)
   PetscReal :: kx, ky, kz, kxi, kyi, kzi, den, deni
 
@@ -529,68 +462,9 @@ function DiagPermTensorToScalarPotSafe(kx,ky,kz,dist)
 
   !  Store final value
 
-  DiagPermTensorToScalarPotSafe = deni
+  DiagPermTensorToScalar_PotentialSafe = deni
 
-end function DiagPermTensorToScalarPotSafe
-
-! ************************************************************************** !
-
-function FullPermTensorToScalarPotSafe(kx,ky,kz,kxy,kxz,kyz,dist)
-
-  ! Permeability in the direction of the potential gradient
-  ! This version will not generate NaNs for zero permeabilities
-  !
-  ! Author: Dave Ponting
-  ! Date: 03/19/19
-  ! 
-  ! Modify to include non diagonal term
-  ! Not working for instance
-  ! 
-  ! Author: Moise Rousseau
-  ! Date: 08/26/19
-
-  implicit none
-
-  PetscReal :: FullPermTensorToScalarPotSafe
-  PetscReal, intent(in) :: dist(-1:3)
-  PetscReal :: kx, ky, kz, kxi, kyi, kzi, den, deni
-  PetscReal :: kxy, kxz, kyz, kxyi, kxzi, kyzi
-
-  !  Form safe inverse permeabilities
-
-  kxi = 0.0
-  kyi = 0.0
-  kzi = 0.0
-  kxyi = 0.0
-  kxzi = 0.0
-  kyzi = 0.0
-
-  if (kx>0.0) kxi = 1.0/kx
-  if (ky>0.0) kyi = 1.0/ky
-  if (kz>0.0) kzi = 1.0/kz
-  if (kxy>0.0) kxyi = 1.0/kxy
-  if (kxz>0.0) kxzi = 1.0/kxz
-  if (kyz>0.0) kyzi = 1.0/kyz
-
-  !  Form denominator
-
-  den = dist(1)*dist(1)*kxi + &
-        dist(2)*dist(2)*kyi + &
-        dist(3)*dist(3)*kzi + &
-        2*dist(1)*dist(2)*kxyi + &
-        2*dist(1)*dist(3)*kxzi + &
-        2*dist(2)*dist(3)*kyzi
-
-  !  Form safe inverse denominator
-
-  deni = 0.0
-  if (den>0.0) deni=1.0/den
-
-  !  Store final value
-
-  FullPermTensorToScalarPotSafe = deni
-
-end function FullPermTensorToScalarPotSafe
+end function DiagPermTensorToScalar_PotentialSafe
 
 ! ************************************************************************** !
 
@@ -879,6 +753,205 @@ subroutine MaterialCompressSoilQuadratic(auxvar,pressure, &
           ( 1.0 + compress_factor) * compressibility  
   
 end subroutine MaterialCompressSoilQuadratic
+
+! ************************************************************************** !
+
+subroutine MaterialCompressSoilTest(liq_pressure,auxvar)
+  ! 
+  ! Author: Jennifer Frederick
+  ! Date: 10/22/2020
+  ! 
+
+  implicit none
+  
+  PetscReal, intent(in) :: liq_pressure
+  class(material_auxvar_type), intent(in) :: auxvar
+
+  PetscReal :: compressed_porosity, dcompressed_porosity_dp
+
+  call MaterialCompressSoilBRAGFLO(auxvar,liq_pressure,compressed_porosity, &
+                                   dcompressed_porosity_dp)
+  print *, 'BRAGFLO :: [material ID], [liq. pressure], [intact porosity], &
+           &[altered porosity], [d_por/d_press]'
+  print *, auxvar%id, liq_pressure, auxvar%porosity_base, compressed_porosity, &
+           dcompressed_porosity_dp
+
+  call MaterialCompressSoilPoroExp(auxvar,liq_pressure,compressed_porosity, &
+                                   dcompressed_porosity_dp)
+  print *, 'POROEXP :: [material ID], [liq. pressure], [intact porosity], &
+           &[altered porosity], [d_por/d_press]'
+  print *, auxvar%id, liq_pressure, auxvar%porosity_base, compressed_porosity, &
+           dcompressed_porosity_dp
+  
+end subroutine MaterialCompressSoilTest
+
+! ************************************************************************** !
+
+subroutine MaterialCompressSoilUnitTest(input_filename,ext_id,int_id, &
+                                        grid,auxvars)
+  ! 
+  ! Author: Jennifer Frederick
+  ! Date: 10/22/2020
+  ! 
+
+  use Grid_module
+
+  implicit none
+  
+  character(len=MAXSTRINGLENGTH) :: input_filename
+  PetscInt :: ext_id
+  PetscInt :: int_id
+  type(grid_type),  pointer :: grid
+  class(material_auxvar_type), pointer :: auxvars(:)
+
+  class(material_auxvar_type), pointer :: auxvar
+  PetscReal, pointer :: liq_pressure(:)                ! [Pa]
+  PetscReal, pointer :: temp_liq_pressure(:)           ! [Pa]
+  character(len=MAXSTRINGLENGTH), pointer :: material_name(:)       ! [  ]    
+  character(len=MAXSTRINGLENGTH), pointer :: temp_material_name(:)  ! [  ] 
+  PetscInt, pointer :: material_id(:)                  ! [  ]    
+  PetscInt, pointer :: temp_material_id(:)             ! [  ]
+  PetscReal, pointer :: corr_compressed_porosity(:)    ! [  ]
+  PetscReal, pointer :: temp_corr_comp_porosity(:)     ! [  ]
+  PetscReal :: compressed_porosity                     ! [  ]        
+  PetscReal, parameter :: tolerance = 1.d-8
+  PetscReal :: diff, dum1
+  PetscInt :: i, j, k
+  PetscInt :: local_id, ghosted_id
+  PetscInt :: prev_mat_id, mat_id
+  character(len=MAXWORDLENGTH) :: pass_fail
+  character(len=MAXWORDLENGTH) :: filename_in, filename_out
+  PetscInt :: rc_in, rc_out, fu_in, fu_out
+  PetscBool :: input_file_given
+  PetscInt :: values(8)
+  character(len=8) :: date
+  character(len=5) :: zone
+  character(len=10) :: time
+
+  allocate(temp_material_name(99))
+  allocate(temp_material_id(99))
+  allocate(temp_liq_pressure(99))
+  allocate(temp_corr_comp_porosity(99))
+
+  if (len(trim(input_filename)) > 0) then
+  !------- an input file was provided -------------------------------
+    input_file_given = PETSC_TRUE
+    i = 1
+    open(action='read', file=trim(input_filename),iostat=rc_in, newunit=fu_in)
+    read(fu_in, *) ! skip header line
+    do
+      read (fu_in, *, iostat=rc_in) temp_material_name(i), &
+                                    temp_material_id(i), &
+                                    temp_liq_pressure(i), &
+                                    temp_corr_comp_porosity(i)
+      if (rc_in /= 0) exit 
+      i = i + 1 
+      if (i > 99) exit
+    enddo
+    ! read in values while counting how many values with i
+    allocate(material_name(i-1))
+    allocate(material_id(i-1))
+    allocate(liq_pressure(i-1))
+    allocate(corr_compressed_porosity(i-1))
+    material_name(:) = temp_material_name(1:i-1)
+    material_id(:) = temp_material_id(1:i-1)
+    liq_pressure(:) = temp_liq_pressure(1:i-1)
+    corr_compressed_porosity(:) = temp_corr_comp_porosity(1:i-1)
+  else
+  !------- an input file was not provided ---------------------------
+    input_file_given = PETSC_FALSE
+  endif
+
+  do local_id = 1, grid%nlmax
+    ghosted_id = grid%nL2G(local_id)
+    mat_id = auxvars(ghosted_id)%id
+    !WRITE(*,*) 'mat_id = '
+    !WRITE(*,*) mat_id
+    if (mat_id == int_id) then
+      auxvar => auxvars(ghosted_id)
+    !----- for creating input files only --------------------!
+      !call MaterialCompressSoilTest(5.0d4,auxvar)
+      !call MaterialCompressSoilTest(1.0d5,auxvar)
+      !call MaterialCompressSoilTest(3.5d5,auxvar)
+      !call MaterialCompressSoilTest(7.5d5,auxvar)
+      !call MaterialCompressSoilTest(9.5d5,auxvar)
+      !call MaterialCompressSoilTest(1.0d6,auxvar)
+      !call MaterialCompressSoilTest(2.5d6,auxvar)
+      !call MaterialCompressSoilTest(5.0d6,auxvar)
+      !call MaterialCompressSoilTest(8.0d6,auxvar)
+      !call MaterialCompressSoilTest(1.0d7,auxvar)
+      !call MaterialCompressSoilTest(3.0d7,auxvar)
+      !call MaterialCompressSoilTest(6.0d7,auxvar)
+      !call MaterialCompressSoilTest(8.5d7,auxvar)
+      !call MaterialCompressSoilTest(1.0d8,auxvar)
+    !--------------------------------------------------------!
+    endif
+  enddo
+
+  filename_out = trim('./compress_') // trim(material_name(1)) // trim('.out')
+
+  if (input_file_given) then
+    !------- an input file was provided -------------------------------
+    open(action='write', file=filename_out, iostat=rc_out, newunit=fu_out)
+    call date_and_time(DATE=date,ZONE=zone,TIME=time,VALUES=values)
+    write(fu_out,*) date(1:4),'/',date(5:6),'/',date(7:8),' ',time(1:2),':', &
+                    time(3:4),' ',zone(1:3),':',zone(4:5),'UTC'
+    write(fu_out,*)
+    write(fu_out,'(a)') 'NOTE: The input file provided was:'
+    write(fu_out,'(a,a)') '      ', trim(input_filename)
+    write(fu_out,'(a,d17.10,a)') 'NOTE: The validation test tolerance is ', &
+                                 tolerance, '.'
+    write(fu_out,*)
+
+    i = 0
+    do k=1,size(liq_pressure)
+      write(fu_out,'(a,I2,a)') '||-----------TEST-#',k,'-----------------------&
+                                 &--------------||'
+      write(fu_out,'(a)') '[in]  material property name [-]:'
+      write(fu_out,'(a)') material_name(k)
+      write(fu_out,'(a)') '[in]  liquid pressure [Pa]:'
+      write(fu_out,'(d17.10)') liq_pressure(k)
+      write(fu_out,'(a)') '[out]  altered porosity [-]:'
+      call MaterialCompressSoilPoroExp(auxvar,liq_pressure(k),compressed_porosity, &
+                                       dum1)
+      write(fu_out,'(d17.10)') compressed_porosity
+      write(fu_out,'(a)') '[correct] altered porosity [-]:'
+      write(fu_out,'(d17.10)') corr_compressed_porosity(k)
+      diff = abs(corr_compressed_porosity(k)-compressed_porosity)
+      if (diff > (tolerance*corr_compressed_porosity(k))) then
+        pass_fail = 'FAIL!'
+        i = i + 1
+      else
+        pass_fail = 'pass'
+      endif
+      write(fu_out,'(a)') trim(pass_fail)
+
+      write(fu_out,*)
+    enddo
+
+    write(fu_out,'(a)') 'TEST SUMMARY:'
+    if (i == 0) then
+      write(fu_out,'(a)') ' All tests passed!'
+    else
+      write(fu_out,'(a,I3,a)') ' A total of (', i, ') test(s) failed!'
+    endif
+    close(fu_out)
+  endif
+
+  close(fu_in)
+
+  if (input_file_given) then
+    deallocate(material_name)
+    deallocate(material_id)
+    deallocate(liq_pressure)
+    deallocate(corr_compressed_porosity)
+  endif
+  deallocate(temp_material_name)
+  deallocate(temp_material_id)
+  deallocate(temp_liq_pressure)
+  deallocate(temp_corr_comp_porosity)
+
+end subroutine MaterialCompressSoilUnitTest
 
 ! ************************************************************************** !
 
