@@ -12,9 +12,13 @@ module Anisotropy_Data_module
   public :: PermInnerProd
   public :: PrintAnisoData
 
+  ! -- 
+  ! -- Data structures for calculating anisotropic gradient contributions in STRUCTURED GRIDS.
+  ! --
+
   type, public :: aniso_data_structured_type
 
-    !  For calculating flux across interface marked '---->'.
+    !  For calculating flux across interface marked '---->' in structured grid setting.
     !  Including data from cells 'up' and 'dn' only allows flux based on permeability components
     !  in the direction of the flux to be calculated.  Anisotropic permeablity components will
     !  be ignored.
@@ -36,17 +40,17 @@ module Anisotropy_Data_module
     !  :          :          :
     !  .......................
     !
-    !  Note. X_A, X_B should be ordered so that the coordinate X(=X,Y,orZ)is increasing the
+    !  Note. X_A, X_B should be ordered so that the coordinate X(=X,Y,or Z) is increasing the
     !  direction A->B, in order to make sense of direction of gradients.  In aniso_data the
     !  p(lus) and m(inus) suffix indicates this.
-    !
-    !  Note. residual equations do not need additional terms local_id_up_A, local_id_dn_A, ... etc.
-    !  since flows are only between cells up/dn so these are the only source/sinks of mass.
 
     ! Orientation (of normal to interface)
     character (len=1) :: orientation ! 'X', 'Y' or 'Z'
 
-    ! Grid data - fixed through simulation
+    ! Grid IDs - there are 4 adjacent cells in each of the up/dn directions that must be considered
+    !            when calculating the head gradient, so 8 in total.  12 are stored here, but only 
+    !            8 are used - depending on orientation of the interface.  E.g. for interface with
+    !            normal in the x-direction, only the y,z terms will be used.
     PetscInt :: id_up_adjXm ! id of upwind   cell adjacent in the X -ve direction (structured grids only)
     PetscInt :: id_up_adjXp ! id of upwind   cell adjacent in the X +ve direction (structured grids only)
     PetscInt :: id_dn_adjXm ! id of downwind cell adjacent in the X -ve direction (structured grids only)
@@ -60,7 +64,7 @@ module Anisotropy_Data_module
     PetscInt :: id_dn_adjZm ! id of downwind cell adjacent in the Z -ve direction (structured grids only)
     PetscInt :: id_dn_adjZp ! id of downwind cell adjacent in the Z +ve direction (structured grids only)
 
-    ! Gravity terms (usually = g.z where z is z coord of relevant cell centre
+    ! Gravity terms (usually = g.z where z is z coord of relevant cell centre.  Only 8 are used.
     PetscReal :: loc_gravity_up
     PetscReal :: loc_gravity_dn
     PetscReal :: loc_gravity_up_adjXm
@@ -76,7 +80,7 @@ module Anisotropy_Data_module
     PetscReal :: loc_gravity_dn_adjZm
     PetscReal :: loc_gravity_dn_adjZp
 
-    ! Distances from up/dn to adjacent cells (distances between cell centres)
+    ! Distances from up/dn cell to adjacent cells (distances between cell centres).  Only 8 are used.
     PetscReal :: dist_up_adjXm
     PetscReal :: dist_up_adjXp
     PetscReal :: dist_dn_adjXm
@@ -90,7 +94,7 @@ module Anisotropy_Data_module
     PetscReal :: dist_dn_adjZm
     PetscReal :: dist_dn_adjZp
 
-    ! Adjacent pressure data - working data, overwritten throughout simulation
+    ! Adjacent pressure data - working data, overwritten throughout simulation.  Only 8 are used.
     PetscReal :: pres_up_adjXm ! pressure in the upwind   cell adjacent in the X -ve direction
     PetscReal :: pres_up_adjXp ! pressure in the upwind   cell adjacent in the X +ve direction
     PetscReal :: pres_dn_adjXm ! pressure in the downwind cell adjacent in the X -ve direction
@@ -163,6 +167,11 @@ module Anisotropy_Data_module
     PetscReal :: dv_darcy_aniso_dn_dp_dn
   end type aniso_deriv_data_structured_type
 
+
+  ! -- 
+  ! -- Data structures for calculating anisotropic gradient contributions in UNSTRUCTURED GRIDS.
+  ! --
+
   ! workarounds to allow array of pointers to be stored
   type, public :: adu_ptr_container
     type(aniso_data_unstructured_type), pointer:: ptr => null()
@@ -177,8 +186,8 @@ module Anisotropy_Data_module
     PetscReal :: cell_pos(3)   ! (x,y,z coord of cell centre)
     ! adjacency info
     PetscInt :: num_adj ! number of adjacent cells (<=4)
-    PetscInt, pointer :: cell_id_adj(:) ! ids of adjacent cells that share a vertex with the connection face
-    PetscInt, pointer :: face_id_adj(:) ! ids of faces neighbouring cell that share a vertex with the connection face
+    PetscInt, pointer :: cell_id_adj(:) ! ids of adjacent cells that share an edge with the connection face
+    PetscInt, pointer :: face_id_adj(:) ! ids of faces neighbouring cell that share an edge with the connection face
 
     type(adu_ptr_container), pointer :: adu_face_adj(:) ! aniso data for face_id_adj(:)
     type(aduc_ptr_container), pointer :: adu_cell_adj(:) ! aniso data for cell_id_adj(:)
@@ -186,6 +195,8 @@ module Anisotropy_Data_module
     ! g.c, where c is cell centre (this are differenced to get g.d, where d is distance between points)
     PetscReal :: loc_gravity
 
+    ! (u,v,w) is coordinate system orthogonal to the common face.  u is normal to the face and (v,w) is in the plane of the face.
+    
     ! Permeability w.r.t. (u,v,w) coords in cells - working data, overwritten throughout simulation (in case timedep)
     PetscReal :: perm_uu
     PetscReal :: perm_vv
@@ -194,7 +205,7 @@ module Anisotropy_Data_module
     PetscReal :: perm_uw
     PetscReal :: perm_vw
 
-    ! Interpolation machinery
+    ! Interpolation machinery - 2x2 matrix inverse is required.
     PetscReal :: LSMatInv(2,2)
     PetscReal, pointer :: dists_u(:) ! num_adj
     PetscReal, pointer :: dists_vw(:,:) ! 2 x num_adj
@@ -225,7 +236,7 @@ module Anisotropy_Data_module
   end type aniso_data_unstructured_type
 
   type, public :: aniso_deriv_data_unstructured_type
-    ! structure for storing work data for anisotropic derivative calculations - unstrcutured case
+    ! structure for storing work data for anisotropic derivative calculations - unstructured case
     PetscReal :: ddphi_v_up_dp_up
     PetscReal :: ddphi_v_up_dp_dn
     PetscReal, pointer :: ddphi_v_up_dp_up_adj(:)
