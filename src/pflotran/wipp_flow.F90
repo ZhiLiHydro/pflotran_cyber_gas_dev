@@ -67,7 +67,6 @@ subroutine WIPPFloSetup(realization)
   PetscReal :: dist(3)
   PetscBool :: error_found
   PetscInt :: flag(10)
-  PetscErrorCode :: ierr
                                                 ! extra index for derivatives
   type(wippflo_auxvar_type), pointer :: wippflo_auxvars(:,:)
   type(wippflo_auxvar_type), pointer :: wippflo_auxvars_bc(:)
@@ -96,26 +95,23 @@ subroutine WIPPFloSetup(realization)
     if (material_auxvars(ghosted_id)%volume < 0.d0 .and. flag(1) == 0) then
       flag(1) = 1
       option%io_buffer = 'ERROR: Non-initialized cell volume.'
-      call PrintMsgByRank(option)
+      call PrintMsg(option)
     endif
     if (material_auxvars(ghosted_id)%porosity_base < 0.d0 .and. &
         flag(2) == 0) then
       flag(2) = 1
       option%io_buffer = 'ERROR: Non-initialized porosity.'
-      call PrintMsgByRank(option)
+      call PrintMsg(option)
     endif
     if (minval(material_auxvars(ghosted_id)%permeability) < 0.d0 .and. &
         flag(5) == 0) then
       option%io_buffer = 'ERROR: Non-initialized permeability.'
-      call PrintMsgByRank(option)
+      call PrintMsg(option)
       flag(5) = 1
     endif
   enddo
   
-  error_found = error_found .or. (maxval(flag) > 0)
-  call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_LOGICAL, &
-                     MPI_LOR,option%mycomm,ierr)
-  if (error_found) then
+  if (error_found .or. maxval(flag) > 0) then
     option%io_buffer = 'Material property errors found in WIPPFloSetup.'
     call PrintErrMsg(option)
   endif

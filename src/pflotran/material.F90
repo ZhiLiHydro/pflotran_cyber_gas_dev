@@ -145,6 +145,8 @@ function MaterialPropertyCreate()
   ! Author: Glenn Hammond
   ! Date: 11/02/07
   ! 
+
+  
   implicit none
 
   type(material_property_type), pointer :: MaterialPropertyCreate
@@ -479,17 +481,12 @@ subroutine MaterialPropertyRead(material_property,input,option)
               ! Note. Presence of this keyword in a single permeability block
               ! will enable off-diagonal terms on all connections, not just
               ! connections in/adjacent to the relevant material.
-              ! 'FULL_TENSOR' may be a better keyword, but it is already in use
-              ! for tensor_to_scalar functionality below.
               ! NB. option%flow%full_perm_tensor = PETSC_TRUE and
               !     material_property%full_permeability_tensor = PETSC_TRUE
-              ! are needed in this case to allow off-diagonal data to be set/used.
+              !     are needed in this case to allow off-diagonal data to be set/used.
               option%connections_with_aniso_data = PETSC_TRUE
               option%flow%full_perm_tensor = PETSC_TRUE
               material_property%full_permeability_tensor = PETSC_TRUE
-            case('FULL_TENSOR')
-              material_property%full_permeability_tensor = PETSC_TRUE
-              option%flow%full_perm_tensor = PETSC_TRUE
             case('VERTICAL_ANISOTROPY_RATIO')
               material_property%isotropic_permeability = PETSC_FALSE
               call InputReadDouble(input,option, &
@@ -637,39 +634,6 @@ subroutine MaterialPropertyRead(material_property,input,option)
           material_property%permeability(1,3) = 0.d0
           material_property%permeability(2,3) = 0.d0
         endif
-#if 0
-      case('PERM_PRINCIPAL_DIRECTION')
-      ! Specify the principal direction of permeability and compute 
-      ! The off diagonal permeability tensor component
-      ! Option: Azimut/Dip for kx and ky equal
-      !         normal vector to the strata (z vector) for kx = ky
-      !         Spherical coordinate theta/phi for general case
-      ! Added by Moise Rousseau, Polytechnique Montreal, 09/04/19
-        material_property%isotropic_permeability = PETSC_FALSE
-        do
-          call InputReadPflotranString(input,option)
-          call InputReadStringErrorMsg(input,option, &
-                                       'MATERIAL_PROPERTY,PERM_PRINCIPAL_DIRECTION')
-
-          if (InputCheckExit(input,option)) exit
-
-          if (InputError(input)) exit
-          call InputReadWord(input,option,word,PETSC_TRUE)
-          call InputErrorMsg(input,option,'keyword', &
-                             'MATERIAL_PROPERTY,PERM_FACTOR')
-          select case(trim(word))
-            case('AZIMUT_DIP')
-              !To be complete
-            case('Z_DIRECTION')
-              !To be complete
-            case('SPHERICAL_TRANSFORMATION')
-              !To be complete
-         ! Add test for full_tensor flag in perm_tens_to_scal_model
-         ! and test for anisotropy flag
-         end select
-       enddo
-#endif
-
       case('PERM_FACTOR') 
       ! Permfactor is the multiplier to permeability to increase perm
       ! The perm increase could be due to pressure or other variable

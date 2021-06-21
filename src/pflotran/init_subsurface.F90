@@ -439,6 +439,7 @@ subroutine InitSubsurfAssignMatProperties(realization)
         perm_yy_p(local_id) = permy
         perm_zz_p(local_id) = permz
         if (option%flow%full_perm_tensor) then
+          ! sjb todo - handle perm_xy,xz,yz here
           perm_xy_p(local_id) = 0.d0
           perm_xz_p(local_id) = 0.d0
           perm_yz_p(local_id) = 0.d0

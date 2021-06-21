@@ -2080,7 +2080,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
           ! For additional anisotropy connections, cells only need to be joined by
           ! an edge (or a vertex if 2-D).  In this case there is no face to delete.
           ! NOTE, this is only populated for cases when the cell_id_dual>local_id
-          ! (wherecell_id_dual is the cell_id corresponding to idual)
+          ! (where cell_id_dual is the cell_id corresponding to idual)
           unstructured_grid%cell_neighbors_local_aniso(idual,local_id) = PETSC_TRUE
         else
           write(string,*) option%myrank
@@ -2605,8 +2605,8 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
         point1%y = grid_y(aniso_updn%cell_id)
         point1%z = grid_z(aniso_updn%cell_id)
         
-        no_v_contrib = PETSC_TRUE ! local
-        no_w_contrib = PETSC_TRUE ! local
+        no_v_contrib = PETSC_TRUE ! reset below if neighbour in v direction is found 
+        no_w_contrib = PETSC_TRUE ! reset below if neighbour in w direction is found
 
         ! loop over adjacent cells that will contribute to anisotropy, calculate (v,w) dist
         do iadj = 1,aniso_updn%num_adj
@@ -2622,8 +2622,8 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
           aniso_updn%dists_vw(1,iadj) = DotProduct(v1,aniso_data_unstruct%vvec)
           aniso_updn%dists_vw(2,iadj) = DotProduct(v1,aniso_data_unstruct%wvec)
 
-          if(aniso_updn%dists_vw(1,iadj) .ne. 0.d0) no_v_contrib=PETSC_FALSE
-          if(aniso_updn%dists_vw(2,iadj) .ne. 0.d0) no_w_contrib=PETSC_FALSE
+          if(aniso_updn%dists_vw(1,iadj) .ne. 0.d0) no_v_contrib = PETSC_FALSE
+          if(aniso_updn%dists_vw(2,iadj) .ne. 0.d0) no_w_contrib = PETSC_FALSE
         enddo
 
         if(aniso_updn%num_adj>1) then
