@@ -138,6 +138,7 @@ subroutine RichardsSetupPatch(realization)
   PetscBool :: error_found, found
   PetscInt :: flag(10)
   PetscReal :: minz, maxz, zcenter, zface
+  PetscReal :: tempreal
   type(material_parameter_type), pointer :: material_parameter
   class(material_auxvar_type), pointer :: material_auxvars(:)  
   type(richards_auxvar_type), pointer :: rich_auxvars(:)  
@@ -173,8 +174,8 @@ subroutine RichardsSetupPatch(realization)
       option%io_buffer = 'ERROR: Non-initialized porosity.'
       call PrintMsg(option)
     endif
-    if (minval(material_auxvars(ghosted_id)%permeability) < 0.d0 .and. &
-        flag(5) == 0) then
+    tempreal = minval(material_auxvars(ghosted_id)%permeability)
+    if (Uninitialized(tempreal) .and. flag(5) == 0) then
       option%io_buffer = 'ERROR: Non-initialized permeability.'
       call PrintMsg(option)
       flag(5) = 1
@@ -2632,14 +2633,16 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
               do iadj=1,aniso_data%unstruct%up%num_adj
                 if(aniso_data%unstruct%Jup_adj(iadj) .ne. 0.d0) then
                   call MatSetValuesLocal(A,1,istart_dn-1, &
-                           1, (aniso_data%unstruct%up%cell_id_adj(iadj)-1)*option%nflowdof, -1.d0 * aniso_data%unstruct%Jup_adj(iadj), &
+                           1, (aniso_data%unstruct%up%cell_id_adj(iadj)-1)*option%nflowdof, &
+                           -1.d0 * aniso_data%unstruct%Jup_adj(iadj), &
                            ADD_VALUES,ierr);CHKERRQ(ierr)
                 endif
               enddo
               do iadj=1,aniso_data%unstruct%dn%num_adj
                 if(aniso_data%unstruct%Jdn_adj(iadj) .ne. 0.d0) then
                   call MatSetValuesLocal(A,1,istart_dn-1, &
-                           1, (aniso_data%unstruct%dn%cell_id_adj(iadj)-1)*option%nflowdof, -1.d0 * aniso_data%unstruct%Jdn_adj(iadj), &
+                           1, (aniso_data%unstruct%dn%cell_id_adj(iadj)-1)*option%nflowdof, &
+                           -1.d0 * aniso_data%unstruct%Jdn_adj(iadj), &
                            ADD_VALUES,ierr);CHKERRQ(ierr)
                 endif
               enddo
