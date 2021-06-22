@@ -134,12 +134,10 @@ subroutine RichardsSetupPatch(realization)
 
   PetscInt :: local_id, ghosted_id, iconn, sum_connection
   PetscInt :: ivertex, nvert, region_id, vertex_id
-  PetscInt :: i
+  PetscInt :: i, ierr
   PetscBool :: error_found, found
   PetscInt :: flag(10)
   PetscReal :: minz, maxz, zcenter, zface
-  PetscReal :: tempreal
-  PetscErrorCode :: ierr
   type(material_parameter_type), pointer :: material_parameter
   class(material_auxvar_type), pointer :: material_auxvars(:)  
   type(richards_auxvar_type), pointer :: rich_auxvars(:)  
@@ -167,26 +165,23 @@ subroutine RichardsSetupPatch(realization)
     if (material_auxvars(ghosted_id)%volume < 0.d0 .and. flag(1) == 0) then
       flag(1) = 1
       option%io_buffer = 'ERROR: Non-initialized cell volume.'
-      call PrintMsgByRank(option)
+      call PrintMsg(option)
     endif
     if (material_auxvars(ghosted_id)%porosity_base < 0.d0 .and. &
         flag(2) == 0) then
       flag(2) = 1
       option%io_buffer = 'ERROR: Non-initialized porosity.'
-      call PrintMsgByRank(option)
+      call PrintMsg(option)
     endif
-    tempreal = minval(material_auxvars(ghosted_id)%permeability)
-    if (Uninitialized(tempreal) .and. flag(5) == 0) then
+    if (minval(material_auxvars(ghosted_id)%permeability) < 0.d0 .and. &
+        flag(5) == 0) then
       option%io_buffer = 'ERROR: Non-initialized permeability.'
-      call PrintMsgByRank(option)
+      call PrintMsg(option)
       flag(5) = 1
     endif
   enddo
 
-  error_found = error_found .or. (maxval(flag) > 0)
-  call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_LOGICAL, &
-                     MPI_LOR,option%mycomm,ierr)
-  if (error_found) then
+  if (error_found .or. maxval(flag) > 0) then
     option%io_buffer = 'Material property errors found in RichardsSetup.'
     call PrintErrMsg(option)
   endif
@@ -730,7 +725,9 @@ subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_data)
   PetscInt :: ghosted_id
 
   if(associated(aniso_data%struct)) then
-    ! structured grid case
+    ! --
+    ! -- structured grid case
+    ! --
 
     allocate(ghosted_id_adj(12))
     allocate(ghosted_pres_adj(12))
@@ -774,7 +771,9 @@ subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_data)
     deallocate(ghosted_pres_adj)
 
   elseif (associated(aniso_data%unstruct)) then
-    ! unstructured grid case
+    ! --
+    ! -- unstructured grid case
+    ! --
 
     ! Pressure adjacency data
     do i=1,aniso_data%unstruct%up%num_adj
@@ -785,7 +784,8 @@ subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_data)
     enddo
 
     ! compute K' = J K J^T in up/dnstream cells, where J = transformation (x,y,z) -> (u,v,w)
-    ! NOTE performing this update for every step - expensive.  Could omit if permeabilty was known to be const.
+    ! NOTE performing this update for every step - expensive.  Could omit if permeabilty was 
+    ! known to be constant.
 
     ! up
     ghosted_id = aniso_data%unstruct%up%cell_id
@@ -2336,7 +2336,6 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
   type(coupler_type), pointer :: boundary_condition, source_sink
   type(connection_set_list_type), pointer :: connection_set_list
   type(connection_set_type), pointer :: cur_connection_set
-  type(aniso_data_type), pointer :: aniso_data
   PetscInt :: iconn
   PetscInt :: sum_connection
   type(grid_type), pointer :: grid
@@ -2352,8 +2351,8 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
   
   character(len=MAXSTRINGLENGTH) :: string
 
-  PetscInt :: i
-  PetscInt :: tmp_i, tmp_j
+  type(aniso_data_type), pointer :: aniso_data
+  PetscInt :: iadj
 
   PetscViewer :: viewer
 
@@ -2519,15 +2518,17 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
 
               ! J terms are stored in aniso_data%struct%Jup/dn_adj
               ! aniso_data%unstruct%up/dn%cell_id_adj are ghosted ids(?), 1-indexed
-              do i=1,4 ! MAX_VERT_PER_FACE
-                if(aniso_data%unstruct%Jup_adj(i) .ne. 0.d0) then
+              do iadj=1,aniso_data%unstruct%up%num_adj
+                if(aniso_data%unstruct%Jup_adj(iadj) .ne. 0.d0) then
                   call MatSetValuesLocal(A,1,istart_up-1, &
-                           1, (aniso_data%unstruct%up%cell_id_adj(i)-1)*option%nflowdof, aniso_data%unstruct%Jup_adj(i), &
+                           1, (aniso_data%unstruct%up%cell_id_adj(iadj)-1)*option%nflowdof, aniso_data%unstruct%Jup_adj(iadj), &
                            ADD_VALUES,ierr);CHKERRQ(ierr)
                 endif
-                if(aniso_data%unstruct%Jdn_adj(i) .ne. 0.d0) then
+              enddo
+              do iadj=1,aniso_data%unstruct%dn%num_adj
+                if(aniso_data%unstruct%Jdn_adj(iadj) .ne. 0.d0) then
                   call MatSetValuesLocal(A,1,istart_up-1, &
-                           1, (aniso_data%unstruct%dn%cell_id_adj(i)-1)*option%nflowdof, aniso_data%unstruct%Jdn_adj(i), &
+                           1, (aniso_data%unstruct%dn%cell_id_adj(iadj)-1)*option%nflowdof, aniso_data%unstruct%Jdn_adj(iadj), &
                            ADD_VALUES,ierr);CHKERRQ(ierr)
                 endif
               enddo
@@ -2628,15 +2629,17 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
 
               ! J terms are stored in aniso_data%struct%Jup/dn_adj
               ! aniso_data%unstruct%up/dn%cell_id_adj are ghosted ids(?), 1-indexed
-              do i=1,4 ! MAX_VERT_PER_FACE
-                if(aniso_data%unstruct%Jup_adj(i) .ne. 0.d0) then
+              do iadj=1,aniso_data%unstruct%up%num_adj
+                if(aniso_data%unstruct%Jup_adj(iadj) .ne. 0.d0) then
                   call MatSetValuesLocal(A,1,istart_dn-1, &
-                           1, (aniso_data%unstruct%up%cell_id_adj(i)-1)*option%nflowdof, -1.d0 * aniso_data%unstruct%Jup_adj(i), &
+                           1, (aniso_data%unstruct%up%cell_id_adj(iadj)-1)*option%nflowdof, -1.d0 * aniso_data%unstruct%Jup_adj(iadj), &
                            ADD_VALUES,ierr);CHKERRQ(ierr)
                 endif
-                if(aniso_data%unstruct%Jdn_adj(i) .ne. 0.d0) then
+              enddo
+              do iadj=1,aniso_data%unstruct%dn%num_adj
+                if(aniso_data%unstruct%Jdn_adj(iadj) .ne. 0.d0) then
                   call MatSetValuesLocal(A,1,istart_dn-1, &
-                           1, (aniso_data%unstruct%dn%cell_id_adj(i)-1)*option%nflowdof, -1.d0 * aniso_data%unstruct%Jdn_adj(i), &
+                           1, (aniso_data%unstruct%dn%cell_id_adj(iadj)-1)*option%nflowdof, -1.d0 * aniso_data%unstruct%Jdn_adj(iadj), &
                            ADD_VALUES,ierr);CHKERRQ(ierr)
                 endif
               enddo

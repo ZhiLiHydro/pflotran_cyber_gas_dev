@@ -178,9 +178,7 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
   type(richards_auxvar_type) :: rich_auxvar_up, rich_auxvar_dn
   type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
   class(material_auxvar_type) :: material_auxvar_up, material_auxvar_dn
-  type(aniso_data_type), pointer :: aniso_data
   type(option_type) :: option
-  PetscReal :: v_darcy, v_darcy_aniso, area, dist(-1:3)
   type(characteristic_curves_type) :: characteristic_curves_up
   type(characteristic_curves_type) :: characteristic_curves_dn
   PetscReal :: Jup(option%nflowdof,option%nflowdof)
@@ -200,7 +198,6 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
 !  PetscReal :: dukvr_y_dp_up, dukvr_y_dp_dn
 !  PetscReal :: dukvr_z_dp_up, dukvr_z_dp_dn
   PetscReal :: dq_dp_up, dq_dp_dn
-  PetscReal :: dv_darcy_dp_up, dv_darcy_dp_dn
 
   PetscReal :: dq_dp_up_adjXm, dq_dp_dn_adjXm, dq_dp_up_adjXp, dq_dp_dn_adjXp
   PetscReal :: dq_dp_up_adjYm, dq_dp_dn_adjYm, dq_dp_up_adjYp, dq_dp_dn_adjYp
@@ -208,6 +205,11 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
 
   PetscReal, pointer :: dq_dp_up_adj(:)
   PetscReal, pointer :: dq_dp_dn_adj(:)
+
+  PetscReal :: dv_darcy_dp_up, dv_darcy_dp_dn
+
+  type(aniso_data_type), pointer :: aniso_data
+  PetscReal :: v_darcy, v_darcy_aniso, area, dist(-1:3)
   PetscInt :: iadj
 
   PetscInt :: iphase, ideriv
@@ -250,7 +252,7 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
     if(associated(aniso_data%struct)) then
       ! sjb - can do same calls as isotropic case here, should just extract
       !       k_xx, k_yy or k_zz depending on orientation
-      ! sjb - would be better to be specific here rather than rely on
+      ! sjb - would perhaps be better to be specific here rather than rely on
       !       TensorToScalar call to do the right thing
       call material_auxvar_up%PermeabilityTensorToScalar(dist,perm_up)
       call material_auxvar_dn%PermeabilityTensorToScalar(dist,perm_dn)
@@ -477,7 +479,7 @@ subroutine RichardsFluxAniso(aniso_data, &
 !
 ! Computes the contributions to internal flux terms and Jacobian arising
 ! from pressure gradients perpendicular to cell-centre connections due
-! to anisotropic permeability terms (structured grids only)
+! to anisotropic permeability terms
 !
 ! Author: Steve Benbow
 ! Date: 01/06/20
@@ -549,7 +551,9 @@ subroutine RichardsFluxAniso(aniso_data, &
 
 
   if(associated(aniso_data%struct)) then
-    ! structured grid case
+    ! -- 
+    ! -- structured grid case
+    ! -- 
     aniso_ds => aniso_data%struct
 
     ! Permeability tensor to up/dn cells
@@ -557,34 +561,34 @@ subroutine RichardsFluxAniso(aniso_data, &
     k_up_yy = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_Y)
     k_up_zz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_Z)
     k_up_xy = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_XY)
-    k_up_yz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_YZ)
     k_up_xz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_XZ)
+    k_up_yz = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_YZ)
 
     k_dn_xx = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_X)
     k_dn_yy = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_Y)
     k_dn_zz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_Z)
     k_dn_xy = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_XY)
-    k_dn_yz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_YZ)
     k_dn_xz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_XZ)
+    k_dn_yz = MaterialAuxVarGetValue(material_auxvar_dn,PERMEABILITY_YZ)
 
     ! allow off-diagonal terms to be uninitialised, in which case set to zero
     if ( k_up_xy == UNINITIALIZED_DOUBLE ) then
       k_up_xy = 0.d0
     endif
-    if ( k_up_yz == UNINITIALIZED_DOUBLE ) then
-      k_up_yz = 0.d0
-    endif
     if ( k_up_xz == UNINITIALIZED_DOUBLE ) then
       k_up_xz = 0.d0
+    endif
+    if ( k_up_yz == UNINITIALIZED_DOUBLE ) then
+      k_up_yz = 0.d0
     endif
     if ( k_dn_xy == UNINITIALIZED_DOUBLE ) then
       k_dn_xy = 0.d0
     endif
-    if ( k_dn_yz == UNINITIALIZED_DOUBLE ) then
-      k_dn_yz = 0.d0
-    endif
     if ( k_dn_xz == UNINITIALIZED_DOUBLE ) then
       k_dn_xz = 0.d0
+    endif
+    if ( k_dn_yz == UNINITIALIZED_DOUBLE ) then
+      k_dn_yz = 0.d0
     endif
 
     ! components of grad P on connection, in the plane of the interface
@@ -949,7 +953,9 @@ subroutine RichardsFluxAniso(aniso_data, &
       deallocate(aniso_dds)
     endif
   else
-    ! unstructured grid case
+    ! -- 
+    ! -- unstructured grid case
+    ! -- 
     aniso_du => aniso_data%unstruct
 
     ! !dbg 
@@ -998,7 +1004,7 @@ subroutine RichardsFluxAniso(aniso_data, &
 
       ! Calculate ddphi_du from v_darcy (= Dq * ukvr * dphi) supplied by RichardsFlux(),
       ! where Dq = (perm_up * perm_dn)/(dd_up*perm_dn + dd_dn*perm_up)
-      ! (n.b ddphi_du is basically -(P_up-P_dn)/dist) + gravity terms)
+      ! (NB. ddphi_du is basically -(P_up-P_dn)/dist) + gravity terms)
       dphi_du = -1.d0* v_darcy_iso / (ukvr*aniso_updn%perm_uu)
       d2phi_du_dp_up = -1.d0* dv_darcy_iso_dp_up / (ukvr*aniso_updn%perm_uu) &
                        + v_darcy_iso * dukvr_dp_up / (ukvr*ukvr*aniso_updn%perm_uu)
@@ -1023,7 +1029,6 @@ subroutine RichardsFluxAniso(aniso_data, &
           dphi_v_up = dphi_v_up + aniso_updn%LSMatInv(1,1)*LSrhs(1)*res + aniso_updn%LSMatInv(1,2)*LSrhs(2)*res
           dphi_w_up = dphi_w_up + aniso_updn%LSMatInv(2,1)*LSrhs(1)*res + aniso_updn%LSMatInv(2,2)*LSrhs(2)*res
           if (calc_derivs) then
-
             dres_dp_up  = -1.d0 - d2phi_du_dp_up*aniso_updn%dists_u(iadj)
             dres_dp_dn  =       - d2phi_du_dp_dn*aniso_updn%dists_u(iadj)
             dres_dp_adj =  1.d0
@@ -1053,7 +1058,6 @@ subroutine RichardsFluxAniso(aniso_data, &
           dphi_v_dn = dphi_v_dn + aniso_updn%LSMatInv(1,1)*LSrhs(1)*res + aniso_updn%LSMatInv(1,2)*LSrhs(2)*res
           dphi_w_dn = dphi_w_dn + aniso_updn%LSMatInv(2,1)*LSrhs(1)*res + aniso_updn%LSMatInv(2,2)*LSrhs(2)*res
           if (calc_derivs) then
-
             dres_dp_up  =       - d2phi_du_dp_up*aniso_updn%dists_u(iadj)
             dres_dp_dn  = -1.d0 - d2phi_du_dp_dn*aniso_updn%dists_u(iadj)
             dres_dp_adj =  1.d0
@@ -1153,7 +1157,6 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
   type(richards_auxvar_type) :: rich_auxvar_up, rich_auxvar_dn
   type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
   class(material_auxvar_type) :: material_auxvar_up, material_auxvar_dn
-  type(aniso_data_type), pointer :: aniso_data
   type(option_type) :: option
   PetscReal :: v_darcy, area, dist(-1:3)
   PetscReal :: Res(1:option%nflowdof) 
@@ -1165,6 +1168,7 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
   PetscReal :: ukvr,Dq
   PetscReal :: upweight, density_ave, cond, gravity, dphi
   
+  type(aniso_data_type), pointer :: aniso_data
   PetscReal :: v_darcy_aniso
 
   fluxm = 0.d0
@@ -1229,6 +1233,7 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
       ! add anisotropic contributions
       if(associated(aniso_data)) then
         ! Call PrintAnisoData(aniso_data)
+        ! Call RichardsFluxAniso with calc_derivs=PETSC_FALSE
         Call RichardsFluxAniso(aniso_data,material_auxvar_up,material_auxvar_dn,&
                                   global_auxvar_up,global_auxvar_dn,&
                                   option,dist,&
@@ -1237,11 +1242,11 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
                                   PETSC_FALSE,v_darcy_aniso)
         v_darcy = v_darcy + v_darcy_aniso
       endif
+
+      q = v_darcy * area
+
+      fluxm = q*density_ave
     endif
-
-    q = v_darcy * area
-
-    fluxm = q*density_ave
   endif 
 
   Res(1) = fluxm
