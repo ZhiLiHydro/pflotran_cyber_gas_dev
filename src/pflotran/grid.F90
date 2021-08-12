@@ -1488,7 +1488,7 @@ subroutine GridGetGhostedNeighborsWithCorners(grid,ghosted_id,stencil_type, &
                                          stencil_width_k, &
                                          icount, &
                                          ghosted_neighbors,option)
-    case(IMPLICIT_UNSTRUCTURED_GRID,EXPLICIT_UNSTRUCTURED_GRID) 
+    case(IMPLICIT_UNSTRUCTURED_GRID,EXPLICIT_UNSTRUCTURED_GRID) ! sjb - would need to implement for unstructured grids?
       option%io_buffer = 'GridGetNeighbors not currently supported for ' // &
         'unstructured grids.'
       call PrintErrMsg(option)

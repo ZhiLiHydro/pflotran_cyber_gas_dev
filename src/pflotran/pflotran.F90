@@ -1,6 +1,26 @@
 !=======================================================================
 ! Please see LICENSE and COPYRIGHT files at top of repository.
 !=======================================================================
+
+! sjb - sleep fn for MPI debugging
+module Fortran_Sleep
+  use, intrinsic :: iso_c_binding, only: c_int
+  implicit none
+
+  interface
+     !  should be unsigned int ... not available in Fortran
+     !  OK until highest bit gets set.
+     function FortSleep (seconds)  bind ( C, name="sleep" )
+         import
+         integer (c_int) :: FortSleep
+         integer (c_int), intent (in), VALUE :: seconds
+     end function FortSleep
+  end interface
+end module Fortran_Sleep
+
+
+
+
 program pflotran
   
   use Option_module
@@ -11,6 +31,8 @@ program pflotran
   use PFLOTRAN_Constants_module
   use PFLOTRAN_Provenance_module, only : PrintProvenanceToScreen
   
+  use Fortran_Sleep
+
   implicit none
 
 #include "petsc/finclude/petscsys.h"
@@ -22,6 +44,16 @@ program pflotran
   type(multi_simulation_type), pointer :: multisimulation
   type(option_type), pointer :: option
   
+  integer :: i, duration
+  
+  ! modify value of i with debugger to proceed to run
+  i = 3
+  do while (i.ne.0)
+    write(*, "('  Sleeping... ',i4)") i
+    duration = FortSleep(i)
+  end do
+
+
   nullify(simulation)
   nullify(multisimulation)
   option => OptionCreate()

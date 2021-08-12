@@ -1473,7 +1473,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
         ghost_cell_count = ghost_cell_count + 1
         ! reallocate the ghost cell array if necessary
         if (ghost_cell_count > max_ghost_cell_count) then
-          call ReallocateArray(int_array_pointer,max_ghost_cell_count)
+          call ReallocateArray(int_array_pointer,max_ghost_cell_count) ! sjb - should max_ghost_cell_count be reassigned before this call?
         endif
         int_array_pointer(ghost_cell_count) = dual_id
         vec_ptr(idual + dual_offset + (local_id-1)*stride) = &
@@ -1640,11 +1640,12 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
 
   ! load cell neighbors into array
   ! start first index at zero to store # duals for a cell
+  ! sjb - need to also store neighbours for ghosted cells (ghosted-ghosted) for handling anisotropy
   allocate(ugrid%cell_neighbors_local_ghosted( &
-           0:ugrid%max_ndual_per_cell,ugrid%nlmax))
+           0:ugrid%max_ndual_per_cell,ugrid%nlmax)) ! sjb - ideally this would have length ngmax
   ugrid%cell_neighbors_local_ghosted = 0
   call VecGetArrayF90(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
-  do local_id=1, ugrid%nlmax
+  do local_id=1, ugrid%nlmax ! sjb - ideally this would loop to ngmax, but index into vec_ptr then exceeds array bounds
     count = 0
     do idual = 1, ugrid%max_ndual_per_cell
       dual_id = int(vec_ptr(idual + dual_offset + (local_id-1)*stride))
