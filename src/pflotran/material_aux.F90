@@ -294,7 +294,7 @@ subroutine MaterialDiagPermTensorToScalar(material_auxvar,dist, &
   ! 
   ! Author: Glenn Hammond
   ! Date: 01/09/14
-  !
+  ! 
   use Utility_module, only : Equal
 
   implicit none

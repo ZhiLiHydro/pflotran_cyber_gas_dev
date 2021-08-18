@@ -1597,7 +1597,7 @@ subroutine RichardsResidualInternalConn(r,realization,skip_conn_type,ierr)
   PetscReal :: v_darcy
   PetscReal, pointer :: r_p(:)
 
-  nullify(aniso_data) ! default - not used
+  nullify(aniso_data) ! default = not used
 
   patch => realization%patch
   grid => patch%grid
