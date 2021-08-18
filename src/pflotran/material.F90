@@ -24,12 +24,16 @@ module Material_module
     character(len=MAXWORDLENGTH) :: name
     PetscReal :: permeability(3,3)
     PetscBool :: isotropic_permeability
+    PetscBool :: full_permeability_tensor
     PetscReal :: vertical_anisotropy_ratio ! (vertical / horizontal)
     PetscReal :: permeability_scaling_factor
 !    character(len=MAXWORDLENGTH) :: permeability_dataset_name
     class(dataset_base_type), pointer :: permeability_dataset
     class(dataset_base_type), pointer :: permeability_dataset_y
     class(dataset_base_type), pointer :: permeability_dataset_z
+    class(dataset_base_type), pointer :: permeability_dataset_xy
+    class(dataset_base_type), pointer :: permeability_dataset_xz
+    class(dataset_base_type), pointer :: permeability_dataset_yz
     PetscReal :: porosity
 !    character(len=MAXWORDLENGTH) :: porosity_dataset_name
     class(dataset_base_type), pointer :: porosity_dataset
@@ -157,6 +161,7 @@ function MaterialPropertyCreate()
   ! initialize to UNINITIALIZED_DOUBLE to catch bugs
   material_property%permeability = UNINITIALIZED_DOUBLE
   material_property%isotropic_permeability = PETSC_TRUE
+  material_property%full_permeability_tensor = PETSC_FALSE
   material_property%vertical_anisotropy_ratio = UNINITIALIZED_DOUBLE
   material_property%permeability_scaling_factor = 0.d0
   material_property%permeability_pwr = 1.d0
@@ -166,6 +171,9 @@ function MaterialPropertyCreate()
   nullify(material_property%permeability_dataset)
   nullify(material_property%permeability_dataset_y)
   nullify(material_property%permeability_dataset_z)
+  nullify(material_property%permeability_dataset_xy)
+  nullify(material_property%permeability_dataset_xz)
+  nullify(material_property%permeability_dataset_yz)
   ! initialize to UNINITIALIZED_DOUBLE to catch bugs
   material_property%porosity = UNINITIALIZED_DOUBLE
 !  material_property%porosity_dataset_name = ''
@@ -467,6 +475,18 @@ subroutine MaterialPropertyRead(material_property,input,option)
           select case(trim(word))
             case('ANISOTROPIC')
               material_property%isotropic_permeability = PETSC_FALSE
+            case('INCLUDE_OFF_DIAGONAL')
+              ! Include off-diagonal terms in flux calculations (i.e. not just
+              ! tensor to scalar operations)
+              ! Note. Presence of this keyword in a single permeability block
+              ! will enable off-diagonal terms on all connections, not just
+              ! connections in/adjacent to the relevant material.
+              ! NB. option%flow%full_perm_tensor = PETSC_TRUE and
+              !     material_property%full_permeability_tensor = PETSC_TRUE
+              !     are needed in this case to allow off-diagonal data to be set/used.
+              option%connections_with_aniso_data = PETSC_TRUE
+              option%flow%full_perm_tensor = PETSC_TRUE
+              material_property%full_permeability_tensor = PETSC_TRUE
             case('VERTICAL_ANISOTROPY_RATIO')
               material_property%isotropic_permeability = PETSC_FALSE
               call InputReadDouble(input,option, &
@@ -510,31 +530,31 @@ subroutine MaterialPropertyRead(material_property,input,option)
               call InputErrorMsg(input,option,'log10 z permeability', &
                                  'MATERIAL_PROPERTY,PERMEABILITY')
               material_property%permeability(3,3) = 10.d0**tempreal
-            case('PERM_XZ')
-              call InputReadDouble(input,option, &
-                                   material_property%permeability(1,3))
-              call InputErrorMsg(input,option,'xz permeability', &
-                                 'MATERIAL_PROPERTY,PERMEABILITY')
             case('PERM_XY')
               call InputReadDouble(input,option, &
                                    material_property%permeability(1,2))
               call InputErrorMsg(input,option,'xy permeability', &
+                                 'MATERIAL_PROPERTY,PERMEABILITY')
+            case('PERM_XZ')
+              call InputReadDouble(input,option, &
+                                   material_property%permeability(1,3))
+              call InputErrorMsg(input,option,'xz permeability', &
                                  'MATERIAL_PROPERTY,PERMEABILITY')
             case('PERM_YZ')
               call InputReadDouble(input,option, &
                                    material_property%permeability(2,3))
               call InputErrorMsg(input,option,'yz permeability', &
                                  'MATERIAL_PROPERTY,PERMEABILITY')
-            case('PERM_XZ_LOG10')
-              call InputReadDouble(input,option, tempreal)
-              call InputErrorMsg(input,option,'log10 xz permeability', &
-                                 'MATERIAL_PROPERTY,PERMEABILITY')
-              material_property%permeability(1,3) = 10.d0**tempreal
             case('PERM_XY_LOG10')
               call InputReadDouble(input,option, tempreal)
               call InputErrorMsg(input,option,'log10 xy permeability', &
                                  'MATERIAL_PROPERTY,PERMEABILITY')
               material_property%permeability(1,2) = 10.d0**tempreal
+            case('PERM_XZ_LOG10')
+              call InputReadDouble(input,option, tempreal)
+              call InputErrorMsg(input,option,'log10 xz permeability', &
+                                 'MATERIAL_PROPERTY,PERMEABILITY')
+              material_property%permeability(1,3) = 10.d0**tempreal
             case('PERM_YZ_LOG10')
               call InputReadDouble(input,option, tempreal)
               call InputErrorMsg(input,option,'log10 yz permeability', &
@@ -581,6 +601,38 @@ subroutine MaterialPropertyRead(material_property,input,option)
             dabs(material_property%permeability(1,1) - &
                  material_property%permeability(3,3)) > 1.d-40) then
           material_property%isotropic_permeability = PETSC_FALSE
+        endif
+
+        if (Initialized(material_property%permeability(1,2)) .or. &
+            Initialized(material_property%permeability(1,3)) .or. &
+            Initialized(material_property%permeability(2,3))) then
+          ! if one off-diagonal value is initialized, all must be.
+          if (Uninitialized(material_property%permeability(1,2)) .or. &
+              Uninitialized(material_property%permeability(1,3)) .or. &
+              Uninitialized(material_property%permeability(2,3))) then
+            option%io_buffer = 'All off-diagonal permeabilities must be &
+              &initialized when using full tensor permeability.'
+            call PrintErrMsg(option)
+          endif
+          select case(option%iflowmode)
+            case(RICHARDS_MODE)
+            case default
+              option%io_buffer = "The full permeability tensor option &
+                &has only been tested in RICHARDS_MODE. Only remove this &
+                &error message when the desired flow mode has been tested."
+              call PrintErrMsg(option)
+          end select
+          option%io_buffer = "XY, XZ and YZ permeabilities provided, &
+            &full_permeability_tensor switch automatically set to PETSC_TRUE."
+          call PrintMsg(option)
+          material_property%full_permeability_tensor = PETSC_TRUE
+          material_property%isotropic_permeability = PETSC_FALSE
+          option%flow%full_perm_tensor = PETSC_TRUE
+        else
+          ! diagonal tensor
+          material_property%permeability(1,2) = 0.d0
+          material_property%permeability(1,3) = 0.d0
+          material_property%permeability(2,3) = 0.d0
         endif
       case('PERM_FACTOR') 
       ! Permfactor is the multiplier to permeability to increase perm
@@ -781,6 +833,17 @@ subroutine MaterialPropertyRead(material_property,input,option)
       trim(material_property%permeability_dataset%name) // 'Y'
     material_property%permeability_dataset_z%name = &
       trim(material_property%permeability_dataset%name) // 'Z'
+    if (material_property%full_permeability_tensor) then
+      material_property%permeability_dataset_xy => DatasetBaseCreate()
+      material_property%permeability_dataset_xz => DatasetBaseCreate()
+      material_property%permeability_dataset_yz => DatasetBaseCreate()
+      material_property%permeability_dataset_xy%name = &
+        trim(material_property%permeability_dataset%name) // 'XY'
+      material_property%permeability_dataset_xz%name = &
+        trim(material_property%permeability_dataset%name) // 'XZ'
+      material_property%permeability_dataset_yz%name = &
+        trim(material_property%permeability_dataset%name) // 'YZ'
+    endif
     material_property%permeability_dataset%name = &
       trim(material_property%permeability_dataset%name) // 'X'
   endif
@@ -2036,6 +2099,15 @@ subroutine MaterialPropInputRecord(material_property_list)
       write(id,'(a29)',advance='no') 'k_zz: '
       write(word1,*) cur_matprop%permeability(3,3)
       write(id,'(a)') adjustl(trim(word1)) // ' m^2'
+      write(id,'(a29)',advance='no') 'k_xy: '
+      write(word1,*) cur_matprop%permeability(1,2)
+      write(id,'(a)') adjustl(trim(word1)) // ' m^2'
+      write(id,'(a29)',advance='no') 'k_xz: '
+      write(word1,*) cur_matprop%permeability(1,3)
+      write(id,'(a)') adjustl(trim(word1)) // ' m^2'
+      write(id,'(a29)',advance='no') 'k_yz: '
+      write(word1,*) cur_matprop%permeability(2,3)
+      write(id,'(a)') adjustl(trim(word1)) // ' m^2'
     endif
     if (cur_matprop%permeability_scaling_factor > 0.d0) then
       write(id,'(a29)',advance='no') 'permeability scaling factor: '
@@ -2170,6 +2242,9 @@ recursive subroutine MaterialPropertyDestroy(material_property)
   nullify(material_property%permeability_dataset)
   nullify(material_property%permeability_dataset_y)
   nullify(material_property%permeability_dataset_z)
+  nullify(material_property%permeability_dataset_xy)
+  nullify(material_property%permeability_dataset_xz)
+  nullify(material_property%permeability_dataset_yz)
   nullify(material_property%porosity_dataset)
   nullify(material_property%tortuosity_dataset)
   nullify(material_property%compressibility_dataset)

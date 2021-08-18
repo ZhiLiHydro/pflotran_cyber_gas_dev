@@ -3,6 +3,7 @@ module Connection_module
 #include "petsc/finclude/petscsys.h"
   use petscsys
   use PFLOTRAN_Constants_module
+  use Anisotropy_Data_module
 
   implicit none
 
@@ -17,6 +18,7 @@ module Connection_module
     PetscInt, pointer :: id_dn(:)      ! list of ids of downwind cells
     PetscInt, pointer :: id_up2(:)     ! list of ids of 2nd upwind cells
     PetscInt, pointer :: id_dn2(:)     ! list of ids of 2nd downwind cells
+    type(aniso_data_type), pointer :: aniso_data(:) ! anisotropy data, one set per connection (if needed)
     PetscReal, pointer :: dist(:,:)    ! list of distance vectors, size(-1:3,num_connections) where
                                        !   -1 = fraction upwind
                                        !   0 = magnitude of distance 
@@ -81,6 +83,7 @@ function ConnectionCreate(num_connections,connection_itype)
   nullify(connection%id_dn)
   nullify(connection%id_up2)
   nullify(connection%id_dn2)
+  nullify(connection%aniso_data)
   nullify(connection%face_id)
   nullify(connection%dist)
   nullify(connection%intercp)

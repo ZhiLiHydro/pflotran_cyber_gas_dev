@@ -47,6 +47,7 @@ module Grid_Unstructured_Aux_module
     PetscInt, pointer :: cell_vertices(:,:) ! vertices for each grid cell (NO LONGER zero-based)
     PetscInt, pointer :: face_to_cell_ghosted(:,:) !
     PetscInt, pointer :: connection_to_face(:)
+    PetscInt, pointer :: face_to_connection(:)
     PetscInt :: upwind_fraction_method ! method used to calculate upwind fraction
 !geh: Should not need face_to_vertex_nindex() as one could use face_to_vertex() 
 !     and vertex_ids_nindex() to get the same result.
@@ -62,6 +63,7 @@ module Grid_Unstructured_Aux_module
     PetscInt, pointer :: cell_to_face_ghosted(:,:)
     PetscInt, pointer :: vertex_ids_natural(:)
     PetscInt, pointer :: cell_neighbors_local_ghosted(:,:) ! local neighbors
+    PetscBool, pointer :: cell_neighbors_local_aniso(:,:) ! flag anisotropy neighbors
     type(point3d_type), pointer :: vertices(:)
     type(point3d_type), pointer :: face_centroid(:)
     PetscReal, pointer :: face_area(:)
@@ -269,7 +271,9 @@ function UGridCreate()
   nullify(unstructured_grid%vertex_ids_natural)
   nullify(unstructured_grid%vertices)
   nullify(unstructured_grid%cell_neighbors_local_ghosted)
+  nullify(unstructured_grid%cell_neighbors_local_aniso)
   nullify(unstructured_grid%connection_to_face)
+  nullify(unstructured_grid%face_to_connection)
   nullify(unstructured_grid%face_centroid)
   nullify(unstructured_grid%face_area)
   nullify(unstructured_grid%nat_ids_of_other_grid)
@@ -2069,11 +2073,14 @@ subroutine UGridDestroy(unstructured_grid)
   call DeallocateArray(unstructured_grid%cell_vertices)
   call DeallocateArray(unstructured_grid%face_to_cell_ghosted)
   call DeallocateArray(unstructured_grid%connection_to_face)
+  call DeallocateArray(unstructured_grid%face_to_connection)
   call DeallocateArray(unstructured_grid%face_to_vertex_natural)
   call DeallocateArray(unstructured_grid%face_to_vertex)
   call DeallocateArray(unstructured_grid%cell_to_face_ghosted)
   call DeallocateArray(unstructured_grid%vertex_ids_natural)
   call DeallocateArray(unstructured_grid%cell_neighbors_local_ghosted)
+  if (associated(unstructured_grid%cell_neighbors_local_aniso)) &
+    deallocate(unstructured_grid%cell_neighbors_local_aniso)
   if (associated(unstructured_grid%vertices)) &
     deallocate(unstructured_grid%vertices)
   nullify(unstructured_grid%vertices)  
