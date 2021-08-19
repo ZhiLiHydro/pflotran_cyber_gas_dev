@@ -46,8 +46,10 @@ program pflotran
   
   integer :: i, duration
   
-  ! modify value of i with debugger to proceed to run
-  i = 3
+  ! For MPI debugging, set i!=0 here and then run with MPI.
+  ! Then attach debugger instances to each running process
+  ! and modify value of i to 0 with debugger to proceed to dbg
+  i = 0
   do while (i.ne.0)
     write(*, "('  Sleeping... ',i4)") i
     duration = FortSleep(i)

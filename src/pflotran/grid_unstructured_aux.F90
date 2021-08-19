@@ -1640,7 +1640,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
 
   ! load cell neighbors into array
   ! start first index at zero to store # duals for a cell
-  ! sjb - need to also store neighbours for ghosted cells (ghosted-ghosted) for handling anisotropy
+  ! sjb - todo - need to also store neighbours for ghosted cells (ghosted-ghosted) for handling anisotropy
   allocate(ugrid%cell_neighbors_local_ghosted( &
            0:ugrid%max_ndual_per_cell,ugrid%nlmax)) ! sjb - ideally this would have length ngmax
   ugrid%cell_neighbors_local_ghosted = 0
