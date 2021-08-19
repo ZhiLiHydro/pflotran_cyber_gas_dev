@@ -1957,13 +1957,13 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
     unstructured_grid%cell_neighbors_local_aniso = PETSC_FALSE
   endif
 
-  do local_id = 1, unstructured_grid%nlmax
-    ! Selet a cell and find number of vertices
+  do local_id = 1, unstructured_grid%nlmax ! sjb - would need to loop to ngmax here for ghosted-ghosted connections (needed for anisotropy)
+    ! Select a cell and find number of vertices
     cell_id = local_id
     ! cell_type is ghosted, but local cells are in the first nlmax entries
     cell_type = unstructured_grid%cell_type(local_id)
     nfaces = UCellGetNFaces(cell_type,option)
-    do idual = 1, unstructured_grid%cell_neighbors_local_ghosted(0,local_id)
+    do idual = 1, unstructured_grid%cell_neighbors_local_ghosted(0,local_id) ! sjb - does not currently support ghosted-ghosted neighbours (needed for anisotropy)
       ! Select a neighboring cell
       ! ghosted neighbors have a negative id
       cell_id2 = &
@@ -2399,6 +2399,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
     ! Loop over connections
     do iconn = 1,nconn
       if (.not.associated(connections%aniso_data(iconn)%unstruct)) then
+        ! SJB - would be better to not be using MAX_VERT_PER_FACE here - could get nfaces for up/dn cells
         allocate(connections%aniso_data(iconn)%unstruct)
         allocate(connections%aniso_data(iconn)%unstruct%dv_darcy_aniso_dp_up_adj(MAX_VERT_PER_FACE))
         allocate(connections%aniso_data(iconn)%unstruct%dv_darcy_aniso_dp_dn_adj(MAX_VERT_PER_FACE))
@@ -2472,6 +2473,10 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
         ! Loop over faces of cell - determine adjacency
         cell_type = unstructured_grid%cell_type(local_id)
         nfaces = UCellGetNFaces(cell_type,option)
+        ! dbg - this connection known to have ghost-ghost issue for 16x16 example problem on 2 procs
+        if (iconn==117) then
+          write(*,"('iconn=',i3,' up/dn=',i1,' local_id=',i2,' nfaces=',i1)") iconn,iupdn,local_id,nfaces 
+        endif
         do iface = 1, nfaces
           face_id2 = cell_to_face(iface,local_id)
           ! Identify faces that share an edge (vertex) with current connection.  Skip the connection face
@@ -2482,10 +2487,18 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
               exit
             endif
             vertex_id = unstructured_grid%face_to_vertex(ivertex,face_id)
+            ! dbg - this connection known to have ghost-ghost issue for 16x16 example problem on 2 procs
+            if (iconn==117) then
+              write(*,"('  vertex_id=',i3)") vertex_id 
+            endif
             if (vertex_id == 0) cycle
             do ivertex2 =1,MAX_VERT_PER_FACE
               vertex_id2 = unstructured_grid%face_to_vertex(ivertex2,face_id2)
-              if (vertex_id2 == 0) cycle
+              ! dbg - this connection known to have ghost-ghost issue for 16x16 example problem on 2 procs
+              if (iconn==117) then
+                write(*,"('  vertex_id2=',i3)") vertex_id2 
+              endif
+                if (vertex_id2 == 0) cycle
               if (vertex_id == vertex_id2) then
                 ! faces share a vertex, and therefore an edge
                 found = PETSC_TRUE
@@ -2497,7 +2510,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
             ! faces share a vertex, and therefore an edge
             found = PETSC_FALSE
             do iside = 1,2
-              cell_id2 = face_to_cell(iside,face_id2)
+              cell_id2 = face_to_cell(iside,face_id2) ! sjb - cell_id2 is 0 for ghosted-ghosted cells, so aniso not set correctly in this case
               if (cell_id2 .ne. local_id) then
                 found = PETSC_TRUE
                 exit
@@ -2552,11 +2565,29 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
 !      aniso_data => connections%aniso_data(iconn)
 !      Call PrintAnisoData(aniso_data)
 !    enddo
+    ! dbg - write connections file
+    write(string,"('connections_',i1,'_of_',i1,'.txt')") option%myrank, option%mycommsize
+    open(unit=77,file=string)
+    write(77,"('RANK ',i4)") option%myrank
+    do iconn = 1,nconn
+      write(77,"('Connection ',i4)") iconn
+      aniso_data_unstruct => connections%aniso_data(iconn)%unstruct
+      ! up
+      write(77,"('  up ',i4)") connections%id_up(iconn)
+      do i=1,aniso_data_unstruct%up%num_adj
+        write(77,"('    -> ',i4)") aniso_data_unstruct%up%cell_id_adj(i)
+      enddo
+      ! dn
+      write(77,"('  dn ',i4)") connections%id_dn(iconn)
+      do i=1,aniso_data_unstruct%dn%num_adj
+        write(77,"('    -> ',i4)") aniso_data_unstruct%dn%cell_id_adj(i)
+      enddo
+    enddo
 
     ! Loop over connections again and construct interpolation machinery parameters
     do iconn = 1,nconn
       aniso_data_unstruct => connections%aniso_data(iconn)%unstruct
-      do iface = 1,MAX_VERT_PER_FACE
+      do iface = 1,MAX_VERT_PER_FACE ! SJB - would be better to not be using MAX_VERT_PER_FACE here - could get nfaces for up/dn cells
         ! up
         face_id = aniso_data_unstruct%up%face_id_adj(iface)
         if(face_id .ne. 0) then
