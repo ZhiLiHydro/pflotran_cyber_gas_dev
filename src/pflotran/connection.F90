@@ -29,6 +29,7 @@ module Connection_module
     PetscReal, pointer :: cntr(:,:)    ! coordinates (1:3, num_connections) of the mass center of the face
     PetscInt, pointer :: face_id(:)    ! list of ids of faces (in local order)
     type(connection_set_type), pointer :: next
+    type(connection_set_type), pointer :: ghost_ghost_connections
   end type connection_set_type
 
 

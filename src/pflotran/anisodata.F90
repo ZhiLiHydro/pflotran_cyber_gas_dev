@@ -186,8 +186,8 @@ module Anisotropy_Data_module
     PetscReal :: cell_pos(3)   ! (x,y,z coord of cell centre)
     ! adjacency info
     PetscInt :: num_adj ! number of adjacent cells (<=4)
-    PetscInt, pointer :: cell_id_adj(:) ! ids of adjacent cells that share an edge with the connection face
-    PetscInt, pointer :: face_id_adj(:) ! ids of faces neighbouring cell that share an edge with the connection face
+    PetscInt, pointer :: cell_id_adj(:) ! ids of adjacent cells that share an edge with the connection face.         -ve if ghost cell
+    PetscInt, pointer :: face_id_adj(:) ! ids of faces neighbouring cell that share an edge with the connection face. -ve if ghost-ghost face
 
     type(adu_ptr_container), pointer :: adu_face_adj(:) ! aniso data for face_id_adj(:)
     type(aduc_ptr_container), pointer :: adu_cell_adj(:) ! aniso data for cell_id_adj(:)

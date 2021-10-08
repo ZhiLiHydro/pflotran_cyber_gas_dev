@@ -778,10 +778,12 @@ subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_data)
 
     ! Pressure adjacency data
     do i=1,aniso_data%unstruct%up%num_adj
-        aniso_data%unstruct%up%pres_adj(i) = global_auxvars(aniso_data%unstruct%up%cell_id_adj(i))%pres(1)
+      ! Note adjacent cell ids are -ve if they are ghost cells, hence abs
+      aniso_data%unstruct%up%pres_adj(i) = global_auxvars(abs(aniso_data%unstruct%up%cell_id_adj(i)))%pres(1)
     enddo
     do i=1,aniso_data%unstruct%dn%num_adj
-      aniso_data%unstruct%dn%pres_adj(i) = global_auxvars(aniso_data%unstruct%dn%cell_id_adj(i))%pres(1)
+      ! Note adjacent cell ids are -ve if they are ghost cells, hence abs
+      aniso_data%unstruct%dn%pres_adj(i) = global_auxvars(abs(aniso_data%unstruct%dn%cell_id_adj(i)))%pres(1)
     enddo
 
     ! compute K' = J K J^T in up/dnstream cells, where J = transformation (x,y,z) -> (u,v,w)
@@ -2518,18 +2520,20 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
               ! unstructured grid case
 
               ! J terms are stored in aniso_data%struct%Jup/dn_adj
-              ! aniso_data%unstruct%up/dn%cell_id_adj are ghosted ids(?), 1-indexed
+              ! aniso_data%unstruct%up/dn%cell_id_adj are ghosted ids(?), 1-indexed, -ve=>ghost
               do iadj=1,aniso_data%unstruct%up%num_adj
                 if(aniso_data%unstruct%Jup_adj(iadj) .ne. 0.d0) then
-                  call MatSetValuesLocal(A,1,istart_up-1, &
-                           1, (aniso_data%unstruct%up%cell_id_adj(iadj)-1)*option%nflowdof, aniso_data%unstruct%Jup_adj(iadj), &
+                  call MatSetValuesLocal(A,1,istart_up-1, 1, &
+                           (abs(aniso_data%unstruct%up%cell_id_adj(iadj))-1)*option%nflowdof, &
+                           aniso_data%unstruct%Jup_adj(iadj), &
                            ADD_VALUES,ierr);CHKERRQ(ierr)
                 endif
               enddo
               do iadj=1,aniso_data%unstruct%dn%num_adj
                 if(aniso_data%unstruct%Jdn_adj(iadj) .ne. 0.d0) then
-                  call MatSetValuesLocal(A,1,istart_up-1, &
-                           1, (aniso_data%unstruct%dn%cell_id_adj(iadj)-1)*option%nflowdof, aniso_data%unstruct%Jdn_adj(iadj), &
+                  call MatSetValuesLocal(A,1,istart_up-1, 1, &
+                           (abs(aniso_data%unstruct%dn%cell_id_adj(iadj))-1)*option%nflowdof, &
+                           aniso_data%unstruct%Jdn_adj(iadj), &
                            ADD_VALUES,ierr);CHKERRQ(ierr)
                 endif
               enddo
@@ -2629,11 +2633,11 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
               ! unstructured grid case
 
               ! J terms are stored in aniso_data%struct%Jup/dn_adj
-              ! aniso_data%unstruct%up/dn%cell_id_adj are ghosted ids(?), 1-indexed
+              ! aniso_data%unstruct%up/dn%cell_id_adj are ghosted ids(?), 1-indexed, -ve=>ghost
               do iadj=1,aniso_data%unstruct%up%num_adj
                 if(aniso_data%unstruct%Jup_adj(iadj) .ne. 0.d0) then
                   call MatSetValuesLocal(A,1,istart_dn-1, &
-                           1, (aniso_data%unstruct%up%cell_id_adj(iadj)-1)*option%nflowdof, &
+                           1, (abs(aniso_data%unstruct%up%cell_id_adj(iadj))-1)*option%nflowdof, &
                            -1.d0 * aniso_data%unstruct%Jup_adj(iadj), &
                            ADD_VALUES,ierr);CHKERRQ(ierr)
                 endif
@@ -2641,7 +2645,7 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
               do iadj=1,aniso_data%unstruct%dn%num_adj
                 if(aniso_data%unstruct%Jdn_adj(iadj) .ne. 0.d0) then
                   call MatSetValuesLocal(A,1,istart_dn-1, &
-                           1, (aniso_data%unstruct%dn%cell_id_adj(iadj)-1)*option%nflowdof, &
+                           1, (abs(aniso_data%unstruct%dn%cell_id_adj(iadj))-1)*option%nflowdof, &
                            -1.d0 * aniso_data%unstruct%Jdn_adj(iadj), &
                            ADD_VALUES,ierr);CHKERRQ(ierr)
                 endif
