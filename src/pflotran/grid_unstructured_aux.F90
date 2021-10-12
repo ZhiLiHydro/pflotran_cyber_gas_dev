@@ -1473,7 +1473,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
         ghost_cell_count = ghost_cell_count + 1
         ! reallocate the ghost cell array if necessary
         if (ghost_cell_count > max_ghost_cell_count) then
-          call ReallocateArray(int_array_pointer,max_ghost_cell_count) ! sjb - should max_ghost_cell_count be reassigned before this call?
+          call ReallocateArray(int_array_pointer,max_ghost_cell_count)
         endif
         int_array_pointer(ghost_cell_count) = dual_id
         vec_ptr(idual + dual_offset + (local_id-1)*stride) = &

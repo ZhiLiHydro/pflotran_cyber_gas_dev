@@ -18,7 +18,6 @@ module Connection_module
     PetscInt, pointer :: id_dn(:)      ! list of ids of downwind cells
     PetscInt, pointer :: id_up2(:)     ! list of ids of 2nd upwind cells
     PetscInt, pointer :: id_dn2(:)     ! list of ids of 2nd downwind cells
-    type(aniso_data_type), pointer :: aniso_data(:) ! anisotropy data, one set per connection (if needed)
     PetscReal, pointer :: dist(:,:)    ! list of distance vectors, size(-1:3,num_connections) where
                                        !   -1 = fraction upwind
                                        !   0 = magnitude of distance 
@@ -29,7 +28,9 @@ module Connection_module
     PetscReal, pointer :: cntr(:,:)    ! coordinates (1:3, num_connections) of the mass center of the face
     PetscInt, pointer :: face_id(:)    ! list of ids of faces (in local order)
     type(connection_set_type), pointer :: next
-    type(connection_set_type), pointer :: ghost_ghost_connections
+
+    type(aniso_data_type), pointer :: aniso_data(:)                ! anisotropy data, one set per connection (if needed)
+    type(connection_set_type), pointer :: ghost_ghost_connections  ! extra connections for use in anisotropy calcs
   end type connection_set_type
 
 

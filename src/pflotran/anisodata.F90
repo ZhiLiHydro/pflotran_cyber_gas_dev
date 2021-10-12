@@ -189,7 +189,7 @@ module Anisotropy_Data_module
     PetscInt, pointer :: cell_id_adj(:) ! ids of adjacent cells that share an edge with the connection face.         -ve if ghost cell
     PetscInt, pointer :: face_id_adj(:) ! ids of faces neighbouring cell that share an edge with the connection face. -ve if ghost-ghost face
 
-    type(adu_ptr_container), pointer :: adu_face_adj(:) ! aniso data for face_id_adj(:)
+!    type(adu_ptr_container), pointer :: adu_face_adj(:) ! aniso data for face_id_adj(:)
     type(aduc_ptr_container), pointer :: adu_cell_adj(:) ! aniso data for cell_id_adj(:)
 
     ! g.c, where c is cell centre (this are differenced to get g.d, where d is distance between points)
@@ -309,16 +309,16 @@ module Anisotropy_Data_module
         write(*, "('  upstream')")
         do i=1,aniso_data%unstruct%up%num_adj
           if (aniso_data%unstruct%up%cell_id_adj(i) == 0) cycle
-          write(*, "('    ',i2,'. adj_cell_id=',i4,' adj_face_id=',i4,' (check=',i4,',',i4,')')") &
+          write(*, "('    ',i2,'. adj_cell_id=',i4,' adj_face_id=',i4,' (check=',i4,')')") &
             i,aniso_data%unstruct%up%cell_id_adj(i), aniso_data%unstruct%up%face_id_adj(i), &
-            aniso_data%unstruct%up%adu_cell_adj(i)%ptr%cell_id, aniso_data%unstruct%up%adu_face_adj(i)%ptr%conn_face_id
+            aniso_data%unstruct%up%adu_cell_adj(i)%ptr%cell_id
         enddo
         write(*, "('  downstream')")
         do i=1,aniso_data%unstruct%dn%num_adj
           if (aniso_data%unstruct%dn%cell_id_adj(i) == 0) cycle
           write(*, "('    ',i2,'. adj_cell_id=',i4,' adj_face_id=',i4,' (check=',i4,',',i4,')')") &
             i,aniso_data%unstruct%dn%cell_id_adj(i), aniso_data%unstruct%dn%face_id_adj(i), &
-            aniso_data%unstruct%dn%adu_cell_adj(i)%ptr%cell_id, aniso_data%unstruct%dn%adu_face_adj(i)%ptr%conn_face_id
+            aniso_data%unstruct%dn%adu_cell_adj(i)%ptr%cell_id
         enddo
         ! transformed coords for face
         write(*, "('  local coords')")

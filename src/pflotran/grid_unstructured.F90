@@ -1839,7 +1839,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
   type(grid_unstructured_type) :: unstructured_grid
 
   type(connection_set_type), pointer :: connections
-  type(connection_set_type), pointer :: connectionsgg
+  type(connection_set_type), pointer :: connectionsgg ! ghost-ghost connections (for anisotropy calcs)
   PetscInt :: nconn, iconn, nconngg, iconngg
   PetscInt :: idual, dual_id
 
@@ -1911,20 +1911,20 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
            MAX_FACE_PER_CELL*unstructured_grid%ngmax))
   unstructured_grid%face_to_vertex_natural = 0
 
-  write(string,"('info_',i1,'_of_',i1,'.txt')") option%myrank, option%mycommsize
-  open(unit=77,file=string)
+!  write(string,"('info_',i1,'_of_',i1,'.txt')") option%myrank, option%mycommsize
+!  open(unit=77,file=string)
 
   face_count = 0
   do ghosted_id = 1, unstructured_grid%ngmax
     cell_type = unstructured_grid%cell_type(ghosted_id)
     nfaces = UCellGetNFaces(cell_type,option)
 
-    if(ghosted_id>unstructured_grid%nlmax) then
-      write(string2,"('(*)')")
-    else
-      write(string2,"('')")
-    endif
-    write(77,"('ghosted_id=',i4,'',A3,'  nfaces=',i2)") ghosted_id, string2, nfaces
+!    if(ghosted_id>unstructured_grid%nlmax) then
+!      write(string2,"('(*)')")
+!    else
+!      write(string2,"('')")
+!    endif
+!    write(77,"('ghosted_id=',i4,'',A3,'  nfaces=',i2)") ghosted_id, string2, nfaces
 
     do iface = 1, nfaces
       face_count = face_count + 1
@@ -1932,7 +1932,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
       face_to_cell(1,face_count) = ghosted_id
       call UCellGetNFaceVertsandVerts(option,cell_type,iface,nvertices, &
                                       vertex_ids4)
-      write(77,"('  face_count=',i4)") face_count
+!      write(77,"('  face_count=',i4)") face_count
       do ivertex = 1, nvertices
         face_to_vertex(ivertex,face_count) = &
           unstructured_grid%cell_vertices(vertex_ids4(ivertex),ghosted_id)
@@ -1940,15 +1940,15 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
           unstructured_grid%face_to_vertex_natural(ivertex,face_count) = &
             unstructured_grid%vertex_ids_natural(face_to_vertex(ivertex, &
                                                                 face_count))
-          write(77,"('    vertex_id=',i4,' vertex_id_natural=',i4)") &
-            face_to_vertex(ivertex,face_count), &
-            unstructured_grid%face_to_vertex_natural(ivertex,face_count)
+!          write(77,"('    vertex_id=',i4,' vertex_id_natural=',i4)") &
+!            face_to_vertex(ivertex,face_count), &
+!            unstructured_grid%face_to_vertex_natural(ivertex,face_count)
         endif
       enddo
     enddo
   enddo
 
-  close(77)
+!  close(77)
 
 
   !
@@ -1980,13 +1980,13 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
     unstructured_grid%cell_neighbors_local_aniso = PETSC_FALSE
   endif
 
-  do local_id = 1, unstructured_grid%nlmax ! sjb - would need to loop to ngmax here for ghosted-ghosted connections (needed for anisotropy)
+  do local_id = 1, unstructured_grid%nlmax
     ! Select a cell and find number of vertices
     cell_id = local_id
     ! cell_type is ghosted, but local cells are in the first nlmax entries
     cell_type = unstructured_grid%cell_type(local_id)
     nfaces = UCellGetNFaces(cell_type,option)
-    do idual = 1, unstructured_grid%cell_neighbors_local_ghosted(0,local_id) ! sjb - does not currently support ghosted-ghosted neighbours (needed for anisotropy)
+    do idual = 1, unstructured_grid%cell_neighbors_local_ghosted(0,local_id)
       ! Select a neighboring cell
       ! ghosted neighbors have a negative id
       cell_id2 = &
@@ -2135,8 +2135,8 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
     if (face_to_cell(1,iface) > 0) &
       face_count = face_count + 1
   enddo
-  write(*,"('face_count #2 = ',i4,'  (',i1,'/',i1,')')") face_count, &
-    option%myrank, option%mycommsize
+!  write(*,"('face_count #2 = ',i4,'  (',i1,'/',i1,')')") face_count, &
+!    option%myrank, option%mycommsize
   allocate(unstructured_grid%face_to_vertex(MAX_VERT_PER_FACE,face_count))
   face_count = 0
   do iface = 1, size(face_to_cell,2)
@@ -2158,8 +2158,8 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
       temp_int(iface) = face_count
     endif
   enddo
-  write(*,"('face_count #3 = ',i4,'  (',i1,'/',i1,')')") face_count, &
-    option%myrank, option%mycommsize
+!  write(*,"('face_count #3 = ',i4,'  (',i1,'/',i1,')')") face_count, &
+!    option%myrank, option%mycommsize
   deallocate(face_to_cell)
   allocate(face_to_cell(2,face_count))
   face_to_cell = temp_int_2d
@@ -2309,21 +2309,21 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
     ! Anisotropy requires ghost-ghost connections for calculating gradients.
     ! These connections are not included already, since in isotropic mode only 
     ! local-local and local-ghost connections are considered.
-    ! (Inefficient loop used here, but only triangular over ghost-ghost pairs, so
-    ! should not be too bad, i.e. considers num_ghost*(num_ghost-1) pairs.)
 
+    ! An inefficient loop is used here, but only triangular over ghost-ghost pairs, so
+    ! should not be too bad, i.e. considers num_ghost*(num_ghost-1) pairs.
 
     allocate(temp_int_2d(2,face_count)) ! use for ghost_ghost_face_to_cell
     temp_int_2d = 0
 
-    allocate(face_to_connectiongg(face_count)) ! use for ghost-ghost face -> connectiongg
+    allocate(face_to_connectiongg(face_count)) ! ghost-ghost face -> connectiongg
 
 
-    write(string,"('ghost_ghost_connections2_',i1,'_of_',i1,'.txt')") option%myrank, option%mycommsize
-    open(unit=77,file=string)
-  
-    write(77,"('face_count #1 = ',i4,'   nconn=',i4,'  (',i1,'/',i1,')')") &
-      face_count, nconn, option%myrank, option%mycommsize
+!    write(string,"('ghost_ghost_connections2_',i1,'_of_',i1,'.txt')") option%myrank, option%mycommsize
+!    open(unit=77,file=string)
+
+!    write(77,"('face_count #1 = ',i4,'   nconn=',i4,'  (',i1,'/',i1,')')") &
+!      face_count, nconn, option%myrank, option%mycommsize
   
     nconngg = 0
     do ghosted_id = unstructured_grid%nlmax+1, unstructured_grid%ngmax
@@ -2368,8 +2368,8 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
                 cell_to_face(iface,ghosted_id) = face_id ! reset face id for cell 1 to be the same
               endif
 
-              write(77,"('Ghost cell neighbours',i4,' and ',i4,'  face_id=',i4,'    (',i1,'/',i1,')')") &
-                      ghosted_id, ghosted_id2, face_id, option%myrank, option%mycommsize
+!              write(77,"('Ghost cell neighbours',i4,' and ',i4,'  face_id=',i4,'    (',i1,'/',i1,')')") &
+!                      ghosted_id, ghosted_id2, face_id, option%myrank, option%mycommsize
 
               nconngg = nconngg + 1
 
@@ -2380,7 +2380,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
         enddo
       enddo
     enddo
-    close(77)
+!    close(77)
 
     ! Create ghost-ghost connections.  Separate from other connections, since should not loop
     ! over these other than for anisotropy calcs.
@@ -2390,6 +2390,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
     connections%ghost_ghost_connections => connectionsgg
 
     ! same loop again - this time create ghost-ghost connection geom data 
+    ! SJB - improve this.  Should not need to duplicate loop logic.
     iconngg = 0
     do ghosted_id = unstructured_grid%nlmax+1, unstructured_grid%ngmax
       cell_type = unstructured_grid%cell_type(ghosted_id)
@@ -2476,8 +2477,6 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
         allocate(aniso_data%unstruct%dn%cell_id_adj(MAX_VERT_PER_FACE))
         allocate(aniso_data%unstruct%up%face_id_adj(MAX_VERT_PER_FACE))
         allocate(aniso_data%unstruct%dn%face_id_adj(MAX_VERT_PER_FACE))
-        allocate(aniso_data%unstruct%up%adu_face_adj(MAX_VERT_PER_FACE))
-        allocate(aniso_data%unstruct%dn%adu_face_adj(MAX_VERT_PER_FACE))
         allocate(aniso_data%unstruct%up%adu_cell_adj(MAX_VERT_PER_FACE))
         allocate(aniso_data%unstruct%dn%adu_cell_adj(MAX_VERT_PER_FACE))
         aniso_data%unstruct%up%cell_id_adj = 0
@@ -2528,10 +2527,6 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
           endif
         endif
 
-        if(local_id == 130) then
-          write(*,"('break')")
-        endif
-
         ! Gravity terms up/dn
         v1 = (/ grid_x(local_id), grid_y(local_id), grid_z(local_id) /)
         if (iupdn==1) then
@@ -2575,17 +2570,11 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
                 endif
               enddo
             enddo
+
             if (found) then
               ! face shares a vertex with the connection, so other cell joined by the face contributes to the gradient
               found = PETSC_FALSE
               do iside = 1,2
-  !              cell_id2 = face_to_cell(iside,face_id2) ! sjb - cell_id2 is 0 for ghosted-ghosted cells, so aniso not set correctly in this case
-  !              if (cell_id2 .ne. local_id) then
-  !                found = PETSC_TRUE
-  !                exit
-  !              endif
-
-
                 ! instead do this??
                 if( local_id .le. unstructured_grid%nlmax) then 
                   ! local-local or local-ghost
@@ -2601,7 +2590,6 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
                   cell_id2 = face_to_cell(iside,face_id2)
                   if(cell_id2 .ne. local_id .and. cell_id2 .ne. 0) then
                     found = PETSC_TRUE
-                    write(*,"('GOT A HIT')")
                     if( cell_id2 .le. unstructured_grid%nlmax ) then
                       ! ghost-local
                     else
@@ -2622,11 +2610,8 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
                     endif
                   endif
                 endif
-
-
-
-
               enddo
+
               if (found) then
                 if(cell_id2 .ne. 0) then ! only store interior interfaces - not boundaries
                   ! record adjacency info. (cell_id2 is adjacent)
@@ -2687,24 +2672,24 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
 !      Call PrintAnisoData(aniso_data)
 !    enddo
     ! dbg - write connections file
-    write(string,"('connections_',i1,'_of_',i1,'.txt')") option%myrank, option%mycommsize
-    open(unit=77,file=string)
-    write(77,"('RANK ',i4)") option%myrank
-    do iconn = 1,nconn
-      write(77,"('Connection ',i4)") iconn
-      aniso_data_unstruct => connections%aniso_data(iconn)%unstruct
-      ! up
-      write(77,"('  up ',i4)") connections%id_up(iconn)
-      do i=1,aniso_data_unstruct%up%num_adj
-        write(77,"('    -> ',i4)") aniso_data_unstruct%up%cell_id_adj(i)
-      enddo
-      ! dn
-      write(77,"('  dn ',i4)") connections%id_dn(iconn)
-      do i=1,aniso_data_unstruct%dn%num_adj
-        write(77,"('    -> ',i4)") aniso_data_unstruct%dn%cell_id_adj(i)
-      enddo
-    enddo
-    close(77)
+!    write(string,"('connections_',i1,'_of_',i1,'.txt')") option%myrank, option%mycommsize
+!    open(unit=77,file=string)
+!    write(77,"('RANK ',i4)") option%myrank
+!    do iconn = 1,nconn
+!      write(77,"('Connection ',i4)") iconn
+!      aniso_data_unstruct => connections%aniso_data(iconn)%unstruct
+!      ! up
+!      write(77,"('  up ',i4)") connections%id_up(iconn)
+!      do i=1,aniso_data_unstruct%up%num_adj
+!        write(77,"('    -> ',i4)") aniso_data_unstruct%up%cell_id_adj(i)
+!      enddo
+!      ! dn
+!      write(77,"('  dn ',i4)") connections%id_dn(iconn)
+!      do i=1,aniso_data_unstruct%dn%num_adj
+!        write(77,"('    -> ',i4)") aniso_data_unstruct%dn%cell_id_adj(i)
+!      enddo
+!    enddo
+!    close(77)
 
     ! Loop over connections again and construct interpolation machinery parameters
     do iconn = 1,nconn
@@ -2715,7 +2700,6 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
         if(face_id .gt. 0) then
           ! local-local or local-ghost
           conn_id = unstructured_grid%face_to_connection(face_id)
-!          aniso_data_unstruct%up%adu_face_adj(iface)%ptr => connections%aniso_data(conn_id)%unstruct !REMOVE THIS ATTR
           ! store ptr to aniso data for adjacent cell
           if( aniso_data_unstruct%up%cell_id == connections%aniso_data(conn_id)%unstruct%up%cell_id ) then ! dn is adj
             aniso_data_unstruct%up%adu_cell_adj(iface)%ptr => connections%aniso_data(conn_id)%unstruct%dn
@@ -2737,7 +2721,6 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
         if(face_id .gt. 0) then
           ! local-local or local-ghost
           conn_id = unstructured_grid%face_to_connection(face_id)
-!          aniso_data_unstruct%dn%adu_face_adj(iface)%ptr => connections%aniso_data(conn_id)%unstruct !REMOVE THIS ATTR
           ! store ptr to aniso data for adjacent cell
           if( aniso_data_unstruct%dn%cell_id == connections%aniso_data(conn_id)%unstruct%dn%cell_id ) then ! up is adj
             aniso_data_unstruct%dn%adu_cell_adj(iface)%ptr => connections%aniso_data(conn_id)%unstruct%up
@@ -2962,11 +2945,15 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
 end function UGridComputeInternConnect
 
 ! ************************************************************************** !
-! SJB
 subroutine UGridComputeGeomData(iconn,connections,&
                               grid_x, grid_y, grid_z, &
                               local_id, dual_local_id, face_id, face_type,&
                               option, unstructured_grid)
+  ! 
+  ! Computes details of connection (area, dist, etc)
+  ! 
+  ! Moved from UGridComputeInternConnect to allow to be called in 
+  ! anisotropy calculations (avoids duplication)
 
   use Connection_module
   use Option_module
