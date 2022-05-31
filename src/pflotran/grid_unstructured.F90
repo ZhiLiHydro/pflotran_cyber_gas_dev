@@ -4940,7 +4940,7 @@ subroutine UGridFindCellIDsAfterGrowingStencilWidthByOne(Mat_vert_to_cell, &
 
   allocate(int_array(ngmax_new))
   do jj=1,ngmax_new
-    int_array(jj)=int(jj+offset)
+    int_array(jj)=INT(jj+offset)
   enddo
   int_array=int_array-1
   
@@ -4974,7 +4974,7 @@ subroutine UGridFindCellIDsAfterGrowingStencilWidthByOne(Mat_vert_to_cell, &
   allocate(cids_new(ngmax_new))
   call VecGetArrayF90(Vec_cids_ghosted,vec_ptr,ierr);CHKERRQ(ierr)
   do jj=1,ngmax_new
-    cids_new(jj) = int(vec_ptr(jj))
+    cids_new(jj) = INT(vec_ptr(jj))
   enddo
   call VecRestoreArrayF90(Vec_cids_ghosted,vec_ptr,ierr);CHKERRQ(ierr)
   
@@ -5227,7 +5227,7 @@ subroutine UGridFindNewGhostCellIDsAfterGrowingStencilWidth(unstructured_grid, &
   allocate(ghost_cids_new_petsc(nghost_new))
   call VecGetArrayF90(ghosts_petsc,vec_ptr,ierr);CHKERRQ(ierr)
   do ii=1,nghost_new
-    ghost_cids_new_petsc(ii)=int(vec_ptr(ii))
+    ghost_cids_new_petsc(ii)=INT(vec_ptr(ii))
   enddo
   call VecRestoreArrayF90(ghosts_petsc,vec_ptr,ierr);CHKERRQ(ierr)
 
@@ -5398,7 +5398,7 @@ subroutine UGridUpdateMeshAfterGrowingStencilWidth(unstructured_grid, &
     do jj=1,unstructured_grid%max_nvert_per_cell
       if (vec_ptr((ii-1)*unstructured_grid%max_nvert_per_cell+jj)/=-9999) then
         count=count+1
-        int_array1(count)=int(vec_ptr((ii-1)*unstructured_grid%max_nvert_per_cell+jj))
+        int_array1(count)=INT(vec_ptr((ii-1)*unstructured_grid%max_nvert_per_cell+jj))
         int_array2(count)=count
       endif
     enddo

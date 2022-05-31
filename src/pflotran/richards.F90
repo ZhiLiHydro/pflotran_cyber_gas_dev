@@ -133,11 +133,12 @@ subroutine RichardsSetupPatch(realization)
 
   PetscInt :: local_id, ghosted_id, iconn, sum_connection
   PetscInt :: ivertex, nvert, region_id, vertex_id
-  PetscInt :: i, ierr
+  PetscInt :: i
   PetscBool :: error_found, found
   PetscInt :: flag(10)
   PetscReal :: minz, maxz, zcenter, zface
   PetscReal :: tempreal
+  PetscErrorCode :: ierr
   type(material_parameter_type), pointer :: material_parameter
   class(material_auxvar_type), pointer :: material_auxvars(:)  
   type(richards_auxvar_type), pointer :: rich_auxvars(:)  
@@ -165,23 +166,26 @@ subroutine RichardsSetupPatch(realization)
     if (material_auxvars(ghosted_id)%volume < 0.d0 .and. flag(1) == 0) then
       flag(1) = 1
       option%io_buffer = 'ERROR: Non-initialized cell volume.'
-      call PrintMsg(option)
+      call PrintMsgByRank(option)
     endif
     if (material_auxvars(ghosted_id)%porosity_base < 0.d0 .and. &
         flag(2) == 0) then
       flag(2) = 1
       option%io_buffer = 'ERROR: Non-initialized porosity.'
-      call PrintMsg(option)
+      call PrintMsgByRank(option)
     endif
     tempreal = minval(material_auxvars(ghosted_id)%permeability)
     if (Uninitialized(tempreal) .and. flag(5) == 0) then
       option%io_buffer = 'ERROR: Non-initialized permeability.'
-      call PrintMsg(option)
+      call PrintMsgByRank(option)
       flag(5) = 1
     endif
   enddo
 
-  if (error_found .or. maxval(flag) > 0) then
+  error_found = error_found .or. (maxval(flag) > 0)
+  call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_LOGICAL, &
+                     MPI_LOR,option%mycomm,ierr)
+  if (error_found) then
     option%io_buffer = 'Material property errors found in RichardsSetup.'
     call PrintErrMsg(option)
   endif
@@ -263,8 +267,8 @@ subroutine RichardsSetupPatch(realization)
                                                              ghosted_id)
             maxz = maxz + grid%unstructured_grid%vertices(vertex_id)%z
           enddo
-          minz = minz/(dble(nvert))
-          maxz = maxz/(dble(nvert))
+          minz = minz/(DBLE(nvert))
+          maxz = maxz/(DBLE(nvert))
           patch%aux%InlineSurface%auxvars(region_id)%half_cell_height = &
             abs(0.5d0*(maxz-minz))
         end if
