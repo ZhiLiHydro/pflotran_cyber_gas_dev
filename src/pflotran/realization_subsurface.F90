@@ -263,12 +263,12 @@ subroutine RealizationCreateDiscretization(realization)
     call DiscretizationDuplicateVector(discretization,field%work, &
                                        field%perm0_zz)
     if (option%flow%full_perm_tensor) then
-      call DiscretizationDuplicateVector(discretization,field%work, &
-                                         field%perm0_xy)
-      call DiscretizationDuplicateVector(discretization,field%work, &
-                                         field%perm0_xz)
-      call DiscretizationDuplicateVector(discretization,field%work, &
-                                         field%perm0_yz)
+    call DiscretizationDuplicateVector(discretization,field%work, &
+                                       field%perm0_xy)
+    call DiscretizationDuplicateVector(discretization,field%work, &
+                                       field%perm0_xz)
+    call DiscretizationDuplicateVector(discretization,field%work, &
+                                       field%perm0_yz)
     endif
 
     ! 1-dof local
@@ -1078,8 +1078,8 @@ subroutine RealProcessMatPropAndSatFunc(realization)
                '),PERMEABILITY XY'
       dataset => &
         DatasetBaseGetPointer(realization%datasets, &
-                          cur_material_property%permeability_dataset_xy%name, &
-                          string,option)
+                            cur_material_property%permeability_dataset_xy%name, &
+                            string,option)
       call DatasetDestroy(cur_material_property%permeability_dataset_xy)
       select type(dataset)
         class is (dataset_common_hdf5_type)
@@ -1094,8 +1094,8 @@ subroutine RealProcessMatPropAndSatFunc(realization)
                '),PERMEABILITY XZ'
       dataset => &
         DatasetBaseGetPointer(realization%datasets, &
-                          cur_material_property%permeability_dataset_xz%name, &
-                          string,option)
+                            cur_material_property%permeability_dataset_xz%name, &
+                            string,option)
       call DatasetDestroy(cur_material_property%permeability_dataset_xz)
       select type(dataset)
         class is (dataset_common_hdf5_type)
@@ -1110,8 +1110,8 @@ subroutine RealProcessMatPropAndSatFunc(realization)
                '),PERMEABILITY YZ'
       dataset => &
         DatasetBaseGetPointer(realization%datasets, &
-                          cur_material_property%permeability_dataset_yz%name, &
-                          string,option)
+                            cur_material_property%permeability_dataset_yz%name, &
+                            string,option)
       call DatasetDestroy(cur_material_property%permeability_dataset_yz)
       select type(dataset)
         class is (dataset_common_hdf5_type)
@@ -2145,12 +2145,12 @@ subroutine RealizationUpdatePropertiesTS(realization)
         perm_ptr(perm_yz_index) = perm0_yz_p(local_id)*scale
       endif
 #else
-        material_auxvars(ghosted_id)%permeability(perm_xx_index) = &
-          perm0_xx_p(local_id)*scale
-        material_auxvars(ghosted_id)%permeability(perm_yy_index) = &
-          perm0_yy_p(local_id)*scale
-        material_auxvars(ghosted_id)%permeability(perm_zz_index) = &
-          perm0_zz_p(local_id)*scale
+      material_auxvars(ghosted_id)%permeability(perm_xx_index) = &
+        perm0_xx_p(local_id)*scale
+      material_auxvars(ghosted_id)%permeability(perm_yy_index) = &
+        perm0_yy_p(local_id)*scale
+      material_auxvars(ghosted_id)%permeability(perm_zz_index) = &
+        perm0_zz_p(local_id)*scale
       if (option%flow%full_perm_tensor) then
         material_auxvars(ghosted_id)%permeability(perm_xy_index) = &
           perm0_xy_p(local_id)*scale

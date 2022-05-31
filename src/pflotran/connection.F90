@@ -3,6 +3,7 @@ module Connection_module
 #include "petsc/finclude/petscsys.h"
   use petscsys
   use PFLOTRAN_Constants_module
+  use Anisotropy_Data_module
 
   implicit none
 
@@ -27,6 +28,9 @@ module Connection_module
     PetscReal, pointer :: cntr(:,:)    ! coordinates (1:3, num_connections) of the mass center of the face
     PetscInt, pointer :: face_id(:)    ! list of ids of faces (in local order)
     type(connection_set_type), pointer :: next
+
+    type(aniso_data_type), pointer :: aniso_data(:)                ! anisotropy data, one set per connection (if needed)
+    type(connection_set_type), pointer :: ghost_ghost_connections  ! extra connections for use in anisotropy calcs
   end type connection_set_type
 
 
@@ -81,6 +85,7 @@ function ConnectionCreate(num_connections,connection_itype)
   nullify(connection%id_dn)
   nullify(connection%id_up2)
   nullify(connection%id_dn2)
+  nullify(connection%aniso_data)
   nullify(connection%face_id)
   nullify(connection%dist)
   nullify(connection%intercp)

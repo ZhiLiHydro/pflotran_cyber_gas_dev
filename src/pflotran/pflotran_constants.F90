@@ -14,7 +14,7 @@ module PFLOTRAN_Constants_module
   PetscBool, parameter :: PFLOTRAN_RELEASE = PETSC_TRUE
   PetscInt, parameter :: PFLOTRAN_VERSION_MAJOR = 4
   PetscInt, parameter :: PFLOTRAN_VERSION_MINOR = 0
-  PetscInt, parameter :: PFLOTRAN_VERSION_PATCH = 0 ! (alpha < -1; beta = -1)
+  PetscInt, parameter :: PFLOTRAN_VERSION_PATCH = 1 ! (alpha < -1; beta = -1)
 
 #define VMAJOR 3
 #define VMINOR 16
