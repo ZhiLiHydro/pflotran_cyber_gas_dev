@@ -22,7 +22,7 @@ module Field_module
     Vec :: tortuosity0
 
     Vec :: perm0_xx, perm0_yy, perm0_zz
-    Vec :: perm0_xz, perm0_xy, perm0_yz
+    Vec :: perm0_xy, perm0_xz, perm0_yz
 
     Vec :: work, work_loc
 

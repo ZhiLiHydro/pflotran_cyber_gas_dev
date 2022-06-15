@@ -164,6 +164,9 @@ module Option_module
 
     PetscBool :: print_ekg
 
+    ! flag to control whether grid connections should compute anisotropy data
+    PetscBool :: connections_with_aniso_data
+
   end type option_type
 
   interface PrintMsg
@@ -520,6 +523,8 @@ subroutine OptionInitRealization(option)
   option%min_allowable_scale = 1.0d-10
 
   option%print_ekg = PETSC_FALSE
+
+  option%connections_with_aniso_data = PETSC_FALSE
 
 end subroutine OptionInitRealization
 

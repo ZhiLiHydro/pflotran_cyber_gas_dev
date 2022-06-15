@@ -1,3 +1,4 @@
+anisodata.o : pflotran_constants.o
 auxiliary.o : ert_aux.o general_aux.o global_aux.o hydrate_aux.o \
               inlinesurface_aux.o inversion_aux.o material_aux.o mphase_aux.o \
               nw_transport_aux.o pflotran_constants.o pnf_aux.o \
@@ -59,7 +60,7 @@ condition_control.o : condition.o connection.o coupler.o dataset.o \
                       realization_subsurface.o region.o \
                       transport_constraint_base.o transport_constraint_nwt.o \
                       transport_constraint_rt.o variables.o wipp_flow_aux.o
-connection.o : pflotran_constants.o utility.o
+connection.o : pflotran_constants.o utility.o anisodata.o
 convergence.o : grid.o option.o pflotran_constants.o solver.o string.o
 coupler.o : condition.o connection.o dataset_base.o dataset_gridded_hdf5.o \
             grid.o grid_unstructured_aux.o grid_unstructured_explicit.o \
