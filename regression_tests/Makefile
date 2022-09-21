@@ -60,6 +60,7 @@ STANDARD_CFG = \
 	ascem/1d/1d-calcite/1d-calcite.cfg \
 	default/543/543.cfg \
 	default/anisothermal/anisothermal.cfg \
+    default/anisotropic_perm/aniso_perm1.cfg \
 	default/batch/batch.cfg \
 	default/column/column.cfg \
 	default/constraint/constraint.cfg \
@@ -153,6 +154,7 @@ GEOMECHANICS_CFG = \
 
 FLOW_CFG = \
 	default/543/543.cfg \
+    default/anisotropic_perm/aniso_perm1.cfg \
 	default/condition/condition.cfg \
 	default/eos/eos.cfg \
 	default/infiltration1d/infiltration1d.cfg \
