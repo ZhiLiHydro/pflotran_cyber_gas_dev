@@ -6,6 +6,7 @@ ARG PETSC_VERSION
 WORKDIR /scratch
 COPY ./.gitlab/build-petsc-opt.sh .
 RUN /scratch/build-petsc-opt.sh
+ENV HWLOC_HIDE_ERRORS=2
 
 # must be run from $PFLOTRAN_DIR
 # export MY_PETSC_VERSION=v3.20.2

@@ -5,7 +5,9 @@ ENV PETSC_DIR=/scratch/petsc PETSC_ARCH=petsc-arch
 WORKDIR /scratch/pflotran
 COPY . .
 WORKDIR /scratch/pflotran/src/pflotran
-RUN make -j4 pflotran
+RUN make -j4 pflotran no_warnings=1
 ENV PATH=$PATH:/scratch/pflotran/src/pflotran
 ENV PFLOTRAN_DIR=/scratch/pflotran
 WORKDIR /scratch
+
+# docker build -f .gitlab/dockerfile-pflotran-v5 --build-arg IMAGE=pflotran/petsc:v3.20.2-opt -t pflotran/pflotran:v5-opt .

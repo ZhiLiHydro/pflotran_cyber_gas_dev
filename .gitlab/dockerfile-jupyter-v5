@@ -9,9 +9,6 @@ RUN pip3 install hydroeval scikit-learn
 ENV SHELL /bin/bash
 RUN echo "alias ltr='ls -ltr'" >> $HOME/.bashrc
 CMD jupyter lab --ip 0.0.0.0 --no-browser --allow-root
-WORKDIR /scratch
-RUN git clone https://github.com/ghammond86/ideas-dec23-all-hands
-WORKDIR /scratch/ideas-dec23-all-hands
 
-# docker build -f dockerfile-jupyter-v5 -t pflotran/jupyter:ideas-dec23-all-hands .
-# docker run -p 8888:8888 pflotran/jupyter:ideas-dec23-all-hands
+# docker build -f .gitlab/dockerfile-jupyter-v5 -t pflotran/jupyter:v5
+# docker run -p 8888:8888 pflotran/jupyter:v5
