@@ -8,5 +8,5 @@ COPY ./.gitlab/build-petsc-opt.sh .
 RUN /scratch/build-petsc-opt.sh
 
 # must be run from $PFLOTRAN_DIR
-# export MY_PETSC_VERSION=v3.19.3 (or whatever the tag)
-# docker build -f .gitlab/dockerfile-petsc --build-arg PETSC_VERSION=$MY_PETSC_VERSION -t pflotran/petsc:$MY_PETSC_VERSION .
+# export MY_PETSC_VERSION=v3.20.2
+# docker build -f .gitlab/dockerfile-petsc-opt --build-arg PETSC_VERSION=$MY_PETSC_VERSION -t pflotran/petsc:$MY_PETSC_VERSION-opt .

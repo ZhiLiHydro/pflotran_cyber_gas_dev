@@ -1,0 +1,17 @@
+FROM pflotran/pflotran:v5-opt
+
+ENV DEBIAN_FRONTEND noninteractive
+RUN apt-get update -qq
+RUN apt-get install -y python3-pip python3-matplotlib python3-pandas
+RUN apt-get install python3-matplotlib python3-h5py
+RUN pip3 install jupyterlab ipywidgets seaborn
+RUN pip3 install hydroeval scikit-learn
+ENV SHELL /bin/bash
+RUN echo "alias ltr='ls -ltr'" >> $HOME/.bashrc
+CMD jupyter lab --ip 0.0.0.0 --no-browser --allow-root
+WORKDIR /scratch
+RUN git clone https://github.com/ghammond86/ideas-dec23-all-hands
+WORKDIR /scratch/ideas-dec23-all-hands
+
+# docker build -f dockerfile-jupyter-v5 -t pflotran/jupyter:ideas-dec23-all-hands .
+# docker run -p 8888:8888 pflotran/jupyter:ideas-dec23-all-hands

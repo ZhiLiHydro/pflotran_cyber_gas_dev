@@ -10,6 +10,6 @@ cd $PETSC_DIR
 --with-cc=$MPICH_INSTALL_DIR/bin/mpicc \
 --with-cxx=$MPICH_INSTALL_DIR/bin/mpicxx \
 --with-fc=$MPICH_INSTALL_DIR/bin/mpif90 \
---COPTFLAGS='-O3' --CXXOPTFLAGS='-O3' --FOPTFLAGS='-O3 -Wno-unused-function' --with-clanguage=c --with-debug=0 --with-shared-libraries=0 --download-hdf5 --download-metis --download-parmetis --download-fblaslapack --download-hypre --download-hdf5-fortran-bindings=yes
+--COPTFLAGS='-O3' --CXXOPTFLAGS='-O3' --FOPTFLAGS='-O3 -Wno-unused-function' --with-clanguage=c --with-debug=0 --with-shared-libraries=0 --download-hdf5 --download-metis --download-parmetis --download-fblaslapack --download-hypre --download-hdf5-fortran-bindings=yes --with-hwloc=0
 make
 rm -Rf petsc-arch/externalpackages
