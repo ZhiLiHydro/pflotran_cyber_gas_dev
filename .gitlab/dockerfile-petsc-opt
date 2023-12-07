@@ -1,0 +1,12 @@
+FROM pflotran/mpich4-gnu:ubuntu22
+
+ENV PETSC_DIR=/scratch/petsc PETSC_ARCH=petsc-arch
+ARG PETSC_VERSION
+
+WORKDIR /scratch
+COPY ./.gitlab/build-petsc-opt.sh .
+RUN /scratch/build-petsc-opt.sh
+
+# must be run from $PFLOTRAN_DIR
+# export MY_PETSC_VERSION=v3.19.3 (or whatever the tag)
+# docker build -f .gitlab/dockerfile-petsc --build-arg PETSC_VERSION=$MY_PETSC_VERSION -t pflotran/petsc:$MY_PETSC_VERSION .

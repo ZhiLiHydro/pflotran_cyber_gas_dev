@@ -1,0 +1,11 @@
+ARG IMAGE
+FROM $IMAGE
+ENV PETSC_DIR=/scratch/petsc PETSC_ARCH=petsc-arch
+
+WORKDIR /scratch
+COPY . .
+RUN ./.gitlab/info.sh
+# build rxn first as it is then wiped with a 'make clean'
+RUN ./.gitlab/build-pflotran-rxn.sh
+RUN ./.gitlab/build-pflotran.sh
+RUN ./.gitlab/test-pflotran.sh
