@@ -1,0 +1,9 @@
+FROM pflotran/jupyter:v5
+
+WORKDIR /scratch
+RUN git clone https://github.com/ghammond86/ideas-dec23-all-hands
+WORKDIR /scratch/ideas-dec23-all-hands
+CMD jupyter lab --ip 0.0.0.0 --no-browser --allow-root
+
+# docker build -f .gitlab/dockerfile-jupyter-ideas-dec23-all-hands -t pflotran/jupyter:ideas-dec23-all-hands
+# docker run -p 8888:8888 pflotran/jupyter:ideas-dec23-all-hands
