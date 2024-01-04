@@ -38,6 +38,7 @@ module Hydrate_Common_module
             HydrateFluxDerivative, &
             HydrateBCFluxDerivative, &
             HydrateSrcSinkDerivative
+!            HydrateEbullition
 
   public :: HydrateDiffJacobian, &
             HydrateAuxVarDiff
@@ -48,7 +49,8 @@ contains
 
 subroutine HydrateAccumulation(hyd_auxvar,global_auxvar,material_auxvar, &
                                z,offset,hydrate_parameter,soil_heat_capacity, &
-                               option,Res,Jac,analytical_derivatives,debug_cell)
+                               option,Res,Jac,analytical_derivatives,debug_cell, &
+                               rt_auxvar)
   !
   ! Computes the non-fixed portion of the accumulation
   ! term for the residual, for the hydrate sub-pm
@@ -59,12 +61,14 @@ subroutine HydrateAccumulation(hyd_auxvar,global_auxvar,material_auxvar, &
 
   use Option_module
   use Material_Aux_module
+  use Reactive_Transport_Aux_module
 
   implicit none
 
   type(hydrate_auxvar_type) :: hyd_auxvar
   type(global_auxvar_type) :: global_auxvar
   type(material_auxvar_type) :: material_auxvar
+  type(reactive_transport_auxvar_type) :: rt_auxvar
   PetscReal :: z, offset
   type(hydrate_parameter_type), pointer :: hydrate_parameter
   PetscReal :: soil_heat_capacity
@@ -80,6 +84,9 @@ subroutine HydrateAccumulation(hyd_auxvar,global_auxvar,material_auxvar, &
   PetscReal :: porosity, volume
   PetscReal :: volume_over_dt
   PetscReal :: q_meth
+
+  PetscReal :: xmol_ebullition
+  PetscReal :: pp_sum
 
   wat_comp_id = option%water_id
   air_comp_id = option%air_id
@@ -100,6 +107,15 @@ subroutine HydrateAccumulation(hyd_auxvar,global_auxvar,material_auxvar, &
                                 hyd_auxvar%xmol(icomp,iphase)
     enddo
   enddo
+
+  if (hydrate_ebullition) then
+    !s_liquid * den_liquid * (x_girt-x_current)
+    pp_sum = sum(rt_auxvar%gas_pp)
+    xmol_ebullition = pp_sum * 1.d5 / hyd_auxvar%K_H ! sum of partial pressures converted to Pa / Kh
+    Res(air_comp_id) = Res(air_comp_id) + hyd_auxvar%sat(wat_comp_id) * & 
+                                          hyd_auxvar%den(wat_comp_id) * &
+              (xmol_ebullition - hyd_auxvar%xmol(air_comp_id,wat_comp_id))
+  endif
 
   ! scale by porosity * volume / dt
   ! Res[kmol/sec] = Res[kmol/m^3 void] * por[m^3 void/m^3 bulk] *
@@ -132,6 +148,7 @@ subroutine HydrateAccumulation(hyd_auxvar,global_auxvar,material_auxvar, &
       Res(air_comp_id) = Res(air_comp_id) + q_meth
     endif
   endif
+
 end subroutine HydrateAccumulation
 
 
@@ -1692,7 +1709,7 @@ end subroutine HydrateSrcSink
 
 subroutine HydrateAccumDerivative(hyd_auxvar,global_auxvar,material_auxvar, &
                                   z,offset,hydrate_parameter, &
-                                  soil_heat_capacity,option,J)
+                                  soil_heat_capacity,option,J,rt_auxvar)
   !
   ! Computes derivatives of the accumulation
   ! term for the Jacobian
@@ -1703,12 +1720,15 @@ subroutine HydrateAccumDerivative(hyd_auxvar,global_auxvar,material_auxvar, &
 
   use Option_module
   use Material_Aux_module
+  use Reactive_Transport_Aux_module
+  use Reaction_Gas_module
 
   implicit none
 
   type(hydrate_auxvar_type) :: hyd_auxvar(0:)
   type(global_auxvar_type) :: global_auxvar
   type(material_auxvar_type) :: material_auxvar
+  type(reactive_transport_auxvar_type) :: rt_auxvar
   PetscReal :: z,offset
   type(hydrate_parameter_type), pointer :: hydrate_parameter
   type(option_type) :: option
@@ -1725,7 +1745,8 @@ subroutine HydrateAccumDerivative(hyd_auxvar,global_auxvar,material_auxvar, &
     call HydrateAccumulation(hyd_auxvar(ZERO_INTEGER),global_auxvar, &
                            material_auxvar,z,offset,hydrate_parameter, &
                            soil_heat_capacity,option,res,jac, &
-                           hydrate_analytical_derivatives, PETSC_FALSE)
+                           hydrate_analytical_derivatives, PETSC_FALSE, &
+                           rt_auxvar)
   endif
 
   if (hydrate_analytical_derivatives) then
@@ -1736,12 +1757,14 @@ subroutine HydrateAccumDerivative(hyd_auxvar,global_auxvar,material_auxvar, &
         call HydrateAccumulation(hyd_auxvar(idof),global_auxvar, &
                                material_auxvar,z,offset,hydrate_parameter, &
                                soil_heat_capacity,option, &
-                               res_pert_plus,jac_pert,PETSC_FALSE,PETSC_FALSE)
+                               res_pert_plus,jac_pert,PETSC_FALSE,PETSC_FALSE,&
+                               rt_auxvar)
 
         call HydrateAccumulation(hyd_auxvar(idof+option%nflowdof), &
                                global_auxvar,material_auxvar,z,offset,&
                                hydrate_parameter,soil_heat_capacity,option, &
-                               res_pert_minus,jac_pert,PETSC_FALSE,PETSC_FALSE)
+                               res_pert_minus,jac_pert,PETSC_FALSE,PETSC_FALSE, &
+                               rt_auxvar)
 
         do irow = 1, option%nflowdof
           J(irow,idof) = (res_pert_plus(irow)-res_pert_minus(irow))/ (2.d0 * &
@@ -1753,7 +1776,8 @@ subroutine HydrateAccumDerivative(hyd_auxvar,global_auxvar,material_auxvar, &
         call HydrateAccumulation(hyd_auxvar(idof),global_auxvar, &
                                material_auxvar,z,offset,hydrate_parameter, &
                                soil_heat_capacity,option, &
-                               res_pert_plus,jac_pert,PETSC_FALSE,PETSC_FALSE)
+                               res_pert_plus,jac_pert,PETSC_FALSE,PETSC_FALSE, &
+                               rt_auxvar)
 
         do irow = 1, option%nflowdof
           J(irow,idof) = (res_pert_plus(irow)-res(irow))/ &
@@ -2843,6 +2867,30 @@ subroutine HydrateDiffJacobian(string,numerical_jacobian,analytical_jacobian, &
 #endif
 
 end subroutine HydrateDiffJacobian
+
+! ************************************************************************** !
+
+! subroutine HydrateEbullition(string,numerical_jacobian,analytical_jacobian, &
+!                                residual,residual_pert,perturbation, &
+!                                perturbation_tolerance,hydrate_auxvar,option)
+
+!   use Reaction_Gas_module
+
+!   implicit none
+
+!   ! character(len=*) :: string
+!   ! PetscReal :: numerical_jacobian(3,3)
+!   ! PetscReal :: analytical_jacobian(3,3)
+!   ! PetscReal :: residual(3)
+!   ! PetscReal :: residual_pert(3,3)
+!   ! PetscReal :: perturbation(3)
+!   ! PetscReal :: perturbation_tolerance
+!   ! type(hydrate_auxvar_type) :: hydrate_auxvar(0:)
+!   ! type(option_type) :: option
+
+!   PetscInt :: irow, icol
+
+! end subroutine HydrateEbullition
 
 ! ************************************************************************** !
 

@@ -1038,6 +1038,8 @@ subroutine HydrateUpdateFixedAccum(realization)
   use Material_Aux_module
   use Hydrate_Aux_module
   use Hydrate_Common_module
+  use Reactive_Transport_Aux_module
+  use Reaction_Gas_module
 
   implicit none
 
@@ -1051,6 +1053,7 @@ subroutine HydrateUpdateFixedAccum(realization)
   type(global_auxvar_type), pointer :: global_auxvars(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(material_parameter_type), pointer :: material_parameter
+  type(reactive_transport_auxvar_type), pointer :: rt_auxvars(:)
 
   type(hydrate_parameter_type), pointer :: hydrate_parameter
   PetscInt :: ghosted_id, local_id, local_start, local_end, natural_id
@@ -1072,6 +1075,7 @@ subroutine HydrateUpdateFixedAccum(realization)
   material_auxvars => patch%aux%Material%auxvars
   material_parameter => patch%aux%Material%material_parameter
   hydrate_parameter => patch%aux%Hydrate%hydrate_parameter
+  rt_auxvars => patch%aux%RT%auxvars
 
   call VecGetArrayReadF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
   call VecGetArrayF90(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
@@ -1103,7 +1107,8 @@ subroutine HydrateUpdateFixedAccum(realization)
                              material_parameter%soil_heat_capacity(imat), &
                              option,accum_p(local_start:local_end), &
                              Jac_dummy,PETSC_FALSE, &
-                             local_id == hydrate_debug_cell_id)
+                             local_id == hydrate_debug_cell_id, &
+                             rt_auxvars(ghosted_id))
   enddo
 
 
@@ -1135,6 +1140,8 @@ subroutine HydrateResidual(snes,xx,r,realization,ierr)
   use Material_Aux_module
   use Upwind_Direction_module
   use Hydrate_Common_module
+  use Reactive_Transport_Aux_module
+  use Reaction_Gas_module
 
   implicit none
 
@@ -1163,6 +1170,7 @@ subroutine HydrateResidual(snes,xx,r,realization,ierr)
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(connection_set_list_type), pointer :: connection_set_list
   type(connection_set_type), pointer :: cur_connection_set
+  type(reactive_transport_auxvar_type), pointer :: rt_auxvars(:)
 
   PetscInt :: iconn
   PetscReal :: scale
@@ -1202,7 +1210,7 @@ subroutine HydrateResidual(snes,xx,r,realization,ierr)
   global_auxvars_bc => patch%aux%Global%auxvars_bc
   global_auxvars_ss => patch%aux%Global%auxvars_ss
   material_auxvars => patch%aux%Material%auxvars
-
+  rt_auxvars => patch%aux%RT%auxvars
 
   hydrate_newton_iteration_number = hydrate_newton_iteration_number + 1
   ! bragflo uses the following logic, update when
@@ -1274,7 +1282,8 @@ subroutine HydrateResidual(snes,xx,r,realization,ierr)
                              material_parameter%soil_heat_capacity(imat), &
                              option,Res,Jac_dummy,&
                              hydrate_analytical_derivatives, &
-                             local_id == hydrate_debug_cell_id)
+                             local_id == hydrate_debug_cell_id, &
+                             rt_auxvars(ghosted_id))
     r_p(local_start:local_end) =  r_p(local_start:local_end) + Res(:)
     accum_p2(local_start:local_end) = Res(:)
   enddo
@@ -1532,6 +1541,7 @@ subroutine HydrateJacobian(snes,xx,A,B,realization,ierr)
   use Material_Aux_module
   use Upwind_Direction_module
   use Hydrate_Aux_module
+  use Reactive_Transport_Aux_module
 
   implicit none
 
@@ -1572,6 +1582,7 @@ subroutine HydrateJacobian(snes,xx,A,B,realization,ierr)
                                         hyd_auxvars_ss(:)
   type(global_auxvar_type), pointer :: global_auxvars(:), global_auxvars_bc(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
+  type(reactive_transport_auxvar_type), pointer :: rt_auxvars(:)
 
   character(len=MAXSTRINGLENGTH) :: string
 
@@ -1587,6 +1598,7 @@ subroutine HydrateJacobian(snes,xx,A,B,realization,ierr)
   global_auxvars => patch%aux%Global%auxvars
   global_auxvars_bc => patch%aux%Global%auxvars_bc
   material_auxvars => patch%aux%Material%auxvars
+  rt_auxvars => patch%aux%RT%auxvars
 
   call SNESGetIterationNumber(snes,hydrate_newton_iteration_number, &
                               ierr);CHKERRQ(ierr)
@@ -1632,7 +1644,7 @@ subroutine HydrateJacobian(snes,xx,A,B,realization,ierr)
                               grid%z(ghosted_id),grid%z_max_global, &
                               hydrate_parameter, &
                               material_parameter%soil_heat_capacity(imat), &
-                              option,Jup)
+                              option,Jup,rt_auxvars(ghosted_id))
     call MatSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jup, &
                                   ADD_VALUES,ierr);CHKERRQ(ierr)
   enddo

@@ -166,6 +166,7 @@ module Hydrate_Aux_module
   PetscBool, public :: hydrate_no_pc = PETSC_FALSE
   PetscBool, public :: hydrate_with_methanogenesis = PETSC_FALSE
   PetscBool, public :: hydrate_compute_surface_tension = PETSC_FALSE
+  PetscBool, public :: hydrate_ebullition = PETSC_FALSE
 
   type, public :: hydrate_auxvar_type
     PetscInt :: istate_store(2) ! 1 = previous timestep; 2 = previous iteration
@@ -187,6 +188,7 @@ module Hydrate_Aux_module
     PetscReal :: srg
     PetscReal :: pert
     PetscBool :: istatechng
+    PetscReal :: K_H
     type(hydrate_derivative_auxvar_type), pointer :: d
   end type hydrate_auxvar_type
 
@@ -468,6 +470,7 @@ subroutine HydrateAuxVarInit(auxvar,allocate_derivative,option)
   auxvar%srg = 0.d0
   auxvar%pert = 0.d0
   auxvar%istatechng = PETSC_FALSE
+  auxvar%K_H = 0.d0
 
   allocate(auxvar%pres(option%nphase+FOUR_INTEGER))
   auxvar%pres = 0.d0
@@ -593,6 +596,7 @@ subroutine HydrateAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%effective_porosity = auxvar%effective_porosity
   auxvar2%effective_permeability = auxvar%effective_permeability
   auxvar2%pert = auxvar%pert
+  auxvar2%K_H = auxvar%K_H
 
 end subroutine HydrateAuxVarCopy
 
@@ -1502,7 +1506,7 @@ subroutine HydrateAuxVarCompute(x,hyd_auxvar,global_auxvar,material_auxvar, &
                         hyd_auxvar%pres(gid)/hyd_auxvar%den(gid) * 1.d-6
 
   endif
-
+  hyd_auxvar%K_H = K_H_tilde
   if (hydrate_eff_sat_scaling) then
     if (hyd_auxvar%sat(lid) > 0.d0 .or. hyd_auxvar%sat(gid) > 0.d0) then
       l_sat_eff = hyd_auxvar%sat(lid) / (hyd_auxvar%sat(lid)+hyd_auxvar%sat(gid))

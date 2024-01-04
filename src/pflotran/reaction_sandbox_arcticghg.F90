@@ -465,14 +465,14 @@ subroutine ArcticGHGSetup(this,reaction,option)
 
   this%stoich = 0.d0
 
-  word = 'CH2O'
+  word = 'CH2O(aq)'
   this%species_CH2O_id = &
     GetPrimarySpeciesIDFromName(word,reaction,option)
   if (this%respiration) then
     word = 'O2(aq)'
     this%species_O2_id = &
       GetPrimarySpeciesIDFromName(word,reaction,option)
-    word = 'CO2'
+    word = 'CO2(aq)'
     this%species_CO2_id = &
       GetPrimarySpeciesIDFromName(word,reaction,option)
     this%stoich(this%respiration_id,this%species_CH2O_id) = -1.d0
@@ -481,11 +481,11 @@ subroutine ArcticGHGSetup(this,reaction,option)
   endif
 
   if (this%methanogenesis) then
-    word = 'CH4'
+    word = 'CH4(aq)'
     this%species_CH4_id = &
       GetPrimarySpeciesIDFromName(word,reaction,option)
     if (.not. this%respiration) then
-      word = 'CO2'
+      word = 'CO2(aq)'
       this%species_CO2_id = &
         GetPrimarySpeciesIDFromName(word,reaction,option)
     endif
@@ -496,12 +496,12 @@ subroutine ArcticGHGSetup(this,reaction,option)
 
   if (this%methane_oxidation) then
     if (.not. this%methanogenesis) then
-      word = 'CH4'
+      word = 'CH4(aq)'
       this%species_CH4_id = &
         GetPrimarySpeciesIDFromName(word,reaction,option)
     endif
     if (.not. this%respiration) then
-      word = 'CO2'
+      word = 'CO2(aq)'
       this%species_CO2_id = &
         GetPrimarySpeciesIDFromName(word,reaction,option)
     endif

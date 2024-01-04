@@ -412,6 +412,8 @@ subroutine PMHydrateReadParameters(input,pm_hydrate,option)
       case('BC_REFERENCE_PRESSURE')
         call InputReadDouble(input,option,hydrate_bc_reference_pressure)
         call InputErrorMsg(input,option,'BC Reference Pressure',error_string)
+      case('EBULLITION')
+        hydrate_ebullition = PETSC_TRUE
       case default
         call InputKeywordUnrecognized(input,word,'HYDRATE block',option)
     end select
