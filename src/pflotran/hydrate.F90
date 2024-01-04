@@ -1075,8 +1075,9 @@ subroutine HydrateUpdateFixedAccum(realization)
   material_auxvars => patch%aux%Material%auxvars
   material_parameter => patch%aux%Material%material_parameter
   hydrate_parameter => patch%aux%Hydrate%hydrate_parameter
-  rt_auxvars => patch%aux%RT%auxvars
-
+  if (hydrate_ebullition) then
+    rt_auxvars => patch%aux%RT%auxvars
+  endif
   call VecGetArrayReadF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
   call VecGetArrayF90(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
@@ -1210,8 +1211,9 @@ subroutine HydrateResidual(snes,xx,r,realization,ierr)
   global_auxvars_bc => patch%aux%Global%auxvars_bc
   global_auxvars_ss => patch%aux%Global%auxvars_ss
   material_auxvars => patch%aux%Material%auxvars
-  rt_auxvars => patch%aux%RT%auxvars
-
+  if (hydrate_ebullition) then
+    rt_auxvars => patch%aux%RT%auxvars
+  endif
   hydrate_newton_iteration_number = hydrate_newton_iteration_number + 1
   ! bragflo uses the following logic, update when
   !   it == 1, before entering iteration loop
@@ -1598,8 +1600,9 @@ subroutine HydrateJacobian(snes,xx,A,B,realization,ierr)
   global_auxvars => patch%aux%Global%auxvars
   global_auxvars_bc => patch%aux%Global%auxvars_bc
   material_auxvars => patch%aux%Material%auxvars
-  rt_auxvars => patch%aux%RT%auxvars
-
+  if (hydrate_ebullition) then
+    rt_auxvars => patch%aux%RT%auxvars
+  endif
   call SNESGetIterationNumber(snes,hydrate_newton_iteration_number, &
                               ierr);CHKERRQ(ierr)
   hydrate_newton_iteration_number = hydrate_newton_iteration_number + 1
