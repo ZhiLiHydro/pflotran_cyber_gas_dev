@@ -366,13 +366,6 @@ subroutine RealizationCreateDiscretization(realization)
 
   endif
 
-  ! geophysics
-  if (option%ngeopdof > 0) then
-    ! 1 dof
-    call DiscretizationDuplicateVector(discretization,field%work, &
-                                       field%electrical_conductivity)
-  endif
-
   grid => discretization%grid
   select case(discretization%itype)
     case(STRUCTURED_GRID)
@@ -917,6 +910,24 @@ subroutine RealProcessMatPropAndSatFunc(realization)
             cur_material_property%multicontinuum%half_matrix_width_dataset => dataset
           class default
             option%io_buffer = 'Incorrect dataset type for length.'
+            call PrintErrMsg(option)
+        end select
+      endif
+      if (associated(cur_material_property%multicontinuum%ncells_dataset)) then
+        string = 'MATERIAL_PROPERTY(' // trim(cur_material_property%name) // &
+                 '),NUM_CELLS'
+        dataset => &
+          DatasetBaseGetPointer(realization%datasets, &
+                                cur_material_property% &
+                                  multicontinuum%ncells_dataset%name, &
+                                string,option)
+        call DatasetDestroy(cur_material_property% &
+                              multicontinuum%ncells_dataset)
+        select type(dataset)
+          class is (dataset_common_hdf5_type)
+            cur_material_property%multicontinuum%ncells_dataset => dataset
+          class default
+            option%io_buffer = 'Incorrect dataset type for number of secondary cells.'
             call PrintErrMsg(option)
         end select
       endif
