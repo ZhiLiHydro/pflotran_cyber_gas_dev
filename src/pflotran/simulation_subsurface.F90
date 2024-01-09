@@ -243,8 +243,9 @@ subroutine SimSubsurfInitializeRun(this)
   ! initialize performs overwrite of restart, if applicable
   call this%process_model_coupler_list%InitializeRun()
   call this%JumpStart()
-
+print *, this%option%myrank, 'After JumpStart in SimSubsurfInitializeRun'
   call SimulationBaseInputRecordPrint(this,this%option)
+print *, this%option%myrank, 'After SimulationBaseInputRecordPrint in SimSubsurfInitializeRun'
   call PrintMsg(this%option,'')
   call PrintMsg(this%option,' Finished Initialization')
   call PrintMsg(this%option,'')
@@ -451,6 +452,7 @@ subroutine SimSubsurfJumpStart(this)
                 massbal_plot_flag)
   endif
 
+print *, option%myrank, 'After Output in SimSubsurfJumpStart'
   !if TIMESTEPPER->MAX_STEPS < 1, print out initial condition only
   if (master_timestepper%max_time_step < 1) then
     call PrintMsg(option,'')
@@ -517,6 +519,7 @@ subroutine SimSubsurfJumpStart(this)
       call OutputPrintCouplersH5(this%realization,ZERO_INTEGER)
     endif
   endif
+print *, option%myrank, 'End of SimSubsurfJumpStart'
 
 end subroutine SimSubsurfJumpStart
 

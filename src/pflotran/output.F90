@@ -1056,6 +1056,7 @@ subroutine Output(realization_base,snapshot_plot_flag, &
   option => realization_base%option
 
   call PetscLogStagePush(logging%stage(OUTPUT_STAGE),ierr);CHKERRQ(ierr)
+print *, option%myrank, 'Beginning of Output'
 
   ! check for plot request from active directory
   if (.not.snapshot_plot_flag) then
@@ -1185,6 +1186,7 @@ subroutine Output(realization_base,snapshot_plot_flag, &
   realization_base%output_option%plot_name = ''
 
   call PetscLogStagePop(ierr);CHKERRQ(ierr)
+print *, option%myrank, 'End of Output'
 
 end subroutine Output
 

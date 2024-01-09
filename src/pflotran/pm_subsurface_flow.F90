@@ -660,6 +660,7 @@ subroutine PMSubsurfaceFlowInitializeTimestepA(this)
 
   this%option%flow_dt = this%option%dt
 
+print *, this%option%myrank, 'Beginning of PMSubsurfaceFlowInitializeTimestepA'
   if (this%store_porosity_for_ts_cut) then
     ! store base properties for reverting at time step cut
     call MaterialGetAuxVarVecLoc(this%realization%patch%aux%Material, &
