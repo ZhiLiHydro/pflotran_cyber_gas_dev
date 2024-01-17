@@ -141,6 +141,42 @@ module Material_Transform_module
     PetscReal :: loss_rate
   end type buffer_erosion_auxvar_type
   !---------------------------------------------------------------------------
+  type, public :: copper_corrosion_type
+    character(len=MAXWORDLENGTH) :: name
+    PetscBool :: print_me
+    PetscBool :: test
+    class(CC_base_type), pointer :: copper_corrosion_model
+  end type copper_corrosion_type
+  !---------------------------------------------------------------------------
+  type, public :: CC_base_type
+    PetscReal :: can_den         ! Canister Density
+    PetscReal :: can_wall        ! Canister Wall Thickness
+    PetscReal :: can_rad         ! Radius Canister
+    PetscReal :: bh_rad    ! Radius Borehole
+    PetscReal, allocatable :: water_vel(:)       ! water velosity
+    PetscReal :: frac_aperture   ! fracture aperture
+    class(dataset_base_type), pointer :: water_vel_dataset
+    class(dataset_base_type), pointer :: frac_aperture_dataset
+!  contains
+!    procedure, public :: Verify => CCBaseVerify
+!    procedure, public :: Test => CCBaseTest
+ end type CC_base_type
+  !---------------------------------------------------------------------------
+  type, public, extends(CC_base_type) :: CC_default_type
+    ! Model based on Posiva 2013, Section 6.19
+    ! implemented by Heeho Park
+    ! Date 01/10/2024
+    PetscReal :: c_hs          ! Reactant concentration (HS-)
+    PetscReal :: diff_coef     ! Diffusion coefficient
+    PetscReal :: N_m           ! MW canister metal (Cu)
+    PetscReal :: N_r           ! MW reactant (HS-)
+    PetscReal :: ratio_M       ! Metal to reactant
+    PetscReal :: f2            ! Exposed surface multiplier
+    PetscReal :: f1            ! Volume multiplier
+!  contains
+!    procedure, public :: Verify => CCDefaultVerify
+ end type CC_default_type
+  !---------------------------------------------------------------------------
   type, public :: bats_transform_type
     character(len=MAXWORDLENGTH) :: name
     PetscBool :: print_me
@@ -364,6 +400,30 @@ end function BufferErosionCreate
 
 ! ************************************************************************** !
 
+function CopperCorrosionCreate()
+  !
+  ! Creates an object for a copper corrosion model
+  !
+  ! Author: Heeho Park
+  ! Date: 01/11/2024
+
+  implicit none
+
+  class(copper_corrosion_type), pointer :: CopperCorrosionCreate
+  class(copper_corrosion_type), pointer :: CopperCorrosion
+
+  allocate(CopperCorrosion)
+  CopperCorrosion%name = ''
+  CopperCorrosion%print_me = PETSC_FALSE
+  CopperCorrosion%test = PETSC_FALSE
+  nullify(CopperCorrosion%copper_corrosion_model)
+
+  CopperCorrosionCreate => CopperCorrosion
+
+end function CopperCorrosionCreate
+
+! ************************************************************************** !
+
 function BatsTransformCreate()
   !
   ! Creates an object for the bats transform
@@ -474,6 +534,55 @@ function BEDefaultCreate()
   BEDefaultCreate%can_rad         = UNINITIALIZED_DOUBLE
 
 end function BEDefaultCreate
+
+! ************************************************************************** !
+
+function CCBaseCreate()
+  !
+  ! Creates base copper corrosion model
+  !
+  ! Author: Heeho Park
+  ! Date: 01/11/2024
+
+  implicit none
+
+  class(CC_base_type), pointer :: CCBaseCreate
+
+  allocate(CCBaseCreate)
+
+  CCBaseCreate%can_den      = UNINITIALIZED_DOUBLE
+  CCBaseCreate%can_wall     = UNINITIALIZED_DOUBLE
+  CCBaseCreate%can_rad      = UNINITIALIZED_DOUBLE
+  CCBaseCreate%bh_rad = UNINITIALIZED_DOUBLE
+
+end function CCBaseCreate
+
+! ************************************************************************** !
+
+function CCDefaultCreate()
+  !
+  ! Creates default copper corrosion model
+  !
+  ! Author: Heeho Park
+  ! Date: 01/11/2024
+
+  implicit none
+
+  class(CC_default_type), pointer :: CCDefaultCreate
+
+  allocate(CCDefaultCreate)
+
+  CCDefaultCreate%c_hs      = UNINITIALIZED_DOUBLE
+  CCDefaultCreate%diff_coef = UNINITIALIZED_DOUBLE
+  CCDefaultCreate%N_m       = UNINITIALIZED_DOUBLE
+  CCDefaultCreate%N_r       = UNINITIALIZED_DOUBLE
+  CCDefaultCreate%ratio_M   = UNINITIALIZED_DOUBLE
+  allocate(CCDefaultCreate%water_vel(3))
+  nullify(CCDefaultCreate%frac_aperture_dataset)
+  CCDefaultCreate%f2        = UNINITIALIZED_DOUBLE
+  CCDefaultCreate%f1        = UNINITIALIZED_DOUBLE
+
+end function CCDefaultCreate
 
 ! ************************************************************************** !
 
@@ -1420,6 +1529,201 @@ end subroutine BufferErosionRead
 
 ! ************************************************************************** !
 
+subroutine CCDefaultRead(copper_corrosion_model, input, option)
+  !
+  ! Reads in contents of a COPPER_CORROSION_MODEL block
+  !
+  ! Author: Heeho Park
+  ! Date: 01/11/2024
+
+  use Option_module
+  use Input_Aux_module
+  use String_module
+  use Dataset_module
+
+  implicit none
+
+  class(CC_base_type) :: copper_corrosion_model
+  type(input_type), pointer :: input
+  type(option_type) :: option
+
+  character(len=MAXWORDLENGTH) :: keyword
+  character(len=MAXSTRINGLENGTH) :: error_string
+
+  input%ierr = 0
+  error_string = 'COPPER_CORROSION_MODEL,'
+  select type(cc_model => copper_corrosion_model)
+    class is(CC_default_type)
+      error_string = trim(error_string) // 'DEFAULT'
+  end select
+
+  call InputPushBlock(input,option)
+  do
+    call InputReadPflotranString(input,option)
+    if (InputCheckExit(input,option)) exit
+
+    call InputReadCard(input,option,keyword)
+    call InputErrorMsg(input,option,'keyword',error_string)
+    call StringToUpper(keyword)
+
+    select type(cc_model => copper_corrosion_model)
+      !------------------------------------------
+      class is(CC_default_type)
+        select case(trim(keyword))
+          case('CANISTER_DENSITY')
+            call InputReadDouble(input,option,cc_model%can_den)
+            call InputErrorMsg(input,option,&
+                      'canister density',&
+                      'COPPER_CORROSION, GENERAL')
+          case('CANISTER_RADIUS')
+            call InputReadDouble(input,option,cc_model%can_rad)
+            call InputErrorMsg(input,option,&
+                      'canister radius',&
+                      'COPPER_CORROSION, GENERAL')
+          case('CANISTER_WALL_THICKNESS')
+            call InputReadDouble(input,option,cc_model%can_wall)
+            call InputErrorMsg(input,option,&
+                      'canister wall thickness',&
+                      'COPPER_CORROSION, GENERAL')
+          case('BOREHOLE_RADIUS')
+            call InputReadDouble(input,option,cc_model%bh_rad)
+            call InputErrorMsg(input,option,&
+                      'borehole radius',&
+                      'COPPER_CORROSION, GENERAL')
+          case('REACTANT_CONC_HS')
+            call InputReadDouble(input,option,cc_model%c_hs)
+            call InputErrorMsg(input,option,&
+                      'reactant concentration',&
+                      'COPPER_CORROSION, GENERAL')
+          case('DIFFUSION_COEFFICIENT')
+            call InputReadDouble(input,option,cc_model%diff_coef)
+            call InputErrorMsg(input,option,&
+                      'diffusion coefficient',&
+                      'COPPER_CORROSION, GENERAL')
+          case('MW_CANISTER_METAL')
+            call InputReadDouble(input,option,cc_model%N_m)
+            call InputErrorMsg(input,option,&
+                      'molecular weight of canister metal',&
+                      'COPPER_CORROSION, GENERAL')
+          case('MW_REACTANT')
+            call InputReadDouble(input,option,cc_model%N_r)
+            call InputErrorMsg(input,option,&
+                      'molecular weight of reactant',&
+                      'COPPER_CORROSION, GENERAL')
+          case('METAL_TO_REACTANT_RATIO','RATIO')
+            call InputReadDouble(input,option,cc_model%ratio_M)
+            call InputErrorMsg(input,option,&
+                      'metal to reactant ratio',&
+                      'COPPER_CORROSION, GENERAL')
+          case('FRACTURE_APERTURE')
+            call DatasetReadDoubleOrDataset(input,cc_model%frac_aperture, &
+                                          cc_model%frac_aperture_dataset, &
+                                          'fracture aperture', &
+                                          'COPPER_CORROSION, GENERAL',option)
+          case('EXPOSED_SURFACE_MULTIPLIER')
+            call InputReadDouble(input,option,cc_model%f2)
+            call InputErrorMsg(input,option,&
+                      'exposed surface multiplier',&
+                      'COPPER_CORROSION, GENERAL')            
+          case('VOLUME_MULTIPLIER','F1')
+            call InputReadDouble(input,option,cc_model%f1)
+            call InputErrorMsg(input,option,&
+                      'volume multiplier',&
+                      'COPPER_CORROSION, GENERAL')
+          case default
+            call InputKeywordUnrecognized(input,keyword,'COPPER_CORROSION',option)
+        end select
+      !------------------------------------------
+      class default
+        option%io_buffer = 'Read routine not implemented for ' &
+             // trim(error_string) // '.'
+        call PrintErrMsg(option)
+    end select
+  enddo
+  call InputPopBlock(input,option)
+
+end subroutine CCDefaultRead
+
+! ************************************************************************** !
+
+subroutine CopperCorrosionRead(this, input, option)
+  !
+  ! Reads in contents of a COPPER CORROSION block from MATERIAL_TRANSFORM
+  !
+  ! Author: Heeho Park
+  ! Date: 01/11/2024
+
+  use Option_module
+  use Input_Aux_module
+  use String_module
+
+  implicit none
+
+  class(copper_corrosion_type) :: this
+  type(input_type), pointer :: input
+  type(option_type) :: option
+
+  character(len=MAXWORDLENGTH) :: keyword, word
+  character(len=MAXSTRINGLENGTH) :: error_string, verify_string
+  class(CC_base_type), pointer :: CC_model_ptr
+
+  nullify(CC_model_ptr)
+
+  input%ierr = 0
+  error_string = 'COPPER_CORROSION'
+
+  if (associated(this%copper_corrosion_model)) then
+    option%io_buffer = 'There may only be one instance of '// &
+                       'COPPER_CORROSION_MODEL in COPPER_CORROSION "'// &
+                       trim(this%name)//'".'
+    call PrintErrMsg(option)
+  endif
+
+  call InputPushBlock(input,option)
+  do
+
+    call InputReadPflotranString(input,option)
+
+    if (InputCheckExit(input,option)) exit
+
+    call InputReadCard(input,option,keyword)
+    call InputErrorMsg(input,option,'keyword',error_string)
+    call StringToUpper(keyword)
+
+    select case(trim(keyword))
+      !------------------------------------------
+      case('COPPER_CORROSION_MODEL')
+      !------------------------------------------
+        call InputReadCard(input,option,word)
+        call InputErrorMsg(input,option, &
+             'COPPER_CORROSION_MODEL',error_string)
+        call StringToUpper(word)
+        select case(word)
+          !-------------------------------------
+          case('DEFAULT')
+            this%copper_corrosion_model => CCDefaultCreate()
+            call CCDefaultRead(this%copper_corrosion_model,input,option)
+          !-------------------------------------
+          case default
+            call InputKeywordUnrecognized(input,word, &
+                 'COPPER_CORROSION_MODEL',option)
+        end select
+      !------------------------------------------
+      case('TEST')
+        this%test = PETSC_TRUE
+      !------------------------------------------
+      case default
+        call InputKeywordUnrecognized(input,keyword,'COPPER_CORROSION',option)
+    end select
+  enddo
+  call InputPopBlock(input,option)
+
+  verify_string = 'COPPER_CORROSION(' // trim(this%name) // '),'
+
+end subroutine CopperCorrosionRead
+
+! ************************************************************************** !
+
 subroutine BatsTransformRead(this, input, option)
   !
   ! Reads in contents of a BATS_FUNCTION block from MATERIAL_TRANSFORM
@@ -1706,7 +2010,8 @@ subroutine BEDefaultIntrustionRate(this, t_yr, auxvar)
   !
   !
   !
-  !
+  !  Author: Heeho Park
+  !  Date: 03/22/2023
   !
   
  ! use Option_module
@@ -1733,6 +2038,8 @@ subroutine BELambertWSolve(x0_in, const, tol, max_iter, sol, status)
   !
   !
   !
+  !  Author: Heeho Park
+  !  Date: 03/22/2023
   !
   !
   
@@ -1776,9 +2083,8 @@ subroutine BEDefaultSeepingErosion(this, auxvar, option)
 
   !
   !
-  !
-  !
-  !
+  !  Author: Heeho Park
+  !  Date: 03/22/2023
   
   use Option_module
   use PFLOTRAN_Constants_module
@@ -1846,7 +2152,8 @@ subroutine BEDefaultSedimentationErosion(this, auxvar, global_auxvar, option)
   !
   !
   !
-  !
+  !  Author: Heeho Park
+  !  Date: 03/22/2023
   !
 
   use Option_module
@@ -1898,8 +2205,8 @@ subroutine BEDefaultOverallBufferLossRate(this, auxvar, global_auxvar, option)
 
   !
   !
-  !
-  !
+  !  Author: Heeho Park
+  !  Date: 03/22/2023
   !
 
   use Option_module
@@ -1932,6 +2239,53 @@ subroutine BEDefaultOverallBufferLossRate(this, auxvar, global_auxvar, option)
   end if
 
 end subroutine BEDefaultOverallBufferLossRate
+
+! ************************************************************************** !
+
+subroutine CCDefaultCopperCorrosionRate(this, dt, corr_rate)
+
+  use Option_module
+  use PFLOTRAN_Constants_module
+   
+  implicit none
+
+  class(CC_default_type) :: this     ! buffer erosion object
+  PetscReal, intent(out) :: corr_rate ! corrosion rate (mm/yr)
+  PetscReal, intent(in) :: dt          ! delta t
+  type(option_type) :: option
+
+  PetscReal :: Qa, V, Qlim, Qah, A
+  PetscReal :: u, r_sub
+
+  ! magnitude of water velocity using 2-norm fucntion from BLAS
+  u = sqrt(this%water_vel(1)**2.d0 * &
+           this%water_vel(2)**2.d0 * &
+           this%water_vel(3)**2.d0)
+
+  r_sub = this%bh_rad - this%can_rad
+  
+  ! Fracture flow rate across twice the borehole diameter
+  Qa = u * this%frac_aperture * (2.d0 * 2.d0 * this%bh_rad)
+
+  ! Critical volume of buffer loss to expose copper
+  V = this%f1 * &
+      (PI**2.d0 * 0.5d0 * this%bh_rad * r_sub**2.d0 &
+      - (2.d0/3.d0 * PI * r_sub**3.d0))
+  
+  ! Equivalent rate with diffusion in borehole
+  Qlim = 4.d0 * PI**(-1.d0) * V * this%diff_coef / r_sub**2.d0
+
+  ! Equivalent flow rate
+  Qah = min(Qa, sqrt(Qa*Qlim))
+
+  ! Area of copper exposed after buffer erosion
+  A = this%f2 * (PI * this%can_rad * r_sub)
+
+  corr_rate = this%ratio_M * this%N_m * (Qah * this%c_hs * dt) / &
+              (this%can_den * A)
+  
+  
+end subroutine CCDefaultCopperCorrosionRate
 
 ! ************************************************************************** !
 
