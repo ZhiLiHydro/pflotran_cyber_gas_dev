@@ -743,6 +743,7 @@ subroutine MaterialTransformAuxVarInit(auxvar)
 
   nullify(auxvar%il_aux)
   nullify(auxvar%be_aux)
+  nullify(auxvar%cc_aux)
   nullify(auxvar%bt_aux)
 
 end subroutine MaterialTransformAuxVarInit

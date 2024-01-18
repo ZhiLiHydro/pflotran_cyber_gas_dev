@@ -338,7 +338,7 @@ subroutine PMMaterialTransformSetup(this)
     endif
   enddo
 
-  if (associated(patch%aux%MTransform%buffer_erosion%buffer_erosion_model)) then
+  if (associated(patch%aux%MTransform%buffer_erosion)) then
   if (associated(patch%aux%MTransform%buffer_erosion%buffer_erosion_model%frac_aperture_dataset)) then
      !   dataset => DatasetBaseGetPointer
      call MTransformReadDatasettoVec(this%realization, &
