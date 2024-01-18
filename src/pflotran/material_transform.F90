@@ -102,12 +102,12 @@ module Material_Transform_module
     class(dataset_base_type), pointer :: frac_aperture_dataset
     class(dataset_base_type), pointer :: frac_angle_dataset
     PetscReal :: ion_conc        ! concentration of ion (mM)
-!  contains
-!    procedure, public :: Verify => BEBaseVerify
+    contains
+      procedure, public :: CalculateBE => BEBaseOverallBufferLossRate
 !    procedure, public :: Test => BEBaseTest
   end type BE_base_type
   !---------------------------------------------------------------------------
-  type, public, extends(BE_base_type) :: BE_default_type
+  type, public, extends(BE_base_type) :: BE_default_type !virtual
     ! Model based on Posiva 2013, Section 6.11 and 6.19
     ! and Neretnieks et al. 2017 buffer erosion, Chapter 4
     ! implemented by Heeho Park
@@ -127,6 +127,7 @@ module Material_Transform_module
     PetscReal :: f1              ! volume multiplier
     PetscReal :: buffer_por      ! buffer porosity
     PetscReal :: can_rad         ! canister radius
+    PetscReal :: critical_volume 
     contains
       procedure, public :: CalculateBE => BEDefaultOverallBufferLossRate
   end type BE_default_type
@@ -139,6 +140,9 @@ module Material_Transform_module
     PetscReal :: eros_rate       ! buffer erosion rate
     PetscReal :: sed_rate        ! buffer sedimentation rate
     PetscReal :: loss_rate
+    PetscReal :: total_volume_loss
+    PetscReal :: erosion_time
+    PetscBool :: canister_exposed
   end type buffer_erosion_auxvar_type
   !---------------------------------------------------------------------------
   type, public :: copper_corrosion_type
@@ -152,13 +156,13 @@ module Material_Transform_module
     PetscReal :: can_den         ! Canister Density
     PetscReal :: can_wall        ! Canister Wall Thickness
     PetscReal :: can_rad         ! Radius Canister
-    PetscReal :: bh_rad    ! Radius Borehole
-    PetscReal, allocatable :: water_vel(:)       ! water velosity
-    PetscReal :: frac_aperture   ! fracture aperture
-    class(dataset_base_type), pointer :: water_vel_dataset
-    class(dataset_base_type), pointer :: frac_aperture_dataset
-!  contains
-!    procedure, public :: Verify => CCBaseVerify
+  !  PetscReal :: bh_rad    ! Radius Borehole
+  !  PetscReal, allocatable :: water_vel(:)       ! water velosity
+  !  PetscReal :: frac_aperture   ! fracture aperture
+  !  class(dataset_base_type), pointer :: water_vel_dataset
+  !  class(dataset_base_type), pointer :: frac_aperture_dataset
+    contains
+      procedure, public :: CalculateCC => CCBaseCopperCorrosionRate
 !    procedure, public :: Test => CCBaseTest
  end type CC_base_type
   !---------------------------------------------------------------------------
@@ -173,9 +177,16 @@ module Material_Transform_module
     PetscReal :: ratio_M       ! Metal to reactant
     PetscReal :: f2            ! Exposed surface multiplier
     PetscReal :: f1            ! Volume multiplier
-!  contains
+    contains
+     procedure, public :: CalculateCC => CCDefaultCopperCorrosionRate
 !    procedure, public :: Verify => CCDefaultVerify
  end type CC_default_type
+ !---------------------------------------------------------------------------
+ type, public :: copper_corrosion_auxvar_type
+   PetscReal :: cur_canister_corroded
+   PetscReal :: failure_time
+   PetscBool :: canister_failed
+ end type copper_corrosion_auxvar_type
   !---------------------------------------------------------------------------
   type, public :: bats_transform_type
     character(len=MAXWORDLENGTH) :: name
@@ -193,6 +204,7 @@ module Material_Transform_module
   type, public :: material_transform_auxvar_type
     class(illitization_auxvar_type), pointer :: il_aux ! auxvars for illitization class
     class(buffer_erosion_auxvar_type), pointer :: be_aux ! auxvars for buffer erosion class
+    class(copper_corrosion_auxvar_type), pointer :: cc_aux ! auxvars copper corrosion class
     class(bats_transform_auxvar_type), pointer :: bt_aux ! auxvars for bats transform class
   end type material_transform_auxvar_type
   !---------------------------------------------------------------------------
@@ -207,6 +219,7 @@ module Material_Transform_module
     ! Classes for material transformations
     class(illitization_type), pointer :: illitization
     class(buffer_erosion_type), pointer :: buffer_erosion
+    class(copper_corrosion_type), pointer :: copper_corrosion
     class(bats_transform_type), pointer :: bats_transform
 
     ! Linked list
@@ -230,6 +243,7 @@ module Material_Transform_module
             MTransformSetAuxVarVecLoc, &
             IllitizationAuxVarInit, &
             BufferErosionAuxVarInit, &
+            CopperCorrosionAuxVarInit, &
             BatsTransformAuxVarInit
 
 contains
@@ -466,6 +480,7 @@ function MaterialTransformCreate()
   nullify(material_transform%auxvars)
   nullify(material_transform%illitization)
   nullify(material_transform%buffer_erosion)
+  nullify(material_transform%copper_corrosion)
   nullify(material_transform%bats_transform)
   nullify(material_transform%next)
 
@@ -553,7 +568,7 @@ function CCBaseCreate()
   CCBaseCreate%can_den      = UNINITIALIZED_DOUBLE
   CCBaseCreate%can_wall     = UNINITIALIZED_DOUBLE
   CCBaseCreate%can_rad      = UNINITIALIZED_DOUBLE
-  CCBaseCreate%bh_rad = UNINITIALIZED_DOUBLE
+!  CCBaseCreate%bh_rad = UNINITIALIZED_DOUBLE
 
 end function CCBaseCreate
 
@@ -577,8 +592,8 @@ function CCDefaultCreate()
   CCDefaultCreate%N_m       = UNINITIALIZED_DOUBLE
   CCDefaultCreate%N_r       = UNINITIALIZED_DOUBLE
   CCDefaultCreate%ratio_M   = UNINITIALIZED_DOUBLE
-  allocate(CCDefaultCreate%water_vel(3))
-  nullify(CCDefaultCreate%frac_aperture_dataset)
+!  allocate(CCDefaultCreate%water_vel(3))
+!  nullify(CCDefaultCreate%frac_aperture_dataset)
   CCDefaultCreate%f2        = UNINITIALIZED_DOUBLE
   CCDefaultCreate%f1        = UNINITIALIZED_DOUBLE
 
@@ -609,11 +624,38 @@ function BufferErosionAuxVarInit()
   BEauxvar%eros_rate = 0.d0
   BEauxvar%sed_rate = 0.d0
   BEauxvar%loss_rate = 0.d0
+  BEauxvar%canister_exposed = PETSC_FALSE
   
 
   BufferErosionAuxVarInit => BEauxvar
 
 end function BufferErosionAuxVarInit
+
+! ************************************************************************** !
+
+function CopperCorrosionAuxVarInit()
+  !
+  ! Initializes an copper corrosion auxiliary object
+  !
+  ! Author: Heeho Park
+  ! Date: 02/21/2023
+
+  use Option_module
+
+  implicit none
+
+  class(copper_corrosion_auxvar_type), pointer :: CopperCorrosionAuxVarInit
+  class(copper_corrosion_auxvar_type), pointer :: CCauxvar
+
+  allocate(CCauxvar)
+
+  CCauxvar%cur_canister_corroded = 0.d0
+  CCauxvar%failure_time = 0.d0
+  CCauxvar%canister_failed = PETSC_FALSE
+
+  CopperCorrosionAuxVarInit => CCauxvar
+
+end function CopperCorrosionAuxVarInit
 
 ! ************************************************************************** !
 
@@ -1339,7 +1381,12 @@ subroutine BEDefaultRead(buffer_erosion_model, input, option)
             be_model%water_vely_dataset%name = &
                  trim(be_model%water_vely_dataset%name) // 'Y'
             be_model%water_velz_dataset%name = &
-              trim(be_model%water_velz_dataset%name) // 'Z'
+                 trim(be_model%water_velz_dataset%name) // 'Z'
+          !Todo change to dataset
+          case('ION_CONCENTRATION')
+            call InputReadDouble(input,option,be_model%ion_conc)
+            call InputErrorMsg(input,option,'ion concentration',&
+                               'BUFFER_EROSION, GENERAL')
           case('SMECTITE_PARTICLE_DENSITY')
             call InputReadDouble(input,option,be_model%smec_den)
             call InputErrorMsg(input,option,'smectite density',&
@@ -1585,11 +1632,11 @@ subroutine CCDefaultRead(copper_corrosion_model, input, option)
             call InputErrorMsg(input,option,&
                       'canister wall thickness',&
                       'COPPER_CORROSION, GENERAL')
-          case('BOREHOLE_RADIUS')
-            call InputReadDouble(input,option,cc_model%bh_rad)
-            call InputErrorMsg(input,option,&
-                      'borehole radius',&
-                      'COPPER_CORROSION, GENERAL')
+ !         case('BOREHOLE_RADIUS')
+ !           call InputReadDouble(input,option,cc_model%bh_rad)
+ !           call InputErrorMsg(input,option,&
+ !                     'borehole radius',&
+ !                     'COPPER_CORROSION, GENERAL')
           case('REACTANT_CONC_HS')
             call InputReadDouble(input,option,cc_model%c_hs)
             call InputErrorMsg(input,option,&
@@ -1615,11 +1662,11 @@ subroutine CCDefaultRead(copper_corrosion_model, input, option)
             call InputErrorMsg(input,option,&
                       'metal to reactant ratio',&
                       'COPPER_CORROSION, GENERAL')
-          case('FRACTURE_APERTURE')
-            call DatasetReadDoubleOrDataset(input,cc_model%frac_aperture, &
-                                          cc_model%frac_aperture_dataset, &
-                                          'fracture aperture', &
-                                          'COPPER_CORROSION, GENERAL',option)
+   !       case('FRACTURE_APERTURE')
+   !         call DatasetReadDoubleOrDataset(input,cc_model%frac_aperture, &
+   !                                       cc_model%frac_aperture_dataset, &
+   !                                       'fracture aperture', &
+   !                                       'COPPER_CORROSION, GENERAL',option)
           case('EXPOSED_SURFACE_MULTIPLIER')
             call InputReadDouble(input,option,cc_model%f2)
             call InputErrorMsg(input,option,&
@@ -1828,9 +1875,14 @@ subroutine MaterialTransformRead(this, input, option)
         call IllitizationRead(this%illitization,input,option)
       !------------------------------------------
       case('BUFFER_EROSION')
-        this%buffer_erosion=> BufferErosionCreate()
+        this%buffer_erosion => BufferErosionCreate()
         this%buffer_erosion%name = this%name
         call BufferErosionRead(this%buffer_erosion,input,option)
+      !------------------------------------------
+      case('COPPER_CORROSION')
+        this%copper_corrosion => CopperCorrosionCreate()
+        this%copper_corrosion%name = this%name
+        call CopperCorrosionRead(this%copper_corrosion,input,option)
       !------------------------------------------
       case('BATS_FUNCTION')
         this%bats_transform => BatsTransformCreate()
@@ -2201,6 +2253,31 @@ end subroutine BEDefaultSedimentationErosion
 
 ! ************************************************************************** !
 
+subroutine BEBaseOverallBufferLossRate(this, auxvar, global_auxvar, option)
+
+  !
+  !
+  !  Author: Heeho Park
+  !  Date: 03/22/2023
+  !
+
+  use Option_module
+  use PFLOTRAN_Constants_module
+  use Global_Aux_module
+   
+  implicit none
+
+  class(BE_base_type), intent(inout) :: this      ! buffer erosion object
+  class(buffer_erosion_auxvar_type), intent(inout) :: auxvar
+  class(global_auxvar_type), intent(inout) :: global_auxvar
+  type(option_type), intent(inout) :: option
+  
+  option%io_buffer = 'BEBaseOverallBufferLossRate must be extended'
+  call PrintErrMsg(option)
+  
+end subroutine BEBaseOverallBufferLossRate
+! ************************************************************************** !
+
 subroutine BEDefaultOverallBufferLossRate(this, auxvar, global_auxvar, option)
 
   !
@@ -2220,12 +2297,13 @@ subroutine BEDefaultOverallBufferLossRate(this, auxvar, global_auxvar, option)
   class(global_auxvar_type), intent(inout) :: global_auxvar
   type(option_type), intent(inout) :: option
   
-  PetscReal :: t_yr                  ! simulation time in years
+  PetscReal :: t_yr, dt_yr                  ! simulation time in years
   PetscReal :: ci_mM
 
   t_yr = option%time*60.d0*60.d0*24.d0*365.d0  ! sec,min,hr,day
   ! Overall buffer loss rate
-
+  dt_yr = option%time*60.d0*60.d0*24.d0*365.d0
+  
   call BEDefaultIntrustionRate(this,t_yr,auxvar)
   call BEDefaultSeepingErosion(this,auxvar,option)
   call BEDefaultSedimentationErosion(this,auxvar,global_auxvar,option) 
@@ -2237,39 +2315,72 @@ subroutine BEDefaultOverallBufferLossRate(this, auxvar, global_auxvar, option)
   else
     auxvar%loss_rate = auxvar%intr_rate 
   end if
+ 
+  auxvar%total_volume_loss = auxvar%total_volume_loss + ((auxvar%loss_rate * dt_yr) &
+                             / ((1 - this%buffer_por) * this%smec_den))
 
+  if (auxvar%total_volume_loss >= this%critical_volume) then
+    auxvar%canister_exposed = PETSC_TRUE
+  endif
+  
 end subroutine BEDefaultOverallBufferLossRate
 
 ! ************************************************************************** !
 
-subroutine CCDefaultCopperCorrosionRate(this, dt, corr_rate)
+subroutine CCBaseCopperCorrosionRate(this, auxvar, BE_auxvar, BE, option)
 
   use Option_module
   use PFLOTRAN_Constants_module
    
   implicit none
 
-  class(CC_default_type) :: this     ! buffer erosion object
-  PetscReal, intent(out) :: corr_rate ! corrosion rate (mm/yr)
-  PetscReal, intent(in) :: dt          ! delta t
+  class(CC_base_type) :: this ! copper corrosion object
+  class(copper_corrosion_auxvar_type) :: auxvar
+  class(buffer_erosion_auxvar_type) :: BE_auxvar
+  class(BE_base_type) :: BE   ! buffer erosion object
+ 
+  type(option_type) :: option
+
+  option%io_buffer = 'CCBaseCopperCorrosionRate must be extended'
+  call PrintErrMsg(option)
+  
+end subroutine CCBaseCopperCorrosionRate
+
+! ************************************************************************** !
+
+subroutine CCDefaultCopperCorrosionRate(this, auxvar, BE_auxvar, BE, option)
+
+  use Option_module
+  use PFLOTRAN_Constants_module
+   
+  implicit none
+
+  class(CC_default_type) :: this ! copper corrosion object
+  class(copper_corrosion_auxvar_type) :: auxvar
+  class(buffer_erosion_auxvar_type) :: BE_auxvar
+  !This may cause an error when running
+  class(BE_base_type) :: BE   ! buffer erosion object
+ 
   type(option_type) :: option
 
   PetscReal :: Qa, V, Qlim, Qah, A
   PetscReal :: u, r_sub
 
   ! magnitude of water velocity using 2-norm fucntion from BLAS
-  u = sqrt(this%water_vel(1)**2.d0 * &
-           this%water_vel(2)**2.d0 * &
-           this%water_vel(3)**2.d0)
+  !make sure units consistent with velocity and option%dt
+  u = sqrt(BE_auxvar%water_vel(1)**2.d0 * &
+           BE_auxvar%water_vel(2)**2.d0 * &
+           BE_auxvar%water_vel(3)**2.d0)
 
-  r_sub = this%bh_rad - this%can_rad
+
+  r_sub = BE%bh_rad - this%can_rad
   
   ! Fracture flow rate across twice the borehole diameter
-  Qa = u * this%frac_aperture * (2.d0 * 2.d0 * this%bh_rad)
+  Qa = u * BE_auxvar%frac_aperture * (2.d0 * 2.d0 * BE%bh_rad)
 
   ! Critical volume of buffer loss to expose copper
   V = this%f1 * &
-      (PI**2.d0 * 0.5d0 * this%bh_rad * r_sub**2.d0 &
+      (PI**2.d0 * 0.5d0 * BE%bh_rad * r_sub**2.d0 &
       - (2.d0/3.d0 * PI * r_sub**3.d0))
   
   ! Equivalent rate with diffusion in borehole
@@ -2281,9 +2392,13 @@ subroutine CCDefaultCopperCorrosionRate(this, dt, corr_rate)
   ! Area of copper exposed after buffer erosion
   A = this%f2 * (PI * this%can_rad * r_sub)
 
-  corr_rate = this%ratio_M * this%N_m * (Qah * this%c_hs * dt) / &
-              (this%can_den * A)
+  auxvar%cur_canister_corroded = auxvar%cur_canister_corroded + &
+    this%ratio_M * this%N_m * (Qah * this%c_hs * option%dt) / &
+    (this%can_den * A)
   
+  if (auxvar%cur_canister_corroded >= this%can_wall) then
+    auxvar%canister_failed = PETSC_TRUE
+  endif
   
 end subroutine CCDefaultCopperCorrosionRate
 
@@ -3397,6 +3512,24 @@ end subroutine BufferErosionAuxVarStrip
 
 ! ************************************************************************** !
 
+subroutine CopperCorrosionAuxVarStrip(auxvar)
+  !
+  ! Deallocates a copper corrosion auxiliary object
+  !
+
+  implicit none
+
+  class(copper_corrosion_auxvar_type), pointer :: auxvar
+
+  if (.not. associated(auxvar)) return
+
+  deallocate(auxvar)
+  nullify(auxvar)
+
+end subroutine CopperCorrosionAuxVarStrip
+
+! ************************************************************************** !
+
 subroutine BatsTransformAuxVarStrip(auxvar)
   !
   ! Deallocates an bats transform auxiliary object
@@ -3440,6 +3573,9 @@ subroutine MaterialTransformAuxVarStrip(auxvar)
   if (associated(auxvar%be_aux)) then
     call BufferErosionAuxVarStrip(auxvar%be_aux)
   endif
+  if (associated(auxvar%cc_aux)) then
+    call CopperCorrosionAuxVarStrip(auxvar%cc_aux)
+  endif
   if (associated(auxvar%bt_aux)) then
     call BatsTransformAuxVarStrip(auxvar%bt_aux)
   endif
@@ -3476,8 +3612,6 @@ recursive subroutine BufferErosionDestroy(buffer_erosion)
   !
   ! Deallocates a buffer erosion object
   !
-  ! Author: Alex Salazar III
-  ! Date: 01/20/2022
 
   implicit none
 
@@ -3489,6 +3623,24 @@ recursive subroutine BufferErosionDestroy(buffer_erosion)
   nullify(buffer_erosion)
 
 end subroutine BufferErosionDestroy
+
+! ************************************************************************** !
+
+recursive subroutine CopperCorrosionDestroy(copper_corrosion)
+  !
+  ! Deallocates a copper corrosion object
+  !
+
+  implicit none
+
+  class(copper_corrosion_type), pointer :: copper_corrosion
+
+  if (.not. associated(copper_corrosion)) return
+
+  deallocate(copper_corrosion)
+  nullify(copper_corrosion)
+
+end subroutine CopperCorrosionDestroy
 
 ! ************************************************************************** !
 
@@ -3543,6 +3695,10 @@ recursive subroutine MaterialTransformDestroy(material_transform)
 
   if (associated(material_transform%buffer_erosion)) then
     call BufferErosionDestroy(material_transform%buffer_erosion)
+  endif
+
+  if (associated(material_transform%copper_corrosion)) then
+    call CopperCorrosionDestroy(material_transform%copper_corrosion)
   endif
 
   if (associated(material_transform%bats_transform)) then

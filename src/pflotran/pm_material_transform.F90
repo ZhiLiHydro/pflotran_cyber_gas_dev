@@ -287,6 +287,16 @@ subroutine PMMaterialTransformSetup(this)
           m_transform_auxvars(ghosted_id)%be_aux => &
             BufferErosionAuxVarInit()
         endif
+       
+        if (associated(material_transform%copper_corrosion)) then
+          !Assuming we always have to have buffer erosion defined for copper corrosion
+          if (.not.associated(material_transform%buffer_erosion)) then
+            option%io_buffer = 'Buffer Erosion model needs to be specified when using the Copper Corrosion model'
+            call PrintErrMsg(option)
+          endif
+          m_transform_auxvars(ghosted_id)%cc_aux => &
+            CopperCorrosionAuxVarInit()
+        endif        
 
         if (associated(material_transform%bats_transform)) then
           ! initialize the bats function auxiliary variable object
@@ -335,7 +345,7 @@ subroutine PMMaterialTransformSetup(this)
             patch%aux%MTransform%buffer_erosion%buffer_erosion_model%frac_aperture_dataset, &
             grid,field%work,option)
 
-     !globaltolocal????
+     !globaltolocal?
      call this%realization%comm1%GlobalToLocal(field%work,field%work_loc)
      call VecGetArrayReadF90(field%work,work_loc_p,ierr);CHKERRQ(ierr)
      do ghosted_id = 1, grid%ngmax !!skip cells not with buffer erosion to save time?
@@ -352,7 +362,6 @@ subroutine PMMaterialTransformSetup(this)
             patch%aux%MTransform%buffer_erosion%buffer_erosion_model%frac_angle_dataset, &
             grid,field%work,option)
 
-     !globaltolocal????
      call this%realization%comm1%GlobalToLocal(field%work,field%work_loc)
      call VecGetArrayReadF90(field%work,work_loc_p,ierr);CHKERRQ(ierr)
      do ghosted_id = 1, grid%ngmax
@@ -363,12 +372,12 @@ subroutine PMMaterialTransformSetup(this)
           ierr);CHKERRQ(ierr)
   endif
 
-  !!!better way to do this??
+  !better way to do this?
   if (associated(patch%aux%MTransform%buffer_erosion%buffer_erosion_model%water_velx_dataset)) then
      call MTransformReadDatasettoVec(this%realization, &
             patch%aux%MTransform%buffer_erosion%buffer_erosion_model%water_velx_dataset, &
             grid,field%work,option)
-     !double check put in function (don't think so since looping through)
+     !double check put in function 
      call this%realization%comm1%GlobalToLocal(field%work,field%work_loc)
      call VecGetArrayReadF90(field%work,work_loc_p,ierr);CHKERRQ(ierr)
      do ghosted_id = 1, grid%ngmax
@@ -381,7 +390,6 @@ subroutine PMMaterialTransformSetup(this)
      call MTransformReadDatasettoVec(this%realization, &
             patch%aux%MTransform%buffer_erosion%buffer_erosion_model%water_vely_dataset, &
             grid,field%work,option)
-     !double check put in function (don't think so since looping through)
      call this%realization%comm1%GlobalToLocal(field%work,field%work_loc)
      call VecGetArrayReadF90(field%work,work_loc_p,ierr);CHKERRQ(ierr)
      do ghosted_id = 1, grid%ngmax
@@ -394,7 +402,7 @@ subroutine PMMaterialTransformSetup(this)
      call MTransformReadDatasettoVec(this%realization, &
             patch%aux%MTransform%buffer_erosion%buffer_erosion_model%water_velz_dataset, &
             grid,field%work,option)
-     !double check put in function (don't think so since looping through)
+
      call this%realization%comm1%GlobalToLocal(field%work,field%work_loc)
      call VecGetArrayReadF90(field%work,work_loc_p,ierr);CHKERRQ(ierr)
      do ghosted_id = 1, grid%ngmax
@@ -770,8 +778,16 @@ subroutine PMMaterialTransformSolve(this, time, ierr)
                       option)
         endif
         if (associated(material_transform%buffer_erosion)) then
-          call material_transform%buffer_erosion%buffer_erosion_model% &
-            CalculateBE(m_transform_aux%be_aux,global_aux,option) !make sure den_kg is water density
+           if (.not.m_transform_aux%be_aux%canister_exposed) then
+             call material_transform%buffer_erosion%buffer_erosion_model% &
+                  CalculateBE(m_transform_aux%be_aux,global_aux,option) !make sure den_kg is water density
+           else
+             if(.not.m_transform_aux%cc_aux%canister_failed) then
+               call material_transform%copper_corrosion%copper_corrosion_model% &
+                    CalculateCC(m_transform_aux%cc_aux,m_transform_aux%be_aux, &
+                                material_transform%buffer_erosion%buffer_erosion_model,option) 
+             endif
+           endif
         endif
         if (associated(material_transform%bats_transform)) then
           call material_transform%bats_transform%ModifyPerm(material_aux, &
@@ -1731,13 +1747,13 @@ subroutine MTransformReadDatasettoVec(realization,dataset,grid,vec,option)
   
   class(realization_subsurface_type) :: realization
   class(dataset_base_type) :: dataset
-  class(dataset_base_type), pointer :: dataset_p
+!  class(dataset_base_type), pointer :: dataset_p
   Vec :: vec
 
   type(field_type), pointer :: field
   type(grid_type), pointer :: grid
   type(option_type), pointer :: option
-  character(len=MAXSTRINGLENGTH) :: group_name, string
+  character(len=MAXSTRINGLENGTH) :: group_name
   character(len=MAXSTRINGLENGTH) :: dataset_name
   character(len=MAXSTRINGLENGTH) :: filename
   PetscInt :: local_id, ghosted_id
