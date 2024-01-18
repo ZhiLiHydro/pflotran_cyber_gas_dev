@@ -753,7 +753,10 @@ subroutine InvZFlowSetupForwardRunLinkage(this)
                                VG_ALPHA,VG_SR,VG_M, &
                                ARCHIE_CEMENTATION_EXPONENT, &
                                ARCHIE_SATURATION_EXPONENT, &
-                               ARCHIE_TORTUOSITY_CONSTANT
+                               ARCHIE_TORTUOSITY_CONSTANT, &
+                               SURFACE_ELECTRICAL_CONDUCTIVITY, &
+                               WAXMAN_SMITS_CLAY_CONDUCTIVITY, &
+                               VERTICAL_PERM_ANISOTROPY_RATIO
 
   implicit none
 
@@ -771,11 +774,13 @@ subroutine InvZFlowSetupForwardRunLinkage(this)
   exists = PETSC_FALSE
   iqoi = InversionParameterIntToQOIArray(this%inversion_aux%parameters(1))
   select case(iqoi(1))
-    case(PERMEABILITY,POROSITY,VG_ALPHA,VG_SR,VG_M)
+    case(PERMEABILITY,POROSITY,VG_ALPHA,VG_SR,VG_M, &
+         VERTICAL_PERM_ANISOTROPY_RATIO)
       if (this%realization%option%iflowmode /= NULL_MODE) exists = PETSC_TRUE
       word = InversionParamGetNameFromItype(iqoi(1),this%driver)
     case(ELECTRICAL_CONDUCTIVITY,ARCHIE_CEMENTATION_EXPONENT, &
-         ARCHIE_SATURATION_EXPONENT,ARCHIE_TORTUOSITY_CONSTANT)
+         ARCHIE_SATURATION_EXPONENT,ARCHIE_TORTUOSITY_CONSTANT, &
+         SURFACE_ELECTRICAL_CONDUCTIVITY,WAXMAN_SMITS_CLAY_CONDUCTIVITY)
       if (this%realization%option%igeopmode /= NULL_MODE) exists = PETSC_TRUE
       word = InversionParamGetNameFromItype(iqoi(1),this%driver)
     case default
@@ -2501,9 +2506,9 @@ subroutine InvZFlowWriteIterationInfo2(this)
   character(len=:), allocatable :: nl
   character(len=80) :: divider
 
-  nl = new_line('a')
+  allocate(nl,source = new_line('a'))
   write(divider,'(40("=+"))')
-  string = nl // trim(divider)
+  allocate(string,source = nl // trim(divider))
   call this%driver%PrintMsg(string)
   string = nl // ' Iteration ' // &
            StringWrite(this%iteration) // nl

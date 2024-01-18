@@ -71,11 +71,7 @@ private
             RealizUpdateUniformVelocity, &
             RealizationRevertFlowParameters, &
             RealizStoreRestartFlowParams, &
-!            RealizationGetVariable, &
-!            RealizGetVariableValueAtCell, &
-!            RealizationSetVariable, &
             RealizationPrintCouplers, &
-            RealizationInitConstraints, &
             RealProcessMatPropAndSatFunc, &
             RealProcessFluidProperties, &
             RealizationUpdatePropertiesTS, &
@@ -93,10 +89,6 @@ private
             RealizationReadGeopSurveyFile, &
             RealizationCheckConsistency, &
             RealizationPrintStateAtCells
-
-  !TODO(intel)
-  ! public from Realization_Base_class
-  !public :: RealizationGetVariable
 
 contains
 
@@ -343,10 +335,6 @@ subroutine RealizationCreateDiscretization(realization)
       endif
 
     else ! operator splitting
-      ! ndof degrees of freedom, global
-      ! create the 1 dof vector for solving the individual linear systems
-      call DiscretizationCreateVector(discretization,ONEDOF,field%tran_rhs_coef, &
-                                      GLOBAL,option)
       ! create the ntran dof vector for storage of the solution
       call DiscretizationCreateVector(discretization,NTRANDOF,field%tran_xx, &
                                       GLOBAL,option)
@@ -354,8 +342,6 @@ subroutine RealizationCreateDiscretization(realization)
                                          field%tran_yy)
       call DiscretizationDuplicateVector(discretization,field%tran_xx, &
                                          field%tran_dxx)
-      call DiscretizationDuplicateVector(discretization,field%tran_xx, &
-                                         field%tran_rhs)
 
       ! ndof degrees of freedom, local
       ! again, just for storage of the current colution
@@ -364,13 +350,6 @@ subroutine RealizationCreateDiscretization(realization)
 
     endif
 
-  endif
-
-  ! geophysics
-  if (option%ngeopdof > 0) then
-    ! 1 dof
-    call DiscretizationDuplicateVector(discretization,field%work, &
-                                       field%electrical_conductivity)
   endif
 
   grid => discretization%grid
@@ -883,6 +862,24 @@ subroutine RealProcessMatPropAndSatFunc(realization)
           call PrintErrMsg(option)
       end select
     endif
+    if (associated(cur_material_property%surf_elec_cond_dataset)) then
+      string = 'MATERIAL_PROPERTY(' // trim(cur_material_property%name) // &
+               '),SURFACE_ELECTRICAL_CONDUCTIVITY'
+      dataset => &
+        DatasetBaseGetPointer(realization%datasets, &
+                              cur_material_property% &
+                                surf_elec_cond_dataset%name, &
+                              string,option)
+      call DatasetDestroy(cur_material_property%surf_elec_cond_dataset)
+      select type(dataset)
+        class is (dataset_common_hdf5_type)
+          cur_material_property%surf_elec_cond_dataset => dataset
+        class default
+          option%io_buffer = 'Incorrect dataset type for surface electrical &
+                             &conductivity.'
+          call PrintErrMsg(option)
+      end select
+    endif
     if (associated(cur_material_property%multicontinuum)) then
       if (associated(cur_material_property%multicontinuum%epsilon_dataset)) then
         string = 'MATERIAL_PROPERTY(' // trim(cur_material_property%name) // &
@@ -917,6 +914,24 @@ subroutine RealProcessMatPropAndSatFunc(realization)
             cur_material_property%multicontinuum%half_matrix_width_dataset => dataset
           class default
             option%io_buffer = 'Incorrect dataset type for length.'
+            call PrintErrMsg(option)
+        end select
+      endif
+      if (associated(cur_material_property%multicontinuum%ncells_dataset)) then
+        string = 'MATERIAL_PROPERTY(' // trim(cur_material_property%name) // &
+                 '),NUM_CELLS'
+        dataset => &
+          DatasetBaseGetPointer(realization%datasets, &
+                                cur_material_property% &
+                                  multicontinuum%ncells_dataset%name, &
+                                string,option)
+        call DatasetDestroy(cur_material_property% &
+                              multicontinuum%ncells_dataset)
+        select type(dataset)
+          class is (dataset_common_hdf5_type)
+            cur_material_property%multicontinuum%ncells_dataset => dataset
+          class default
+            option%io_buffer = 'Incorrect dataset type for number of secondary cells.'
             call PrintErrMsg(option)
         end select
       endif
@@ -1282,8 +1297,8 @@ subroutine RealProcessTranConditions(realization)
         endif
         cur_constraint_coupler => cur_constraint_coupler%next
       enddo
-    endif 
-         
+    endif
+
 !TODO(geh) remove this?
     if (associated(cur_condition%constraint_coupler_list%next)) then
       ! there are more than one
@@ -1315,32 +1330,6 @@ end subroutine RealProcessTranConditions
 
 ! ************************************************************************** !
 
-subroutine RealizationInitConstraints(realization)
-  !
-  ! Initializes constraint concentrations
-  !
-  ! Author: Glenn Hammond
-  ! Date: 12/04/08
-  !
-
-  implicit none
-
-  class(realization_subsurface_type) :: realization
-
-  type(patch_type), pointer :: cur_patch
-
-  cur_patch => realization%patch_list%first
-  do
-    if (.not.associated(cur_patch)) exit
-    call PatchInitConstraints(cur_patch,realization%reaction_base, &
-                              realization%option)
-    cur_patch => cur_patch%next
-  enddo
-
-end subroutine RealizationInitConstraints
-
-! ************************************************************************** !
-
 subroutine RealizationPrintCouplers(realization)
   !
   ! Print boundary and initial condition data
@@ -1356,42 +1345,36 @@ subroutine RealizationPrintCouplers(realization)
 
   class(realization_subsurface_type) :: realization
 
-  type(patch_type), pointer :: cur_patch
+  type(patch_type), pointer :: patch
   type(coupler_type), pointer :: cur_coupler
   type(option_type), pointer :: option
   class(reaction_rt_type), pointer :: reaction
 
   option => realization%option
   reaction => realization%reaction
+  patch => realization%patch
 
   if (.not.OptionPrintToFile(option)) return
 
-  cur_patch => realization%patch_list%first
+  cur_coupler => patch%initial_condition_list%first
   do
-    if (.not.associated(cur_patch)) exit
+    if (.not.associated(cur_coupler)) exit
+    call RealizationPrintCoupler(cur_coupler,reaction,option)
+    cur_coupler => cur_coupler%next
+  enddo
 
-    cur_coupler => cur_patch%initial_condition_list%first
-    do
-      if (.not.associated(cur_coupler)) exit
-      call RealizationPrintCoupler(cur_coupler,reaction,option)
-      cur_coupler => cur_coupler%next
-    enddo
+  cur_coupler => patch%boundary_condition_list%first
+  do
+    if (.not.associated(cur_coupler)) exit
+    call RealizationPrintCoupler(cur_coupler,reaction,option)
+    cur_coupler => cur_coupler%next
+  enddo
 
-    cur_coupler => cur_patch%boundary_condition_list%first
-    do
-      if (.not.associated(cur_coupler)) exit
-      call RealizationPrintCoupler(cur_coupler,reaction,option)
-      cur_coupler => cur_coupler%next
-    enddo
-
-    cur_coupler => cur_patch%source_sink_list%first
-    do
-      if (.not.associated(cur_coupler)) exit
-      call RealizationPrintCoupler(cur_coupler,reaction,option)
-      cur_coupler => cur_coupler%next
-    enddo
-
-    cur_patch => cur_patch%next
+  cur_coupler => patch%source_sink_list%first
+  do
+    if (.not.associated(cur_coupler)) exit
+    call RealizationPrintCoupler(cur_coupler,reaction,option)
+    cur_coupler => cur_coupler%next
   enddo
 
 end subroutine RealizationPrintCouplers
@@ -1470,7 +1453,7 @@ subroutine RealizationPrintCoupler(coupler,reaction,option)
         ! the following three lines are a work around for an intel compiler bug
         ! claiming that c is not a pointer, though it points to a pointer
         !call ReactionPrintConstraint(c%global_auxvar,c%rt_auxvar,c, &
-        constraint_rt_coupler => c 
+        constraint_rt_coupler => c
         call ReactionPrintConstraint(c%global_auxvar,c%rt_auxvar, &
                                      constraint_rt_coupler,reaction,option)
         write(option%fid_out,'(/)')
@@ -2071,9 +2054,9 @@ subroutine RealizationUpdatePropertiesTS(realization)
         if (associated(porosity0_p)) then
           temp_porosity = porosity0_p(local_id)
         endif
-        call MineralUpdateSpecSurfaceArea(reaction,rt_auxvars(ghosted_id), &
-                                          material_auxvars(ghosted_id), &
-                                          temp_porosity,option)
+        call ReactionMnrlUpdateSpecSurfArea(reaction,rt_auxvars(ghosted_id), &
+                                            material_auxvars(ghosted_id), &
+                                            temp_porosity,option)
       enddo
     enddo
 
@@ -2665,7 +2648,6 @@ subroutine RealizUnInitializedVarsFlow(realization)
 
   class(realization_subsurface_type) :: realization
 
-  character(len=MAXWORDLENGTH) :: var_name
   PetscInt :: i
 
   call RealizUnInitializedVar1(realization,VOLUME,'volume')
@@ -2680,8 +2662,9 @@ subroutine RealizUnInitializedVarsFlow(realization)
     call RealizUnInitializedVar1(realization,PERMEABILITY_YZ,'permeability YZ')
   endif
   do i = 1, max_material_index
-    var_name = MaterialAuxIndexToPropertyName(i)
-    call RealizUnInitializedVar1(realization,i,var_name)
+    call RealizUnInitializedVar1(realization, &
+                   realization%patch%aux%Material%soil_properties_ivar(i), &
+                   realization%patch%aux%Material%soil_properties_name(i))
   enddo
 
 end subroutine RealizUnInitializedVarsFlow
@@ -2767,7 +2750,7 @@ subroutine RealizUnInitializedVar1(realization,ivar,var_name)
     write(word,*) imin+1 ! zero to one based indexing
     option%io_buffer = 'Incorrect assignment of variable (' &
       // trim(var_name) // ',cell=' // trim(adjustl(word)) // ').'
-    call PrintErrMsgToDev(option,'send your input deck.')
+    call PrintErrMsgToDev(option,'send your input deck')
   endif
 
 end subroutine RealizUnInitializedVar1

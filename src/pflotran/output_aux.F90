@@ -737,12 +737,12 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       case('LIQUID_SATURATION','LIQUID_DENSITY','GAS_SATURATION', &
            'GAS_DENSITY','TEMPERATURE','POROSITY','MINERAL_POROSITY', &
            'TORTUOSITY','NATURAL_ID','PROCESS_ID','VOLUME','MATERIAL_ID', &
+           'TORTUOSITY_X','TORTUOSITY_Y','TORTUOSITY_Z', &
            'MATERIAL_ID_KLUDGE_FOR_VISIT','X_COORDINATE','Y_COORDINATE', &
            'Z_COORDINATE', &
            'ELECTRICAL_CONDUCTIVITY','ELECTRICAL_POTENTIAL', &
            'ELECTRICAL_JACOBIAN','ELECTRICAL_POTENTIAL_DIPOLE', &
-           'ARCHIE_CEMENTATION_EXPONENT','ARCHIE_SATURATION_EXPONENT', &
-           'ARCHIE_TORTUOSITY_CONSTANT')
+           'SURFACE_ELECTRICAL_CONDUCTIVITY','WAXMAN_SMITS_CLAY_CONDUCTIVITY')
       case default
         call PrintErrMsg(option,'Output variable "' // trim(word) // &
           '" not supported when not running a flow mode.')
@@ -753,7 +753,8 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       case('ELECTRICAL_CONDUCTIVITY','ELECTRICAL_POTENTIAL', &
            'ELECTRICAL_JACOBIAN','ELECTRICAL_POTENTIAL_DIPOLE', &
            'ARCHIE_CEMENTATION_EXPONENT','ARCHIE_SATURATION_EXPONENT', &
-           'ARCHIE_TORTUOSITY_CONSTANT')
+           'ARCHIE_TORTUOSITY_CONSTANT','SURFACE_ELECTRICAL_CONDUCTIVITY', &
+           'WAXMAN_SMITS_CLAY_CONDUCTIVITY')
         call PrintErrMsg(option,'Output variable "' // trim(word) // &
           '" not supported when not running a geophysics mode.')
     end select
@@ -981,7 +982,27 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       name = 'Tortuosity'
       category = OUTPUT_GENERIC
       id = TORTUOSITY
-    case ('PERMEABILITY','PERMEABILITY_X')
+    case ('TORTUOSITY_X')
+      units = ''
+      name = 'Tortuosity X'
+      category = OUTPUT_GENERIC
+      id = TORTUOSITY
+    case ('TORTUOSITY_Y')
+      units = ''
+      name = 'Tortuosity Y'
+      category = OUTPUT_GENERIC
+      id = TORTUOSITY_Y
+    case ('TORTUOSITY_Z')
+      units = ''
+      name = 'Tortuosity Z'
+      category = OUTPUT_GENERIC
+      id = TORTUOSITY_Z
+    case ('PERMEABILITY')
+      units = 'm^2'
+      name = 'Permeability'
+      category = OUTPUT_GENERIC
+      id = PERMEABILITY
+    case ('PERMEABILITY_X')
       units = 'm^2'
       name = 'Permeability X'
       category = OUTPUT_GENERIC
@@ -1181,6 +1202,16 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       name = "Archie's Tortuosity Constant"
       category = OUTPUT_GENERIC
       id = ARCHIE_TORTUOSITY_CONSTANT
+    case ('SURFACE_ELECTRICAL_CONDUCTIVITY')
+      units = 'S/m'
+      name = 'Surface Electrical Conductivity'
+      category = OUTPUT_GENERIC
+      id = SURFACE_ELECTRICAL_CONDUCTIVITY
+    case ('WAXMAN_SMITS_CLAY_CONDUCTIVITY')
+      units = 'S/m'
+      name = 'Waxman-Smits Clay Conductivity'
+      category = OUTPUT_GENERIC
+      id = WAXMAN_SMITS_CLAY_CONDUCTIVITY
   end select
 
 end subroutine OutputVariableToID

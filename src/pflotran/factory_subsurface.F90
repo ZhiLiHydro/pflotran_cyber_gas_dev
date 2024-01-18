@@ -480,8 +480,8 @@ subroutine FactorySubsurfSetupRealization(simulation)
     case(RT_MODE)
       ! read reaction database
       if (realization%reaction%use_full_geochemistry) then
-        call DatabaseRead(realization%reaction,option)
-        call BasisInit(realization%reaction,option)
+        call ReactionDBReadDatabase(realization%reaction,option)
+        call ReactionDBInitBasis(realization%reaction,option)
       else
         ! turn off activity coefficients since the database has not been read
         realization%reaction%act_coef_update_frequency = ACT_COEF_FREQUENCY_OFF
@@ -519,16 +519,20 @@ subroutine FactorySubsurfSetupRealization(simulation)
   ! must process conditions before couplers in order to determine dataset types
   call RealizationProcessConditions(realization)
   call RealizationProcessCouplers(realization)
-  call SubsurfSandboxesSetup(realization)
   call RealProcessFluidProperties(realization)
   call SubsurfInitMaterialProperties(realization)
-  ! assignVolumesToMaterialAuxVars() must be called after
-  ! RealizInitMaterialProperties() where the Material object is created
+  ! SubsurfAssignVolsToMatAuxVars() must be called after
+  ! SubsurfInitMaterialProperties() where the Material object is created
   call SubsurfAssignVolsToMatAuxVars(realization)
+  ! SubsurfSandboxesSetup() must be called after
+  ! SubsurfAssignVolsToMatAuxVars() where volumes are assigned to Material
+  ! objects
+  call SubsurfSandboxesSetup(realization)
   call RealizationInitAllCouplerAuxVars(realization)
   if (option%ntrandof > 0) then
     call PrintMsg(option,"  Setting up TRAN Realization ")
-    call RealizationInitConstraints(realization)
+    call PatchInitConstraints(realization%patch,realization%reaction_base, &
+                              option)
     call PrintMsg(option,"  Finished setting up TRAN Realization ")
   endif
   call RealizationPrintCouplers(realization)

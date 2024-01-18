@@ -17,18 +17,20 @@ module Reaction_Surface_Complexation_module
 
   PetscReal, parameter :: perturbation_tolerance = 1.d-5
 
-  public :: SurfaceComplexationRead, &
-            SrfCplxProcessConstraint, &
-            RTotalSorbEqSurfCplx, &
-            RMultiRateSorption, &
-            RKineticSurfCplx, &
-            RTotalSorbMultiRateAsEQ
+  public :: ReactionSrfCplxReadSrfCplxRxn, &
+            ReactionSrfCplxProcessConstraint, &
+            ReactionSrfCplxTotalSorbEq, &
+            ReactionSrfCplxMultirateRate, &
+            ReactionSrfCplxKineticRate, &
+            ReactionSrfCplxTotSorbMRAsEQ, &
+            ReactionSrfCplxMRUpdateKinState, &
+            ReactionSrfCplxUpdateKinState
 
 contains
 
 ! ************************************************************************** !
 
-subroutine SurfaceComplexationRead(reaction,input,option)
+subroutine ReactionSrfCplxReadSrfCplxRxn(reaction,input,option)
   !
   ! Reads chemical species
   !
@@ -66,7 +68,7 @@ subroutine SurfaceComplexationRead(reaction,input,option)
 
   surface_complexation => reaction%surface_complexation
 
-  srfcplx_rxn => SurfaceComplexationRxnCreate()
+  srfcplx_rxn => ReactionSrfCplxCreateRxn()
   ! default
   srfcplx_rxn%itype = SRFCMPLX_RXN_EQUILIBRIUM
   temp_srfcplx_count = 0
@@ -108,7 +110,7 @@ subroutine SurfaceComplexationRead(reaction,input,option)
           if (InputError(input)) exit
           if (InputCheckExit(input,option)) exit
 
-          srfcplx => SurfaceComplexCreate()
+          srfcplx => ReactionSrfCplxCreateComplex()
           call InputReadWord(input,option,srfcplx%name,PETSC_TRUE)
           call InputErrorMsg(input,option,'keyword', &
             'CHEMISTRY,SURFACE_COMPLEXATION_RXN,COMPLEX_KINETIC_RATE')
@@ -189,7 +191,7 @@ subroutine SurfaceComplexationRead(reaction,input,option)
           if (InputCheckExit(input,option)) exit
 
           temp_srfcplx_count = temp_srfcplx_count + 1
-          srfcplx => SurfaceComplexCreate()
+          srfcplx => ReactionSrfCplxCreateComplex()
           srfcplx%id = temp_srfcplx_count
           call InputReadWord(input,option,srfcplx%name,PETSC_TRUE)
           call InputErrorMsg(input,option,'keyword', &
@@ -252,7 +254,7 @@ subroutine SurfaceComplexationRead(reaction,input,option)
       cur_srfcplx => cur_srfcplx%next
     enddo
     if (.not.found) then
-      srfcplx => SurfaceComplexCreate()
+      srfcplx => ReactionSrfCplxCreateComplex()
       srfcplx%name = cur_srfcplx_in_rxn%name
       if (.not.associated(prev_srfcplx)) then
         surface_complexation%complex_list => srfcplx
@@ -336,7 +338,7 @@ subroutine SurfaceComplexationRead(reaction,input,option)
               rate_list => cur_srfcplx_rate%next
             endif
             ! destroy the object
-            call SurfaceComplexDestroy(cur_srfcplx_rate)
+            call ReactionSrfCplxDestroySrfCplx(cur_srfcplx_rate)
             found = PETSC_TRUE
             exit
           endif
@@ -369,12 +371,12 @@ subroutine SurfaceComplexationRead(reaction,input,option)
 
   nullify(srfcplx_rxn)
 
-end subroutine SurfaceComplexationRead
+end subroutine ReactionSrfCplxReadSrfCplxRxn
 
 ! ************************************************************************** !
 
-subroutine SrfCplxProcessConstraint(surface_complexation,constraint_name, &
-                                    constraint,option)
+subroutine ReactionSrfCplxProcessConstraint(surface_complexation, &
+                                            constraint_name,constraint,option)
   !
   ! Initializes constraints based on surface complex
   ! species in system
@@ -437,12 +439,12 @@ subroutine SrfCplxProcessConstraint(surface_complexation,constraint_name, &
   constraint%names = srfcplx_name
   constraint%constraint_conc = constraint_conc
 
-end subroutine SrfCplxProcessConstraint
+end subroutine ReactionSrfCplxProcessConstraint
 
 ! ************************************************************************** !
 
-subroutine RTotalSorbEqSurfCplx(rt_auxvar,global_auxvar,material_auxvar, &
-                                reaction,option)
+subroutine ReactionSrfCplxTotalSorbEq(rt_auxvar,global_auxvar, &
+                                      material_auxvar,reaction,option)
   !
   ! Computes the total sorbed component concentrations and
   ! derivative with respect to free-ion for equilibrium
@@ -473,9 +475,8 @@ subroutine RTotalSorbEqSurfCplx(rt_auxvar,global_auxvar,material_auxvar, &
 
     irxn = surface_complexation%eqsrfcplxrxn_to_srfcplxrxn(ieqrxn)
 
-    call RTotalSorbEqSurfCplx1(rt_auxvar,global_auxvar,material_auxvar, &
-                               reaction,option, &
-                               irxn, &
+    call ReactionSrfCplxTotalSorbEq1(rt_auxvar,global_auxvar, &
+                               material_auxvar,reaction,option,irxn, &
                                rt_auxvar%srfcplxrxn_free_site_conc(irxn), &
                                rt_auxvar%eqsrfcplx_conc, &
                                rt_auxvar%total_sorb_eq, &
@@ -486,12 +487,12 @@ subroutine RTotalSorbEqSurfCplx(rt_auxvar,global_auxvar,material_auxvar, &
   ! units of total_sorb = mol/m^3
   ! units of dtotal_sorb = kg water/m^3 bulk
 
-end subroutine RTotalSorbEqSurfCplx
+end subroutine ReactionSrfCplxTotalSorbEq
 
 ! ************************************************************************** !
 
-subroutine RTotalSorbMultiRateAsEQ(rt_auxvar,global_auxvar,material_auxvar, &
-                                   reaction,option)
+subroutine ReactionSrfCplxTotSorbMRAsEQ(rt_auxvar,global_auxvar, &
+                                        material_auxvar,reaction,option)
   !
   ! Calculates the multirate surface complexation
   ! reaction as if it were equilibrium.
@@ -531,9 +532,8 @@ subroutine RTotalSorbMultiRateAsEQ(rt_auxvar,global_auxvar,material_auxvar, &
     total_sorb_eq = 0.d0
     dtotal_sorb_eq = 0.d0
 
-    call RTotalSorbEqSurfCplx1(rt_auxvar,global_auxvar,material_auxvar, &
-                               reaction,option, &
-                               irxn, &
+    call ReactionSrfCplxTotalSorbEq1(rt_auxvar,global_auxvar, &
+                               material_auxvar,reaction,option,irxn, &
                                rt_auxvar%srfcplxrxn_free_site_conc(irxn), &
                                null_array_ptr, &
                                total_sorb_eq, &
@@ -543,12 +543,13 @@ subroutine RTotalSorbMultiRateAsEQ(rt_auxvar,global_auxvar,material_auxvar, &
 
   enddo ! irxn
 
-end subroutine RTotalSorbMultiRateAsEQ
+end subroutine ReactionSrfCplxTotSorbMRAsEQ
 
 ! ************************************************************************** !
 
-subroutine RMultiRateSorption(Res,Jac,compute_derivative,rt_auxvar, &
-                              global_auxvar,material_auxvar,reaction,option)
+subroutine ReactionSrfCplxMultirateRate(Res,Jac,compute_derivative, &
+                                        rt_auxvar,global_auxvar, &
+                                        material_auxvar,reaction,option)
   !
   ! Computes contribution to the accumualtion term due
   ! due to multirate sorption
@@ -598,9 +599,8 @@ subroutine RMultiRateSorption(Res,Jac,compute_derivative,rt_auxvar, &
     total_sorb_eq = 0.d0
     dtotal_sorb_eq = 0.d0
 
-    call RTotalSorbEqSurfCplx1(rt_auxvar,global_auxvar,material_auxvar, &
-                               reaction,option, &
-                               irxn, &
+    call ReactionSrfCplxTotalSorbEq1(rt_auxvar,global_auxvar, &
+                               material_auxvar,reaction,option,irxn, &
                                rt_auxvar%srfcplxrxn_free_site_conc(irxn), &
                                null_array_ptr, &
                                total_sorb_eq, &
@@ -632,16 +632,16 @@ subroutine RMultiRateSorption(Res,Jac,compute_derivative,rt_auxvar, &
 
   enddo ! ikinmrrxn
 
-end subroutine RMultiRateSorption
+end subroutine ReactionSrfCplxMultirateRate
 
 ! ************************************************************************** !
 
-subroutine RTotalSorbEqSurfCplx1(rt_auxvar,global_auxvar,material_auxvar, &
-                                 reaction,option, &
-                                 irxn,external_free_site_conc, &
-                                 external_srfcplx_conc, &
-                                 external_total_sorb, &
-                                 external_dtotal_sorb)
+subroutine ReactionSrfCplxTotalSorbEq1(rt_auxvar,global_auxvar, &
+                                       material_auxvar,reaction,option, &
+                                       irxn,external_free_site_conc, &
+                                       external_srfcplx_conc, &
+                                       external_total_sorb, &
+                                       external_dtotal_sorb)
   !
   ! Computes the total sorbed component concentrations and
   ! derivative with respect to free-ion for equilibrium
@@ -895,12 +895,13 @@ subroutine RTotalSorbEqSurfCplx1(rt_auxvar,global_auxvar,material_auxvar, &
     enddo ! k
   enddo ! isite
 
-end subroutine RTotalSorbEqSurfCplx1
+end subroutine ReactionSrfCplxTotalSorbEq1
 
 ! ************************************************************************** !
 
-subroutine RKineticSurfCplx(Res,Jac,compute_derivative,rt_auxvar, &
-                            global_auxvar,material_auxvar,reaction,option)
+subroutine ReactionSrfCplxKineticRate(Res,Jac,compute_derivative,rt_auxvar, &
+                                      global_auxvar,material_auxvar,reaction, &
+                                      option)
   !
   ! Computes contribution to residual and jacobian for
   ! kinetic surface complexation reactions
@@ -1098,6 +1099,85 @@ subroutine RKineticSurfCplx(Res,Jac,compute_derivative,rt_auxvar, &
   ! units of total_sorb = mol/m^3
   ! units of dtotal_sorb = kg water/m^3 bulk
 
-end subroutine RKineticSurfCplx
+end subroutine ReactionSrfCplxKineticRate
+
+! ************************************************************************** !
+
+subroutine ReactionSrfCplxMRUpdateKinState(rt_auxvar,reaction, &
+                                           kinetic_state_updated,option)
+  !
+  ! Update sorbed concentration for kinetic multirate surface complexation
+  ! reaction where the value at time level k+1 is stored implicitly
+  !
+  ! Author: Glenn Hammond
+  ! Date: 08/18/23
+  !
+  use Option_module
+
+  implicit none
+
+  type(reactive_transport_auxvar_type) :: rt_auxvar
+  class(reaction_rt_type) :: reaction
+  PetscBool :: kinetic_state_updated
+  type(option_type) :: option
+
+  PetscInt :: irate, irxn
+  PetscReal :: kdt, one_plus_kdt, k_over_one_plus_kdt
+
+  ! update multirate sorption concentrations
+  ! WARNING: below assumes site concentration multiplicative factor
+  do irxn = 1, reaction%surface_complexation%nkinmrsrfcplxrxn
+    kinetic_state_updated = PETSC_TRUE
+    do irate = 1, reaction%surface_complexation%kinmr_nrate(irxn)
+      kdt = reaction%surface_complexation%kinmr_rate(irate,irxn) * &
+            option%tran_dt
+      one_plus_kdt = 1.d0 + kdt
+      k_over_one_plus_kdt = &
+        reaction%surface_complexation%kinmr_rate(irate,irxn)/one_plus_kdt
+      rt_auxvar%kinmr_total_sorb(:,irate,irxn) = &
+        (rt_auxvar%kinmr_total_sorb(:,irate,irxn) + &
+        kdt * reaction%surface_complexation%kinmr_frac(irate,irxn) * &
+        rt_auxvar%kinmr_total_sorb(:,0,irxn))/one_plus_kdt
+    enddo
+  enddo
+
+end subroutine ReactionSrfCplxMRUpdateKinState
+
+! ************************************************************************** !
+
+subroutine ReactionSrfCplxUpdateKinState(rt_auxvar,reaction, &
+                                         kinetic_state_updated,option)
+  !
+  ! Update sorbed concentration for kinetic surface complexation reaction
+  ! where the value at time level k+1 is stored implicitly
+  !
+  ! Author: Glenn Hammond
+  ! Date: 08/18/23
+  !
+  use Option_module
+
+  implicit none
+
+  type(reactive_transport_auxvar_type) :: rt_auxvar
+  class(reaction_rt_type) :: reaction
+  PetscBool :: kinetic_state_updated
+  type(option_type) :: option
+
+  PetscInt :: k, irxn, icplx, ncplx, ikinrxn
+
+  ! update kinetic sorption concentrations
+  do ikinrxn = 1, reaction%surface_complexation%nkinsrfcplxrxn
+    kinetic_state_updated = PETSC_TRUE
+    irxn = reaction%surface_complexation%&
+              kinsrfcplxrxn_to_srfcplxrxn(ikinrxn)
+    ncplx = reaction%surface_complexation%srfcplxrxn_to_complex(0,irxn)
+    do k = 1, ncplx ! ncplx in rxn
+      icplx = reaction%surface_complexation%srfcplxrxn_to_complex(k,irxn)
+      rt_auxvar%kinsrfcplx_conc(icplx,ikinrxn) = &
+        rt_auxvar%kinsrfcplx_conc_kp1(icplx,ikinrxn)
+    enddo
+  enddo
+
+end subroutine ReactionSrfCplxUpdateKinState
 
 end module Reaction_Surface_Complexation_module

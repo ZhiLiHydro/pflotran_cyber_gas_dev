@@ -80,21 +80,13 @@ subroutine MphaseSetup(realization)
   !
 
   use Realization_Subsurface_class
-  use Patch_module
   use Output_Aux_module
 
   class(realization_subsurface_type) :: realization
 
-  type(patch_type), pointer :: cur_patch
   type(output_variable_list_type), pointer :: list
 
-  cur_patch => realization%patch_list%first
-  do
-    if (.not.associated(cur_patch)) exit
-    realization%patch => cur_patch
-    call MphaseSetupPatch(realization)
-    cur_patch => cur_patch%next
-  enddo
+  call MphaseSetupPatch(realization)
 
   list => realization%output_option%output_snap_variable_list
   call MPhaseSetPlotVariables(list)
@@ -134,12 +126,13 @@ subroutine MphaseSetupPatch(realization)
   type(coupler_type), pointer :: boundary_condition
   type(coupler_type), pointer :: source_sink
 
-  PetscInt :: ghosted_id, iconn, sum_connection, ipara, i, local_id
+  PetscInt :: ghosted_id, iconn, sum_connection, ipara, local_id
   type(Mphase_auxvar_type), pointer :: auxvars(:)
   type(Mphase_auxvar_type), pointer :: auxvars_bc(:)
   type(Mphase_auxvar_type), pointer :: auxvars_ss(:)
   type(sec_heat_type), pointer :: mphase_sec_heat_vars(:)
   type(coupler_type), pointer :: initial_condition
+  PetscReal :: tempreal
 
   option => realization%option
   patch => realization%patch
@@ -191,26 +184,19 @@ subroutine MphaseSetupPatch(realization)
     initial_condition => patch%initial_condition_list%first
     allocate(mphase_sec_heat_vars(grid%nlmax))
 
+    tempreal = UNINITIALIZED_DOUBLE
     do local_id = 1, grid%nlmax
       ghosted_id = grid%nL2G(local_id)
       if (patch%imat(ghosted_id) <= 0) cycle
       call SecondaryHeatAuxVarInit( &
            patch%material_property_array(patch%imat(ghosted_id))%ptr%multicontinuum, &
-           patch%aux%Material%auxvars(ghosted_id)%soil_properties(epsilon_index), &
-           patch%aux%Material%auxvars(ghosted_id)%soil_properties(half_matrix_width_index), &
+           patch%aux%Material%auxvars(ghosted_id)%secondary_prop%epsilon, &
+           patch%aux%Material%auxvars(ghosted_id)%secondary_prop%half_matrix_width, &
+           patch%aux%Material%auxvars(ghosted_id)%secondary_prop%ncells, &
            mphase_sec_heat_vars(local_id), initial_condition, option)
-           
     enddo
 
     patch%aux%SC_heat%sec_heat_vars => mphase_sec_heat_vars
-    do i = 1, size(patch%material_property_array)
-      if (.not. patch%material_property_array(1)%ptr%multicontinuum%ncells &
-           == patch%material_property_array(i)%ptr%multicontinuum%ncells) then
-        option%io_buffer = &
-          'NUMBER OF SECONDARY CELLS MUST BE EQUAL ACROSS MATERIALS'
-        call PrintErrMsg(option)
-      endif
-    enddo
   endif
 
 
@@ -277,24 +263,15 @@ subroutine MphaseComputeMassBalance(realization,mass_balance,mass_trapped)
   !
 
   use Realization_Subsurface_class
-  use Patch_module
 
   class(realization_subsurface_type) :: realization
   PetscReal :: mass_balance(realization%option%nflowspec,realization%option%nphase)
   PetscReal :: mass_trapped(realization%option%nphase)
 
-  type(patch_type), pointer :: cur_patch
-
   mass_balance = 0.d0
   mass_trapped = 0.d0
 
-  cur_patch => realization%patch_list%first
-  do
-    if (.not.associated(cur_patch)) exit
-    realization%patch => cur_patch
-    call MphaseComputeMassBalancePatch(realization,mass_balance,mass_trapped)
-    cur_patch => cur_patch%next
-  enddo
+  call MphaseComputeMassBalancePatch(realization,mass_balance,mass_trapped)
 
 end subroutine MphaseComputeMassBalance
 
@@ -523,20 +500,13 @@ function MphaseInitGuessCheck(realization)
   PetscInt ::  MphaseInitGuessCheck
   class(realization_subsurface_type) :: realization
   type(option_type), pointer :: option
-  type(patch_type), pointer :: cur_patch
   PetscInt :: ipass, ipass0
   PetscErrorCode :: ierr
 
   MphaseInitGuessCheck = UNINITIALIZED_INTEGER
   option => realization%option
   ipass = 1
-  cur_patch => realization%patch_list%first
-  do while(ipass > 0)
-    if (.not.associated(cur_patch)) exit
-    realization%patch => cur_patch
-    ipass = MphaseInitGuessCheckPatch(realization)
-    cur_patch => cur_patch%next
-  enddo
+  ipass = MphaseInitGuessCheckPatch(realization)
 
   call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
   if (option%comm%size > 1) then
@@ -674,31 +644,19 @@ subroutine MPhaseUpdateReason(reason, realization)
   ! Author: Glenn Hammond
   ! Date: 12/10/07
   !
-
   use Realization_Subsurface_class
-  use Patch_module
+
   implicit none
 
   class(realization_subsurface_type) :: realization
 
-  type(patch_type), pointer :: cur_patch
   PetscInt :: reason
 
   PetscInt :: re, re0
   PetscErrorCode :: ierr
 
   re = 1
-  cur_patch => realization%patch_list%first
-  do
-    if (.not.associated(cur_patch)) exit
-    realization%patch => cur_patch
-    call MPhaseUpdateReasonPatch(re, realization)
-    if (re<=0)then
-      exit
-    endif
-    cur_patch => cur_patch%next
-  enddo
-
+  call MPhaseUpdateReasonPatch(re, realization)
 
   call MPI_Barrier(realization%option%mycomm,ierr);CHKERRQ(ierr)
 
@@ -794,15 +752,7 @@ subroutine MphaseUpdateAuxVars(realization)
 
   class(realization_subsurface_type) :: realization
 
-  type(patch_type), pointer :: cur_patch
-
-  cur_patch => realization%patch_list%first
-  do
-    if (.not.associated(cur_patch)) exit
-    realization%patch => cur_patch
-    call MphaseUpdateAuxVarsPatch(realization)
-    cur_patch => cur_patch%next
-  enddo
+  call MphaseUpdateAuxVarsPatch(realization)
 
 end subroutine MphaseUpdateAuxVars
 
@@ -1058,7 +1008,6 @@ subroutine MphaseUpdateSolution(realization)
 
   use Realization_Subsurface_class
   use Field_module
-  use Patch_module
   use Global_Aux_module
 
   implicit none
@@ -1066,7 +1015,6 @@ subroutine MphaseUpdateSolution(realization)
   class(realization_subsurface_type) :: realization
 
   type(field_type), pointer :: field
-  type(patch_type), pointer :: cur_patch
   type(Mphase_auxvar_type), pointer :: auxvars(:)
   type(global_auxvar_type), pointer :: global_auxvars(:)
   PetscInt :: ghosted_id
@@ -1083,13 +1031,7 @@ subroutine MphaseUpdateSolution(realization)
 
 ! call VecCopy(realization%field%flow_xx,realization%field%flow_yy,ierr)
 
-  cur_patch => realization%patch_list%first
-  do
-    if (.not.associated(cur_patch)) exit
-    realization%patch => cur_patch
-    call MphaseUpdateSolutionPatch(realization)
-    cur_patch => cur_patch%next
-  enddo
+  call MphaseUpdateSolutionPatch(realization)
 
 ! make room for hysteric s-Pc-kr
 
@@ -1161,7 +1103,7 @@ subroutine MphaseUpdateSolutionPatch(realization)
         if (patch%imat(ghosted_id) <= 0) cycle
       endif
       if (Equal((patch%aux%Material%auxvars(ghosted_id)% &
-          soil_properties(epsilon_index)),1.d0)) cycle
+          secondary_prop%epsilon),1.d0)) cycle
 
       sec_dencpr = mphase_parameter%dencpr(patch%cct_id(ghosted_id)) ! secondary rho*c_p same as primary for now
 
@@ -1187,19 +1129,10 @@ subroutine MphaseUpdateFixedAccumulation(realization)
   !
 
   use Realization_Subsurface_class
-  use Patch_module
 
   class(realization_subsurface_type) :: realization
 
-  type(patch_type), pointer :: cur_patch
-
-  cur_patch => realization%patch_list%first
-  do
-    if (.not.associated(cur_patch)) exit
-    realization%patch => cur_patch
-    call MphaseUpdateFixedAccumPatch(realization)
-    cur_patch => cur_patch%next
-  enddo
+  call MphaseUpdateFixedAccumPatch(realization)
 
 end subroutine MphaseUpdateFixedAccumulation
 
@@ -1269,7 +1202,7 @@ subroutine MphaseUpdateFixedAccumPatch(realization)
     istart = iend-option%nflowdof+1
 
     if (option%use_sc) then
-      vol_frac_prim = material_auxvars(ghosted_id)%soil_properties(epsilon_index)
+      vol_frac_prim = material_auxvars(ghosted_id)%secondary_prop%epsilon
     endif
 
     if (.not.associated(mphase_parameter%dencpr)) print *,'no para'
@@ -2622,7 +2555,7 @@ subroutine MphaseResidualPatch(snes,xx,r,realization,ierr)
     istart = iend-option%nflowdof+1
 
     if (option%use_sc) then
-      vol_frac_prim = material_auxvars(ghosted_id)%soil_properties(epsilon_index)
+      vol_frac_prim = material_auxvars(ghosted_id)%secondary_prop%epsilon
     endif
 
     call MphaseAccumulation(auxvars(ghosted_id)%auxvar_elem(0), &
@@ -2649,7 +2582,7 @@ subroutine MphaseResidualPatch(snes,xx,r,realization,ierr)
         if (patch%imat(ghosted_id) <= 0) cycle
       endif
       if (Equal((material_auxvars(ghosted_id)% &
-          soil_properties(epsilon_index)),1.d0)) cycle
+          secondary_prop%epsilon),1.d0)) cycle
       iend = local_id*option%nflowdof
 
       sec_dencpr = mphase_parameter%dencpr(patch%cct_id(ghosted_id)) ! secondary rho*c_p same as primary for now
@@ -3066,7 +2999,6 @@ subroutine MphaseJacobian(snes,xx,A,B,realization,ierr)
   Mat :: J
   MatType :: mat_type
   PetscViewer :: viewer
-  type(patch_type), pointer :: cur_patch
   type(option_type), pointer :: option
   PetscReal :: norm
   character(len=MAXSTRINGLENGTH) :: string
@@ -3082,13 +3014,7 @@ subroutine MphaseJacobian(snes,xx,A,B,realization,ierr)
 
   call MatZeroEntries(J,ierr);CHKERRQ(ierr)
 
-  cur_patch => realization%patch_list%first
-  do
-    if (.not.associated(cur_patch)) exit
-    realization%patch => cur_patch
-    call MphaseJacobianPatch(snes,xx,J,J,realization,ierr)
-    cur_patch => cur_patch%next
-  enddo
+  call MphaseJacobianPatch(snes,xx,J,J,realization,ierr)
 
   if (realization%debug%matview_Matrix) then
     string = 'MPHjacobian'
@@ -3470,7 +3396,7 @@ subroutine MphaseJacobianPatch(snes,xx,A,B,realization,ierr)
 
     if (option%use_sc) then
       if (Equal((material_auxvars(ghosted_id)% &
-          soil_properties(epsilon_index)),1.d0)) cycle
+          secondary_prop%epsilon),1.d0)) cycle
       call SecondaryHeatJacobian(sec_heat_vars(local_id), &
                                  mphase_parameter%ckwet(patch%cct_id(ghosted_id)), &
                                  mphase_parameter%dencpr(patch%cct_id(ghosted_id)), &

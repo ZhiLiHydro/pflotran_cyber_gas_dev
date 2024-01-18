@@ -296,7 +296,10 @@ subroutine InvAuxGetSetParamValueByMat(aux,value,iparameter_type,imat,iflag)
                                POROSITY, VG_ALPHA, VG_SR, VG_M, &
                                ARCHIE_CEMENTATION_EXPONENT, &
                                ARCHIE_SATURATION_EXPONENT, &
-                               ARCHIE_TORTUOSITY_CONSTANT
+                               ARCHIE_TORTUOSITY_CONSTANT, &
+                               SURFACE_ELECTRICAL_CONDUCTIVITY, &
+                               WAXMAN_SMITS_CLAY_CONDUCTIVITY, &
+                               VERTICAL_PERM_ANISOTROPY_RATIO
 
   type(inversion_aux_type) :: aux
   PetscReal :: value
@@ -326,6 +329,26 @@ subroutine InvAuxGetSetParamValueByMat(aux,value,iparameter_type,imat,iflag)
         if (Initialized(material_property%vertical_anisotropy_ratio)) then
           value = value * material_property%vertical_anisotropy_ratio
         endif
+        material_property%permeability(3,3) = value
+      endif
+    case(VERTICAL_PERM_ANISOTROPY_RATIO)
+      if (iflag == INVAUX_GET_MATERIAL_VALUE) then
+        value = material_property%vertical_anisotropy_ratio
+        if (Uninitialized(value)) then
+          call aux%driver%PrintErrMsg('Anisotropic permeability is not &
+            &prescribed for material "'//trim(material_property%name)//'". &
+            &Therefore, VERTICAL_PERM_ANISOTROPY_RATIO cannot be an &
+            &inversion parameter for that material.')
+        endif
+      else
+        material_property%vertical_anisotropy_ratio = value
+        if (.not.Equal(material_property%permeability(1,1), &
+                       material_property%permeability(2,2))) then
+          call aux%driver%PrintErrMsg('Cannot invert for vertical &
+            &permeability anisotropy ratio when the X and Y permeabilities &
+            &do not match.')
+        endif
+        value = value * material_property%permeability(1,1)
         material_property%permeability(3,3) = value
       endif
     case(POROSITY)
@@ -389,6 +412,18 @@ subroutine InvAuxGetSetParamValueByMat(aux,value,iparameter_type,imat,iflag)
         value = material_property%archie_tortuosity_constant
       else
         material_property%archie_tortuosity_constant = value
+      endif
+    case(SURFACE_ELECTRICAL_CONDUCTIVITY)
+      if (iflag == INVAUX_GET_MATERIAL_VALUE) then
+        value = material_property%surface_electrical_conductivity
+      else
+        material_property%surface_electrical_conductivity = value
+      endif
+    case(WAXMAN_SMITS_CLAY_CONDUCTIVITY)
+      if (iflag == INVAUX_GET_MATERIAL_VALUE) then
+        value = material_property%waxman_smits_clay_conductivity
+      else
+        material_property%waxman_smits_clay_conductivity = value
       endif
     case default
       string = 'Unrecognized variable in &
@@ -538,7 +573,10 @@ subroutine InvAuxGetParamValueByCell(aux,value,iparameter_type,imat, &
                                VG_ALPHA, VG_SR, VG_M, &
                                ARCHIE_CEMENTATION_EXPONENT, &
                                ARCHIE_SATURATION_EXPONENT, &
-                               ARCHIE_TORTUOSITY_CONSTANT
+                               ARCHIE_TORTUOSITY_CONSTANT, &
+                               SURFACE_ELECTRICAL_CONDUCTIVITY, &
+                               WAXMAN_SMITS_CLAY_CONDUCTIVITY, &
+                               VERTICAL_PERM_ANISOTROPY_RATIO
 
   class(inversion_aux_type) :: aux
   PetscReal :: value
@@ -551,7 +589,8 @@ subroutine InvAuxGetParamValueByCell(aux,value,iparameter_type,imat, &
 
   select case(iparameter_type)
     case(ELECTRICAL_CONDUCTIVITY,ARCHIE_CEMENTATION_EXPONENT, &
-         ARCHIE_SATURATION_EXPONENT,ARCHIE_TORTUOSITY_CONSTANT)
+         ARCHIE_SATURATION_EXPONENT,ARCHIE_TORTUOSITY_CONSTANT, &
+         SURFACE_ELECTRICAL_CONDUCTIVITY,WAXMAN_SMITS_CLAY_CONDUCTIVITY)
       value = MaterialAuxVarGetValue(material_auxvar,iparameter_type)
     case(PERMEABILITY)
       value = MaterialAuxVarGetValue(material_auxvar,PERMEABILITY_X)
@@ -568,6 +607,8 @@ subroutine InvAuxGetParamValueByCell(aux,value,iparameter_type,imat, &
         case(VG_SR)
           value = cc%saturation_function%GetResidualSaturation()
       end select
+    case(VERTICAL_PERM_ANISOTROPY_RATIO)
+      value = aux%material_property_array(imat)%ptr%vertical_anisotropy_ratio
     case default
       call aux%driver%PrintErrMsg('Unrecognized variable in &
                                    &InvAuxGetParamValueByCell: ' // &

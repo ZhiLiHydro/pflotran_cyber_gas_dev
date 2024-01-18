@@ -197,11 +197,15 @@ subroutine PMCSubsurfaceOSRTStepDT(this,stop_flag)
   PetscInt :: sum_linear_iterations
   PetscInt :: sum_linear_iterations_temp
   PetscInt :: sum_wasted_linear_iterations
+  PetscInt :: num_timesteps
+  PetscInt :: num_kinetic_state_updates
+  PetscInt :: max_num_kinetic_state_updates
   PetscInt :: icut
-  PetscInt :: rreact_error
+  PetscInt :: rstep_error
   PetscInt :: tempint
   PetscReal :: tconv
   PetscReal :: tempreal
+  PetscReal :: guess(this%realization%reaction%ncomp)
 
   character(len=MAXSTRINGLENGTH) :: string
   character(len=MAXWORDLENGTH) :: tunit
@@ -252,20 +256,7 @@ subroutine PMCSubsurfaceOSRTStepDT(this,stop_flag)
 
   call process_model%InitializeTimestep()
 
-  ! from RTUpdateRHSCoefs
-  ! update time derivative on RHS
-#if 0
-  call VecGetArrayF90(process_model%rhs_coef,vec_ptr,ierr);CHKERRQ(ierr)
-  do local_id = 1, grid%nlmax
-    ghosted_id = grid%nL2G(local_id)
-    if (patch%imat(ghosted_id) <= 0) cycle
-    vec_ptr(local_id) = material_auxvars(ghosted_id)%porosity* &
-                        global_auxvars(ghosted_id)%sat(iphase)* &
-                        1000.d0* &
-                        material_auxvars(ghosted_id)%volume
-  enddo
-  call VecRestoreArrayF90(process_model%rhs_coef,vec_ptr,ierr);CHKERRQ(ierr)
-#else
+  ! Calculate RHS portion of accumulation term at k
   call VecGetArrayF90(process_model%fixed_accum,vec_ptr,ierr);CHKERRQ(ierr)
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
@@ -275,30 +266,18 @@ subroutine PMCSubsurfaceOSRTStepDT(this,stop_flag)
     iend = offset_global + reaction%naqcomp
     vec_ptr(istart:iend) = material_auxvars(ghosted_id)%porosity* &
                            global_auxvars(ghosted_id)%sat(iphase)* &
-                           1000.d0* &
+                           1000.d0* &  ! L per m^3
                            material_auxvars(ghosted_id)%volume* &
                            rt_auxvars(ghosted_id)%total(:,iphase)
-    !TODO(geh): do immobile need to be stored; they are in tran_xx
-    if (nimmobile > 0) then
-      ! need to store immobile concentrations for the purpose of reverting
-      ! when reaction fails
-      istart = istart + reaction%offset_immobile
-      iend = istart + nimmobile - 1
-      vec_ptr(istart:iend) = rt_auxvars(ghosted_id)%immobile
-    endif
   enddo
   call VecRestoreArrayF90(process_model%fixed_accum,vec_ptr, &
                           ierr);CHKERRQ(ierr)
-#endif
 
   do
 
     call PetscTime(log_start_time,ierr);CHKERRQ(ierr)
 
-    rreact_error = 0
-
-!    call RTCalculateRHS_t0(realization)
-
+    rstep_error = 0
     call PMRTWeightFlowParameters(process_model,TIME_TpDT)
     ! update diffusion/dispersion coefficients
     call RTUpdateTransportCoefs(realization)
@@ -326,11 +305,6 @@ subroutine PMCSubsurfaceOSRTStepDT(this,stop_flag)
       tempint = idof-1
       call VecStrideGather(process_model%rhs,tempint,field%work,INSERT_VALUES, &
                            ierr);CHKERRQ(ierr)
-
-!debug      call VecGetArrayF90(field%work,vec_ptr,ierr);CHKERRQ(ierr)
-!debug      print *, 'Trhs: ', trim(StringWrite(vec_ptr))
-!debug      call VecRestoreArrayF90(field%work,vec_ptr,ierr);CHKERRQ(ierr)
-
       if (realization%debug%vecview_residual) then
         string = 'Trhs'
         call DebugCreateViewer(realization%debug,string,option,viewer)
@@ -345,7 +319,6 @@ subroutine PMCSubsurfaceOSRTStepDT(this,stop_flag)
         timestepper%cumulative_solver_time + (log_end_time - log_ksp_start_time)
 
       call VecGetArrayF90(field%work,vec_ptr,ierr);CHKERRQ(ierr)
-!debug      print *, 'Tsol: ', trim(StringWrite('(es17.8)',vec_ptr))
       do local_id = 1, grid%nlmax
         ghosted_id = grid%nL2G(local_id)
         if (patch%imat(ghosted_id) <= 0) cycle
@@ -371,6 +344,7 @@ subroutine PMCSubsurfaceOSRTStepDT(this,stop_flag)
     log_start_time = log_end_time
 
     ! react all chemical components
+    max_num_kinetic_state_updates = 0
     call VecGetArrayF90(field%tran_xx,tran_xx_p,ierr);CHKERRQ(ierr)
     do local_id = 1, grid%nlmax
       ghosted_id = grid%nL2G(local_id)
@@ -378,16 +352,22 @@ subroutine PMCSubsurfaceOSRTStepDT(this,stop_flag)
       offset_global = (local_id-1)*reaction%ncomp
       istart = offset_global + 1
       iend = offset_global + reaction%ncomp
+      ! guess has to be free ion concentration
+      guess(1:reaction%naqcomp) = rt_auxvars(ghosted_id)%pri_molal(:)
       if (nimmobile > 0) then
         tempint = istart+reaction%offset_immobile
         rt_auxvars(ghosted_id)%immobile = tran_xx_p(tempint:tempint+nimmobile-1)
+        tempint = reaction%offset_immobile
+        guess(tempint+1:tempint+nimmobile) = rt_auxvars(ghosted_id)%immobile
       endif
-      call RReact(tran_xx_p(istart:iend),rt_auxvars(ghosted_id), &
-                  global_auxvars(ghosted_id),material_auxvars(ghosted_id), &
-                  num_iterations,reaction,grid%nG2A(ghosted_id),option, &
-                  PETSC_TRUE,PETSC_TRUE,rreact_error)
+      call RStep(guess,rt_auxvars(ghosted_id), &
+                 global_auxvars(ghosted_id),material_auxvars(ghosted_id), &
+                 num_timesteps,num_iterations,num_kinetic_state_updates, &
+                 reaction,grid%nG2A(ghosted_id),option,rstep_error)
       sum_newton_iterations = sum_newton_iterations + num_iterations
-      if (rreact_error /= 0) exit
+      max_num_kinetic_state_updates = max(max_num_kinetic_state_updates, &
+                                          num_kinetic_state_updates)
+      if (rstep_error /= 0) exit
       ! set primary dependent var back to free-ion molality
       iend = offset_global + reaction%naqcomp
       tran_xx_p(istart:iend) = rt_auxvars(ghosted_id)%pri_molal(:)
@@ -398,7 +378,7 @@ subroutine PMCSubsurfaceOSRTStepDT(this,stop_flag)
     enddo
     call VecRestoreArrayF90(field%tran_xx,tran_xx_p,ierr);CHKERRQ(ierr)
 
-    call MPI_Allreduce(MPI_IN_PLACE,rreact_error,ONE_INTEGER_MPI,MPI_INTEGER, &
+    call MPI_Allreduce(MPI_IN_PLACE,rstep_error,ONE_INTEGER_MPI,MPI_INTEGER, &
                        MPI_MAX,option%mycomm,ierr);CHKERRQ(ierr)
     call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
     call PetscTime(log_end_time,ierr);CHKERRQ(ierr)
@@ -407,8 +387,12 @@ subroutine PMCSubsurfaceOSRTStepDT(this,stop_flag)
     process_model%cumulative_newton_iterations = &
       process_model%cumulative_newton_iterations + sum_newton_iterations
 
-    if (rreact_error /= 0) then
-      !TODO(geh): move to timestepper base and call from daughters.
+    if (rstep_error /= 0) then
+      if (max_num_kinetic_state_updates > 1) then
+        option%io_buffer = 'RStep() failed with > 1 substeps. You must use &
+          &global implicit reactive transport (GIRT).'
+        call PrintErrMsg(option)
+      endif
       sum_wasted_linear_iterations = sum_wasted_linear_iterations + &
         sum_linear_iterations_temp
       call timestepper%CutDT(process_model,icut,stop_flag,'osrt_rxn', &
@@ -438,7 +422,6 @@ subroutine PMCSubsurfaceOSRTStepDT(this,stop_flag)
            sum_linear_iterations,timestepper%cumulative_linear_iterations, &
            icut,timestepper%cumulative_time_step_cuts
   call PrintMsg(option)
-
 
   call PetscTime(log_end_time,ierr);CHKERRQ(ierr)
   this%cumulative_time = this%cumulative_time + &

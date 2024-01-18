@@ -1812,7 +1812,7 @@ subroutine OutputPrintCouplers(realization_base,istep)
   PetscInt :: istep
 
   type(option_type), pointer :: option
-  type(patch_type), pointer :: cur_patch
+  type(patch_type), pointer :: patch
   type(field_type), pointer :: field
   type(coupler_type), pointer :: coupler
   type(debug_type), pointer :: flow_debug
@@ -1826,10 +1826,11 @@ subroutine OutputPrintCouplers(realization_base,istep)
   character(len=MAXWORDLENGTH), allocatable :: auxvar_names(:)
   PetscErrorCode :: ierr
 
-
   option => realization_base%option
   flow_debug => realization_base%debug
   field => realization_base%field
+  patch => realization_base%patch
+  grid => patch%grid
 
   if (len_trim(flow_debug%coupler_string) == 0) then
     option%io_buffer = &
@@ -1873,26 +1874,18 @@ subroutine OutputPrintCouplers(realization_base,istep)
     if (ierr /= 0) exit
 
     do iaux = 1, size(iauxvars)
-      cur_patch => realization_base%patch_list%first
-      do
-        if (.not.associated(cur_patch)) exit
-        grid => cur_patch%grid
-        coupler => CouplerGetPtrFromList(word, &
-                                         cur_patch%boundary_condition_list, &
-                                         option)
-        call VecZeroEntries(field%work,ierr);CHKERRQ(ierr)
-        call VecGetArrayF90(field%work,vec_ptr,ierr);CHKERRQ(ierr)
-        if (associated(coupler)) then
-          cur_connection_set => coupler%connection_set
-          do iconn = 1, cur_connection_set%num_connections
-            local_id = cur_connection_set%id_dn(iconn)
-            if (cur_patch%imat(grid%nL2G(local_id)) <= 0) cycle
-            vec_ptr(local_id) = coupler%flow_aux_real_var(iauxvars(iaux),iconn)
-          enddo
-        endif
-        call VecRestoreArrayF90(field%work,vec_ptr,ierr);CHKERRQ(ierr)
-        cur_patch => cur_patch%next
-      enddo
+      coupler => CouplerGetPtrFromList(word,patch%boundary_condition_list, &
+                                       option)
+      call VecZeroEntries(field%work,ierr);CHKERRQ(ierr)
+      call VecGetArrayF90(field%work,vec_ptr,ierr);CHKERRQ(ierr)
+      if (associated(coupler)) then
+        cur_connection_set => coupler%connection_set
+        do iconn = 1, cur_connection_set%num_connections
+          local_id = cur_connection_set%id_dn(iconn)
+          if (patch%imat(grid%nL2G(local_id)) <= 0) cycle
+          vec_ptr(local_id) = coupler%flow_aux_real_var(iauxvars(iaux),iconn)
+        enddo
+      endif
 
       if (istep > 0) then
         write(string,*) istep
@@ -1951,12 +1944,11 @@ subroutine OutputPrintCouplersH5(realization_base,istep)
   PetscInt :: istep
 
   type(option_type), pointer :: option
-  type(patch_type), pointer :: cur_patch
+  type(patch_type), pointer :: patch
   type(field_type), pointer :: field
   type(coupler_type), pointer :: coupler
   type(debug_type), pointer :: flow_debug
   type(grid_type), pointer :: grid
-  type(patch_type), pointer :: patch
   type(discretization_type), pointer :: discretization
   type(output_option_type), pointer :: output_option
   character(len=MAXWORDLENGTH) :: word
@@ -2071,26 +2063,19 @@ subroutine OutputPrintCouplersH5(realization_base,istep)
     if (ierr /= 0) exit
 
     do iaux = 1, size(iauxvars)
-      cur_patch => realization_base%patch_list%first
-      do
-        if (.not.associated(cur_patch)) exit
-        grid => cur_patch%grid
-        coupler => CouplerGetPtrFromList(word, &
-                                         cur_patch%boundary_condition_list, &
-                                         option)
-        call VecZeroEntries(field%work,ierr);CHKERRQ(ierr)
-        call VecGetArrayF90(field%work,vec_ptr,ierr);CHKERRQ(ierr)
-        if (associated(coupler)) then
-          cur_connection_set => coupler%connection_set
-          do iconn = 1, cur_connection_set%num_connections
-            local_id = cur_connection_set%id_dn(iconn)
-            if (cur_patch%imat(grid%nL2G(local_id)) <= 0) cycle
-            vec_ptr(local_id) = coupler%flow_aux_real_var(iauxvars(iaux),iconn)
-          enddo
-        endif
-        call VecRestoreArrayF90(field%work,vec_ptr,ierr);CHKERRQ(ierr)
-        cur_patch => cur_patch%next
-      enddo
+      coupler => CouplerGetPtrFromList(word,patch%boundary_condition_list, &
+                                       option)
+      call VecZeroEntries(field%work,ierr);CHKERRQ(ierr)
+      call VecGetArrayF90(field%work,vec_ptr,ierr);CHKERRQ(ierr)
+      if (associated(coupler)) then
+        cur_connection_set => coupler%connection_set
+        do iconn = 1, cur_connection_set%num_connections
+          local_id = cur_connection_set%id_dn(iconn)
+          if (patch%imat(grid%nL2G(local_id)) <= 0) cycle
+          vec_ptr(local_id) = coupler%flow_aux_real_var(iauxvars(iaux),iconn)
+        enddo
+      endif
+      call VecRestoreArrayF90(field%work,vec_ptr,ierr);CHKERRQ(ierr)
 
       if (istep > 0) then
         write(string,*) istep
@@ -2508,9 +2493,12 @@ subroutine OutputListEnsureVariablesExist(output_variable_list,option)
   use Option_module
   use Material_Aux_module, only : soil_compressibility_index, &
                                   soil_reference_pressure_index, &
+                                  electrical_conductivity_index, &
                                   archie_cementation_exp_index, &
                                   archie_saturation_exp_index, &
-                                  archie_tortuosity_index
+                                  archie_tortuosity_index, &
+                                  surf_elec_conduct_index, &
+                                  ws_clay_conduct_index
 
   use Variables_module
 
@@ -2537,6 +2525,14 @@ subroutine OutputListEnsureVariablesExist(output_variable_list,option)
         if (soil_compressibility_index == 0) error_flag = PETSC_TRUE
       case(SOIL_REFERENCE_PRESSURE)
         if (soil_reference_pressure_index == 0) error_flag = PETSC_TRUE
+      case(ELECTRICAL_CONDUCTIVITY)
+        if (electrical_conductivity_index == 0 .and. &
+            (option%iflowmode == NULL_MODE .and. &
+             option%itranmode == NULL_MODE)) then
+          error_flag = PETSC_TRUE
+          error_string = ' - must be defined under MATERIAL_PROPERTY &
+            &(for ERT alone)'
+        endif
       case(ARCHIE_CEMENTATION_EXPONENT)
         if (archie_cementation_exp_index == 0) then
           error_flag = PETSC_TRUE
@@ -2552,6 +2548,17 @@ subroutine OutputListEnsureVariablesExist(output_variable_list,option)
           error_flag = PETSC_TRUE
           error_string = ' - must be defined under MATERIAL_PROPERTY'
         endif
+      case(SURFACE_ELECTRICAL_CONDUCTIVITY)
+        if (surf_elec_conduct_index == 0) then
+          error_flag = PETSC_TRUE
+          error_string = ' - must be defined under MATERIAL_PROPERTY'
+        endif
+      case(WAXMAN_SMITS_CLAY_CONDUCTIVITY)
+        if (ws_clay_conduct_index == 0) then
+          error_flag = PETSC_TRUE
+          error_string = ' - must be defined under MATERIAL_PROPERTY'
+        endif
+      ! ADD_SOIL_PROPERTY_INDEX_HERE
     end select
     if (error_flag) then
       error_count = error_count + 1
