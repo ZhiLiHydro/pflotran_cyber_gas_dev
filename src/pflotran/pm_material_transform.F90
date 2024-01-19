@@ -338,76 +338,101 @@ subroutine PMMaterialTransformSetup(this)
     endif
   enddo
 
-  if (associated(patch%aux%MTransform%buffer_erosion)) then
-  if (associated(patch%aux%MTransform%buffer_erosion%buffer_erosion_model%frac_aperture_dataset)) then
+  if (associated(patch%material_transform%buffer_erosion)) then
+  if (associated(patch%material_transform%buffer_erosion%buffer_erosion_model%frac_aperture_dataset)) then
      !   dataset => DatasetBaseGetPointer
      call MTransformReadDatasettoVec(this%realization, &
-            patch%aux%MTransform%buffer_erosion%buffer_erosion_model%frac_aperture_dataset, &
+            patch%aux%MTransform%buffer_erosion%buffer_erosion_model%frac_aperture_dataset%name, &
             grid,field%work,option)
 
      !globaltolocal?
      call this%realization%comm1%GlobalToLocal(field%work,field%work_loc)
      call VecGetArrayReadF90(field%work,work_loc_p,ierr);CHKERRQ(ierr)
-     do ghosted_id = 1, grid%ngmax !!skip cells not with buffer erosion to save time?
+     do ghosted_id = 1, grid%ngmax
+        if (Initialized(patch%mtf_id(ghosted_id))) then
           m_transform_auxvars(ghosted_id)%be_aux%frac_aperture = &
-            work_loc_p(ghosted_id)
+               work_loc_p(ghosted_id)
+        endif
      enddo
      call VecRestoreArrayReadF90(field%work_loc,work_loc_p, &
           ierr);CHKERRQ(ierr)
-  endif
-
-  if (associated(patch%aux%MTransform%buffer_erosion%buffer_erosion_model%frac_angle_dataset)) then
+  else
+     !!TODO: add in error message
+     do ghosted_id = 1, grid%ngmax
+        if (Initialized(patch%mtf_id(ghosted_id))) then
+          m_transform_auxvars(ghosted_id)%be_aux%frac_aperture = &
+               patch%material_transform%buffer_erosion%buffer_erosion_model%frac_aperture
+        endif
+     enddo
+  endif     
+  if (associated(patch%material_transform%buffer_erosion%buffer_erosion_model%frac_angle_dataset)) then
      !   dataset => DatasetBaseGetPointer
      call MTransformReadDatasettoVec(this%realization, &
-            patch%aux%MTransform%buffer_erosion%buffer_erosion_model%frac_angle_dataset, &
+            patch%material_transform%buffer_erosion%buffer_erosion_model%frac_angle_dataset%name, &
             grid,field%work,option)
 
      call this%realization%comm1%GlobalToLocal(field%work,field%work_loc)
      call VecGetArrayReadF90(field%work,work_loc_p,ierr);CHKERRQ(ierr)
      do ghosted_id = 1, grid%ngmax
+        if (Initialized(patch%mtf_id(ghosted_id))) then
           m_transform_auxvars(ghosted_id)%be_aux%frac_angle = &
-            work_loc_p(ghosted_id)
+               work_loc_p(ghosted_id)
+        endif
      enddo
      call VecRestoreArrayReadF90(field%work_loc,work_loc_p, &
           ierr);CHKERRQ(ierr)
+    else
+     !!TODO: add in error message
+       do ghosted_id = 1, grid%ngmax
+          if (Initialized(patch%mtf_id(ghosted_id))) then
+          m_transform_auxvars(ghosted_id)%be_aux%frac_angle = &
+               patch%material_transform%buffer_erosion%buffer_erosion_model%frac_angle
+          endif
+     enddo
   endif
 
   !better way to do this?
-  if (associated(patch%aux%MTransform%buffer_erosion%buffer_erosion_model%water_velx_dataset)) then
+  if (associated(patch%material_transform%buffer_erosion%buffer_erosion_model%water_velx_dataset)) then
      call MTransformReadDatasettoVec(this%realization, &
-            patch%aux%MTransform%buffer_erosion%buffer_erosion_model%water_velx_dataset, &
+            patch%material_transform%buffer_erosion%buffer_erosion_model%water_velx_dataset%name, &
             grid,field%work,option)
      !double check put in function 
      call this%realization%comm1%GlobalToLocal(field%work,field%work_loc)
      call VecGetArrayReadF90(field%work,work_loc_p,ierr);CHKERRQ(ierr)
      do ghosted_id = 1, grid%ngmax
+        if (Initialized(patch%mtf_id(ghosted_id))) then
           m_transform_auxvars(ghosted_id)%be_aux%water_vel(1) = &
-            work_loc_p(ghosted_id)
+               work_loc_p(ghosted_id)
+         endif
      enddo
      call VecRestoreArrayReadF90(field%work_loc,work_loc_p, &
           ierr);CHKERRQ(ierr)
      
      call MTransformReadDatasettoVec(this%realization, &
-            patch%aux%MTransform%buffer_erosion%buffer_erosion_model%water_vely_dataset, &
+            patch%material_transform%buffer_erosion%buffer_erosion_model%water_vely_dataset%name, &
             grid,field%work,option)
      call this%realization%comm1%GlobalToLocal(field%work,field%work_loc)
      call VecGetArrayReadF90(field%work,work_loc_p,ierr);CHKERRQ(ierr)
      do ghosted_id = 1, grid%ngmax
+        if (Initialized(patch%mtf_id(ghosted_id))) then
           m_transform_auxvars(ghosted_id)%be_aux%water_vel(2) = &
-            work_loc_p(ghosted_id)
+               work_loc_p(ghosted_id)
+        endif
      enddo
      call VecRestoreArrayReadF90(field%work_loc,work_loc_p, &
           ierr);CHKERRQ(ierr)
 
      call MTransformReadDatasettoVec(this%realization, &
-            patch%aux%MTransform%buffer_erosion%buffer_erosion_model%water_velz_dataset, &
+            patch%material_transform%buffer_erosion%buffer_erosion_model%water_velz_dataset%name, &
             grid,field%work,option)
 
      call this%realization%comm1%GlobalToLocal(field%work,field%work_loc)
      call VecGetArrayReadF90(field%work,work_loc_p,ierr);CHKERRQ(ierr)
      do ghosted_id = 1, grid%ngmax
+        if (Initialized(patch%mtf_id(ghosted_id))) then
           m_transform_auxvars(ghosted_id)%be_aux%water_vel(3) = &
-            work_loc_p(ghosted_id)
+               work_loc_p(ghosted_id)
+        endif
      enddo
      call VecRestoreArrayReadF90(field%work_loc,work_loc_p, &
           ierr);CHKERRQ(ierr)
@@ -1732,10 +1757,9 @@ end subroutine PMMaterialTransformDestroy
 
 ! ************************************************************************** !
 
-subroutine MTransformReadDatasettoVec(realization,dataset,grid,vec,option)
+subroutine MTransformReadDatasettoVec(realization,name,grid,vec,option)
 
   use Realization_Subsurface_class
-  use Field_module
   use Grid_module
   use Option_module
 !  use Patch_module
@@ -1746,29 +1770,28 @@ subroutine MTransformReadDatasettoVec(realization,dataset,grid,vec,option)
   use HDF5_module
   
   class(realization_subsurface_type) :: realization
-  class(dataset_base_type) :: dataset
-!  class(dataset_base_type), pointer :: dataset_p
+ ! class(dataset_base_type) :: dataset
+  class(dataset_base_type), pointer :: dataset_p
   Vec :: vec
 
-  type(field_type), pointer :: field
+!  type(field_type), pointer :: field
   type(grid_type), pointer :: grid
   type(option_type), pointer :: option
   character(len=MAXSTRINGLENGTH) :: group_name
-  character(len=MAXSTRINGLENGTH) :: dataset_name
+  character(len=MAXSTRINGLENGTH) :: dataset_name, string
+  character(len=*) :: name
   character(len=MAXSTRINGLENGTH) :: filename
   PetscInt :: local_id, ghosted_id
   PetscErrorCode :: ierr
 
   PetscReal, pointer :: vec_p(:)
 
-  field => realization%field
+  string = 'Material Transform Dataset'
+  dataset_p => DatasetBaseGetPointer(realization%datasets, &
+                                     name, &
+                                     string,option)
 
-!  string = 'Material Transform Dataset'
-!  dataset_p => DatasetBaseGetPointer(realization%datasets, &
-!                                     dataset%name, &
-!                                     string,option)
-!  select type(d=>dataset_p)
-       select type(dataset)
+  select type(dataset=>dataset_p)
   class is(dataset_gridded_hdf5_type)
        call VecGetArrayF90(vec,vec_p,ierr);CHKERRQ(ierr)
       dataset_name = dataset%name

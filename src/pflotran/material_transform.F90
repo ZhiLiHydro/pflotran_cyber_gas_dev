@@ -1335,7 +1335,7 @@ subroutine BEDefaultRead(buffer_erosion_model, input, option)
   type(input_type), pointer :: input
   type(option_type) :: option
 
-  character(len=MAXWORDLENGTH) :: keyword
+  character(len=MAXWORDLENGTH) :: keyword, name
   character(len=MAXSTRINGLENGTH) :: error_string
 
   input%ierr = 0
@@ -1373,16 +1373,16 @@ subroutine BEDefaultRead(buffer_erosion_model, input, option)
             be_model%water_vely_dataset => DatasetBaseCreate()
             be_model%water_velz_dataset => DatasetBaseCreate()
             call InputReadNChars(input,option, &
-                                 be_model%water_velx_dataset%name, &
+                                 name, &
                                  MAXWORDLENGTH,PETSC_TRUE)
             call InputErrorMsg(input,option,'water velocity dataset',&
                                'BUFFER_EROSION, GENERAL')
             be_model%water_velx_dataset%name = &
-                 trim(be_model%water_velx_dataset%name) // 'X'
+                 trim(name) // 'X'
             be_model%water_vely_dataset%name = &
-                 trim(be_model%water_vely_dataset%name) // 'Y'
+                 trim(name) // 'Y'
             be_model%water_velz_dataset%name = &
-                 trim(be_model%water_velz_dataset%name) // 'Z'
+                 trim(name) // 'Z'
           !Todo change to dataset
           case('ION_CONCENTRATION')
             call InputReadDouble(input,option,be_model%ion_conc)
@@ -1485,6 +1485,13 @@ subroutine BEDefaultRead(buffer_erosion_model, input, option)
   enddo
   call InputPopBlock(input,option)
 
+  select type(be_model => buffer_erosion_model)
+    class is(BE_default_type)
+      be_model%critical_volume = be_model%f1 * ((PI**2 * 0.5 * be_model%bh_rad * &
+       (be_model%bh_rad - be_model%can_rad)**2) - (((2*PI) / 3) * &
+       be_model%bh_rad - be_model%can_rad)**3)  
+  end select
+   
 end subroutine BEDefaultRead
 
 ! ************************************************************************** !
@@ -2301,9 +2308,9 @@ subroutine BEDefaultOverallBufferLossRate(this, auxvar, global_auxvar, option)
   PetscReal :: t_yr, dt_yr                  ! simulation time in years
   PetscReal :: ci_mM
 
-  t_yr = option%time*60.d0*60.d0*24.d0*365.d0  ! sec,min,hr,day
+  t_yr = option%time / (60.d0*60.d0*24.d0*365.d0)  ! sec,min,hr,day
   ! Overall buffer loss rate
-  dt_yr = option%time*60.d0*60.d0*24.d0*365.d0
+  dt_yr = option%dt / (60.d0*60.d0*24.d0*365.d0)
   
   call BEDefaultIntrustionRate(this,t_yr,auxvar)
   call BEDefaultSeepingErosion(this,auxvar,option)
@@ -2365,8 +2372,9 @@ subroutine CCDefaultCopperCorrosionRate(this, auxvar, BE_auxvar, BE, option)
   type(option_type) :: option
 
   PetscReal :: Qa, V, Qlim, Qah, A
-  PetscReal :: u, r_sub
+  PetscReal :: u, r_sub, dt_yr
 
+  dt_yr = option%dt / (60.d0*60.d0*24.d0*365.d0)
   ! magnitude of water velocity using 2-norm fucntion from BLAS
   !make sure units consistent with velocity and option%dt
   u = sqrt(BE_auxvar%water_vel(1)**2.d0 * &
@@ -2394,7 +2402,7 @@ subroutine CCDefaultCopperCorrosionRate(this, auxvar, BE_auxvar, BE, option)
   A = this%f2 * (PI * this%can_rad * r_sub)
 
   auxvar%cur_canister_corroded = auxvar%cur_canister_corroded + &
-    this%ratio_M * this%N_m * (Qah * this%c_hs * option%dt) / &
+    this%ratio_M * this%N_m * (Qah * this%c_hs * dt_yr) / &
     (this%can_den * A)
   
   if (auxvar%cur_canister_corroded >= this%can_wall) then
