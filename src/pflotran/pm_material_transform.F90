@@ -342,7 +342,7 @@ subroutine PMMaterialTransformSetup(this)
   if (associated(patch%material_transform%buffer_erosion%buffer_erosion_model%frac_aperture_dataset)) then
      !   dataset => DatasetBaseGetPointer
      call MTransformReadDatasettoVec(this%realization, &
-            patch%aux%MTransform%buffer_erosion%buffer_erosion_model%frac_aperture_dataset%name, &
+            patch%material_transform%buffer_erosion%buffer_erosion_model%frac_aperture_dataset%name, &
             grid,field%work,option)
 
      !globaltolocal?
