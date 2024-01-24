@@ -784,101 +784,8 @@ subroutine PMMTransformCheckpointHDF5(this, pm_grp_id)
   field => this%realization%field
   discretization => this%realization%discretization
 
-  local_stride = 0
-  local_stride_tmp = 0
-  n_mt_local = 0
-  n_mt_global = 0
-
-  ! current information in PM Material Transform that is checkpointed:
-  !   (1) num_aux
-  n_check_vars = 1 !number of scalar checkpoint variables
-
-  cur_m_transform => this%material_transform_list
-  do
-    if (.not. associated(cur_m_transform)) exit
-    n_mt_local = n_mt_local + 1
-    local_stride_tmp = local_stride_tmp + n_check_vars
-    cur_m_transform => cur_m_transform%next
-    if (local_stride_tmp > local_stride) then
-      local_stride = local_stride_tmp
-    endif
-    local_stride_tmp = 0
-  enddo
-
-  allocate(int_array(n_mt_local))
-  cur_m_transform => this%material_transform_list
-  i = 1
-  do
-    if (.not. associated(cur_m_transform)) exit
-    int_array(i) = i - 1
-    i = i + 1
-    cur_m_transform => cur_m_transform%next
-  enddo
-
-  ! gather relevant information from all processes
-  call MPI_Allreduce(local_stride,stride,ONE_INTEGER_MPI,MPI_INTEGER,MPI_MAX, &
-                     this%option%mycomm,ierr);CHKERRQ(ierr)
-  call MPI_Allreduce(n_mt_local,n_mt_global,ONE_INTEGER_MPI,MPI_INTEGER, &
-                     MPI_SUM,this%option%mycomm,ierr);CHKERRQ(ierr)
-
-  ! create MPI vector and sequential vector for mapping
-  call VecCreateMPI(this%option%mycomm,n_mt_local*stride,n_mt_global*stride, &
-                    global_mt_vec,ierr);CHKERRQ(ierr)
-  call VecCreateSeq(PETSC_COMM_SELF,n_mt_local*stride,local_mt_vec, &
-                    ierr);CHKERRQ(ierr)
-  call VecSetBlockSize(global_mt_vec,stride,ierr);CHKERRQ(ierr)
-  call VecSetBlockSize(local_mt_vec,stride,ierr);CHKERRQ(ierr)
-
-  allocate(check_vars(stride))
-  allocate(indices(stride))
-
-  ! collect data for checkpointing
-  j = 1
-  cur_m_transform => this%material_transform_list
-  do
-    if (.not. associated(cur_m_transform)) exit
-
-    check_vars(1) = cur_m_transform%num_aux ! checkpoint #1
-
-    i = n_check_vars + 1
-    do
-      if (i > stride) exit
-      check_vars(i) = -9999
-      i = i + 1
-    enddo
-
-    do i = 1, stride
-      indices(i) = (j - 1)*stride + i - 1
-    enddo
-    j = j + 1
-
-    call VecSetValues(local_mt_vec,stride,indices,check_vars,INSERT_VALUES, &
-                      ierr);CHKERRQ(ierr)
-
-    cur_m_transform => cur_m_transform%next
-
-  enddo
-
-  !Create map and add values from the sequential vector to the global
-  call ISCreateBlock(this%option%mycomm,stride,n_mt_local,int_array, &
-                     PETSC_COPY_VALUES,is,ierr);CHKERRQ(ierr)
-  call VecScatterCreate(local_mt_vec,PETSC_NULL_IS,global_mt_vec,is, &
-                        scatter_ctx,ierr);CHKERRQ(ierr)
-  call VecScatterBegin(scatter_ctx,local_mt_vec,global_mt_vec,INSERT_VALUES, &
-                       SCATTER_FORWARD,ierr);CHKERRQ(ierr)
-  call VecScatterEnd(scatter_ctx,local_mt_vec,global_mt_vec,INSERT_VALUES, &
-                     SCATTER_FORWARD,ierr);CHKERRQ(ierr)
-
-  ! write the checkpoint file
-  dataset_name='material transform model info'
-  call HDF5WriteDataSetFromVec(dataset_name, this%option, global_mt_vec,&
-                               pm_grp_id, H5T_NATIVE_DOUBLE)
-  call VecScatterDestroy(scatter_ctx,ierr);CHKERRQ(ierr)
-  call ISDestroy(is,ierr);CHKERRQ(ierr)
-  call VecDestroy(global_mt_vec,ierr);CHKERRQ(ierr)
-  call VecDestroy(local_mt_vec,ierr);CHKERRQ(ierr)
-
-  ! checkpoint the auxiliary variables
+  ! check to see if this realization includes smectite to illite process
+  ! model and buffer erosion process model
   check_il = PETSC_FALSE
   check_be = PETSC_FALSE
   cur_m_transform => this%material_transform_list
@@ -894,6 +801,8 @@ subroutine PMMTransformCheckpointHDF5(this, pm_grp_id)
   enddo
 
   if (check_il) then
+     ! collecting smectite to illite information from the simulation to save
+     ! them to the restart file
     global_vec = PETSC_NULL_VEC
     call DiscretizationCreateVector(this%realization%discretization, ONEDOF, &
                                     global_vec, GLOBAL, option)
@@ -1004,92 +913,9 @@ subroutine PMMaterialTransformRestartHDF5(this, pm_grp_id)
   option => this%realization%option
   field => this%realization%field
   discretization => this%realization%discretization
-
-  local_stride = 0
-  local_stride_tmp = 0
-  n_mt_local = 0
-  n_mt_global = 0
-
-  ! current information in PM Material Transform that is checkpointed:
-  !   (1) num_aux
-  n_check_vars = 1 !number of scalar checkpoint variables
-
-  cur_m_transform => this%material_transform_list
-  do
-    if (.not. associated(cur_m_transform)) exit
-    n_mt_local = n_mt_local + 1
-    local_stride_tmp = local_stride_tmp + n_check_vars
-    cur_m_transform => cur_m_transform%next
-    if (local_stride_tmp > local_stride) then
-      local_stride = local_stride_tmp
-    endif
-    local_stride_tmp = 0
-  enddo
-
-  allocate(int_array(n_mt_local))
-  i = 1
-  cur_m_transform => this%material_transform_list
-  do
-    if (.not. associated(cur_m_transform)) exit
-    int_array(i) = i - 1
-    i = i + 1
-    cur_m_transform => cur_m_transform%next
-  enddo
-
-  ! gather relevant information from all processes
-  call MPI_Allreduce(local_stride,stride,ONE_INTEGER_MPI,MPI_INTEGER,MPI_MAX, &
-                     this%option%mycomm,ierr);CHKERRQ(ierr)
-  call MPI_Allreduce(n_mt_local,n_mt_global,ONE_INTEGER_MPI,MPI_INTEGER, &
-                     MPI_SUM,this%option%mycomm,ierr);CHKERRQ(ierr)
-
-  ! create MPI vector for HDF5 reading and sequential vector for mt information
-  !   stored in the process
-  call VecCreateMPI(this%option%mycomm,n_mt_local*stride,n_mt_global*stride, &
-                    global_mt_vec,ierr);CHKERRQ(ierr)
-  call VecCreateSeq(PETSC_COMM_SELF,n_mt_local*stride,local_mt_vec, &
-                    ierr);CHKERRQ(ierr)
-  call VecSetBlockSize(global_mt_vec,stride,ierr);CHKERRQ(ierr)
-  call VecSetBlockSize(local_mt_vec,stride,ierr);CHKERRQ(ierr)
-
-  ! read data from HDF5
-  dataset_name='material transform model info'
-  call HDF5ReadDataSetInVec(dataset_name, this%option, global_mt_vec, &
-                            pm_grp_id, H5T_NATIVE_DOUBLE)
-
-  ! create mapping between MPI and sequential vectors
-  call ISCreateBlock(this%option%mycomm,stride,n_mt_local,int_array, &
-                     PETSC_COPY_VALUES,is,ierr);CHKERRQ(ierr)
-  call VecScatterCreate(global_mt_vec,is,local_mt_vec,PETSC_NULL_IS, &
-                        scatter_ctx,ierr);CHKERRQ(ierr)
-
-  ! obtain data from the MPI vector
-  call VecScatterBegin(scatter_ctx,global_mt_vec,local_mt_vec,INSERT_VALUES, &
-                       SCATTER_FORWARD,ierr);CHKERRQ(ierr)
-  call VecScatterEnd(scatter_ctx,global_mt_vec,local_mt_vec,INSERT_VALUES, &
-                     SCATTER_FORWARD,ierr);CHKERRQ(ierr)
-
-  ! convert the data into a Fortran array
-  call VecGetArrayF90(local_mt_vec,local_mt_array,ierr);CHKERRQ(ierr)
-
-  ! assign checkpointed material transform information
-  i = 1
-  cur_m_transform => this%material_transform_list
-  do
-    if (.not. associated(cur_m_transform)) exit
-
-    cur_m_transform%num_aux = int(local_mt_array(i)+1.d-5) ! checkpoint #1
-
-    cur_m_transform => cur_m_transform%next
-    i = i + stride
-  enddo
-
-  call VecRestoreArrayF90(local_mt_vec,local_mt_array,ierr);CHKERRQ(ierr)
-  call VecScatterDestroy(scatter_ctx,ierr);CHKERRQ(ierr)
-  call ISDestroy(is,ierr);CHKERRQ(ierr)
-  call VecDestroy(global_mt_vec,ierr);CHKERRQ(ierr)
-  call VecDestroy(local_mt_vec,ierr);CHKERRQ(ierr)
-
-  ! retrieve the auxiliary variables
+  
+  ! Check to see whether this realization has smectite to illite process
+  ! or buffer erosion process
   check_il = PETSC_FALSE
   check_be = PETSC_FALSE
   cur_m_transform => this%material_transform_list
@@ -1105,6 +931,7 @@ subroutine PMMaterialTransformRestartHDF5(this, pm_grp_id)
   enddo
 
   if (check_il) then
+  ! collecting smectite to illite information from the checkpoint file   
     global_vec = PETSC_NULL_VEC
     call DiscretizationCreateVector(this%realization%discretization, ONEDOF, &
                                     global_vec, GLOBAL, option)
