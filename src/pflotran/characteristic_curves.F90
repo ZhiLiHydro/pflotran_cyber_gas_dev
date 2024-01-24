@@ -511,9 +511,10 @@ function SaturationFunctionRead(saturation_function,input,option) &
       class is(sat_func_VG_type)
         select case(keyword)
           case('M')
-            call InputReadDouble(input,option,m)
-            sf%m = m
-            call InputErrorMsg(input,option,'m',error_string)
+            call DatasetReadDoubleOrDataset(input,sf%m,sf%m_dataset, &
+                                              'm',error_string,option)
+            !sf%m = m
+            !call InputErrorMsg(input,option,'m',error_string)
           case('ALPHA')
             call InputReadDouble(input,option,alpha)
             sf%alpha = alpha

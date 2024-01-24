@@ -786,6 +786,23 @@ subroutine RealProcessMatPropAndSatFunc(realization)
                                cur_material_property%saturation_function_name, &
                                cur_material_property%name,option)
         endif
+        if (associated (patch%characteristic_curves_array%m_dataset)) then
+           string = 'm'
+           dataset => &
+                 DatasetBaseGetPointer(realization%datasets, &
+                              patch%characteristic_curves_array%m_dataset%name, &
+                              string,option)
+           call DatasetDestroy(patch%characteristic_curves_array%m_dataset)
+           select type(dataset)
+             class is (dataset_common_hdf5_type)
+               patch%characteristic_curves_array%m_dataset => dataset
+             class default
+               option%io_buffer = 'Incorrect dataset type for m.'
+               call PrintErrMsg(option)
+           end select
+       endif
+           
+        
         if (cur_material_property%saturation_function_id == 0) then
           option%io_buffer = 'Characteristic curve "' // &
             trim(cur_material_property%saturation_function_name) // &
@@ -810,7 +827,7 @@ subroutine RealProcessMatPropAndSatFunc(realization)
         '" not found.'
         call PrintErrMsg(option)
     endif
-
+    
     ! if named, link dataset to property
     if (associated(cur_material_property%porosity_dataset)) then
       string = 'MATERIAL_PROPERTY(' // trim(cur_material_property%name) // &

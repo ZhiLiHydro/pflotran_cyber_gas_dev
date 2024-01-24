@@ -287,7 +287,9 @@ subroutine MaterialAuxVarInit(auxvar,option)
   else
     nullify(auxvar%permeability)
   endif
-  nullify(auxvar%sat_func_prop)
+  allocate(auxvar%sat_func_prop(1))
+  auxvar%sat_func_prop = UNINITIALIZED_DOUBLE
+!  nullify(auxvar%sat_func_prop)
   nullify(auxvar%fracture)
   if (option%use_sc) then
     allocate(auxvar%secondary_prop)
@@ -933,6 +935,8 @@ subroutine MaterialAuxVarSetValue(material_auxvar,ivar,value)
       material_auxvar%permeability(perm_xz_index) = value
     case(EPSILON)
       material_auxvar%secondary_prop%epsilon = value
+    case(M)
+      material_auxvar%sat_func_prop(1) = value   
     case(HALF_MATRIX_WIDTH)
       material_auxvar%secondary_prop%half_matrix_width = value
     case(NUMBER_SECONDARY_CELLS)

@@ -5,6 +5,7 @@ module Characteristic_Curves_Common_module
   use PFLOTRAN_Constants_module
   use Characteristic_Curves_Base_module
   use Dataset_Ascii_class
+  use Dataset_Base_class
 
   implicit none
 
@@ -35,6 +36,7 @@ module Characteristic_Curves_Common_module
   type, public, extends(sat_func_base_type) :: sat_func_VG_type
     PetscReal :: alpha
     PetscReal :: m
+    class(dataset_base_type), pointer :: m_dataset
   contains
     procedure, public :: Init => SFVGInit
     procedure, public :: Verify => SFVGVerify
@@ -719,6 +721,7 @@ subroutine SFVGInit(this)
   call SFBaseInit(this)
   this%alpha = UNINITIALIZED_DOUBLE
   this%m = UNINITIALIZED_DOUBLE
+  nullify(this%m_dataset)
 
   this%analytical_derivative_available = PETSC_TRUE
 

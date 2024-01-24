@@ -467,6 +467,8 @@ subroutine PMRichardsCheckUpdatePre(this,snes,X,dX,changed,ierr)
       ghosted_id = grid%nL2G(local_id)
       sat = global_auxvars(ghosted_id)%sat(1)
       sat_pert = sat - sign(1.d0,sat-0.5d0)*pert
+      patch%characteristic_curves_array( &
+        patch%cc_id(ghosted_id))%ptr%m = patch%aux%Material%auxvars(ghosted_id)%sat_func_prop(1)
       call patch%characteristic_curves_array( &
         patch%cc_id(ghosted_id))%ptr%saturation_function% &
         CapillaryPressure(sat_pert,pc_pert,dpc_dsatl,option)

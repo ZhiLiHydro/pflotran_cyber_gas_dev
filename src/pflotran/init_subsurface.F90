@@ -590,6 +590,14 @@ subroutine InitSubsurfAssignMatProperties(realization)
                                                material_property%internal_id, &
                                                NUMBER_SECONDARY_CELLS)
         endif
+        if (associated(cc%m_dataset)) then
+          call SubsurfReadDatasetToVecWithMask(realization, &
+                 cc%m_dataset, &
+                 material_property%internal_id,PETSC_FALSE,field%work)
+          call SubsurfMapVecToMatAuxByMaterial(realization,field%work, &
+                                               material_property%internal_id, &
+                                               M)
+        endif       
       endif
     endif
   enddo
