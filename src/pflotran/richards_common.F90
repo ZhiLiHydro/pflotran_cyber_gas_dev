@@ -486,6 +486,7 @@ subroutine RichardsBCFluxDerivative(ibndtype,auxvars, &
   PetscReal :: dukvr_dp_dn
   PetscReal :: dq_dp_dn
   PetscInt :: pressure_bc_type
+  PetscReal :: scalar, dscalar_dp
 
   PetscInt ::  ideriv
   type(richards_auxvar_type) :: rich_auxvar_pert_dn, rich_auxvar_pert_up
@@ -585,11 +586,24 @@ subroutine RichardsBCFluxDerivative(ibndtype,auxvars, &
 
       endif
 
-    case(NEUMANN_BC)
+    case(NEUMANN_BC,NEUMANN_THRESHOLD_BC)
       if (dabs(auxvars(RICHARDS_PRESSURE_DOF)) > floweps) then
         v_darcy = auxvars(RICHARDS_PRESSURE_DOF)
+        scalar = 1.d0
         if (v_darcy > 0.d0) then
           density_ave = global_auxvar_up%den(1)
+          if (pressure_bc_type == NEUMANN_THRESHOLD_BC) then
+            ! miguel: this transition from 1 -> 0 only occurs when the pressure
+            !         increases due to flow into the domain (v_darcy>0)
+            call SmoothStep(global_auxvar_dn%pres(1),1.d5,1.1d5, &
+                            scalar,dscalar_dp)
+            scalar = 1.d0 - scalar
+            dscalar_dp = -1.d0 * dscalar_dp
+            ! calculate the derivative of darcy flux with respect to pressure
+            dq_dp_dn = dscalar_dp * v_darcy * area
+            ! scale the darcy flux
+            v_darcy = scalar * v_darcy
+          endif
         else
           density_ave = global_auxvar_dn%den(1)
           dden_ave_dp_dn = rich_auxvar_dn%dden_dp
@@ -732,6 +746,7 @@ subroutine RichardsBCFlux(ibndtype,auxvars, &
   PetscReal :: fluxm,q,density_ave
   PetscReal :: ukvr,Dq
   PetscReal :: upweight,gravity,dphi
+  PetscReal :: scalar, dummy
   PetscInt :: pressure_bc_type
 
   fluxm = 0.d0
@@ -806,12 +821,19 @@ subroutine RichardsBCFlux(ibndtype,auxvars, &
         endif
       endif
 
-    case(NEUMANN_BC)
+    case(NEUMANN_BC,NEUMANN_THRESHOLD_BC)
       if (dabs(auxvars(RICHARDS_PRESSURE_DOF)) > floweps) then
         v_darcy = auxvars(RICHARDS_PRESSURE_DOF)
-
         if (v_darcy > 0.d0) then
           density_ave = global_auxvar_up%den(1)
+          if (pressure_bc_type == NEUMANN_THRESHOLD_BC) then
+            ! miguel: this transition from 1 -> 0 only occurs when the pressure
+            !         increases due to flow into the domain (v_darcy>0)
+            call SmoothStep(global_auxvar_dn%pres(1),1.d5,1.1d5,scalar,dummy)
+            scalar = 1.d0 - scalar
+            ! scalar the darcy flux
+            v_darcy = scalar * v_darcy
+          endif
         else
           density_ave = global_auxvar_dn%den(1)
         endif

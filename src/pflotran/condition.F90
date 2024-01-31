@@ -1257,6 +1257,8 @@ subroutine FlowConditionRead(condition,input,option)
               sub_condition_ptr%itype = DIRICHLET_BC
             case('NEUMANN')
               sub_condition_ptr%itype = NEUMANN_BC
+            case('NEUMANN_THRESHOLD')
+              sub_condition_ptr%itype = NEUMANN_THRESHOLD_BC
             case('MASS_RATE')
               sub_condition_ptr%itype = MASS_RATE_SS
               rate_unit_string = 'kg/sec'
@@ -1621,7 +1623,7 @@ subroutine FlowConditionRead(condition,input,option)
            HYDROSTATIC_CONDUCTANCE_BC,ZERO_GRADIENT_BC,HYDROSTATIC_SEEPAGE_BC, &
            DIRICHLET_SEEPAGE_BC,DIRICHLET_CONDUCTANCE_BC,SURFACE_DIRICHLET, &
            SURFACE_SPILLOVER,HET_DIRICHLET_BC,HET_HYDROSTATIC_SEEPAGE_BC,&
-           HET_HYDROSTATIC_CONDUCTANCE_BC)
+           HET_HYDROSTATIC_CONDUCTANCE_BC,NEUMANN_THRESHOLD_BC)
         option%io_buffer = 'RATE condition must not be of type: dirichlet, &
           &neumann, zero_gradient, dirichlet_zero_gradient, hydrostatic, &
           &seepage, or conductance".'
@@ -4449,6 +4451,8 @@ function FlowSubConditionGetType(subcon_itype)
       string = 'dirichlet'
     case(NEUMANN_BC)
       string = 'neumann'
+    case(NEUMANN_THRESHOLD_BC)
+      string = 'neumann threshold'
     case(DIRICHLET_ZERO_GRADIENT_BC)
       string = 'dirichlet-zero gradient'
     case(MASS_RATE_SS)
@@ -5269,6 +5273,8 @@ subroutine TranCondInputRecord(tran_condition_list,option)
         write(id,'(a)') 'equilibrium'
       case(NEUMANN_BC)
         write(id,'(a)') 'neumann'
+      case(NEUMANN_THRESHOLD_BC)
+        write(id,'(a)') 'neumann threshold'
       case(MASS_RATE_SS)
         write(id,'(a)') 'mole_rate'
       case(ZERO_GRADIENT_BC)
