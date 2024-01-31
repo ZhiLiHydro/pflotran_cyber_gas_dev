@@ -34,8 +34,6 @@ module Reactive_Transport_module
             RTDestroy, &
             RTUpdateTransportCoefs, &
             RTUpdateActivityCoefficients, &
-            RTUpdateRHSCoefs, &
-            RTCalculateRHS_t0, &
             RTCalculateRHS_t1, &
             RTCalculateTransportMatrix, &
             RTJumpStartKineticSorption, &
@@ -113,6 +111,7 @@ subroutine RTSetup(realization)
   use Output_Aux_module
   use Generic_module
   use String_module
+  use Variables_module, only : TORTUOSITY_Y, TORTUOSITY_Z
 
   implicit none
 
@@ -175,6 +174,7 @@ subroutine RTSetup(realization)
     cur_material_property => cur_material_property%next
   enddo
 
+  rt_parameter%anisotropic_tortuosity = option%transport%anisotropic_tortuosity
   material_auxvars => patch%aux%Material%auxvars
   flag = 0
   !TODO(geh): change to looping over ghosted ids once the legacy code is
@@ -195,10 +195,22 @@ subroutine RTSetup(realization)
       option%io_buffer = 'Non-initialized porosity.'
       call PrintMsg(option)
     endif
-    if (material_auxvars(ghosted_id)%tortuosity < 0.d0 .and. flag(3) == 0) then
-      flag(3) = 1
-      option%io_buffer = 'Non-initialized tortuosity.'
-      call PrintMsg(option)
+    if (flag(3) == 0) then
+      if (rt_parameter%anisotropic_tortuosity) then
+        if (material_auxvars(ghosted_id)%tortuosity < 0.d0 .or. &
+            MaterialAuxVarGetValue(material_auxvars(ghosted_id),TORTUOSITY_Y) &
+              < 0.d0 .or. &
+            MaterialAuxVarGetValue(material_auxvars(ghosted_id),TORTUOSITY_Z) &
+              < 0.d0) then
+          flag(3) = 1
+          option%io_buffer = 'Non-initialized anisotropic tortuosity.'
+          call PrintMsg(option)
+        endif
+      else if (material_auxvars(ghosted_id)%tortuosity < 0.d0) then
+        flag(3) = 1
+        option%io_buffer = 'Non-initialized tortuosity.'
+        call PrintMsg(option)
+      endif
     endif
     if (reaction%isotherm%neqkdrxn > 0) then
       if (material_auxvars(ghosted_id)%soil_particle_density < 0.d0 .and. &
@@ -338,8 +350,8 @@ subroutine RTSetup(realization)
     do
       if (.not.associated(cur_generic_parameter)) exit
       rt_parameter%species_dependent_diffusion = PETSC_TRUE
-      i = GetPrimarySpeciesIDFromName(cur_generic_parameter%name, &
-                                      reaction,PETSC_FALSE,option)
+      i = ReactionAuxGetPriSpecIDFromName(cur_generic_parameter%name, &
+                                          reaction,PETSC_FALSE,option)
       if (option%transport%use_np) then
         ! Store diffusion coefficients for each species in correspondent
         ! structures.  Notice that diffusion_coefficient(:,iphase) is not
@@ -347,8 +359,8 @@ subroutine RTSetup(realization)
         ! If reused for primary will apply to TDispersion function which
         ! is not ready for electromigration.
         if (Uninitialized(i)) then
-            i = GetSecondarySpeciesIDFromName(cur_generic_parameter%name, &
-                                            reaction,PETSC_FALSE,option)
+            i =  ReactionAuxGetSecSpecIDFromName(cur_generic_parameter%name, &
+                                                 reaction,PETSC_FALSE,option)
             if (Uninitialized(i)) then
               option%io_buffer = 'Species "' // &
                 trim(cur_generic_parameter%name) // &
@@ -586,8 +598,8 @@ subroutine RTComputeMassBalance(realization,num_cells,max_size,sum_mol,cell_ids)
            (1.d0-liquid_saturation)*porosity*volume*1.d3
       do i = 1, reaction%gas%nactive_gas
         sum_mol_by_gas(i) = sum_mol_by_gas(i) + &
-          ! RGasConcentration returns mol/m^3 gas
-          RGasConcentration(rt_auxvars(ghosted_id)%gas_pp(i), &
+          ! ReactionGasPartialPresToConc returns mol/m^3 gas
+          ReactionGasPartialPresToConc(rt_auxvars(ghosted_id)%gas_pp(i), &
                             global_auxvars(ghosted_id)%temp) * &
           ! m^3 gas
           (1.d0-liquid_saturation) * porosity * volume
@@ -1238,138 +1250,6 @@ end subroutine RTUpdateTransportCoefs
 
 ! ************************************************************************** !
 
-subroutine RTUpdateRHSCoefs(realization)
-  !
-  ! Updates coefficients for the right hand side of
-  ! linear transport equation
-  !
-  ! Author: Glenn Hammond
-  ! Date: 04/25/10
-  !
-
-  use Realization_Subsurface_class
-  use Patch_module
-  use Connection_module
-  use Coupler_module
-  use Option_module
-  use Field_module
-  use Grid_module
-
-  implicit none
-
-  class(realization_subsurface_type) :: realization
-
-  type(global_auxvar_type), pointer :: global_auxvars(:)
-  type(material_auxvar_type), pointer :: material_auxvars(:)
-  type(option_type), pointer :: option
-  type(patch_type), pointer :: patch
-  type(grid_type), pointer :: grid
-  type(field_type), pointer :: field
-  PetscReal, pointer :: rhs_coef_p(:)
-  PetscInt :: local_id, ghosted_id
-  PetscInt :: iphase
-  PetscErrorCode :: ierr
-
-  option => realization%option
-  field => realization%field
-  patch => realization%patch
-  global_auxvars => patch%aux%Global%auxvars
-  material_auxvars => patch%aux%Material%auxvars
-  grid => patch%grid
-
-  option%io_buffer = 'RTUpdateRHSCoefs() not implemented for immobile species'
-  call PrintErrMsg(option)
-
-  ! Get vectors
-  call VecGetArrayF90(field%tran_rhs_coef,rhs_coef_p,ierr);CHKERRQ(ierr)
-
-  iphase = 1
-  do local_id = 1, grid%nlmax
-    ghosted_id = grid%nL2G(local_id)
-    if (patch%imat(ghosted_id) <= 0) cycle
-    rhs_coef_p(local_id) = material_auxvars(ghosted_id)%porosity* &
-                           global_auxvars(ghosted_id)%sat(iphase)* &
-! total already has den_kg within
-!                           global_auxvars(ghosted_id)%den_kg(iphase)* &
-                           1000.d0* &
-                           material_auxvars(ghosted_id)%volume/option%tran_dt
-  enddo
-
-  ! Restore vectors
-  call VecRestoreArrayF90(field%tran_rhs_coef,rhs_coef_p,ierr);CHKERRQ(ierr)
-
-end subroutine RTUpdateRHSCoefs
-
-! ************************************************************************** !
-
-subroutine RTCalculateRHS_t0(realization)
-  !
-  ! Calculate porition of RHS of transport system
-  ! at time t0 or time level k
-  !
-  ! Author: Glenn Hammond
-  ! Date: 04/25/10
-  !
-
-  use Realization_Subsurface_class
-  use Patch_module
-  use Connection_module
-  use Coupler_module
-  use Option_module
-  use Field_module
-  use Grid_module
-
-  implicit none
-
-  class(realization_subsurface_type) :: realization
-
-  type(reactive_transport_auxvar_type), pointer :: rt_auxvars(:)
-  type(option_type), pointer :: option
-  type(patch_type), pointer :: patch
-  type(grid_type), pointer :: grid
-  type(field_type), pointer :: field
-  class(reaction_rt_type), pointer :: reaction
-  PetscReal, pointer :: rhs_coef_p(:)
-  PetscReal, pointer :: rhs_p(:)
-  PetscInt :: local_id, ghosted_id
-  PetscInt :: iphase
-  PetscInt :: istartaq, iendaq
-
-  PetscErrorCode :: ierr
-
-  option => realization%option
-  field => realization%field
-  patch => realization%patch
-  rt_auxvars => patch%aux%RT%auxvars
-  grid => patch%grid
-  reaction => realization%reaction
-
-  option%io_buffer = 'RTCalculateRHS_t0() not implemented for immobile species'
-  call PrintErrMsg(option)
-
-  ! Get vectors
-  call VecGetArrayReadF90(field%tran_rhs_coef,rhs_coef_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(field%tran_rhs,rhs_p,ierr);CHKERRQ(ierr)
-
-  iphase = 1
-  do local_id = 1, grid%nlmax
-    ghosted_id = grid%nL2G(local_id)
-    if (patch%imat(ghosted_id) <= 0) cycle
-    iendaq = local_id*reaction%naqcomp
-    istartaq = iendaq-reaction%naqcomp+1
-    rhs_p(istartaq:iendaq) = rt_auxvars(ghosted_id)%total(:,iphase)* &
-                             rhs_coef_p(local_id)
-  enddo
-
-  ! Restore vectors
-  call VecRestoreArrayReadF90(field%tran_rhs_coef,rhs_coef_p, &
-                              ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(field%tran_rhs,rhs_p,ierr);CHKERRQ(ierr)
-
-end subroutine RTCalculateRHS_t0
-
-! ************************************************************************** !
-
 subroutine RTCalculateRHS_t1(realization,rhs_vec)
   !
   ! Calculate porition of RHS of transport system
@@ -1692,6 +1572,7 @@ subroutine RTCalculateTransportMatrix(realization,T)
                      patch%internal_velocities(:,sum_connection), &
                      patch%internal_tran_coefs(:,:,sum_connection), &
                      cur_connection_set%dist(-1,iconn), &
+                     PETSC_TRUE, &
                      coef_up,coef_dn)
 
       if (local_id_up > 0) then
@@ -1930,6 +1811,7 @@ subroutine RTComputeBCMassBalanceOS(realization)
                      patch%boundary_velocities(:,sum_connection), &
                      patch%boundary_tran_coefs(:,:,sum_connection), &
                      0.5d0, &
+                     PETSC_TRUE, &
                      coef_up,coef_dn)
       ! TFlux accomplishes the same as what TBCFlux would
       call TFlux(rt_parameter, &
@@ -2298,6 +2180,7 @@ subroutine RTResidualFlux(snes,xx,r,realization,ierr)
                 patch%internal_velocities(:,sum_connection), &
                 patch%internal_tran_coefs(:,:,sum_connection), &
                 cur_connection_set%dist(-1,iconn), &
+                PETSC_TRUE, &
                 coef_up,coef_dn)
 
       call TFlux(rt_parameter, &
@@ -2446,6 +2329,7 @@ subroutine RTResidualNonFlux(snes,xx,r,realization,ierr)
   use Secondary_Continuum_module, only : SecondaryRTResJacMulti
   use Secondary_Continuum_NP_module, only : SecondaryRTResJacMulti_NP
   use Transport_Constraint_RT_module
+  use SrcSink_Sandbox_module
 
   implicit none
 
@@ -2672,6 +2556,12 @@ subroutine RTResidualNonFlux(snes,xx,r,realization,ierr)
     enddo
     source_sink => source_sink%next
   enddo
+
+  if (associated(ss_sandbox_list)) then
+    option%io_buffer = 'Source/Sink Sandbox must be implemented in &
+      &reactive_transport.F90'
+    call PrintErrMsg(option)
+  endif
 
   ! CO2-specific
   select case(option%iflowmode)
@@ -3094,6 +2984,7 @@ subroutine RTJacobianFlux(snes,xx,A,B,realization,ierr)
                 patch%internal_velocities(:,sum_connection), &
                 patch%internal_tran_coefs(:,:,sum_connection), &
                 cur_connection_set%dist(-1,iconn), &
+                PETSC_TRUE, &
                 coef_up,coef_dn)
       call TFluxDerivative(rt_parameter, &
                            rt_auxvars(ghosted_id_up), &
@@ -3740,7 +3631,7 @@ subroutine RTUpdateAuxVars(realization,update_cells,update_bcs, &
     call PetscLogEventEnd(logging%event_rt_auxvars,ierr);CHKERRQ(ierr)
   endif
 
-  if (update_bcs) then
+  if (update_bcs .and. reaction%naqcomp > 0) then
 
     call PetscLogEventBegin(logging%event_rt_auxvars_bc,ierr);CHKERRQ(ierr)
 
@@ -4589,7 +4480,7 @@ subroutine RTExplicitAdvection(realization)
   enddo
 
   call VecGetArrayF90(field%tran_xx,tran_xx_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayReadF90(field%tran_rhs_coef,rhs_coef_p,ierr);CHKERRQ(ierr)
+!  call VecGetArrayReadF90(field%tran_rhs_coef,rhs_coef_p,ierr);CHKERRQ(ierr)
 
 
   ! update concentration
@@ -4622,8 +4513,8 @@ subroutine RTExplicitAdvection(realization)
 
   ! Restore vectors
   call VecRestoreArrayF90(field%tran_xx,tran_xx_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayReadF90(field%tran_rhs_coef,rhs_coef_p, &
-                              ierr);CHKERRQ(ierr)
+!  call VecRestoreArrayReadF90(field%tran_rhs_coef,rhs_coef_p, &
+!                              ierr);CHKERRQ(ierr)
 
 end subroutine RTExplicitAdvection
 

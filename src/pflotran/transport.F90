@@ -101,6 +101,7 @@ subroutine TDispersion(global_auxvar_up,material_auxvar_up, &
   PetscReal :: molecular_diffusion_dn(rt_parameter%naqcomp)
   PetscReal :: hydrodynamic_dispersion_up(rt_parameter%naqcomp)
   PetscReal :: hydrodynamic_dispersion_dn(rt_parameter%naqcomp)
+  PetscReal :: tort_up, tort_dn
   PetscReal :: t_ref_inv
   PetscReal :: v_up, v_dn
   PetscReal :: vi2_over_v_up, vj2_over_v_up, vk2_over_v_up
@@ -164,6 +165,13 @@ subroutine TDispersion(global_auxvar_up,material_auxvar_up, &
             sat_dn**s_pow * &
             material_auxvar_dn%porosity**por_pow
     endif
+    if (rt_parameter%anisotropic_tortuosity) then
+      tort_up = TortuosityTensorToScalar(material_auxvar_up,dist)
+      tort_dn = TortuosityTensorToScalar(material_auxvar_dn,dist)
+    else
+      tort_up = material_auxvar_up%tortuosity
+      tort_dn = material_auxvar_dn%tortuosity
+    endif
     q = qdarcy(iphase)
     if (rt_parameter%calculate_transverse_dispersion) then
       velocity_up = q*abs_dist(1:3) + (1.d0-abs_dist(1:3))* &
@@ -214,13 +222,13 @@ subroutine TDispersion(global_auxvar_up,material_auxvar_up, &
     !   saturation * porosity * tortuosity * molecular diffusion
     hydrodynamic_dispersion_up(:) = &
       max(mechanical_dispersion_up + &
-          epsilon_up * sat_up * material_auxvar_up%porosity * &
-          material_auxvar_up%tortuosity * molecular_diffusion_up(:), &
+          epsilon_up * sat_up * material_auxvar_up%porosity * tort_up * &
+          molecular_diffusion_up(:), &
           1.d-40)
     hydrodynamic_dispersion_dn(:) = &
       max(mechanical_dispersion_dn + &
-          epsilon_dn * sat_dn * material_auxvar_dn%porosity * &
-          material_auxvar_dn%tortuosity * molecular_diffusion_dn(:), &
+          epsilon_dn * sat_dn * material_auxvar_dn%porosity * tort_dn * &
+          molecular_diffusion_dn(:), &
           1.d-40)
     ! harmonic average of hydrodynamic dispersion divided by distance
     harmonic_tran_coefs_over_dist(:,iphase) = &
@@ -280,6 +288,7 @@ subroutine TDispersionBC(ibndtype, &
   PetscReal :: mechanical_dispersion
   PetscReal :: molecular_diffusion(rt_parameter%naqcomp)
   PetscReal :: hydrodynamic_dispersion(rt_parameter%naqcomp)
+  PetscReal :: tort_dn
   PetscReal :: v_dn
   PetscReal :: vi2_over_v_dn, vj2_over_v_dn, vk2_over_v_dn
   PetscReal :: t_ref_inv
@@ -324,6 +333,11 @@ subroutine TDispersionBC(ibndtype, &
             sat_dn**s_pow * &
             material_auxvar_dn%porosity**por_pow
     endif
+    if (rt_parameter%anisotropic_tortuosity) then
+      tort_dn = TortuosityTensorToScalar(material_auxvar_dn,dist_dn)
+    else
+      tort_dn = material_auxvar_dn%tortuosity
+    endif
     q = qdarcy(iphase)
     if (rt_parameter%calculate_transverse_dispersion) then
       velocity_dn = q*abs_dist_dn(1:3) + (1.d0-abs_dist_dn(1:3))* &
@@ -360,8 +374,8 @@ subroutine TDispersionBC(ibndtype, &
           max(mechanical_dispersion + &
               ! yes, sat_up due to boundary saturation governing, but
               ! perhaps we could use an average in the future
-              epsilon_dn * sat_up * material_auxvar_dn%porosity * &
-              material_auxvar_dn%tortuosity * molecular_diffusion(:), &
+              epsilon_dn * sat_up * material_auxvar_dn%porosity * tort_dn * &
+              molecular_diffusion(:), &
               1.d-40)
         ! hydrodynamic dispersion divided by distance
         ! units = (m^3 water/m^4 bulk)*(m^2 bulk/sec) = m^3 water/m^2 bulk/sec
@@ -496,7 +510,7 @@ subroutine TFluxCoef(rt_parameter, &
                      global_auxvar_up,global_auxvar_dn, &
                      option,area,velocity, &
                      tran_coefs_over_dist, &
-                     fraction_upwind,T_up,T_dn)
+                     fraction_upwind,check_upwind_saturation,T_up,T_dn)
   !
   ! Computes flux coefficients for transport matrix
   !
@@ -518,6 +532,7 @@ subroutine TFluxCoef(rt_parameter, &
   PetscReal :: tran_coefs_over_dist(rt_parameter%naqcomp, &
                                     rt_parameter%nphase)
   PetscReal :: fraction_upwind
+  PetscBool :: check_upwind_saturation
   PetscReal :: T_up(rt_parameter%naqcomp,rt_parameter%nphase)
   PetscReal :: T_dn(rt_parameter%naqcomp,rt_parameter%nphase)
 
@@ -532,8 +547,15 @@ subroutine TFluxCoef(rt_parameter, &
   T_dn(:,:) = 0.d0
 
   ! as long as gas phase chemistry is a function of aqueous, skip both phases
-  if (global_auxvar_up%sat(LIQUID_PHASE) < rt_min_saturation .or. &
-      global_auxvar_dn%sat(LIQUID_PHASE) < rt_min_saturation) return
+  if (global_auxvar_dn%sat(LIQUID_PHASE) < rt_min_saturation) then
+    return
+  else if (check_upwind_saturation) then
+    ! for boundary conditions, we can have a zero aqueous saturation upwind
+    ! and it does not matter
+    if (global_auxvar_up%sat(LIQUID_PHASE) < rt_min_saturation) then
+      return
+    endif
+  endif
 
   do iphase = 1, nphase
     q = velocity(iphase)
@@ -595,7 +617,7 @@ subroutine TFluxCoefBC(bctype,rt_parameter, &
                      global_auxvar_up,global_auxvar_dn, &
                      option,area,velocity, &
                      tran_coefs_over_dist, &
-                     fraction_upwind,T_up,T_dn)
+                     fraction_upwind,PETSC_FALSE,T_up,T_dn)
   end select
 
 end subroutine TFluxCoefBC
