@@ -2884,6 +2884,7 @@ reaction_sandbox.o : \
   reaction_sandbox_biohill.o \
   reaction_sandbox_calcite.o \
   reaction_sandbox_chromium.o \
+  reaction_sandbox_DAMM.o \
   reaction_sandbox_clm_cn.o \
   reaction_sandbox_equilibrate.o \
   reaction_sandbox_example.o \
