@@ -157,9 +157,8 @@ subroutine DAMMRead(this,input,option)
   type(input_type), pointer :: input
   type(option_type) :: option
 
-  character(len=MAXWORDLENGTH) :: word, internal_units, error_string, keyword, subkeyword
+  character(len=MAXWORDLENGTH) :: word, error_string, keyword 
   PetscReal :: K_CH2Oaq
-  PetscInt :: nrxn
 
   K_CH2Oaq = UNINITIALIZED_DOUBLE
   error_string = 'DAMM_GHG'
@@ -485,13 +484,7 @@ subroutine DAMMEvaluate(this,Residual,Jacobian,compute_derivative, &
   PetscReal :: volume               ! [m^3 bulk volume]
   PetscReal :: volume_L_water
   PetscReal :: molality_to_molarity ! [kg water / L water]
-  PetscReal :: CH2O,O2,CO2,NO3,MN,FE,SO4,CH4  ! [mole / L water] or [mole / kg water]
-!  PetscReal :: Xim                  ! [mole biomass / m^3 bulk volume]
-!  PetscReal :: I_r(nrxn)                  ! [mole rxn / m^3 bulk volume-sec]
-  PetscReal :: I                    ! [mole rxn / sec]
-  PetscReal :: I_r2, I2
-  PetscReal :: dIdx(reaction%ncomp) ! mixed units
-  PetscInt :: icomp, jcomp, Xim_offset, irxn!, nrxn
+  PetscReal :: CH2O,O2,CO2,CH4  ! [mole / L water] or [mole / kg water]
   PetscReal :: T, R
 
   allocate(this%I_r(3))
