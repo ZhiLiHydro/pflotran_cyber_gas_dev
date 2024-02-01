@@ -1,0 +1,38 @@
+-- CONCENTRATION: Free CO2(aq) --
+      Max:   3.4885202784658E-06
+      Min:   1.2549505532904E-07
+     Mean:   1.8070076668974E-06
+        1:   1.2549505532904E-07
+        2:   3.4885202784658E-06
+-- CONCENTRATION: Free CH4(aq) --
+      Max:   4.6838763057020E-16
+      Min:   2.2988060072984E-17
+     Mean:   2.4568784532159E-16
+        1:   4.6838763057020E-16
+        2:   2.2988060072984E-17
+-- CONCENTRATION: Free O2(aq) --
+      Max:   1.0393522201628E-04
+      Min:   2.0979385558527E-06
+     Mean:   5.3016580286066E-05
+        1:   2.0979385558527E-06
+        2:   1.0393522201628E-04
+-- CONCENTRATION: Free CH2O(aq) --
+      Max:   9.8203948973305E-04
+      Min:   1.3311783640834E-04
+     Mean:   5.5757866307070E-04
+        1:   9.8203948973305E-04
+        2:   1.3311783640834E-04
+-- DISCRETE: Material ID --
+      Max:         1
+      Min:         1
+     Mean:   1.0000000000000E+00
+        1:         1
+        2:         1
+-- SOLUTION: Transport --
+   Time (seconds):   1.4913752999973E-02
+   Time Steps:           15
+   Newton Iterations:           77
+   Linear Solver Iterations:           77
+   Time Step Cuts:            0
+   Solution 2-Norm:   9.9646426680021E-04
+   Residual 2-Norm:   1.0830580632157E-17
