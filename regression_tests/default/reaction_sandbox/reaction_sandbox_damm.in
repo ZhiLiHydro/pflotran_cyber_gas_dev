@@ -1,0 +1,239 @@
+#Description: Reaction Sandbox Arctic GHG: Anaerobic respiration
+
+#==============================================================================
+# Regression test for the Dual Arrhenius Michaelis Menten model for greenhouse generation
+# Author: David Fukuyama, 02/01/24
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_TRANSPORT transport
+      MODE GIRT
+    /
+  /
+END
+#==============================================================================
+
+SUBSURFACE
+
+REGRESSION
+  CELL_IDS
+    1
+    2
+  /
+END
+
+#=========================== constraints ======================================
+# modify these initial concentration
+CONSTRAINT initial
+  CONCENTRATIONS # [mol/L]
+    CO2(aq)  1.d-20   F
+    CH4(aq)  1.d-20   F
+    O2(aq) 1.1d-4 F
+    CH2O(aq)  1.2d-4  F
+  /
+
+END
+
+CONSTRAINT oxic
+  CONCENTRATIONS
+    CO2(aq) 1.d-20 F
+    CH4(aq) 1.d-20 F
+    O2(aq) 1.d-4 F
+    CH2O(aq) 1.d-4 F
+  /
+END
+
+CONSTRAINT anoxic
+  CONCENTRATIONS
+    CO2(aq) 1.d-20 F
+    CH4(aq) 1.d-20 F
+    O2(aq) 1.d-20 F
+    CH2O(aq) 1.d-3 F
+  /
+END
+
+#=========================== chemistry ========================================
+CHEMISTRY
+  PRIMARY_SPECIES
+    CO2(aq)
+    CH4(aq)
+    O2(aq)
+    CH2O(aq)
+    !D
+  /
+  ACTIVE_GAS_SPECIES
+    GAS_TRANSPORT_IS_UNVETTED
+    O2(g)
+  /
+  REACTION_SANDBOX
+    DAMM_GHG
+      REACTION
+        RESPIRATION
+          HALF_SATURATION_CONSTANT_O2 100 umol/L
+          HALF_SATURATION_CONSTANT_C 1 umol/L
+#          RMAX 2.d-9 mol/L-s# 1/h #mol/m^3 # 494.d-3 1/h
+          ALPHA 2.d10 umol/L-hr
+          ACTIVATION_ENERGY 72 kJ/mol
+        /
+        METHANOGENESIS
+          HALF_SATURATION_CONSTANT_C 1 umol/L
+#          RMAX 2.d-9 mol/L-s
+          ALPHA 3.d5 umol/L-hr
+          ACTIVATION_ENERGY 100 kJ/mol
+          INHIBITION_CONSTANT 3 umol/L
+        /
+        METHANE_OXIDATION
+          HALF_SATURATION_CONSTANT_CH4 1.d-2 umol/L
+          HALF_SATURATION_CONSTANT_O2 43 umol/L
+#          RMAX 2.d-9 mol/L-s
+          ALPHA 0.07 umol/L-hr
+          ACTIVATION_ENERGY 30 kJ/mol
+        /
+      /
+    /
+  /
+  DATABASE ../../../database/damm-database-gas.dat
+  LOG_FORMULATION
+  ACTIVITY_COEFFICIENTS OFF
+  OUTPUT
+    FREE_ION
+    CH2O(aq)
+    O2(aq)
+    CO2(aq)
+    CH4(aq)
+    !O2(g)
+    !!Daq
+  /
+END
+
+#=========================== numerical methods ================================
+NUMERICAL_METHODS TRANSPORT
+
+  NEWTON_SOLVER
+  /
+
+  LINEAR_SOLVER
+    SOLVER DIRECT
+  /
+
+END
+
+#=========================== discretization ===================================
+GRID
+  TYPE STRUCTURED
+  NXYZ 1 1 2 
+  BOUNDS
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 1.d0
+  /
+END
+
+#=========================== fluid properties =================================
+REFERENCE_LIQUID_DENSITY 1000.d0
+
+#=========================== material properties ==============================
+MATERIAL_PROPERTY soil1
+  ID 1
+  POROSITY 1.d0
+END
+
+#=========================== output options ===================================
+OUTPUT
+  PERIODIC TIME 60 d
+  #PERIODIC TIMESTEP 10
+  TIME_UNITS d
+  #FORMAT HDF5
+END
+
+#=========================== times ============================================
+TIME
+  FINAL_TIME 60.d0 d
+  INITIAL_TIMESTEP_SIZE 1.d0 h
+  MAXIMUM_TIMESTEP_SIZE 1.d1 d
+END
+
+#=========================== regions ==========================================
+REGION all
+  COORDINATES
+    -1.d20 -1.d20 -1.d20
+    1.d20 1.d20 1.d20
+  /
+END
+
+REGION top_face
+  FACE TOP
+  COORDINATES
+    -1.d20 -1.d20 1.d0
+     1.d20  1.d20 1.d0
+  /
+END
+
+REGION oxic
+  COORDINATES
+  -1.d20 -1.d20 1.d0
+   1.d20  1.d20 0.9d0
+  /
+END
+
+REGION anoxic
+  COORDINATES
+   -1.d20 -1.d20 0.5d0
+    1.d20  1.d20 0.d0 
+  /
+END
+
+REGION middle
+  COORDINATE 0.5d0 0.5d0 0.5d0
+END
+
+#=========================== observation points ===============================
+OBSERVATION
+  REGION middle
+END
+
+#=========================== transport conditions =============================
+TRANSPORT_CONDITION initial
+  TYPE ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 initial
+  /
+END
+
+TRANSPORT_CONDITION oxic
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 oxic
+  /
+END
+
+TRANSPORT_CONDITION anoxic
+  TYPE ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 anoxic
+  /
+END
+#=========================== condition couplers ===============================
+# initial condition
+INITIAL_CONDITION oxic
+  TRANSPORT_CONDITION initial
+  REGION oxic
+END
+
+INITIAL_CONDITION anoxic
+  TRANSPORT_CONDITION anoxic
+  REGION anoxic
+END
+
+BOUNDARY_CONDITION oxic_top
+  TRANSPORT_CONDITION oxic
+  REGION top_face
+END
+
+#=========================== stratigraphy couplers ============================
+STRATA
+  REGION all
+  MATERIAL soil1
+END
+
+END_SUBSURFACE
+

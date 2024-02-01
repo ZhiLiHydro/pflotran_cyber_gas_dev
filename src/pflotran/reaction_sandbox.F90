@@ -6,6 +6,7 @@ module Reaction_Sandbox_module
   use Reaction_Sandbox_Base_class
   use Reaction_Sandbox_Calcite_class
   use Reaction_Sandbox_CLM_CN_class
+  use Reaction_Sandbox_DAMM_class
   use Reaction_Sandbox_UFD_WP_class
   use Reaction_Sandbox_Example_class
   use Reaction_Sand_Equilibrate_class
@@ -173,6 +174,8 @@ subroutine RSandboxRead2(local_sandbox_list,input,option)
         new_sandbox => CLM_CN_Create()
       case('CYBERNETIC')
         new_sandbox => CyberCreate()
+      case('DAMM_GHG')
+        new_sandbox => DAMMCreate()
       case('EXAMPLE')
         new_sandbox => EXAMPLECreate()
       case('EQUILIBRATE')

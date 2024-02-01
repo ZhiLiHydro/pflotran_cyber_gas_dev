@@ -365,7 +365,7 @@ subroutine UnitsCategory(unit,unit_category,error,error_msg)
         unit_category(k) = 'energy'
       case('W','kW','MW')
         unit_category(k) = 'power'
-      case('mol','mole','moles','kmol')
+      case('mol','mole','moles','kmol','umol','micromole','micromol')
         unit_category(k) = 'molar_mass'
       case('ug','mg','g','kg')
         unit_category(k) = 'mass'
@@ -502,7 +502,9 @@ subroutine UnitsConvertToSI(unit,conversion_factor,error,error_msg)
       conversion_factor = 1.d0
     case('kmol')
       conversion_factor = 1.d3
-  ! ---> MASS ---> (kilogram)
+    case('umol','micromole','micromol')
+      conversion_factor = 1.d-6
+  ! ---> MASS ---> (kilogram, mole)
     case('ug')
       conversion_factor = 1.d-9
     case('mg')

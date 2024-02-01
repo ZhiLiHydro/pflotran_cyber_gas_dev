@@ -2897,6 +2897,18 @@ reaction_sandbox.o : \
   reactive_transport_aux.o \
   string.o \
   utility.o
+reaction_sandbox_DAMM.o : \
+  global_aux.o \
+  input_aux.o \
+  material_aux.o \
+  option.o \
+  pflotran_constants.o \
+  reaction_aux.o \
+  reaction_immobile_aux.o \
+  reaction_sandbox_base.o \
+  reactive_transport_aux.o \
+  string.o \
+  units.o
 reaction_sandbox_base.o : \
   global_aux.o \
   input_aux.o \
