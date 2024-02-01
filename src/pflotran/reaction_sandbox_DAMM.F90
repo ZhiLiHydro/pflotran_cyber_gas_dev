@@ -157,7 +157,7 @@ subroutine DAMMRead(this,input,option)
   type(input_type), pointer :: input
   type(option_type) :: option
 
-  character(len=MAXWORDLENGTH) :: word, error_string, keyword 
+  character(len=MAXWORDLENGTH) :: word, error_string
   PetscReal :: K_CH2Oaq
 
   K_CH2Oaq = UNINITIALIZED_DOUBLE
