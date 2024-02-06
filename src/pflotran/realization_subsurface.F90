@@ -617,6 +617,7 @@ subroutine RealProcessMatPropAndSatFunc(realization)
   use Dataset_module
   use Characteristic_Curves_Thermal_module
   use TH_Aux_module, only : th_ice_model
+  use Material_Aux_module, only : residual_saturation_index
 
 
   implicit none
@@ -785,13 +786,39 @@ subroutine RealProcessMatPropAndSatFunc(realization)
             CharacteristicCurvesGetID(patch%characteristic_curves_array, &
                                cur_material_property%saturation_function_name, &
                                cur_material_property%name,option)
-        endif
+          if (associated(patch%characteristic_curves_array(cur_material_property &
+                         %saturation_function_id)%ptr%saturation_function% &
+                         Sr_dataset)) then
+            string = 'Charcteristic curve ' // trim(cur_material_property% &
+                     saturation_function_name) // ' LIQUID_RESIDUAL_SATURATION'
+            if (residual_saturation_index == 0) then
+               residual_saturation_index = 1
+            endif
+            dataset => &
+              DatasetBaseGetPointer(realization%datasets,patch% &
+                                    characteristic_curves_array(cur_material_property% &
+                                    saturation_function_id)%ptr%saturation_function% &
+                                    Sr_dataset%name,string,option)
+            call DatasetDestroy(patch%characteristic_curves_array(cur_material_property% &
+                                saturation_function_id)%ptr%saturation_function%Sr_dataset)
+            select type(dataset)
+              class is (dataset_common_hdf5_type)
+                patch%characteristic_curves_array(cur_material_property% &
+                  saturation_function_id)%ptr%saturation_function% &
+                  Sr_dataset => dataset
+              class default
+                option%io_buffer = 'Incorrect dataset type for liquid residual saturation.'
+                call PrintErrMsg(option)
+             end select
+          endif
+        endif  
         if (cur_material_property%saturation_function_id == 0) then
           option%io_buffer = 'Characteristic curve "' // &
             trim(cur_material_property%saturation_function_name) // &
             '" not found.'
           call PrintErrMsg(option)
         endif
+       
     end select
 
     ! thermal conducitivity function id

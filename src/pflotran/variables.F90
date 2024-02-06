@@ -198,4 +198,6 @@ module Variables_module
   PetscInt, parameter, public :: TORTUOSITY_Y                   = 159
   PetscInt, parameter, public :: TORTUOSITY_Z                   = 160
 
+  PetscInt, parameter, public :: RESIDUAL_SATURATION            = 161
+
 end module Variables_module

@@ -52,6 +52,8 @@ module Material_Aux_module
   PetscInt, public :: tortuosity_zz_index
   PetscInt, public :: max_material_index
 
+  PetscInt, public :: residual_saturation_index
+
   type, public :: material_auxvar_type
     PetscInt :: id
     PetscReal :: volume
@@ -288,6 +290,7 @@ subroutine MaterialAuxVarInit(auxvar,option)
     nullify(auxvar%permeability)
   endif
   nullify(auxvar%sat_func_prop)
+
   nullify(auxvar%fracture)
   if (option%use_sc) then
     allocate(auxvar%secondary_prop)
@@ -937,6 +940,8 @@ subroutine MaterialAuxVarSetValue(material_auxvar,ivar,value)
       material_auxvar%secondary_prop%half_matrix_width = value
     case(NUMBER_SECONDARY_CELLS)
       material_auxvar%secondary_prop%ncells = int(value)
+    case(RESIDUAL_SATURATION)
+      material_auxvar%sat_func_prop(1) = value 
     case default ! entries in material_auxvars%soil_properties
       index_ = MaterialAuxVarGetSoilPropIndex(ivar)
       material_auxvar%soil_properties(index_) = value

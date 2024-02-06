@@ -1654,6 +1654,8 @@ subroutine MaterialInitAuxIndices(material_property_ptrs,option)
   ! ADD_SOIL_PROPERTY_INDEX_HERE - also need to add num_xxx counter above
   max_material_index = 0
 
+  residual_saturation_index = 0
+
   num_material_properties = size(material_property_ptrs)
   ! must be nullified here to avoid an error message on subsequent calls
   ! on stochastic simulations

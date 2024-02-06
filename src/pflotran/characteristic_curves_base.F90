@@ -3,6 +3,7 @@ module Characteristic_Curves_Base_module
 #include "petsc/finclude/petscsys.h"
   use petscsys
   use PFLOTRAN_Constants_module
+  use Dataset_Base_class
 
   implicit none
 
@@ -27,6 +28,7 @@ module Characteristic_Curves_Base_module
     PetscBool :: analytical_derivative_available
     PetscBool :: calc_int_tension
     PetscBool :: calc_vapor_pressure
+    class(dataset_base_type), pointer :: Sr_dataset
   contains
     procedure, public :: Init => SFBaseInit
     procedure, public :: Verify => SFBaseVerify
@@ -112,6 +114,7 @@ subroutine SFBaseInit(this)
   ! Cannot allocate here.  Allocation takes place in daughter class
   nullify(this%sat_poly)
   nullify(this%pres_poly)
+  nullify(this%Sr_dataset)
   this%Sr = UNINITIALIZED_DOUBLE
   this%pcmax = DEFAULT_PCMAX
   this%analytical_derivative_available = PETSC_FALSE
@@ -133,9 +136,11 @@ subroutine SFBaseVerify(this,name,option)
   type(option_type) :: option
 
   if (Uninitialized(this%Sr)) then
-    option%io_buffer = UninitializedMessage('LIQUID_RESIDUAL_SATURATION', &
+    if (.not.associated(this%Sr_dataset)) then 
+      option%io_buffer = UninitializedMessage('LIQUID_RESIDUAL_SATURATION', &
                                             name)
-    call PrintErrMsg(option)
+      call PrintErrMsg(option)
+    endif
   endif
 
   if ((.not.this%analytical_derivative_available) .and. &

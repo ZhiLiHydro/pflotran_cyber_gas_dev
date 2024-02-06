@@ -697,6 +697,11 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
     endif
   endif
 
+  if (associated(material_auxvar%sat_func_prop)) then
+    characteristic_curves%saturation_function%Sr = &
+      material_auxvar%sat_func_prop(1) 
+  endif
+
   select case(global_auxvar%istate)
     case(LIQUID_STATE)
       gen_auxvar%pres(lid) = x(GENERAL_LIQUID_PRESSURE_DOF)

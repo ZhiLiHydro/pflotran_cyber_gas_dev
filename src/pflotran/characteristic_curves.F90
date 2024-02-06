@@ -372,7 +372,8 @@ function SaturationFunctionRead(saturation_function,input,option) &
   use Input_Aux_module
   use String_module
   use Dataset_Ascii_class
-
+  use Dataset_module
+  
   implicit none
 
   class(sat_func_base_type) :: saturation_function
@@ -471,10 +472,13 @@ function SaturationFunctionRead(saturation_function,input,option) &
     found = PETSC_TRUE
     select case(keyword)
       case('LIQUID_RESIDUAL_SATURATION')
-        call InputReadDouble(input,option,Sr)
-        saturation_function%Sr = Sr
-        call InputErrorMsg(input,option,'LIQUID_RESIDUAL_SATURATION', &
-                           error_string)
+        call DatasetReadDoubleOrDataset(input,saturation_function%Sr, &
+             saturation_function%Sr_dataset, &
+             'LIQUID_RESIDUAL_SATURATION',error_string,option)
+      !  call InputReadDouble(input,option,Sr)
+      !  saturation_function%Sr = Sr
+      !  call InputErrorMsg(input,option,'LIQUID_RESIDUAL_SATURATION', &
+      !                     error_string)
       case('MAX_CAPILLARY_PRESSURE')
         call InputReadDouble(input,option,Pcmax)
         saturation_function%Pcmax = Pcmax

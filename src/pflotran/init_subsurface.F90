@@ -299,7 +299,7 @@ subroutine InitSubsurfAssignMatProperties(realization)
                                EPSILON, ELECTRICAL_CONDUCTIVITY, &
                                SURFACE_ELECTRICAL_CONDUCTIVITY, &
                                HALF_MATRIX_WIDTH, NUMBER_SECONDARY_CELLS, &
-                               TORTUOSITY_Y,TORTUOSITY_Z
+                               TORTUOSITY_Y,TORTUOSITY_Z, RESIDUAL_SATURATION
 
   use HDF5_module
   use Utility_module, only : DeallocateArray
@@ -396,6 +396,13 @@ subroutine InitSubsurfAssignMatProperties(realization)
               material_auxvars(ghosted_id))
       endif
 
+      if (associated(patch%characteristic_curves_array)) then
+         if (associated(patch%characteristic_curves_array( &
+             material_property%saturation_function_id)%ptr &
+             %saturation_function%Sr_dataset)) then
+           allocate(material_auxvars(ghosted_id)%sat_func_prop(1))
+         endif
+      endif
       ! lookup creep closure table id from creep closure table name
       if (option%flow%creep_closure_on) then
         material_property%creep_closure_id = &
@@ -589,6 +596,20 @@ subroutine InitSubsurfAssignMatProperties(realization)
           call SubsurfMapVecToMatAuxByMaterial(realization,field%work, &
                                                material_property%internal_id, &
                                                NUMBER_SECONDARY_CELLS)
+        endif
+      endif
+      if (associated(patch%characteristic_curves_array)) then
+        if (associated(patch%characteristic_curves_array( &
+             material_property%saturation_function_id)%ptr &
+             %saturation_function%Sr_dataset)) then
+          call SubsurfReadDatasetToVecWithMask(realization, &
+               patch%characteristic_curves_array( &
+               material_property%saturation_function_id)%ptr &
+               %saturation_function%Sr_dataset, &
+               material_property%internal_id,PETSC_FALSE,field%work)
+          call SubsurfMapVecToMatAuxByMaterial(realization,field%work, &
+                                             material_property%internal_id, &
+                                             RESIDUAL_SATURATION)
         endif
       endif
     endif
