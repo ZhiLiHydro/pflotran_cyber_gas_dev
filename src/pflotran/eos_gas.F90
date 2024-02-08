@@ -194,6 +194,9 @@ module EOS_Gas_module
             EOSGasTableProcess, &
             EOSGasDBaseDestroy
 
+  public :: EOSGasPressureNegativeMsg
+
+
   contains
 
 ! ************************************************************************** !
@@ -1030,6 +1033,7 @@ subroutine EOSGasDensityNoDerive(T,P,Rho_gas,ierr,table_idxs)
   PetscReal :: dum1, dum2
 
   ! derivatives are so cheap, just compute them
+  if (P < 0.d0) call EOSGasPressureNegativeMsg(P)
   call EOSGasDensityPtr(T,P,Rho_gas,dum1,dum2,ierr,table_idxs)
 
 end subroutine EOSGasDensityNoDerive
@@ -1048,6 +1052,7 @@ subroutine EOSGasDensityDerive(T,P,Rho_gas,dRho_dT,dRho_dP,ierr,table_idxs)
   PetscErrorCode, intent(out) :: ierr
   PetscInt, pointer, optional, intent(inout) :: table_idxs(:)
 
+  if (P < 0.d0) call EOSGasPressureNegativeMsg(P)
   call EOSGasDensityPtr(T,P,Rho_gas,dRho_dT,dRho_dP,ierr,table_idxs)
 
 end subroutine EOSGasDensityDerive
@@ -1106,6 +1111,7 @@ subroutine EOSGasDenEnthNoDerive(T,P,Rho_gas,H,U,ierr,table_idxs)
 
   PetscReal :: dum1, dum2, dum3, dum4, dum5, dum6
 
+  if (P < 0.d0) call EOSGasPressureNegativeMsg(P)
   call EOSGasDensityEnergyPtr(T,P,Rho_gas,dum1,dum2, &
                               H,dum3,dum4,U,dum5,dum6,ierr,table_idxs)
 
@@ -1132,6 +1138,7 @@ subroutine EOSGasDenEnthDerive(T,P,Rho_gas,dRho_dT,dRho_dP, &
   PetscErrorCode, intent(out) :: ierr
   PetscInt, pointer, optional, intent(inout) :: table_idxs(:)
 
+  if (P < 0.d0) call EOSGasPressureNegativeMsg(P)
   call EOSGasDensityEnergyPtr(T,P,Rho_gas,dRho_dT,dRho_dP, &
                               H,dH_dT,dH_dP,U,dU_dT,dU_dP,ierr,table_idxs)
 
@@ -1159,6 +1166,7 @@ subroutine EOSGasDensityEnergyGeneral(T,P,Rho_gas,dRho_dT,dRho_dP, &
   PetscErrorCode, intent(out) :: ierr
   PetscInt, pointer, optional, intent(inout) :: table_idxs(:)
 
+  if (P < 0.d0) call EOSGasPressureNegativeMsg(P)
   call EOSGasDensityPtr(T,P,Rho_gas,dRho_dT,dRho_dP,ierr,table_idxs)
   call EOSGasEnergyPtr(T,P,H,dH_dT,dH_dP,U,dU_dT,dU_dP,ierr)
 
@@ -2250,6 +2258,7 @@ subroutine EOSGasTest(temp_low,temp_high,pres_low,pres_high, &
     saturation_pressure_array(itemp) = saturation_pressure
     call EOSGasHenry(temp(itemp),saturation_pressure,henry(itemp),ierr)
     do ipres = 1, npres
+      if (pres(ipres) < 0.d0) call EOSGasPressureNegativeMsg(pres(ipres))
       call EOSGasDensityPtr(temp(itemp),pres(ipres), &
                             density_kg(ipres,itemp), &
                             dum1,dum2,ierr)
@@ -2304,6 +2313,22 @@ subroutine EOSGasTest(temp_low,temp_high,pres_low,pres_high, &
   deallocate(henry)
 
 end subroutine EOSGasTest
+
+! ************************************************************************** !
+
+subroutine EOSGasPressureNegativeMsg(P)
+
+  implicit none
+
+  PetscReal, intent(in) :: P ! Pressure [Pa]
+
+  print *
+  print *, 'EOS received invalid pressure: ', P
+  print *, 'All gas pressures must be positive '
+  print *
+  stop "error: negative gas pressure"
+
+end subroutine EOSGasPressureNegativeMsg
 
 ! ************************************************************************** !
 
