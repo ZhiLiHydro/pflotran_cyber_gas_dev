@@ -1426,7 +1426,7 @@ subroutine PatchUpdateCouplerAuxVarsG(patch,coupler,option)
   PetscReal :: temperature, p_sat, p_cap, s_liq, xmol, xmol2, por
   PetscReal :: relative_humidity
   PetscReal :: gas_sat, air_pressure, gas_pressure, liq_pressure, &
-               precipitate_sat
+               precipitate_sat, vapor_pressure
 
   PetscReal :: dummy_real
   character(len=MAXSTRINGLENGTH) :: string
@@ -1938,14 +1938,20 @@ subroutine PatchUpdateCouplerAuxVarsG(patch,coupler,option)
                   iconn,relative_humidity)  ! relative_humidity is in percent
                 if (relative_humidity < 0.d0 .or. &
                     relative_humidity > 100.d0) then
-                  option%io_buffer = 'RELATIVE_HUMIDITY in flow &
-                    &condition "' // trim(flow_condition%name) // '" outside &
-                    &bounds of 0-100%.'
+                  option%io_buffer = 'RELATIVE_HUMIDITY in flow condition "' &
+                    // trim(flow_condition%name) // '" outside bounds 0-100%.'
                   call PrintErrMsg(option)
                 endif
                 call EOSWaterSaturationPressure(temperature,p_sat,ierr)
                                   ! convert from % to fraction
-                air_pressure = gas_pressure - relative_humidity*1.d-2*p_sat
+                vapor_pressure = relative_humidity*p_sat/1d2;
+                ! Ensure air_pressure is non-negative at the boundary
+                if (vapor_pressure > gas_pressure) then
+                  option%io_buffer = 'RELATIVE_HUMIDITY in flow condition "' &
+                    // trim(flow_condition%name) // '" exceeds total pressure.'
+                  call PrintErrMsg(option)
+                endif
+                air_pressure = max(0d0, gas_pressure - vapor_pressure)
                 if (general_immiscible) then
                   air_pressure = gas_pressure - GENERAL_IMMISCIBLE_VALUE
                 endif
