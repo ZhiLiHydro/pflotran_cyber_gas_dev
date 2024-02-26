@@ -212,7 +212,7 @@
        58:   8.3778905353827E-03  0.0000000000000E+00 -3.8137587011497E-03
        59:   8.5153870177665E-03  0.0000000000000E+00 -2.2300378684813E-03
 -- SOLUTION: Flow --
-   Time (seconds):   3.4928449999825E-03
+   Time (seconds):   3.5663779999595E-03
    Time Steps:            1
    Newton Iterations:            2
    Linear Solver Iterations:            8
