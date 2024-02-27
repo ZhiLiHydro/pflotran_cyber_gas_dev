@@ -1,4 +1,4 @@
-#Description: Reaction Sandbox Simple
+#Description: Reaction Sandbox Flexible Biodegradation Hill
 
 #==============================================================================
 # DO NOT MODIFY
@@ -62,7 +62,6 @@ CHEMISTRY
       HILL_EXPONENT 1.2d0
     /
   /
-  DATABASE ../../../database/simple_rxn_database.dat
   LOG_FORMULATION
   ACTIVITY_COEFFICIENTS OFF
   OUTPUT

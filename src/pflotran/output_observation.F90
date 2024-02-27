@@ -2,10 +2,10 @@ module Output_Observation_module
 
 #include "petsc/finclude/petscsys.h"
   use petscsys
-  use Logging_module 
+  use Logging_module
   use Output_Aux_module
   use Output_Common_module
-  
+
   use PFLOTRAN_Constants_module
 
   implicit none
@@ -27,25 +27,26 @@ module Output_Observation_module
             OutputObservationInit, &
             OutputMassBalance, &
             OutputIntegralFlux
-            
+
 contains
 
 ! ************************************************************************** !
 
 subroutine OutputObservationInit(num_steps)
-  ! 
+  !
   ! Initializes module variables for observation
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 01/16/13
-  ! 
+  !
 
   use Option_module
+  use Output_Obs_H5_module
 
   implicit none
-  
+
   PetscInt :: num_steps
-  
+
   check_for_obs_points = PETSC_TRUE
   calculate_velocities = PETSC_FALSE
   secondary_check_for_obs_points = PETSC_TRUE
@@ -63,30 +64,39 @@ subroutine OutputObservationInit(num_steps)
     observation_aggregate_first = PETSC_FALSE
   endif
 
+
+  call OutputObsH5Init(num_steps)
+
 end subroutine OutputObservationInit
 
 ! ************************************************************************** !
 
 subroutine OutputObservation(realization_base)
-  ! 
+  !
   ! Main driver for all observation output subroutines
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 02/11/08
-  ! 
+  !
 
   use Realization_Base_class, only : realization_base_type
   use Option_module
-  
+  use Output_Obs_H5_module
+
   implicit none
-  
+
   class(realization_base_type) :: realization_base
 
   if (realization_base%output_option%print_observation) then
     call OutputObservationTecplotColumnTXT(realization_base)
     call OutputAggregateToFile(realization_base)
     call OutputIntegralFlux(realization_base)
-    if (realization_base%option%use_mc) then
+
+    if (realization_base%output_option%print_obs_hdf5) then
+      call OutputObsH5(realization_base)
+    endif
+
+    if (realization_base%option%use_sc) then
       call OutputObservationTecplotSecTXT(realization_base)
     endif
   endif
@@ -96,12 +106,12 @@ end subroutine OutputObservation
 ! ************************************************************************** !
 
 subroutine OutputObservationTecplotColumnTXT(realization_base)
-  ! 
+  !
   ! Print to observation data to text file
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 02/11/08
-  ! 
+  !
 
   use Realization_Base_class, only : realization_base_type
   use Discretization_module
@@ -112,39 +122,36 @@ subroutine OutputObservationTecplotColumnTXT(realization_base)
   use Observation_module
   use Utility_module
   use String_module
- 
+
   implicit none
 
   class(realization_base_type) :: realization_base
-  
+
   PetscInt :: fid, icell
   character(len=MAXSTRINGLENGTH) :: filename
-  character(len=MAXSTRINGLENGTH) :: string, string2
+  character(len=MAXSTRINGLENGTH) :: string
   type(grid_type), pointer :: grid
   type(option_type), pointer :: option
   type(field_type), pointer :: field
-  type(patch_type), pointer :: patch  
+  type(patch_type), pointer :: patch
   type(output_option_type), pointer :: output_option
   type(observation_type), pointer :: observation
-  type(observation_aggregate_type), pointer :: aggregate
-  type(output_variable_type), pointer :: cur_variable
   PetscBool, save :: open_file = PETSC_FALSE
   PetscReal, allocatable :: velocities(:,:,:)
   PetscInt :: local_id
   PetscInt :: icolumn
   PetscInt :: nphase
-  PetscInt :: i
-  PetscReal :: temp_real_comp, temp_real
   PetscErrorCode :: ierr
 
-  call PetscLogEventBegin(logging%event_output_observation,ierr);CHKERRQ(ierr)
-  
+  call PetscLogEventBegin(logging%event_output_observation, &
+                          ierr);CHKERRQ(ierr)
+
   patch => realization_base%patch
   grid => patch%grid
   option => realization_base%option
   field => realization_base%field
   output_option => realization_base%output_option
-  
+
   if (check_for_obs_points) then
     open_file = PETSC_FALSE
     observation => patch%observation_list%first
@@ -172,12 +179,12 @@ subroutine OutputObservationTecplotColumnTXT(realization_base)
                                           TWO_INTEGER,velocities(:,:,2))
     endif
   endif
-    
+
   if (open_file) then
     write(string,'(i6)') option%myrank
     filename = trim(option%global_prefix) // trim(option%group_prefix) // &
                '-obs-' // trim(adjustl(string)) // '.pft'
-  
+
     ! open file
     fid = 86
     if (observation_first .or. .not.FileExists(filename)) then
@@ -196,9 +203,9 @@ subroutine OutputObservationTecplotColumnTXT(realization_base)
         icolumn = -1
       endif
 
-      do 
+      do
         if (.not.associated(observation)) exit
-        
+
         select case(observation%itype)
           case(OBSERVATION_SCALAR)
             if (associated(observation%region%coordinates) .and. &
@@ -232,10 +239,10 @@ subroutine OutputObservationTecplotColumnTXT(realization_base)
       open(unit=fid,file=filename,action="write",status="old", &
            position="append")
     endif
-  
+
     observation => patch%observation_list%first
     write(fid,'(1es14.6)',advance="no") option%time/output_option%tconv
-    do 
+    do
       if (.not.associated(observation)) exit
         select case(observation%itype)
           case(OBSERVATION_SCALAR)
@@ -271,17 +278,17 @@ subroutine OutputObservationTecplotColumnTXT(realization_base)
 
   observation_first = PETSC_FALSE
   if (allocated(velocities)) deallocate(velocities)
-  
+
   call PetscLogEventEnd(logging%event_output_observation,ierr);CHKERRQ(ierr)
-      
+
 end subroutine OutputObservationTecplotColumnTXT
 
 ! ************************************************************************** !
 
 subroutine OutputAggregateToFile(realization_base)
-  ! 
+  !
   ! Print to observation aggregate data to text file
-  ! 
+  !
   ! Author: Michael Nole
   ! Date: 05/07/20
   !
@@ -311,7 +318,8 @@ subroutine OutputAggregateToFile(realization_base)
   PetscInt :: icolumn
   PetscErrorCode :: ierr
 
-  call PetscLogEventBegin(logging%event_output_observation_agg,ierr);CHKERRQ(ierr)
+  call PetscLogEventBegin(logging%event_output_observation_agg, &
+                          ierr);CHKERRQ(ierr)
 
   patch => realization_base%patch
   option => realization_base%option
@@ -410,7 +418,8 @@ subroutine OutputAggregateToFile(realization_base)
   enddo
 
   observation_aggregate_first = PETSC_FALSE
-  call PetscLogEventEnd(logging%event_output_observation_agg,ierr);CHKERRQ(ierr)
+  call PetscLogEventEnd(logging%event_output_observation_agg, &
+                        ierr);CHKERRQ(ierr)
 
 end subroutine OutputAggregateToFile
 
@@ -419,11 +428,11 @@ end subroutine OutputAggregateToFile
 subroutine WriteObservationHeaderAgg(fid,realization_base,region,icell, &
                                      print_velocities,icolumn)
   ! Print a header for aggregated data
-  ! 
+  !
   ! Author: Michael Nole
   ! Date: 04/16/20
-  ! 
-  
+  !
+
   use Realization_Base_class, only : realization_base_type
   use Output_Aux_module
   use Region_module
@@ -456,12 +465,12 @@ end subroutine WriteObservationHeaderAgg
 subroutine WriteObservationHeaderForCell(fid,realization_base,region,icell, &
                                          print_velocities, &
                                          icolumn)
-  ! 
+  !
   ! Print a header for data at a cell
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 02/11/08
-  ! 
+  !
 
   use Realization_Base_class, only : realization_base_type
   use Grid_module
@@ -470,23 +479,23 @@ subroutine WriteObservationHeaderForCell(fid,realization_base,region,icell, &
   use Patch_module
   use Region_module
   use Utility_module, only : BestFloat
-  
+
   implicit none
-  
+
   PetscInt :: fid
   class(realization_base_type) :: realization_base
   type(region_type) :: region
   PetscInt :: icell
   PetscBool :: print_velocities
   PetscInt :: icolumn
-  
+
   PetscInt :: local_id
   character(len=MAXSTRINGLENGTH) :: cell_string
   character(len=MAXWORDLENGTH) :: x_string, y_string, z_string
   type(grid_type), pointer :: grid
 
   grid => realization_base%patch%grid
-  
+
   local_id = region%cell_ids(icell)
   write(cell_string,*) grid%nG2A(grid%nL2G(region%cell_ids(icell)))
   cell_string = trim(region%name) // ' (' // trim(adjustl(cell_string)) // ')'
@@ -498,7 +507,7 @@ subroutine WriteObservationHeaderForCell(fid,realization_base,region,icell, &
   cell_string = trim(cell_string) // ' (' // trim(adjustl(x_string)) // &
                 ' ' // trim(adjustl(y_string)) // &
                 ' ' // trim(adjustl(z_string)) // ')'
-  
+
   call WriteObservationHeader(fid,realization_base,cell_string, &
                               print_velocities,icolumn)
 
@@ -509,32 +518,32 @@ end subroutine WriteObservationHeaderForCell
 subroutine WriteObservationHeaderForCoord(fid,realization_base,region, &
                                           print_velocities, &
                                           icolumn)
-  ! 
+  !
   ! Print a header for data at a coordinate
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 04/11/08
-  ! 
+  !
 
   use Realization_Base_class, only : realization_base_type
   use Option_module
   use Patch_module
   use Region_module
   use Utility_module, only : BestFloat
-  
+
   implicit none
-  
+
   PetscInt :: fid
   class(realization_base_type) :: realization_base
   type(region_type) :: region
   PetscBool :: print_velocities
   PetscInt :: icolumn
-  
+
   character(len=MAXSTRINGLENGTH) :: cell_string
   character(len=MAXWORDLENGTH) :: x_string, y_string, z_string
-  
+
   cell_string = trim(region%name)
-  
+
   x_string = BestFloat(region%coordinates(ONE_INTEGER)%x,1.d4,1.d-2)
   y_string = BestFloat(region%coordinates(ONE_INTEGER)%y,1.d4,1.d-2)
   z_string = BestFloat(region%coordinates(ONE_INTEGER)%z,1.d4,1.d-2)
@@ -551,32 +560,32 @@ end subroutine WriteObservationHeaderForCoord
 
 subroutine WriteObservationHeader(fid,realization_base,cell_string, &
                                   print_velocities,icolumn)
-  ! 
+  !
   ! Print a header for data
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 10/27/11
-  ! 
-                                  
+  !
+
   use Realization_Base_class, only : realization_base_type
   use Option_module
 
   implicit none
-  
+
   PetscInt :: fid
   class(realization_base_type) :: realization_base
   PetscBool :: print_velocities
   character(len=MAXSTRINGLENGTH) :: cell_string
   PetscInt :: icolumn
-  
+
   PetscInt :: variable_count
   character(len=MAXSTRINGLENGTH) :: string
   type(option_type), pointer :: option
-  type(output_option_type), pointer :: output_option  
-  
+  type(output_option_type), pointer :: output_option
+
   option => realization_base%option
   output_option => realization_base%output_option
-  
+
   call OutputWriteVariableListToHeader(fid, &
                                        output_option%output_obs_variable_list, &
                                        cell_string,icolumn,PETSC_FALSE, &
@@ -594,19 +603,19 @@ subroutine WriteObservationHeader(fid,realization_base,cell_string, &
       call OutputWriteToHeader(fid,'qgz',string,cell_string,icolumn)
     endif
   endif
-    
+
 end subroutine WriteObservationHeader
 
 ! ************************************************************************** !
 
 subroutine OutputObservationTecplotSecTXT(realization_base)
-  ! 
+  !
   ! Print to secondary continuum observation
   ! data to text file
-  ! 
+  !
   ! Author: Satish Karra, LANL
   ! Date: 04/08/13
-  ! 
+  !
 
   use Realization_Base_class, only : realization_base_type
   use Discretization_module
@@ -616,18 +625,18 @@ subroutine OutputObservationTecplotSecTXT(realization_base)
   use Patch_module
   use Observation_module
   use Utility_module
- 
+
   implicit none
 
   class(realization_base_type) :: realization_base
-  
+
   PetscInt :: fid, icell
   character(len=MAXSTRINGLENGTH) :: filename
-  character(len=MAXSTRINGLENGTH) :: string, string2
+  character(len=MAXSTRINGLENGTH) :: string
   type(grid_type), pointer :: grid
   type(option_type), pointer :: option
   type(field_type), pointer :: field
-  type(patch_type), pointer :: patch  
+  type(patch_type), pointer :: patch
   type(output_option_type), pointer :: output_option
   type(observation_type), pointer :: observation
   PetscBool, save :: open_file = PETSC_FALSE
@@ -635,14 +644,15 @@ subroutine OutputObservationTecplotSecTXT(realization_base)
   PetscInt :: icolumn
   PetscErrorCode :: ierr
 
-  call PetscLogEventBegin(logging%event_output_observation,ierr);CHKERRQ(ierr)
-  
+  call PetscLogEventBegin(logging%event_output_observation, &
+                          ierr);CHKERRQ(ierr)
+
   patch => realization_base%patch
   grid => patch%grid
   option => realization_base%option
   field => realization_base%field
   output_option => realization_base%output_option
-  
+
   if (secondary_check_for_obs_points) then
     open_file = PETSC_FALSE
     observation => patch%observation_list%first
@@ -658,13 +668,13 @@ subroutine OutputObservationTecplotSecTXT(realization_base)
     enddo
     secondary_check_for_obs_points = PETSC_FALSE
   endif
-  
-  
+
+
   if (open_file) then
     write(string,'(i6)') option%myrank
     filename = trim(option%global_prefix) // trim(option%group_prefix) // &
                '-obs-sec-' // trim(adjustl(string)) // '.pft'
-  
+
     ! open file
     fid = 86
     if (secondary_observation_first .or. .not.FileExists(filename)) then
@@ -683,9 +693,9 @@ subroutine OutputObservationTecplotSecTXT(realization_base)
         icolumn = -1
       endif
 
-      do 
+      do
         if (.not.associated(observation)) exit
-        
+
         select case(observation%itype)
           case(OBSERVATION_SCALAR)
             if (associated(observation%region%coordinates) .and. &
@@ -716,10 +726,10 @@ subroutine OutputObservationTecplotSecTXT(realization_base)
       open(unit=fid,file=filename,action="write",status="old", &
            position="append")
     endif
-  
+
     observation => patch%observation_list%first
     write(fid,'(1es14.6)',advance="no") option%time/output_option%tconv
-    do 
+    do
       if (.not.associated(observation)) exit
         select case(observation%itype)
           case(OBSERVATION_SCALAR)
@@ -765,9 +775,9 @@ subroutine OutputObservationTecplotSecTXT(realization_base)
   endif
 
   secondary_observation_first = PETSC_FALSE
-  
+
   call PetscLogEventEnd(logging%event_output_observation,ierr);CHKERRQ(ierr)
-      
+
 end subroutine OutputObservationTecplotSecTXT
 
 ! ************************************************************************** !
@@ -775,13 +785,13 @@ end subroutine OutputObservationTecplotSecTXT
 subroutine WriteObservationHeaderForCellSec(fid,realization_base,region,icell, &
                                             print_secondary_data, &
                                             icolumn)
-  ! 
+  !
   ! Print a header for data at a cell for
   ! secondary continuum
-  ! 
+  !
   ! Author: Satish Karra, LANL
   ! Date: 04/08/13
-  ! 
+  !
 
   use Realization_Base_class, only : realization_base_type
   use Grid_module
@@ -790,23 +800,23 @@ subroutine WriteObservationHeaderForCellSec(fid,realization_base,region,icell, &
   use Patch_module
   use Region_module
   use Utility_module, only : BestFloat
-  
+
   implicit none
-  
+
   PetscInt :: fid
   class(realization_base_type) :: realization_base
   type(region_type) :: region
   PetscInt :: icell
   PetscBool :: print_secondary_data(5)
   PetscInt :: icolumn
-  
+
   PetscInt :: local_id
   character(len=MAXSTRINGLENGTH) :: cell_string
   character(len=MAXWORDLENGTH) :: x_string, y_string, z_string
   type(grid_type), pointer :: grid
 
   grid => realization_base%patch%grid
-  
+
   local_id = region%cell_ids(icell)
   write(cell_string,*) grid%nG2A(grid%nL2G(region%cell_ids(icell)))
   cell_string = trim(region%name) // ' (' // trim(adjustl(cell_string)) // ')'
@@ -818,7 +828,7 @@ subroutine WriteObservationHeaderForCellSec(fid,realization_base,region,icell, &
   cell_string = trim(cell_string) // ' (' // trim(adjustl(x_string)) // &
                 ' ' // trim(adjustl(y_string)) // &
                 ' ' // trim(adjustl(z_string)) // ')'
-  
+
   call WriteObservationHeaderSec(fid,realization_base,cell_string, &
                                  print_secondary_data,icolumn)
 
@@ -829,33 +839,33 @@ end subroutine WriteObservationHeaderForCellSec
 subroutine WriteObservationHeaderForCoordSec(fid,realization_base,region, &
                                              print_secondary_data, &
                                              icolumn)
-  ! 
+  !
   ! Print a header for data at a coordinate
   ! for secondary continuum
-  ! 
+  !
   ! Author: Satish Karra, LANL
   ! Date: 04/08/13
-  ! 
+  !
 
   use Realization_Base_class, only : realization_base_type
   use Option_module
   use Patch_module
   use Region_module
   use Utility_module, only : BestFloat
-  
+
   implicit none
-  
+
   PetscInt :: fid
   class(realization_base_type) :: realization_base
   type(region_type) :: region
   PetscBool :: print_secondary_data(5)
   PetscInt :: icolumn
-  
+
   character(len=MAXSTRINGLENGTH) :: cell_string
   character(len=MAXWORDLENGTH) :: x_string, y_string, z_string
-  
+
   cell_string = trim(region%name)
-  
+
   x_string = BestFloat(region%coordinates(ONE_INTEGER)%x,1.d4,1.d-2)
   y_string = BestFloat(region%coordinates(ONE_INTEGER)%y,1.d4,1.d-2)
   z_string = BestFloat(region%coordinates(ONE_INTEGER)%z,1.d4,1.d-2)
@@ -872,37 +882,37 @@ end subroutine WriteObservationHeaderForCoordSec
 
 subroutine WriteObservationHeaderSec(fid,realization_base,cell_string, &
                                      print_secondary_data,icolumn)
-  ! 
+  !
   ! Print a header for secondary continuum data
-  ! 
+  !
   ! Author: Satish Karra, LANL
   ! Date: 10/27/13
-  ! 
-                                     
+  !
+
   use Realization_Base_class, only : realization_base_type
   use Option_module
   use Reaction_Aux_module
 
   implicit none
-  
+
   PetscInt :: fid
   class(realization_base_type) :: realization_base
-  class(reaction_rt_type), pointer :: reaction 
+  class(reaction_rt_type), pointer :: reaction
   PetscBool :: print_secondary_data(5)
   character(len=MAXSTRINGLENGTH) :: cell_string
   PetscInt :: icolumn
-  
+
   PetscInt :: i,j
   character(len=MAXSTRINGLENGTH) :: string
   type(option_type), pointer :: option
-  type(output_option_type), pointer :: output_option  
-  
+  type(output_option_type), pointer :: output_option
+
   option => realization_base%option
   output_option => realization_base%output_option
-  
+
   ! add secondary temperature to header
   if (print_secondary_data(1)) then
-    select case (option%iflowmode) 
+    select case (option%iflowmode)
       case (TH_MODE,TH_TS_MODE,MPH_MODE)
         do i = 1, option%nsec_cells
           write(string,'(i2)') i
@@ -912,24 +922,35 @@ subroutine WriteObservationHeaderSec(fid,realization_base,cell_string, &
       case default
     end select
   endif
-  
+
   ! add secondary concentrations to header
-  if (option%ntrandof > 0) then 
+  if (option%ntrandof > 0) then
     select case(option%itranmode)
       case(RT_MODE)
-        reaction => ReactionCast(realization_base%reaction_base)
+        reaction => ReactionAuxCast(realization_base%reaction_base)
         if (print_secondary_data(2)) then
           do j = 1, reaction%naqcomp
             do i = 1, option%nsec_cells
               write(string,'(i2)') i
               string = 'C(' // trim(adjustl(string)) // ') ' &
                          // trim(reaction%primary_species_names(j))
-              call OutputWriteToHeader(fid,string,'molal',cell_string, &
+              call OutputWriteToHeader(fid,string,'M',cell_string, &
                                        icolumn)
             enddo
           enddo
+          do j=1,reaction%gas%nactive_gas
+            if (reaction%gas%active_print_me(j)) then
+              do i = 1, option%nsec_cells
+                write(string,'(i2)') i
+                string = 'C(' // trim(adjustl(string)) // ') ' &
+                         // trim(reaction%gas%active_names(j))
+                call OutputWriteToHeader(fid,string,'Bar',cell_string, &
+                                         icolumn)
+              enddo
+            endif
+          enddo
         endif
-      
+
       ! add secondary mineral volume fractions to header
         if (print_secondary_data(3)) then
           do j = 1, reaction%mineral%nkinmnrl
@@ -940,8 +961,8 @@ subroutine WriteObservationHeaderSec(fid,realization_base,cell_string, &
               call OutputWriteToHeader(fid,string,'',cell_string,icolumn)
             enddo
           enddo
-        endif  
-        
+        endif
+
       ! add secondary mineral rates to header
         if (print_secondary_data(4)) then
           do j = 1, reaction%mineral%nkinmnrl
@@ -952,8 +973,8 @@ subroutine WriteObservationHeaderSec(fid,realization_base,cell_string, &
               call OutputWriteToHeader(fid,string,'',cell_string,icolumn)
             enddo
           enddo
-        endif    
-        
+        endif
+
       ! add secondary mineral volume fractions to header
         if (print_secondary_data(5)) then
           do j = 1, reaction%mineral%nkinmnrl
@@ -964,25 +985,25 @@ subroutine WriteObservationHeaderSec(fid,realization_base,cell_string, &
               call OutputWriteToHeader(fid,string,'',cell_string,icolumn)
             enddo
           enddo
-        endif    
+        endif
       case(NWT_MODE)
         option%io_buffer = 'WriteObservationHeaderSec has not been setup &
           &for NW Transport.'
         call PrintErrMsg(option)
     end select
-  endif 
-  
+  endif
+
 end subroutine WriteObservationHeaderSec
 
 ! ************************************************************************** !
 
 subroutine WriteObservationHeaderForBC(fid,realization_base,coupler_name)
-  ! 
+  !
   ! Print a header for data over a region
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 12/18/08
-  ! 
+  !
 
   use Realization_Base_class, only : realization_base_type
   use Option_module
@@ -990,21 +1011,21 @@ subroutine WriteObservationHeaderForBC(fid,realization_base,coupler_name)
   use NW_Transport_Aux_module
 
   implicit none
-  
+
   PetscInt :: fid
   class(realization_base_type) :: realization_base
   character(len=MAXWORDLENGTH) :: coupler_name
-  
+
   PetscInt :: i
   character(len=MAXSTRINGLENGTH) :: string
   type(option_type), pointer :: option
-  class(reaction_rt_type), pointer :: reaction 
+  class(reaction_rt_type), pointer :: reaction
   class(reaction_nw_type), pointer :: reaction_nw
-  
+
   option => realization_base%option
-  reaction => ReactionCast(realization_base%reaction_base)
+  reaction => ReactionAuxCast(realization_base%reaction_base)
   reaction_nw => NWTReactionCast(realization_base%reaction_base)
-  
+
   select case(option%iflowmode)
     case(MPH_MODE)
     case(TH_MODE,TH_TS_MODE)
@@ -1018,10 +1039,10 @@ subroutine WriteObservationHeaderForBC(fid,realization_base,coupler_name)
   end select
   write(fid,'(a)',advance="no") trim(string)
 
-  if (option%ntrandof > 0) then 
+  if (option%ntrandof > 0) then
     select case(option%itranmode)
       case(RT_MODE)
-        do i=1, reaction%naqcomp 
+        do i=1, reaction%naqcomp
           ! may need to modify for molality vs molarity, but I believe molarity is correct
           write(fid,'(a)',advance="no") ',"' // &
             trim(reaction%primary_species_names(i)) // ' ' // &
@@ -1029,7 +1050,7 @@ subroutine WriteObservationHeaderForBC(fid,realization_base,coupler_name)
             ' [mol/' // trim(realization_base%output_option%tunit) // ']"'
         enddo
       case(NWT_MODE)
-        do i=1, reaction_nw%params%nspecies 
+        do i=1, reaction_nw%params%nspecies
           write(fid,'(a)',advance="no") ',"' // &
             trim(reaction_nw%species_names(i)) // ' ' // &
             trim(coupler_name) // &
@@ -1061,7 +1082,7 @@ subroutine WriteObservationAggData(aggregate,realization_base,string,&
   type(output_option_type), pointer :: output_option
   type(option_type), pointer :: option
   character(len=MAXSTRINGLENGTH) :: string, filename
-  PetscInt :: fid  
+  PetscInt :: fid
 
   PetscErrorCode :: ierr
   PetscInt :: agg_rank, local_id
@@ -1075,10 +1096,11 @@ subroutine WriteObservationAggData(aggregate,realization_base,string,&
   select case(aggregate%metric)
     case(OBSERVATION_AGGREGATE_MAX)
       call MPI_Allreduce(local_metric,global_metric,ONE_INTEGER, &
-                         MPI_2DOUBLE_PRECISION,MPI_MAXLOC,option%mycomm,ierr) 
+                         MPI_2DOUBLE_PRECISION,MPI_MAXLOC,option%mycomm, &
+                         ierr);CHKERRQ(ierr)
   end select
 
-  agg_rank = global_metric(2)
+  agg_rank = int(global_metric(2)+1.d-5)
 
   if (option%myrank == agg_rank) then
 
@@ -1097,7 +1119,7 @@ subroutine WriteObservationAggData(aggregate,realization_base,string,&
     call WriteObservationDataForCell(fid,realization_base,local_id)
 
     write(fid,'(a)',advance="yes") ""
-    close(fid)    
+    close(fid)
   endif
 
 end subroutine WriteObservationAggData
@@ -1105,12 +1127,12 @@ end subroutine WriteObservationAggData
 ! ************************************************************************** !
 
 subroutine WriteObservationDataForCell(fid,realization_base,local_id)
-  ! 
+  !
   ! Print data for data at a cell
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 02/11/08
-  ! 
+  !
 
   use Realization_Base_class, only : realization_base_type, &
                                      RealizGetVariableValueAtCell
@@ -1119,10 +1141,10 @@ subroutine WriteObservationDataForCell(fid,realization_base,local_id)
   use Field_module
   use Patch_module
   use Variables_module
-  
+
   implicit none
-  
-  PetscInt :: fid, i
+
+  PetscInt :: fid
   class(realization_base_type) :: realization_base
   PetscInt :: local_id
   PetscReal :: temp_real
@@ -1130,10 +1152,10 @@ subroutine WriteObservationDataForCell(fid,realization_base,local_id)
   type(option_type), pointer :: option
   type(grid_type), pointer :: grid
   type(field_type), pointer :: field
-  type(patch_type), pointer :: patch  
-  type(output_option_type), pointer :: output_option  
+  type(patch_type), pointer :: patch
+  type(output_option_type), pointer :: output_option
   type(output_variable_type), pointer :: cur_variable
-  
+
   option => realization_base%option
   patch => realization_base%patch
   grid => patch%grid
@@ -1152,7 +1174,14 @@ subroutine WriteObservationDataForCell(fid,realization_base,local_id)
     if (cur_variable%plot_only) then
       cur_variable => cur_variable%next
       cycle
-    endif     
+    endif
+    select case(cur_variable%ivar)
+      case(WELL_LIQ_PRESSURE,WELL_GAS_PRESSURE,WELL_LIQ_SATURATION, &
+           WELL_GAS_SATURATION,WELL_AQ_CONC,WELL_AQ_MASS, &
+           WELL_LIQ_Q,WELL_GAS_Q)
+        cur_variable => cur_variable%next
+        cycle
+    end select
     temp_real = OutputGetVariableAtCell(realization_base,ghosted_id, &
                                         cur_variable)
     if (cur_variable%iformat == 0) then ! real
@@ -1161,32 +1190,32 @@ subroutine WriteObservationDataForCell(fid,realization_base,local_id)
       write(fid,111,advance="no") int(temp_real + 1.d-5)
     endif
     cur_variable => cur_variable%next
-  enddo  
+  enddo
 
 end subroutine WriteObservationDataForCell
 
 ! ************************************************************************** !
 
 subroutine WriteObservationDataForCoord(fid,realization_base,region)
-  ! 
+  !
   ! Print data for data at a coordinate
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 04/11/08
-  ! 
+  !
 
   use Realization_Base_class, only : realization_base_type
   use Option_module
-  use Region_module  
+  use Region_module
   use Grid_module
   use Field_module
   use Patch_module
   use Variables_module
-  
+
   use Grid_Structured_module
 
   implicit none
-  
+
   PetscInt :: fid
   class(realization_base_type) :: realization_base
   type(region_type) :: region
@@ -1197,15 +1226,15 @@ subroutine WriteObservationDataForCoord(fid,realization_base,region)
   type(option_type), pointer :: option
   type(grid_type), pointer :: grid
   type(field_type), pointer :: field
-  type(patch_type), pointer :: patch  
+  type(patch_type), pointer :: patch
   type(output_option_type), pointer :: output_option
   type(output_variable_type), pointer :: cur_variable
-    
+
   PetscInt :: ghosted_ids(8)
   PetscInt :: count
   PetscInt :: i, j, k
   PetscInt :: istart, iend, jstart, jend, kstart, kend
-  
+
   option => realization_base%option
   patch => realization_base%patch
   grid => patch%grid
@@ -1263,7 +1292,7 @@ subroutine WriteObservationDataForCoord(fid,realization_base,region)
       enddo
     enddo
   enddo
-  
+
   ! loop over observation variables and write to file
   cur_variable => output_option%output_obs_variable_list%first
   do
@@ -1271,7 +1300,7 @@ subroutine WriteObservationDataForCoord(fid,realization_base,region)
     if (cur_variable%plot_only) then
       cur_variable => cur_variable%next
       cycle
-    endif    
+    endif
     temp_real = OutputGetVariableAtCoord(realization_base, &
                                          cur_variable, &
                                          region%coordinates(ONE_INTEGER)%x, &
@@ -1291,21 +1320,21 @@ end subroutine WriteObservationDataForCoord
 ! ************************************************************************** !
 
 subroutine WriteObservationDataForBC(fid,realization_base,patch,connection_set)
-  ! 
+  !
   ! Print flux data for a boundary condition
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 12/18/08
-  ! 
+  !
 
   use Realization_Base_class, only : realization_base_type
   use Option_module
-  use Connection_module  
+  use Connection_module
   use Patch_module
   use Reaction_Aux_module
 
   implicit none
-  
+
   PetscInt :: fid
   class(realization_base_type) :: realization_base
   type(patch_type), pointer :: patch
@@ -1323,19 +1352,19 @@ subroutine WriteObservationDataForBC(fid,realization_base,patch,connection_set)
   type(option_type), pointer :: option
   class(reaction_rt_type), pointer :: reaction
   PetscErrorCode :: ierr
-  
+
   option => realization_base%option
-  reaction => ReactionCast(realization_base%reaction_base)
+  reaction => ReactionAuxCast(realization_base%reaction_base)
 
 110 format(es14.6)
- 
+
   iphase = 1
 
   ! sum up fluxes across region
   if (associated(connection_set)) then
     offset = connection_set%offset
     select case(option%iflowmode)
-      case(MPH_MODE,TH_MODE,TH_TS_MODE,G_MODE,H_MODE,WF_MODE)
+      case(MPH_MODE,TH_MODE,TH_TS_MODE,G_MODE,H_MODE,WF_MODE,SCO2_MODE)
         option%io_buffer = 'WriteObservationDataForBC() needs to be set up &
           & for multiphase flow modes.'
         call PrintErrMsg(option)
@@ -1351,7 +1380,8 @@ subroutine WriteObservationDataForBC(fid,realization_base,patch,connection_set)
         int_mpi = option%nphase
         call MPI_Reduce(sum_volumetric_flux,sum_volumetric_flux_global, &
                         int_mpi,MPI_DOUBLE_PRECISION,MPI_SUM, &
-                        option%driver%io_rank,option%mycomm,ierr)
+                        option%comm%io_rank,option%mycomm, &
+                        ierr);CHKERRQ(ierr)
         if (OptionIsIORank(option)) then
           do i = 1, option%nphase
             write(fid,110,advance="no") sum_volumetric_flux_global(i)
@@ -1369,9 +1399,9 @@ subroutine WriteObservationDataForBC(fid,realization_base,patch,connection_set)
         enddo
       endif
       int_mpi = option%ntrandof
-      call MPI_Reduce(sum_solute_flux,sum_solute_flux_global, &
-                      int_mpi,MPI_DOUBLE_PRECISION,MPI_SUM, &
-                      option%driver%io_rank,option%mycomm,ierr)
+      call MPI_Reduce(sum_solute_flux,sum_solute_flux_global,int_mpi, &
+                      MPI_DOUBLE_PRECISION,MPI_SUM,option%comm%io_rank, &
+                      option%mycomm,ierr);CHKERRQ(ierr)
       if (OptionIsIORank(option)) then
         !we currently only print the aqueous components
         do i = 1, reaction%naqcomp
@@ -1387,19 +1417,19 @@ end subroutine WriteObservationDataForBC
 ! ************************************************************************** !
 
 subroutine WriteVelocityAtCell(fid,realization_base,local_id)
-  ! 
+  !
   ! Computes velocities at a grid cell
   ! note: limited to structured grids
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 03/20/08
-  ! 
+  !
 
   use Realization_Base_class, only : realization_base_type
   use Option_module
 
   implicit none
-  
+
   PetscInt :: fid
   class(realization_base_type) :: realization_base
   type(option_type), pointer :: option
@@ -1408,7 +1438,7 @@ subroutine WriteVelocityAtCell(fid,realization_base,local_id)
 
   PetscReal :: velocity(1:3)
   option => realization_base%option
-  
+
 200 format(3(es14.6))
 
   iphase = 1
@@ -1428,17 +1458,17 @@ end subroutine WriteVelocityAtCell
 ! ************************************************************************** !
 
 subroutine WriteVelocityAtCell2(fid,realization_base,local_id,velocities)
-  ! 
+  !
   ! Writes the velocity previoiusly calculated and stored in vecs at cell
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 07/08/16
-  ! 
+  !
   use Realization_Base_class, only : realization_base_type
   use Option_module
 
   implicit none
-  
+
   PetscInt :: fid
   class(realization_base_type) :: realization_base
   type(option_type), pointer :: option
@@ -1447,7 +1477,7 @@ subroutine WriteVelocityAtCell2(fid,realization_base,local_id,velocities)
 
   PetscReal :: velocity(3)
   option => realization_base%option
-  
+
 200 format(3(es14.6))
 
   velocity = velocities(:,local_id,1)
@@ -1465,13 +1495,13 @@ end subroutine WriteVelocityAtCell2
 ! ************************************************************************** !
 
 function GetVelocityAtCell(fid,realization_base,local_id,iphase)
-  ! 
+  !
   ! Computes velocities at a grid cell
   ! note: limited to structured grids
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 03/20/08
-  ! 
+  !
 
   use Realization_Base_class, only : realization_base_type
   use Option_module
@@ -1482,17 +1512,16 @@ function GetVelocityAtCell(fid,realization_base,local_id,iphase)
   use Coupler_module
 
   implicit none
-  
+
   PetscReal :: GetVelocityAtCell(3)
   PetscInt :: fid
   class(realization_base_type) :: realization_base
   PetscInt :: local_id
 
-  PetscInt :: ghosted_id
   type(option_type), pointer :: option
   type(grid_type), pointer :: grid
   type(field_type), pointer :: field
-  type(patch_type), pointer :: patch  
+  type(patch_type), pointer :: patch
   type(connection_set_list_type), pointer :: connection_set_list
   type(coupler_type), pointer :: boundary_condition
   type(connection_set_type), pointer :: cur_connection_set
@@ -1501,7 +1530,7 @@ function GetVelocityAtCell(fid,realization_base,local_id,iphase)
   PetscInt :: direction, iphase
   PetscReal :: area
   PetscReal :: sum_velocity(1:3), sum_area(1:3), velocity(1:3)
-  
+
   option => realization_base%option
   patch => realization_base%patch
   grid => patch%grid
@@ -1511,18 +1540,18 @@ function GetVelocityAtCell(fid,realization_base,local_id,iphase)
   sum_area = 0.d0
 ! iphase = 1
 
-  ! interior velocities  
+  ! interior velocities
   connection_set_list => grid%internal_connection_set_list
   cur_connection_set => connection_set_list%first
   sum_connection = 0
-  do 
+  do
     if (.not.associated(cur_connection_set)) exit
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
       local_id_up = grid%nG2L(cur_connection_set%id_up(iconn)) ! = zero for ghost nodes
       local_id_dn = grid%nG2L(cur_connection_set%id_dn(iconn)) ! = zero for ghost nodes
       if (local_id_up == local_id .or. local_id_dn == local_id) then
-        do direction=1,3        
+        do direction=1,3
           area = cur_connection_set%area(iconn)* &
                  !geh: no dabs() here
                  cur_connection_set%dist(direction,iconn)
@@ -1545,7 +1574,7 @@ function GetVelocityAtCell(fid,realization_base,local_id,iphase)
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
       if (cur_connection_set%id_dn(iconn) == local_id) then
-        do direction=1,3        
+        do direction=1,3
           area = cur_connection_set%area(iconn)* &
                  !geh: no dabs() here
                  cur_connection_set%dist(direction,iconn)
@@ -1565,39 +1594,37 @@ function GetVelocityAtCell(fid,realization_base,local_id,iphase)
       velocity(direction) = sum_velocity(direction)/sum_area(direction)
   enddo
 
-  GetVelocityAtCell = velocity  
+  GetVelocityAtCell = velocity
 
 end function GetVelocityAtCell
 
 ! ************************************************************************** !
 
 subroutine WriteVelocityAtCoord(fid,realization_base,region)
-  ! 
+  !
   ! Computes velocities at a coordinate
   ! note: limited to structured grids
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 03/20/08
-  ! 
+  !
 
   use Realization_Base_class, only : realization_base_type
   use Region_module
   use Option_module
 
   implicit none
-  
+
   PetscInt :: fid
   class(realization_base_type) :: realization_base
   type(region_type) :: region
   type(option_type), pointer :: option
-  PetscInt :: local_id
   PetscInt :: iphase
-  PetscReal :: coordinate(3)
 
   PetscReal :: velocity(1:3)
 
   option => realization_base%option
-  
+
 200 format(3(es14.6))
 
   iphase = 1
@@ -1605,7 +1632,7 @@ subroutine WriteVelocityAtCoord(fid,realization_base,region)
                                 region%coordinates(ONE_INTEGER)%x, &
                                 region%coordinates(ONE_INTEGER)%y, &
                                 region%coordinates(ONE_INTEGER)%z,iphase)
-  write(fid,200,advance="no") velocity(1:3)*realization_base%output_option%tconv   
+  write(fid,200,advance="no") velocity(1:3)*realization_base%output_option%tconv
 
   if (max(option%nphase,option%transport%nphase) > 1) then
     iphase = 2
@@ -1613,7 +1640,7 @@ subroutine WriteVelocityAtCoord(fid,realization_base,region)
                                 region%coordinates(ONE_INTEGER)%x, &
                                 region%coordinates(ONE_INTEGER)%y, &
                                 region%coordinates(ONE_INTEGER)%z,iphase)
-    write(fid,200,advance="no") velocity(1:3)*realization_base%output_option%tconv   
+    write(fid,200,advance="no") velocity(1:3)*realization_base%output_option%tconv
   endif
 
 end subroutine WriteVelocityAtCoord
@@ -1621,13 +1648,13 @@ end subroutine WriteVelocityAtCoord
 ! ************************************************************************** !
 
 function GetVelocityAtCoord(fid,realization_base,local_id,x,y,z,iphase)
-  ! 
+  !
   ! Computes velocities at a coordinate
   ! note: limited to structured grids
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 03/20/08
-  ! 
+  !
   use Realization_Base_class, only : realization_base_type
   use Option_module
   use Grid_module
@@ -1637,18 +1664,18 @@ function GetVelocityAtCoord(fid,realization_base,local_id,x,y,z,iphase)
   use Coupler_module
 
   implicit none
-  
+
   PetscReal :: GetVelocityAtCoord(3)
   PetscInt :: fid
   class(realization_base_type) :: realization_base
   PetscInt :: local_id
   PetscReal :: x, y, z
-  
+
   PetscInt :: ghosted_id
   type(option_type), pointer :: option
   type(grid_type), pointer :: grid
   type(field_type), pointer :: field
-  type(patch_type), pointer :: patch  
+  type(patch_type), pointer :: patch
   type(connection_set_list_type), pointer :: connection_set_list
   type(coupler_type), pointer :: boundary_condition
   type(connection_set_type), pointer :: cur_connection_set
@@ -1657,10 +1684,10 @@ function GetVelocityAtCoord(fid,realization_base,local_id,x,y,z,iphase)
   PetscReal :: cell_coord(3), face_coord
   PetscReal :: coordinate(3)
   PetscInt :: direction, iphase
-  PetscReal :: area, weight, distance
+  PetscReal :: weight, distance
   PetscReal :: sum_velocity(1:3), velocity(1:3)
   PetscReal :: sum_weight(1:3)
-  
+
   option => realization_base%option
   patch => realization_base%patch
   grid => patch%grid
@@ -1671,7 +1698,7 @@ function GetVelocityAtCoord(fid,realization_base,local_id,x,y,z,iphase)
 ! iphase = 1
 
   ghosted_id = grid%nL2G(local_id)
-  
+
   coordinate(X_DIRECTION) = x
   coordinate(Y_DIRECTION) = y
   coordinate(Z_DIRECTION) = z
@@ -1680,11 +1707,11 @@ function GetVelocityAtCoord(fid,realization_base,local_id,x,y,z,iphase)
   cell_coord(Y_DIRECTION) = grid%y(ghosted_id)
   cell_coord(Z_DIRECTION) = grid%z(ghosted_id)
 
-  ! interior velocities  
+  ! interior velocities
   connection_set_list => grid%internal_connection_set_list
   cur_connection_set => connection_set_list%first
   sum_connection = 0
-  do 
+  do
     if (.not.associated(cur_connection_set)) exit
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
@@ -1708,7 +1735,7 @@ function GetVelocityAtCoord(fid,realization_base,local_id,x,y,z,iphase)
           weight = cur_connection_set%area(iconn)* &
                  dabs(cur_connection_set%dist(direction,iconn))/ &
                  distance
- 
+
           sum_velocity(direction) = sum_velocity(direction) + &
                                     cur_connection_set%dist(direction,iconn)* &
                                     patch%internal_velocities(iphase,sum_connection)* &
@@ -1729,7 +1756,7 @@ function GetVelocityAtCoord(fid,realization_base,local_id,x,y,z,iphase)
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
       if (cur_connection_set%id_dn(iconn) == local_id) then
-        do direction=1,3        
+        do direction=1,3
           face_coord = cell_coord(direction) - &
                     !   (1.d0-cur_connection_set%dist(-1,iconn))* & ! fraction upwind is always 0.d0
                        cur_connection_set%dist(0,iconn)* &
@@ -1756,19 +1783,19 @@ function GetVelocityAtCoord(fid,realization_base,local_id,x,y,z,iphase)
       velocity(direction) = sum_velocity(direction)/sum_weight(direction)
   enddo
 
-  GetVelocityAtCoord = velocity  
+  GetVelocityAtCoord = velocity
 
 end function GetVelocityAtCoord
 
 ! ************************************************************************** !
 
 subroutine WriteObservationSecondaryDataAtCell(fid,realization_base,local_id,ivar)
-  ! 
+  !
   ! Print data for data at a cell
-  ! 
+  !
   ! Author: Satish Karra, LANL
   ! Date: 10/4/12
-  ! 
+  !
 
   use Realization_Base_class, only : realization_base_type, &
                                      RealizGetVariableValueAtCell
@@ -1780,19 +1807,19 @@ subroutine WriteObservationSecondaryDataAtCell(fid,realization_base,local_id,iva
   use Reaction_Aux_module
 
   implicit none
-  
-  PetscInt :: fid,i,naqcomp,nkinmnrl
+
+  PetscInt :: fid,i,naqcomp,nkinmnrl,ngas
   class(realization_base_type) :: realization_base
   PetscInt :: local_id
   PetscInt :: ghosted_id
   type(option_type), pointer :: option
   type(grid_type), pointer :: grid
   type(field_type), pointer :: field
-  type(patch_type), pointer :: patch  
-  type(output_option_type), pointer :: output_option 
-  class(reaction_rt_type), pointer :: reaction   
+  type(patch_type), pointer :: patch
+  type(output_option_type), pointer :: output_option
+  class(reaction_rt_type), pointer :: reaction
   PetscInt :: ivar
-  
+
   option => realization_base%option
   patch => realization_base%patch
   grid => patch%grid
@@ -1807,7 +1834,7 @@ subroutine WriteObservationSecondaryDataAtCell(fid,realization_base,local_id,iva
     if (ivar == PRINT_SEC_TEMP) then
       select case(option%iflowmode)
         case(MPH_MODE,TH_MODE,TH_TS_MODE)
-          do i = 1, option%nsec_cells 
+          do i = 1, option%nsec_cells
             write(fid,110,advance="no") &
               RealizGetVariableValueAtCell(realization_base,ghosted_id, &
                                            SECONDARY_TEMPERATURE,i)
@@ -1817,19 +1844,30 @@ subroutine WriteObservationSecondaryDataAtCell(fid,realization_base,local_id,iva
     if (option%ntrandof > 0) then
       select case(option%itranmode)
         case(RT_MODE)
-          reaction => ReactionCast(realization_base%reaction_base)
+          reaction => ReactionAuxCast(realization_base%reaction_base)
           if (ivar == PRINT_SEC_CONC) then
             do naqcomp = 1, reaction%naqcomp
-              do i = 1, option%nsec_cells 
+              do i = 1, option%nsec_cells
                 write(fid,110,advance="no") &
                   RealizGetVariableValueAtCell(realization_base,ghosted_id, &
-                                             SECONDARY_CONCENTRATION,i,naqcomp)
+                                               SECONDARY_CONCENTRATION, &
+                                               i,naqcomp)
               enddo
-            enddo 
+            enddo
+            do ngas=1,reaction%gas%nactive_gas
+              if (reaction%gas%active_print_me(ngas)) then
+                do i = 1, option%nsec_cells
+                  write(fid,110,advance="no") &
+                    RealizGetVariableValueAtCell(realization_base,ghosted_id, &
+                                                 SECONDARY_CONCENTRATION_GAS, &
+                                                 i,ngas)
+                enddo
+              endif
+            enddo
           endif
           if (ivar == PRINT_SEC_MIN_VOLFRAC) then
             do nkinmnrl = 1, reaction%mineral%nkinmnrl
-              do i = 1, option%nsec_cells 
+              do i = 1, option%nsec_cells
                 write(fid,110,advance="no") &
                   RealizGetVariableValueAtCell(realization_base,ghosted_id, &
                                                SEC_MIN_VOLFRAC,i,nkinmnrl)
@@ -1838,7 +1876,7 @@ subroutine WriteObservationSecondaryDataAtCell(fid,realization_base,local_id,iva
           endif
            if (ivar == PRINT_SEC_MIN_RATE) then
             do nkinmnrl = 1, reaction%mineral%nkinmnrl
-              do i = 1, option%nsec_cells 
+              do i = 1, option%nsec_cells
                 write(fid,110,advance="no") &
                   RealizGetVariableValueAtCell(realization_base,ghosted_id, &
                                                SEC_MIN_RATE,i,nkinmnrl)
@@ -1847,21 +1885,21 @@ subroutine WriteObservationSecondaryDataAtCell(fid,realization_base,local_id,iva
           endif
           if (ivar == PRINT_SEC_MIN_SI) then
             do nkinmnrl = 1, reaction%mineral%nkinmnrl
-              do i = 1, option%nsec_cells 
+              do i = 1, option%nsec_cells
                 write(fid,110,advance="no") &
                   RealizGetVariableValueAtCell(realization_base,ghosted_id, &
                                                SEC_MIN_SI,i,nkinmnrl)
               enddo
             enddo
-          endif           
+          endif
         case(NWT_MODE)
           option%io_buffer = 'WriteObservationSecondaryDataAtCell has not &
             &been setup for NW Transport.'
           call PrintErrMsg(option)
       end select
-    endif 
-  endif 
-   
+    endif
+  endif
+
 end subroutine WriteObservationSecondaryDataAtCell
 
 ! ************************************************************************** !
@@ -1873,8 +1911,8 @@ subroutine ObservationAggregateLinkToVar(aggregate_var,output_var_list, &
   !
   ! Author: Michael Nole
   ! Date: 04/17/20
- 
-  use Option_module 
+
+  use Option_module
   use String_module
 
   implicit none
@@ -1892,7 +1930,8 @@ subroutine ObservationAggregateLinkToVar(aggregate_var,output_var_list, &
       option%io_buffer = 'Variable requested for aggregate metric ' //&
                          'does not match any output variables.'
       call PrintErrMsg(option)
-    elseif (StringCompareIgnoreCase(cur_variable%name,var_name)) then
+    elseif (StringCompareIgnoreCase(OutputVariableGetName(cur_variable), &
+                                    var_name)) then
       aggregate_var => cur_variable
       exit
     endif
@@ -1928,7 +1967,7 @@ subroutine ObservationAggComputeMetric(realization_base,aggregate,region,option)
 
   cur_variable => aggregate%output_variable
   temp_real = UNINITIALIZED_DOUBLE
-  
+
   if (region%num_cells == 0) then
     select case(aggregate%metric)
       case(OBSERVATION_AGGREGATE_MAX)
@@ -1971,12 +2010,12 @@ end subroutine ObservationAggComputeMetric
 ! ************************************************************************** !
 
 subroutine OutputIntegralFlux(realization_base)
-  ! 
+  !
   ! Print integral fluxes to Tecplot POINT format
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 10/21/14
-  ! 
+  !
 
   use Realization_Subsurface_class, only : realization_subsurface_type
   use Realization_Base_class, only : realization_base_type
@@ -1990,6 +2029,7 @@ subroutine OutputIntegralFlux(realization_base)
   use Utility_module
   use General_Aux_module, only : general_fmw => fmw_comp
   use WIPP_Flow_Aux_module, only : wipp_flow_fmw => fmw_comp
+  use SCO2_Aux_module, only : sco2_fmw => fmw_comp
 
   implicit none
 
@@ -2003,7 +2043,7 @@ subroutine OutputIntegralFlux(realization_base)
   class(reaction_nw_type), pointer :: reaction_nw
 
   character(len=MAXSTRINGLENGTH) :: filename
-  character(len=MAXWORDLENGTH) :: word, units
+  character(len=MAXWORDLENGTH) :: units
   character(len=MAXSTRINGLENGTH) :: string
   type(integral_flux_type), pointer :: integral_flux
   PetscReal :: flow_dof_scale(10)
@@ -2022,7 +2062,7 @@ subroutine OutputIntegralFlux(realization_base)
   grid => patch%grid
   option => realization_base%option
   output_option => realization_base%output_option
-  reaction => ReactionCast(realization_base%reaction_base)
+  reaction => ReactionAuxCast(realization_base%reaction_base)
   reaction_nw => NWTReactionCast(realization_base%reaction_base)
 
   if (.not.associated(patch%integral_flux_list%first)) return
@@ -2042,6 +2082,11 @@ subroutine OutputIntegralFlux(realization_base)
     case(MPH_MODE)
       flow_dof_scale(1) = FMWH2O
       flow_dof_scale(2) = FMWCO2
+    case(SCO2_MODE)
+      !MAN: double check if this is mass or molar
+      flow_dof_scale(1) = sco2_fmw(1)
+      flow_dof_scale(2) = sco2_fmw(2)
+      flow_dof_scale(3) = sco2_fmw(3)
   end select
 
   if (len_trim(output_option%plot_name) > 2) then
@@ -2050,7 +2095,7 @@ subroutine OutputIntegralFlux(realization_base)
     filename = trim(option%global_prefix) // trim(option%group_prefix) // &
                '-int.dat'
   endif
-  
+
   ! open file
   if (OptionIsIORank(option)) then
 
@@ -2059,28 +2104,28 @@ subroutine OutputIntegralFlux(realization_base)
     else
       icol = -1
     endif
-  
+
     if (integral_flux_first .or. .not.FileExists(filename)) then
       open(unit=fid,file=filename,action="write",status="replace")
 
       ! write header
       write(fid,'(a)',advance="no") ' "Time [' // trim(output_option%tunit) // &
-        ']"'  
-      
+        ']"'
+
       if (option%iflowmode > 0) then
         call OutputWriteToHeader(fid,'dt_flow',output_option%tunit,'',icol)
       endif
-      
+
       if (option%ntrandof > 0) then
         call OutputWriteToHeader(fid,'dt_tran',output_option%tunit,'',icol)
       endif
-      
+
       integral_flux => patch%integral_flux_list%first
       do
         if (.not.associated(integral_flux)) exit
         select case(option%iflowmode)
           case(RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE, &
-               TH_MODE,TH_TS_MODE,G_MODE,H_MODE,MPH_MODE,WF_MODE)
+               TH_MODE,TH_TS_MODE,G_MODE,H_MODE,MPH_MODE,WF_MODE,SCO2_MODE)
             string = trim(integral_flux%name) // ' Water'
             call OutputWriteToHeader(fid,string,'kg','',icol)
             units = 'kg/' // trim(output_option%tunit) // ''
@@ -2106,7 +2151,7 @@ subroutine OutputIntegralFlux(realization_base)
             units = 'kg/' // trim(output_option%tunit) // ''
             string = trim(integral_flux%name) // ' Gas Component'
             call OutputWriteToHeader(fid,string,units,'',icol)
-          case(MPH_MODE)
+          case(MPH_MODE,SCO2_MODE)
             string = trim(integral_flux%name) // ' CO2'
             call OutputWriteToHeader(fid,string,'kg','',icol)
             units = 'kg/' // trim(output_option%tunit) // ''
@@ -2114,7 +2159,7 @@ subroutine OutputIntegralFlux(realization_base)
             call OutputWriteToHeader(fid,string,units,'',icol)
         end select
         select case(option%iflowmode)
-          case(TH_MODE,TH_TS_MODE,G_MODE,H_MODE,MPH_MODE)
+          case(TH_MODE,TH_TS_MODE,G_MODE,H_MODE,MPH_MODE,SCO2_MODE)
             string = trim(integral_flux%name) // ' Energy'
             call OutputWriteToHeader(fid,string,'MJ','',icol)
             units = 'MJ/' // trim(output_option%tunit) // ''
@@ -2150,11 +2195,11 @@ subroutine OutputIntegralFlux(realization_base)
         endif
         integral_flux => integral_flux%next
       enddo
-      write(fid,'(a)') '' 
+      write(fid,'(a)') ''
     else
       open(unit=fid,file=filename,action="write",status="old",position="append")
-    endif 
-  endif     
+    endif
+  endif
 
 100 format(100es17.8)
 110 format(100es17.8)
@@ -2164,7 +2209,7 @@ subroutine OutputIntegralFlux(realization_base)
   if (OptionIsIORank(option)) then
     write(fid,100,advance="no") option%time/output_option%tconv
   endif
-  
+
   if (option%nflowdof > 0) then
     if (OptionIsIORank(option)) &
       write(fid,100,advance="no") option%flow_dt/output_option%tconv
@@ -2173,7 +2218,7 @@ subroutine OutputIntegralFlux(realization_base)
     if (OptionIsIORank(option)) &
       write(fid,100,advance="no") option%tran_dt/output_option%tconv
   endif
-  
+
   allocate(array(option%nflowdof + option%ntrandof,2))
   allocate(array_global(option%nflowdof + option%ntrandof,2))
   allocate(instantaneous_array(max(option%nflowdof,option%ntrandof)))
@@ -2211,9 +2256,8 @@ subroutine OutputIntegralFlux(realization_base)
         instantaneous_array(1:option%ntrandof)
     endif
     int_mpi = size(array)
-    call MPI_Reduce(array,array_global, &
-                    int_mpi,MPI_DOUBLE_PRECISION,MPI_SUM, &
-                    option%driver%io_rank,option%mycomm,ierr)
+    call MPI_Reduce(array,array_global,int_mpi,MPI_DOUBLE_PRECISION,MPI_SUM, &
+                    option%comm%io_rank,option%mycomm,ierr);CHKERRQ(ierr)
     ! time units conversion
     array_global(:,2) = array_global(:,2) * output_option%tconv
     if (OptionIsIORank(option)) then
@@ -2266,12 +2310,12 @@ subroutine OutputIntegralFlux(realization_base)
   deallocate(array)
   deallocate(array_global)
   deallocate(instantaneous_array)
-  
+
   if (OptionIsIORank(option)) then
     write(fid,'(a)') ''
     close(fid)
   endif
-  
+
   integral_flux_first = PETSC_FALSE
 
 end subroutine OutputIntegralFlux
@@ -2279,12 +2323,12 @@ end subroutine OutputIntegralFlux
 ! ************************************************************************** !
 
 subroutine OutputMassBalance(realization_base)
-  ! 
+  !
   ! Print to Tecplot POINT format
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 06/18/08
-  ! 
+  !
 
   use Realization_Subsurface_class, only : realization_subsurface_type
   use Realization_Base_class, only : realization_base_type
@@ -2294,7 +2338,7 @@ subroutine OutputMassBalance(realization_base)
   use Coupler_module
   use Utility_module
   use Output_Aux_module
-  
+
   use Richards_module, only : RichardsComputeMassBalance
   use Mphase_module, only : MphaseComputeMassBalance
   use TH_module, only : THComputeMassBalance
@@ -2304,12 +2348,13 @@ subroutine OutputMassBalance(realization_base)
   use Hydrate_module, only : HydrateComputeMassBalance
   use WIPP_Flow_module, only : WIPPFloComputeMassBalance
   use ZFlow_module, only : ZFlowComputeMassBalance
+  use SCO2_module, only : SCO2ComputeMassBalance
 
   use Global_Aux_module
   use Reactive_Transport_Aux_module
   use Reaction_Aux_module
   use NW_Transport_Aux_module
-  use Material_Aux_class
+  use Material_Aux_module
   use General_Aux_module, only : general_fmw => fmw_comp
   use WIPP_Flow_Aux_module, only : wipp_flow_fmw => fmw_comp
 
@@ -2333,43 +2378,34 @@ subroutine OutputMassBalance(realization_base)
   class(reaction_nw_type), pointer :: reaction_nw
 
   character(len=MAXSTRINGLENGTH) :: filename
-  character(len=MAXWORDLENGTH) :: word, units
+  character(len=MAXWORDLENGTH) :: units
   character(len=MAXSTRINGLENGTH) :: string
   PetscInt :: fid = 86
-  PetscInt :: ios
   PetscInt :: i,icol
-  PetscInt :: k, j
-  PetscInt :: local_id
-  PetscInt :: ghosted_id
   PetscInt :: iconn
   PetscInt :: offset
   PetscInt :: iphase, ispec
   PetscInt :: icomp, nmobilecomp, nspecies
   PetscInt :: max_tran_size
-  PetscReal :: sum_area(4)
-  PetscReal :: sum_area_global(4)
   PetscReal :: sum_kg(realization_base%option%nflowspec, &
                realization_base%option%nphase)
   PetscReal :: sum_kg_global(realization_base%option%nflowspec, &
                realization_base%option%nphase)
   PetscReal, allocatable :: sum_mol(:,:), sum_mol_global(:,:)
   PetscReal, allocatable :: global_total_mass(:,:), total_mass(:,:)
-  PetscReal :: global_water_mass
+  PetscReal :: global_water_mass, global_total_mass_sum
 
   PetscReal :: sum_trapped(realization_base%option%nphase)
   PetscReal :: sum_trapped_global(realization_base%option%nphase)
-  PetscReal :: sum_mol_ye(3), sum_mol_global_ye(3)
-  
+
   PetscMPIInt :: int_mpi
   PetscBool :: bcs_done
   PetscErrorCode :: ierr
-  PetscBool,parameter :: wecl=PETSC_FALSE
-  PetscInt, pointer :: cell_ids(:)
-  
+
   patch => realization_base%patch
   grid => patch%grid
   option => realization_base%option
-  reaction => ReactionCast(realization_base%reaction_base)
+  reaction => ReactionAuxCast(realization_base%reaction_base)
   reaction_nw => NWTReactionCast(realization_base%reaction_base)
   output_option => realization_base%output_option
 
@@ -2388,7 +2424,7 @@ subroutine OutputMassBalance(realization_base)
     filename = trim(option%global_prefix) // trim(option%group_prefix) // &
                '-mas.dat'
   endif
-  
+
   ! open file
   if (OptionIsIORank(option)) then
 
@@ -2397,22 +2433,22 @@ subroutine OutputMassBalance(realization_base)
     else
       icol = -1
     endif
-  
+
     if (mass_balance_first .or. .not.FileExists(filename)) then
       open(unit=fid,file=filename,action="write",status="replace")
 
       ! write header
       write(fid,'(a)',advance="no") ' "Time [' // trim(output_option%tunit) // &
-        ']"'  
-      
+        ']"'
+
       if (option%iflowmode > 0) then
         call OutputWriteToHeader(fid,'dt_flow',output_option%tunit,'',icol)
       endif
-      
+
       if (option%ntrandof > 0) then
         call OutputWriteToHeader(fid,'dt_tran',output_option%tunit,'',icol)
       endif
-      
+
       select case(option%iflowmode)
         case(RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE)
           call OutputWriteToHeader(fid,'Global Water Mass','kg','',icol)
@@ -2448,6 +2484,19 @@ subroutine OutputMassBalance(realization_base)
                                     'kmol','',icol)
           call OutputWriteToHeader(fid,'Trapped CO2 Mass in Gas Phase', &
                                     'kmol','',icol)
+        case(SCO2_MODE)
+          call OutputWriteToHeader(fid,'Global Water Mass in Water Phase', &
+                                    'kg','',icol)
+          call OutputWriteToHeader(fid,'Global CO2 Mass in Water Phase', &
+                                    'kg','',icol)
+          call OutputWriteToHeader(fid,'Trapped CO2 Mass in Water Phase', &
+                                    'kg','',icol)
+          call OutputWriteToHeader(fid,'Global Water Mass in Gas Phase', &
+                                    'kg','',icol)
+          call OutputWriteToHeader(fid,'Global CO2 Mass in Gas Phase', &
+                                    'kg','',icol)
+          call OutputWriteToHeader(fid,'Trapped CO2 Mass in Gas Phase', &
+                                    'kg','',icol)
       end select
 
       if (option%ntrandof > 0) then
@@ -2456,7 +2505,7 @@ subroutine OutputMassBalance(realization_base)
             do i=1,reaction%naqcomp
               if (reaction%primary_species_print(i)) then
                 string = 'Global ' // trim(reaction%primary_species_names(i))
-                if (reaction%print_total_mass_kg) then                
+                if (reaction%print_total_mass_kg) then
                   call OutputWriteToHeader(fid,string,'kg','',icol)
                 else
                   call OutputWriteToHeader(fid,string,'mol','',icol)
@@ -2467,7 +2516,7 @@ subroutine OutputMassBalance(realization_base)
             do i=1,reaction%immobile%nimmobile
               if (reaction%immobile%print_me(i)) then
                 string = 'Global ' // trim(reaction%immobile%names(i))
-                if (reaction%print_total_mass_kg) then                
+                if (reaction%print_total_mass_kg) then
                   call OutputWriteToHeader(fid,string,'kg','',icol)
                 else
                   call OutputWriteToHeader(fid,string,'mol','',icol)
@@ -2478,7 +2527,7 @@ subroutine OutputMassBalance(realization_base)
             do i=1,reaction%gas%nactive_gas
               if (reaction%gas%active_print_me(i)) then
                 string = 'Global ' // trim(reaction%gas%active_names(i))
-                if (reaction%print_total_mass_kg) then                
+                if (reaction%print_total_mass_kg) then
                   call OutputWriteToHeader(fid,string,'kg','',icol)
                 else
                   call OutputWriteToHeader(fid,string,'mol','',icol)
@@ -2490,7 +2539,7 @@ subroutine OutputMassBalance(realization_base)
               do i=1,reaction%mineral%nkinmnrl
                 if (reaction%mineral%kinmnrl_print(i)) then
                   string = 'Global ' // trim(reaction%mineral%kinmnrl_names(i))
-                  if (reaction%print_total_mass_kg) then                
+                  if (reaction%print_total_mass_kg) then
                     call OutputWriteToHeader(fid,string,'kg','',icol)
                   else
                     call OutputWriteToHeader(fid,string,'mol','',icol)
@@ -2505,7 +2554,7 @@ subroutine OutputMassBalance(realization_base)
             enddo
         end select
       endif
-      
+
       coupler => patch%boundary_condition_list%first
       bcs_done = PETSC_FALSE
       do
@@ -2570,14 +2619,25 @@ subroutine OutputMassBalance(realization_base)
             call OutputWriteToHeader(fid,string,'kmol','',icol)
             string = trim(coupler%name) // ' CO2 Mass'
             call OutputWriteToHeader(fid,string,'kmol','',icol)
-            
+
             units = 'kmol/' // trim(output_option%tunit) // ''
             string = trim(coupler%name) // ' Water Mass'
             call OutputWriteToHeader(fid,string,units,'',icol)
             string = trim(coupler%name) // ' CO2 Mass'
             call OutputWriteToHeader(fid,string,units,'',icol)
+          case(SCO2_MODE)
+            string = trim(coupler%name) // ' Water Mass'
+            call OutputWriteToHeader(fid,string,'kg','',icol)
+            string = trim(coupler%name) // ' CO2 Mass'
+            call OutputWriteToHeader(fid,string,'kg','',icol)
+
+            units = 'kg/' // trim(output_option%tunit) // ''
+            string = trim(coupler%name) // ' Water Mass'
+            call OutputWriteToHeader(fid,string,units,'',icol)
+            string = trim(coupler%name) // ' CO2 Mass'
+            call OutputWriteToHeader(fid,string,units,'',icol)
         end select
-        
+
         if (option%ntrandof > 0) then
           select case(option%itranmode)
             case(RT_MODE)
@@ -2588,7 +2648,19 @@ subroutine OutputMassBalance(realization_base)
                   call OutputWriteToHeader(fid,string,'mol','',icol)
                 endif
               enddo
-  
+
+              ! header for gas contributions to cumulative flux
+              if (reaction%gas%nactive_gas > 0) then
+                do i=1,reaction%naqcomp
+                  if (reaction%primary_species_print(i)) then
+                    string = trim(coupler%name) // ' ' // &
+                             trim(reaction%primary_species_names(i)) // &
+                             ' (gas phase)'
+                    call OutputWriteToHeader(fid,string,'mol','',icol)
+                  endif
+                enddo
+              endif
+
               units = 'mol/' // trim(output_option%tunit) // ''
               do i=1,reaction%naqcomp
                 if (reaction%primary_species_print(i)) then
@@ -2597,6 +2669,19 @@ subroutine OutputMassBalance(realization_base)
                   call OutputWriteToHeader(fid,string,units,'',icol)
                 endif
               enddo
+
+              ! header for gas contributions to flux
+              if (reaction%gas%nactive_gas > 0) then
+                do i=1,reaction%naqcomp
+                  if (reaction%primary_species_print(i)) then
+                    string = trim(coupler%name) // ' ' // &
+                             trim(reaction%primary_species_names(i)) // &
+                             ' (gas phase)'
+                    call OutputWriteToHeader(fid,string,units,'',icol)
+                  endif
+                enddo
+              endif
+
             case(NWT_MODE)
               do i=1,reaction_nw%params%nspecies
                 string = trim(coupler%name) // ' ' // &
@@ -2613,9 +2698,9 @@ subroutine OutputMassBalance(realization_base)
           end select
         endif
         coupler => coupler%next
-      
+
       enddo
-      
+
       ! Print the water mass [kg] and species mass [mol] in the specified regions (header)
       if (associated(output_option%mass_balance_region_list)) then
         cur_mbr => output_option%mass_balance_region_list
@@ -2626,11 +2711,17 @@ subroutine OutputMassBalance(realization_base)
           if (option%ntrandof > 0) then
             select case(option%itranmode)
               case(RT_MODE)
+                string = 'Region ' // trim(cur_mbr%region_name) // ' Total Mass'
+                if (reaction%print_total_mass_kg) then
+                  call OutputWriteToHeader(fid,string,'kg','',icol)
+                else
+                  call OutputWriteToHeader(fid,string,'mol','',icol)
+                endif
                 do i=1, reaction%naqcomp
-                  if (reaction%primary_species_print(i)) then  
+                  if (reaction%primary_species_print(i)) then
                     string = 'Region ' // trim(cur_mbr%region_name) // ' ' // &
-                           trim(reaction%primary_species_names(i)) // ' Total Mass'
-                    if (reaction%print_total_mass_kg) then                
+                           trim(reaction%primary_species_names(i)) // ' Mass'
+                    if (reaction%print_total_mass_kg) then
                       call OutputWriteToHeader(fid,string,'kg','',icol)
                     else
                       call OutputWriteToHeader(fid,string,'mol','',icol)
@@ -2640,32 +2731,32 @@ subroutine OutputMassBalance(realization_base)
                 do i=1,reaction%immobile%nimmobile
                   if (reaction%immobile%print_me(i)) then
                     string = 'Region ' // trim(cur_mbr%region_name) // ' ' // &
-                         trim(reaction%immobile%names(i)) // ' Total Mass'
-                    if (reaction%print_total_mass_kg) then                
+                         trim(reaction%immobile%names(i)) // ' Mass'
+                    if (reaction%print_total_mass_kg) then
                       call OutputWriteToHeader(fid,string,'kg','',icol)
                     else
                       call OutputWriteToHeader(fid,string,'mol','',icol)
                     endif
                   endif
                 enddo
-               
+
                 do i=1,reaction%gas%nactive_gas
                   if (reaction%gas%active_print_me(i)) then
                     string = 'Region ' // trim(cur_mbr%region_name) // ' ' // &
-                         trim(reaction%gas%active_names(i)) // ' Total Mass'
-                    if (reaction%print_total_mass_kg) then                
+                         trim(reaction%gas%active_names(i)) // ' Mass'
+                    if (reaction%print_total_mass_kg) then
                       call OutputWriteToHeader(fid,string,'kg','',icol)
                     else
                       call OutputWriteToHeader(fid,string,'mol','',icol)
                     endif
                   endif
                 enddo
-               
+
                 do i=1,reaction%mineral%nkinmnrl
                   if (reaction%mineral%kinmnrl_print(i)) then
                     string = 'Region ' // trim(cur_mbr%region_name) // ' ' // &
                          trim(reaction%mineral%kinmnrl_names(i)) // ' Total Mass'
-                    if (reaction%print_total_mass_kg) then                
+                    if (reaction%print_total_mass_kg) then
                       call OutputWriteToHeader(fid,string,'kg','',icol)
                     else
                       call OutputWriteToHeader(fid,string,'mol','',icol)
@@ -2674,19 +2765,19 @@ subroutine OutputMassBalance(realization_base)
                 enddo
 
               case(NWT_MODE)
-                call OutputWriteToHeader(fid,string,'mol','',icol)  
-            end select    
+                call OutputWriteToHeader(fid,string,'mol','',icol)
+            end select
 
           endif
           cur_mbr => cur_mbr%next
         enddo
       endif
-      write(fid,'(a)') '' 
+      write(fid,'(a)') ''
     else
       open(unit=fid,file=filename,action="write",status="old",position="append")
-    endif 
-    
-  endif     
+    endif
+
+  endif
 
 100 format(100es16.8)
 110 format(100es16.8)
@@ -2695,7 +2786,7 @@ subroutine OutputMassBalance(realization_base)
   if (OptionIsIORank(option)) then
     write(fid,100,advance="no") option%time/output_option%tconv
   endif
-  
+
   if (option%nflowdof > 0) then
     if (OptionIsIORank(option)) &
       write(fid,100,advance="no") option%flow_dt/output_option%tconv
@@ -2704,7 +2795,7 @@ subroutine OutputMassBalance(realization_base)
     if (OptionIsIORank(option)) &
       write(fid,100,advance="no") option%tran_dt/output_option%tconv
   endif
-  
+
 ! print out global mass balance
 
   if (option%nflowdof > 0) then
@@ -2728,6 +2819,9 @@ subroutine OutputMassBalance(realization_base)
             call HydrateComputeMassBalance(realization_base,sum_kg(:,:))
           case(WF_MODE)
             call WIPPFloComputeMassBalance(realization_base,sum_kg(:,1))
+          case(SCO2_MODE)
+            call SCO2ComputeMassBalance(realization_base,sum_kg(:,:), &
+                                          sum_trapped(:))
         end select
       class default
         option%io_buffer = 'Unrecognized realization class in MassBalance().'
@@ -2735,16 +2829,15 @@ subroutine OutputMassBalance(realization_base)
     end select
 
     int_mpi = option%nflowspec*option%nphase
-    call MPI_Reduce(sum_kg,sum_kg_global, &
-                    int_mpi,MPI_DOUBLE_PRECISION,MPI_SUM, &
-                    option%driver%io_rank,option%mycomm,ierr)
+    call MPI_Reduce(sum_kg,sum_kg_global,int_mpi,MPI_DOUBLE_PRECISION,MPI_SUM, &
+                    option%comm%io_rank,option%mycomm,ierr);CHKERRQ(ierr)
 
     if (option%iflowmode == MPH_MODE) then
 !     call MPI_Barrier(option%mycomm,ierr)
       int_mpi = option%nphase
-      call MPI_Reduce(sum_trapped,sum_trapped_global, &
-                    int_mpi,MPI_DOUBLE_PRECISION,MPI_SUM, &
-                    option%driver%io_rank,option%mycomm,ierr)
+      call MPI_Reduce(sum_trapped,sum_trapped_global,int_mpi, &
+                      MPI_DOUBLE_PRECISION,MPI_SUM,option%comm%io_rank, &
+                      option%mycomm,ierr);CHKERRQ(ierr)
     endif
 
     if (OptionIsIORank(option)) then
@@ -2760,7 +2853,7 @@ subroutine OutputMassBalance(realization_base)
           do iphase = 1, option%nphase
             write(fid,110,advance="no") sum_kg_global(iphase,1)
           enddo
-        case(MPH_MODE)
+        case(MPH_MODE,SCO2_MODE)
           do iphase = 1, option%nphase
             do ispec = 1, option%nflowspec
               write(fid,110,advance="no") sum_kg_global(ispec,iphase)
@@ -2770,7 +2863,7 @@ subroutine OutputMassBalance(realization_base)
       end select
     endif
   endif
-  
+
   if (option%ntrandof > 0) then
      select case(option%itranmode)
        case(RT_MODE)
@@ -2799,11 +2892,12 @@ subroutine OutputMassBalance(realization_base)
             call PrintErrMsg(option)
         end select
         int_mpi = max_tran_size*8
-        call MPI_Reduce(sum_mol,sum_mol_global,int_mpi, &
-                        MPI_DOUBLE_PRECISION,MPI_SUM, &
-                        option%driver%io_rank,option%mycomm,ierr)
+        call MPI_Reduce(sum_mol,sum_mol_global,int_mpi,MPI_DOUBLE_PRECISION, &
+                        MPI_SUM,option%comm%io_rank,option%mycomm, &
+                        ierr);CHKERRQ(ierr)
 
         if (OptionIsIORank(option)) then
+          ! total across all phases
           do icomp = 1, reaction%naqcomp
             if (reaction%primary_species_print(icomp)) then
               write(fid,110,advance="no") sum_mol_global(icomp,1)
@@ -2826,7 +2920,7 @@ subroutine OutputMassBalance(realization_base)
         endif
     !   print out mineral contribution to mass balance
         if (option%mass_bal_detailed) then
-          if (option%myrank == option%driver%io_rank) then
+          if (OptionIsIORank(option)) then
             do i = 1, reaction%mineral%nkinmnrl
               if (reaction%mineral%kinmnrl_print(i)) then
                 write(fid,110,advance="no") sum_mol_global(i,6)
@@ -2850,10 +2944,10 @@ subroutine OutputMassBalance(realization_base)
             call PrintErrMsg(option)
         end select
         int_mpi = max_tran_size*4
-        call MPI_Reduce(sum_mol,sum_mol_global,int_mpi, &
-                        MPI_DOUBLE_PRECISION,MPI_SUM, &
-                        option%driver%io_rank,option%mycomm,ierr)
-        if (option%myrank == option%driver%io_rank) then
+        call MPI_Reduce(sum_mol,sum_mol_global,int_mpi,MPI_DOUBLE_PRECISION, &
+                        MPI_SUM,option%comm%io_rank,option%mycomm, &
+                        ierr);CHKERRQ(ierr)
+        if (OptionIsIORank(option)) then
           do icomp = 1, reaction_nw%params%nspecies
             write(fid,110,advance="no") sum_mol_global(icomp,1)
           enddo
@@ -2872,9 +2966,9 @@ subroutine OutputMassBalance(realization_base)
       case(NWT_MODE)
         nwt_auxvars_bc_or_ss => patch%aux%NWT%auxvars_bc
     end select
-  endif    
+  endif
   bcs_done = PETSC_FALSE
-  do 
+  do
     if (.not.associated(coupler)) then
       if (bcs_done) then
         exit
@@ -2892,7 +2986,7 @@ subroutine OutputMassBalance(realization_base)
               case(NWT_MODE)
                 nwt_auxvars_bc_or_ss => patch%aux%NWT%auxvars_ss
             end select
-          endif    
+          endif
         else
           exit
         endif
@@ -2900,7 +2994,7 @@ subroutine OutputMassBalance(realization_base)
     endif
 
     offset = coupler%connection_set%offset
-    
+
     if (option%nflowdof > 0) then
 
 #if 0
@@ -2923,9 +3017,9 @@ subroutine OutputMassBalance(realization_base)
             global_auxvars_bc_or_ss(offset+iconn)%sat(1)
         enddo
 
-        call MPI_Reduce(sum_area,sum_area_global, &
-                        FOUR_INTEGER_MPI,MPI_DOUBLE_PRECISION,MPI_SUM, &
-                        option%driver%io_rank,option%mycomm,ierr)
+        call MPI_Reduce(sum_area,sum_area_global,FOUR_INTEGER_MPI, &
+                        MPI_DOUBLE_PRECISION,MPI_SUM,option%comm%io_rank, &
+                        option%mycomm,ierr);CHKERRQ(ierr)
 
         if (OptionIsIORank(option)) then
           print *
@@ -2957,9 +3051,9 @@ subroutine OutputMassBalance(realization_base)
           enddo
 
           int_mpi = option%nphase
-          call MPI_Reduce(sum_kg,sum_kg_global, &
-                          int_mpi,MPI_DOUBLE_PRECISION,MPI_SUM, &
-                          option%driver%io_rank,option%mycomm,ierr)
+          call MPI_Reduce(sum_kg,sum_kg_global,int_mpi,MPI_DOUBLE_PRECISION, &
+                          MPI_SUM,option%comm%io_rank,option%mycomm, &
+                          ierr);CHKERRQ(ierr)
 
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
@@ -2976,9 +3070,9 @@ subroutine OutputMassBalance(realization_base)
           sum_kg = sum_kg*FMWH2O
 
           int_mpi = option%nphase
-          call MPI_Reduce(sum_kg,sum_kg_global, &
-                          int_mpi,MPI_DOUBLE_PRECISION,MPI_SUM, &
-                          option%driver%io_rank,option%mycomm,ierr)
+          call MPI_Reduce(sum_kg,sum_kg_global,int_mpi,MPI_DOUBLE_PRECISION, &
+                          MPI_SUM,option%comm%io_rank,option%mycomm, &
+                          ierr);CHKERRQ(ierr)
 
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
@@ -2993,9 +3087,9 @@ subroutine OutputMassBalance(realization_base)
           enddo
 
           int_mpi = option%nphase
-          call MPI_Reduce(sum_kg,sum_kg_global, &
-                          int_mpi,MPI_DOUBLE_PRECISION,MPI_SUM, &
-                          option%driver%io_rank,option%mycomm,ierr)
+          call MPI_Reduce(sum_kg,sum_kg_global,int_mpi,MPI_DOUBLE_PRECISION, &
+                          MPI_SUM,option%comm%io_rank,option%mycomm, &
+                          ierr);CHKERRQ(ierr)
 
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
@@ -3011,16 +3105,16 @@ subroutine OutputMassBalance(realization_base)
           sum_kg = sum_kg*FMWH2O
 
           int_mpi = option%nphase
-          call MPI_Reduce(sum_kg,sum_kg_global, &
-                          int_mpi,MPI_DOUBLE_PRECISION,MPI_SUM, &
-                          option%driver%io_rank,option%mycomm,ierr)
+          call MPI_Reduce(sum_kg,sum_kg_global,int_mpi,MPI_DOUBLE_PRECISION, &
+                          MPI_SUM,option%comm%io_rank,option%mycomm, &
+                          ierr);CHKERRQ(ierr)
 
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
             write(fid,110,advance="no") -sum_kg_global*output_option%tconv
           endif
 
-        case(MPH_MODE)
+        case(MPH_MODE) !,SCO2_MODE)
         ! print out cumulative H2O & CO2 fluxes in kmol and kmol/time
           sum_kg = 0.d0
           do icomp = 1, option%nflowspec
@@ -3030,9 +3124,10 @@ subroutine OutputMassBalance(realization_base)
             enddo
 !geh            int_mpi = option%nphase
             int_mpi = 1
-            call MPI_Reduce(sum_kg(icomp,1),sum_kg_global(icomp,1), &
-                          int_mpi,MPI_DOUBLE_PRECISION,MPI_SUM, &
-                          option%driver%io_rank,option%mycomm,ierr)
+            call MPI_Reduce(sum_kg(icomp,1),sum_kg_global(icomp,1),int_mpi, &
+                            MPI_DOUBLE_PRECISION,MPI_SUM, &
+                            option%comm%io_rank,option%mycomm, &
+                            ierr);CHKERRQ(ierr)
 
             if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
@@ -3053,9 +3148,10 @@ subroutine OutputMassBalance(realization_base)
 
 !geh            int_mpi = option%nphase
             int_mpi = 1
-            call MPI_Reduce(sum_kg(icomp,1),sum_kg_global(icomp,1), &
-                          int_mpi,MPI_DOUBLE_PRECISION,MPI_SUM, &
-                          option%driver%io_rank,option%mycomm,ierr)
+            call MPI_Reduce(sum_kg(icomp,1),sum_kg_global(icomp,1),int_mpi, &
+                            MPI_DOUBLE_PRECISION,MPI_SUM, &
+                            option%comm%io_rank,option%mycomm, &
+                            ierr);CHKERRQ(ierr)
 
             if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
@@ -3071,9 +3167,9 @@ subroutine OutputMassBalance(realization_base)
           enddo
 
           int_mpi = option%nphase
-          call MPI_Reduce(sum_kg(:,1),sum_kg_global(:,1), &
-                          int_mpi,MPI_DOUBLE_PRECISION,MPI_SUM, &
-                          option%driver%io_rank,option%mycomm,ierr)
+          call MPI_Reduce(sum_kg(:,1),sum_kg_global(:,1),int_mpi, &
+                          MPI_DOUBLE_PRECISION,MPI_SUM,option%comm%io_rank, &
+                          option%mycomm,ierr);CHKERRQ(ierr)
 
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
@@ -3090,9 +3186,9 @@ subroutine OutputMassBalance(realization_base)
           sum_kg(2,1) = sum_kg(2,1)*general_fmw(2)
 
           int_mpi = option%nphase
-          call MPI_Reduce(sum_kg(:,1),sum_kg_global(:,1), &
-                          int_mpi,MPI_DOUBLE_PRECISION,MPI_SUM, &
-                          option%driver%io_rank,option%mycomm,ierr)
+          call MPI_Reduce(sum_kg(:,1),sum_kg_global(:,1),int_mpi, &
+                          MPI_DOUBLE_PRECISION,MPI_SUM,option%comm%io_rank, &
+                          option%mycomm,ierr);CHKERRQ(ierr)
 
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
@@ -3106,9 +3202,9 @@ subroutine OutputMassBalance(realization_base)
           enddo
 
           int_mpi = option%nphase
-          call MPI_Reduce(sum_kg(:,1),sum_kg_global(:,1), &
-                          int_mpi,MPI_DOUBLE_PRECISION,MPI_SUM, &
-                          option%driver%io_rank,option%mycomm,ierr)
+          call MPI_Reduce(sum_kg(:,1),sum_kg_global(:,1),int_mpi, &
+                          MPI_DOUBLE_PRECISION,MPI_SUM,option%comm%io_rank, &
+                          option%mycomm,ierr);CHKERRQ(ierr)
 
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
@@ -3125,9 +3221,9 @@ subroutine OutputMassBalance(realization_base)
           sum_kg(2,1) = sum_kg(2,1)*wipp_flow_fmw(2)
 
           int_mpi = option%nphase
-          call MPI_Reduce(sum_kg(:,1),sum_kg_global(:,1), &
-                          int_mpi,MPI_DOUBLE_PRECISION,MPI_SUM, &
-                          option%driver%io_rank,option%mycomm,ierr)
+          call MPI_Reduce(sum_kg(:,1),sum_kg_global(:,1),int_mpi, &
+                          MPI_DOUBLE_PRECISION,MPI_SUM,option%comm%io_rank, &
+                          option%mycomm,ierr);CHKERRQ(ierr)
 
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
@@ -3149,10 +3245,10 @@ subroutine OutputMassBalance(realization_base)
               rt_auxvars_bc_or_ss(offset+iconn)%mass_balance(1:nmobilecomp,:)
           enddo
 
-          int_mpi = nmobilecomp
-          call MPI_Reduce(sum_mol,sum_mol_global,int_mpi, &
-                          MPI_DOUBLE_PRECISION,MPI_SUM, &
-                          option%driver%io_rank,option%mycomm,ierr)
+          int_mpi = nmobilecomp * option%transport%nphase
+          call MPI_Reduce(sum_mol,sum_mol_global,int_mpi,MPI_DOUBLE_PRECISION, &
+                          MPI_SUM,option%comm%io_rank,option%mycomm, &
+                          ierr);CHKERRQ(ierr)
 
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
@@ -3161,19 +3257,29 @@ subroutine OutputMassBalance(realization_base)
                 write(fid,110,advance="no") -sum_mol_global(icomp,1)
               endif
             enddo
+            ! this block prints out the contribution to the total
+            ! component flux in the gas phase. it must be aligned with
+            ! the aqueous components, not gases
+            if (reaction%gas%nactive_gas > 0) then
+              do icomp = 1, reaction%naqcomp
+                if (reaction%primary_species_print(icomp)) then
+                  write(fid,110,advance="no") -sum_mol_global(icomp,2)
+                endif
+              enddo
+            endif
           endif
 
           ! print out boundary flux
           sum_mol = 0.d0
           do iconn = 1, coupler%connection_set%num_connections
             sum_mol = sum_mol + rt_auxvars_bc_or_ss(offset+iconn)% &
-                                  mass_balance_delta(1:nmobilecomp,:) 
+                                  mass_balance_delta(1:nmobilecomp,:)
           enddo
 
-          int_mpi = nmobilecomp
-          call MPI_Reduce(sum_mol,sum_mol_global,int_mpi, &
-                          MPI_DOUBLE_PRECISION,MPI_SUM, &
-                          option%driver%io_rank,option%mycomm,ierr)
+          int_mpi = nmobilecomp * option%transport%nphase
+          call MPI_Reduce(sum_mol,sum_mol_global,int_mpi,MPI_DOUBLE_PRECISION, &
+                          MPI_SUM,option%comm%io_rank,option%mycomm, &
+                          ierr);CHKERRQ(ierr)
 
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
@@ -3183,7 +3289,19 @@ subroutine OutputMassBalance(realization_base)
                                               output_option%tconv
               endif
             enddo
+            ! this block prints out the contribution to the total
+            ! component flux in the gas phase. it must be aligned with
+            ! the aqueous components, not gases
+            if (reaction%gas%nactive_gas > 0) then
+              do icomp = 1, reaction%naqcomp
+                if (reaction%primary_species_print(icomp)) then
+                  write(fid,110,advance="no") -sum_mol_global(icomp,2)* &
+                                                output_option%tconv
+                endif
+              enddo
+            endif
           endif
+
         case(NWT_MODE)
           nspecies = reaction_nw%params%nspecies
           allocate(sum_mol(nspecies,option%transport%nphase))
@@ -3196,11 +3314,11 @@ subroutine OutputMassBalance(realization_base)
           enddo
 
           int_mpi = nspecies
-          call MPI_Reduce(sum_mol,sum_mol_global,int_mpi, &
-                          MPI_DOUBLE_PRECISION,MPI_SUM, &
-                          option%driver%io_rank,option%mycomm,ierr)
+          call MPI_Reduce(sum_mol,sum_mol_global,int_mpi,MPI_DOUBLE_PRECISION, &
+                          MPI_SUM,option%comm%io_rank,option%mycomm, &
+                          ierr);CHKERRQ(ierr)
 
-          if (option%myrank == option%driver%io_rank) then
+          if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
             do icomp = 1, nspecies
               write(fid,110,advance="no") -sum_mol_global(icomp,1)
@@ -3211,15 +3329,15 @@ subroutine OutputMassBalance(realization_base)
           sum_mol = 0.d0
           do iconn = 1, coupler%connection_set%num_connections
             sum_mol = sum_mol + nwt_auxvars_bc_or_ss(offset+iconn)% &
-                                  mass_balance_delta(1:nspecies,:) 
+                                  mass_balance_delta(1:nspecies,:)
           enddo
 
           int_mpi = nspecies
-          call MPI_Reduce(sum_mol,sum_mol_global,int_mpi, &
-                          MPI_DOUBLE_PRECISION,MPI_SUM, &
-                          option%driver%io_rank,option%mycomm,ierr)
+          call MPI_Reduce(sum_mol,sum_mol_global,int_mpi,MPI_DOUBLE_PRECISION, &
+                          MPI_SUM,option%comm%io_rank,option%mycomm, &
+                          ierr);CHKERRQ(ierr)
 
-          if (option%myrank == option%driver%io_rank) then
+          if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
             do icomp = 1, nspecies
               write(fid,110,advance="no") -sum_mol_global(icomp,1)* &
@@ -3230,9 +3348,9 @@ subroutine OutputMassBalance(realization_base)
       deallocate(sum_mol,sum_mol_global)
     endif
 
-    coupler => coupler%next 
+    coupler => coupler%next
   enddo
-  
+
   ! Print the total water and component mass in the specified regions (data)
   if (associated(output_option%mass_balance_region_list)) then
     cur_mbr => output_option%mass_balance_region_list
@@ -3261,10 +3379,14 @@ subroutine OutputMassBalance(realization_base)
         end select
         int_mpi = max_tran_size*8
         call MPI_Reduce(total_mass,global_total_mass,int_mpi, &
-                      MPI_DOUBLE_PRECISION,MPI_SUM, &
-                      option%driver%io_rank,option%mycomm,ierr)
-
+                        MPI_DOUBLE_PRECISION,MPI_SUM,option%comm%io_rank, &
+                        option%mycomm,ierr);CHKERRQ(ierr)
+        global_total_mass_sum = 0.d0
+        do i =1, size(global_total_mass(:,1))
+            global_total_mass_sum = global_total_mass_sum + global_total_mass(i,1)
+        enddo
         if (OptionIsIORank(option)) then
+          write(fid,110,advance="no") global_total_mass_sum
           do icomp = 1, reaction%naqcomp
             if (reaction%primary_species_print(icomp)) then
               write(fid,110,advance="no") global_total_mass(icomp,1)
@@ -3300,7 +3422,7 @@ subroutine OutputMassBalance(realization_base)
     write(fid,'(a)') ''
     close(fid)
   endif
-  
+
   mass_balance_first = PETSC_FALSE
 
 end subroutine OutputMassBalance

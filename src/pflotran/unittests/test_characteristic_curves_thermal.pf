@@ -57,7 +57,6 @@ contains
     implicit none
 
     class(Test_Characteristic_Curves_thermal), intent(inout) :: this
-    character(len=MAXSTRINGLENGTH) :: error_string
 
     this%option => OptionCreate()
 
@@ -145,7 +144,7 @@ contains
     implicit none
 
     class (Test_Characteristic_Curves_Thermal), intent(inout) :: this
-    
+
     call this%userMethod()
 
   end subroutine runMethod
@@ -154,7 +153,7 @@ contains
 
   @Test
   subroutine test_tcf_Default(this)
-    
+
     implicit none
 
     class(Test_Characteristic_Curves_Thermal), intent(inout) :: this
@@ -184,7 +183,7 @@ contains
     string = 'Default thermal characteristic curve derivative of tcond with &
              &respect to saturation'
     value = 0.91923881554d0
-    @assertEqual(value, dkT_dsatl, dabs(value)*tolerance, string) 
+    @assertEqual(value, dkT_dsatl, dabs(value)*tolerance, string)
     string = 'Default thermal characteristic curve derivative of tcond with &
              &respect to temperature'
     value = 0.d0
@@ -351,7 +350,7 @@ contains
     value =  1.34929509795d0
     @assertEqual(value, thermal_conductivity, dabs(value)*tolerance, string)
     string = 'Linear Resistivity thermal characteristic curve derivative &
-             of tcond with respect to saturation'
+             &of tcond with respect to saturation'
     value = 0.81641175499d0
     @assertEqual(value, dkT_dsatl, dabs(value)*tolerance, string)
     string = 'Linear Resistivity thermal characteristic curve derivative &

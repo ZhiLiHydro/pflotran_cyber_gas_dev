@@ -32,13 +32,13 @@
       PetscReal,  public :: dt_tab = 2.5d0, dp_tab = 2.5d0
 
       PetscReal, private :: n(42),ti(40),gamma(5),phic(8),c(40),d(40),a(8)
-      PetscReal, private :: alpha(5),beta(8),delta(4),epsilon(5)
+      PetscReal, private :: alpha(5),beta(8),epsilon(5)
       PetscReal, private :: aco2(4),bco2(4),capa(5),capb(5),capc(5),capd(5)
       PetscReal, private :: av(0:4)
 
       PetscReal, private :: denc,tc,rg,pc
       PetscReal ,private, allocatable :: co2_prop_spwag(:,:,:)
-      PetscReal, private :: p,t,rhosav
+      PetscReal, private :: p,t
 
       public initialize_span_wagner, co2_span_wagner, vappr, &
              co2_span_wagner_db_write
@@ -57,7 +57,7 @@ subroutine initialize_span_wagner(itable,myrank,option)
       implicit none
       PetscInt, optional :: itable
 
-      PetscReal :: pl,tl,tmp,tmp2,dtmp,dtemp,dpres,dddt,dddp
+      PetscReal :: pl,tl,tmp,tmp2,dtemp,dpres
 
       PetscReal :: rhodp,rhodt,fgdp,fgdt,engdp,engdt,entdp,entdt,vdp,vdt
 
@@ -68,7 +68,6 @@ subroutine initialize_span_wagner(itable,myrank,option)
       character*3 :: q
       character*1 :: tab
 
-      PetscReal :: temparray(15)
       PetscInt :: status
 
       character(len=MAXSTRINGLENGTH) :: co2_database_filename
@@ -1785,7 +1784,7 @@ subroutine co2_span_wagner_db_write(temparray,filename,option)
   write(IUNIT_TEMP,'(2X,A8,2X,A3)') "PRESSURE", "MPa"
   write(IUNIT_TEMP,'(2X,A11,2X,A1)') "TEMPERATURE", "C"
   write(IUNIT_TEMP,'(2X,A7,2X,A6)') "DENSITY", "kg/m^3"
-  write(IUNIT_TEMP,'(2X,A15,2X,A5)') "INTERNAL_ENERGY", "MJ/kg" 
+  write(IUNIT_TEMP,'(2X,A15,2X,A5)') "INTERNAL_ENERGY", "MJ/kg"
   write(IUNIT_TEMP,'(2X,A8,2X,A5)') "ENTHALPY", "MJ/kg"
   write(IUNIT_TEMP,'(2X,A9,2X,A4)') "VISCOSITY", "Pa-s"
   write(IUNIT_TEMP,'(A3)') "END"

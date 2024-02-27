@@ -5,31 +5,33 @@ module Units_module
   use PFLOTRAN_Constants_module
 
   implicit none
-  
+
   private
-  
-  
+
+
   public :: UnitsConvertToInternal, UnitsConvertToExternal
-  
+
 contains
 
 ! ************************************************************************** !
 
-function UnitsConvertToInternal(units,internal_units,option,ierr)
-  ! 
+function UnitsConvertToInternal(units,internal_units,keyword_string, &
+                                option,ierr)
+  !
   ! Converts given units to pflotran internal units
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 01/21/09
   ! Notes: Updated/modified by Jenn Frederick 1/25/2016
-  ! 
+  !
 
   use Option_module
 
   implicit none
-  
+
   character(len=*) :: units
   character(len=MAXWORDLENGTH) :: internal_units
+  character(len=*) :: keyword_string
   type(option_type) :: option
   PetscErrorCode, optional :: ierr
 
@@ -54,7 +56,7 @@ function UnitsConvertToInternal(units,internal_units,option,ierr)
 
   do while(ind_or /= 0)
     length = len_trim(internal_units_buff1)
-    ind_or = index(trim(internal_units_buff1),"|")   
+    ind_or = index(trim(internal_units_buff1),"|")
     if (ind_or == 0) then
       call UnitsConvertParse(units_buff,internal_units_buff1, &
                              conversion_factor,error,error_msg)
@@ -71,12 +73,16 @@ function UnitsConvertToInternal(units,internal_units,option,ierr)
       internal_units_buff1 = internal_units_buff1((ind_or+1):length)
     endif
   enddo
-  
+
   if (.not.successful) then
     if (present(ierr)) then
       ierr = -1
       return
     else
+      option%io_buffer = new_line('a') // &
+                         'Location of units conversion error: ' // &
+                         trim(keyword_string)
+      call PrintMsg(option)
       option%io_buffer = error_msg
       call PrintErrMsg(option)
     endif
@@ -90,14 +96,14 @@ end function UnitsConvertToInternal
 
 subroutine UnitsConvertParse(units,internal_units,units_conversion, &
                              error,error_msg)
-  ! 
-  ! Parses user's and internal units into numerator and denominator 
+  !
+  ! Parses user's and internal units into numerator and denominator
   ! (if they exist) and gets the conversion factor from user's units
   ! to internal Pflotran units.
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 02/15/2016
-  ! 
+  !
 
   use Option_module
 
@@ -107,8 +113,8 @@ subroutine UnitsConvertParse(units,internal_units,units_conversion, &
   PetscReal :: units_conversion
   PetscBool :: error
   character(len=MAXSTRINGLENGTH) :: error_msg
-  
-  ! A maximum of 3 numerators/denominators are accepted 
+
+  ! A maximum of 3 numerators/denominators are accepted
   character(len=MAXSTRINGLENGTH) :: numerator_units
   character(len=MAXSTRINGLENGTH) :: denominator_units
   character(len=MAXSTRINGLENGTH) :: numerator_internal_units
@@ -116,7 +122,7 @@ subroutine UnitsConvertParse(units,internal_units,units_conversion, &
   PetscReal :: numerator_conv_factor, denominator_conv_factor
   PetscBool :: set_units_denom, set_internal_units_denom
   PetscInt :: length, ind
-  
+
   error = PETSC_FALSE
   set_units_denom = PETSC_FALSE
   set_internal_units_denom = PETSC_FALSE
@@ -129,7 +135,7 @@ subroutine UnitsConvertParse(units,internal_units,units_conversion, &
   denominator_internal_units = ''
 
   length = len(units)
-  ind = index(trim(units),"/")   
+  ind = index(trim(units),"/")
   if (ind == 0) then
   ! numerator(s) only
     numerator_units = trim(units)
@@ -189,15 +195,15 @@ end subroutine UnitsConvertParse
 
 subroutine UnitsConvert(units_user,units_internal,units_conversion, &
                         error,error_msg)
-  ! 
+  !
   ! Converts units given by the user to pflotran internal units
-  ! 
+  !
   ! Author: Glenn Hammond; Jenn Frederick (updated)
   ! Date: 01/21/09; 2/15/2016 (updated)
-  ! 
+  !
 
   use Option_module
-  
+
   implicit none
 
   character(len=MAXWORDLENGTH) :: units_user
@@ -205,7 +211,7 @@ subroutine UnitsConvert(units_user,units_internal,units_conversion, &
   PetscReal :: units_conversion
   PetscBool :: error
   character(len=MAXSTRINGLENGTH) :: error_msg
-   
+
   ! a maximum of 3 unit categories are allowed
   character(len=MAXWORDLENGTH) :: unit_user(3)
   character(len=MAXWORDLENGTH) :: unit_user_cat(3)
@@ -225,7 +231,7 @@ subroutine UnitsConvert(units_user,units_internal,units_conversion, &
   conv_internal_to_SI = 1.d0
   conversion_user = 1.d0
   conversion_internal = 1.d0
-  units_conversion = 1.d0 
+  units_conversion = 1.d0
 
 ! ======== SEPARATE OUT GIVEN UNITS ================================= !
   unit_user_buff = trim(units_user)
@@ -247,7 +253,7 @@ subroutine UnitsConvert(units_user,units_internal,units_conversion, &
     if (k > 3) then
       error_msg = 'Maximum number of user units exceeded. &
                   &Unit numerators or denominators are limited to a &
-                  &maximum of 3 units each.' 
+                  &maximum of 3 units each.'
       error = PETSC_TRUE
     endif
   enddo
@@ -274,7 +280,7 @@ subroutine UnitsConvert(units_user,units_internal,units_conversion, &
     if (k > 3) then
       error_msg = 'Maximum number of internal units exceeded. &
                   &Unit numerators or denominators are limited to a &
-                  &maximum of 3 units each.' 
+                  &maximum of 3 units each.'
       error = PETSC_TRUE
     endif
   enddo
@@ -320,24 +326,24 @@ end subroutine UnitsConvert
 ! ************************************************************************** !
 
 subroutine UnitsCategory(unit,unit_category,error,error_msg)
-  ! 
+  !
   ! Gives the unit category of the given units.
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 02/15/2016
-  ! 
+  !
 
   use Option_module
-  
+
   implicit none
- 
+
   ! a maximum of 3 unit categories are allowed
   character(len=MAXWORDLENGTH) :: unit(3)
   character(len=MAXWORDLENGTH) :: unit_category(3)
   PetscBool :: error
   character(len=MAXSTRINGLENGTH) :: error_msg
 
-  PetscInt :: k 
+  PetscInt :: k
 
   k = 1
   error = PETSC_FALSE
@@ -366,11 +372,11 @@ subroutine UnitsCategory(unit,unit_category,error,error_msg)
         unit_category(k) = 'mass'
       case('C','Celcius')
         unit_category(k) = 'temperature'
-      case('K','Kelvin')  
+      case('K','Kelvin')
         unit_category(k) = 'temperature'
-        error_msg = 'Kelvin temperature units are not supported. Use Celcius.' 
+        error_msg = 'Kelvin temperature units are not supported. Use Celcius.'
         error = PETSC_TRUE
-      case('Pa','kPa','MPa','Bar','psi')
+      case('Pa','kPa','MPa','Bar','psi','atm')
         unit_category(k) = 'pressure'
       case('M','mM')
         unit_category(k) = 'concentration'
@@ -386,23 +392,23 @@ subroutine UnitsCategory(unit,unit_category,error,error_msg)
     end select
     k = k + 1
   enddo
-  
+
 end subroutine UnitsCategory
 
 ! ************************************************************************** !
 
 subroutine UnitsConvertToSI(unit,conversion_factor,error,error_msg)
-  ! 
+  !
   ! Converts a unit to SI units.
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 01/21/2016
-  ! 
+  !
 
   use Option_module
-  
+
   implicit none
-  
+
   character(len=MAXWORDLENGTH) :: unit
   PetscReal :: conversion_factor
   PetscBool :: error
@@ -411,11 +417,15 @@ subroutine UnitsConvertToSI(unit,conversion_factor,error,error_msg)
   conversion_factor = 1.d0
   error = PETSC_FALSE
 
+  ! units not covered by regression tests
+  ! gal, gallon, cf, Mcf, bbl, km^2,
+  ! month, Pa.s, cP, P, Poise, kcal, mole, moles, ug, Celsius, N
+
   select case(trim(unit))
   !---> VOLUME ---> (meter^3)
-    case('cm^3','ml','mL')
+    case('cm^3','mL')
       conversion_factor = 1.d-6
-    case('l','L','dm^3')
+    case('L','dm^3')
       conversion_factor = 1.d-3
     case('m^3')
       conversion_factor = 1.d0
@@ -440,7 +450,7 @@ subroutine UnitsConvertToSI(unit,conversion_factor,error,error_msg)
   ! ---> LENGTH ---> (meter)
     case('km')
       conversion_factor = 1000.d0
-    case('m','met','meter')
+    case('m','meter')
       conversion_factor = 1.d0
     case('dm')
       conversion_factor = 1.d-1
@@ -456,43 +466,44 @@ subroutine UnitsConvertToSI(unit,conversion_factor,error,error_msg)
     case('h','hr','hour')
       conversion_factor = 3600.d0
     case('d','day')
-      conversion_factor = 24.d0*3600.d0 
+      conversion_factor = 24.d0*3600.d0
     case('w','week')
-      conversion_factor = 7.d0*24.d0*3600.d0 
+      conversion_factor = 7.d0*24.d0*3600.d0
     case('mo','month')
-      conversion_factor = DAYS_PER_YEAR/12.d0*24.d0*3600.d0 
+      conversion_factor = DAYS_PER_YEAR/12.d0*24.d0*3600.d0
     case('y','yr','year')
       conversion_factor = DAYS_PER_YEAR*24.d0*3600.d0
+  ! ---> VISCOSITY ---> (Pascal-second)
     case('Pa.s')
       conversion_factor = 1.0
     case('cP','centiPoise')
       conversion_factor = 1.d-3
     case('P','Poise')
-      conversion_factor = 1.d-1 
+      conversion_factor = 1.d-1
   ! ---> ENERGY ---> (Joule)
-    case('J')   
+    case('J')
       conversion_factor = 1.d0
-    case('kJ')   
+    case('kJ')
       conversion_factor = 1.d3
-    case('MJ')   
+    case('MJ')
       conversion_factor = 1.d6
     case('cal')
       conversion_factor = 4.184d0
     case('kcal')
       conversion_factor = 4.184d3
   ! ---> ENERGY FLUX or POWER ---> (Watt)
-    case('W')   
+    case('W')
       conversion_factor = 1.d0
-    case('kW')   
+    case('kW')
       conversion_factor = 1.d3
-    case('MW')   
+    case('MW')
       conversion_factor = 1.d6
-  ! ---> MOLAR MASS ---> (kilogram, mole)
+  ! ---> MOLAR MASS ---> (mole)
     case('mol','mole','moles')
       conversion_factor = 1.d0
     case('kmol')
       conversion_factor = 1.d3
-  ! ---> MASS ---> (kilogram, mole)
+  ! ---> MASS ---> (kilogram)
     case('ug')
       conversion_factor = 1.d-9
     case('mg')
@@ -502,10 +513,10 @@ subroutine UnitsConvertToSI(unit,conversion_factor,error,error_msg)
     case('kg')
       conversion_factor = 1.d0
   ! ---> TEMPERATURE ---> (C)
-    case('C','Celsius') 
+    case('C','Celsius')
       conversion_factor = 1.d0
   ! ---> PRESSURE ---> (Pascal)
-    case('Pa') 
+    case('Pa')
       conversion_factor = 1.d0
     case('kPa')
       conversion_factor = 1.d3
@@ -515,13 +526,15 @@ subroutine UnitsConvertToSI(unit,conversion_factor,error,error_msg)
       conversion_factor = 1.d5
     case('psi')
       conversion_factor = 6894.757
+    case('atm')
+      conversion_factor = 101325.d0
   ! ---> CONCENTRATION ---> (M)
-    case('M') 
+    case('M')
       conversion_factor = 1.d0
-    case('mM') 
+    case('mM')
       conversion_factor = 1.d-3
   ! ---> FORCE ---> (Newton)
-    case('N') 
+    case('N')
       conversion_factor = 1.d0
   ! ---> UNITLESS ---> (1)
     case('unitless','1')
@@ -539,24 +552,24 @@ subroutine UnitsConvertToSI(unit,conversion_factor,error,error_msg)
       error = PETSC_TRUE
 
   end select
-  
+
 end subroutine UnitsConvertToSI
 
 ! ************************************************************************** !
 
 subroutine UnitsCategoryCheck(unit_user_cat,unit_internal_cat, &
                               error,error_msg)
-  ! 
+  !
   ! Checks if the unit categories of the given and internal units align.
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 02/15/2016
-  ! 
+  !
 
   use Option_module
-  
+
   implicit none
- 
+
   ! a maximum of 3 unit categories are allowed
   character(len=MAXWORDLENGTH) :: unit_user_cat(3)
   character(len=MAXWORDLENGTH) :: unit_internal_cat(3)
@@ -600,31 +613,31 @@ subroutine UnitsCategoryCheck(unit_user_cat,unit_internal_cat, &
     if (error) exit
     k = k + 1
   enddo
-  
+
 end subroutine UnitsCategoryCheck
 
 ! ************************************************************************** !
 
-function UnitsConvertToExternal(units,units_category,option)
-  ! 
-  ! UnitsConvert: Converts units to pflotran internal units
-  ! 
+function UnitsConvertToExternal(units,internal_units,option)
+  !
+  ! UnitsConvert: Converts from internal units to (external units)
+  !
   ! Author: Glenn Hammond
   ! Date: 01/21/09
-  ! 
+  !
 
   use Option_module
 
   implicit none
-  
-  character(len=MAXSTRINGLENGTH) :: units
-  character(len=*) :: units_category
+
+  character(len=*) :: units
+  character(len=MAXWORDLENGTH) :: internal_units
   type(option_type) :: option
-  
+
   PetscReal :: UnitsConvertToExternal
-  
-  UnitsConvertToExternal = 1.d0/UnitsConvertToInternal(units, &
-                                                       units_category,option)
+
+  UnitsConvertToExternal = 1.d0/UnitsConvertToInternal(units,internal_units, &
+                                          'UnitsConvertToExternal',option)
 
 end function UnitsConvertToExternal
 

@@ -10,21 +10,26 @@ module Factory_Forward_module
   private
 
   public :: FactoryForwardInitialize, &
-            FactoryForwardFinalize
+            FactoryForwardPrerequisite, &
+            FactoryForwardFinalize, &
+            FactoryForwardReadCommandLine, &
+            FactoryForwardReadSimProcessModels, &
+            FactoryForwardSetupPMCHierarchy, &
+            FactoryForwardReadRestart
 
 contains
 
 ! ************************************************************************** !
 
-subroutine FactoryForwardInitialize(simulation,input_filename,option)
+recursive subroutine FactoryForwardInitialize(simulation,input_filename,option)
 !
 ! Sets up Forward subsurface simulation framework after PETSc initialization
 ! Author: Glenn Hammond
 ! Date: 06/17/13
 !
-  use Driver_module
+  use Driver_class
   use Option_module
-  use Output_Aux_module
+  use Print_module
   use Logging_module
   use Input_Aux_module
   use String_module
@@ -52,12 +57,16 @@ subroutine FactoryForwardInitialize(simulation,input_filename,option)
   call PetscLogEventBegin(logging%event_init,ierr);CHKERRQ(ierr)
 
   filename = trim(option%global_prefix) // trim(option%group_prefix) // '.out'
-  if (OptionIsIORank(option) .and. OptionPrintToFile(option)) then
+  if (OptionPrintToFile(option)) then
+    if (option%fid_out <= 0) option%fid_out = FORWARD_OUT_UNIT
     open(option%fid_out, file=filename, action="write", status="unknown")
   endif
 
   call OptionPrintPFLOTRANHeader(option)
   call FactoryForwardReadSimulationBlk(simulation,driver,option)
+  if (.not.associated(option%inversion)) then
+    call FactoryForwardPrerequisite(simulation)
+  endif
   call InputCheckKeywordBlockCount(option)
   ! Must come after simulation is initialized so that proper stages are setup
   ! for process models.  This call sets flag that disables the creation of
@@ -74,7 +83,7 @@ subroutine FactoryForwardReadSimulationBlk(simulation,driver,option)
 ! Author: Glenn Hammond
 ! Date: 06/17/13
 !
-  use Driver_module
+  use Driver_class
   use Option_module
   use Input_Aux_module
   use String_module
@@ -84,6 +93,7 @@ subroutine FactoryForwardReadSimulationBlk(simulation,driver,option)
   use PMC_Base_class
   use Checkpoint_module
   use Output_Aux_module
+  use Option_Checkpoint_module
   use Waypoint_module
   use Units_module
 
@@ -97,11 +107,11 @@ subroutine FactoryForwardReadSimulationBlk(simulation,driver,option)
   type(option_type), pointer :: option
 
   type(input_type), pointer :: input
-  character(len=MAXSTRINGLENGTH) :: filename
   character(len=MAXSTRINGLENGTH) :: string
   character(len=MAXWORDLENGTH) :: word
   character(len=MAXWORDLENGTH) :: simulation_type
 
+  character(len=MAXSTRINGLENGTH) :: prerequisite_filename ! sim_base%prereq...
   class(pm_base_type), pointer :: pm_master
   class(pm_base_type), pointer :: cur_pm
   type(checkpoint_option_type), pointer :: checkpoint_option
@@ -122,6 +132,7 @@ subroutine FactoryForwardReadSimulationBlk(simulation,driver,option)
   input => InputCreate(IN_UNIT,option%input_filename,option)
 
   simulation_type = ''
+  prerequisite_filename = ''
   string = 'SIMULATION'
   call InputFindStringInFile(input,option,string)
   call InputFindStringErrorMsg(input,option,string)
@@ -134,6 +145,8 @@ subroutine FactoryForwardReadSimulationBlk(simulation,driver,option)
     call InputErrorMsg(input,option,'PROCESS_MODEL','SIMULATION')
 
     call StringToUpper(word)
+    !geh: the simulation object may be null until further below. you cannot
+    !     reference it within this select case block
     select case(trim(word))
       case('SIMULATION_TYPE')
           call InputReadCard(input,option,simulation_type,PETSC_FALSE)
@@ -146,12 +159,13 @@ subroutine FactoryForwardReadSimulationBlk(simulation,driver,option)
       case('PRINT_EKG')
         option%print_ekg = PETSC_TRUE
       case('CHECKPOINT')
-        checkpoint_option => CheckpointOptionCreate()
+        option%checkpoint => OptionCheckpointCreate()
         checkpoint_waypoint_list => WaypointListCreate()
-        call CheckpointRead(input,option,checkpoint_option, &
-                            checkpoint_waypoint_list)
+        call CheckpointRead(input,option,checkpoint_waypoint_list)
       case ('RESTART')
         call FactoryForwardReadRestart(input,option)
+      case ('PREREQUISITE')
+        call InputReadFilename(input,option,prerequisite_filename)
       case('INPUT_RECORD_FILE')
         option%input_record = PETSC_TRUE
         call OpenAndWriteInputRecord(option)
@@ -194,10 +208,11 @@ subroutine FactoryForwardReadSimulationBlk(simulation,driver,option)
     end select
   endif
 
+  if (len_trim(prerequisite_filename) > 0) &
+    simulation%prerequisite = prerequisite_filename
   call WaypointListMerge(simulation%waypoint_list_outer, &
                          checkpoint_waypoint_list,option)
   simulation%process_model_list => pm_master
-  simulation%checkpoint_option => checkpoint_option
 
   select type(simulation)
     class is(simulation_geomechanics_type)
@@ -224,8 +239,9 @@ subroutine FactoryForwardReadSimProcessModels(input,pm_master,option)
   use PM_Base_class
   use PM_Geomechanics_Force_class
   use PM_Auxiliary_class
+  use PM_Parameter_class
 
-  use Factory_Subsurface_module
+  use Factory_Subsurface_Read_module
   use Factory_Geomechanics_module
 
   implicit none
@@ -258,9 +274,9 @@ subroutine FactoryForwardReadSimProcessModels(input,pm_master,option)
     call StringToUpper(word)
     select case(trim(word))
       case('SUBSURFACE_FLOW')
-        call FactorySubsurfaceReadFlowPM(input,option,new_pm)
+        call FactorySubsurfReadFlowPM(input,option,new_pm)
       case('SUBSURFACE_TRANSPORT')
-        call FactorySubsurfaceReadTransportPM(input,option,new_pm)
+        call FactorySubsurfReadTransportPM(input,option,new_pm)
       case('NUCLEAR_WASTE_TRANSPORT')
         if (OptionPrintToScreen(option)) then
           print *
@@ -284,11 +300,13 @@ subroutine FactoryForwardReadSimProcessModels(input,pm_master,option)
           &SIMULATION block."
         call PrintErrMsg(option)
       case('WASTE_FORM')
-        call FactorySubsurfaceReadWasteFormPM(input,option,new_pm)
+        call FactorySubsurfReadWasteFormPM(input,option,new_pm)
       case('UFD_DECAY')
-        call FactorySubsurfaceReadUFDDecayPM(input,option,new_pm)
+        call FactorySubsurfReadUFDDecayPM(input,option,new_pm)
       case('UFD_BIOSPHERE')
         call FactorySubsurfReadUFDBiospherePM(input,option,new_pm)
+      case('MATERIAL_TRANSFORM')
+        call FactorySubsurfReadMTPM(input,option,new_pm)
       case('WIPP_SOURCE_SINK')
         option%io_buffer = 'Do not include the WIPP_SOURCE_SINK block &
           &unless you are running in WIPP_FLOW mode and intend to &
@@ -297,6 +315,8 @@ subroutine FactoryForwardReadSimProcessModels(input,pm_master,option)
       case('GEOMECHANICS_SUBSURFACE')
         option%geomech_on = PETSC_TRUE
         new_pm => PMGeomechForceCreate()
+        new_pm%option => option
+        call FactoryGeomechReadSimBlock(input,new_pm)
       case('SUBSURFACE_GEOPHYSICS')
         call FactorySubsurfReadGeophysicsPM(input,option,new_pm)
       case('AUXILIARY')
@@ -307,6 +327,11 @@ subroutine FactoryForwardReadSimProcessModels(input,pm_master,option)
         new_pm => PMAuxiliaryCreate()
         input%buf = pm_name
         call PMAuxiliaryRead(input,option,PMAuxiliaryCast(new_pm))
+      case('WELL_MODEL')
+        call FactorySubsurfReadWellPM(input,option,new_pm)
+      case('PARAMETER')
+        new_pm => PMParameterCreate()
+        call PMParameterRead(input,option,PMParameterCast(new_pm))
       case default
         call InputKeywordUnrecognized(input,word, &
                'SIMULATION,PROCESS_MODELS',option)
@@ -501,7 +526,6 @@ subroutine FactoryForwardFinalize(option)
   implicit none
 
   type(option_type) :: option
-  PetscErrorCode :: ierr
 
 end subroutine FactoryForwardFinalize
 
@@ -523,14 +547,8 @@ subroutine FactoryForwardReadCommandLine(option)
 
   type(option_type) :: option
 
-  character(len=MAXSTRINGLENGTH) :: string, string2
+  character(len=MAXSTRINGLENGTH) :: string
   PetscBool :: option_found
-  PetscBool :: bool_flag
-  PetscBool :: pflotranin_option_found
-  PetscBool :: input_prefix_option_found
-  PetscBool :: output_dir_found
-  PetscBool :: output_file_prefix_found
-  character(len=MAXSTRINGLENGTH), pointer :: strings(:)
   PetscInt :: i
   PetscErrorCode :: ierr
 
@@ -555,8 +573,8 @@ subroutine FactoryForwardReadCommandLine(option)
   if (option%verbosity > 0) then
     call PetscLogDefaultBegin(ierr);CHKERRQ(ierr)
     string = '-log_view'
-    call PetscOptionsInsertString(PETSC_NULL_OPTIONS, &
-                                  string, ierr);CHKERRQ(ierr)
+    call PetscOptionsInsertString(PETSC_NULL_OPTIONS,string, &
+                                  ierr);CHKERRQ(ierr)
   endif
 
   string = '-successful_exit_code'
@@ -579,5 +597,112 @@ subroutine FactoryForwardReadCommandLine(option)
   endif
 
 end subroutine FactoryForwardReadCommandLine
+
+! ************************************************************************** !
+
+recursive subroutine FactoryForwardPrerequisite(outer_simulation)
+  !
+  ! Executes a prerequisite simulation
+  !
+  ! Author: Glenn Hammond
+  ! Date: 11/18/22
+  !
+  use Checkpoint_module
+  use Driver_class
+  use Inversion_Aux_module
+  use Option_module
+  use Option_Checkpoint_module
+  use Option_Inversion_module
+  use Output_Aux_module
+  use Realization_Subsurface_class
+  use Simulation_Base_class
+  use String_module
+
+  implicit none
+
+  class(simulation_subsurface_type), pointer :: outer_simulation
+
+  class(driver_type), pointer :: driver
+  type(option_type), pointer :: outer_option
+  class(simulation_subsurface_type), pointer :: simulation
+  type(option_type), pointer :: option
+  type(inversion_option_type), pointer :: inversion_option
+  type(inversion_aux_type), pointer :: inversion_aux
+
+  if (len_trim(outer_simulation%prerequisite) == 0) return
+
+  driver => outer_simulation%driver
+  outer_option => outer_simulation%option
+  inversion_option => outer_option%inversion
+  inversion_aux => outer_simulation%realization%patch%aux%inversion_aux
+
+  if (associated(inversion_option)) then
+    if (inversion_option%perturbation_run) then
+       ! skip the prereq as it was already run
+      outer_option%restart_flag = PETSC_TRUE
+      outer_option%restart_time = 0.d0
+      outer_option%restart_filename = outer_option%inversion%restart_filename
+      return
+    endif
+  endif
+
+  call driver%PrintMsg(new_line('a') // &
+    'Beginning prerequisite forward simulation: ' // &
+    trim(outer_simulation%prerequisite))
+
+  option => OptionCreate(outer_option)
+  call OptionSetDriver(option,driver)
+  call OptionSetComm(option,driver%comm)
+  simulation => SimSubsurfCreate(driver,option)
+  if (associated(inversion_option)) then
+    option%group_prefix = inversion_option%iteration_prefix
+  endif
+  call FactoryForwardInitialize(simulation,outer_simulation%prerequisite, &
+                                option)
+  call RealizationCheckConsistency(outer_simulation%realization, &
+                                   simulation%realization)
+  ! override outer simulation restart options
+  outer_option%restart_flag = PETSC_TRUE
+  outer_option%restart_time = 0.d0
+  outer_option%restart_filename = trim(option%global_prefix) // &
+              trim(option%group_prefix) // '-restart.h5'
+
+  simulation%realization%patch%aux%inversion_aux => inversion_aux
+  if (associated(inversion_option)) then
+    inversion_option%restart_filename = outer_option%restart_filename
+    ! have to redirect these pointers to override parameter values in the
+    ! prerequisite run. they will be redirect back below
+    inversion_aux%material_property_array => &
+      simulation%realization%patch%material_property_array
+    inversion_aux%cc_array => &
+      simulation%realization%patch%characteristic_curves_array
+  endif
+
+  ! setup checkpointing by overriding existing
+  call OptionCheckpointDestroy(option%checkpoint)
+  option%checkpoint => OptionCheckpointCreate()
+  option%checkpoint%format = CHECKPOINT_HDF5
+  ! run simulation
+  call simulation%InitializeRun()
+  if (driver%status == PROCEED) then
+    call simulation%ExecuteRun()
+  endif
+  call simulation%FinalizeRun()
+  call SimSubsurfDestroy(simulation) ! option is destroyed here
+
+  if (associated(inversion_option)) then
+    ! redirect material property and characteristic curves pointers back
+    inversion_aux%material_property_array => &
+        outer_simulation%realization%patch%material_property_array
+    inversion_aux%cc_array => &
+      outer_simulation%realization%patch%characteristic_curves_array
+  endif
+
+  call driver%PrintMsg(new_line('a') // &
+    'End of prerequisite forward simulation. The prerequisite solution &
+    &may be found in "' // trim(outer_option%restart_filename) // &
+    '".' // new_line('a'))
+
+end subroutine FactoryForwardPrerequisite
 
 end module Factory_Forward_module

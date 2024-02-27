@@ -108,7 +108,8 @@ module Timestepper_Base_class
             TimestepperBaseReset, &
             TimestepperBaseRegisterHeader, &
             TimestepperBasePrintInfo, &
-            TimestepperBaseInputRecord
+            TimestepperBaseInputRecord, &
+            TimestepperBasePrintStepInfo
 
 contains
 
@@ -284,17 +285,13 @@ subroutine TimestepperBaseReadSelectCase(this,input,keyword,found, &
     case('INITIAL_TIMESTEP_SIZE')
       call InputReadDouble(input,option,this%dt_init)
       call InputErrorMsg(input,option,keyword,error_string)
-      call InputReadWord(input,option,word,PETSC_TRUE)
-      call InputErrorMsg(input,option,trim(keyword)//' Units',error_string)
-      this%dt_init = this%dt_init* &
-                     UnitsConvertToInternal(word,internal_units,option)
+      call InputReadAndConvertUnits(input,this%dt_init,internal_units, &
+                                    keyword,option)
     case('MINIMUM_TIMESTEP_SIZE')
       call InputReadDouble(input,option,this%dt_min)
       call InputErrorMsg(input,option,keyword,error_string)
-      call InputReadWord(input,option,word,PETSC_TRUE)
-      call InputErrorMsg(input,option,trim(keyword)//' Units',error_string)
-      this%dt_min = this%dt_min* &
-                    UnitsConvertToInternal(word,internal_units,option)
+      call InputReadAndConvertUnits(input,this%dt_min,internal_units, &
+                                    keyword,option)
     case('TIMESTEP_REDUCTION_FACTOR')
       call InputReadDouble(input,option,this%time_step_reduction_factor)
       call InputErrorMsg(input,option,keyword,error_string)
@@ -319,10 +316,8 @@ subroutine TimestepperBaseReadSelectCase(this,input,keyword,found, &
       waypoint => WaypointCreate()
       call InputReadDouble(input,option,waypoint%dt_max)
       call InputErrorMsg(input,option,keyword,error_string)
-      call InputReadWord(input,option,word,PETSC_TRUE)
-      call InputErrorMsg(input,option,trim(keyword)//' Units',error_string)
-      waypoint%dt_max = waypoint%dt_max* &
-                        UnitsConvertToInternal(word,internal_units,option)
+      call InputReadAndConvertUnits(input,waypoint%dt_max,internal_units, &
+                                    keyword,option)
       call InputReadCard(input,option,word)
       if (input%ierr == 0) then
         call StringToUpper(word)
@@ -330,11 +325,8 @@ subroutine TimestepperBaseReadSelectCase(this,input,keyword,found, &
           call InputReadDouble(input,option,waypoint%time)
           call InputErrorMsg(input,option,trim(keyword)//' "AT" Time', &
                              error_string)
-          call InputReadWord(input,option,word,PETSC_TRUE)
-          call InputErrorMsg(input,option,trim(keyword)//' "AT" Time Units', &
-                             error_string)
-          waypoint%time = waypoint%time* &
-                          UnitsConvertToInternal(word,internal_units,option)
+          call InputReadAndConvertUnits(input,waypoint%time,internal_units, &
+                                        trim(keyword)//' "AT" Time',option)
         else
           option%io_buffer = 'Keyword under "MAXIMUM_TIMESTEP_SIZE" &
                              &after maximum timestep size should &
@@ -434,7 +426,7 @@ subroutine TimestepperBaseInitializeRun(this,option)
   if (Uninitialized(this%dt_min)) this%dt_min = default_dt_min
   if (Uninitialized(this%dt_init)) this%dt_init = default_dt_init
   if (Uninitialized(this%dt)) this%dt = this%dt_init
-  call this%PrintInfo(option)
+  call this%PrintInfo('',option)
   option%time = this%target_time
   ! cur_waypoint may be null due to restart of a simulation that reached
   ! its final time
@@ -475,6 +467,7 @@ end subroutine TimestepperBaseUpdateDT
 ! ************************************************************************** !
 
 subroutine TimestepperBaseSetTargetTime(this,sync_time,option,stop_flag, &
+                                        sync_flag, &
                                         snapshot_plot_flag, &
                                         observation_plot_flag, &
                                         massbal_plot_flag,checkpoint_flag)
@@ -493,6 +486,7 @@ subroutine TimestepperBaseSetTargetTime(this,sync_time,option,stop_flag, &
   PetscReal :: sync_time
   type(option_type) :: option
   PetscInt :: stop_flag
+  PetscBool :: sync_flag
   PetscBool :: snapshot_plot_flag
   PetscBool :: observation_plot_flag
   PetscBool :: massbal_plot_flag
@@ -510,15 +504,16 @@ subroutine TimestepperBaseSetTargetTime(this,sync_time,option,stop_flag, &
   PetscBool :: equal_to_or_exceeds_sync_time
   PetscBool :: revert_due_to_waypoint
   PetscBool :: revert_due_to_sync_time
-  PetscBool :: truncated_due_to_next_dt_max
-  PetscReal :: temp_time
-  type(waypoint_type), pointer :: cur_waypoint, next_waypoint, prev_waypoint
+  type(waypoint_type), pointer :: cur_waypoint
 
 !geh: for debugging
 #ifdef DEBUG
   option%io_buffer = 'TimestepperBaseSetTargetTime()'
   call PrintMsg(option)
 #endif
+
+!geh: for debugging purposes
+!  call TimestepperBaseHardwireStep(this%steps,this%dt)
 
   if (this%time_step_cut_flag) then
     this%time_step_cut_flag = PETSC_FALSE
@@ -613,6 +608,7 @@ subroutine TimestepperBaseSetTargetTime(this,sync_time,option,stop_flag, &
           ! the time step back to its prior value after the waypoint is met.
           ! %revert_dt is a flag that does so above.
           if (force_to_match_waypoint) revert_due_to_waypoint = PETSC_TRUE
+          if (cur_waypoint%sync) sync_flag = PETSC_TRUE
           if (cur_waypoint%print_snap_output) snapshot_plot_flag = PETSC_TRUE
           if (cur_waypoint%print_obs_output) observation_plot_flag = PETSC_TRUE
           if (cur_waypoint%print_msbl_output) massbal_plot_flag = PETSC_TRUE
@@ -708,7 +704,8 @@ end subroutine TimestepperBaseStepDT
 
 ! ************************************************************************** !
 
-subroutine TimestepperBaseCutDT(this,process_model,icut,stop_flag,option)
+subroutine TimestepperBaseCutDT(this,process_model,icut,stop_flag, &
+                                reason_chars,reason_int,option)
   !
   ! Cuts the timestep when the linear or Newton solver fails to converge
   !
@@ -727,6 +724,8 @@ subroutine TimestepperBaseCutDT(this,process_model,icut,stop_flag,option)
   class(pm_base_type) :: process_model
   PetscInt :: icut
   PetscInt :: stop_flag
+  character(len=*) :: reason_chars
+  PetscInt :: reason_int
   type(option_type) :: option
 
   PetscBool :: snapshot_plot_flag, observation_plot_flag, massbal_plot_flag
@@ -743,20 +742,20 @@ subroutine TimestepperBaseCutDT(this,process_model,icut,stop_flag,option)
     if (icut > this%max_time_step_cuts) then
       option%io_buffer = ' Stopping: Time step cut criteria exceeded.'
       call PrintMsg(option)
-      write(option%io_buffer, &
-            '("    icut =",i3,", max_time_step_cuts=",i3)') &
-            icut,this%max_time_step_cuts
+      option%io_buffer = '    icut = ' // trim(StringWrite(icut)) // &
+        ', max_time_step_cuts= ' // trim(StringWrite(this%max_time_step_cuts))
       call PrintMsg(option)
     endif
     if (this%dt < this%dt_min) then
       option%io_buffer = ' Stopping: Time step size is less than the &
                         &minimum allowable time step.'
       call PrintMsg(option)
-      write(option%io_buffer, &
-            '("    dt   =",es15.7,", dt_min=",es15.7," [",a,"]")') &
-          this%dt/process_model%output_option%tconv, &
-          this%dt_min/process_model%output_option%tconv, &
-          trim(process_model%output_option%tunit)
+      option%io_buffer = '    dt= ' // &
+        StringWrite('(es15.7)',this%dt/process_model%output_option%tconv) // &
+        ', dtmin= ' // &
+        StringWrite('(es15.7)', &
+                    this%dt_min/process_model%output_option%tconv) // &
+        ' ' // trim(StringWriteBracket(process_model%output_option%tunit))
       call PrintMsg(option)
     endif
 
@@ -775,11 +774,25 @@ subroutine TimestepperBaseCutDT(this,process_model,icut,stop_flag,option)
 
   this%dt = this%time_step_reduction_factor * this%dt
 
+  option%io_buffer = ' -> Cut time step: ' // trim(reason_chars)
+  option%io_buffer = trim(option%io_buffer) // '= ' // &
+    trim(StringWrite(reason_int)) // &
+    ' icut= ' // trim(StringWrite(icut)) // ' ' // &
+    trim(StringWriteBracket(this%cumulative_time_step_cuts+icut)) // &
+    ' t= ' // &
+    trim(StringWrite('(1pe12.5)', &
+         option%time/process_model%output_option%tconv)) // &
+    ' dt= ' // &
+    trim(StringWrite('(1pe12.5)',&
+         this%dt/process_model%output_option%tconv)) // &
+    ' [' // trim(process_model%output_option%tunit) // ']'
+  call PrintMsg(option)
+
 end subroutine TimestepperBaseCutDT
 
 ! ************************************************************************** !
 
-subroutine TimestepperBasePrintInfo(this,option)
+subroutine TimestepperBasePrintInfo(this,aux_string,option)
   !
   ! Prints information about time stepper
   !
@@ -793,25 +806,30 @@ subroutine TimestepperBasePrintInfo(this,option)
   implicit none
 
   class(timestepper_base_type) :: this
+  character(len=*) :: aux_string
   type(option_type) :: option
 
-  PetscInt :: fids(2)
+  PetscInt :: i
   character(len=MAXSTRINGLENGTH) :: strings(10)
 
-  fids = OptionGetFIDs(option)
-  ! header is printed in daughter class
+  call PrintMsg(option,'')
+  option%io_buffer = trim(this%name) // ' Time Stepper ' // trim(aux_string)
+  call PrintMsg(option)
   strings(:) = ''
-  strings(1) = 'maximum number of steps: ' // StringWrite(this%max_time_step)
+  strings(1) = 'maximum number of steps: ' // &
+    trim(StringWrite(this%max_time_step))
   strings(2) = 'constant time steps threshold: ' // &
-                              StringWrite(this%constant_time_step_threshold)
+    trim(StringWrite(this%constant_time_step_threshold))
   strings(3) = 'maximum number of cuts: ' // &
-                                        StringWrite(this%max_time_step_cuts)
+    trim( StringWrite(this%max_time_step_cuts))
   strings(4) = 'reduction factor: ' // &
-                                StringWrite(this%time_step_reduction_factor)
+    trim(StringWrite(this%time_step_reduction_factor))
   strings(5) = 'maximum growth factor: ' // &
-                               StringWrite(this%time_step_max_growth_factor)
+    trim(StringWrite(this%time_step_max_growth_factor))
   call StringsCenter(strings,30,':')
-  call StringWriteToUnits(fids,strings)
+  do i = 1, size(strings)
+    if (len_trim(strings(i)) > 0) call PrintMsg(option,strings(i))
+  enddo
 
 end subroutine TimestepperBasePrintInfo
 
@@ -945,8 +963,8 @@ subroutine TimestepperBaseRegisterHeader(this,bag,header)
   call PetscBagRegisterInt(bag,header%num_contig_revert_due_to_sync,0, &
                            "num_contig_revert_due_to_sync","", &
                            ierr);CHKERRQ(ierr)
-  call PetscBagRegisterInt(bag,header%revert_dt,0, &
-                           "revert_dt","",ierr);CHKERRQ(ierr)
+  call PetscBagRegisterInt(bag,header%revert_dt,0,"revert_dt","", &
+                           ierr);CHKERRQ(ierr)
 
 end subroutine TimestepperBaseRegisterHeader
 
@@ -968,8 +986,6 @@ subroutine TimestepperBaseSetHeader(this,bag,header)
   class(timestepper_base_type) :: this
   class(stepper_base_header_type) :: header
   PetscBag :: bag
-
-  PetscErrorCode :: ierr
 
   header%time = this%target_time
   header%dt = this%dt
@@ -1089,7 +1105,7 @@ function TimestepperBaseWallClockStop(this,option)
   ! checkpoint and exit
   TimestepperBaseWallclockStop = PETSC_FALSE
   if (option%wallclock_stop_flag) then
-    call PetscTime(current_time, ierr)
+    call PetscTime(current_time,ierr);CHKERRQ(ierr)
     average_step_time = (current_time-option%comm%start_time)/ &
                         dble(this%steps-this%start_time_step+1) &
                         *2.d0  ! just to be safe, double it
@@ -1121,15 +1137,49 @@ end subroutine TimestepperBasePrintEKG
 
 ! ************************************************************************** !
 
+subroutine TimestepperBasePrintStepInfo(this,output_option,reason,option)
+  !
+  ! Prints time step number, cumulative time, time step size and
+  ! converged reason
+  !
+  ! Author: Glenn Hammond
+  ! Date: 06/03/22
+
+  use Option_module
+  use Output_Aux_module
+  use String_module
+
+  implicit none
+
+  class(timestepper_base_type) :: this
+  type(output_option_type) :: output_option
+  PetscInt :: reason
+  type(option_type) :: option
+
+  call PrintMsg(option,'')
+  write(option%io_buffer, &
+        '(" Step ",i6," Time= ",1pe12.5," Dt= ",1pe12.5," [",a,"]")') &
+        this%steps,this%target_time/output_option%tconv, &
+        this%dt/output_option%tconv,trim(output_option%tunit)
+  if (Initialized(reason)) then
+    option%io_buffer = trim(option%io_buffer) // ' conv_reason: ' // &
+                       trim(StringWrite('(i4)',reason))
+  endif
+  call PrintMsg(option)
+
+end subroutine TimestepperBasePrintStepInfo
+
+! ************************************************************************** !
+
 recursive subroutine TimestepperBaseFinalizeRun(this,option)
   !
   ! Finalizes the time stepping
   !
   ! Author: Glenn Hammond
   ! Date: 07/22/13
-  !
 
   use Option_module
+  use String_module
 
   implicit none
 
@@ -1152,7 +1202,41 @@ recursive subroutine TimestepperBaseFinalizeRun(this,option)
       trim(adjustl(string)) // ' seconds'
   endif
 
+  call PrintMsg(option,'')
+  string = ' ' // trim(this%name) // &
+    ' TS Base steps = ' // trim(StringWrite(this%steps)) // &
+    '  cuts = ' // trim(StringWrite(this%cumulative_time_step_cuts))
+  call PrintMsg(option,string)
+  string = ' ' // trim(this%name) // &
+    ' TS Base time = ' // &
+    trim(StringWrite('(f12.1)',this%cumulative_solver_time)) // ' seconds'
+  call PrintMsg(option,string)
+
 end subroutine TimestepperBaseFinalizeRun
+
+! ************************************************************************** !
+
+subroutine TimestepperBaseHardwireStep(istep,ts)
+  !
+  ! Hardwires the timestep for debugging purposes
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/16/22
+  !
+  implicit none
+
+  PetscInt :: istep
+  PetscReal :: ts
+
+  PetscReal :: ts_(15) = [0.1,2.,1.,3.,0.5, &
+                          0.3,1.5,0.4,2.1,0.05, &
+                          1.,2.,0.6,1.9,1.]
+
+  if (istep > 0 .and. istep <= size(ts_)) then
+    ts = ts_(istep)*3600.d0
+  endif
+
+end subroutine TimestepperBaseHardwireStep
 
 ! ************************************************************************** !
 

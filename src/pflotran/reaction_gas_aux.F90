@@ -1,5 +1,5 @@
 module Reaction_Gas_Aux_module
-  
+
 #include "petsc/finclude/petscsys.h"
   use petscsys
 
@@ -8,8 +8,8 @@ module Reaction_Gas_Aux_module
   use PFLOTRAN_Constants_module
 
   implicit none
-  
-  private 
+
+  private
 
   PetscInt, parameter, public :: NULL_GAS = 0
   PetscInt, parameter, public :: ACTIVE_GAS = 1
@@ -24,30 +24,35 @@ module Reaction_Gas_Aux_module
     PetscReal :: molar_weight
     PetscBool :: print_me
     type(database_rxn_type), pointer :: dbaserxn
-    type(gas_species_type), pointer :: next    
+    type(gas_species_type), pointer :: next
   end type gas_species_type
-  
+
   type, public :: gas_type
-  
+
     PetscInt :: ngas
     PetscInt :: nactive_gas
     PetscInt :: npassive_gas
-    
+
     type(gas_species_type), pointer :: list
 
     ! gas species names
     character(len=MAXWORDLENGTH), pointer :: active_names(:)
     character(len=MAXWORDLENGTH), pointer :: passive_names(:)
     PetscBool :: print_all
-    PetscBool, pointer :: active_print_me(:)    
-    PetscBool, pointer :: passive_print_me(:)    
-    
+    PetscBool :: print_concentration
+    PetscBool :: print_partial_pressure
+    PetscBool, pointer :: active_print_me(:)
+    PetscBool, pointer :: passive_print_me(:)
+
     PetscInt, pointer :: acteqspecid(:,:)   ! (0:ncomp in rxn)
     PetscReal, pointer :: acteqstoich(:,:)
     PetscInt, pointer :: acteqh2oid(:)       ! id of water, if present
     PetscReal, pointer :: acteqh2ostoich(:)  ! stoichiometry of water, if present
     PetscReal, pointer :: acteqlogK(:)
     PetscReal, pointer :: acteqlogKcoef(:,:)
+
+    PetscReal, pointer :: actmolarwt(:)
+    PetscReal, pointer :: pasmolarwt(:)
 
     PetscInt, pointer :: paseqspecid(:,:)   ! (0:ncomp in rxn)
     PetscReal, pointer :: paseqstoich(:,:)
@@ -57,40 +62,42 @@ module Reaction_Gas_Aux_module
     PetscReal, pointer :: paseqlogKcoef(:,:)
 
   end type gas_type
-  
 
-  public :: GasCreate, &
-            GasSpeciesCreate, &
-            GasGetNames, &
-            GasGetCount, &
-            GasSpeciesListMergeDuplicates, &
-            GasDestroy, &
-            GasGetIDFromName
-             
+
+  public :: ReactionGasCreateAux, &
+            ReactionGasCreateGasSpecies, &
+            ReactionGasGetGasNames, &
+            ReactionGasGetGasCount, &
+            ReactionGasMergeDupGasSpecies, &
+            ReactionGasDestroyAux, &
+            ReactionGasGetGasIDFromName
+
 contains
 
 ! ************************************************************************** !
 
-function GasCreate()
-  ! 
+function ReactionGasCreateAux()
+  !
   ! Allocate and initialize gas reaction object
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 08/01/16
-  ! 
+  !
 
   implicit none
-  
-  type(gas_type), pointer :: GasCreate
-  
+
+  type(gas_type), pointer :: ReactionGasCreateAux
+
   type(gas_type), pointer :: gas
 
-  allocate(gas)  
+  allocate(gas)
 
   gas%ngas = 0
   gas%nactive_gas = 0
   gas%npassive_gas = 0
   gas%print_all = PETSC_FALSE
+  gas%print_concentration = PETSC_FALSE
+  gas%print_partial_pressure = PETSC_FALSE
   nullify(gas%list)
   nullify(gas%active_names)
   nullify(gas%passive_names)
@@ -103,34 +110,37 @@ function GasCreate()
   nullify(gas%acteqh2ostoich)
   nullify(gas%acteqlogK)
   nullify(gas%acteqlogKcoef)
-  
+
+  nullify(gas%actmolarwt)
+  nullify(gas%pasmolarwt)
+
   nullify(gas%paseqspecid)
   nullify(gas%paseqstoich)
   nullify(gas%paseqh2oid)
   nullify(gas%paseqh2ostoich)
   nullify(gas%paseqlogK)
   nullify(gas%paseqlogKcoef)
-  
-  GasCreate => gas
-  
-end function GasCreate
+
+  ReactionGasCreateAux => gas
+
+end function ReactionGasCreateAux
 
 ! ************************************************************************** !
 
-function GasSpeciesCreate()
-  ! 
+function ReactionGasCreateGasSpecies()
+  !
   ! Allocate and initialize a gas species object
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 05/02/08
-  ! 
+  !
   implicit none
-  
-  type(gas_species_type), pointer :: GasSpeciesCreate
-  
+
+  type(gas_species_type), pointer :: ReactionGasCreateGasSpecies
+
   type(gas_species_type), pointer :: gas_species
 
-  allocate(gas_species)  
+  allocate(gas_species)
   gas_species%id = 0
   gas_species%itype = NULL_GAS
   gas_species%name = ''
@@ -140,135 +150,135 @@ function GasSpeciesCreate()
   nullify(gas_species%dbaserxn)
   nullify(gas_species%next)
 
-  GasSpeciesCreate => gas_species
-  
-end function GasSpeciesCreate
+  ReactionGasCreateGasSpecies => gas_species
+
+end function ReactionGasCreateGasSpecies
 
 ! ************************************************************************** !
 
-function GasGetNames(gas,gas_itype)
-  ! 
+function ReactionGasGetGasNames(gas,gas_itype)
+  !
   ! Returns the names of gases in an array
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 10/21/08
-  ! 
+  !
 
   implicit none
-  
+
   type(gas_type) :: gas
   PetscInt :: gas_itype
 
-  character(len=MAXWORDLENGTH), pointer :: GasGetNames(:)
+  character(len=MAXWORDLENGTH), pointer :: ReactionGasGetGasNames(:)
 
   PetscInt :: count
   character(len=MAXWORDLENGTH), pointer :: names(:)
   type(gas_species_type), pointer :: gas_species
 
-  count = GasGetCount(gas,gas_itype)
+  count = ReactionGasGetGasCount(gas,gas_itype)
   allocate(names(count))
-  
+
   count = 1
   gas_species => gas%list
   do
     if (.not.associated(gas_species)) exit
     if (gas_species%itype == gas_itype .or. &
         gas_species%itype == ACTIVE_AND_PASSIVE_GAS .or. &
-        gas_itype == ACTIVE_AND_PASSIVE_GAS) then    
+        gas_itype == ACTIVE_AND_PASSIVE_GAS) then
       names(count) = gas_species%name
       count = count + 1
     endif
     gas_species => gas_species%next
   enddo
 
-  GasGetNames => names
-  
-end function GasGetNames
+  ReactionGasGetGasNames => names
+
+end function ReactionGasGetGasNames
 
 ! ************************************************************************** !
 
-function GasGetCount(gas,gas_itype)
-  ! 
+function ReactionGasGetGasCount(gas,gas_itype)
+  !
   ! Returns the number of gas species in list
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 08/02/16
-  ! 
+  !
   implicit none
-  
+
   type(gas_type) :: gas
   PetscInt :: gas_itype
 
-  PetscInt :: GasGetCount
+  PetscInt :: ReactionGasGetGasCount
 
   type(gas_species_type), pointer :: gas_species
 
-  GasGetCount = 0
+  ReactionGasGetGasCount = 0
   gas_species => gas%list
   do
     if (.not.associated(gas_species)) exit
     if (gas_species%itype == gas_itype .or. &
         gas_species%itype == ACTIVE_AND_PASSIVE_GAS .or. &
-        gas_itype == ACTIVE_AND_PASSIVE_GAS) then  
-      GasGetCount = GasGetCount + 1
+        gas_itype == ACTIVE_AND_PASSIVE_GAS) then
+      ReactionGasGetGasCount = ReactionGasGetGasCount + 1
     endif
     gas_species => gas_species%next
   enddo
 
-end function GasGetCount
+end function ReactionGasGetGasCount
 
 ! ************************************************************************** !
 
-function GasGetIDFromName(gas,name)
-  ! 
+function ReactionGasGetGasIDFromName(gas,name)
+  !
   ! Returns the id of gas with the corresponding name from a specific list
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 08/02/16
-  ! 
+  !
   use String_module
-  
+
   implicit none
-  
+
   type(gas_type) :: gas
   character(len=MAXWORDLENGTH) :: name
 
-  PetscInt :: GasGetIDFromName
+  PetscInt :: ReactionGasGetGasIDFromName
   type(gas_species_type), pointer :: gas_species
 
-  GasGetIDFromName = UNINITIALIZED_INTEGER
- 
+  ReactionGasGetGasIDFromName = UNINITIALIZED_INTEGER
+
   gas_species => gas%list
   do
     if (.not.associated(gas_species)) exit
     if (StringCompare(name,gas_species%name,MAXWORDLENGTH)) then
-      GasGetIDFromName = gas_species%id
+      ReactionGasGetGasIDFromName = gas_species%id
       exit
     endif
     gas_species => gas_species%next
   enddo
 
-end function GasGetIDFromName
+end function ReactionGasGetGasIDFromName
 
 ! ************************************************************************** !
 
-subroutine GasSpeciesListMergeDuplicates(gas_species_list)
-  ! 
+subroutine ReactionGasMergeDupGasSpecies(gas_species_list)
+  !
   ! Merges duplicate gas species from a list
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 08/10/16
-  ! 
+  !
   use String_module
-  
+
   implicit none
-    
+
   type(gas_species_type), pointer :: gas_species_list
-  
+
   type(gas_species_type), pointer :: cur_species
   type(gas_species_type), pointer :: cur_species2
   type(gas_species_type), pointer :: prev_species
-  
+
   cur_species => gas_species_list
   do
     if (.not.associated(cur_species)) exit
@@ -282,7 +292,7 @@ subroutine GasSpeciesListMergeDuplicates(gas_species_list)
           cur_species%itype = ACTIVE_AND_PASSIVE_GAS
         endif
         prev_species%next => cur_species2%next
-        call GasSpeciesDestroy(cur_species2)
+        call ReactionGasDestroyGasSpecies(cur_species2)
         cur_species2 => prev_species%next
       else
         prev_species => cur_species2
@@ -291,82 +301,79 @@ subroutine GasSpeciesListMergeDuplicates(gas_species_list)
     enddo
     cur_species => cur_species%next
   enddo
-  
-end subroutine GasSpeciesListMergeDuplicates
-  
+
+end subroutine ReactionGasMergeDupGasSpecies
+
 ! ************************************************************************** !
 
-recursive subroutine GasSpeciesListDestroy(gas_species)
-  ! 
+recursive subroutine ReactionGasDestroyGasSpeciesList(gas_species)
+  !
   ! Deallocates a gas species
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 05/29/08
-  ! 
+  !
 
   implicit none
-    
+
   type(gas_species_type), pointer :: gas_species
-  
+
   if (.not.associated(gas_species)) return
 
   if (associated(gas_species%next)) then
-    call GasSpeciesListDestroy(gas_species%next)
+    call ReactionGasDestroyGasSpeciesList(gas_species%next)
   endif
 
-  call GasSpeciesDestroy(gas_species)
+  call ReactionGasDestroyGasSpecies(gas_species)
 
-end subroutine GasSpeciesListDestroy
+end subroutine ReactionGasDestroyGasSpeciesList
 
 ! ************************************************************************** !
 
-recursive subroutine GasSpeciesDestroy(gas_species)
-  ! 
+recursive subroutine ReactionGasDestroyGasSpecies(gas_species)
+  !
   ! Deallocates a gas species
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 05/29/08
-  ! 
+  !
 
   implicit none
-    
+
   type(gas_species_type), pointer :: gas_species
-  
+
   if (associated(gas_species%dbaserxn)) &
-    call DatabaseRxnDestroy(gas_species%dbaserxn)
-  deallocate(gas_species)  
+    call ReactionDBDestroyRxn(gas_species%dbaserxn)
+  deallocate(gas_species)
   nullify(gas_species)
 
-end subroutine GasSpeciesDestroy
+end subroutine ReactionGasDestroyGasSpecies
 
 ! ************************************************************************** !
 
-subroutine GasDestroy(gas)
-  ! 
+subroutine ReactionGasDestroyAux(gas)
+  !
   ! Deallocates a gas object
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 08/01/16
-  ! 
+  !
 
   use Utility_module, only: DeallocateArray
-  
+
   implicit none
 
   type(gas_type), pointer :: gas
-  
-  type(gas_species_type), pointer :: cur_gas_species, &
-                                     prev_gas_species
 
   if (.not.associated(gas)) return
 
-  call GasSpeciesListDestroy(gas%list)
+  call ReactionGasDestroyGasSpeciesList(gas%list)
 
   call DeallocateArray(gas%active_names)
   call DeallocateArray(gas%passive_names)
   call DeallocateArray(gas%active_print_me)
   call DeallocateArray(gas%passive_print_me)
-  
+
   call DeallocateArray(gas%acteqspecid)
   call DeallocateArray(gas%acteqstoich)
   call DeallocateArray(gas%acteqh2oid)
@@ -374,16 +381,19 @@ subroutine GasDestroy(gas)
   call DeallocateArray(gas%acteqlogK)
   call DeallocateArray(gas%acteqlogKcoef)
 
+  call DeallocateArray(gas%actmolarwt)
+  call DeallocateArray(gas%pasmolarwt)
+
   call DeallocateArray(gas%paseqspecid)
   call DeallocateArray(gas%paseqstoich)
   call DeallocateArray(gas%paseqh2oid)
   call DeallocateArray(gas%paseqh2ostoich)
   call DeallocateArray(gas%paseqlogK)
   call DeallocateArray(gas%paseqlogKcoef)
-  
+
   deallocate(gas)
   nullify(gas)
 
-end subroutine GasDestroy
+end subroutine ReactionGasDestroyAux
 
 end module Reaction_Gas_Aux_module

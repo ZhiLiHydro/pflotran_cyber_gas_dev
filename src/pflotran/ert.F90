@@ -4,8 +4,6 @@ module ERT_module
   use petscksp
 
   use ERT_Aux_module
-  use Material_Aux_class
-
   use PFLOTRAN_Constants_module
 
   implicit none
@@ -31,57 +29,159 @@ subroutine ERTSetup(realization)
   !
 
   use Realization_Subsurface_class
+  use Material_Aux_module
   use Option_module
   use Patch_module
   use Grid_module
   use Survey_module
+  use Variables_module, only : ELECTRICAL_CONDUCTIVITY, &
+                               ARCHIE_CEMENTATION_EXPONENT, &
+                               ARCHIE_SATURATION_EXPONENT, &
+                               ARCHIE_TORTUOSITY_CONSTANT, &
+                               SURFACE_ELECTRICAL_CONDUCTIVITY, &
+                               WAXMAN_SMITS_CLAY_CONDUCTIVITY
 
   implicit none
 
-  type(realization_subsurface_type) :: realization
+  class(realization_subsurface_type) :: realization
 
   type(option_type), pointer :: option
   type(patch_type),pointer :: patch
   type(grid_type), pointer :: grid
   type(survey_type), pointer :: survey
 
-  class(material_auxvar_type), pointer :: material_auxvars(:)
+  type(material_auxvar_type), pointer :: material_auxvars(:)
   type(ert_auxvar_type), pointer :: ert_auxvars(:)
 
-  PetscInt :: flag(1)
-  PetscInt :: local_id, ghosted_id
+  PetscInt :: flag(6)
+  PetscInt :: local_id, ghosted_id,num_neighbors
+  PetscBool :: require_electrical_conductivity
+  PetscBool :: archies_parameters_defined
   PetscBool :: error_found
-  PetscReal :: tempreal
   PetscErrorCode :: ierr
 
   option => realization%option
   patch => realization%patch
   grid => patch%grid
 
+  material_auxvars => patch%aux%Material%auxvars
+
   patch%aux%ERT => ERTAuxCreate()
+
+  require_electrical_conductivity = PETSC_FALSE
+  archies_parameters_defined = (archie_cementation_exp_index > 0 .or. &
+                                archie_saturation_exp_index > 0 .or. &
+                                archie_tortuosity_index > 0 .or. &
+                                surf_elec_conduct_index > 0 .or. &
+                                ws_clay_conduct_index > 0)
 
   ! ensure mapping of local cell ids to neighboring ghosted ids exits
   call GridSetupCellNeighbors(grid,option)
 
+  if (option%iflowmode == NULL_MODE .and. option%itranmode == NULL_MODE) then
+    require_electrical_conductivity = PETSC_TRUE
+    if (archies_parameters_defined) then
+      option%io_buffer = "Archie's parameter cannot be assigned as &
+        &a MATERIAL_PROPERTY when no flow or transport process model &
+        &is being run)."
+      call PrintErrMsg(option)
+    endif
+    if (electrical_conductivity_index == 0) then
+      option%io_buffer = "ELECTRICAL_CONDUCTIVITY must be assigned as &
+        &a MATERIAL_PROPERTY when running the ERT process model without &
+        &a flow or transport process model."
+      call PrintErrMsg(option)
+    endif
+  else
+    if (electrical_conductivity_index > 0) then
+      option%io_buffer = "ELECTRICAL_CONDUCTIVITY cannot be assigned as &
+        &a MATERIAL_PROPERTY when using a flow or transport process model &
+        &as the bulk conductivity will be calculated through Archie's Law &
+        &and its associated parameters."
+      call PrintErrMsg(option)
+    endif
+  endif
+
+!call PrintErrMsg(option,'Added error checking to ERTSetup; add error messaing fo rmissing material aux variables; Move global to local within MaterailSetAuxVar???')
+
   ! ensure that material properties specific to this module are properly
   ! initialized i.e. electrical_conductivity is initialized
-  material_auxvars => patch%aux%Material%auxvars
   error_found = PETSC_FALSE
   flag = 0
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
     if (patch%imat(ghosted_id) <= 0) cycle
-    tempreal = minval(material_auxvars(ghosted_id)%electrical_conductivity)
-    if (Uninitialized(tempreal) .and. flag(1) == 0) then
-      option%io_buffer = 'ERROR: Non-initialized electrical conductivity.'
-      call PrintMsgByRank(option)
-      flag(1) = 1
+    if (require_electrical_conductivity) then
+      if (Uninitialized(MaterialAuxVarGetValue(material_auxvars(ghosted_id), &
+                                               ELECTRICAL_CONDUCTIVITY)) .and. &
+          flag(1) == 0) then
+        option%io_buffer = 'ERROR: Non-initialized electrical conductivity.'
+        call PrintMsgByRank(option)
+        flag(1) = 1
+      endif
+    endif
+    if (archies_parameters_defined) then
+      if (archie_cementation_exp_index > 0) then
+        if (Uninitialized( &
+              MaterialAuxVarGetValue(material_auxvars(ghosted_id), &
+                                     ARCHIE_CEMENTATION_EXPONENT)) .and. &
+            flag(2) == 0) then
+          option%io_buffer = "ERROR: Non-initialized Archie's cementation &
+            &exponent."
+          call PrintMsgByRank(option)
+          flag(2) = 1
+        endif
+      endif
+      if (archie_saturation_exp_index > 0) then
+        if (Uninitialized( &
+              MaterialAuxVarGetValue(material_auxvars(ghosted_id), &
+                                     ARCHIE_SATURATION_EXPONENT)) .and. &
+            flag(3) == 0) then
+          option%io_buffer = "ERROR: Non-initialized Archie's saturation &
+            &exponent."
+          call PrintMsgByRank(option)
+          flag(3) = 1
+        endif
+      endif
+      if (archie_tortuosity_index > 0) then
+        if (Uninitialized( &
+              MaterialAuxVarGetValue(material_auxvars(ghosted_id), &
+                                     ARCHIE_TORTUOSITY_CONSTANT)) .and. &
+            flag(4) == 0) then
+          option%io_buffer = "ERROR: Non-initialized Archie's tortuosity &
+            &constant."
+          call PrintMsgByRank(option)
+          flag(4) = 1
+        endif
+      endif
+      if (surf_elec_conduct_index > 0) then
+        if (Uninitialized( &
+              MaterialAuxVarGetValue(material_auxvars(ghosted_id), &
+                                     SURFACE_ELECTRICAL_CONDUCTIVITY)) .and. &
+            flag(5) == 0) then
+          option%io_buffer = 'ERROR: Non-initialized surface electrical &
+            &conductivity.'
+          call PrintMsgByRank(option)
+          flag(5) = 1
+        endif
+      endif
+      if (ws_clay_conduct_index > 0) then
+        if (Uninitialized( &
+              MaterialAuxVarGetValue(material_auxvars(ghosted_id), &
+                                     WAXMAN_SMITS_CLAY_CONDUCTIVITY)) .and. &
+            flag(6) == 0) then
+          option%io_buffer = 'ERROR: Non-initialized Waxman-Smits clay &
+            &conductivity.'
+          call PrintMsgByRank(option)
+          flag(6) = 1
+        endif
+      endif
     endif
   enddo
 
   error_found = error_found .or. (maxval(flag) > 0)
   call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_LOGICAL, &
-                     MPI_LOR,option%mycomm,ierr)
+                     MPI_LOR,option%mycomm,ierr);CHKERRQ(ierr)
   if (error_found) then
     option%io_buffer = 'Material property errors found in ERTSetup.'
     call PrintErrMsg(option)
@@ -92,7 +192,12 @@ subroutine ERTSetup(realization)
  ! allocate auxvars data structures for all grid cells
   allocate(ert_auxvars(grid%ngmax))
   do ghosted_id = 1, grid%ngmax
-    call ERTAuxVarInit(ert_auxvars(ghosted_id),survey,option)
+    local_id = grid%nG2L(ghosted_id)
+    num_neighbors = -1
+    if (local_id>0) then
+      num_neighbors = grid%cell_neighbors_local_ghosted(0,local_id)
+    endif
+    call ERTAuxVarInit(ert_auxvars(ghosted_id),survey,num_neighbors,option)
   enddo
   patch%aux%ERT%auxvars => ert_auxvars
   patch%aux%ERT%num_aux = grid%ngmax
@@ -120,11 +225,10 @@ subroutine ERTCalculateMatrix(realization,M,compute_delM)
 
   implicit none
 
-  type(realization_subsurface_type) :: realization
+  class(realization_subsurface_type) :: realization
   Mat :: M
   PetscBool :: compute_delM
 
-  class(material_auxvar_type), pointer :: material_auxvars(:)
   type(ert_auxvar_type), pointer :: ert_auxvars(:)
   type(option_type), pointer :: option
   type(patch_type), pointer :: patch
@@ -157,12 +261,17 @@ subroutine ERTCalculateMatrix(realization,M,compute_delM)
   option => realization%option
   field => realization%field
   patch => realization%patch
-  material_auxvars => patch%aux%Material%auxvars
   ert_auxvars => patch%aux%ERT%auxvars
   grid => patch%grid
 
   ! Pre-set Matrix to zeros
-  call MatZeroEntries(M,ierr); CHKERRQ(ierr)
+  call MatZeroEntries(M,ierr);CHKERRQ(ierr)
+
+  if (compute_delM) then
+    do local_id=1,grid%nlmax
+      ert_auxvars(grid%nL2G(local_id))%delM = 0.d0
+    enddo
+  endif
 
   ! Setting matrix enteries for Internal Flux terms/connections
   connection_set_list => grid%internal_connection_set_list
@@ -186,8 +295,8 @@ subroutine ERTCalculateMatrix(realization,M,compute_delM)
       if (patch%imat(ghosted_id_up) <= 0 .or.   &
           patch%imat(ghosted_id_dn) <=0 ) cycle
 
-      cond_up = material_auxvars(ghosted_id_up)%electrical_conductivity(1)
-      cond_dn = material_auxvars(ghosted_id_dn)%electrical_conductivity(1)
+      cond_up = ert_auxvars(ghosted_id_up)%bulk_conductivity
+      cond_dn = ert_auxvars(ghosted_id_dn)%bulk_conductivity
 
       !dist(-1) -> scalar fractional distance up
       !dist(-1) = d_up/d_0
@@ -224,10 +333,10 @@ subroutine ERTCalculateMatrix(realization,M,compute_delM)
 
       if (local_id_up > 0) then
         ! set matrix coefficients for the upwind cell
-        call MatSetValuesLocal(M,1,ghosted_id_up-1,1,ghosted_id_up-1, &
-                               coef_up,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesLocal(M,1,ghosted_id_up-1,1,ghosted_id_dn-1, &
-                               coef_dn,ADD_VALUES,ierr);CHKERRQ(ierr)
+        call MatSetValuesLocal(M,1,ghosted_id_up-1,1,ghosted_id_up-1,coef_up, &
+                               ADD_VALUES,ierr);CHKERRQ(ierr)
+        call MatSetValuesLocal(M,1,ghosted_id_up-1,1,ghosted_id_dn-1,coef_dn, &
+                               ADD_VALUES,ierr);CHKERRQ(ierr)
 
         if (compute_delM) then
           ! For dM/dcond_up matrix
@@ -235,11 +344,6 @@ subroutine ERTCalculateMatrix(realization,M,compute_delM)
           ineighbor = FindLocNeighbor(grid%cell_neighbors_local_ghosted      &
                                       (1:num_neighbors_up,local_id_up),      &
                                       num_neighbors_up,ghosted_id_dn)
-
-          if (.not.associated(ert_auxvars(ghosted_id_up)%delM)) then
-            allocate(ert_auxvars(ghosted_id_up)%delM(num_neighbors_up + 1))
-            ert_auxvars(ghosted_id_up)%delM = 0.d0
-          endif
 
           ! Fill values to dM/dcond_up matrix for up cell
           call FillValuesToDelM(dcoef_up,dcoef_dn,num_neighbors_up,          &
@@ -257,10 +361,10 @@ subroutine ERTCalculateMatrix(realization,M,compute_delM)
         dcoef_up =   dcond_avg_dn * area
         dcoef_dn = - dcoef_up               ! - dcond_avg_dn * area
 
-        call MatSetValuesLocal(M,1,ghosted_id_dn-1,1,ghosted_id_dn-1, &
-                               coef_dn,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesLocal(M,1,ghosted_id_dn-1,1,ghosted_id_up-1, &
-                               coef_up,ADD_VALUES,ierr);CHKERRQ(ierr)
+        call MatSetValuesLocal(M,1,ghosted_id_dn-1,1,ghosted_id_dn-1,coef_dn, &
+                               ADD_VALUES,ierr);CHKERRQ(ierr)
+        call MatSetValuesLocal(M,1,ghosted_id_dn-1,1,ghosted_id_up-1,coef_up, &
+                               ADD_VALUES,ierr);CHKERRQ(ierr)
 
         if (compute_delM) then
           ! For dM/dcond_dn matrix
@@ -268,11 +372,6 @@ subroutine ERTCalculateMatrix(realization,M,compute_delM)
           ineighbor = FindLocNeighbor(grid%cell_neighbors_local_ghosted      &
                                       (1:num_neighbors_dn,local_id_dn),      &
                                       num_neighbors_dn,ghosted_id_up)
-
-          if (.not.associated(ert_auxvars(ghosted_id_dn)%delM)) then
-            allocate(ert_auxvars(ghosted_id_dn)%delM(num_neighbors_dn + 1))
-            ert_auxvars(ghosted_id_dn)%delM = 0.d0
-          endif
 
           ! Fill values to dM/dcond_dn matrix for up cell
           call FillValuesToDelM(dcoef_dn,dcoef_up,num_neighbors_dn,          &
@@ -302,7 +401,7 @@ subroutine ERTCalculateMatrix(realization,M,compute_delM)
 
         if (patch%imat(ghosted_id) <= 0) cycle
 
-        cond_dn = material_auxvars(ghosted_id)%electrical_conductivity(1)
+        cond_dn = ert_auxvars(ghosted_id)%bulk_conductivity
 
         dist_0  = cur_connection_set%dist( 0,iconn)
 
@@ -404,8 +503,10 @@ end subroutine ERTCalculateMatrix
 
 ! ************************************************************************** !
 
-subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_c, &
-                                           cond)
+subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
+                                           cond_c,empirical_law,cond, &
+                                           tracer_scale,dcond_dsat, &
+                                           dcond_dconc,dcond_dpor)
   !
   ! Calculates conductivity using petrophysical empirical relations
   ! using Archie's law or Waxman-Smits equation
@@ -418,11 +519,14 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_c, &
 
   PetscReal :: por, sat  ! porosity and saturation
 
+  PetscInt :: empirical_law
+
   ! Archie's law parameters
   PetscReal :: a        ! Tortuosity factor constant
   PetscReal :: m        ! Cementation exponent
   PetscReal :: n        ! Saturation exponent
   PetscReal :: cond_w   ! Water conductivity
+  PetscReal :: cond_s   ! surface conductivity
 
   ! Waxman-Smits additional paramters
   PetscReal :: cond_c   ! Clay conductivity
@@ -431,11 +535,38 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_c, &
   ! calculated bulk conductivity
   PetscReal :: cond
 
+  ! to get dconductivty/dsaturation
+  PetscReal :: tracer_scale
+  PetscReal :: dcond_dsat
+  PetscReal :: dcond_dconc
+  PetscReal :: dcond_dpor
+  PetscReal :: cond_ws
+
   ! Archie's law
   cond = cond_w * (por**m) * (sat**n) / a
 
-  ! Waxmax-Smits equations/Dual-Water model
-  cond = cond + cond_c * Vc * (1-por) * sat**(n-1)
+  ! dcond/dsat
+  dcond_dsat = n * cond / sat
+
+  !dcond/dpor
+  dcond_dpor = m * cond / por
+
+  ! Modify by adding surface conductivity
+  cond = cond + cond_s
+
+  !dcond/dconc
+  dcond_dconc = tracer_scale * (por**m) * (sat**n) / a
+
+  select case(empirical_law)
+    case(ARCHIE)
+      ! do nothing
+    case(WAXMAN_SMITS)
+      ! Waxmax-Smits equations/Dual-Water model
+      cond_ws = cond_c * Vc * (1.d0-por) * sat**(n-1.d0)
+      cond = cond + cond_ws
+      dcond_dsat = dcond_dsat + (n-1.d0) * cond_ws / sat
+      dcond_dpor = dcond_dpor - cond_c * Vc * sat**(n-1.d0)
+  end select
 
 end subroutine ERTConductivityFromEmpiricalEqs
 
@@ -457,7 +588,7 @@ subroutine ERTCalculateAnalyticPotential(realization,ielec,average_conductivity)
 
   implicit none
 
-  type(realization_subsurface_type) :: realization
+  class(realization_subsurface_type) :: realization
   PetscInt :: ielec
   PetscReal, optional :: average_conductivity
 
@@ -529,13 +660,13 @@ subroutine ERTCalculateAverageConductivity(realization)
 
   implicit none
 
-  type(realization_subsurface_type) :: realization
+  class(realization_subsurface_type) :: realization
 
   type(option_type), pointer :: option
   type(patch_type), pointer :: patch
   type(grid_type), pointer :: grid
   type(survey_type), pointer :: survey
-  class(material_auxvar_type), pointer :: material_auxvars(:)
+  type(ert_auxvar_type), pointer :: ert_auxvars(:)
 
   PetscInt :: local_id
   PetscInt :: ghosted_id
@@ -546,7 +677,7 @@ subroutine ERTCalculateAverageConductivity(realization)
   option => realization%option
   patch => realization%patch
   grid => patch%grid
-  material_auxvars => patch%aux%Material%auxvars
+  ert_auxvars => patch%aux%ERT%auxvars
 
   local_average_cond = 0.d0
   ! Get part of average conductivity locally
@@ -554,13 +685,14 @@ subroutine ERTCalculateAverageConductivity(realization)
     ghosted_id = grid%nL2G(local_id)
     if (patch%imat(ghosted_id) <= 0) cycle
     local_average_cond = local_average_cond + &
-                         material_auxvars(ghosted_id)%electrical_conductivity(1)
+                         ert_auxvars(ghosted_id)%bulk_conductivity
   enddo
   local_average_cond = local_average_cond / grid%nmax
 
   ! get the average conductivity
-  call MPI_Allreduce(MPI_IN_PLACE,local_average_cond,ONE_INTEGER_MPI,   &
-                     MPI_DOUBLE_PRECISION,MPI_SUM,option%mycomm,ierr)
+  call MPI_Allreduce(MPI_IN_PLACE,local_average_cond,ONE_INTEGER_MPI, &
+                     MPI_DOUBLE_PRECISION,MPI_SUM,option%mycomm, &
+                     ierr);CHKERRQ(ierr)
 
   survey%average_conductivity = local_average_cond
 

@@ -1,38 +1,40 @@
+
 module PM_NWT_class
 
 #include "petsc/finclude/petscsnes.h"
   use petscsnes
-  use PM_Base_class 
+  use PM_Base_class
   use Realization_Subsurface_class
-  use Communicator_Base_class  
+  use Communicator_Base_class
   use Option_module
   use PFLOTRAN_Constants_module
   use NW_Transport_module
   use NW_Transport_Aux_module
-  
+  use PM_Well_class
+
   implicit none
-  
+
   private
-    
+
   type, public :: pm_nwt_controls_type
-    PetscReal, pointer :: max_concentration_change(:)
-    PetscReal, pointer :: max_volfrac_change(:)
-    PetscReal :: volfrac_change_governor
-    PetscReal :: cfl_governor
     PetscReal, pointer :: itol_rel_update(:)
+    PetscReal, pointer :: itol_abs_update(:)
     PetscReal, pointer :: itol_scaled_res(:)
     PetscReal, pointer :: itol_abs_res(:)
-    PetscReal, pointer :: cnvg_criteria_value(:) 
-    PetscInt, pointer :: i_mapping(:) 
+    PetscReal, pointer :: cnvg_criteria_value(:)
+    PetscInt, pointer :: i_mapping(:)
     character(len=MAXWORDLENGTH), pointer :: names_itol_rel_update(:)
+    character(len=MAXWORDLENGTH), pointer :: names_itol_abs_update(:)
     character(len=MAXWORDLENGTH), pointer :: names_itol_scaled_res(:)
     character(len=MAXWORDLENGTH), pointer :: names_itol_abs_res(:)
     PetscInt :: max_newton_iterations
-    PetscReal :: max_dlnC
     PetscReal :: dt_cut
     PetscBool :: check_post_converged
     PetscBool :: check_post_convergence
     PetscBool :: check_update
+    PetscBool :: verbose_newton
+    PetscBool :: scaling_cut_dt
+    PetscBool :: well_cut_dt
 #ifdef OS_STATISTICS
 ! use PetscReal for large counts
     PetscInt :: newton_call_count
@@ -40,9 +42,9 @@ module PM_NWT_class
     PetscInt :: newton_iterations
     PetscReal :: sum_newton_iterations
     PetscInt :: overall_max_newton_iterations
-#endif    
+#endif
   end type pm_nwt_controls_type
-  
+
   type, public :: pm_nwt_params_type
     PetscInt :: nphase
     PetscInt :: ncomp
@@ -66,21 +68,22 @@ module PM_NWT_class
     PetscInt, pointer :: dirichlet_material_ids(:)
 
   end type pm_nwt_params_type
-  
+
   type, public, extends(pm_base_type) :: pm_nwt_type
   ! realization_base_type has the nwt object (equivalent to reaction)
     class(realization_subsurface_type), pointer :: realization
     class(communicator_type), pointer :: comm1
     type(pm_nwt_controls_type), pointer :: controls
     type(pm_nwt_params_type), pointer :: params
+    class(pm_well_type), pointer :: pmwell_ptr
   contains
-    procedure, public :: Setup => PMNWTSetup 
+    procedure, public :: Setup => PMNWTSetup
     procedure, public :: ReadSimulationOptionsBlock => &
                            PMNWTReadSimOptionsBlock
     procedure, public :: ReadTSBlock => PMNWTReadTSSelectCase
     procedure, public :: ReadNewtonBlock => PMNWTReadNewtonSelectCase
-    procedure, public :: SetRealization => PMNWTSetRealization 
-    procedure, public :: InitializeRun => PMNWTInitializeRun  
+    procedure, public :: SetRealization => PMNWTSetRealization
+    procedure, public :: InitializeRun => PMNWTInitializeRun
     procedure, public :: FinalizeRun => PMNWTFinalizeRun
     procedure, public :: InitializeTimestep => PMNWTInitializeTimestep
     procedure, public :: FinalizeTimestep => PMNWTFinalizeTimestep
@@ -105,54 +108,54 @@ module PM_NWT_class
     procedure, public :: InputRecord => PMNWTInputRecord
     procedure, public :: Destroy => PMNWTDestroy
   end type pm_nwt_type
-  
+
   public :: PMNWTCreate
-  
-  
+
+
 contains
 
 ! ************************************************************************** !
 
 function PMNWTCreate()
-  ! 
+  !
   ! Creates the nuclear waste transport process model shell.
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 03/08/2019
-  ! 
+  !
 
   implicit none
-  
+
   class(pm_nwt_type), pointer :: PMNWTCreate
 
   class(pm_nwt_type), pointer :: nwt_pm
-    
+
   allocate(nwt_pm)
   nullify(nwt_pm%option)
   nullify(nwt_pm%output_option)
   nullify(nwt_pm%realization)
   nullify(nwt_pm%comm1)
-    
+  nullify(nwt_pm%pmwell_ptr)
+
   allocate(nwt_pm%controls)
-  nullify(nwt_pm%controls%max_concentration_change)
-  nullify(nwt_pm%controls%max_volfrac_change)
-  nwt_pm%controls%volfrac_change_governor = 1.d0
-  nwt_pm%controls%cfl_governor = UNINITIALIZED_DOUBLE
   nullify(nwt_pm%controls%itol_rel_update)
+  nullify(nwt_pm%controls%itol_abs_update)
   nullify(nwt_pm%controls%itol_scaled_res)
   nullify(nwt_pm%controls%itol_abs_res)
   nullify(nwt_pm%controls%cnvg_criteria_value)
   nullify(nwt_pm%controls%i_mapping)
   nullify(nwt_pm%controls%names_itol_rel_update)
+  nullify(nwt_pm%controls%names_itol_abs_update)
   nullify(nwt_pm%controls%names_itol_scaled_res)
   nullify(nwt_pm%controls%names_itol_abs_res)
   nwt_pm%controls%max_newton_iterations = 10
   nwt_pm%controls%dt_cut = 0.5d0
-  nwt_pm%controls%max_dlnC = 5.0d0
+  nwt_pm%controls%scaling_cut_dt = PETSC_FALSE
+  nwt_pm%controls%well_cut_dt = PETSC_FALSE
   nwt_pm%controls%check_post_converged = PETSC_FALSE
-  ! set to true so that itol_relative_update always gets checked:
-  nwt_pm%controls%check_post_convergence = PETSC_TRUE
+  nwt_pm%controls%check_post_convergence = PETSC_FALSE
   nwt_pm%controls%check_update = PETSC_TRUE
+  nwt_pm%controls%verbose_newton = PETSC_FALSE
 #ifdef OS_STATISTICS
   nwt_pm%controls%newton_call_count = 0
   nwt_pm%controls%sum_newton_call_count = 0.d0
@@ -160,7 +163,7 @@ function PMNWTCreate()
   nwt_pm%controls%sum_newton_iterations = 0.d0
   nwt_pm%controls%overall_max_newton_iterations = 0
 #endif
-  
+
   allocate(nwt_pm%params)
   nwt_pm%params%ncomp = 0
   nwt_pm%params%nphase = 0
@@ -182,88 +185,91 @@ function PMNWTCreate()
   nullify(nwt_pm%params%dirichlet_material_names)
   nullify(nwt_pm%params%bh_material_ids)
   nullify(nwt_pm%params%dirichlet_material_ids)
-  
+
 
   call PMBaseInit(nwt_pm)
   nwt_pm%name = 'Nuclear Waste Transport'
   nwt_pm%header = 'NUCLEAR WASTE TRANSPORT'
-  
+
   PMNWTCreate => nwt_pm
-  
+
 end function PMNWTCreate
 
 ! ************************************************************************** !
 
 subroutine PMNWTReadSimOptionsBlock(this,input)
-  ! 
-  ! Reads input file parameters associated with the nuclear waste transport 
+  !
+  ! Reads input file parameters associated with the nuclear waste transport
   ! process model in the SIMULATION block.
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 03/08/2019
   !
   use Input_Aux_module
   use String_module
   use Option_module
- 
+
   implicit none
-  
+
   class(pm_nwt_type) :: this
   type(input_type), pointer :: input
-  
+
   character(len=MAXWORDLENGTH) :: keyword
   character(len=MAXSTRINGLENGTH) :: error_string
   type(option_type), pointer :: option
   PetscBool :: found
 
   option => this%option
-  
+
   error_string = 'NUCLEAR_WASTE_TRANSPORT OPTIONS'
-  
+
   input%ierr = 0
   call InputPushBlock(input,option)
   do
-  
+
     call InputReadPflotranString(input,option)
     if (InputError(input)) exit
     if (InputCheckExit(input,option)) exit
-    
+
     call InputReadCard(input,option,keyword)
     call InputErrorMsg(input,option,'keyword',error_string)
     call StringToUpper(keyword)
-    
+
     found = PETSC_FALSE
     call PMBaseReadSimOptionsSelectCase(this,input,keyword,found, &
                                         error_string,option)
     if (found) cycle
 
     select case(trim(keyword))
+    !-----------------------------------------------------------
 !geh: yet to be implemented
 !      case('TEMPERATURE_DEPENDENT_DIFFUSION')
 !        this%temperature_dependent_diffusion = PETSC_TRUE
+    !-----------------------------------------------------------
       case default
         call InputKeywordUnrecognized(input,keyword,error_string,option)
+    !-----------------------------------------------------------
     end select
   enddo
   call InputPopBlock(input,option)
-  
+
 end subroutine PMNWTReadSimOptionsBlock
 
 ! ************************************************************************** !
 
 subroutine PMNWTReadTSSelectCase(this,input,keyword,found, &
                                  error_string,option)
-  ! 
+  !
   ! Read timestepper settings specific to this process model
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 03/23/20
 
   use Input_Aux_module
   use Option_module
- 
+
   implicit none
-  
+
   class(pm_nwt_type) :: this
   type(input_type), pointer :: input
   character(len=MAXWORDLENGTH) :: keyword
@@ -277,35 +283,29 @@ subroutine PMNWTReadTSSelectCase(this,input,keyword,found, &
 
   found = PETSC_TRUE
   select case(trim(keyword))
-    case('CFL_GOVERNOR')
-      call InputReadDouble(input,option,this%controls%cfl_governor)
-      call InputErrorMsg(input,option,keyword,error_string)
-    case('VOLUME_FRACTION_CHANGE_GOVERNOR')
-      call InputReadDouble(input,option,this%controls%volfrac_change_governor)
-      call InputErrorMsg(input,option,keyword,error_string)
     case default
       found = PETSC_FALSE
-  end select  
-  
+  end select
+
 end subroutine PMNWTReadTSSelectCase
 
 ! ************************************************************************** !
 
 subroutine PMNWTReadNewtonSelectCase(this,input,keyword,found, &
                                      error_string,option)
-  ! 
+  !
   ! Reads input file parameters associated with the NWT process model
   ! Newton solver convergence
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 03/25/20
 
   use Input_Aux_module
   use String_module
   use Option_module
- 
+
   implicit none
-  
+
   class(pm_nwt_type) :: this
   type(input_type), pointer :: input
   character(len=MAXWORDLENGTH) :: keyword
@@ -314,26 +314,20 @@ subroutine PMNWTReadNewtonSelectCase(this,input,keyword,found, &
   type(option_type), pointer :: option
 
   character(len=MAXWORDLENGTH), pointer :: temp_species_names(:)
+  PetscReal, pointer :: temp_itol_abs_update(:)
   PetscReal, pointer :: temp_itol_rel_update(:)
   PetscReal, pointer :: temp_itol_scaled_res(:)
   PetscReal, pointer :: temp_itol_abs_res(:)
-  PetscInt :: k, j
+  PetscInt :: k
   character(len=MAXSTRINGLENGTH) :: error_string_ex
   character(len=MAXWORDLENGTH) :: word
 
   option => this%option
 
   allocate(temp_species_names(50))
-  
-  !found = PETSC_TRUE
-  !call PMBaseReadSelectCase(this,input,keyword,found,error_string,option)
-  !if (found) return
-    
+
   found = PETSC_TRUE
   select case(trim(keyword))
-!geh: these have not been implemented
-!    case('NUMERICAL_JACOBIAN')
-!      option%transport%numerical_derivatives = PETSC_TRUE
     !------------------------------------------------------------------------
     case('MAXIMUM_NUMBER_OF_ITERATIONS')
       error_string_ex = trim(error_string) // ',MAXIMUM_NUMBER_OF_ITERATIONS'
@@ -341,13 +335,17 @@ subroutine PMNWTReadNewtonSelectCase(this,input,keyword,found, &
       call InputErrorMsg(input,option,'VALUE',error_string)
       this%solver%newton_max_iterations = this%controls%max_newton_iterations
     !------------------------------------------------------------------------
+    case('VERBOSE_NEWTON')
+      error_string_ex = trim(error_string) // ',VERBOSE_NEWTON'
+      this%controls%verbose_newton = PETSC_TRUE
+    !------------------------------------------------------------------------
     case('NWT_ITOL_RELATIVE_UPDATE')
       k = 0
       temp_species_names = ''
       error_string_ex = trim(error_string) // ',NWT_ITOL_RELATIVE_UPDATE'
       allocate(temp_itol_rel_update(50))
       temp_itol_rel_update = -999.99999
-      do 
+      do
         k = k + 1
         call InputReadPflotranString(input,option)
         if (InputError(input)) exit
@@ -366,13 +364,38 @@ subroutine PMNWTReadNewtonSelectCase(this,input,keyword,found, &
       this%controls%names_itol_rel_update(:) = temp_species_names(1:k-1)
       deallocate(temp_itol_rel_update)
     !------------------------------------------------------------------------
+    case('NWT_ITOL_ABSOLUTE_UPDATE')
+      k = 0
+      temp_species_names = ''
+      error_string_ex = trim(error_string) // ',NWT_ITOL_ABSOLUTE_UPDATE'
+      allocate(temp_itol_abs_update(50))
+      temp_itol_abs_update = -999.99999
+      do
+        k = k + 1
+        call InputReadPflotranString(input,option)
+        if (InputError(input)) exit
+        if (InputCheckExit(input,option)) exit
+        call InputReadWord(input,option,word,PETSC_TRUE)
+        call InputErrorMsg(input,option,'SPECIES NAME',error_string_ex)
+        call StringToUpper(word)
+        temp_species_names(k) = trim(word)
+        call InputReadDouble(input,option,temp_itol_abs_update(k))
+        call InputErrorMsg(input,option,'SPECIES TOLERANCE VALUE', &
+                           error_string_ex)
+      enddo
+      allocate(this%controls%itol_abs_update(k-1))
+      this%controls%itol_abs_update(:) = temp_itol_abs_update(1:k-1)
+      allocate(this%controls%names_itol_abs_update(k-1))
+      this%controls%names_itol_abs_update(:) = temp_species_names(1:k-1)
+      deallocate(temp_itol_abs_update)
+    !------------------------------------------------------------------------
     case('NWT_ITOL_SCALED_RESIDUAL')
       k = 0
       temp_species_names = ''
       error_string_ex = trim(error_string) // ',NWT_ITOL_SCALED_RESIDUAL'
       allocate(temp_itol_scaled_res(50))
       temp_itol_scaled_res = -999.99999
-      do 
+      do
         k = k + 1
         call InputReadPflotranString(input,option)
         if (InputError(input)) exit
@@ -397,7 +420,7 @@ subroutine PMNWTReadNewtonSelectCase(this,input,keyword,found, &
       error_string_ex = trim(error_string) // ',ITOL_ABSOLUTE_RESIDUAL'
       allocate(temp_itol_abs_res(50))
       temp_itol_abs_res = -999.99999
-      do 
+      do
         k = k + 1
         call InputReadPflotranString(input,option)
         if (InputError(input)) exit
@@ -421,32 +444,35 @@ subroutine PMNWTReadNewtonSelectCase(this,input,keyword,found, &
   end select
 
   deallocate(temp_species_names)
-  
+
 end subroutine PMNWTReadNewtonSelectCase
 
 ! ************************************************************************** !
-  
+
 subroutine PMNWTSetup(this)
-  ! 
+  !
   ! Initializes variables associated with nuclear waste transport.
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 03/08/2019
-  ! 
+  !
 
   use String_module
 
   implicit none
-  
+
   class(pm_nwt_type) :: this
-    
+
   class(reaction_nw_type), pointer :: reaction_nw
-  PetscInt :: k, j 
+  PetscInt :: k, j
   character(len=MAXWORDLENGTH) :: name_species
   character(len=MAXWORDLENGTH) :: name_cnvgcrit
-  
+
   reaction_nw => this%realization%reaction_nw
-  
+
+  if (this%option%nflowdof > 0) then
+    this%option%flow%store_state_variables_in_global = PETSC_TRUE
+  endif
   this%params%nphase = reaction_nw%params%nphase
   this%params%ncomp = reaction_nw%params%ncomp
   this%params%nspecies = reaction_nw%params%nspecies
@@ -477,12 +503,10 @@ subroutine PMNWTSetup(this)
   this%params%wm_start_time = reaction_nw%params%wm_start_time
   this%params%wm_end_time = reaction_nw%params%wm_end_time
   this%params%wm_value = reaction_nw%params%wm_value
-        
+
   ! set the communicator
   this%comm1 => this%realization%comm1
-  
-  allocate(this%controls%max_concentration_change(this%params%nspecies))
-  allocate(this%controls%max_volfrac_change(this%params%nspecies))
+
   allocate(this%controls%cnvg_criteria_value(this%params%nspecies))
   allocate(this%controls%i_mapping(this%params%nspecies))
 
@@ -500,6 +524,12 @@ subroutine PMNWTSetup(this)
   endif
   if (.not.associated(this%controls%itol_rel_update)) then
     this%option%io_buffer = 'A NWT_ITOL_RELATIVE_UPDATE block is required &
+      &in the NUMERICAL_METHODS,NEWTON_SOLVER block for SUBSURFACE_TRANSPORT &
+      &MODE NWT.'
+    call PrintErrMsg(this%option)
+  endif
+  if (.not.associated(this%controls%itol_abs_update)) then
+    this%option%io_buffer = 'A NWT_ITOL_ABSOLUTE_UPDATE block is required &
       &in the NUMERICAL_METHODS,NEWTON_SOLVER block for SUBSURFACE_TRANSPORT &
       &MODE NWT.'
     call PrintErrMsg(this%option)
@@ -532,8 +562,17 @@ subroutine PMNWTSetup(this)
       call PrintErrMsg(this%option)
     endif
   endif
+  if (associated(this%controls%itol_abs_update)) then
+    if (size(this%controls%itol_abs_update) /= this%params%nspecies) then
+      this%option%io_buffer = 'The number of species-dependent values of &
+        &ITOL_ABSOLUTE_UPDATE provided in the NUMERICAL_METHODS,NEWTON_SOLVER &
+        &block for SUBSURFACE_TRANSPORT MODE NWT does not match the number of &
+        &species provided in the NUCLEAR_WASTE_CHEMISTRY block.'
+      call PrintErrMsg(this%option)
+    endif
+  endif
 
-  ! reorder the convergence based on the reaction_nw%species_names(:) order 
+  ! reorder the convergence based on the reaction_nw%species_names(:) order
   !---------------------------------------------------------------------------
   do k = 1,this%params%nspecies
     this%controls%i_mapping(k) = 0
@@ -600,66 +639,87 @@ subroutine PMNWTSetup(this)
                     this%controls%itol_rel_update(this%controls%i_mapping(k))
   enddo
   this%controls%itol_rel_update = this%controls%cnvg_criteria_value
+  !---------------------------------------------------------------------------
+  do k = 1,this%params%nspecies
+    this%controls%i_mapping(k) = 0
+    name_species = trim(reaction_nw%species_names(k))
+    call StringToUpper(name_species)
+    do j = 1,this%params%nspecies
+      name_cnvgcrit = trim(this%controls%names_itol_abs_update(j))
+      call StringToUpper(name_cnvgcrit)
+      if (name_cnvgcrit == name_species) then
+        this%controls%i_mapping(k) = j ! gives the index in controls order
+      endif
+    enddo
+    if (this%controls%i_mapping(k) == 0) then
+      this%option%io_buffer = 'Species ' // trim(name_species) // ' not &
+        &found among species included in the NUMERICAL_METHODS,NEWTON_SOLVER,&
+        &NWT_ITOL_ABSOLUTE_UPDATE block.'
+      call PrintErrMsg(this%option)
+    endif
+    this%controls%cnvg_criteria_value(k) = &
+                    this%controls%itol_abs_update(this%controls%i_mapping(k))
+  enddo
+  this%controls%itol_abs_update = this%controls%cnvg_criteria_value
 
 end subroutine PMNWTSetup
 
 ! ************************************************************************** !
 
 subroutine PMNWTSetRealization(this,realization)
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 03/08/2019
-  ! 
+  !
 
   implicit none
-  
+
   class(pm_nwt_type) :: this
   class(realization_subsurface_type), pointer :: realization
-  
+
   this%realization => realization
   this%realization_base => realization
-  
+
   if (this%realization%reaction_nw%use_log_formulation) then
     this%solution_vec = realization%field%tran_log_xx
   else
     this%solution_vec = realization%field%tran_xx
   endif
   this%residual_vec = realization%field%tran_r
-  
+
 end subroutine PMNWTSetRealization
 
 ! ************************************************************************** !
 
 subroutine PMNWTInitializeRun(this)
-  ! 
+  !
   ! Initializes process model time stepping.
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 04/02/2019
-  ! 
+  !
 
   use Material_module
   use Coupler_module
   use Region_module
-  
+
   implicit none
-  
+
   class(pm_nwt_type) :: this
 
   PetscInt :: p
   type(material_property_type), pointer :: material_property
   type(region_type), pointer :: region
-  type(coupler_type), pointer :: init_condition
   character(len=MAXSTRINGLENGTH) :: hack_region_name
-  
+
   ! check for uninitialized flow variables
   call RealizUnInitializedVarsTran(this%realization)
-  
+
   ! update the boundary conditions
   !geh: need to update cells also, as the flow solution may have changed
   !     during restart and transport may have been skipped
   call NWTUpdateAuxVars(this%realization,PETSC_TRUE,PETSC_TRUE)
-  
+
   this%realization%patch%aux%NWT%truncate_output = &
     this%realization%reaction_nw%truncate_output
 
@@ -696,41 +756,43 @@ subroutine PMNWTInitializeRun(this)
     enddo
   endif
 
+  !===========================================================================!
   ! Jenn's hack for upper borehole
   if (associated(this%params%bh_material_names)) then
     hack_region_name = 'rBH_OPEN_UPPER'
     region => RegionGetPtrFromList(hack_region_name, &
                                    this%realization%patch%region_list)
-    if (.not.associated(region)) then
-      this%option%io_buffer = 'Borehole region "rBH_OPEN_UPPER" not found &
-                              &among regions. This is a hack!'
-      call PrintErrMsg(this%option)
-    endif
+    !if (.not.associated(region)) then
+    !  this%option%io_buffer = 'Borehole region "rBH_OPEN_UPPER" not found &
+    !                          &among regions. This is a hack!'
+    !  call PrintErrMsg(this%option)
+    !endif
   endif
-  
+  !===========================================================================!
+
   call PMNWTUpdateSolution(this)
-  
+
 end subroutine PMNWTInitializeRun
 
 ! ************************************************************************** !
 
 subroutine PMNWTInitializeTimestep(this)
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 04/03/2019
-  ! 
-  
+  !
+
   use Global_module
   use Material_module
   use Patch_module
-  use Field_module 
-  
+  use Field_module
+
   implicit none
-  
+
   class(pm_nwt_type) :: this
 
   PetscErrorCode :: ierr
-    
+
   type(patch_type), pointer :: patch
   type(field_type), pointer :: field
   type(nw_transport_auxvar_type), pointer :: nwt_auxvars(:)
@@ -747,9 +809,7 @@ subroutine PMNWTInitializeTimestep(this)
   patch => this%realization%patch
   nwt_auxvars => this%realization%patch%aux%NWT%auxvars
 
-  !call PMBasePrintHeader(this)
-
-  ! If a material change to borehole materials has happened, remove all 
+  ! If a material change to borehole materials has happened, remove all
   ! NWT species mass from the borehole material region.
   if (this%params%zero_out_borehole) then
     do local_id = 1, patch%grid%nlmax
@@ -759,8 +819,8 @@ subroutine PMNWTInitializeTimestep(this)
         if (patch%imat(ghosted_id) == this%params%bh_material_ids(i)) then
           ! Means the current grid cell is one of the borehole materials
           ! We now want to zero out all the mass from NWT process model. But,
-          ! it should only happen at the very first timestep that we find 
-          ! this borehole material. So after we get here, we should set the 
+          ! it should only happen at the very first timestep that we find
+          ! this borehole material. So after we get here, we should set the
           ! flag zero_out_borehole to FALSE.
           ! NOTE: Will this work if there are two intrusions? No!
 
@@ -819,6 +879,7 @@ subroutine PMNWTInitializeTimestep(this)
     enddo
   endif
 
+  !===========================================================================!
   ! Jenn's hack for upper borehole:
   ! You must include a material property called BH_OPEN_UPPER, and if you
   ! do, then the concentration there is kept at background levels.
@@ -829,21 +890,28 @@ subroutine PMNWTInitializeTimestep(this)
   if (associated(material_property) .and. &
       Uninitialized(this%params%wm_start_time)) then
     this%option%io_buffer = 'START_TIME was not provided in the &
-      &WASHING_MACHINE block for SUBSURFACE_TRANSPORT MODE NWT.' 
+      &WASHING_MACHINE block for SUBSURFACE_TRANSPORT MODE NWT.'
     call PrintErrMsg(this%option)
   endif
   if (associated(material_property) .and. &
       Uninitialized(this%params%wm_end_time)) then
     this%option%io_buffer = 'END_TIME was not provided in the &
-      &WASHING_MACHINE block for SUBSURFACE_TRANSPORT MODE NWT.' 
+      &WASHING_MACHINE block for SUBSURFACE_TRANSPORT MODE NWT.'
+    call PrintErrMsg(this%option)
+  endif
+  if (.not.associated(material_property) .and. &
+      ( Initialized(this%params%wm_end_time) .or. &
+        Initialized(this%params%wm_start_time) ) ) then
+    this%option%io_buffer = 'WASHING_MACHINE block for SUBSURFACE_TRANSPORT &
+      &MODE NWT was provided, but region and material BH_OPEN_UPPER not found.'
     call PrintErrMsg(this%option)
   endif
   if (associated(material_property)) then
     do local_id = 1, patch%grid%nlmax
       ghosted_id = patch%grid%nL2G(local_id)
       ! if within BH_OPEN time interval:
-      if (this%option%time >= this%params%wm_start_time .and. & 
-          this%option%time < this%params%wm_end_time) then  
+      if (this%option%time >= this%params%wm_start_time .and. &
+          this%option%time < this%params%wm_end_time) then
         if (patch%imat(ghosted_id) == material_property%internal_id) then
           ! Means the current grid cell is in BH_OPEN_UPPER
           call VecGetArrayReadF90(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
@@ -862,6 +930,7 @@ subroutine PMNWTInitializeTimestep(this)
       endif
     enddo
   endif
+  !===========================================================================!
 
   ! interpolate flow parameters/data
   ! this must remain here as these weighted values are used by both
@@ -882,109 +951,111 @@ subroutine PMNWTInitializeTimestep(this)
                                this%params%tran_weight_t0, &
                                this%realization%field,this%comm1)
   endif
-  
+
   call NWTInitializeTimestep(this%realization)
   ! This will eventually call NWTEqDissPrecipSorb() so that the aqueous,
   ! precipitated, and sorbed amounts of the total bulk mass get adjusted.
-  
+
+  this%controls%well_cut_dt = PETSC_FALSE
+
 end subroutine PMNWTInitializeTimestep
 
 ! ************************************************************************** !
 
 subroutine PMNWTFinalizeTimestep(this)
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 04/18/2019
-  ! 
+  !
 
   use Variables_module, only : POROSITY
   use Material_module, only : MaterialGetAuxVarVecLoc
-  use Material_Aux_class, only : POROSITY_BASE 
+  use Material_Aux_module, only : POROSITY_BASE
   use Global_module
+  use Patch_module
+  use Field_module
 
   implicit none
-  
+
   class(pm_nwt_type) :: this
-  PetscReal :: time  
+
+  type(patch_type), pointer :: patch
+  type(field_type), pointer :: field
+  type(nw_transport_auxvar_type), pointer :: nwt_auxvars(:)
+  PetscInt :: local_id, ghosted_id
+  PetscInt :: i, idof
+  PetscInt :: offset, index
+  PetscInt :: istart, iend
+  PetscReal, pointer :: xx_p(:)
   PetscErrorCode :: ierr
 
+  patch => this%realization%patch
+  field => this%realization%field
+  nwt_auxvars => patch%aux%NWT%auxvars
+
   if (this%params%transient_porosity) then
-    call VecCopy(this%realization%field%porosity_tpdt, &
-                 this%realization%field%porosity_t,ierr);CHKERRQ(ierr)
+    call VecCopy(field%porosity_tpdt,field%porosity_t,ierr);CHKERRQ(ierr)
     call RealizationUpdatePropertiesTS(this%realization)
-    call MaterialGetAuxVarVecLoc(this%realization%patch%aux%Material, &
-                                 this%realization%field%work_loc, &
+    call MaterialGetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
                                  POROSITY,POROSITY_BASE)
-    call this%comm1%LocalToGlobal(this%realization%field%work_loc, &
-                                  this%realization%field%porosity_tpdt)
+    call this%comm1%LocalToGlobal(field%work_loc,field%porosity_tpdt)
   endif
-  
-  call NWTMaxChange(this%realization,this%controls%max_concentration_change)
-  if (this%option%print_screen_flag) then
-    write(*,'("  --> max chng: dcmx= ",1pe12.4,"  dc/dt= ",1pe12.4, &
-            &" [mol/s]")') &
-      maxval(this%controls%max_concentration_change), &
-      maxval(this%controls%max_concentration_change)/this%option%tran_dt
+
+  ! If this is a screening run, then hold the mass in the list of Dirichlet
+  ! materials constant (at initial value).
+  if (this%realization%reaction_nw%screening_run) then
+    do local_id = 1, patch%grid%nlmax
+      ghosted_id = patch%grid%nL2G(local_id)
+      ! loop through the dirichlet material IDs:
+      do i = 1, size(this%params%dirichlet_material_ids)
+        if (patch%imat(ghosted_id) == this%params%dirichlet_material_ids(i)) then
+          ! Means the current grid cell is one of the dirichlet materials
+          call VecGetArrayReadF90(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
+          ! compute offset in solution vector for first dof in grid cell
+          offset = (local_id-1)*this%params%nspecies
+          do idof = 1, this%params%nspecies
+            index = idof + offset
+            xx_p(index) = this%params%init_total_mass_conc
+          enddo
+          ! calculate range of species
+          istart = offset + 1
+          iend = offset + this%params%nspecies
+          nwt_auxvars(ghosted_id)%total_bulk_conc = xx_p(istart:iend)
+          call VecRestoreArrayReadF90(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
+        endif
+      enddo
+    enddo
   endif
-  if (this%option%print_file_flag) then  
-    write(this%option%fid_out,&
-            '("  --> max chng: dcmx= ",1pe12.4,"  dc/dt= ",1pe12.4, &
-            &" [mol/s]")') &
-      maxval(this%controls%max_concentration_change), &
-      maxval(this%controls%max_concentration_change)/this%option%tran_dt
-  endif
-  
+
 end subroutine PMNWTFinalizeTimestep
 
 ! ************************************************************************** !
 
-subroutine PMNWTUpdateTimestep(this,dt,dt_min,dt_max,iacceleration, &
+subroutine PMNWTUpdateTimestep(this,update_dt, &
+                               dt,dt_min,dt_max,iacceleration, &
                                num_newton_iterations,tfac, &
                                time_step_max_growth_factor)
-  ! 
+  !
   ! Author: Jenn Frederick, Glenn Hammond
   ! Date: 05/27/2019
-  ! 
+  !
 
   implicit none
-  
+
   class(pm_nwt_type) :: this
+  PetscBool :: update_dt
   PetscReal :: dt
   PetscReal :: dt_min,dt_max
   PetscInt :: iacceleration
   PetscInt :: num_newton_iterations
   PetscReal :: tfac(:)
   PetscReal :: time_step_max_growth_factor
-  
-  PetscReal :: dtt, uvf, dt_vf, dt_tfac, fac
-  PetscInt :: ifac
+
+  PetscReal :: dtt
   PetscReal, parameter :: pert = 1.d-20
-    
-  if (this%controls%volfrac_change_governor < 1.d0) then
-    ! with volume fraction potentially scaling the time step
-    if (iacceleration > 0) then
-      fac = 0.5d0
-      if (num_newton_iterations >= iacceleration) then
-        fac = 0.33d0
-        uvf = 0.d0
-      else
-        uvf = this%controls%volfrac_change_governor/ &
-              (maxval(this%controls%max_volfrac_change)+pert)
-      endif
-      dtt = fac * dt * (1.d0 + uvf)
-    else
-      ifac = max(min(num_newton_iterations,size(tfac)),1)
-      dt_tfac = tfac(ifac) * dt
 
-      fac = 0.5d0
-      uvf= this%controls%volfrac_change_governor/ &
-           (maxval(this%controls%max_volfrac_change)+pert)
-      dt_vf = fac * dt * (1.d0 + uvf)
-
-      dtt = min(dt_tfac,dt_vf)
-    endif
-  else
-    ! original implementation
+  if (update_dt .and. iacceleration /= 0) then
+  
     ! this overrides the default setting of iacceleration = 5
     ! by default size(tfac) is 13, so this is safe
     dtt = dt
@@ -994,37 +1065,34 @@ subroutine PMNWTUpdateTimestep(this,dt,dt_min,dt_max,iacceleration, &
     else
       dtt = this%controls%dt_cut * dt
     endif
+
+    dtt = min(time_step_max_growth_factor*dt,dtt)
+    if (dtt > dt_max) dtt = dt_max
+    ! geh: see comment above under flow stepper
+    dtt = max(dtt,dt_min)
+    dt = dtt
   endif
 
-  dtt = min(time_step_max_growth_factor*dt,dtt)
-  if (dtt > dt_max) dtt = dt_max
-  ! geh: see comment above under flow stepper
-  dtt = max(dtt,dt_min)
-  dt = dtt
-
-  call RealizationLimitDTByCFL(this%realization,this%controls%cfl_governor, &
-                               dt,dt_max)
-  
 end subroutine PMNWTUpdateTimestep
 
 ! ************************************************************************** !
 
 subroutine PMNWTPreSolve(this)
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 04/18/2019
-  ! 
+  !
 
-  use Global_module  
+  use Global_module
   use Material_module
   use Data_Mediator_module
 
   implicit none
-  
+
   class(pm_nwt_type) :: this
-  
+
   PetscErrorCode :: ierr
-   
+
   ! set densities and saturations to t+dt
   if (this%option%nflowdof > 0 .and. .not. this%params%steady_flow) then
     if (this%option%flow%transient_porosity) then
@@ -1046,55 +1114,55 @@ subroutine PMNWTPreSolve(this)
                  this%realization%field%tran_log_xx,ierr);CHKERRQ(ierr)
     call VecLog(this%realization%field%tran_log_xx,ierr);CHKERRQ(ierr)
   endif
-  
+
   call DataMediatorUpdate(this%realization%tran_data_mediator_list, &
                           this%realization%field%tran_mass_transfer, &
                           this%realization%option)
-  
+
 end subroutine PMNWTPreSolve
 
 ! ************************************************************************** !
 
 subroutine PMNWTPostSolve(this)
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 05/27/2019
-  ! 
+  !
 
   implicit none
-  
+
   class(pm_nwt_type) :: this
-  
+
   ! placeholder for now, nothing to do at the moment
-  
+
 end subroutine PMNWTPostSolve
 
 ! ************************************************************************** !
 
 subroutine PMNWTUpdateSolution(this)
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 05/27/2019
-  ! 
+  !
 
   use Condition_module
   use Integral_Flux_module
 
   implicit none
-  
+
   class(pm_nwt_type) :: this
-    
+
   call TranConditionUpdate(this%realization%transport_conditions, &
                            this%realization%option)
-                           
+
   if (associated(this%realization%uniform_velocity_dataset)) then
     call RealizUpdateUniformVelocity(this%realization)
-  endif  
-  
+  endif
+
   if (this%realization%option%compute_mass_balance_new) then
     call NWTUpdateMassBalance(this%realization)
   endif
-  
+
   if (this%option%transport%store_fluxes) then
     call IntegralFluxUpdate(this%realization%patch%integral_flux_list, &
                             this%realization%patch%internal_tran_fluxes, &
@@ -1102,44 +1170,51 @@ subroutine PMNWTUpdateSolution(this)
                             INTEGRATE_TRANSPORT,this%option)
   endif
 
-end subroutine PMNWTUpdateSolution   
+end subroutine PMNWTUpdateSolution
 
 ! ************************************************************************** !
 
 subroutine PMNWTResidual(this,snes,xx,r,ierr)
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 03/14/13
-  ! 
+  !
 
   implicit none
-  
+
   class(pm_nwt_type) :: this
   SNES :: snes
   Vec :: xx
   Vec :: r
   PetscErrorCode :: ierr
-    
-  call NWTResidual(snes,xx,r,this%realization,ierr)
+
+  call NWTResidual(snes,xx,r,this%realization,this%pmwell_ptr,ierr)
+  if (associated(this%pmwell_ptr)) then
+    if (this%pmwell_ptr%tran_soln%cut_ts_flag) then
+      this%controls%well_cut_dt = PETSC_TRUE
+    endif
+  endif
 
 end subroutine PMNWTResidual
 
 ! ************************************************************************** !
 
 subroutine PMNWTJacobian(this,snes,xx,A,B,ierr)
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 05/14/2019
-  ! 
+  !
 
   implicit none
-  
+
   class(pm_nwt_type) :: this
   SNES :: snes
   Vec :: xx
   Mat :: A, B
   PetscErrorCode :: ierr
-  
+
+  if (this%controls%well_cut_dt) return
+
   call NWTJacobian(snes,xx,A,B,this%realization,ierr)
 
 end subroutine PMNWTJacobian
@@ -1148,10 +1223,13 @@ end subroutine PMNWTJacobian
 
 subroutine PMNWTCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
   !
-  ! Author: Jenn Frederick
-  ! Date: 05/14/2019
-  ! 
+  ! Author: Jennifer M. Frederick
+  ! Date: 05/14/2019, refactored 01/10/2023
+  !
   use Convergence_module
+  use Field_module
+  use Option_module
+  use Grid_module
 
   implicit none
 
@@ -1164,138 +1242,373 @@ subroutine PMNWTCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
   SNESConvergedReason :: reason
   PetscErrorCode :: ierr
 
-  PetscReal, pointer :: dC_p(:) ! SOLUTION UPDATE STEP
-  PetscReal, pointer :: C_p(:) ! CURRENT SOLUTION 
-  Vec :: update_vec, curr_solution_vec
+  character(len=MAXSTRINGLENGTH) :: out_string, string, rsn_string
+  character(len=6) :: aR_str, sR_str, rUP_str, aUP_str
+  character(len=4) :: rsn
+  character(len=2) :: sign_str
+  Vec :: dX
+  PetscReal, pointer :: dX_p(:)    ! solution update
+  PetscReal, pointer :: X0_p(:)    ! previous solution
+  PetscReal, pointer :: X1_p(:)    ! current solution
+  PetscReal, pointer :: r_p(:)     ! current residual R
+  PetscReal, pointer :: accum_p(:) ! current accumulation term in R
+  type(grid_type), pointer :: grid
+  type(option_type), pointer :: option
+  type(field_type), pointer :: field
+  PetscReal :: tempreal
   PetscReal :: max_relative_change
-  PetscReal :: max_update
-  PetscBool :: converged_due_to_rel_update
-  PetscInt :: converged_flag, temp_int
+  PetscReal :: max_absolute_change
+  PetscReal :: max_scaled_residual
+  PetscReal :: max_absolute_residual
+  PetscReal :: species_max_relative_update(this%option%ntrandof)
+  PetscReal :: species_max_absolute_update(this%option%ntrandof)
+  PetscReal :: species_max_scaled_residual(this%option%ntrandof)
+  PetscReal :: species_max_absolute_residual(this%option%ntrandof)
+  PetscReal :: species_max(this%option%ntrandof,4)
+  PetscInt :: loc_max_scaled_residual
+  PetscInt :: loc_max_abs_residual
+  PetscInt :: loc_max_abs_update
+  PetscInt :: loc_max_rel_update
+  PetscInt :: i 
+  PetscInt :: local_id, offset, idof, index
+  PetscBool :: converged_flag
+  
+  PetscBool :: idof_is_positive(this%option%ntrandof, &
+                                         this%realization%patch%grid%nlmax)
+  PetscBool :: idof_cnvgd_due_to_rel_update(this%option%ntrandof, &
+                                            this%realization%patch%grid%nlmax)
+  PetscBool :: idof_cnvgd_due_to_abs_update(this%option%ntrandof, &
+                                            this%realization%patch%grid%nlmax)
+  PetscBool :: idof_cnvgd_due_to_update(this%option%ntrandof)
+  PetscBool :: idof_cnvgd_due_to_scaled_res(this%option%ntrandof, &
+                                            this%realization%patch%grid%nlmax)
+  PetscBool :: idof_cnvgd_due_to_abs_res(this%option%ntrandof, &
+                                         this%realization%patch%grid%nlmax)  
+  PetscBool :: idof_cnvgd_due_to_residual(this%option%ntrandof)
+  PetscBool :: rsn_rUP(this%option%ntrandof)
+  PetscBool :: rsn_aUP(this%option%ntrandof)
+  PetscBool :: rsn_aR(this%option%ntrandof)
+  PetscBool :: rsn_sR(this%option%ntrandof)
+  PetscBool :: rsn_pos(this%option%ntrandof)
+  PetscBool :: idof_cnvgd(this%option%ntrandof,5)
 
-  call ConvergenceTest(snes,it,xnorm,unorm,fnorm,reason, &
-                       this%realization%patch%grid, &
-                       this%option,this%solver,ierr)
+  PetscMPIInt :: mpi_int1, mpi_int2
+  PetscInt, parameter :: MAX_INDEX = 5
+
+  grid => this%realization%patch%grid
+  option => this%realization%option
+  field => this%realization%field
+
+  ! check if scaling from PMNWTCheckUpdatePre() requires ts cut
+  if (this%controls%scaling_cut_dt) then
+    option%convergence = CONVERGENCE_CUT_TIMESTEP
+    reason = -88
+    this%controls%scaling_cut_dt = PETSC_FALSE
+    return
+  endif
+
+  ! check if well model requires ts cut
+  if (this%controls%well_cut_dt) then
+    option%convergence = CONVERGENCE_CUT_TIMESTEP
+    reason = -80808
+    return
+  endif
+
+  if (it == 0) then
+    option%converged = PETSC_FALSE
+    option%convergence = CONVERGENCE_KEEP_ITERATING
+    reason = 0
+    return
+  endif
+
+  converged_flag = PETSC_FALSE
+  idof_is_positive = PETSC_FALSE
+  idof_cnvgd_due_to_update = PETSC_FALSE
+  idof_cnvgd_due_to_rel_update = PETSC_FALSE
+  idof_cnvgd_due_to_abs_update = PETSC_FALSE
+  idof_cnvgd_due_to_residual = PETSC_FALSE
+  idof_cnvgd_due_to_scaled_res = PETSC_FALSE
+  idof_cnvgd_due_to_abs_res = PETSC_FALSE
+  idof_cnvgd = PETSC_FALSE
+  rsn_aR = PETSC_FALSE
+  rsn_sR = PETSC_FALSE
+  rsn_rUP = PETSC_FALSE
+  rsn_aUP = PETSC_FALSE
+  rsn_pos = PETSC_FALSE
+  species_max_relative_update = 0.d0
+  species_max_absolute_update = 0.d0
+  species_max_absolute_residual = 0.d0
+  species_max_scaled_residual = 0.d0
+  species_max = 0.d0
+
+  !call ConvergenceTest(snes,it,xnorm,unorm,fnorm,reason, &
+  !                     this%realization%patch%grid, &
+  !                     this%option,this%solver,ierr)
+  ierr = 0
+  call SNESGetSolutionUpdate(this%solver%snes,dX,ierr);CHKERRQ(ierr)
+
+  call VecGetArrayReadF90(dX,dX_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayReadF90(field%tran_yy,X0_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayReadF90(field%tran_xx,X1_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayReadF90(field%tran_r,r_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayReadF90(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
+
+  max_relative_change = maxval(dabs(dX_p(:)/X0_p(:)))
+  max_absolute_change = maxval(dabs(dX_p(:)))
+  max_absolute_residual = maxval(dabs(r_p(:)))
+  max_scaled_residual = maxval(dabs(r_p(:)/accum_p(:)))
+
+  loc_max_scaled_residual = maxloc(dabs(r_p(:)/accum_p(:)),1)
+  loc_max_abs_residual = maxloc(dabs(r_p(:)),1)
+  loc_max_rel_update = maxloc(dabs(dX_p(:)/X0_p(:)),1)
+  loc_max_abs_update = maxloc(dabs(dX_p(:)),1)
+
+  do local_id = 1, grid%nlmax
+    offset = (local_id-1)*option%ntrandof
+    do idof = 1, option%ntrandof
+      index = idof + offset
+    !-----------------------------------------------------------------
+    !---solution-is-positive------------------------------------------
+      tempreal = X1_p(index)
+      if (tempreal > 0.d0) then
+        idof_is_positive(idof,local_id) = PETSC_TRUE
+      endif
+    !-----------------------------------------------------------------
+    !---relative-update-----------------------------------------------
+      tempreal = dabs((dX_p(index))/X0_p(index))
+      if (tempreal < this%controls%itol_rel_update(idof)) then
+        idof_cnvgd_due_to_rel_update(idof,local_id) = PETSC_TRUE
+      endif 
+      species_max_relative_update(idof) = &
+          max(species_max_relative_update(idof),tempreal)
+    !-----------------------------------------------------------------
+    !---absolute-update-----------------------------------------------
+      tempreal = dabs(dX_p(index))
+      if (tempreal < this%controls%itol_abs_update(idof)) then
+        idof_cnvgd_due_to_abs_update(idof,local_id) = PETSC_TRUE
+      endif 
+      species_max_absolute_update(idof) = &
+          max(species_max_absolute_update(idof),tempreal)
+    !-----------------------------------------------------------------
+    !---absolute-residual---------------------------------------------
+      tempreal = dabs(r_p(index))
+      if (tempreal < this%controls%itol_abs_res(idof)) then
+        idof_cnvgd_due_to_abs_res(idof,local_id) = PETSC_TRUE
+      endif
+      species_max_absolute_residual(idof) = &
+          max(species_max_absolute_residual(idof),tempreal)
+    !-----------------------------------------------------------------
+    !---scaled-residual-----------------------------------------------
+      tempreal = dabs(r_p(index)/accum_p(index))
+      if (tempreal < this%controls%itol_scaled_res(idof)) then
+        idof_cnvgd_due_to_scaled_res(idof,local_id) = PETSC_TRUE
+      endif
+      species_max_scaled_residual(idof) = &
+          max(species_max_scaled_residual(idof),tempreal)
+    !-----------------------------------------------------------------
+    enddo 
+  enddo
+  
+  call VecRestoreArrayReadF90(dX,dX_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayReadF90(field%tran_yy,X0_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayReadF90(field%tran_xx,X1_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayReadF90(field%tran_r,r_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayReadF90(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
+
+
+  do idof = 1, option%ntrandof
+    species_max(idof,1) = species_max_absolute_update(idof)
+    if (all(idof_cnvgd_due_to_abs_update(idof,:))) then
+      rsn_aUP(idof) = PETSC_TRUE
+    endif
+    species_max(idof,2) = species_max_relative_update(idof)
+    if (all(idof_cnvgd_due_to_rel_update(idof,:))) then
+      rsn_rUP(idof) = PETSC_TRUE
+      rUP_str = ' *rUP:'
+    endif
+    species_max(idof,3) = species_max_absolute_residual(idof)
+    if (all(idof_cnvgd_due_to_abs_res(idof,:))) then
+      rsn_aR(idof) = PETSC_TRUE
+      aR_str  = '  *aR:'
+    endif
+    species_max(idof,4) = species_max_scaled_residual(idof)
+    if (all(idof_cnvgd_due_to_scaled_res(idof,:))) then
+      rsn_sR(idof) = PETSC_TRUE
+      sR_str  = '  *sR:'
+    endif
+    if (all(idof_is_positive(idof,:))) then
+      rsn_pos(idof) = PETSC_TRUE
+      sign_str  = ' +'
+    endif
+
+    if (rsn_aUP(idof) .or. rsn_rUP(idof)) then
+      idof_cnvgd_due_to_update(idof) = PETSC_TRUE
+    endif
+    if (rsn_aR(idof) .or. rsn_sR(idof)) then
+      idof_cnvgd_due_to_residual(idof) = PETSC_TRUE
+    endif
+    idof_cnvgd(idof,1)=rsn_aUP(idof)
+    idof_cnvgd(idof,2)=rsn_rUP(idof)
+    idof_cnvgd(idof,3)=rsn_aR(idof)
+    idof_cnvgd(idof,4)=rsn_sR(idof)
+    idof_cnvgd(idof,5)=rsn_pos(idof)
+  enddo
+
+  if (all(idof_cnvgd_due_to_update) .and. all(idof_cnvgd_due_to_residual) &
+      .and. all(idof_is_positive)) then
+    converged_flag = PETSC_TRUE
+  else
+    converged_flag = PETSC_FALSE
+  endif
+
+  mpi_int1 = option%ntrandof*5
+  mpi_int2 = option%ntrandof*4
+  call MPI_Allreduce(MPI_IN_PLACE,converged_flag,ONE_INTEGER, &
+                     MPI_LOGICAL,MPI_LAND,option%mycomm,ierr)
+  call MPI_Allreduce(MPI_IN_PLACE,idof_cnvgd,mpi_int1, &
+                     MPI_LOGICAL,MPI_LAND,option%mycomm,ierr)
+  call MPI_Allreduce(MPI_IN_PLACE,species_max,mpi_int2, &
+                     MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr)
+
+  rUP_str = '  rUP:'
+  aUP_str = '  aUP:'
+  aR_str  = '   aR:'
+  sR_str  = '   sR:'
+  sign_str = ' -'
+  rsn_string = ''
+  
+  if (all(idof_cnvgd(:,1))) then
+    aUP_str = ' *aUP:'
+    rsn_string = trim(rsn_string) // ' aUP,'
+  endif
+  if (all(idof_cnvgd(:,2))) then
+    rUP_str = ' *rUP:'
+    rsn_string = trim(rsn_string) // ' rUP,' 
+  endif
+  if (all(idof_cnvgd(:,3))) then
+    aR_str = '  *aR:'
+    rsn_string = trim(rsn_string) // ' aR,'
+  endif
+  if (all(idof_cnvgd(:,4))) then
+    sR_str = '  *sR:'
+    rsn_string = trim(rsn_string) // ' sR,'
+  endif  
+  if (all(idof_cnvgd(:,5))) then
+    sign_str = ' +'
+    rsn_string = trim(rsn_string) // ' +'
+  endif
+  
+  if (converged_flag .eqv. PETSC_TRUE) then
+    option%converged = PETSC_TRUE
+    option%convergence = CONVERGENCE_CONVERGED
+    reason = 999
+  else  ! means ITOL_* tolerances were satisfied
+    ! means ITOL_* tolerances were not satisfied:
+    option%converged = PETSC_FALSE
+    option%convergence = CONVERGENCE_KEEP_ITERATING
+    reason = 0
+    if (it >= this%controls%max_newton_iterations) then
+      option%convergence = CONVERGENCE_CUT_TIMESTEP
+      reason = -88
+    endif
+  endif
+
+  rsn = 'rsn:'
+  write(out_string,'(i4,a6,es10.3,a6,es10.3,a6,es10.3,a6,es10.3,a5,i4,a2)') &
+                    it, aR_str, maxval(species_max(:,3)), &
+                    sR_str, maxval(species_max(:,4)), &
+                    rUP_str, maxval(species_max(:,2)), &
+                    aUP_str, maxval(species_max(:,1)), rsn, reason, &
+                    sign_str
+  call PrintMsg(option,out_string)
+
+  if (this%controls%verbose_newton) then
+    ! only works for single core
+    write(out_string,'(a4,a6,i10,a6,i10,a6,i10,a6,i10)') &
+        'cell', aR_str, loc_max_abs_residual, sR_str, &
+        loc_max_scaled_residual, rUP_str, loc_max_rel_update, aUP_str, &
+        loc_max_abs_update
+    call PrintMsg(option,out_string)
+
+    out_string = "     update converged (T/F) = "
+    do i = 1,option%ntrandof
+      write(string,'(L2)') idof_cnvgd_due_to_update(i)
+      out_string = trim(out_string) // trim(string)
+    enddo
+    call PrintMsg(option,out_string)
+
+    out_string = "     residual converged (T/F) = "
+    do i = 1,option%ntrandof
+      write(string,'(L2)') idof_cnvgd_due_to_residual(i)
+      out_string = trim(out_string) // trim(string)
+    enddo
+    call PrintMsg(option,out_string)
+  endif
+  
+  ! finalize convergence and reset option flags:
+  if (option%convergence == CONVERGENCE_CONVERGED) then
+    out_string = ' NW TRANS converged!   Rsn ->' // trim(rsn_string)
+    call PrintMsg(option,out_string)
+    option%convergence = CONVERGENCE_OFF
+    option%converged = PETSC_FALSE
+  endif 
 
 end subroutine PMNWTCheckConvergence
 
 ! ************************************************************************** !
 
 subroutine PMNWTCheckUpdatePre(this,snes,X,dX,changed,ierr)
-  ! 
-  ! In the case of the log formulation, ensures that the update
-  ! vector does not exceed a prescribed tolerance
-  ! 
+  !
+  ! Checks the solution update vector prior to updating the solution.
+  !
   ! Author: Glenn Hammond, Jenn Frederick
   ! Date: 05/28/2019
-  ! 
+  !
 
   use Realization_Subsurface_class
   use Grid_module
   use Option_module
 
   implicit none
-  
+
   class(pm_nwt_type) :: this
   SNES :: snes
   Vec :: X
   Vec :: dX
   PetscBool :: changed
   PetscErrorCode :: ierr
-  
-  PetscReal, pointer :: C_p(:)  ! CURRENT SOLUTION
-  PetscReal, pointer :: dC_p(:) ! SOLUTION UPDATE STEP
+
+  PetscReal, pointer :: X_p(:)  ! CURRENT SOLUTION
+  PetscReal, pointer :: dX_p(:) ! SOLUTION UPDATE STEP
   type(grid_type), pointer :: grid
   class(reaction_nw_type), pointer :: reaction_nw
-  PetscReal :: ratio, min_ratio
-  PetscReal, parameter :: min_allowable_scale = 1.d-10
-  character(len=MAXSTRINGLENGTH) :: string
-  PetscInt :: i, n, k 
-  
+  type(option_type), pointer :: option
+  PetscInt :: k
+  PetscReal,parameter :: TOL=1.0d-20
+
   grid => this%realization%patch%grid
   reaction_nw => this%realization%reaction_nw
-  
-  call VecGetArrayF90(dX,dC_p,ierr);CHKERRQ(ierr)
-  
-  if (reaction_nw%use_log_formulation) then
-    ! C and dC are actually lnC and dlnC
-    dC_p = dsign(1.d0,dC_p)*min(dabs(dC_p),this%controls%max_dlnC)
-    ! at this point, it does not matter whether "changed" is set to true, 
-    ! since it is not checkied in PETSc.  Thus, I don't want to spend 
-    ! time checking for changes and performing an allreduce for log 
-    ! formulation.
-    if (Initialized(reaction_nw%params%truncated_concentration)) then
-      call VecGetArrayReadF90(X,C_p,ierr);CHKERRQ(ierr)
-      dC_p = min(C_p-log(reaction_nw%params%truncated_concentration),dC_p)
-      call VecRestoreArrayReadF90(X,C_p,ierr);CHKERRQ(ierr)
-    endif
-  else
-    call VecGetLocalSize(X,n,ierr);CHKERRQ(ierr)
-    call VecGetArrayReadF90(X,C_p,ierr);CHKERRQ(ierr)
-        
-    if (Initialized(reaction_nw%params%truncated_concentration)) then
-      dC_p = min(dC_p,C_p-reaction_nw%params%truncated_concentration)
-    else
-      ! C^p+1 = C^p - dC^p
-      ! if dC is positive and abs(dC) larger than C
-      ! we need to scale the update
-      
-      ! compute smallest ratio of C to dC
-#if 0
-      min_ratio = 1.d0/maxval(dC_p/C_p)
-#else
-      min_ratio = MAX_DOUBLE ! large number
-      k = 0
-      do i = 1, n
-        if (C_p(i) <= dC_p(i)) then
-          WRITE(*,*)  ' i =', i, '  C_p(i) =', C_p(i), '  dC_p(i) =', dC_p(i)
-          ratio = abs(C_p(i)/dC_p(i))
-          if (ratio < min_ratio) then
-            min_ratio = ratio
-            k = i
-          endif
-        endif
-      enddo
-#endif
-      ratio = min_ratio
-      !WRITE(*,*)  ' location of min_ratio =', k, '   min_ratio =', min_ratio
-    
-      ! get global minimum
-      call MPI_Allreduce(ratio,min_ratio,ONE_INTEGER_MPI,MPI_DOUBLE_PRECISION, &
-                         MPI_MIN,this%realization%option%mycomm,ierr)
-                       
-      ! scale if necessary
-      if (min_ratio < 1.d0) then
-        if (min_ratio < this%realization%option%min_allowable_scale) then
-          write(string,'(es10.3)') min_ratio
-          string = 'The update of primary species concentration is being ' // &
-            'scaled by a very small value (i.e. ' // &
-            trim(adjustl(string)) // &
-            ') to prevent negative concentrations.  This value is too ' // &
-            'small and will likely cause the solver to mistakenly ' // &
-            'converge based on the infinity norm of the update vector. ' // &
-            'In this case, it is recommended that you use the ' // &
-            'LOG_FORMULATION keyword or TRUNCATE_CONCENTRATION <float> in &
-            &the NUCLEAR_WASTE_TRANSPORT block).'
-          this%realization%option%io_buffer = string
-          call PrintErrMsgToDev(this%realization%option, 'send your input &
-                                &deck if that does not work')
-        endif
-        ! scale by 0.99 to make the update slightly smaller than the min_ratio
-        dC_p = dC_p*min_ratio*0.99d0
-        changed = PETSC_TRUE
-      endif
-    endif
-    call VecRestoreArrayReadF90(X,C_p,ierr);CHKERRQ(ierr)
-  endif
-  call VecGetArrayReadF90(X,C_p,ierr);CHKERRQ(ierr)
-  !WRITE(*,*)  '       C_p(723) = ', C_p(723)
-  !WRITE(*,*)  '       C_p(791) = ', C_p(791)
-  call VecRestoreArrayReadF90(X,C_p,ierr);CHKERRQ(ierr)
-  
-  !WRITE(*,*)  '        dC_p(723) = ', dC_p(723)
-  !WRITE(*,*)  '        dC_p(791) = ', dC_p(791)
-  call VecRestoreArrayF90(dX,dC_p,ierr);CHKERRQ(ierr)
+  option => this%realization%option
 
+  changed = PETSC_FALSE
+
+  call VecGetArrayF90(X,X_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayF90(dX,dX_p,ierr);CHKERRQ(ierr)
+
+  if (Initialized(reaction_nw%params%truncated_concentration)) then
+    do k = 1,size(X_p)
+      if (X_p(k) < reaction_nw%params%truncated_concentration) then
+        X_p(k) = reaction_nw%params%truncated_concentration
+        dX_p(k) = 0.0d0
+      else
+        dX_p(k) = min(dX_p(k),X_p(k) - &
+                      reaction_nw%params%truncated_concentration)
+      endif
+    enddo
+  endif
+
+  call VecRestoreArrayF90(X,X_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayF90(dX,dX_p,ierr);CHKERRQ(ierr)
 
 end subroutine PMNWTCheckUpdatePre
 
@@ -1303,13 +1616,13 @@ end subroutine PMNWTCheckUpdatePre
 
 subroutine PMNWTCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
                                 X1_changed,ierr)
-  ! 
+  !
   ! Checks convergence after the solution update
-  ! 
+  !
   ! Author: Jenn Frederick, Glenn Hammond
   ! Date: 05/27/2019
-  ! 
-  
+  !
+
   use Grid_module
   use Field_module
   use Patch_module
@@ -1317,7 +1630,7 @@ subroutine PMNWTCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
   use Output_EKG_module
 
   implicit none
-  
+
   class(pm_nwt_type) :: this
   SNES :: snes
   Vec :: X0
@@ -1326,289 +1639,72 @@ subroutine PMNWTCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
   PetscBool :: dX_changed
   PetscBool :: X1_changed
   PetscErrorCode :: ierr
-  
-  type(grid_type), pointer :: grid
-  type(option_type), pointer :: option
-  type(field_type), pointer :: field
-  type(patch_type), pointer :: patch  
-  PetscReal, pointer :: C0_p(:)
-  PetscReal, pointer :: dC_p(:)
-  PetscReal, pointer :: r_p(:)
-  PetscReal, pointer :: accum_p(:)
-  !PetscBool :: idof_cnvgd_due_to_rel_update(this%option%ntrandof)
-  !PetscBool :: idof_cnvgd_due_to_scaled_res(this%option%ntrandof)
-  !PetscBool :: idof_cnvgd_due_to_abs_res(this%option%ntrandof)
-  PetscBool :: idof_cnvgd_due_to_update(this%option%ntrandof)
-  PetscBool :: idof_cnvgd_due_to_residual(this%option%ntrandof)
-  PetscBool :: idof_cnvgd_due_to_rel_update(this%option%ntrandof,this%realization%patch%grid%nlmax)
-  PetscBool :: idof_cnvgd_due_to_scaled_res(this%option%ntrandof,this%realization%patch%grid%nlmax)
-  PetscBool :: idof_cnvgd_due_to_abs_res(this%option%ntrandof,this%realization%patch%grid%nlmax)
-  PetscReal :: max_relative_change
-  PetscReal :: max_scaled_residual
-  PetscReal :: max_absolute_change
-  PetscReal :: max_absolute_residual
-  PetscInt :: loc_max_scaled_residual
-  PetscInt :: loc_max_abs_residual
-  PetscInt :: loc_max_rel_update
-  PetscReal :: residual_at_max
-  PetscReal :: accum_at_max
-  PetscReal :: update_at_max
-  PetscReal :: soln_at_max
-  PetscReal :: species_max_relative_change(this%option%ntrandof)
-  PetscReal :: species_max_scaled_residual(this%option%ntrandof)
-  PetscReal :: species_max_absolute_change(this%option%ntrandof)
-  PetscReal :: species_max_absolute_residual(this%option%ntrandof)
-  PetscInt :: converged_flag
-  PetscInt :: temp_int, i
-  PetscInt :: newton_iter_number
-  PetscReal :: max_relative_change_by_dof(this%option%ntrandof)
-  PetscReal :: global_max_rel_change_by_dof(this%option%ntrandof)
-  PetscMPIInt :: mpi_int
-  PetscInt :: local_id, offset, idof, index
-  PetscReal :: tempreal
-  
-  grid => this%realization%patch%grid
-  option => this%realization%option
-  field => this%realization%field
-  patch => this%realization%patch
-  
-  dX_changed = PETSC_FALSE
-  X1_changed = PETSC_FALSE
 
-  call SNESGetIterationNumber(this%solver%snes,newton_iter_number,ierr)
-  
-  converged_flag = 0
-  if (this%controls%check_post_convergence) then
-    idof_cnvgd_due_to_rel_update = PETSC_FALSE
-    idof_cnvgd_due_to_scaled_res = PETSC_FALSE
-    idof_cnvgd_due_to_abs_res = PETSC_FALSE
-    idof_cnvgd_due_to_update = PETSC_FALSE
-    idof_cnvgd_due_to_residual = PETSC_FALSE
-    call VecGetArrayReadF90(dX,dC_p,ierr);CHKERRQ(ierr)
-    call VecGetArrayReadF90(X0,C0_p,ierr);CHKERRQ(ierr)
-    call VecGetArrayReadF90(field%tran_r,r_p,ierr);CHKERRQ(ierr)
-    call VecGetArrayReadF90(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
-    max_relative_change = maxval(dabs(dC_p(:)/C0_p(:)))
-    max_scaled_residual = maxval(dabs(r_p(:)/accum_p(:)))
-    max_absolute_change = maxval(dabs(dC_p(:)))
-    max_absolute_residual = maxval(dabs(r_p(:)))
-    loc_max_scaled_residual = maxloc(dabs(r_p(:)/accum_p(:)),1)
-    loc_max_abs_residual = maxloc(dabs(r_p(:)),1)
-    loc_max_rel_update = maxloc(dabs(dC_p(:)/C0_p(:)),1)
-    residual_at_max = dabs(r_p(loc_max_scaled_residual))
-    accum_at_max = dabs(accum_p(loc_max_scaled_residual))
-    update_at_max = dabs(dC_p(loc_max_rel_update))
-    soln_at_max = dabs(C0_p(loc_max_rel_update))
-    do local_id = 1, grid%nlmax
-      offset = (local_id-1)*option%ntrandof
-      do idof = 1, option%ntrandof
-        index = idof + offset
-      !-----------------------------------------------------------------
-        idof_cnvgd_due_to_rel_update(idof,local_id) = PETSC_FALSE
-        tempreal = dabs(dC_p(index)/C0_p(index))
-        if (tempreal < this%controls%itol_rel_update(idof)) then
-          idof_cnvgd_due_to_rel_update(idof,local_id) = PETSC_TRUE
-        else
-          if (dC_p(index) < 1.d-18) then
-            idof_cnvgd_due_to_rel_update(idof,local_id) = PETSC_TRUE
-          endif
-        endif
-        species_max_relative_change(idof) = &
-          max(species_max_relative_change(idof),tempreal)
-      !-----------------------------------------------------------------
-        idof_cnvgd_due_to_scaled_res(idof,local_id) = PETSC_FALSE
-        tempreal = dabs(r_p(index)/accum_p(index))
-        if (tempreal < this%controls%itol_scaled_res(idof)) then
-          idof_cnvgd_due_to_scaled_res(idof,local_id) = PETSC_TRUE
-        else
-          if (r_p(index) < this%controls%itol_abs_res(idof)) then
-            idof_cnvgd_due_to_scaled_res(idof,local_id) = PETSC_TRUE
-          endif
-        endif
-        species_max_scaled_residual(idof) = &
-          max(species_max_scaled_residual(idof),tempreal)
-      !-----------------------------------------------------------------
-        tempreal = dabs(dC_p(index))
-        species_max_absolute_change(idof) = &
-          max(species_max_absolute_change(idof),tempreal)
-      !-----------------------------------------------------------------
-        idof_cnvgd_due_to_abs_res(idof,local_id) = PETSC_FALSE
-        tempreal = dabs(r_p(index))
-        if (tempreal < this%controls%itol_abs_res(idof)) then
-          idof_cnvgd_due_to_abs_res(idof,local_id) = PETSC_TRUE
-        endif
-        species_max_absolute_residual(idof) = &
-          max(species_max_absolute_residual(idof),tempreal)
-      !-----------------------------------------------------------------
-      enddo
-    enddo
-    call VecRestoreArrayReadF90(dX,dC_p,ierr);CHKERRQ(ierr)
-    call VecRestoreArrayReadF90(X0,C0_p,ierr);CHKERRQ(ierr)
-    call VecRestoreArrayReadF90(field%tran_r,r_p,ierr);CHKERRQ(ierr)
-    call VecRestoreArrayReadF90(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
-
-    ! do idof = 1, option%ntrandof
-    !   idof_cnvgd_due_to_rel_update(idof) = &
-    !     (associated(this%controls%itol_rel_update) .and. &
-    !      (species_max_relative_change(idof) < this%controls%itol_rel_update(idof)))
-    !   idof_cnvgd_due_to_scaled_res(idof) = &
-    !     (associated(this%controls%itol_scaled_res) .and. &
-    !      (species_max_scaled_residual(idof) < this%controls%itol_scaled_res(idof)))
-    !   idof_cnvgd_due_to_abs_res(idof) = &
-    !     (associated(this%controls%itol_abs_res) .and. &
-    !      (species_max_absolute_residual(idof) < this%controls%itol_abs_res(idof)))
-    ! enddo
-
-    do idof = 1, option%ntrandof
-      if (all(idof_cnvgd_due_to_rel_update(idof,:))) then
-        idof_cnvgd_due_to_update(idof) = PETSC_TRUE
-      endif
-      if (all(idof_cnvgd_due_to_scaled_res(idof,:)) .or. &
-          all(idof_cnvgd_due_to_abs_res(idof,:))) then
-        idof_cnvgd_due_to_residual(idof) = PETSC_TRUE
-      endif
-    enddo
-
-    if (all(idof_cnvgd_due_to_residual) .and. all(idof_cnvgd_due_to_update)) then
-      converged_flag = 1
-    else
-      converged_flag = 0
-    endif
-
-  endif
-
-  WRITE(*,*)  ' --------------------------------------------------------------'
-  !WRITE(*,*)  '          max scaled residual = ', max_scaled_residual
-  !WRITE(*,*)  '                     location = ', loc_max_scaled_residual
-  !WRITE(*,*)  '               residual @ max = ', residual_at_max
-  !WRITE(*,*)  '                  accum @ max = ', accum_at_max
-  !WRITE(*,*)  ' --------------------------------------------------------------'
-  !WRITE(*,*)  '     max absolute residual = ', max_absolute_residual
-  !WRITE(*,*)  '                  location = ', loc_max_abs_residual
-  !WRITE(*,*)  ' --------------------------------------------------------------'
-  WRITE(*,*)  ' idof_cnvgd_due_to_residual = ', idof_cnvgd_due_to_residual
-  WRITE(*,*)  ' --------------------------------------------------------------'
-  !WRITE(*,*)  '      max relative update = ', max_relative_change
-  !WRITE(*,*)  '                 location = ', loc_max_rel_update
-  !WRITE(*,*)  '             update @ max = ', update_at_max
-  !WRITE(*,*)  '               soln @ max = ', soln_at_max
-  !WRITE(*,*)  ' --------------------------------------------------------------'
-  WRITE(*,*)  ' idof_cnvgd_due_to_update = ', idof_cnvgd_due_to_update
-  !WRITE(*,*)  ' --------------------------------------------------------------'
-  !WRITE(*,*)  ' --------------------------------------------------------------'
-  !WRITE(*,*)  ' ITOL converged_flag = ', converged_flag
-  WRITE(*,*)  ' --------------------------------------------------------------'
-
-  
-  ! get global minimum
-  call MPI_Allreduce(converged_flag,temp_int,ONE_INTEGER_MPI,MPI_INTEGER, &
-                     MPI_MIN,this%realization%option%mycomm,ierr)
-  
-  ! this will override all previous convergence criteria to keep iterating
-    if (temp_int /= 1) then  ! means ITOL_* tolerances were not satisfied:
-      this%realization%option%converged = PETSC_FALSE
-      !!this%realization%option%convergence = CONVERGENCE_CUT_TIMESTEP
-      this%realization%option%convergence = CONVERGENCE_KEEP_ITERATING
-      if (newton_iter_number >= this%controls%max_newton_iterations) then
-        this%realization%option%convergence = CONVERGENCE_CUT_TIMESTEP
-      endif
-    else  ! means ITOL_* tolerances were satisfied, but the previous
-          ! criteria were maybe not met
-      ! do nothing - let the instruction proceed based on previous criteria
-
-      ! test:
-      this%realization%option%converged = PETSC_TRUE
-      this%realization%option%convergence = CONVERGENCE_CONVERGED
-    endif
-
-  if (this%print_ekg) then
-    call VecGetArrayReadF90(dX,dC_p,ierr);CHKERRQ(ierr)
-    call VecGetArrayReadF90(X0,C0_p,ierr);CHKERRQ(ierr)
-    max_relative_change_by_dof = -MAX_DOUBLE
-    do local_id = 1, grid%nlmax
-      offset = (local_id-1)*option%ntrandof
-      do idof = 1, option%ntrandof
-        index = idof + offset
-        tempreal = dabs(dC_p(index)/C0_p(index))
-        max_relative_change_by_dof(idof) = &
-          max(max_relative_change_by_dof(idof),tempreal)
-      enddo
-    enddo
-    call VecRestoreArrayReadF90(dX,dC_p,ierr);CHKERRQ(ierr)
-    call VecRestoreArrayReadF90(X0,C0_p,ierr);CHKERRQ(ierr)
-    mpi_int = option%ntrandof
-    call MPI_Allreduce(MPI_IN_PLACE,max_relative_change_by_dof,mpi_int, &
-                       MPI_DOUBLE_PRECISION,MPI_MAX,this%option%mycomm,ierr)
-    if (OptionPrintToFile(option)) then
-100 format("NUCLEAR WASTE TRANSPORT  NEWTON_ITERATION ",30es16.8)
-      write(IUNIT_EKG,100) max_relative_change_by_dof(:)
-    endif    
-  endif
 
 end subroutine PMNWTCheckUpdatePost
 
 ! ************************************************************************** !
 
 function PMNWTAcceptSolution(this)
-  ! 
+  !
   ! Right now this does nothing, but if it did spit out PETSC_FALSE, it would
   ! prompt a time step cut and start the solution process over again.
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 03/14/13
-  ! 
+  !
 
   implicit none
-  
+
   class(pm_nwt_type) :: this
-  
+
   PetscBool :: PMNWTAcceptSolution
-  
+
   ! no nothing
   PMNWTAcceptSolution = PETSC_TRUE
-  
+
 end function PMNWTAcceptSolution
 
 ! ************************************************************************** !
 
 recursive subroutine PMNWTFinalizeRun(this)
-  ! 
-  ! Finalizes the time stepping 
-  ! 
+  !
+  ! Finalizes the time stepping
+  !
   ! Author: Jenn Frederick
   ! Date: 05/28/2019
-  ! 
+  !
 
   implicit none
-  
+
   class(pm_nwt_type) :: this
-  
+
   ! placeholder for now, doesn't do anything at the moment.
-  
+
   if (associated(this%next)) then
     call this%next%FinalizeRun()
-  endif  
-  
+  endif
+
 end subroutine PMNWTFinalizeRun
 
 ! ************************************************************************** !
 
 subroutine PMNWTTimeCut(this)
-  ! 
+  !
   ! Resets arrays for a time step cut.
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 05/27/2019
-  ! 
- 
+  !
+
   use Option_module
   use Field_module
   use Global_module
- 
+
   implicit none
-  
+
   class(pm_nwt_type) :: this
-  
+
   class(realization_subsurface_type), pointer :: realization
   type(field_type), pointer :: field
   type(option_type), pointer :: option
@@ -1617,35 +1713,43 @@ subroutine PMNWTTimeCut(this)
   realization => this%realization
   field => realization%field
   option => realization%option
- 
+
   this%option%tran_dt = this%option%dt
   if (this%option%nflowdof > 0 .and. .not. this%params%steady_flow) then
     call this%SetTranWeights()
   endif
- 
+
   ! copy previous solution back to current solution
   call VecCopy(field%tran_yy,field%tran_xx,ierr);CHKERRQ(ierr)
-  
+
+  if (.not. this%controls%well_cut_dt) then
+    this%pmwell_ptr%well%aqueous_mass = &
+      this%pmwell_ptr%tran_soln%prev_soln%aqueous_mass
+    this%pmwell_ptr%well%aqueous_conc =  &
+      this%pmwell_ptr%tran_soln%prev_soln%aqueous_conc
+  endif
+  this%controls%well_cut_dt = PETSC_FALSE
+
   ! set densities and saturations to t+dt
   if (realization%option%nflowdof > 0) then
     call GlobalWeightAuxVars(realization, &
                              realization%option%transport%tran_weight_t1)
   endif
- 
+
 end subroutine PMNWTTimeCut
 
 ! ************************************************************************** !
 
 subroutine PMNWTSetTranWeights(this)
-  ! 
+  !
   ! Sets the weights at t0 or t1 for transport
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 01/17/11; 04/03/13
-  ! 
+  !
 
   implicit none
-  
+
   class(pm_nwt_type) :: this
 
   PetscReal :: flow_dt
@@ -1666,17 +1770,17 @@ end subroutine PMNWTSetTranWeights
 ! ************************************************************************** !
 
 subroutine PMNWTComputeMassBalance(this,mass_balance_array)
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 05/27/2019
-  ! 
+  !
 
   implicit none
-  
+
   class(pm_nwt_type) :: this
   PetscReal :: mass_balance_array(:)
 
-#ifndef SIMPLIFY 
+#ifndef SIMPLIFY
   ! passing in dummy -999 for max_size doesn't do anything, so why even call it?
   !call NWTComputeMassBalance(this%realization,-999,mass_balance_array)
 #endif
@@ -1686,29 +1790,29 @@ end subroutine PMNWTComputeMassBalance
 ! ************************************************************************** !
 
 subroutine PMNWTUpdateAuxVars(this)
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 05/27/2019
   !
-  
+
   implicit none
-  
+
   class(pm_nwt_type) :: this
-                                      !  cells      bcs      
+                                      !  cells      bcs
   call NWTUpdateAuxVars(this%realization,PETSC_TRUE,PETSC_FALSE)
 
-end subroutine PMNWTUpdateAuxVars  
+end subroutine PMNWTUpdateAuxVars
 
 ! ************************************************************************** !
 
 subroutine PMNWTMaxChange(this)
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 05/27/2019
-  ! 
+  !
 
   implicit none
-  
+
   class(pm_nwt_type) :: this
 
   !TODO(jenn)
@@ -1720,98 +1824,408 @@ end subroutine PMNWTMaxChange
 ! ************************************************************************** !
 
 subroutine PMNWTCheckpointBinary(this,viewer)
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 05/27/2019
-  ! 
+  !
+
+  use Option_module
+  use Realization_Subsurface_class
+  use Realization_Base_class
+  use Field_module
+  use Discretization_module
+  use Variables_module, only : NWT_AUXILIARY
 
   implicit none
-  
+
+  interface PetscBagGetData
+    subroutine PetscBagGetData(bag,header,ierr)
+      import :: pm_base_header_type
+      implicit none
+      PetscBag :: bag
+      class(pm_base_header_type), pointer :: header
+      PetscErrorCode :: ierr
+    end subroutine
+  end interface PetscBagGetData
+
   class(pm_nwt_type) :: this
   PetscViewer :: viewer
+  PetscErrorCode :: ierr
 
-  !TODO(jenn)
-  print *, 'PMNWTCheckpointBinary not yet implemented.'
-  stop
+  class(realization_subsurface_type), pointer :: realization
+  type(option_type), pointer :: option
+  type(field_type), pointer :: field
+  type(discretization_type), pointer :: discretization
+  Vec :: global_vec
+  PetscInt :: i
+
+  class(pm_base_header_type), pointer :: header
+  type(pm_base_header_type) :: dummy_header
+  character(len=1),pointer :: dummy_char(:)
+  PetscBag :: bag
+  PetscSizeT :: bagsize
+
+  realization => this%realization
+  option => realization%option
+  field => realization%field
+  discretization => realization%discretization
+
+  global_vec = PETSC_NULL_VEC
+
+  bagsize = size(transfer(dummy_header,dummy_char))
+
+  call PetscBagCreate(option%mycomm,bagsize,bag,ierr);CHKERRQ(ierr)
+  call PetscBagGetData(bag,header,ierr);CHKERRQ(ierr)
+  call PetscBagRegisterInt(bag,header%ndof,0,"ndof","",ierr);CHKERRQ(ierr)
+  header%ndof = option%ntrandof
+  call PetscBagView(bag,viewer,ierr);CHKERRQ(ierr)
+  call PetscBagDestroy(bag,ierr);CHKERRQ(ierr)
+
+  if (option%ntrandof > 0) then
+    call VecView(field%tran_xx,viewer,ierr);CHKERRQ(ierr)
+
+    if (global_vec == PETSC_NULL_VEC) then
+      call DiscretizationCreateVector(discretization,ONEDOF, &
+                                      global_vec,GLOBAL,option)
+    endif
+    ! auxiliary data for reactions (e.g. cumulative mass)
+    if (realization%reaction_nw%params%nauxiliary > 0) then
+      do i = 1, realization%reaction_nw%params%nauxiliary
+        call RealizationGetVariable(realization,global_vec, &
+                                    NWT_AUXILIARY,i)
+        call VecView(global_vec,viewer,ierr);CHKERRQ(ierr)
+      enddo
+    endif
+  endif
+
+  if (global_vec /= PETSC_NULL_VEC) then
+    call VecDestroy(global_vec,ierr);CHKERRQ(ierr)
+  endif
 
 end subroutine PMNWTCheckpointBinary
 
 ! ************************************************************************** !
 
 subroutine PMNWTCheckpointHDF5(this,pm_grp_id)
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 05/27/2019
-  ! 
+  !
 
   use hdf5
-  
+  use Option_module
+  use Realization_Subsurface_class
+  use Realization_Base_class
+  use Field_module
+  use Discretization_module
+  use Variables_module, only : NWT_AUXILIARY
+  use Checkpoint_module, only: CheckPointWriteIntDatasetHDF5
+  use HDF5_module, only : HDF5WriteDataSetFromVec
+
   implicit none
-  
+
   class(pm_nwt_type) :: this
   integer(HID_T) :: pm_grp_id
 
-  !TODO(jenn)
-  print *, 'PMNWTCheckpointHDF5 not yet implemented.'
-  stop
+  integer(HSIZE_T), pointer :: dims(:)
+  integer(HSIZE_T), pointer :: start(:)
+  integer(HSIZE_T), pointer :: stride(:)
+  integer(HSIZE_T), pointer :: length(:)
+
+  PetscMPIInt :: dataset_rank
+  character(len=MAXSTRINGLENGTH) :: dataset_name
+  ! must be 'integer' so that ibuffer does not switch to 64-bit integers
+  ! when PETSc is configured with --with-64-bit-indices=yes.
+  integer, pointer :: int_array(:)
+
+  class(realization_subsurface_type), pointer :: realization
+  type(option_type), pointer :: option
+  type(field_type), pointer :: field
+  type(discretization_type), pointer :: discretization
+  Vec :: global_vec
+  Vec :: natural_vec
+  PetscInt :: i
+  PetscErrorCode :: ierr
+
+  realization => this%realization
+  option => realization%option
+  field => realization%field
+  discretization => realization%discretization
+
+  allocate(start(1))
+  allocate(dims(1))
+  allocate(length(1))
+  allocate(stride(1))
+  allocate(int_array(1))
+
+  dataset_rank = 1
+  dims(1) = ONE_INTEGER
+  start(1) = 0
+  length(1) = ONE_INTEGER
+  stride(1) = ONE_INTEGER
+
+  dataset_name = "NDOF" // CHAR(0)
+  int_array(1) = option%ntrandof
+  call CheckPointWriteIntDatasetHDF5(pm_grp_id, dataset_name, dataset_rank, &
+                                     dims, start, length, stride, &
+                                     int_array, option)
+
+  if (option%ntrandof > 0) then
+    call DiscretizationCreateVector(discretization, NTRANDOF, &
+                                    natural_vec, NATURAL, option)
+    call DiscretizationGlobalToNatural(discretization, &
+                                       field%tran_xx, &
+                                       natural_vec, NTRANDOF)
+    dataset_name = "Primary_Variable" // CHAR(0)
+    call HDF5WriteDataSetFromVec(dataset_name, option, natural_vec, &
+                                 pm_grp_id, H5T_NATIVE_DOUBLE)
+    call VecDestroy(natural_vec,ierr);CHKERRQ(ierr)
+
+    ! auxiliary data for reactions (e.g. cumulative mass)
+    if (realization%reaction_nw%params%nauxiliary> 0) then
+      call DiscretizationCreateVector(discretization, ONEDOF, &
+                                      global_vec, GLOBAL, option)
+      call DiscretizationCreateVector(discretization, ONEDOF, &
+                                      natural_vec, NATURAL, option)
+      do i = 1, realization%reaction_nw%params%nauxiliary
+        call RealizationGetVariable(realization,global_vec, &
+                                    NWT_AUXILIARY,i)
+        call DiscretizationGlobalToNatural(discretization, &
+                                           global_vec, natural_vec, ONEDOF)
+        write(dataset_name,*) i
+        dataset_name = 'NWT_auxiliary_' // trim(adjustl(dataset_name))
+        call HDF5WriteDataSetFromVec(dataset_name, option, natural_vec, &
+                                     pm_grp_id, H5T_NATIVE_DOUBLE)
+      enddo
+      call VecDestroy(natural_vec,ierr);CHKERRQ(ierr)
+    endif
+  endif
+
+  call VecDestroy(global_vec,ierr);CHKERRQ(ierr)
 
 end subroutine PMNWTCheckpointHDF5
 
 ! ************************************************************************** !
 
 subroutine PMNWTRestartBinary(this,viewer)
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 05/27/2019
-  ! 
+  !
+
+  use Option_module
+  use Realization_Subsurface_class
+  use Realization_Base_class
+  use Field_module
+  use Discretization_module
+  use Grid_module
+  use Patch_module
+  use Variables_module, only : NWT_AUXILIARY
 
   implicit none
-  
+
+  interface PetscBagGetData
+    subroutine PetscBagGetData(bag,header,ierr)
+      import :: pm_base_header_type
+      implicit none
+      PetscBag :: bag
+      class(pm_base_header_type), pointer :: header
+      PetscErrorCode :: ierr
+    end subroutine
+  end interface PetscBagGetData
+
   class(pm_nwt_type) :: this
   PetscViewer :: viewer
+  PetscErrorCode :: ierr
 
-  !TODO(jenn)
-  print *, 'PMNWTRestartBinary not yet implemented.'
-  stop
+  class(realization_subsurface_type), pointer :: realization
+  type(option_type), pointer :: option
+  type(field_type), pointer :: field
+  type(discretization_type), pointer :: discretization
+  Vec :: global_vec
+  PetscInt :: i
+
+  class(pm_base_header_type), pointer :: header
+  type(pm_base_header_type) :: dummy_header
+  character(len=1),pointer :: dummy_char(:)
+  PetscBag :: bag
+  PetscSizeT :: bagsize
+
+  realization => this%realization
+  option => realization%option
+  field => realization%field
+  discretization => realization%discretization
+
+  global_vec = PETSC_NULL_VEC
+
+  bagsize = size(transfer(dummy_header,dummy_char))
+
+  call PetscBagCreate(option%mycomm,bagsize,bag,ierr);CHKERRQ(ierr)
+  call PetscBagGetData(bag,header,ierr);CHKERRQ(ierr)
+  call PetscBagRegisterInt(bag,header%ndof,0,"ndof","",ierr);CHKERRQ(ierr)
+  call PetscBagLoad(viewer,bag,ierr);CHKERRQ(ierr)
+  option%ntrandof = header%ndof
+
+  call VecLoad(field%tran_xx,viewer,ierr);CHKERRQ(ierr)
+  call DiscretizationGlobalToLocal(discretization,field%tran_xx, &
+                                   field%tran_xx_loc,NTRANDOF)
+  call VecCopy(field%tran_xx,field%tran_yy,ierr);CHKERRQ(ierr)
+
+  if (global_vec == PETSC_NULL_VEC) then
+    call DiscretizationCreateVector(discretization,ONEDOF, &
+                                    global_vec,GLOBAL,option)
+  endif
+
+  ! auxiliary data for reactions (e.g. cumulative mass)
+  if (realization%reaction_nw%params%nauxiliary> 0) then
+    do i = 1, realization%reaction_nw%params%nauxiliary
+      call VecLoad(global_vec,viewer,ierr);CHKERRQ(ierr)
+      call RealizationSetVariable(realization,global_vec, &
+                                    GLOBAL,NWT_AUXILIARY,i)
+    enddo
+  endif
+
+  if (global_vec /= PETSC_NULL_VEC) then
+    call VecDestroy(global_vec,ierr);CHKERRQ(ierr)
+  endif
+
+  call PetscBagDestroy(bag,ierr);CHKERRQ(ierr)
+  call NWTUpdateAuxVars(realization,PETSC_FALSE,PETSC_TRUE)
+  call PMNWTUpdateSolution(this)
 
 end subroutine PMNWTRestartBinary
 
 ! ************************************************************************** !
 
 subroutine PMNWTRestartHDF5(this,pm_grp_id)
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 05/27/2019
-  ! 
-  
+  !
+
   use hdf5
+  use Option_module
+  use Realization_Subsurface_class
+  use Realization_Base_class
+  use Field_module
+  use Discretization_module
+  use Variables_module, only : NWT_AUXILIARY
+  use Checkpoint_module, only: CheckPointReadIntDatasetHDF5
+  use HDF5_module, only : HDF5ReadDataSetInVec
 
   implicit none
-  
+
   class(pm_nwt_type) :: this
   integer(HID_T) :: pm_grp_id
 
-  !TODO(jenn)
-  print *, 'PMNWTRestartHDF5 not yet implemented.'
-  stop
+  integer(HSIZE_T), pointer :: dims(:)
+  integer(HSIZE_T), pointer :: start(:)
+  integer(HSIZE_T), pointer :: stride(:)
+  integer(HSIZE_T), pointer :: length(:)
+
+  PetscMPIInt :: dataset_rank
+  character(len=MAXSTRINGLENGTH) :: dataset_name
+  ! must be 'integer' so that ibuffer does not switch to 64-bit integers
+  ! when PETSc is configured with --with-64-bit-indices=yes.
+  integer, pointer :: int_array(:)
+
+  class(realization_subsurface_type), pointer :: realization
+  type(option_type), pointer :: option
+  type(field_type), pointer :: field
+  type(discretization_type), pointer :: discretization
+  Vec :: global_vec
+  Vec :: natural_vec
+  Vec :: local_vec
+  PetscInt :: i
+  PetscErrorCode :: ierr
+
+  realization => this%realization
+  option => realization%option
+  field => realization%field
+  discretization => realization%discretization
+
+  allocate(start(1))
+  allocate(dims(1))
+  allocate(length(1))
+  allocate(stride(1))
+  allocate(int_array(1))
+
+  dataset_rank = 1
+  dims(1) = ONE_INTEGER
+  start(1) = 0
+  length(1) = ONE_INTEGER
+  stride(1) = ONE_INTEGER
+
+  dataset_name = "NDOF" // CHAR(0)
+  int_array(1) = option%ntrandof
+  call CheckPointReadIntDatasetHDF5(pm_grp_id, dataset_name, dataset_rank, &
+                                    dims, start, length, stride, &
+                                    int_array, option)
+  option%ntrandof = int_array(1)
+
+  if (option%ntrandof > 0) then
+    call DiscretizationCreateVector(discretization, NTRANDOF, &
+                                    natural_vec, NATURAL, option)
+    dataset_name = "Primary_Variable" // CHAR(0)
+    call HDF5ReadDataSetInVec(dataset_name, option, natural_vec, &
+                              pm_grp_id, H5T_NATIVE_DOUBLE)
+    call DiscretizationNaturalToGlobal(discretization, &
+                                       natural_vec, &
+                                       field%tran_xx,NTRANDOF)
+    call DiscretizationGlobalToNatural(discretization, &
+                                       field%tran_xx, &
+                                       field%tran_xx_loc, NTRANDOF)
+    call VecCopy(field%tran_xx,field%tran_yy,ierr);CHKERRQ(ierr)
+    call VecDestroy(natural_vec,ierr);CHKERRQ(ierr)
+
+    call DiscretizationCreateVector(discretization, ONEDOF, &
+                                    global_vec, GLOBAL, option)
+    call DiscretizationCreateVector(discretization, ONEDOF, &
+                                    natural_vec, NATURAL, option)
+    call DiscretizationCreateVector(discretization, ONEDOF, &
+                                    local_vec, LOCAL, option)
+    ! auxiliary data for reactions (e.g. cumulative mass)
+    if (realization%reaction_nw%params%nauxiliary> 0) then
+       do i = 1, realization%reaction_nw%params%nauxiliary
+         write(dataset_name,*) i
+         dataset_name = 'NWT_auxiliary_' // trim(adjustl(dataset_name))
+         call HDF5ReadDataSetInVec(dataset_name,option,natural_vec, &
+                                   pm_grp_id,H5T_NATIVE_DOUBLE)
+         call DiscretizationNaturaltoGlobal(discretization,natural_vec, &
+                                            global_vec,ONEDOF)
+         call DiscretizationGlobaltoLocal(discretization,global_vec, &
+                                          local_vec, ONEDOF)
+         call RealizationSetVariable(realization,local_vec, &
+                                     LOCAL,NWT_AUXILIARY,i)
+      enddo
+    endif
+  endif
+
+  call NWTUpdateAuxVars(realization,PETSC_FALSE,PETSC_TRUE)
+  call PMNWTUpdateSolution(this)
+
+  deallocate(start)
+  deallocate(dims)
+  deallocate(length)
+  deallocate(stride)
+  deallocate(int_array)
 
 end subroutine PMNWTRestartHDF5
 
 ! ************************************************************************** !
 
 subroutine PMNWTInputRecord(this)
-  ! 
+  !
   ! Writes ingested information to the input record file.
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 05/27/2019
-  ! 
-  
+  !
+
   implicit none
-  
+
   class(pm_nwt_type) :: this
 
-  character(len=MAXWORDLENGTH) :: word
   PetscInt :: id
 
   id = INPUT_RECORD_UNIT
@@ -1820,25 +2234,23 @@ subroutine PMNWTInputRecord(this)
   write(id,'(a)') this%name
 
 end subroutine PMNWTInputRecord
-  
+
 ! ************************************************************************** !
 
 subroutine PMNWTDestroy(this)
-  ! 
+  !
   ! Destroys objects in the NW Transport process model.
-  ! 
+  !
   ! Author: Jenn Frederick
   ! Date: 05/27/2019
-  ! 
+  !
 
   use Utility_module, only : DeallocateArray
 
   implicit none
-  
+
   class(pm_nwt_type) :: this
 
-  call DeallocateArray(this%controls%max_concentration_change)
-  call DeallocateArray(this%controls%max_volfrac_change)
   call DeallocateArray(this%controls%itol_rel_update)
   call DeallocateArray(this%controls%itol_scaled_res)
   call DeallocateArray(this%controls%itol_abs_res)
@@ -1856,10 +2268,10 @@ subroutine PMNWTDestroy(this)
     call DeallocateArray(this%params%dirichlet_material_ids)
     call DeallocateArray(this%params%dirichlet_material_names)
   endif
-  
+
   call PMBaseDestroy(this)
   call NWTDestroy(this%realization)
- 
+
   nullify(this%comm1) ! already destroyed in realization
 
 end subroutine PMNWTDestroy

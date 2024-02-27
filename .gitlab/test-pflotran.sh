@@ -6,21 +6,51 @@ export ARTIFACT_DIR=/tmp/test-pflotran
 
 cd $SRC_DIR
 
-# Run unit tests
-make codecov=1 utest
+# initialize to an unitialized value, not 0
+UNIT_EXIT_CODE=-999
+REGRESSION_EXIT_CODE=-999
 
-UNIT_EXIT_CODE=$?
-if [ $UNIT_EXIT_CODE -ne 0 ]; then
-  echo "Unit tests failed" >&2
+# Check to ensure that the pflotran executable exists as we do not want to
+# rebuild it inadvertently below as error checking flags will be missing
+if [ ! -f pflotran ]; then
+  echo 'The PFLOTRAN executable does not exist for testing.'
+  rm -Rf $ARTIFACT_DIR
+  mkdir -p $ARTIFACT_DIR
+  echo 'failed' > $ARTIFACT_DIR/status
+  exit 1
+fi
+
+# Run unit tests
+UTEST_LOG='utest.log'
+make gnu_code_coverage=1 gnu_runtime_checks=1 catch_warnings_as_errors=1 \
+  utest 2>&1 | tee $UTEST_LOG
+# catch failed tests
+if [ $(grep -c " FAILURES!!!\|failed" "$UTEST_LOG") -ne 0 ]; then
+  echo "\n----- Unit tests failed -----\n" >&2
+  UNIT_EXIT_CODE=1
+elif [ $(grep -c " Error 1\|Error: \|undefined reference" "$UTEST_LOG") -ne 0 ]; then
+  echo "\n----- Unit test code failed to compile -----\n" >&2
+  UNIT_EXIT_CODE=1
+elif [ $(grep -c " OK" "$UTEST_LOG") -ne 0 ]; then
+  echo "\n----- Unit tests succeeded -----\n" >&2
+  UNIT_EXIT_CODE=0
+else
+  echo "\n----- Unit tests produced unrecognized result -----\n" >&2
 fi
 
 # Run regression tests
-cd $PFLOTRAN_DIR/regression_tests
-
-make test
-REGRESSION_EXIT_CODE=$?
-if [ $REGRESSION_EXIT_CODE -ne 0 ]; then
-  echo "Regression tests failed" >&2
+RTEST_LOG='rtest.log'
+# RUNTIME_ERROR_CHECKING toggles on tests for planned errors to ensure that 
+# runtime error checking is enabled.
+make RUNTIME_ERROR_CHECKING=1 rtest 2>&1 | tee $RTEST_LOG
+if [ $(grep -c "Failed : \|Errors : " "$RTEST_LOG") -ne 0 ]; then
+  echo "\n----- Regression tests failed -----\n" >&2
+  REGRESSION_EXIT_CODE=1
+elif [ $(grep -c " All tests passed." "$RTEST_LOG") -ne 0 ]; then
+  echo "\n----- Regression tests succeeded -----\n" >&2
+  REGRESSION_EXIT_CODE=0
+else
+  echo "\n----- Regression tests produced unrecognized result -----\n" >&2
 fi
 
 cd $SRC_DIR

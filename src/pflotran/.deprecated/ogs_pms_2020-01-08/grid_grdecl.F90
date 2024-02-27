@@ -4325,7 +4325,6 @@ subroutine PermPoroExchangeAndSet(poro_p, permx_p, permy_p, permz_p, &
           permy_p(ilt) = wperm(ibp+2)
           permz_p(ilt) = wperm(ibp+3)
           if (option%flow%full_perm_tensor) then
-            ! sjb todo - handle perm_xy,xz,yz here
             permxy_p(ilt) = 0.d0
             permxz_p(ilt) = 0.d0
             permyz_p(ilt) = 0.d0

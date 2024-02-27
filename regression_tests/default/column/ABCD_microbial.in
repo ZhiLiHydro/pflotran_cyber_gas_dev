@@ -63,7 +63,7 @@ CHEMISTRY
   MICROBIAL_REACTION
     CONCENTRATION_UNITS ACTIVITY
     REACTION A(aq) + 2 B(aq) <-> 1.5 C(aq)
-    RATE_CONSTANT 1.d-6
+    RATE_CONSTANT 1.d-6 1/s
     MONOD 
       SPECIES_NAME A(aq) 
       HALF_SATURATION_CONSTANT 1.d-5        ! A is the donor
@@ -76,8 +76,9 @@ CHEMISTRY
     /
     INHIBITION
       SPECIES_NAME C(aq)
-      TYPE INVERSE_MONOD
-      INHIBITION_CONSTANT 6.d-4   ! C is the product and inhibits when too high
+      TYPE MONOD
+      INHIBIT_BELOW_THRESHOLD
+      THRESHOLD_CONCENTRATION 6.d-4
     /
     BIOMASS
       SPECIES_NAME D(im)
@@ -88,7 +89,6 @@ CHEMISTRY
     SPECIES_NAME D(im)
     RATE_CONSTANT 1.d-9
   /
-  DATABASE ../../../database/hanford.dat
   LOG_FORMULATION
   ACTIVITY_COEFFICIENTS OFF
   OUTPUT

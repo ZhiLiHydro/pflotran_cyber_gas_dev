@@ -1,0 +1,652 @@
+module Inversion_Measurement_Aux_module
+
+#include "petsc/finclude/petscsys.h"
+  use petscsys
+  use PFLOTRAN_Constants_module
+  use Geometry_module
+  use Option_Inversion_module
+
+  implicit none
+
+  private
+
+  PetscInt, public :: inv_meas_reporting_verbosity
+
+  character(len=MAXWORDLENGTH), parameter :: OBS_LIQUID_PRESSURE_STRING = &
+                                               'LIQUID_PRESSURE'
+  character(len=MAXWORDLENGTH), parameter :: OBS_LIQUID_SATURATION_STRING = &
+                                               'LIQUID_SATURATION'
+  character(len=MAXWORDLENGTH), parameter :: OBS_SOLUTE_CONCENTRATION_STRING = &
+                                               'SOLUTE_CONCENTRATION'
+  character(len=MAXWORDLENGTH), parameter :: OBS_ERT_MEASUREMENT_STRING = &
+                                               'ERT_MEASUREMENT'
+
+  PetscInt, parameter, public :: OBS_LIQUID_PRESSURE = 1
+  PetscInt, parameter, public :: OBS_LIQUID_SATURATION = 2
+  PetscInt, parameter, public :: OBS_SOLUTE_CONCENTRATION = 3
+  PetscInt, parameter, public :: OBS_ERT_MEASUREMENT = 4
+
+  type, public :: inversion_measurement_aux_type
+    PetscInt :: id
+    PetscReal :: time
+    character(len=4) :: time_units
+    PetscInt :: cell_id
+    PetscInt :: local_id
+    PetscInt :: iobs_var
+    PetscReal :: value
+    PetscReal :: weight
+    PetscReal :: dobs_dunknown
+    PetscReal :: dobs_dparam
+    PetscReal :: simulated_value
+    PetscBool :: first_lambda
+    PetscBool :: measured
+    type(point3d_type) :: coordinate
+    type(inversion_measurement_aux_type), pointer :: next
+  end type inversion_measurement_aux_type
+
+  public :: InversionMeasurementAuxCreate, &
+            InversionMeasurementAuxInit, &
+            InversionMeasurementAuxReset, &
+            InversionMeasurementAuxCopy, &
+            InversionMeasurementPrint, &
+            InversionMeasurementPrintConcise, &
+            InvMeasurePrintComparison, &
+            InvMeasAnnounceToString, &
+            InvMeasAuxObsVarIDToString, &
+            InversionMeasurementMeasure, &
+            InversionMeasurementAuxRead, &
+            InvMeasAuxReadObservedVariable, &
+            InversionMeasureAuxListDestroy, &
+            InversionMeasurementAuxStrip, &
+            InversionMeasurementAuxDestroy
+
+contains
+
+! ************************************************************************** !
+
+function InversionMeasurementAuxCreate()
+  !
+  ! Allocate and initialize auxiliary inversion measurement object
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/07/22
+  !
+
+  type(inversion_measurement_aux_type), pointer :: &
+    InversionMeasurementAuxCreate
+
+  type(inversion_measurement_aux_type), pointer :: aux
+
+  allocate(aux)
+  call InversionMeasurementAuxInit(aux)
+
+  InversionMeasurementAuxCreate => aux
+
+end function InversionMeasurementAuxCreate
+
+! ************************************************************************** !
+
+subroutine InversionMeasurementAuxInit(measurement)
+  !
+  ! Initializes auxiliary inversion measurement object
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/07/22
+  !
+
+  type(inversion_measurement_aux_type) :: measurement
+
+  measurement%id = UNINITIALIZED_INTEGER
+  measurement%time = UNINITIALIZED_DOUBLE
+  measurement%time_units = ''
+  measurement%cell_id = UNINITIALIZED_INTEGER
+  measurement%local_id = UNINITIALIZED_INTEGER
+  measurement%iobs_var = UNINITIALIZED_INTEGER
+  measurement%value = UNINITIALIZED_DOUBLE
+  measurement%weight = UNINITIALIZED_DOUBLE
+  measurement%dobs_dunknown = UNINITIALIZED_DOUBLE
+  measurement%dobs_dparam = UNINITIALIZED_DOUBLE
+  measurement%simulated_value = UNINITIALIZED_DOUBLE
+  measurement%first_lambda = PETSC_FALSE
+  measurement%measured = PETSC_FALSE
+
+  call GeometryInitCoordinate(measurement%coordinate)
+
+  nullify(measurement%next)
+
+end subroutine InversionMeasurementAuxInit
+
+! ************************************************************************** !
+
+subroutine InversionMeasurementAuxReset(measurement)
+  !
+  ! Resets measurement data at beginning of inversion iteration
+  !
+  ! Author: Glenn Hammond
+  ! Date: 06/10/22
+  !
+  type(inversion_measurement_aux_type) :: measurement
+
+  measurement%simulated_value = UNINITIALIZED_DOUBLE
+  measurement%first_lambda = PETSC_FALSE
+  measurement%measured = PETSC_FALSE
+
+end subroutine InversionMeasurementAuxReset
+
+! ************************************************************************** !
+
+subroutine InversionMeasurementAuxCopy(measurement,measurement2)
+  !
+  ! Copies auxiliary inversion measurement object
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/07/22
+  !
+
+  type(inversion_measurement_aux_type) :: measurement
+  type(inversion_measurement_aux_type) :: measurement2
+
+  measurement2%id = measurement%id
+  measurement2%time = measurement%time
+  measurement2%time_units = measurement%time_units
+  measurement2%cell_id = measurement%cell_id
+  measurement2%local_id = measurement%local_id
+  measurement2%iobs_var = measurement%iobs_var
+  measurement2%value = measurement%value
+  measurement2%weight = measurement%weight
+  measurement2%dobs_dunknown = measurement%dobs_dunknown
+  measurement2%dobs_dparam = measurement%dobs_dparam
+  measurement2%simulated_value = measurement%simulated_value
+  call GeometryCopyCoordinate(measurement%coordinate,measurement2%coordinate)
+
+end subroutine InversionMeasurementAuxCopy
+
+! ************************************************************************** !
+
+function InversionMeasurementAuxRead(input,error_string,option)
+  !
+  ! Reads measurements and appends to the list
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/07/22
+  !
+  use Input_Aux_module
+  use Option_module
+  use String_module
+  use Units_module
+
+  type(input_type), pointer :: input
+  character(len=MAXSTRINGLENGTH) :: error_string
+  type(option_type) :: option
+
+  type(inversion_measurement_aux_type), pointer :: InversionMeasurementAuxRead
+
+  character(len=MAXWORDLENGTH) :: keyword
+  type(inversion_measurement_aux_type), pointer :: new_measurement
+  PetscReal :: units_conversion
+  PetscReal :: sd
+  character(len=MAXWORDLENGTH) :: internal_units, word
+  character(len=MAXSTRINGLENGTH) :: string
+
+  new_measurement => InversionMeasurementAuxCreate()
+
+  input%ierr = 0
+  call InputPushBlock(input,option)
+  do
+
+    call InputReadPflotranString(input,option)
+    if (InputError(input)) exit
+    if (InputCheckExit(input,option)) exit
+
+    call InputReadCard(input,option,keyword)
+    call InputErrorMsg(input,option,'keyword',error_string)
+    call StringToUpper(keyword)
+
+    select case(trim(keyword))
+      case('TIME')
+        call InputReadDouble(input,option,new_measurement%time)
+        call InputErrorMsg(input,option,keyword,error_string)
+        call InputReadWord(input,option,word,PETSC_TRUE)
+        if (input%ierr /= 0) word = 'sec'
+        new_measurement%time_units = trim(word)
+        internal_units = 'sec'
+        units_conversion = UnitsConvertToInternal(word,internal_units, &
+                                                  'MEASUREMENT TIME',option)
+        new_measurement%time = new_measurement%time*units_conversion
+      case('CELL_ID','ERT_MEASUREMENT_ID')
+        call InputReadInt(input,option,new_measurement%cell_id)
+        call InputErrorMsg(input,option,keyword,error_string)
+      case('COORDINATE')
+        string = trim(error_string) // ',' // keyword
+        call GeometryReadCoordinate(input,option,new_measurement%coordinate, &
+                                    string)
+      case('VALUE')
+        call InputReadDouble(input,option,new_measurement%value)
+        call InputErrorMsg(input,option,keyword,error_string)
+      case('STANDARD_DEVIATION')
+        call InputReadDouble(input,option,sd)
+        call InputErrorMsg(input,option,keyword,error_string)
+        if (sd <= 0) sd = 1.d16
+        new_measurement%weight = 1 / sd
+      case('OBSERVED_VARIABLE')
+        new_measurement%iobs_var = &
+          InvMeasAuxReadObservedVariable(input,keyword,error_string,option)
+      case default
+        call InputKeywordUnrecognized(input,keyword,error_string,option)
+    end select
+
+  enddo
+  call InputPopBlock(input,option)
+
+  if (UnInitialized(new_measurement%cell_id) .and. &
+      UnInitialized(new_measurement%coordinate%x)) then
+    option%io_buffer = 'CELL_ID or COORDINATE not specified for measurement.'
+    call PrintErrMsg(option)
+  endif
+  if (UnInitialized(new_measurement%value)) then
+    option%io_buffer = 'VALUE not specified for measurement.'
+    call PrintErrMsg(option)
+  endif
+  if (UnInitialized(new_measurement%weight)) then
+    if (new_measurement%value /= 0.d0) then
+      sd = 0.05 * new_measurement%value
+      new_measurement%weight = 1 / sd
+    else
+      new_measurement%weight = 1.d-16
+    endif
+  endif
+
+  InversionMeasurementAuxRead => new_measurement
+
+end function InversionMeasurementAuxRead
+
+! ************************************************************************** !
+
+function InvMeasAuxReadObservedVariable(input,keyword,error_string,option)
+  !
+  ! Reads the observed variable and returns a corresponding integer ID
+  !
+  ! Author: Glenn Hammond
+  ! Date: 06/20/22
+  !
+  use Input_Aux_module
+  use Option_module
+  use String_module
+
+  type(input_type), pointer :: input
+  character(len=MAXWORDLENGTH) :: keyword
+  character(len=MAXSTRINGLENGTH) :: error_string
+  type(option_type) :: option
+
+  PetscInt :: InvMeasAuxReadObservedVariable
+
+  character(len=MAXWORDLENGTH) :: word
+
+  call InputReadWord(input,option,word,PETSC_TRUE)
+  call InputErrorMsg(input,option,keyword,error_string)
+  call StringToUpper(word)
+  InvMeasAuxReadObservedVariable = InvMeasAuxObsVarStringToInt(word)
+  if (Uninitialized(InvMeasAuxReadObservedVariable)) then
+    call InputKeywordUnrecognized(input,word,trim(error_string)// &
+                                  & ','//trim(word),option)
+  endif
+
+end function InvMeasAuxReadObservedVariable
+
+! ************************************************************************** !
+
+function InvMeasAuxObsVarStringToInt(string)
+  !
+  ! Maps an observation variable string to its integer ID
+  !
+  ! Author: Glenn Hammond
+  ! Date: 07/15/22
+  !
+  character(len=*) :: string
+
+  PetscInt :: InvMeasAuxObsVarStringToInt
+
+  InvMeasAuxObsVarStringToInt = UNINITIALIZED_INTEGER
+  select case(string)
+    case(OBS_LIQUID_PRESSURE_STRING)
+      InvMeasAuxObsVarStringToInt = OBS_LIQUID_PRESSURE
+    case(OBS_LIQUID_SATURATION_STRING)
+      InvMeasAuxObsVarStringToInt = OBS_LIQUID_SATURATION
+    case(OBS_SOLUTE_CONCENTRATION_STRING)
+      InvMeasAuxObsVarStringToInt = OBS_SOLUTE_CONCENTRATION
+    case(OBS_ERT_MEASUREMENT_STRING)
+      InvMeasAuxObsVarStringToInt = OBS_ERT_MEASUREMENT
+  end select
+
+end function InvMeasAuxObsVarStringToInt
+
+! ************************************************************************** !
+
+function InvMeasAuxObsVarIDToString(id,option)
+  !
+  ! Maps an observation variable integer ID to string
+  !
+  ! Author: Glenn Hammond
+  ! Date: 07/15/22
+  !
+  use Option_module
+  use String_module
+
+  PetscInt :: id
+  type(option_type) :: option
+
+  character(len=MAXWORDLENGTH) :: InvMeasAuxObsVarIDToString
+
+  InvMeasAuxObsVarIDToString = ''
+  select case(id)
+    case(OBS_LIQUID_PRESSURE)
+      InvMeasAuxObsVarIDToString = OBS_LIQUID_PRESSURE_STRING
+    case(OBS_LIQUID_SATURATION)
+      InvMeasAuxObsVarIDToString = OBS_LIQUID_SATURATION_STRING
+    case(OBS_SOLUTE_CONCENTRATION)
+      InvMeasAuxObsVarIDToString = OBS_SOLUTE_CONCENTRATION_STRING
+    case(OBS_ERT_MEASUREMENT)
+      InvMeasAuxObsVarIDToString = OBS_ERT_MEASUREMENT_STRING
+    case default
+      option%io_buffer = 'Unknown measurement variable integer ID in &
+        &InvMeasAuxObsVarIDToString: ' // trim(StringWrite(id))
+      call PrintErrMsg(option)
+  end select
+
+end function InvMeasAuxObsVarIDToString
+
+! ************************************************************************** !
+
+subroutine InversionMeasurementMeasure(time,measurement,value_,option)
+  !
+  ! Copies the value into measurement
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/21/22
+
+  use Option_module
+  use String_module
+  use Utility_module
+
+  PetscReal :: time
+  type(inversion_measurement_aux_type) :: measurement
+  PetscReal :: value_
+  type(option_type) :: option
+
+  PetscBool :: measure
+
+  measure = PETSC_FALSE
+!  if (Uninitialized(measurement%time)) then
+!    measure = PETSC_TRUE
+!  else
+    measure = .not.measurement%measured .and. Equal(measurement%time,time)
+!  endif
+
+  if (measure) then
+    measurement%simulated_value = value_
+    measurement%measured = PETSC_TRUE
+    if (inv_meas_reporting_verbosity > 0) then
+      option%io_buffer = '  Recording measurement #' // &
+        trim(StringWrite(measurement%id))
+      if (inv_meas_reporting_verbosity > 1) then
+        option%io_buffer = trim(option%io_buffer) // &
+          ' sim value = ' // &
+          trim(StringWrite('(es13.6)',measurement%simulated_value))
+      endif
+      if (inv_meas_reporting_verbosity > 2) then
+        option%io_buffer = trim(option%io_buffer) // &
+          ', orig value = ' // &
+          trim(StringWrite('(es13.6)',measurement%value))
+      endif
+      call PrintMsg(option)
+    endif
+  endif
+
+end subroutine InversionMeasurementMeasure
+
+! ************************************************************************** !
+
+subroutine InversionMeasurementPrintConcise(measurement,optional_string, &
+                                            option)
+  !
+  ! Print contents of measurement object for debugging
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/14/22
+  !
+  use Option_module
+  use String_module
+  use Units_module
+
+  type(inversion_measurement_aux_type) :: measurement
+  character(len=*) :: optional_string
+  type(option_type) :: option
+
+  character(len=MAXWORDLENGTH) :: word
+
+  if (OptionPrintToScreen(option)) then
+    word = 'sec'
+    option%io_buffer = 'Measurement #' // &
+        trim(StringWrite(measurement%id))
+    if (len_trim(measurement%time_units) > 0) then
+      option%io_buffer = trim(option%io_buffer) // &
+      ', Time: ' // &
+        trim(StringWrite(measurement%time * &
+                         UnitsConvertToExternal(measurement%time_units,word, &
+                                                option))) // ' ' // &
+        trim(measurement%time_units)
+    endif
+    option%io_buffer = trim(option%io_buffer) // &
+      ', Var: ' // &
+        trim(InvMeasAuxObsVarIDToString(measurement%iobs_var,option)) // &
+      ', Cell: ' // trim(StringWrite(measurement%cell_id)) // &
+      ', Value: ' // trim(StringWrite(measurement%simulated_value)) // &
+      ', dobs_dunknown: ' // trim(StringWrite(measurement%dobs_dunknown)) // &
+      ', dobs_dparam: ' // trim(StringWrite(measurement%dobs_dparam))
+    if (len_trim(optional_string) > 0) then
+      option%io_buffer = trim(optional_string) // ' : ' // &
+        trim(option%io_buffer)
+    endif
+    call PrintMsg(option)
+  endif
+
+end subroutine InversionMeasurementPrintConcise
+
+! ************************************************************************** !
+
+subroutine InversionMeasurementPrint(measurement,option)
+  !
+  ! Print contents of measurement object for debugging
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/14/22
+  !
+  use Option_module
+  use String_module
+  use Units_module
+
+  type(inversion_measurement_aux_type) :: measurement
+  type(option_type) :: option
+
+  character(len=MAXWORDLENGTH) :: word
+
+  if (OptionPrintToScreen(option)) then
+    print *, 'Measurement: ' // trim(StringWrite(measurement%id))
+    word = 'sec'
+    if (len_trim(measurement%time_units) > 0) then
+      print *, '                Time: ' // &
+        trim(StringWrite(measurement%time * &
+                        UnitsConvertToExternal(measurement%time_units,word, &
+                                                option))) // ' ' // &
+        measurement%time_units
+    endif
+    print *, '             Cell ID: ' // trim(StringWrite(measurement%cell_id))
+    print *, '            Variable: ' // &
+      trim(InvMeasAuxObsVarIDToString(measurement%iobs_var,option))
+    print *, '               Value: ' // trim(StringWrite(measurement%value))
+    print *, '     Simulated Value: ' // &
+      trim(StringWrite(measurement%simulated_value))
+    print *, 'Simulated Derivative: ' // &
+      trim(StringWrite(measurement%dobs_dunknown))
+  endif
+
+end subroutine InversionMeasurementPrint
+
+! ************************************************************************** !
+
+subroutine InvMeasurePrintComparison(fid,measurement, &
+                                     print_header,print_footer,option)
+  !
+  ! Print contents of measurement object for debugging
+  !
+  ! Author: Glenn Hammond
+  ! Date: 11/18/22
+  !
+  use Option_module
+  use String_module
+  use Units_module
+
+  PetscInt :: fid
+  type(inversion_measurement_aux_type) :: measurement
+  PetscBool :: print_header
+  PetscBool :: print_footer
+  type(option_type) :: option
+
+  character(len=MAXSTRINGLENGTH) :: string
+
+  if (print_header) then
+    write(fid,'(/, &
+              &" Current values of inversion measurements:",//, &
+              &"      # &
+              &Measured Variable           &
+              &Current Value       &
+              &Measured Value",/, &
+              &"      - &
+              &-----------------           &
+              &-------------       &
+              &--------------")')
+  endif
+  write(string,'(i6," ",a28,es13.6,8x,es13.6)') &
+    measurement%id, &
+    InvMeasAuxObsVarIDToString(measurement%iobs_var,option), &
+    measurement%simulated_value, &
+    measurement%value
+  write(fid,*) trim(string)
+  if (print_footer) then
+!    write(fid,'(/,40("=+"))')
+  endif
+
+end subroutine InvMeasurePrintComparison
+
+! ************************************************************************** !
+
+function InvMeasAnnounceToString(measurement,rvalue,option)
+  !
+  ! Announces the recording of a measurement for inversion
+  !
+  ! Author: Glenn Hammond
+  ! Date: 07/15/22
+  !
+  use Option_module
+  use String_module
+  use Units_module
+
+  type(inversion_measurement_aux_type) :: measurement
+  PetscReal :: rvalue
+  type(option_type) :: option
+
+  character(len=MAXSTRINGLENGTH) :: InvMeasAnnounceToString
+
+  character(len=MAXWORDLENGTH), parameter :: word = 'sec'
+  character(len=MAXSTRINGLENGTH) :: string
+
+  string = 'Measurement #' // trim(StringWrite(measurement%id)) // &
+    ' at Cell ID ' // trim(StringWrite(measurement%cell_id))
+  if (Initialized(measurement%coordinate%x)) then
+    string = trim(string) // ' (' // &
+      trim(adjustl(StringWriteF('(f20.2)',measurement%coordinate%x))) // ',' // &
+      trim(adjustl(StringWriteF('(f20.2)',measurement%coordinate%y))) // ',' // &
+      trim(adjustl(StringWriteF('(f20.2)',measurement%coordinate%z))) // ')'
+  endif
+  string = trim(string) // ' for variable "' // &
+           trim(InvMeasAuxObsVarIDToString(measurement%iobs_var,option))
+  if (Initialized(rvalue)) then
+    string = trim(string) // '" recorded as ' // &
+      trim(StringWrite('(es22.14)',rvalue))
+  endif
+  if (len_trim(measurement%time_units) > 0) then
+    string = trim(string) // ' at ' // &
+             trim(StringWrite(measurement%time * &
+                        UnitsConvertToExternal(measurement%time_units,word, &
+                                               option))) // ' ' // &
+             measurement%time_units
+  endif
+  InvMeasAnnounceToString = string
+
+end function InvMeasAnnounceToString
+
+! ************************************************************************** !
+
+subroutine InversionMeasureAuxListDestroy(inv_measure_aux_list)
+  !
+  ! Deallocates a inversion auxiliary measurement list object
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/07/22
+  !
+  type(inversion_measurement_aux_type), pointer :: inv_measure_aux_list
+
+  type(inversion_measurement_aux_type), pointer :: cur_inv_measure_aux
+  type(inversion_measurement_aux_type), pointer :: next_inv_measure_aux
+
+  cur_inv_measure_aux => inv_measure_aux_list
+  do
+    if (.not.associated(cur_inv_measure_aux)) exit
+    next_inv_measure_aux => cur_inv_measure_aux%next
+    call InversionMeasurementAuxDestroy(cur_inv_measure_aux)
+    cur_inv_measure_aux => next_inv_measure_aux
+  enddo
+
+  nullify(inv_measure_aux_list)
+
+end subroutine InversionMeasureAuxListDestroy
+
+! ************************************************************************** !
+
+subroutine InversionMeasurementAuxStrip(aux)
+  !
+  ! Deallocates members of measurement auxiliary object
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/07/22
+  !
+
+  type(inversion_measurement_aux_type) :: aux
+
+  nullify(aux%next)
+
+end subroutine InversionMeasurementAuxStrip
+
+! ************************************************************************** !
+
+subroutine InversionMeasurementAuxDestroy(aux)
+  !
+  ! Deallocates a inversion measurement auxiliary object
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/07/22
+  !
+  use Utility_module, only : DeallocateArray
+
+  type(inversion_measurement_aux_type), pointer :: aux
+
+  if (.not.associated(aux)) return
+
+  call InversionMeasurementAuxStrip(aux)
+
+  deallocate(aux)
+  nullify(aux)
+
+end subroutine InversionMeasurementAuxDestroy
+
+end module Inversion_Measurement_Aux_module

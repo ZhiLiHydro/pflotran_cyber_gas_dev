@@ -1,7 +1,7 @@
 module Fluid_module
- 
+
 #include "petsc/finclude/petscsys.h"
-  use petscsys 
+  use petscsys
   use PFLOTRAN_Constants_module
 
   implicit none
@@ -18,12 +18,13 @@ module Fluid_module
     character(len=MAXWORDLENGTH) :: phase_name
     PetscInt :: phase_id
     PetscReal :: diffusion_coefficient
+    PetscReal :: salt_diffusion_coefficient
     PetscReal :: gas_diffusion_coefficient
     PetscReal :: diffusion_activation_energy
     PetscReal :: nacl_concentration
     type(fluid_property_type), pointer :: next
   end type fluid_property_type
-  
+
   public :: FluidPropertyCreate, FluidPropertyDestroy, &
             FluidPropertyRead, FluidPropertyAddToList
 
@@ -32,19 +33,19 @@ contains
 ! ************************************************************************** !
 
 function FluidPropertyCreate()
-  ! 
+  !
   ! Creates a fluid property object
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 01/21/09
-  ! 
-  
+  !
+
   implicit none
 
   type(fluid_property_type), pointer :: FluidPropertyCreate
-  
+
   type(fluid_property_type), pointer :: fluid_property
-  
+
   allocate(fluid_property)
   fluid_property%tort_bin_diff = 0.d0
   fluid_property%vap_air_diff_coef = 2.13d-5
@@ -56,6 +57,7 @@ function FluidPropertyCreate()
   fluid_property%phase_id = 0
   fluid_property%diffusion_coefficient = 1.d-9
   fluid_property%gas_diffusion_coefficient = 2.13D-5
+  fluid_property%salt_diffusion_coefficient = 1.d-9
   ! for liquid, one can use 12.6 kJ/mol as an activation energy
   fluid_property%diffusion_activation_energy = 0.d0
   fluid_property%nacl_concentration = 0.d0
@@ -67,12 +69,12 @@ end function FluidPropertyCreate
 ! ************************************************************************** !
 
 subroutine FluidPropertyRead(fluid_property,input,option)
-  ! 
+  !
   ! Reads in contents of a fluid property card
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 01/21/09
-  ! 
+  !
 
   use Option_module
   use Input_Aux_module
@@ -80,39 +82,45 @@ subroutine FluidPropertyRead(fluid_property,input,option)
   use Units_module
 
   implicit none
-  
+
   type(fluid_property_type) :: fluid_property
   type(input_type), pointer :: input
   type(option_type) :: option
-  
-  character(len=MAXWORDLENGTH) :: keyword, word
-  character(len=MAXWORDLENGTH) :: internal_units
+
+  character(len=MAXWORDLENGTH) :: keyword
 
   input%ierr = 0
   call InputPushBlock(input,option)
   do
-  
+
     call InputReadPflotranString(input,option)
 
-    if (InputCheckExit(input,option)) exit  
+    if (InputCheckExit(input,option)) exit
 
     call InputReadCard(input,option,keyword)
     call InputErrorMsg(input,option,'keyword','FLUID_PROPERTY')
-    call StringToUpper(keyword)   
-      
+    call StringToUpper(keyword)
+
     select case(trim(keyword))
-    
-      case('PHASE') 
+
+      case('PHASE')
         call InputReadWord(input,option,fluid_property%phase_name,PETSC_TRUE)
         call InputErrorMsg(input,option,'phase','FLUID_PROPERTY')
-      case('DIFFUSION_COEFFICIENT','LIQUID_DIFFUSION_COEFFICIENT') 
+      case('DIFFUSION_COEFFICIENT','LIQUID_DIFFUSION_COEFFICIENT')
         call InputReadDouble(input,option,fluid_property%diffusion_coefficient)
         call InputErrorMsg(input,option,'diffusion coefficient', &
                            'FLUID_PROPERTY')
         call InputReadAndConvertUnits(input, &
                                       fluid_property%diffusion_coefficient, &
                        'm^2/sec','FLUID_PROPERTY,diffusion_coefficient',option)
-      case('DIFFUSION_ACTIVATION_ENERGY') 
+      case('SALT_DIFFUSION_COEFFICIENT')
+         call InputReadDouble(input,option,fluid_property%salt_diffusion_coefficient)
+         call InputErrorMsg(input,option,'salt diffusion coefficient', &
+                            'FLUID_PROPERTY')
+         call InputReadAndConvertUnits(input, &
+                fluid_property%salt_diffusion_coefficient, &
+                'm^2/sec','FLUID_PROPERTY,salt_diffusion_coefficient',option)
+      case('DIFFUSION_ACTIVATION_ENERGY')
         call InputReadDouble(input,option, &
                              fluid_property%diffusion_activation_energy)
         call InputErrorMsg(input,option,'diffusion activation energy', &
@@ -120,7 +128,7 @@ subroutine FluidPropertyRead(fluid_property,input,option)
         call InputReadAndConvertUnits(input, &
                 fluid_property%diffusion_activation_energy, &
                 'J/mol','FLUID_PROPERTY,diffusion activation energy',option)
-      case('GAS_DIFFUSION_COEFFICIENT') 
+      case('GAS_DIFFUSION_COEFFICIENT')
         call InputReadDouble(input,option, &
                              fluid_property%gas_diffusion_coefficient)
         call InputErrorMsg(input,option,'gas diffusion coefficient', &
@@ -128,8 +136,8 @@ subroutine FluidPropertyRead(fluid_property,input,option)
       case default
         call InputKeywordUnrecognized(input,keyword,'FLUID_PROPERTY',option)
     end select
-    
-  enddo  
+
+  enddo
   call InputPopBlock(input,option)
 
   if (.not.(StringCompareIgnoreCase(fluid_property%phase_name,'LIQUID') .or. &
@@ -144,20 +152,20 @@ end subroutine FluidPropertyRead
 ! ************************************************************************** !
 
 subroutine FluidPropertyAddToList(fluid_property,list)
-  ! 
+  !
   ! Adds a thermal property to linked list
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 01/21/09
-  ! 
+  !
 
   implicit none
-  
+
   type(fluid_property_type), pointer :: fluid_property
   type(fluid_property_type), pointer :: list
 
   type(fluid_property_type), pointer :: cur_fluid_property
-  
+
   if (associated(list)) then
     cur_fluid_property => list
     ! loop to end of list
@@ -169,30 +177,30 @@ subroutine FluidPropertyAddToList(fluid_property,list)
   else
     list => fluid_property
   endif
-  
+
 end subroutine FluidPropertyAddToList
 
 ! ************************************************************************** !
 
 recursive subroutine FluidPropertyDestroy(fluid_property)
-  ! 
+  !
   ! Destroys a fluid property
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 01/21/09
-  ! 
+  !
 
   implicit none
-  
+
   type(fluid_property_type), pointer :: fluid_property
-  
+
   if (.not.associated(fluid_property)) return
-  
+
   call FluidPropertyDestroy(fluid_property%next)
 
   deallocate(fluid_property)
   nullify(fluid_property)
-  
+
 end subroutine FluidPropertyDestroy
 
 end module Fluid_module

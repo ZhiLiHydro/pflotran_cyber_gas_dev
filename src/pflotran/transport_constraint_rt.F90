@@ -1,5 +1,5 @@
 module Transport_Constraint_RT_module
- 
+
 #include "petsc/finclude/petscsys.h"
   use petscsys
 
@@ -8,16 +8,16 @@ module Transport_Constraint_RT_module
   use Reaction_Aux_module
   use Reactive_Transport_Aux_module
   use Global_Aux_module
-  
-  use Reaction_Surface_Complexation_Aux_module  
+
+  use Reaction_Surface_Complexation_Aux_module
   use Reaction_Mineral_Aux_module
   use Reaction_Immobile_Aux_module
-  
+
 
   implicit none
 
   private
-  
+
   ! concentration subcondition types
   PetscInt, parameter, public :: CONSTRAINT_NULL = 0
   PetscInt, parameter, public :: CONSTRAINT_FREE = 1
@@ -38,55 +38,55 @@ module Transport_Constraint_RT_module
     type(guess_constraint_type), pointer :: free_ion_guess
     type(mineral_constraint_type), pointer :: minerals
     type(srfcplx_constraint_type), pointer :: surface_complexes
-    type(colloid_constraint_type), pointer :: colloids
     type(immobile_constraint_type), pointer :: immobile_species
   contains
     procedure, public :: Strip => TranConstraintRTStrip
   end type tran_constraint_rt_type
-  
+
   type, public, extends(tran_constraint_coupler_base_type) :: &
                                            tran_constraint_coupler_rt_type
     type(reactive_transport_auxvar_type), pointer :: rt_auxvar
+  contains
+    procedure, public :: Strip => TranConstraintCouplerRTStrip
   end type tran_constraint_coupler_rt_type
-      
+
   public :: TranConstraintRTCreate, &
             TranConstraintRTCast, &
             TranConstraintCouplerRTCast, &
             TranConstraintCouplerRTCreate, &
             TranConstraintRTGetAuxVar, &
             TranConstraintRTRead
-    
+
 contains
 
 ! ************************************************************************** !
 
 function TranConstraintRTCreate(option)
-  ! 
+  !
   ! Creates a transport constraint (set of concentrations
   ! and constraints for setting boundary or initial
   ! condition).
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 10/04/19
-  ! 
+  !
   use Option_module
-  
+
   implicit none
-  
+
   type(option_type) :: option
   class(tran_constraint_rt_type), pointer :: TranConstraintRTCreate
-  
+
   class(tran_constraint_rt_type), pointer :: constraint
-  
+
   allocate(constraint)
   call TranConstraintBaseInit(constraint,option)
   nullify(constraint%aqueous_species)
   nullify(constraint%free_ion_guess)
   nullify(constraint%minerals)
   nullify(constraint%surface_complexes)
-  nullify(constraint%colloids)
   nullify(constraint%immobile_species)
-  
+
   TranConstraintRTCreate => constraint
 
 end function TranConstraintRTCreate
@@ -94,28 +94,28 @@ end function TranConstraintRTCreate
 ! ************************************************************************** !
 
 function TranConstraintCouplerRTCreate(option)
-  ! 
+  !
   ! Creates a coupler that ties a constraint to a
   ! transport condition
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 10/04/19
-  ! 
+  !
 
   use Option_module
-  
+
   implicit none
-  
+
   type(option_type) :: option
   class(tran_constraint_coupler_rt_type), pointer :: &
                                                 TranConstraintCouplerRTCreate
-  
+
   class(tran_constraint_coupler_rt_type), pointer :: coupler
-  
+
   allocate(coupler)
   call TranConstraintCouplerBaseInit(coupler,option)
   nullify(coupler%rt_auxvar)
-  
+
   TranConstraintCouplerRTCreate => coupler
 
 end function TranConstraintCouplerRTCreate
@@ -123,12 +123,12 @@ end function TranConstraintCouplerRTCreate
 ! ************************************************************************** !
 
 function TranConstraintRTCast(this)
-  ! 
+  !
   ! Casts a tran_constraint_base_type to tran_constraint_rt_type
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 10/07/19
-  ! 
+  !
 
   implicit none
 
@@ -148,13 +148,13 @@ end function TranConstraintRTCast
 ! ************************************************************************** !
 
 function TranConstraintCouplerRTCast(this)
-  ! 
-  ! Casts a tran_constraint_coupler_base_type to 
+  !
+  ! Casts a tran_constraint_coupler_base_type to
   ! tran_constraint_coupler_rt_type
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 10/07/19
-  ! 
+  !
 
   implicit none
 
@@ -175,12 +175,12 @@ end function TranConstraintCouplerRTCast
 ! ************************************************************************** !
 
 function TranConstraintRTGetAuxVar(this)
-  ! 
+  !
   ! Returns the auxvar associated with tran_constraint_coupler_rt_type
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 10/07/19
-  ! 
+  !
 
   implicit none
 
@@ -200,12 +200,12 @@ end function TranConstraintRTGetAuxVar
 ! ************************************************************************** !
 
 subroutine TranConstraintRTRead(constraint,reaction,input,option)
-  ! 
+  !
   ! Reads a transport constraint from the input file
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 10/14/08
-  ! 
+  !
   use Option_module
   use Input_Aux_module
   use Units_module
@@ -213,12 +213,12 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
   use Logging_module
 
   implicit none
-  
+
   class(tran_constraint_rt_type) :: constraint
   class(reaction_rt_type) :: reaction
   type(input_type), pointer :: input
   type(option_type) :: option
-  
+
   character(len=MAXSTRINGLENGTH) :: string
   character(len=MAXWORDLENGTH) :: word
   character(len=MAXWORDLENGTH) :: internal_units
@@ -232,7 +232,6 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
   type(guess_constraint_type), pointer :: free_ion_guess_constraint
   type(mineral_constraint_type), pointer :: mineral_constraint
   type(srfcplx_constraint_type), pointer :: srfcplx_constraint
-  type(colloid_constraint_type), pointer :: colloid_constraint
   type(immobile_constraint_type), pointer :: immobile_constraint
   PetscErrorCode :: ierr
   PetscReal :: tempreal
@@ -245,24 +244,24 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
   input%ierr = 0
   call InputPushBlock(input,option)
   do
-  
+
     call InputReadPflotranString(input,option)
     call InputReadStringErrorMsg(input,option,'CONSTRAINT')
-        
-    if (InputCheckExit(input,option)) exit  
+
+    if (InputCheckExit(input,option)) exit
 
     call InputReadCard(input,option,word)
-    call InputErrorMsg(input,option,'keyword','CONSTRAINT')   
+    call InputErrorMsg(input,option,'keyword','CONSTRAINT')
 
     call TranConstraintBaseRdSelectCase(constraint,input,word,found,option)
     if (found) cycle
-      
+
     select case(trim(word))
 
       case('CONC','CONCENTRATIONS')
 
         aq_species_constraint => &
-          AqueousSpeciesConstraintCreate(reaction,option)
+          ReactionAuxCreateSpecConstraint(reaction,option)
 
         block_string = 'CONSTRAINT, CONCENTRATIONS'
         icomp = 0
@@ -270,28 +269,28 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
         do
           call InputReadPflotranString(input,option)
           call InputReadStringErrorMsg(input,option,block_string)
-          
-          if (InputCheckExit(input,option)) exit  
-          
-          icomp = icomp + 1        
-          
+
+          if (InputCheckExit(input,option)) exit
+
+          icomp = icomp + 1
+
           if (icomp > reaction%naqcomp) then
             option%io_buffer = 'Number of concentration constraints exceeds &
               &number of primary chemical components in constraint: ' // &
               trim(constraint%name)
             call PrintErrMsg(option)
           endif
-          
+
           call InputReadCard(input,option,aq_species_constraint%names(icomp))
           call InputErrorMsg(input,option,'aqueous species name',block_string)
           option%io_buffer = 'Constraint Species: ' // &
                              trim(aq_species_constraint%names(icomp))
           call PrintMsg(option)
-          
+
           call InputReadDouble(input,option, &
                                aq_species_constraint%constraint_conc(icomp))
           call InputErrorMsg(input,option,'concentration',block_string)
-          
+
           call InputReadCard(input,option,word)
           call InputDefaultMsg(input,option, &
                                trim(block_string) // ' constraint_type')
@@ -406,12 +405,13 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
         enddo
 
         if (associated(constraint%aqueous_species)) &
-          call AqueousSpeciesConstraintDestroy(constraint%aqueous_species)
+          call ReactionAuxDestroySpecConstraint(constraint%aqueous_species)
         constraint%aqueous_species => aq_species_constraint
 
       case('FREE_ION_GUESS')
 
-        free_ion_guess_constraint => GuessConstraintCreate(reaction,option)
+        free_ion_guess_constraint => &
+          ReactionAuxCreateGuessConstraint(reaction,option)
 
         block_string = 'CONSTRAINT, FREE_ION_GUESS'
         icomp = 0
@@ -419,11 +419,11 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
         do
           call InputReadPflotranString(input,option)
           call InputReadStringErrorMsg(input,option,block_string)
-          
-          if (InputCheckExit(input,option)) exit  
-          
-          icomp = icomp + 1        
-          
+
+          if (InputCheckExit(input,option)) exit
+
+          icomp = icomp + 1
+
           if (icomp > reaction%naqcomp) then
             option%io_buffer = 'Number of free ion guess constraints &
                                &exceeds number of primary chemical &
@@ -431,14 +431,14 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
                                trim(constraint%name)
             call PrintErrMsg(option)
           endif
-          
+
           call InputReadCard(input,option, &
                              free_ion_guess_constraint%names(icomp))
           call InputErrorMsg(input,option,'free ion guess name',block_string)
           option%io_buffer = 'Constraint Species: ' // &
                              trim(free_ion_guess_constraint%names(icomp))
           call PrintMsg(option)
-          
+
           call InputReadDouble(input,option,free_ion_guess_constraint%conc(icomp))
           call InputErrorMsg(input,option,'free ion guess',block_string)
         enddo
@@ -472,13 +472,14 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
         enddo
 
         if (associated(constraint%free_ion_guess)) &
-          call GuessConstraintDestroy(constraint%free_ion_guess)
+          call ReactionAuxDestroyGuesConstraint(constraint%free_ion_guess)
         constraint%free_ion_guess => free_ion_guess_constraint
         nullify(free_ion_guess_constraint)
 
       case('MNRL','MINERALS')
 
-        mineral_constraint => MineralConstraintCreate(reaction%mineral,option)
+        mineral_constraint => &
+          ReactionMnrlCreateMnrlConstraint(reaction%mineral,option)
 
         block_string = 'CONSTRAINT, MINERALS'
         imnrl = 0
@@ -486,9 +487,9 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
         do
           call InputReadPflotranString(input,option)
           call InputReadStringErrorMsg(input,option,block_string)
-          
-          if (InputCheckExit(input,option)) exit          
-          
+
+          if (InputCheckExit(input,option)) exit
+
           imnrl = imnrl + 1
 
           if (imnrl > reaction%mineral%nkinmnrl) then
@@ -498,7 +499,7 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
                       trim(constraint%name)
             call PrintErrMsg(option)
           endif
-          
+
           call InputReadCard(input,option,mineral_constraint%names(imnrl))
           call InputErrorMsg(input,option,'mineral name',block_string)
           option%io_buffer = 'Constraint Minerals: ' // &
@@ -549,9 +550,9 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
                              ' SPECIFIC SURFACE_AREA UNITS'
             call InputDefaultMsg(input,option)
           endif
-        enddo  
+        enddo
         call InputPopBlock(input,option)
-        
+
         if (imnrl < reaction%mineral%nkinmnrl) then
           option%io_buffer = &
                    'Mineral lists in constraints must provide a volume &
@@ -575,16 +576,16 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
             call PrintErrMsg(option)
           endif
         enddo
-        
+
         if (associated(constraint%minerals)) then
-          call MineralConstraintDestroy(constraint%minerals)
+          call ReactionMnrlDestMnrlConstraint(constraint%minerals)
         endif
-        constraint%minerals => mineral_constraint 
-                            
+        constraint%minerals => mineral_constraint
+
       case('SURFACE_COMPLEXES')
-      
+
         srfcplx_constraint => &
-          SurfaceComplexConstraintCreate(reaction%surface_complexation,option)
+          ReactionSrfCplxCreateConstraint(reaction%surface_complexation,option)
 
         block_string = 'CONSTRAINT, SURFACE_COMPLEXES'
         isrfcplx = 0
@@ -592,9 +593,9 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
         do
           call InputReadPflotranString(input,option)
           call InputReadStringErrorMsg(input,option,block_string)
-          
-          if (InputCheckExit(input,option)) exit          
-          
+
+          if (InputCheckExit(input,option)) exit
+
           isrfcplx = isrfcplx + 1
 
           if (isrfcplx > reaction%surface_complexation%nkinsrfcplx) then
@@ -604,7 +605,7 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
                       trim(constraint%name)
             call PrintErrMsg(option)
           endif
-          
+
           call InputReadCard(input,option,srfcplx_constraint%names(isrfcplx))
           call InputErrorMsg(input,option,'surface complex name',block_string)
           option%io_buffer = 'Constraint Surface Complex: ' // &
@@ -613,9 +614,9 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
           call InputReadDouble(input,option, &
                                srfcplx_constraint%constraint_conc(isrfcplx))
           call InputErrorMsg(input,option,'concentration',block_string)
-        enddo  
+        enddo
         call InputPopBlock(input,option)
-        
+
         if (isrfcplx < reaction%surface_complexation%nkinsrfcplx) then
           option%io_buffer = &
                    'Number of surface complex constraints is less than &
@@ -623,7 +624,7 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
                    &complex constraint.'
           call PrintErrMsg(option)
         endif
-        
+
         do icomp = 1, reaction%surface_complexation%nkinsrfcplx
           tempint = 0
           do jcomp = 1, reaction%surface_complexation%nkinsrfcplx
@@ -638,86 +639,16 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
             call PrintErrMsg(option)
           endif
         enddo
-        
+
         if (associated(constraint%surface_complexes)) then
-          call SurfaceComplexConstraintDestroy(constraint%surface_complexes)
+          call ReactionSrfCplxDestroyConstraint(constraint%surface_complexes)
         endif
         constraint%surface_complexes => srfcplx_constraint
-         
-      case('COLL','COLLOIDS')
 
-        colloid_constraint => ColloidConstraintCreate(reaction,option)
-
-        block_string = 'CONSTRAINT, COLLOIDS'
-        icomp = 0
-        call InputPushBlock(input,option)
-        do
-          call InputReadPflotranString(input,option)
-          call InputReadStringErrorMsg(input,option,block_string)
-          
-          if (InputCheckExit(input,option)) exit          
-          
-          icomp = icomp + 1
-
-          if (icomp > reaction%ncoll) then
-            option%io_buffer = &
-                     'Number of colloid constraints exceeds number of &
-                     &colloids in constraint: ' // &
-                      trim(constraint%name)
-            call PrintErrMsg(option)
-          endif
-          
-          call InputReadCard(input,option,colloid_constraint%names(icomp))
-          call InputErrorMsg(input,option,'colloid name',block_string)
-          option%io_buffer = 'Constraint Colloids: ' // &
-                             trim(colloid_constraint%names(icomp))
-          call PrintMsg(option)
-          call InputReadDouble(input,option, &
-                               colloid_constraint%constraint_conc_mob(icomp))
-          call InputErrorMsg(input,option,'mobile concentration',block_string)
-          call InputReadDouble(input,option, &
-                               colloid_constraint%constraint_conc_imb(icomp))
-          call InputErrorMsg(input,option,'immobile concentration', &
-                             block_string)
-        
-        enddo  
-        call InputPopBlock(input,option)
-        
-        if (icomp < reaction%ncoll) then
-          option%io_buffer = &
-                   'Colloid lists in constraints must provide mobile &
-                   &and immobile concentrations for all colloids &
-                   &(listed under the COLLOIDS card in CHEMISTRY), &
-                   &regardless of whether or not they are present (just &
-                   &assign a small value (e.g. 1.d-40) if not present).'
-          call PrintErrMsg(option)
-        endif
-        
-        do icomp = 1, reaction%ncoll
-          tempint = 0
-          do jcomp = 1, reaction%ncoll
-            if (StringCompare(colloid_constraint%names(icomp), &
-                              colloid_constraint%names(jcomp), &
-                              MAXWORDLENGTH)) tempint = tempint + 1
-          enddo
-          if (tempint > 1) then
-            option%io_buffer = 'Duplicated colloid in colloid constraint: ' // &
-              trim(colloid_constraint%names(icomp))
-            call PrintErrMsg(option)
-          endif
-        enddo
-        
-        if (associated(constraint%colloids)) then
-          call ColloidConstraintDestroy(constraint%colloids)
-        endif
-        constraint%colloids => colloid_constraint 
-
-        
-        
       case('IMMOBILE')
 
         immobile_constraint => &
-          ImmobileConstraintCreate(reaction%immobile,option)
+          ReactionImConstraintCreate(reaction%immobile,option)
 
         block_string = 'CONSTRAINT, IMMOBILE'
         iimmobile = 0
@@ -725,9 +656,9 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
         do
           call InputReadPflotranString(input,option)
           call InputReadStringErrorMsg(input,option,block_string)
-          
-          if (InputCheckExit(input,option)) exit          
-          
+
+          if (InputCheckExit(input,option)) exit
+
           iimmobile = iimmobile + 1
 
           if (iimmobile > reaction%immobile%nimmobile) then
@@ -737,7 +668,7 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
                       trim(constraint%name)
             call PrintErrMsg(option)
           endif
-          
+
           call InputReadCard(input,option, &
                              immobile_constraint%names(iimmobile))
           call InputErrorMsg(input,option,'immobile name',block_string)
@@ -768,18 +699,19 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
           ! read units if they exist
           internal_units = 'mol/m^3'
           call InputReadWord(input,option,word,PETSC_TRUE)
-          if (InputError(input)) then
-            input%err_buf = trim(immobile_constraint%names(iimmobile)) // &
+          string = trim(immobile_constraint%names(iimmobile)) // &
                              ' IMMOBILE CONCENTRATION UNITS'
+          if (InputError(input)) then
+            input%err_buf = string
             call InputDefaultMsg(input,option)
           else
             immobile_constraint%constraint_conc(iimmobile) = &
               immobile_constraint%constraint_conc(iimmobile) * &
-              UnitsConvertToInternal(word,internal_units,option)
+              UnitsConvertToInternal(word,internal_units,string,option)
           endif
-        enddo  
+        enddo
         call InputPopBlock(input,option)
-        
+
         if (iimmobile < reaction%immobile%nimmobile) then
           option%io_buffer = &
                    'Immobile lists in constraints must provide a &
@@ -788,7 +720,7 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
                    &regardless of whether or not they are present.'
           call PrintErrMsg(option)
         endif
-        
+
         do icomp = 1, reaction%immobile%nimmobile
           tempint = 0
           do jcomp = 1, reaction%immobile%nimmobile
@@ -803,62 +735,61 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
             call PrintErrMsg(option)
           endif
         enddo
-        
+
         if (associated(constraint%immobile_species)) then
-          call ImmobileConstraintDestroy(constraint%immobile_species)
+          call ReactionImConstraintDestroy(constraint%immobile_species)
         endif
-        constraint%immobile_species => immobile_constraint 
-        
+        constraint%immobile_species => immobile_constraint
+
       case default
         call InputKeywordUnrecognized(input,word,'CONSTRAINT',option)
-    end select 
-  
-  enddo  
+    end select
+
+  enddo
   call InputPopBlock(input,option)
 
-  if (.not.associated(constraint%aqueous_species)) then
+  if (.not.associated(constraint%aqueous_species) .and. &
+      reaction%naqcomp > 0) then
     option%io_buffer = 'A CONCENTRATION block is missing in constraint "' // &
       trim(constraint%name) // '".'
     call PrintErrMsg(option)
   endif
-  
-  call PetscLogEventEnd(logging%event_tran_constraint_read,ierr);CHKERRQ(ierr)
+
+  call PetscLogEventEnd(logging%event_tran_constraint_read, &
+                        ierr);CHKERRQ(ierr)
 
 end subroutine TranConstraintRTRead
 
 ! ************************************************************************** !
 
 subroutine TranConstraintRTStrip(this)
-  ! 
+  !
   ! Deallocates a constraint
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 10/04/19
-  ! 
+  !
 
   implicit none
-  
+
   class(tran_constraint_rt_type) :: this
-  
+
   call TranConstraintBaseStrip(this)
 
   if (associated(this%aqueous_species)) &
-    call AqueousSpeciesConstraintDestroy(this%aqueous_species)
+    call ReactionAuxDestroySpecConstraint(this%aqueous_species)
   nullify(this%aqueous_species)
   if (associated(this%free_ion_guess)) &
-    call GuessConstraintDestroy(this%free_ion_guess)
+    call ReactionAuxDestroyGuesConstraint(this%free_ion_guess)
   nullify(this%free_ion_guess)
   if (associated(this%minerals)) &
-    call MineralConstraintDestroy(this%minerals)
+    call ReactionMnrlDestMnrlConstraint(this%minerals)
   nullify(this%minerals)
   if (associated(this%surface_complexes)) &
-    call SurfaceComplexConstraintDestroy(this%surface_complexes)
+    call ReactionSrfCplxDestroyConstraint(this%surface_complexes)
   nullify(this%surface_complexes)
-  if (associated(this%colloids)) &
-    call ColloidConstraintDestroy(this%colloids)
-  nullify(this%colloids)
   if (associated(this%immobile_species)) &
-    call ImmobileConstraintDestroy(this%immobile_species)
+    call ReactionImConstraintDestroy(this%immobile_species)
   nullify(this%immobile_species)
 
 end subroutine TranConstraintRTStrip
@@ -866,20 +797,20 @@ end subroutine TranConstraintRTStrip
 ! ************************************************************************** !
 
 subroutine TranConstraintCouplerRTStrip(this)
-  ! 
+  !
   ! Deallocate dynamic members of class
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 10/04/19
-  ! 
+  !
   implicit none
-  
+
   class(tran_constraint_coupler_rt_type) :: this
-  
+
   call TranConstraintCouplerBaseStrip(this)
 
   call RTAuxVarDestroy(this%rt_auxvar)
-  
+
 end subroutine TranConstraintCouplerRTStrip
 
 end module Transport_Constraint_RT_module

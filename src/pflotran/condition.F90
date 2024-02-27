@@ -39,6 +39,7 @@ module Condition_module
     type(flow_sub_condition_type), pointer :: energy_flux
     type(flow_general_condition_type), pointer :: general
     type(flow_hydrate_condition_type), pointer :: hydrate
+    type(flow_sco2_condition_type), pointer :: sco2 
     ! any new sub conditions must be added to FlowConditionIsTransient
     type(sub_condition_ptr_type), pointer :: sub_condition_ptr(:)
     type(flow_condition_type), pointer :: next ! pointer to next condition_type for linked-lists
@@ -49,7 +50,9 @@ module Condition_module
     type(flow_sub_condition_type), pointer :: liquid_pressure
     type(flow_sub_condition_type), pointer :: gas_pressure
     type(flow_sub_condition_type), pointer :: gas_saturation
+    type(flow_sub_condition_type), pointer :: precipitate_saturation
     type(flow_sub_condition_type), pointer :: mole_fraction
+    type(flow_sub_condition_type), pointer :: salt_mole_fraction
     type(flow_sub_condition_type), pointer :: relative_humidity
     type(flow_sub_condition_type), pointer :: temperature
     type(flow_sub_condition_type), pointer :: rate
@@ -74,8 +77,26 @@ module Condition_module
     type(flow_sub_condition_type), pointer :: liquid_flux
     type(flow_sub_condition_type), pointer :: gas_flux
     type(flow_sub_condition_type), pointer :: energy_flux
+    character(len=MAXWORDLENGTH) :: state ! state of the flow condition
     ! any new sub conditions must be added to FlowConditionIsTransient
   end type flow_hydrate_condition_type
+
+  ! data structure for SCO2
+  type, public :: flow_sco2_condition_type
+    type(flow_sub_condition_type), pointer :: liquid_pressure
+    type(flow_sub_condition_type), pointer :: gas_pressure
+    type(flow_sub_condition_type), pointer :: co2_pressure
+    type(flow_sub_condition_type), pointer :: liquid_saturation
+    type(flow_sub_condition_type), pointer :: gas_saturation
+    type(flow_sub_condition_type), pointer :: co2_mass_fraction
+    type(flow_sub_condition_type), pointer :: salt_mass
+    type(flow_sub_condition_type), pointer :: temperature
+    type(flow_sub_condition_type), pointer :: rate
+    type(flow_sub_condition_type), pointer :: liquid_flux
+    type(flow_sub_condition_type), pointer :: gas_flux
+    type(flow_sub_condition_type), pointer :: energy_flux
+  end type flow_sco2_condition_type
+
 
   type, public :: flow_sub_condition_type
     PetscInt :: itype                  ! integer describing type of condition
@@ -110,6 +131,7 @@ module Condition_module
     character(len=MAXWORDLENGTH) :: name  ! name of condition (e.g. initial, recharge)
     class(tran_constraint_coupler_base_type), pointer :: constraint_coupler_list
     class(tran_constraint_coupler_base_type), pointer :: cur_constraint_coupler
+    class(tran_constraint_coupler_base_type), pointer :: sec_constraint_coupler
     type(tran_condition_type), pointer :: next
   end type tran_condition_type
 
@@ -144,8 +166,12 @@ module Condition_module
   end type geop_condition_list_type
 
   public :: FlowConditionCreate, FlowConditionDestroy, FlowConditionRead, &
+            FlowSubConditionCreate, &
+            FlowGeneralConditionCreate, &
             FlowConditionGeneralRead, &
             FlowConditionHydrateRead, &
+            FlowConditionSCO2Read, &
+            FlowGeneralSubConditionPtr, &
             FlowConditionAddToList, FlowConditionInitList, &
             FlowConditionDestroyList, &
             FlowConditionGetPtrFromList, FlowConditionUpdate, &
@@ -156,8 +182,10 @@ module Condition_module
             TranConditionRead, &
             TranConditionUpdate, &
             FlowConditionIsTransient, &
+            FlowConditionIsHydrostatic, &
+            FlowConditionHasRateOrFlux, &
             ConditionReadValues, &
-            GetSubConditionName, &
+            GetSubConditionType, &
             FlowConditionUnknownItype, &
             FlowCondInputRecord, &
             TranCondInputRecord, &
@@ -200,6 +228,7 @@ function FlowConditionCreate(option)
   nullify(condition%sub_condition_ptr)
   nullify(condition%general)
   nullify(condition%hydrate)
+  nullify(condition%sco2)
   nullify(condition%itype)
   nullify(condition%next)
   nullify(condition%datum)
@@ -239,6 +268,7 @@ function TranConditionCreate(option)
   allocate(condition)
   nullify(condition%constraint_coupler_list)
   nullify(condition%cur_constraint_coupler)
+  nullify(condition%sec_constraint_coupler)
   nullify(condition%next)
   condition%id = 0
   condition%itype = 0
@@ -300,8 +330,10 @@ function FlowGeneralConditionCreate(option)
   nullify(general_condition%liquid_pressure)
   nullify(general_condition%gas_pressure)
   nullify(general_condition%gas_saturation)
+  nullify(general_condition%precipitate_saturation)
   nullify(general_condition%relative_humidity)
   nullify(general_condition%mole_fraction)
+  nullify(general_condition%salt_mole_fraction)
   nullify(general_condition%temperature)
   nullify(general_condition%liquid_flux)
   nullify(general_condition%gas_flux)
@@ -345,9 +377,47 @@ function FlowHydrateConditionCreate(option)
   nullify(hydrate_condition%energy_flux)
   nullify(hydrate_condition%rate)
 
+  hydrate_condition%state = 'ANY_STATE'
+
   FlowHydrateConditionCreate => hydrate_condition
 
 end function FlowHydrateConditionCreate
+
+! ************************************************************************** !
+function FlowSCO2ConditionCreate(option)
+  !
+  ! Creates a condition for SCO2 mode
+  !
+  ! Author: Michael Nole
+  ! Date: 12/15/23
+  !
+
+  use Option_module
+
+  implicit none
+
+  type(option_type) :: option
+  type(flow_sco2_condition_type), pointer :: FlowSCO2ConditionCreate
+
+  type(flow_sco2_condition_type), pointer :: sco2_condition
+
+  allocate(sco2_condition)
+  nullify(sco2_condition%liquid_pressure)
+  nullify(sco2_condition%gas_pressure)
+  nullify(sco2_condition%co2_pressure)
+  nullify(sco2_condition%liquid_saturation)
+  nullify(sco2_condition%gas_saturation)
+  nullify(sco2_condition%co2_mass_fraction)
+  nullify(sco2_condition%salt_mass)
+  nullify(sco2_condition%temperature)
+  nullify(sco2_condition%liquid_flux)
+  nullify(sco2_condition%gas_flux)
+  nullify(sco2_condition%energy_flux)
+  nullify(sco2_condition%rate)
+
+  FlowSCO2ConditionCreate => sco2_condition
+
+end function FlowSCO2ConditionCreate
 
 ! ************************************************************************** !
 
@@ -396,6 +466,13 @@ function FlowGeneralSubConditionPtr(input,sub_condition_name,general, &
         sub_condition_ptr => FlowSubConditionCreate(ONE_INTEGER)
         general%gas_saturation => sub_condition_ptr
       endif
+    case('PRECIPITATE_SATURATION')
+      if (associated(general%precipitate_saturation)) then
+         sub_condition_ptr => general%precipitate_saturation
+      else
+         sub_condition_ptr => FlowSubConditionCreate(ONE_INTEGER)
+         general%precipitate_saturation => sub_condition_ptr
+      endif
     case('TEMPERATURE')
       if (associated(general%temperature)) then
         sub_condition_ptr => general%temperature
@@ -416,6 +493,13 @@ function FlowGeneralSubConditionPtr(input,sub_condition_name,general, &
       else
         sub_condition_ptr => FlowSubConditionCreate(ONE_INTEGER)
         general%mole_fraction => sub_condition_ptr
+      endif
+    case('SALT_MOLE_FRACTION')
+      if (associated(general%salt_mole_fraction)) then
+        sub_condition_ptr => general%salt_mole_fraction
+      else
+        sub_condition_ptr => FlowSubConditionCreate(ONE_INTEGER)
+        general%salt_mole_fraction => sub_condition_ptr
       endif
     case('LIQUID_FLUX')
       if (associated(general%liquid_flux)) then
@@ -494,20 +578,20 @@ function FlowHydrateSubConditionPtr(input,sub_condition_name,hydrate, &
         sub_condition_ptr => FlowSubConditionCreate(ONE_INTEGER)
         hydrate%gas_pressure => sub_condition_ptr
       endif
-    case('LIQUID_SATURATION','GAS_SATURATION') !MAN should split this
+    case('GAS_SATURATION')
       if (associated(hydrate%gas_saturation)) then
         sub_condition_ptr => hydrate%gas_saturation
       else
         sub_condition_ptr => FlowSubConditionCreate(ONE_INTEGER)
         hydrate%gas_saturation => sub_condition_ptr
       endif
-!    case('LIQUID_SATURATION')
-!      if (associated(hydrate%gas_saturation)) then
-!         sub_condition_ptr => hydrate%liquid_saturation
-!      else
-!         sub_condition_ptr => FlowSubConditionCreate(ONE_INTEGER)
-!         hydrate%liquid_saturation => sub_condition_ptr
-!      endif
+    case('LIQUID_SATURATION')
+      if (associated(hydrate%liquid_saturation)) then
+         sub_condition_ptr => hydrate%liquid_saturation
+      else
+         sub_condition_ptr => FlowSubConditionCreate(ONE_INTEGER)
+         hydrate%liquid_saturation => sub_condition_ptr
+      endif
     case('HYDRATE_SATURATION')
       if (associated(hydrate%hydrate_saturation)) then
         sub_condition_ptr => hydrate%hydrate_saturation
@@ -579,6 +663,117 @@ function FlowHydrateSubConditionPtr(input,sub_condition_name,hydrate, &
   FlowHydrateSubConditionPtr => sub_condition_ptr
 
 end function FlowHydrateSubConditionPtr
+
+! ************************************************************************** !
+
+function FlowSCO2SubConditionPtr(input,sub_condition_name,sco2, &
+                                    option)
+  !
+  ! Returns a pointer to a subcondition, creating them if necessary
+  !
+  ! Author: Michael Nole
+  ! Date: 12/15/23
+  !
+
+  use Option_module
+  use Input_Aux_module
+
+  implicit none
+
+  type(input_type) :: input
+  character(len=MAXWORDLENGTH) :: sub_condition_name
+  type(flow_sco2_condition_type) :: sco2
+  type(option_type) :: option
+
+  type(flow_sub_condition_type), pointer :: FlowSCO2SubConditionPtr
+  type(flow_sub_condition_type), pointer :: sub_condition_ptr
+
+  select case(sub_condition_name)
+    case('LIQUID_PRESSURE')
+      if (associated(sco2%liquid_pressure)) then
+        sub_condition_ptr => sco2%liquid_pressure
+      else
+        sub_condition_ptr => FlowSubConditionCreate(ONE_INTEGER)
+        sco2%liquid_pressure => sub_condition_ptr
+      endif
+    case('GAS_PRESSURE')
+      if (associated(sco2%gas_pressure)) then
+        sub_condition_ptr => sco2%gas_pressure
+      else
+        sub_condition_ptr => FlowSubConditionCreate(ONE_INTEGER)
+        sco2%gas_pressure => sub_condition_ptr
+      endif
+    case('LIQUID_SATURATION','GAS_SATURATION')
+      if (associated(sco2%gas_saturation)) then
+        sub_condition_ptr => sco2%gas_saturation
+      else
+        sub_condition_ptr => FlowSubConditionCreate(ONE_INTEGER)
+        sco2%gas_saturation => sub_condition_ptr
+      endif
+    case('CO2_PRESSURE')
+      if (associated(sco2%co2_pressure)) then
+         sub_condition_ptr => sco2%co2_pressure
+      else
+         sub_condition_ptr => FlowSubConditionCreate(ONE_INTEGER)
+         sco2%co2_pressure => sub_condition_ptr
+      endif
+    case('TEMPERATURE')
+      if (associated(sco2%temperature)) then
+        sub_condition_ptr => sco2%temperature
+      else
+        sub_condition_ptr => FlowSubConditionCreate(ONE_INTEGER)
+        sco2%temperature => sub_condition_ptr
+      endif
+    case('CO2_MASS_FRACTION')
+      if (associated(sco2%co2_mass_fraction)) then
+        sub_condition_ptr => sco2%co2_mass_fraction
+      else
+        sub_condition_ptr => FlowSubConditionCreate(ONE_INTEGER)
+        sco2%co2_mass_fraction => sub_condition_ptr
+      endif
+    case('SALT_MASS_FRACTION','SALT_MASS')
+      if (associated(sco2%salt_mass)) then
+        sub_condition_ptr => sco2%salt_mass
+      else
+        sub_condition_ptr => FlowSubConditionCreate(ONE_INTEGER)
+        sco2%salt_mass => sub_condition_ptr
+      endif
+    case('LIQUID_FLUX')
+      if (associated(sco2%liquid_flux)) then
+        sub_condition_ptr => sco2%liquid_flux
+      else
+        sub_condition_ptr => FlowSubConditionCreate(ONE_INTEGER)
+        sco2%liquid_flux => sub_condition_ptr
+      endif
+    case('GAS_FLUX')
+      if (associated(sco2%gas_flux)) then
+        sub_condition_ptr => sco2%gas_flux
+      else
+        sub_condition_ptr => FlowSubConditionCreate(ONE_INTEGER)
+        sco2%gas_flux => sub_condition_ptr
+      endif
+    case('ENERGY_FLUX')
+      if (associated(sco2%energy_flux)) then
+        sub_condition_ptr => sco2%energy_flux
+      else
+        sub_condition_ptr => FlowSubConditionCreate(ONE_INTEGER)
+        sco2%energy_flux => sub_condition_ptr
+      endif
+    case('RATE')
+      if (associated(sco2%rate)) then
+        sub_condition_ptr => sco2%rate
+      else
+        sub_condition_ptr => FlowSubConditionCreate(option%nflowdof)
+        sco2%rate => sub_condition_ptr
+      endif
+    case default
+      call InputKeywordUnrecognized(input,sub_condition_name, &
+                                    'sco2 condition,type',option)
+  end select
+
+  FlowSCO2SubConditionPtr => sub_condition_ptr
+
+end function FlowSCO2SubConditionPtr
 
 ! ************************************************************************** !
 
@@ -723,6 +918,67 @@ end subroutine FlowSubConditionVerify
 
 ! ************************************************************************** !
 
+subroutine FlowConditionVerify(option, condition)
+  !
+  ! Verifies the data in a flow condition
+  !
+  ! Author: Glenn Hammond
+  ! Date: 11/29/22
+  !
+  use Option_module
+
+  implicit none
+
+  type(option_type) :: option
+  type(flow_condition_type) :: condition
+
+  type(flow_sub_condition_type), pointer :: liquid_pressure
+  PetscBool :: gradient_found
+  PetscBool :: pressure_is_hydrostatic
+  PetscInt :: i
+
+  nullify(liquid_pressure)
+  if (associated(condition%general)) then
+    liquid_pressure => condition%general%liquid_pressure
+  elseif (associated(condition%hydrate)) then
+    liquid_pressure => condition%hydrate%liquid_pressure
+  elseif (associated(condition%sco2)) then
+    liquid_pressure => condition%sco2%liquid_pressure
+  else
+    liquid_pressure => condition%pressure
+  endif
+
+  gradient_found = PETSC_FALSE
+  do i = 1, size(condition%sub_condition_ptr)
+    if (associated(condition%sub_condition_ptr(i)%ptr%gradient)) then
+      gradient_found = PETSC_TRUE
+      exit
+    endif
+  enddo
+
+  pressure_is_hydrostatic = PETSC_FALSE
+  if (associated(liquid_pressure)) then
+    select case(liquid_pressure%itype)
+      case(HYDROSTATIC_BC,HYDROSTATIC_SEEPAGE_BC,HYDROSTATIC_CONDUCTANCE_BC)
+        pressure_is_hydrostatic = PETSC_TRUE
+    end select
+  endif
+
+  ! ensure that gradient and datum have not been assigned unless the
+  ! type is HYDROSTATIC
+  if ((gradient_found .or. associated(condition%datum)) .and. &
+       .not.pressure_is_hydrostatic) then
+    option%io_buffer = 'A DATUM and/or GRADIENT may only be assigned &
+      &to flow conditions where LIQUID_PRESSURE is of type HYDROSTATIC(_XXX). &
+      &Please remove these keywords from FLOW_CONDITION "' // &
+      trim(condition%name) // '".'
+    call PrintErrMsg(option)
+  endif
+
+end subroutine FlowConditionVerify
+
+! ************************************************************************** !
+
 subroutine FlowConditionRead(condition,input,option)
   !
   ! Reads a condition from the input file
@@ -736,7 +992,9 @@ subroutine FlowConditionRead(condition,input,option)
   use String_module
   use Logging_module
   use Time_Storage_module
+  use ZFlow_Aux_module
   use Dataset_module
+  use Utility_module
 
   implicit none
 
@@ -886,7 +1144,7 @@ subroutine FlowConditionRead(condition,input,option)
           call InputErrorMsg(input,option,'keyword','CONDITION,TYPE')
           call StringToUpper(word)
           select case(trim(word))
-            case('LIQUID_PRESSURE','PRESSURE')
+            case('LIQUID_PRESSURE')
               sub_condition_ptr => pressure
             case('RATE')
               sub_condition_ptr => rate
@@ -894,11 +1152,11 @@ subroutine FlowConditionRead(condition,input,option)
               sub_condition_ptr => energy_rate
             case('WELL')
               sub_condition_ptr => well
-            case('LIQUID_FLUX','FLUX')
+            case('LIQUID_FLUX')
               sub_condition_ptr => flux
             case('ENERGY_FLUX')
               sub_condition_ptr => energy_flux
-            case('LIQUID_SATURATION','SATURATION')
+            case('LIQUID_SATURATION')
               sub_condition_ptr => saturation
             case('TEMPERATURE')
               sub_condition_ptr => temperature
@@ -906,9 +1164,8 @@ subroutine FlowConditionRead(condition,input,option)
               sub_condition_ptr => concentration
             case('ENTHALPY')
               sub_condition_ptr => enthalpy
-! uncomment after release of v4.0
-!            case('PRESSURE','SATURATION','FLUX')
-!              call InputKeywordDeprecated(word,'LIQUID_'//trim(word),option)
+            case('PRESSURE','SATURATION','FLUX')
+              call InputKeywordDeprecated(word,'LIQUID_'//trim(word),option)
             case default
               call InputKeywordUnrecognized(input,word,'condition,type',option)
           end select
@@ -1051,7 +1308,7 @@ subroutine FlowConditionRead(condition,input,option)
           call InputReadCard(input,option,word)
           call InputErrorMsg(input,option,'keyword','CONDITION,TYPE')
           select case(trim(word))
-            case('LIQUID_PRESSURE','PRESSURE')
+            case('LIQUID_PRESSURE')
               sub_condition_ptr => pressure
               internal_units = 'Pa/meter'
             case('RATE')
@@ -1063,10 +1320,10 @@ subroutine FlowConditionRead(condition,input,option)
             case('WELL')
               sub_condition_ptr => well
               internal_units = 'Pa/meter'
-            case('LIQUID_FLUX','FLUX')
+            case('LIQUID_FLUX')
               sub_condition_ptr => flux
               internal_units = 'm/sec-m|unitless/sec'
-            case('LIQUID_SATURATION','SATURATION')
+            case('LIQUID_SATURATION')
               sub_condition_ptr => saturation
               internal_units = 'unitless/meter'
             case('TEMPERATURE')
@@ -1078,9 +1335,8 @@ subroutine FlowConditionRead(condition,input,option)
             case('ENTHALPY')
               sub_condition_ptr => enthalpy
               internal_units = 'kJ/mol-meter'
-! uncomment after release of v4.0
-!            case('PRESSURE','SATURATION','FLUX')
-!              call InputKeywordDeprecated(word,'LIQUID_'//trim(word),option)
+            case('PRESSURE','SATURATION','FLUX')
+              call InputKeywordDeprecated(word,'LIQUID_'//trim(word),option)
             case default
               call InputKeywordUnrecognized(input,word, &
                      'FLOW CONDITION,GRADIENT,TYPE',option)
@@ -1107,7 +1363,7 @@ subroutine FlowConditionRead(condition,input,option)
         call ConditionReadValues(input,option,word, &
                                  enthalpy%dataset, &
                                  enthalpy%units,internal_units)
-      case('LIQUID_PRESSURE','PRESSURE')
+      case('LIQUID_PRESSURE')
         internal_units = 'Pa'
         call ConditionReadValues(input,option,word, &
                                  pressure%dataset, &
@@ -1137,7 +1393,7 @@ subroutine FlowConditionRead(condition,input,option)
         call ConditionReadValues(input,option,word, &
                                  well%dataset, &
                                  well%units,internal_units)
-      case('LIQUID_FLUX','FLUX')
+      case('LIQUID_FLUX')
         internal_units = 'meter/sec'
         call ConditionReadValues(input,option,word, &
                                  pressure%dataset, &
@@ -1147,7 +1403,7 @@ subroutine FlowConditionRead(condition,input,option)
         call ConditionReadValues(input,option,word, &
                                  concentration%dataset, &
                                  concentration%units,internal_units)
-      case('LIQUID_SATURATION','SATURATION')
+      case('LIQUID_SATURATION')
         internal_units = 'unitless'
         call ConditionReadValues(input,option,word, &
                                  saturation%dataset, &
@@ -1155,9 +1411,8 @@ subroutine FlowConditionRead(condition,input,option)
       case('CONDUCTANCE')
         call InputReadDouble(input,option,pressure%aux_real(1))
         call InputErrorMsg(input,option,'CONDUCTANCE','CONDITION')
-! uncomment after release of v4.0
-!      case('PRESSURE','SATURATION','FLUX')
-!        call InputKeywordDeprecated(word,'LIQUID_'//trim(word),option)
+      case('PRESSURE','SATURATION','FLUX')
+        call InputKeywordDeprecated(word,'LIQUID_'//trim(word),option)
       case default
         call InputKeywordUnrecognized(input,word,'flow condition',option)
     end select
@@ -1254,7 +1509,7 @@ subroutine FlowConditionRead(condition,input,option)
   endif
 
   ! verify the datasets
-  word = 'pressure/flux'
+  word = 'pressure or flux'
   call FlowSubConditionVerify(option,condition,word,pressure, &
                               default_time_storage, &
                               PETSC_TRUE)
@@ -1293,22 +1548,22 @@ subroutine FlowConditionRead(condition,input,option)
                               PETSC_TRUE)
 
   select case(option%iflowmode)
-    case default
-      option%io_buffer = 'The flow mode not supported in original &
-        &FlowConditionRead.'
-      call PrintMsg(option)
     case(G_MODE)
       option%io_buffer = 'General mode not supported in original &
         &FlowConditionRead.'
-      call PrintMsg(option)
+      call PrintErrMsg(option)
     case(H_MODE)
       option%io_buffer = 'Hydrate mode not supported in original &
         &FlowConditionRead.'
-      call PrintMsg(option)
+      call PrintErrMsg(option)
     case(WF_MODE)
       option%io_buffer = 'WIPP Flow mode not supported in original &
         &FlowConditionRead.'
-      call PrintMsg(option)
+      call PrintErrMsg(option)
+    case(SCO2_MODE)
+      option%io_buffer = 'SCO2 Flow mode not supported in original &
+        &FlowConditionRead.'
+      call PrintErrMsg(option)
     case(MPH_MODE)
       if (.not.associated(pressure) .and. .not.associated(rate)&
            .and. .not.associated(well) .and. .not.associated(saturation)) then
@@ -1471,7 +1726,7 @@ subroutine FlowConditionRead(condition,input,option)
       if (associated(energy_rate)) &
         condition%itype(TWO_INTEGER) = energy_rate%itype
 
-    case(RICHARDS_MODE,RICHARDS_TS_MODE,ZFLOW_MODE)
+    case(RICHARDS_MODE,RICHARDS_TS_MODE)
       if (.not.associated(pressure) .and. .not.associated(rate) .and. &
           .not.associated(saturation) .and. .not.associated(well)) then
         option%io_buffer = 'pressure, rate and saturation condition null in &
@@ -1519,6 +1774,89 @@ subroutine FlowConditionRead(condition,input,option)
       if (associated(temperature)) call FlowSubConditionDestroy(temperature)
       if (associated(enthalpy)) call FlowSubConditionDestroy(enthalpy)
 
+    case(ZFLOW_MODE)
+
+      condition%num_sub_conditions = 0
+      ! deallocate, if allocated, as we will not use itype
+      call DeallocateArray(condition%itype)
+
+      ! IMPORTANT - at this point zflow_liq_flow_eq, zflow_heat_tran_eq and
+      ! zflow_sol_tran_eq are solely flags set to 0 or 1. They cannot
+      ! index any arrays
+
+      if (zflow_liq_flow_eq > 0) then
+        condition%num_sub_conditions = condition%num_sub_conditions + 1
+        if (.not.associated(pressure) .and. .not.associated(rate)) then
+          option%io_buffer = 'Pressure or rate null in flow condition "' // &
+            trim(condition%name) // '". Please add a TYPE and value for &
+            &LIQUID_PRESSURE/LIQUID_RATE within the FLOW_CONDITION.'
+          call PrintErrMsg(option)
+          call PrintErrMsg(option)
+        endif
+      endif
+
+      if (zflow_heat_tran_eq > 0) then
+        condition%num_sub_conditions = condition%num_sub_conditions + 1
+        if (.not.associated(temperature) .and. .not.associated(enthalpy)) then
+          option%io_buffer = 'Temperature and enthalpy null in flow &
+            &condition "' // trim(condition%name) // '". Please add a TYPE &
+            &for TEMPERATURE and values for TEMPERATURE and ENTHALPLY within &
+            &the FLOW_CONDITION.'
+          call PrintErrMsg(option)
+        endif
+      endif
+
+      if (zflow_sol_tran_eq > 0) then
+        condition%num_sub_conditions = condition%num_sub_conditions + 1
+        if (.not.associated(concentration)) then
+          option%io_buffer = 'Concentration null in flow condition "' // &
+            trim(condition%name) // '". Please add a TYPE and value for &
+            &CONCENTRATION within the FLOW_CONDITION.'
+          call PrintErrMsg(option)
+        endif
+      endif
+
+      allocate(condition%sub_condition_ptr(condition%num_sub_conditions))
+      do idof = 1, condition%num_sub_conditions
+        nullify(condition%sub_condition_ptr(idof)%ptr)
+      enddo
+
+      idof = 0
+      if (zflow_liq_flow_eq > 0) then
+        idof = idof + 1
+        if (associated(pressure)) then
+          condition%pressure => pressure
+          condition%sub_condition_ptr(idof)%ptr => pressure
+        elseif (associated(rate)) then
+          condition%rate => rate
+          condition%sub_condition_ptr(idof)%ptr => rate
+        endif
+      endif
+
+      if (zflow_heat_tran_eq > 0) then
+        idof = idof + 1
+        if (associated(temperature)) then
+          condition%temperature => temperature
+          condition%sub_condition_ptr(idof)%ptr => temperature
+        elseif (associated(enthalpy)) then
+          condition%enthalpy => enthalpy
+          condition%sub_condition_ptr(idof)%ptr => enthalpy
+        endif
+      endif
+
+      if (zflow_sol_tran_eq > 0) then
+        idof = idof + 1
+        if (associated(concentration)) then
+          condition%concentration => concentration
+          condition%sub_condition_ptr(idof)%ptr => concentration
+        endif
+      endif
+
+      allocate(condition%itype(idof))
+      do idof = 1, size(condition%itype)
+        condition%itype(idof) = condition%sub_condition_ptr(idof)%ptr%itype
+      enddo
+
     case(PNF_MODE)
       if (.not.associated(pressure) .and. .not.associated(rate)) then
         option%io_buffer = 'pressure and rate null in &
@@ -1553,10 +1891,16 @@ subroutine FlowConditionRead(condition,input,option)
       if (associated(saturation)) call FlowSubConditionDestroy(saturation)
       if (associated(temperature)) call FlowSubConditionDestroy(temperature)
       if (associated(enthalpy)) call FlowSubConditionDestroy(enthalpy)
+    case default
+      option%io_buffer = 'The NULL flow mode not supported in original &
+        &FlowConditionRead.'
+      call PrintErrMsg(option)
 
   end select
 
   condition%default_time_storage => default_time_storage
+
+  call FlowConditionVerify(option,condition)
 
   call PetscLogEventEnd(logging%event_flow_condition_read,ierr);CHKERRQ(ierr)
 
@@ -1572,7 +1916,6 @@ subroutine FlowConditionGeneralRead(condition,input,option)
   ! Author: Glenn Hammond
   ! Date: 09/14/11
   !
-
   use Option_module
   use Input_Aux_module
   use String_module
@@ -1596,10 +1939,7 @@ subroutine FlowConditionGeneralRead(condition,input,option)
   type(flow_sub_condition_type), pointer :: sub_condition_ptr
   PetscReal :: default_time
   PetscInt :: default_iphase
-  class(dataset_base_type), pointer :: default_flow_dataset
-  class(dataset_base_type), pointer :: default_gradient
   PetscInt :: idof, i
-  PetscBool :: default_is_cyclic
   type(time_storage_type), pointer :: default_time_storage
   class(dataset_ascii_type), pointer :: dataset_ascii
   character(len=MAXWORDLENGTH) :: flow_mode_chars
@@ -1697,6 +2037,10 @@ subroutine FlowConditionGeneralRead(condition,input,option)
               sub_condition_ptr%itype = HYDROSTATIC_CONDUCTANCE_BC
             case('SEEPAGE')
               sub_condition_ptr%itype = HYDROSTATIC_SEEPAGE_BC
+            case('DIRICHLET_SEEPAGE')
+              sub_condition_ptr%itype = DIRICHLET_SEEPAGE_BC
+            case('AT_SOLUBILITY')
+              sub_condition_ptr%itype = AT_SOLUBILITY_BC
             case('MASS_RATE')
               sub_condition_ptr%itype = MASS_RATE_SS
               rate_string = 'kg/sec'
@@ -1827,7 +2171,8 @@ subroutine FlowConditionGeneralRead(condition,input,option)
         call InputErrorMsg(input,option,'LIQUID_CONDUCTANCE','CONDITION')
       case('LIQUID_PRESSURE','GAS_PRESSURE','LIQUID_SATURATION', &
            'GAS_SATURATION', 'TEMPERATURE','MOLE_FRACTION','RATE', &
-           'LIQUID_FLUX','GAS_FLUX','ENERGY_FLUX','RELATIVE_HUMIDITY')
+           'LIQUID_FLUX','GAS_FLUX','ENERGY_FLUX','RELATIVE_HUMIDITY', &
+           'SALT_MOLE_FRACTION','PRECIPITATE_SATURATION')
         select case(option%iflowmode)
           case(G_MODE,WF_MODE)
             sub_condition_ptr => &
@@ -1838,7 +2183,8 @@ subroutine FlowConditionGeneralRead(condition,input,option)
           case('LIQUID_PRESSURE','GAS_PRESSURE')
             internal_units = 'Pa'
           case('LIQUID_SATURATION','GAS_SATURATION','MOLE_FRACTION', &
-                'RELATIVE_HUMIDITY')
+                'RELATIVE_HUMIDITY','SALT_MOLE_FRACTION', &
+                'PRECIPITATE_SATURATION','AT_SOLUBILITY')
             internal_units = 'unitless'
           case('TEMPERATURE')
             internal_units = 'C'
@@ -1849,8 +2195,14 @@ subroutine FlowConditionGeneralRead(condition,input,option)
               case(WF_MODE)
                 internal_units = trim(rate_string) // ',' // trim(rate_string)
               case(G_MODE)
-                internal_units = trim(rate_string) // ',' // &
-                  trim(rate_string) // ',MJ/sec|MW'
+                if (.not. general_salt) then
+                  internal_units = trim(rate_string) // ',' // &
+                                   trim(rate_string) // ',MJ/sec|MW'
+                elseif (general_salt) then
+                  internal_units = trim(rate_string) // ',' // &
+                                   trim(rate_string) // ',' // &
+                                   trim(rate_string) // ',MJ/sec|MW'
+                endif
             end select
           case('LIQUID_FLUX','GAS_FLUX')
             internal_units = 'meter/sec'
@@ -1944,16 +2296,53 @@ subroutine FlowConditionGeneralRead(condition,input,option)
         else if (associated(general%gas_pressure) .and. &
                 associated(general%gas_saturation)) then
           ! two phase condition
-          condition%iphase = TWO_PHASE_STATE
+          if (general_salt) then
+            if (associated(general%salt_mole_fraction)) then
+              if (general%salt_mole_fraction%itype == AT_SOLUBILITY_BC) then
+                condition%iphase = LGP_STATE
+              else
+                condition%iphase = TWO_PHASE_STATE
+              endif
+            else if (associated(general%precipitate_saturation)) then
+                condition%iphase = LGP_STATE
+            endif
+          else
+            condition%iphase = TWO_PHASE_STATE
+          endif
+        else if (associated(general%liquid_pressure) .and. &
+            (associated(general%precipitate_saturation)) .and. &
+            (associated(general%mole_fraction))) then
+          ! liquid-precipitate condition
+          condition%iphase = LP_STATE
+        else if ((associated(general%liquid_pressure) .or. &
+                 associated(general%gas_pressure)) .and. &
+                associated(general%gas_saturation) .and. &
+                associated(general%precipitate_saturation)) then
+          ! liquid-gas-precipitate condition
+          condition%iphase = LGP_STATE
         else if (associated(general%liquid_pressure) .and. &
                  associated(general%mole_fraction)) then
-          ! liquid phase condition
-          condition%iphase = LIQUID_STATE
+          if (associated(general%salt_mole_fraction)) then
+            if (general%salt_mole_fraction%itype == AT_SOLUBILITY_BC) then
+              condition%iphase = LP_STATE
+            else
+              condition%iphase = LIQUID_STATE
+            endif
+          else
+            condition%iphase = LIQUID_STATE
+          endif
         else if (associated(general%gas_pressure) .and. &
                  (associated(general%mole_fraction) .or. &
                   associated(general%relative_humidity))) then
           ! gas phase condition
-          condition%iphase = GAS_STATE
+          if (associated(general%salt_mole_fraction)) then
+            if (general%salt_mole_fraction%itype == AT_SOLUBILITY_BC) then
+              condition%iphase = GP_STATE
+            ! else GAS_state
+            endif
+          else
+            condition%iphase = GAS_STATE
+          endif
         endif
       else
         if (.not.associated(general%liquid_pressure)) then
@@ -1966,7 +2355,16 @@ subroutine FlowConditionGeneralRead(condition,input,option)
             &a gas saturation'
           call PrintErrMsg(option)
         endif
-        condition%iphase = TWO_PHASE_STATE
+        ! two phase condition
+        if (associated(general%salt_mole_fraction)) then
+          if (general%salt_mole_fraction%itype == AT_SOLUBILITY_BC) then
+            condition%iphase = LGP_STATE
+          else
+            condition%iphase = TWO_PHASE_STATE
+          endif
+        else
+           condition%iphase = TWO_PHASE_STATE
+        endif
       endif
     endif
     if (condition%iphase == NULL_STATE) then
@@ -1989,6 +2387,10 @@ subroutine FlowConditionGeneralRead(condition,input,option)
   call FlowSubConditionVerify(option,condition,word,general%gas_saturation, &
                               default_time_storage, &
                               PETSC_TRUE)
+  word = 'precipitate saturation'
+  call FlowSubConditionVerify(option,condition,word,general%precipitate_saturation, &
+                              default_time_storage, &
+                              PETSC_TRUE)
   word = 'relative humidity'
   call FlowSubConditionVerify(option,condition,word,general%relative_humidity, &
                               default_time_storage, &
@@ -1997,6 +2399,11 @@ subroutine FlowConditionGeneralRead(condition,input,option)
   call FlowSubConditionVerify(option,condition,word,general%mole_fraction, &
                               default_time_storage, &
                               PETSC_TRUE)
+  word = 'salt fraction'
+  call FlowSubConditionVerify(option,condition,word,general%salt_mole_fraction, &
+                              default_time_storage, &
+                              PETSC_TRUE)
+
   word = 'temperature'
   call FlowSubConditionVerify(option,condition,word,general%temperature, &
                               default_time_storage, &
@@ -2026,9 +2433,13 @@ subroutine FlowConditionGeneralRead(condition,input,option)
     i = i + 1
   if (associated(general%gas_saturation)) &
     i = i + 1
+  if (associated(general%precipitate_saturation)) &
+    i = i + 1
   if (associated(general%relative_humidity)) &
     i = i + 1
   if (associated(general%mole_fraction)) &
+    i = i + 1
+  if (associated(general%salt_mole_fraction)) &
     i = i + 1
   if (associated(general%temperature)) &
     i = i + 1
@@ -2058,6 +2469,10 @@ subroutine FlowConditionGeneralRead(condition,input,option)
     i = i + 1
     condition%sub_condition_ptr(i)%ptr => general%gas_saturation
   endif
+  if (associated(general%precipitate_saturation)) then
+    i = i + 1
+    condition%sub_condition_ptr(i)%ptr => general%precipitate_saturation
+  endif
   if (associated(general%relative_humidity)) then
     i = i + 1
     condition%sub_condition_ptr(i)%ptr => general%relative_humidity
@@ -2065,6 +2480,10 @@ subroutine FlowConditionGeneralRead(condition,input,option)
   if (associated(general%mole_fraction)) then
     i = i + 1
     condition%sub_condition_ptr(i)%ptr => general%mole_fraction
+  endif
+  if (associated(general%salt_mole_fraction)) then
+    i = i + 1
+    condition%sub_condition_ptr(i)%ptr => general%salt_mole_fraction
   endif
   if (associated(general%temperature)) then
     i = i + 1
@@ -2095,14 +2514,535 @@ subroutine FlowConditionGeneralRead(condition,input,option)
 
   condition%default_time_storage => default_time_storage
 
+  call FlowConditionVerify(option,condition)
+
   call PetscLogEventEnd(logging%event_flow_condition_read,ierr);CHKERRQ(ierr)
 
 end subroutine FlowConditionGeneralRead
 
 ! ************************************************************************** !
 
-subroutine FlowConditionHydrateRead(condition,input,option)
+subroutine FlowConditionSCO2Read(condition,input,option)
+  !
+  ! Reads a condition from the input file for SCO2
+  !
+  ! Author: Michael Nole
+  ! Date: 12/13/23
+  !
+  use Option_module
+  use Input_Aux_module
+  use String_module
+  use Logging_module
+  use Time_Storage_module
+  use Dataset_module
 
+  ! needed for STATES and isothermal
+  use SCO2_Aux_module
+
+  implicit none
+
+  type(flow_condition_type) :: condition
+  type(input_type), pointer :: input
+  type(option_type) :: option
+
+  character(len=MAXSTRINGLENGTH) :: string
+  character(len=MAXWORDLENGTH) :: rate_string, internal_units
+  character(len=MAXWORDLENGTH) :: word
+  type(flow_sco2_condition_type), pointer :: sco2
+  type(flow_sub_condition_type), pointer :: sub_condition_ptr
+  PetscReal :: default_time
+  PetscInt :: default_iphase
+  PetscInt :: idof, i
+  type(time_storage_type), pointer :: default_time_storage
+  class(dataset_ascii_type), pointer :: dataset_ascii
+  character(len=MAXWORDLENGTH) :: flow_mode_chars
+  PetscErrorCode :: ierr
+
+  call PetscLogEventBegin(logging%event_flow_condition_read, &
+                          ierr);CHKERRQ(ierr)
+
+
+  flow_mode_chars = 'SCO2 Mode'
+
+  rate_string = 'not_assigned'
+  internal_units = 'not_assigned'
+
+  default_time = 0.d0
+  default_iphase = 0
+
+  default_time_storage => TimeStorageCreate()
+  default_time_storage%is_cyclic = PETSC_FALSE
+  default_time_storage%time_interpolation_method = INTERPOLATION_STEP
+
+  sco2 => FlowSCO2ConditionCreate(option)
+  condition%sco2 => sco2
+
+  ! MAN: might want to rework this in the future so that gas saturation
+  ! can be read for either the trapped gas state or liquid-gas state.
+
+  ! read the condition
+  input%ierr = 0
+  call InputPushBlock(input,option)
+  do
+
+    internal_units = 'not_assigned'
+
+    call InputReadPflotranString(input,option)
+    call InputReadStringErrorMsg(input,option,'CONDITION')
+
+    if (InputCheckExit(input,option)) exit
+
+    call InputReadCard(input,option,word)
+    call InputErrorMsg(input,option,'keyword','CONDITION')
+
+    select case(trim(word))
+
+      case('CYCLIC')
+        ! by default, is_cyclic is set to PETSC_FALSE
+        default_time_storage%is_cyclic = PETSC_TRUE
+      case('SYNC_TIMESTEP_WITH_UPDATE')
+        condition%sync_time_with_update = PETSC_TRUE
+      case('INTERPOLATION')
+        call InputReadCard(input,option,word)
+        call InputErrorMsg(input,option,'INTERPOLATION','CONDITION')
+        call StringToUpper(word)
+        select case(word)
+          case('STEP')
+            default_time_storage%time_interpolation_method = &
+              INTERPOLATION_STEP
+          case('LINEAR')
+            default_time_storage%time_interpolation_method = &
+              INTERPOLATION_LINEAR
+        end select
+      case('TYPE') ! read condition type (dirichlet, neumann, etc) for each dof
+        call InputPushBlock(input,option)
+        do
+          call InputReadPflotranString(input,option)
+          call InputReadStringErrorMsg(input,option,'CONDITION')
+
+          if (InputCheckExit(input,option)) exit
+
+          if (InputError(input)) exit
+          call InputReadCard(input,option,word)
+          call InputErrorMsg(input,option,'keyword','CONDITION,TYPE')
+          call StringToUpper(word)
+          sub_condition_ptr => &
+                FlowSCO2SubConditionPtr(input,word,sco2,option)
+          call InputReadCard(input,option,word)
+          call InputErrorMsg(input,option,'TYPE','CONDITION')
+          call StringToUpper(word)
+          sub_condition_ptr%ctype = word
+          select case(word)
+            case('DIRICHLET')
+              sub_condition_ptr%itype = DIRICHLET_BC
+            case('NEUMANN')
+              sub_condition_ptr%itype = NEUMANN_BC
+            case('HYDROSTATIC')
+              sub_condition_ptr%itype = HYDROSTATIC_BC
+            case('CONDUCTANCE')
+              sub_condition_ptr%itype = HYDROSTATIC_CONDUCTANCE_BC
+            case('SEEPAGE')
+              sub_condition_ptr%itype = HYDROSTATIC_SEEPAGE_BC
+            case('DIRICHLET_SEEPAGE')
+              sub_condition_ptr%itype = DIRICHLET_SEEPAGE_BC
+            case('MASS_RATE')
+              sub_condition_ptr%itype = MASS_RATE_SS
+              rate_string = 'kg/sec'
+            case('TOTAL_MASS_RATE')
+              sub_condition_ptr%itype = TOTAL_MASS_RATE_SS
+              rate_string = 'kg/sec'
+            case('SCALED_MASS_RATE')
+              sub_condition_ptr%itype = SCALED_MASS_RATE_SS
+              rate_string = 'kg/sec'
+              call InputReadWord(input,option,word,PETSC_TRUE)
+              if (input%ierr == 0) then
+                call InputPushCard(input,word,option)
+                call StringToUpper(word)
+                sub_condition_ptr%ctype = trim(sub_condition_ptr%ctype) // word
+                select case(word)
+                  case('NEIGHBOR_PERM')
+                    sub_condition_ptr%isubtype = SCALE_BY_NEIGHBOR_PERM
+                  case('VOLUME')
+                    sub_condition_ptr%isubtype = SCALE_BY_VOLUME
+                  case('PERM')
+                    sub_condition_ptr%isubtype = SCALE_BY_PERM
+                  case default
+                    string = 'flow condition "' // trim(condition%name) // &
+                      '" scaled_mass_rate type'
+                    call InputKeywordUnrecognized(input,word,string,option)
+                end select
+              else
+                option%io_buffer = 'Specify one of NEIGHBOR_PERM, &
+                  &VOLUME, PERM subtypes in &
+                  &flow condition "' // trim(condition%name) // &
+                  '" scaled_mass_rate type'
+                call PrintErrMsg(option)
+              endif
+            case('VOLUMETRIC_RATE')
+              sub_condition_ptr%itype = VOLUMETRIC_RATE_SS
+              rate_string = 'm^3/sec'
+            case('SCALED_VOLUMETRIC_RATE')
+              sub_condition_ptr%itype = SCALED_VOLUMETRIC_RATE_SS
+              rate_string = 'm^3/sec'
+              call InputReadWord(input,option,word,PETSC_TRUE)
+              if (input%ierr == 0) then
+                call InputPushCard(input,word,option)
+                call StringToUpper(word)
+                sub_condition_ptr%ctype = trim(sub_condition_ptr%ctype) // word
+                select case(word)
+                  case('NEIGHBOR_PERM')
+                    sub_condition_ptr%isubtype = SCALE_BY_NEIGHBOR_PERM
+                  case('VOLUME')
+                    sub_condition_ptr%isubtype = SCALE_BY_VOLUME
+                  case('PERM')
+                    sub_condition_ptr%isubtype = SCALE_BY_PERM
+                  case default
+                    string = 'flow condition "' // trim(condition%name) // &
+                      '" scaled_volumetric_rate type'
+                    call InputKeywordUnrecognized(input,word,string,option)
+                end select
+              else
+                option%io_buffer = 'Specify one of NEIGHBOR_PERM, &
+                  &VOLUME, PERM subtypes in &
+                  &flow condition "' // trim(condition%name) // &
+                  '" scaled_volumetric_rate type'
+                call PrintErrMsg(option)
+              endif
+            case('HETEROGENEOUS_VOLUMETRIC_RATE')
+              sub_condition_ptr%itype = HET_VOL_RATE_SS
+              rate_string = 'm^3/sec'
+            case('HETEROGENEOUS_MASS_RATE')
+              sub_condition_ptr%itype = HET_MASS_RATE_SS
+              rate_string = 'kg/sec'
+            case('HETEROGENEOUS_DIRICHLET')
+              sub_condition_ptr%itype = HET_DIRICHLET_BC
+            case('HETEROGENEOUS_SURFACE_SEEPAGE')
+              sub_condition_ptr%itype = HET_SURF_HYDROSTATIC_SEEPAGE_BC
+            case default
+              call InputKeywordUnrecognized(input,word, &
+                                            'flow condition,type',option)
+          end select
+        enddo
+        call InputPopBlock(input,option)
+      case('DATUM')
+        dataset_ascii => DatasetAsciiCreate()
+        call DatasetAsciiInit(dataset_ascii)
+        dataset_ascii%array_width = 3
+        dataset_ascii%data_type = DATASET_REAL
+        condition%datum => dataset_ascii
+        nullify(dataset_ascii)
+        internal_units = 'meter'
+        call ConditionReadValues(input,option,word,condition%datum, &
+                                 word,internal_units)
+      case('GRADIENT')
+        call InputPushBlock(input,option)
+        do
+          call InputReadPflotranString(input,option)
+          call InputReadStringErrorMsg(input,option,'CONDITION')
+
+          if (InputCheckExit(input,option)) exit
+
+          if (InputError(input)) exit
+          call InputReadCard(input,option,word)
+          call InputErrorMsg(input,option,'keyword','CONDITION,TYPE')
+          call StringToUpper(word)
+          sub_condition_ptr => &
+                FlowSCO2SubConditionPtr(input,word,sco2,option)
+          dataset_ascii => DatasetAsciiCreate()
+          call DatasetAsciiInit(dataset_ascii)
+          dataset_ascii%array_width = 3
+          dataset_ascii%data_type = DATASET_REAL
+          sub_condition_ptr%gradient => dataset_ascii
+          nullify(dataset_ascii)
+          internal_units = 'unitless/meter'
+          call ConditionReadValues(input,option,word, &
+                                   sub_condition_ptr%gradient, &
+                                   word,internal_units)
+          nullify(sub_condition_ptr)
+        enddo
+        call InputPopBlock(input,option)
+      case('CONDUCTANCE')
+        word = 'LIQUID_PRESSURE'
+        sub_condition_ptr => &
+                FlowSCO2SubConditionPtr(input,word,sco2,option)
+        call InputReadDouble(input,option,sub_condition_ptr%aux_real(1))
+        call InputErrorMsg(input,option,'LIQUID_CONDUCTANCE','CONDITION')
+      case('LIQUID_PRESSURE','GAS_PRESSURE', 'CO2_PRESSURE', &
+           'CO2_PARTIAL_PRESSURE','LIQUID_SATURATION', &
+           'GAS_SATURATION','CO2_MASS_FRACTION','RATE', &
+           'LIQUID_FLUX','GAS_FLUX', &
+           'SALT_MASS_FRACTION','SALT_MASS', 'TEMPERATURE', &
+           'ENERGY_FLUX')
+        sub_condition_ptr => &
+                FlowSCO2SubConditionPtr(input,word,sco2,option)
+        internal_units = 'not_assigned'
+        select case(trim(word))
+          case('LIQUID_PRESSURE','GAS_PRESSURE','CO2_PRESSURE', &
+               'CO2_PARTIAL_PRESSURE')
+            internal_units = 'Pa'
+          case('LIQUID_SATURATION','GAS_SATURATION','SALT_MASS_FRACTION', &
+                'CO2_MASS_FRACTION','SALT_MOLE_FRACTION')
+            internal_units = 'unitless'
+          case('TEMPERATURE')
+            internal_units = 'C'
+          case('RATE')
+            input%force_units = PETSC_TRUE
+            input%err_buf = word
+            if (sco2_thermal) then
+              internal_units = trim(rate_string) // ',' // &
+                             trim(rate_string) // ',' // &
+                             trim(rate_string) // ',' // &
+                             'MJ/sec|MW'
+            else
+              internal_units = trim(rate_string) // ',' // &
+                             trim(rate_string) // ',' // &
+                             trim(rate_string)
+            endif
+          case('LIQUID_FLUX','GAS_FLUX')
+            internal_units = 'meter/sec'
+          case('ENERGY_FLUX')
+            input%force_units = PETSC_TRUE
+            input%err_buf = word
+            internal_units = 'MW/m^2|MJ/m^2-sec'
+        end select
+        call ConditionReadValues(input,option,word, &
+                                 sub_condition_ptr%dataset, &
+                                 sub_condition_ptr%units,internal_units)
+        input%force_units = PETSC_FALSE
+        select case(word)
+          case('LIQUID_SATURATION') ! convert to gas saturation
+            if (associated(sub_condition_ptr%dataset%rbuffer)) then
+              sub_condition_ptr%dataset%rbuffer(:) = 1.d0 - &
+                sub_condition_ptr%dataset%rbuffer(:)
+            endif
+            sub_condition_ptr%dataset%rarray(:) = 1.d0 - &
+              sub_condition_ptr%dataset%rarray(:)
+        end select
+      case default
+        call InputKeywordUnrecognized(input,word,'flow condition',option)
+    end select
+
+  enddo
+  call InputPopBlock(input,option)
+
+  ! datum is not required
+  string = 'SUBSURFACE/FLOW_CONDITION' // trim(condition%name) // '/Datum'
+  call DatasetVerify(condition%datum,default_time_storage,string,option)
+
+  
+    if (associated(sco2%rate)) then
+      ! State for rates/fluxes
+      condition%iphase = SCO2_ANY_STATE
+    elseif (associated(sco2%liquid_flux) .and. &
+            associated(sco2%gas_flux) .and. &
+            (associated(sco2%energy_flux) .or. &
+             associated(sco2%temperature))) then
+      condition%iphase = SCO2_ANY_STATE
+    else
+      ! some sort of dirichlet-based pressure, etc.
+      if (.not.associated(sco2%liquid_pressure) .and. &
+          .not.associated(sco2%gas_pressure)) then
+        option%io_buffer = 'SCO2 Mode non-rate condition must include &
+            &a liquid or gas pressure.'
+        call PrintErrMsg(option)
+      endif
+      if (.not.associated(sco2%co2_mass_fraction) .and. &
+          .not.associated(sco2%co2_pressure) .and. &
+          .not.associated(sco2%gas_saturation) .and. &
+          .not.associated(sco2%gas_pressure)) then
+        option%io_buffer = 'SCO2 Mode non-rate condition must include &
+            &a CO2 partial pressure, CO2 mass fraction, &
+            &gas pressure, or gas/liquid saturation.'
+        call PrintErrMsg(option)
+      endif
+      if (sco2_thermal .and. .not.associated(sco2%temperature)) then
+          option%io_buffer = 'SCO2 Mode non-rate condition must include &
+            &a temperature'
+        call PrintErrMsg(option)
+      endif
+      if (.not.associated(sco2%salt_mass)) then
+        option%io_buffer = 'SCO2 Mode non-rate condition must include &
+          &a salt mass or mass fraction.'
+      call PrintErrMsg(option)
+    endif
+
+    if (associated(sco2%gas_pressure) .and. &
+        associated(sco2%gas_saturation) .and. &
+        associated(sco2%liquid_pressure) .and. &
+        (associated(sco2%co2_mass_fraction) .or. &
+        associated(sco2%co2_pressure)) ) then
+
+      ! multiphase condition
+      condition%iphase = SCO2_MULTI_STATE
+
+    elseif (associated(sco2%liquid_pressure) .and. &
+            associated(sco2%gas_pressure)) then
+
+      condition%iphase = SCO2_LIQUID_GAS_STATE
+
+    elseif (associated(sco2%liquid_pressure) .and. &
+            associated(sco2%co2_mass_fraction)) then
+
+      condition%iphase = SCO2_LIQUID_STATE
+
+    elseif (associated(sco2%gas_pressure) .and. &
+            associated(sco2%co2_pressure)) then
+
+      condition%iphase = SCO2_GAS_STATE
+    
+    elseif (associated(sco2%liquid_pressure) .and. &
+            associated(sco2%gas_saturation)) then
+
+      condition%iphase = SCO2_TRAPPED_GAS_STATE
+
+    endif
+
+    if (condition%iphase == SCO2_NULL_STATE) then
+      option%io_buffer = 'SCO2 Phase non-rate/flux condition contains &
+        &an unsupported combination of primary variables.'
+      call PrintErrMsg(option)
+    endif
+
+  endif
+
+  ! verify the datasets
+  word = 'liquid pressure'
+  call FlowSubConditionVerify(option,condition,word,sco2%liquid_pressure, &
+                              default_time_storage, &
+                              PETSC_TRUE)
+  word = 'gas pressure'
+  call FlowSubConditionVerify(option,condition,word,sco2%gas_pressure, &
+                              default_time_storage, &
+                              PETSC_TRUE)
+  word = 'co2 pressure'
+  call FlowSubConditionVerify(option,condition,word,sco2%co2_pressure, &
+                              default_time_storage, &
+                              PETSC_TRUE)
+  word = 'gas saturation'
+  call FlowSubConditionVerify(option,condition,word,sco2%gas_saturation, &
+                              default_time_storage, &
+                              PETSC_TRUE)
+  word = 'co2 mass fraction'
+  call FlowSubConditionVerify(option,condition,word,sco2%co2_mass_fraction, &
+                              default_time_storage, &
+                              PETSC_TRUE)
+  word = 'salt mass'
+  call FlowSubConditionVerify(option,condition,word,sco2%salt_mass, &
+                              default_time_storage, &
+                              PETSC_TRUE)
+  word = 'temperature'
+  call FlowSubConditionVerify(option,condition,word,sco2%temperature, &
+                              default_time_storage, &
+                              PETSC_TRUE)
+  word = 'liquid flux'
+  call FlowSubConditionVerify(option,condition,word,sco2%liquid_flux, &
+                              default_time_storage, &
+                              PETSC_TRUE)
+  word = 'gas flux'
+  call FlowSubConditionVerify(option,condition,word,sco2%gas_flux, &
+                              default_time_storage, &
+                              PETSC_TRUE)
+  word = 'energy flux'
+  call FlowSubConditionVerify(option,condition,word,sco2%energy_flux, &
+                              default_time_storage, &
+                              PETSC_TRUE)
+  word = 'rate'
+  call FlowSubConditionVerify(option,condition,word,sco2%rate, &
+                              default_time_storage, &
+                              PETSC_TRUE)
+
+  condition%num_sub_conditions = 0
+  i = 0
+  if (associated(sco2%liquid_pressure)) &
+    i = i + 1
+  if (associated(sco2%gas_pressure)) &
+    i = i + 1
+  if (associated(sco2%co2_pressure)) &
+    i = i + 1  
+  if (associated(sco2%gas_saturation)) &
+    i = i + 1
+  if (associated(sco2%co2_mass_fraction)) &
+    i = i + 1
+  if (associated(sco2%salt_mass)) &
+    i = i + 1
+  if (sco2_thermal .and. associated(sco2%temperature)) &
+    i = i + 1
+  if (associated(sco2%liquid_flux)) &
+    i = i + 1
+  if (associated(sco2%gas_flux)) &
+    i = i + 1
+  if (sco2_thermal .and. associated(sco2%energy_flux)) &
+    i = i + 1
+  if (associated(sco2%rate)) &
+    i = i + 1
+  condition%num_sub_conditions = i
+  allocate(condition%sub_condition_ptr(condition%num_sub_conditions))
+  do idof = 1, condition%num_sub_conditions
+    nullify(condition%sub_condition_ptr(idof)%ptr)
+  enddo
+  i = 0
+  if (associated(sco2%liquid_pressure)) then
+    i = i + 1
+    condition%sub_condition_ptr(i)%ptr => sco2%liquid_pressure
+  endif
+  if (associated(sco2%gas_pressure)) then
+    i = i + 1
+    condition%sub_condition_ptr(i)%ptr => sco2%gas_pressure
+  endif
+  if (associated(sco2%co2_pressure)) then
+    i = i + 1
+    condition%sub_condition_ptr(i)%ptr => sco2%co2_pressure
+  endif
+  if (associated(sco2%gas_saturation)) then
+    i = i + 1
+    condition%sub_condition_ptr(i)%ptr => sco2%gas_saturation
+  endif
+  if (associated(sco2%co2_mass_fraction)) then
+    i = i + 1
+    condition%sub_condition_ptr(i)%ptr => sco2%co2_mass_fraction
+  endif
+  if (associated(sco2%salt_mass)) then
+    i = i + 1
+    condition%sub_condition_ptr(i)%ptr => sco2%salt_mass
+  endif
+  if (sco2_thermal .and. associated(sco2%temperature)) then
+    i = i + 1
+    condition%sub_condition_ptr(i)%ptr => sco2%temperature
+  endif
+  if (associated(sco2%liquid_flux)) then
+    i = i + 1
+    condition%sub_condition_ptr(i)%ptr => sco2%liquid_flux
+  endif
+  if (associated(sco2%gas_flux)) then
+    i = i + 1
+    condition%sub_condition_ptr(i)%ptr => sco2%gas_flux
+  endif
+  if (sco2_thermal .and. associated(sco2%energy_flux)) then
+    i = i + 1
+    condition%sub_condition_ptr(i)%ptr => sco2%energy_flux
+  endif
+  if (associated(sco2%rate)) then
+    i = i + 1
+    condition%sub_condition_ptr(i)%ptr => sco2%rate
+  endif
+
+  ! set condition types
+  allocate(condition%itype(condition%num_sub_conditions))
+  do idof = 1, condition%num_sub_conditions
+    condition%itype(idof) = condition%sub_condition_ptr(idof)%ptr%itype
+  enddo
+
+  condition%default_time_storage => default_time_storage
+
+  call FlowConditionVerify(option,condition)
+
+  call PetscLogEventEnd(logging%event_flow_condition_read,ierr);CHKERRQ(ierr)
+
+end subroutine FlowConditionSCO2Read
+
+! ************************************************************************** !
+
+subroutine FlowConditionHydrateRead(condition,input,option)
   !
   ! Reads a condition from the input file for
   ! hydrate mode
@@ -2110,7 +3050,6 @@ subroutine FlowConditionHydrateRead(condition,input,option)
   ! Author: Michael Nole
   ! Date: 07/22/19
   !
-
   use Option_module
   use Input_Aux_module
   use String_module
@@ -2134,10 +3073,7 @@ subroutine FlowConditionHydrateRead(condition,input,option)
   type(flow_sub_condition_type), pointer :: sub_condition_ptr
   PetscReal :: default_time
   PetscInt :: default_iphase
-  class(dataset_base_type), pointer :: default_flow_dataset
-  class(dataset_base_type), pointer :: default_gradient
   PetscInt :: idof, i
-  PetscBool :: default_is_cyclic
   type(time_storage_type), pointer :: default_time_storage
   class(dataset_ascii_type), pointer :: dataset_ascii
   character(len=MAXWORDLENGTH) :: flow_mode_chars
@@ -2233,6 +3169,8 @@ subroutine FlowConditionHydrateRead(condition,input,option)
               sub_condition_ptr%itype = HYDROSTATIC_CONDUCTANCE_BC
             case('SEEPAGE')
               sub_condition_ptr%itype = HYDROSTATIC_SEEPAGE_BC
+            case('DIRICHLET_SEEPAGE')
+              sub_condition_ptr%itype = DIRICHLET_SEEPAGE_BC
             case('MASS_RATE')
               sub_condition_ptr%itype = MASS_RATE_SS
               rate_string = 'kg/sec'
@@ -2398,15 +3336,10 @@ subroutine FlowConditionHydrateRead(condition,input,option)
                                  sub_condition_ptr%dataset, &
                                  sub_condition_ptr%units,internal_units)
         input%force_units = PETSC_FALSE
-        select case(word)
-          case('LIQUID_SATURATION') ! convert to gas saturation
-            if (associated(sub_condition_ptr%dataset%rbuffer)) then
-              sub_condition_ptr%dataset%rbuffer(:) = 1.d0 - &
-                sub_condition_ptr%dataset%rbuffer(:)
-            endif
-            sub_condition_ptr%dataset%rarray(:) = 1.d0 - &
-              sub_condition_ptr%dataset%rarray(:)
-        end select
+      case('STATE')
+        call InputReadCard(input,option,word)
+        call StringToUpper(word)
+        hydrate%state = trim(word)
       case default
         call InputKeywordUnrecognized(input,word,'flow condition',option)
     end select
@@ -2447,30 +3380,11 @@ subroutine FlowConditionHydrateRead(condition,input,option)
             (associated(hydrate%energy_flux) .or. &
              associated(hydrate%temperature))) then
       condition%iphase = HYD_ANY_STATE
+    elseif (associated(hydrate%liquid_pressure) .and. &
+            associated(hydrate%mole_fraction) .and. &
+            associated(hydrate%energy_flux)) then
+      condition%iphase = HYD_ANY_STATE
     else
-      ! some sort of dirichlet-based pressure, temperature, etc.
-      if (.not.associated(hydrate%liquid_pressure) .and. &
-          .not.associated(hydrate%gas_pressure)) then
-        option%io_buffer = 'Hydrate Mode non-rate condition must include &
-          &a liquid or gas pressure'
-        call printErrMsg(option)
-      endif
-      if (.not.associated(hydrate%mole_fraction) .and. &
-          .not.associated(hydrate%relative_humidity) .and. &
-          .not.associated(hydrate%gas_saturation)) then
-        if (.not.associated(hydrate%hydrate_saturation) .and. &
-                .not.associated(hydrate%ice_saturation)) then
-          option%io_buffer = 'Hydrate Mode non-rate condition must &
-                  &include a mole fraction, relative humidity, or &
-                  &gas/liquid/hydrate/ice saturation'
-          call printErrMsg(option)
-        endif
-      endif
-      if (.not.associated(hydrate%temperature)) then
-        option%io_buffer = 'Hydrate Mode non-rate condition must include &
-          &a temperature, for now...'
-        call printErrMsg(option)
-      endif
       if ( associated(hydrate%gas_pressure) .and. &
            associated(hydrate%gas_saturation) .and. &
            associated(hydrate%liquid_pressure) .and. &
@@ -2478,55 +3392,103 @@ subroutine FlowConditionHydrateRead(condition,input,option)
             associated(hydrate%relative_humidity)) ) then
         ! multiphase condition
         condition%iphase = HYD_MULTI_STATE
-      elseif (associated(hydrate%liquid_pressure) .and. &
+      elseif (hydrate%state /= 'I' .and. &
+              hydrate%state /= 'H' .and. &
+              associated(hydrate%liquid_pressure) .and. &
               associated(hydrate%mole_fraction) .and. &
               associated(hydrate%temperature)) then
         ! liquid phase condition
         condition%iphase = L_STATE
-      elseif (associated(hydrate%gas_pressure) .and. &
+      elseif (hydrate%state /= 'I' .and. &
+              hydrate%state /= 'H' .and. &
+                associated(hydrate%gas_pressure) .and. &
                (associated(hydrate%mole_fraction) .or. &
                 associated(hydrate%relative_humidity)) .and. &
                 associated(hydrate%temperature)) then
         ! gas phase condition
         condition%iphase = G_STATE
-      elseif (associated(hydrate%gas_pressure) .and. &
-              associated(hydrate%gas_saturation) .and. &
+      elseif (hydrate%state == 'H' .and. &
+              associated(hydrate%gas_pressure) .and. &
               associated(hydrate%temperature)) then
-        ! two phase condition
+        ! hydrate phase condition
+        condition%iphase = H_STATE
+      elseif (hydrate%state == 'I' .and. &
+              associated(hydrate%gas_pressure) .and. &
+              associated(hydrate%temperature)) then
+        ! ice phase condition
+        condition%iphase = I_STATE
+      elseif (hydrate%state /= 'HG' .and.  &
+              (associated(hydrate%gas_pressure) .or. &
+               associated(hydrate%liquid_pressure)) .and. &
+               associated(hydrate%gas_saturation) .and. &
+               associated(hydrate%temperature)) then
+        ! gas-aqueous phase condition
         condition%iphase = GA_STATE
       elseif ((associated(hydrate%gas_pressure) .or. &
-          associated(hydrate%liquid_pressure)) .and. &
-          associated(hydrate%hydrate_saturation)) then
+               associated(hydrate%liquid_pressure)) .and. &
+               associated(hydrate%gas_saturation) .and. &
+               associated(hydrate%temperature)) then
+        ! hydrate-gas phase condition
+        condition%iphase = HG_STATE
+      elseif (hydrate%state /= 'HI' .and. &
+              (associated(hydrate%gas_pressure) .or. &
+               associated(hydrate%liquid_pressure)) .and. &
+               associated(hydrate%hydrate_saturation) .and. &
+               associated(hydrate%temperature)) then
+        ! hydrate-aqueous condition
         condition%iphase = HA_STATE
-      elseif (associated(hydrate%gas_pressure) .and. &
-              associated(hydrate%ice_saturation) .and. &
-              associated(hydrate%temperature)) then
+      elseif (hydrate%state == 'HI' .and. &
+              (associated(hydrate%gas_pressure) .or. &
+               associated(hydrate%liquid_pressure)) .and. &
+               associated(hydrate%hydrate_saturation) .and. &
+               associated(hydrate%temperature)) then
+        ! hydrate-aqueous condition
+        condition%iphase = HI_STATE
+      elseif ((associated(hydrate%gas_pressure) .or. &
+               associated(hydrate%liquid_pressure)) .and. &
+               associated(hydrate%ice_saturation) .and. &
+               associated(hydrate%temperature)) then
+        ! gas-ice condition
         condition%iphase = GI_STATE
-      elseif (associated(hydrate%gas_pressure) .and. &
-              associated(hydrate%mole_fraction) .and. &
-              associated(hydrate%liquid_saturation)) then
+      elseif ((associated(hydrate%gas_pressure) .or. &
+               associated(hydrate%liquid_pressure)).and. &
+               associated(hydrate%mole_fraction) .and. &
+               associated(hydrate%liquid_saturation)) then
+        ! aqueous-ice condition
         condition%iphase = AI_STATE
-      elseif (associated(hydrate%gas_saturation) .and. &
+      elseif (associated(hydrate%liquid_saturation) .and. &
               associated(hydrate%hydrate_saturation) .and. &
               associated(hydrate%temperature)) then
+        ! hydrate-gas-aqueous condition
         condition%iphase = HGA_STATE
-      elseif (associated(hydrate%gas_pressure) .and. &
-              associated(hydrate%liquid_saturation) .and. &
-              associated(hydrate%ice_saturation)) then
+      elseif (hydrate%state == 'HAI' .and. &
+              (associated(hydrate%gas_pressure) .or. &
+               associated(hydrate%liquid_pressure)) .and. &
+               associated(hydrate%liquid_saturation) .and. &
+               associated(hydrate%ice_saturation)) then
+        ! hydrate-aqueous-ice condition
         condition%iphase = HAI_STATE
+      elseif ((associated(hydrate%gas_pressure) .or. &
+               associated(hydrate%liquid_pressure)) .and. &
+               associated(hydrate%liquid_saturation) .and. &
+               associated(hydrate%ice_saturation)) then
+        ! hydrate-aqueous-ice condition
+        condition%iphase = GAI_STATE
       elseif (associated(hydrate%ice_saturation) .and. &
               associated(hydrate%hydrate_saturation) .and. &
               associated(hydrate%temperature)) then
+        ! hydrate-gas-ice condition
         condition%iphase = HGI_STATE
       elseif (associated(hydrate%liquid_saturation) .and. &
               associated(hydrate%gas_saturation) .and. &
               associated(hydrate%ice_saturation)) then
-        condition%iphase = QUAD_STATE
+        ! hydrate-gas-aqueous-ice condition
+        condition%iphase = HGAI_STATE
       endif
 
     endif
     if (condition%iphase == NULL_STATE) then
-      option%io_buffer = 'General Phase non-rate/flux condition contains &
+      option%io_buffer = 'Hydrate Phase non-rate/flux condition contains &
         &an unsupported combination of primary dependent variables.'
       call printErrMsg(option)
     endif
@@ -2671,6 +3633,8 @@ subroutine FlowConditionHydrateRead(condition,input,option)
 
   condition%default_time_storage => default_time_storage
 
+  call FlowConditionVerify(option,condition)
+
   call PetscLogEventEnd(logging%event_flow_condition_read,ierr);CHKERRQ(ierr)
 
 end subroutine FlowConditionHydrateRead
@@ -2687,7 +3651,6 @@ subroutine FlowConditionCommonRead(condition,input,word,default_time_storage, &
   ! Author: Paolo Orsini
   ! Date: 01/17/19
   !
-
   use Option_module
   use Input_Aux_module
   use String_module
@@ -2708,11 +3671,8 @@ subroutine FlowConditionCommonRead(condition,input,word,default_time_storage, &
 
   character(len=MAXSTRINGLENGTH) :: string
   character(len=MAXSTRINGLENGTH) :: internal_units_string
-  character(len=MAXWORDLENGTH) :: internal_units_word
 
   class(dataset_ascii_type), pointer :: dataset_ascii
-  character(len=MAXWORDLENGTH) :: sub_word
-
 
   card_found = PETSC_FALSE
   select case (trim(word))
@@ -2771,7 +3731,6 @@ subroutine TranConditionRead(condition,constraint_list, &
   ! Author: Glenn Hammond
   ! Date: 10/14/08
   !
-
   use Option_module
   use Input_Aux_module
   use String_module
@@ -2797,15 +3756,11 @@ subroutine TranConditionRead(condition,constraint_list, &
   class(tran_constraint_base_type), pointer :: constraint
   class(tran_constraint_coupler_base_type), pointer :: constraint_coupler
   class(tran_constraint_coupler_base_type), pointer :: cur_constraint_coupler
-  character(len=MAXSTRINGLENGTH) :: string
+  class(tran_constraint_coupler_base_type), pointer :: sec_constraint_coupler
   character(len=MAXWORDLENGTH) :: word, internal_units
   character(len=MAXWORDLENGTH) :: default_time_units
   class(reaction_rt_type), pointer :: reaction
   class(reaction_nw_type), pointer :: reaction_nw
-  PetscInt :: default_itype
-  PetscBool :: found
-  PetscInt :: icomp
-  PetscBool :: minerals_exist
   PetscErrorCode :: ierr
   PetscReal :: conversion
 
@@ -2849,6 +3804,8 @@ subroutine TranConditionRead(condition,constraint_list, &
               condition%itype = EQUILIBRIUM_SS
             case('NEUMANN')
               condition%itype = NEUMANN_BC
+            case('MEMBRANE_FILTER')
+              condition%itype = MEMBRANE_BC
             case('MOLE','MOLE_RATE')
               condition%itype = MASS_RATE_SS
             case('ZERO_GRADIENT')
@@ -2865,7 +3822,8 @@ subroutine TranConditionRead(condition,constraint_list, &
           case('s','sec','min','m','hr','h','d','day','y','yr')
             default_time_units = trim(word)
           case default
-            option%io_buffer = 'Units "' // trim(word) // '" not recognized.'
+            option%io_buffer = 'Units "' // trim(word) // '" not recognized &
+              &in TRANSPORT_CONDITION "' // trim(condition%name) // '".'
             call PrintErrMsg(option)
         end select
       case('CONSTRAINT_LIST')
@@ -2902,7 +3860,8 @@ subroutine TranConditionRead(condition,constraint_list, &
             internal_units = 'sec'
             constraint_coupler%time = constraint_coupler%time* &
               UnitsConvertToInternal(constraint_coupler%time_units, &
-                                     internal_units,option)
+                                     internal_units, &
+                                     'CONSTRAINT_LIST,TIME_UNITS',option)
           endif
           ! add to end of list
           if (.not.associated(condition%constraint_coupler_list)) then
@@ -2952,6 +3911,34 @@ subroutine TranConditionRead(condition,constraint_list, &
           enddo
           cur_constraint_coupler%next => constraint_coupler
         endif
+      case('SECONDARY_CONSTRAINT')
+        if (.not.option%use_sc) then
+          option%io_buffer = 'SECONDARY_CONSTRAINT can only be used with &
+                             &MULTIPLE_CONTINUUM keyword.'
+          call PrintErrMsg(option)
+        endif
+        select case(option%itranmode)
+          case(RT_MODE)
+            sec_constraint_coupler => TranConstraintCouplerRTCreate(option)
+          case(NWT_MODE)
+            option%io_buffer = 'MULTIPLE_CONTINUUM is not compatible with &
+                                &NWT mode'
+            call PrintErrMsg(option)
+        end select
+        call InputReadWord(input,option,sec_constraint_coupler%constraint_name,PETSC_TRUE)
+        call InputErrorMsg(input,option,'secondary constraint','name')
+        sec_constraint_coupler%time = 0.d0
+        ! add to end of coupler list
+        if (.not.associated(condition%sec_constraint_coupler)) then
+          condition%sec_constraint_coupler => sec_constraint_coupler
+        else
+          cur_constraint_coupler => condition%sec_constraint_coupler
+          do
+            if (.not.associated(cur_constraint_coupler%next)) exit
+            cur_constraint_coupler => cur_constraint_coupler%next
+          enddo
+          cur_constraint_coupler%next => sec_constraint_coupler
+        endif
       case default
         call InputKeywordUnrecognized(input,word,'transport condition',option)
     end select
@@ -2968,6 +3955,7 @@ subroutine TranConditionRead(condition,constraint_list, &
   if (len_trim(default_time_units) > 0) then
     internal_units = 'sec'
     conversion = UnitsConvertToInternal(default_time_units,internal_units, &
+                                        'TRANSPORT_CONDITION,TIME_UNITS', &
                                         option)
     cur_constraint_coupler => condition%constraint_coupler_list
     do
@@ -2992,7 +3980,6 @@ subroutine GeopConditionRead(condition,input,option)
   ! Author: Piyoosh Jaysaval
   ! Date: 01/26/21
   !
-
   use Option_module
   use Input_Aux_module
   use String_module
@@ -3035,7 +4022,7 @@ subroutine GeopConditionRead(condition,input,option)
             case('DIRICHLET')
               condition%itype = DIRICHLET_BC
             case('ZERO_GRADIENT')
-              condition%itype = ZERO_GRADIENT_BC  
+              condition%itype = ZERO_GRADIENT_BC
             case default ! only Dirichlet/Zero Flux implemented for now!
               call InputKeywordUnrecognized(input,word, &
                                             'geophysics condition type', &
@@ -3064,7 +4051,6 @@ subroutine ConditionReadValues(input,option,keyword,dataset_base, &
   ! Author: Glenn Hammond
   ! Date: 10/31/07
   !
-
   use Input_Aux_module
   use String_module
   use Option_module
@@ -3090,16 +4076,8 @@ subroutine ConditionReadValues(input,option,keyword,dataset_base, &
   character(len=MAXSTRINGLENGTH) :: string2, filename, hdf5_path
   character(len=MAXWORDLENGTH) :: word, realization_word
   character(len=MAXSTRINGLENGTH) :: error_string
-  PetscInt :: length, i, icount
-  PetscInt :: icol
-  PetscInt :: ndims
-  PetscInt, pointer :: dims(:)
-  PetscReal, pointer :: real_buffer(:)
+  PetscInt :: length, i
   PetscErrorCode :: ierr
-
-  integer(HID_T) :: file_id
-  integer(HID_T) :: prop_id
-  PetscMPIInt :: hdf5_err
 
   call PetscLogEventBegin(logging%event_flow_condition_read_values, &
                           ierr);CHKERRQ(ierr)
@@ -3153,59 +4131,6 @@ subroutine ConditionReadValues(input,option,keyword,dataset_base, &
         write(option%io_buffer,'("Reading of HDF5 datasets for flow ", &
                                  &"conditions not currently supported.")')
         call PrintErrMsg(option)
-#if 0
-        if (len_trim(hdf5_path) < 1) then
-          option%io_buffer = 'No hdf5 path listed under Flow_Condition: ' // &
-                             trim(keyword)
-          call PrintErrMsg(option)
-        endif
-
-        option%io_buffer = 'Opening hdf5 file: ' // trim(filename)
-        call PrintMsg(option)
-        call h5pcreate_f(H5P_FILE_ACCESS_F,prop_id,hdf5_err)
-#ifndef SERIAL_HDF5
-        call h5pset_fapl_mpio_f(prop_id,option%mycomm,MPI_INFO_NULL,hdf5_err)
-#endif
-        call HDF5OpenFileReadOnly(filename,file_id,prop_id,option)
-        call h5pclose_f(prop_id,hdf5_err)
-
-        hdf5_path = trim(hdf5_path) // trim(realization_word)
-        call HDF5ReadNDimRealArray(option,file_id,hdf5_path,ndims,dims, &
-                                   real_buffer)
-        option%io_buffer = 'Closing hdf5 file: ' // trim(filename)
-        call PrintMsg(option)
-        call h5fclose_f(file_id,hdf5_err)
-
-        ! dims(1) = size of array
-        ! dims(2) = number of data point in time
-        if (dims(1)-1 == flow_dataset%time_series%rank) then
-          ! alright, the 2d data is layed out in C-style.  now place it in
-          ! the appropriate arrays
-          allocate(flow_dataset%time_series%times(dims(2)))
-          flow_dataset%time_series%times = UNINITIALIZED_DOUBLE
-          allocate(flow_dataset%time_series%values(flow_dataset% &
-                                                     time_series%rank,dims(2)))
-          flow_dataset%time_series%values = UNINITIALIZED_DOUBLE
-          icount = 1
-          do i = 1, dims(2)
-            flow_dataset%time_series%times(i) = real_buffer(icount)
-            icount = icount + 1
-            do icol = 1, flow_dataset%time_series%rank
-              flow_dataset%time_series%values(icol,i) = real_buffer(icount)
-              icount = icount + 1
-            enddo
-          enddo
-        else
-          option%io_buffer = 'HDF condition data set rank does not match &
-            &rank of internal data set.  Email Glenn for additions'
-          call PrintErrMsg(option)
-        endif
-        if (associated(dims)) deallocate(dims)
-        nullify(dims)
-        if (associated(real_buffer)) deallocate(real_buffer)
-        nullify(real_buffer)
-#endif
-! if 0
       else
         i = index(filename,'.',PETSC_TRUE)
         if (i > 2) then
@@ -3265,7 +4190,6 @@ subroutine FlowConditionPrint(condition,option)
   ! Author: Glenn Hammond
   ! Date: 12/04/08
   !
-
   use Option_module
   use Dataset_module
 
@@ -3313,7 +4237,6 @@ subroutine FlowConditionPrintSubCondition(subcondition,option)
   ! Author: Glenn Hammond
   ! Date: 12/04/08
   !
-
   use Option_module
   use Dataset_module
 
@@ -3325,7 +4248,7 @@ subroutine FlowConditionPrintSubCondition(subcondition,option)
   character(len=MAXSTRINGLENGTH) :: string
 
   write(option%fid_out,'(/,4x,''Sub Condition: '',a)') trim(subcondition%name)
-  string = GetSubConditionName(subcondition%itype)
+  string = GetSubConditionType(subcondition%itype)
 
   105 format(6x,'Type: ',a)
   write(option%fid_out,105) trim(string)
@@ -3346,20 +4269,19 @@ end subroutine FlowConditionPrintSubCondition
 
 ! ************************************************************************** !
 
-function GetSubConditionName(subcon_itype)
+function GetSubConditionType(subcon_itype)
   !
   ! SubConditionName: Return name of subcondition
   !
   ! Author: Gautam Bisht
   ! Date: 10/16/13
   !
-
   implicit none
 
   PetscInt :: subcon_itype
 
   character(len=MAXSTRINGLENGTH) :: string
-  character(len=MAXSTRINGLENGTH) :: GetSubConditionName
+  character(len=MAXSTRINGLENGTH) :: GetSubConditionType
 
   select case(subcon_itype)
     case(DIRICHLET_BC)
@@ -3420,11 +4342,13 @@ function GetSubConditionName(subcon_itype)
       string = 'surface_zero_gradheight'
     case(SURFACE_SPILLOVER)
       string = 'surface_spillover'
-    end select
+    case default
+      string = 'unknown'
+  end select
 
-  GetSubConditionName = trim(string)
+  GetSubConditionType = trim(string)
 
-end function GetSubConditionName
+end function GetSubConditionType
 
 ! ************************************************************************** !
 
@@ -3518,7 +4442,6 @@ subroutine FlowConditionInitList(list)
   ! Author: Glenn Hammond
   ! Date: 11/01/07
   !
-
   implicit none
 
   type(condition_list_type) :: list
@@ -3539,7 +4462,6 @@ subroutine FlowConditionAddToList(new_condition,list)
   ! Author: Glenn Hammond
   ! Date: 11/01/07
   !
-
   implicit none
 
   type(flow_condition_type), pointer :: new_condition
@@ -3563,7 +4485,6 @@ function FlowConditionGetPtrFromList(condition_name,condition_list)
   ! Author: Glenn Hammond
   ! Date: 11/01/07
   !
-
   use String_module
 
   implicit none
@@ -3601,7 +4522,6 @@ subroutine TranConditionInitList(list)
   ! Author: Glenn Hammond
   ! Date: 10/13/08
   !
-
   implicit none
 
   type(tran_condition_list_type) :: list
@@ -3622,7 +4542,6 @@ subroutine TranConditionAddToList(new_condition,list)
   ! Author: Glenn Hammond
   ! Date: 10/13/08
   !
-
   implicit none
 
   type(tran_condition_type), pointer :: new_condition
@@ -3646,7 +4565,6 @@ function TranConditionGetPtrFromList(condition_name,condition_list)
   ! Author: Glenn Hammond
   ! Date: 10/13/08
   !
-
   use String_module
 
   implicit none
@@ -3684,7 +4602,6 @@ subroutine GeopConditionInitList(list)
   ! Author: Piyoosh Jaysaval
   ! Date: 01/26/21
   !
-
   implicit none
 
   type(geop_condition_list_type) :: list
@@ -3705,7 +4622,6 @@ subroutine GeopConditionAddToList(new_condition,list)
   ! Author: Piyoosh Jaysaval
   ! Date: 01/26/21
   !
-
   implicit none
 
   type(geop_condition_type), pointer :: new_condition
@@ -3729,7 +4645,6 @@ function GeopConditionGetPtrFromList(condition_name,condition_list)
   ! Author: Piyoosh Jaysaval
   ! Date: 01/26/21
   !
-
   use String_module
 
   implicit none
@@ -3760,6 +4675,135 @@ end function GeopConditionGetPtrFromList
 
 ! ************************************************************************** !
 
+function FlowConditionIsHydrostatic(condition)
+  !
+  ! Returns PETSC_TRUE if a flow condition is hydrostatic for pressure
+  !
+  ! Author: Glenn Hammond
+  ! Date: 03/29/22
+  !
+  implicit none
+
+  type(flow_condition_type) :: condition
+
+  PetscBool :: FlowConditionIsHydrostatic
+
+  FlowConditionIsHydrostatic = PETSC_FALSE
+
+  if (associated(condition%pressure)) then
+    if (condition%pressure%itype == HYDROSTATIC_BC .or. &
+        condition%pressure%itype == HYDROSTATIC_CONDUCTANCE_BC .or. &
+        condition%pressure%itype == HYDROSTATIC_SEEPAGE_BC) then
+      FlowConditionIsHydrostatic = PETSC_TRUE
+    endif
+  endif
+
+  if (associated(condition%general)) then
+    if (associated(condition%general%liquid_pressure)) then
+      if (condition%general%liquid_pressure%itype == HYDROSTATIC_BC .or. &
+          condition%general%liquid_pressure%itype == &
+            HYDROSTATIC_CONDUCTANCE_BC .or. &
+          condition%general%liquid_pressure%itype == &
+            HYDROSTATIC_SEEPAGE_BC) then
+        FlowConditionIsHydrostatic = PETSC_TRUE
+      endif
+    endif
+    if (associated(condition%general%gas_pressure)) then
+      if (condition%general%gas_pressure%itype == HYDROSTATIC_BC .or. &
+          condition%general%gas_pressure%itype == &
+            HYDROSTATIC_CONDUCTANCE_BC .or. &
+          condition%general%gas_pressure%itype == &
+            HYDROSTATIC_SEEPAGE_BC) then
+        FlowConditionIsHydrostatic = PETSC_TRUE
+      endif
+    endif
+  endif
+
+  if (associated(condition%hydrate)) then
+    if (associated(condition%hydrate%liquid_pressure)) then
+      if (condition%hydrate%liquid_pressure%itype == HYDROSTATIC_BC .or. &
+          condition%hydrate%liquid_pressure%itype == &
+            HYDROSTATIC_CONDUCTANCE_BC .or. &
+          condition%hydrate%liquid_pressure%itype == &
+            HYDROSTATIC_SEEPAGE_BC) then
+        FlowConditionIsHydrostatic = PETSC_TRUE
+      endif
+    endif
+    if (associated(condition%hydrate%gas_pressure)) then
+      if (condition%hydrate%gas_pressure%itype == HYDROSTATIC_BC .or. &
+          condition%hydrate%gas_pressure%itype == &
+            HYDROSTATIC_CONDUCTANCE_BC .or. &
+          condition%hydrate%gas_pressure%itype == &
+            HYDROSTATIC_SEEPAGE_BC) then
+        FlowConditionIsHydrostatic = PETSC_TRUE
+      endif
+    endif
+  endif
+
+  if (associated(condition%sco2)) then
+    if (associated(condition%sco2%liquid_pressure)) then
+      if (condition%sco2%liquid_pressure%itype == HYDROSTATIC_BC .or. &
+          condition%sco2%liquid_pressure%itype == &
+            HYDROSTATIC_CONDUCTANCE_BC .or. &
+          condition%sco2%liquid_pressure%itype == &
+            HYDROSTATIC_SEEPAGE_BC) then
+        FlowConditionIsHydrostatic = PETSC_TRUE
+      endif
+    endif
+    if (associated(condition%sco2%gas_pressure)) then
+      if (condition%sco2%gas_pressure%itype == HYDROSTATIC_BC .or. &
+          condition%sco2%gas_pressure%itype == &
+            HYDROSTATIC_CONDUCTANCE_BC .or. &
+          condition%sco2%gas_pressure%itype == &
+            HYDROSTATIC_SEEPAGE_BC) then
+        FlowConditionIsHydrostatic = PETSC_TRUE
+      endif
+    endif
+  endif
+
+end function FlowConditionIsHydrostatic
+
+! ************************************************************************** !
+
+function FlowConditionHasRateOrFlux(condition)
+  !
+  ! Determines whether a flow condition has non-Dirichlet component (e.g.,
+  ! flux, volumetric or mass rate, etc.)
+  !
+  ! Author: Glenn Hammond
+  ! Date: 05/12/23
+  !
+  implicit none
+
+  type(flow_condition_type) :: condition
+
+  PetscBool :: FlowConditionHasRateOrFlux
+
+  PetscInt :: i
+
+  FlowConditionHasRateOrFlux = PETSC_FALSE
+
+  do i = 1, condition%num_sub_conditions
+    select case(condition%itype(i))
+      case(DIRICHLET_BC,HYDROSTATIC_BC,HYDROSTATIC_SEEPAGE_BC, &
+           ! these are transport, but may have overlap with flow
+           DIRICHLET_ZERO_GRADIENT_BC,ZERO_GRADIENT_BC, &
+           HYDROSTATIC_CONDUCTANCE_BC,UNIT_GRADIENT_BC, &
+           SATURATION_BC,HET_DIRICHLET_BC, &
+           ! surface bcs, may not matter
+           HET_SURF_HYDROSTATIC_SEEPAGE_BC,SPILLOVER_BC,SURFACE_DIRICHLET, &
+           SURFACE_ZERO_GRADHEIGHT,SURFACE_SPILLOVER, &
+           HET_HYDROSTATIC_SEEPAGE_BC,HET_HYDROSTATIC_CONDUCTANCE_BC, &
+           DIRICHLET_SEEPAGE_BC,DIRICHLET_CONDUCTANCE_BC)
+      case default
+        FlowConditionHasRateOrFlux = PETSC_TRUE
+    end select
+  enddo
+
+end function FlowConditionHasRateOrFlux
+
+! ************************************************************************** !
+
 function FlowConditionIsTransient(condition)
   !
   ! Returns PETSC_TRUE
@@ -3767,7 +4811,6 @@ function FlowConditionIsTransient(condition)
   ! Author: Glenn Hammond
   ! Date: 01/12/11
   !
-
   use Dataset_module
 
   implicit none
@@ -3789,7 +4832,8 @@ function FlowConditionIsTransient(condition)
       FlowSubConditionIsTransient(condition%energy_rate) .or. &
       FlowSubConditionIsTransient(condition%energy_flux) .or. &
       FlowConditionGeneralIsTransient(condition%general) .or. &
-      FlowConditionHydrateIsTransient(condition%hydrate)) then
+      FlowConditionHydrateIsTransient(condition%hydrate) .or. &
+      FlowConditionSCO2IsTransient(condition%sco2)) then
     FlowConditionIsTransient = PETSC_TRUE
   endif
 
@@ -3799,12 +4843,11 @@ end function FlowConditionIsTransient
 
 function FlowConditionGeneralIsTransient(condition)
   !
-  ! Returns PETSC_TRUE
+  ! Returns PETSC_TRUE if transient
   !
   ! Author: Glenn Hammond
   ! Date: 01/12/11
   !
-
   use Dataset_module
 
   implicit none
@@ -3822,6 +4865,7 @@ function FlowConditionGeneralIsTransient(condition)
       FlowSubConditionIsTransient(condition%gas_saturation) .or. &
       FlowSubConditionIsTransient(condition%relative_humidity) .or. &
       FlowSubConditionIsTransient(condition%mole_fraction) .or. &
+      FlowSubConditionIsTransient(condition%salt_mole_fraction) .or. &
       FlowSubConditionIsTransient(condition%temperature) .or. &
       FlowSubConditionIsTransient(condition%rate) .or. &
       FlowSubConditionIsTransient(condition%liquid_flux) .or. &
@@ -3836,12 +4880,11 @@ end function FlowConditionGeneralIsTransient
 
 function FlowConditionHydrateIsTransient(condition)
   !
-  ! Returns PETSC_TRUE
+  ! Returns PETSC_TRUE if transient flow condition
   !
   ! Author: Michael Nole
   ! Date: 11/04/20
   !
-
   use Dataset_module
 
   implicit none
@@ -3874,6 +4917,44 @@ end function FlowConditionHydrateIsTransient
 
 ! ************************************************************************** !
 
+function FlowConditionSCO2IsTransient(condition)
+  !
+  ! Returns PETSC_TRUE if transient flow condition
+  !
+  ! Author: Michael Nole
+  ! Date: 12/13/23
+  !
+  use Dataset_module
+
+  implicit none
+
+  type(flow_sco2_condition_type), pointer :: condition
+
+  PetscBool :: FlowConditionSCO2IsTransient
+
+  FlowConditionSCO2IsTransient = PETSC_FALSE
+
+  if (.not.associated(condition)) return
+
+  if (FlowSubConditionIsTransient(condition%liquid_pressure) .or. &
+      FlowSubConditionIsTransient(condition%gas_pressure) .or. &
+      FlowSubConditionIsTransient(condition%co2_pressure) .or. &
+      FlowSubConditionIsTransient(condition%gas_saturation) .or. &
+      FlowSubConditionIsTransient(condition%liquid_saturation) .or. &
+      FlowSubConditionIsTransient(condition%co2_mass_fraction) .or. &
+      FlowSubConditionIsTransient(condition%salt_mass) .or. &
+      FlowSubConditionIsTransient(condition%rate) .or. &
+      FlowSubConditionIsTransient(condition%liquid_flux) .or. &
+      FlowSubConditionIsTransient(condition%gas_flux).or. &
+      FlowSubConditionIsTransient(condition%temperature) .or. &
+      FlowSubConditionIsTransient(condition%energy_flux)) then
+    FlowConditionSCO2IsTransient = PETSC_TRUE
+  endif
+
+end function FlowConditionSCO2IsTransient
+
+! ************************************************************************** !
+
 function FlowSubConditionIsTransient(sub_condition)
   !
   ! Returns PETSC_TRUE
@@ -3881,7 +4962,6 @@ function FlowSubConditionIsTransient(sub_condition)
   ! Author: Glenn Hammond
   ! Date: 10/26/11
   !
-
   use Dataset_module
 
   implicit none
@@ -3943,8 +5023,6 @@ subroutine FlowCondInputRecord(flow_condition_list,option)
   type(option_type), pointer :: option
 
   type(flow_condition_type), pointer :: cur_fc
-  character(len=MAXWORDLENGTH) :: word1, word2
-  character(len=MAXSTRINGLENGTH) :: string
   PetscInt :: k
   PetscInt :: id = INPUT_RECORD_UNIT
 
@@ -4004,7 +5082,7 @@ subroutine TranCondInputRecord(tran_condition_list,option)
   class(tran_constraint_coupler_base_type), pointer :: cur_constraint_coupler
   class(tran_constraint_base_type), pointer :: constraint
   type(tran_condition_type), pointer :: cur_condition
-  character(len=MAXWORDLENGTH) :: word1, word2
+  character(len=MAXWORDLENGTH) :: word1
   character(len=MAXSTRINGLENGTH) :: string
   PetscInt :: k
   PetscInt :: id = INPUT_RECORD_UNIT
@@ -4121,22 +5199,6 @@ subroutine TranCondInputRecord(tran_condition_list,option)
             enddo
           endif
 
-          ! colloids constraint
-          if (associated(c%colloids)) then
-            do k = 1,size(c%colloids%names)
-              write(id,'(a29)',advance='no') 'colloid mobile constraint: '
-              write(string,*) trim(c%colloids%names(k))
-              write(word1,*) c%colloids%constraint_conc_mob(k)
-              write(id,'(a)') trim(string) // ', ' // adjustl(trim(word1)) &
-                              // ' mol'
-              write(id,'(a29)',advance='no') 'colloid immobile constraint: '
-              write(string,*) trim(c%colloids%names(k))
-              write(word1,*) c%colloids%constraint_conc_imb(k)
-              write(id,'(a)') trim(string) // ', ' // adjustl(trim(word1)) &
-                              // ' mol'
-            enddo
-          endif
-
           ! immobile species constraint
           if (associated(c%immobile_species)) then
             do k = 1,size(c%immobile_species%names)
@@ -4168,7 +5230,6 @@ subroutine FlowConditionDestroyList(condition_list)
   ! Author: Glenn Hammond
   ! Date: 11/01/07
   !
-
   implicit none
 
   type(condition_list_type), pointer :: condition_list
@@ -4205,7 +5266,6 @@ subroutine FlowConditionDestroy(condition)
   ! Author: Glenn Hammond
   ! Date: 10/23/07
   !
-
   use Dataset_module
   use Dataset_Ascii_class
   use Utility_module
@@ -4246,6 +5306,8 @@ subroutine FlowConditionDestroy(condition)
 
   call TimeStorageDestroy(condition%default_time_storage)
   call FlowGeneralConditionDestroy(condition%general)
+  call FlowHydrateConditionDestroy(condition%hydrate)
+  call FlowSCO2ConditionDestroy(condition%sco2)
 
   nullify(condition%next)
 
@@ -4263,7 +5325,6 @@ subroutine FlowGeneralConditionDestroy(general_condition)
   ! Author: Glenn Hammond
   ! Date: 05/26/11
   !
-
   use Option_module
 
   implicit none
@@ -4275,8 +5336,10 @@ subroutine FlowGeneralConditionDestroy(general_condition)
   call FlowSubConditionDestroy(general_condition%liquid_pressure)
   call FlowSubConditionDestroy(general_condition%gas_pressure)
   call FlowSubConditionDestroy(general_condition%gas_saturation)
+  call FlowSubConditionDestroy(general_condition%precipitate_saturation)
   call FlowSubConditionDestroy(general_condition%relative_humidity)
   call FlowSubConditionDestroy(general_condition%mole_fraction)
+  call FlowSubConditionDestroy(general_condition%salt_mole_fraction)
   call FlowSubConditionDestroy(general_condition%temperature)
   call FlowSubConditionDestroy(general_condition%liquid_flux)
   call FlowSubConditionDestroy(general_condition%gas_flux)
@@ -4290,6 +5353,76 @@ end subroutine FlowGeneralConditionDestroy
 
 ! ************************************************************************** !
 
+subroutine FlowHydrateConditionDestroy(hydrate_condition)
+  !
+  ! Destroys a hydrate mode condition
+  !
+  ! Author: Michael Nole
+  ! Date: 12/13/23
+  !
+  use Option_module
+
+  implicit none
+
+  type(flow_hydrate_condition_type), pointer :: hydrate_condition
+
+  if (.not.associated(hydrate_condition)) return
+
+  call FlowSubConditionDestroy(hydrate_condition%liquid_pressure)
+  call FlowSubConditionDestroy(hydrate_condition%gas_pressure)
+  call FlowSubConditionDestroy(hydrate_condition%gas_saturation)
+  call FlowSubConditionDestroy(hydrate_condition%hydrate_saturation)
+  call FlowSubConditionDestroy(hydrate_condition%liquid_saturation)
+  call FlowSubConditionDestroy(hydrate_condition%ice_saturation)
+  call FlowSubConditionDestroy(hydrate_condition%relative_humidity)
+  call FlowSubConditionDestroy(hydrate_condition%mole_fraction)
+  call FlowSubConditionDestroy(hydrate_condition%temperature)
+  call FlowSubConditionDestroy(hydrate_condition%liquid_flux)
+  call FlowSubConditionDestroy(hydrate_condition%gas_flux)
+  call FlowSubConditionDestroy(hydrate_condition%energy_flux)
+  call FlowSubConditionDestroy(hydrate_condition%rate)
+
+  deallocate(hydrate_condition)
+  nullify(hydrate_condition)
+
+end subroutine FlowHydrateConditionDestroy
+
+! ************************************************************************** !
+
+subroutine FlowSCO2ConditionDestroy(sco2_condition)
+  !
+  ! Destroys a sco2 mode condition
+  !
+  ! Author: Michael Nole
+  ! Date: 12/15/23
+  !
+  use Option_module
+
+  implicit none
+
+  type(flow_sco2_condition_type), pointer :: sco2_condition
+
+  if (.not.associated(sco2_condition)) return
+
+  call FlowSubConditionDestroy(sco2_condition%liquid_pressure)
+  call FlowSubConditionDestroy(sco2_condition%gas_pressure)
+  call FlowSubConditionDestroy(sco2_condition%co2_pressure)
+  call FlowSubConditionDestroy(sco2_condition%gas_saturation)
+  call FlowSubConditionDestroy(sco2_condition%co2_mass_fraction)
+  call FlowSubConditionDestroy(sco2_condition%salt_mass)
+  call FlowSubConditionDestroy(sco2_condition%temperature)
+  call FlowSubConditionDestroy(sco2_condition%liquid_flux)
+  call FlowSubConditionDestroy(sco2_condition%gas_flux)
+  call FlowSubConditionDestroy(sco2_condition%energy_flux)
+  call FlowSubConditionDestroy(sco2_condition%rate)
+
+  deallocate(sco2_condition)
+  nullify(sco2_condition)
+
+end subroutine FlowSCO2ConditionDestroy
+
+! ************************************************************************** !
+
 subroutine FlowSubConditionDestroy(sub_condition)
   !
   ! Destroys a sub_condition
@@ -4297,7 +5430,6 @@ subroutine FlowSubConditionDestroy(sub_condition)
   ! Author: Glenn Hammond
   ! Date: 02/04/08
   !
-
   use Dataset_module
   use Dataset_Ascii_class
 
@@ -4330,7 +5462,6 @@ subroutine TranConditionDestroyList(condition_list)
   ! Author: Glenn Hammond
   ! Date: 11/01/07
   !
-
   implicit none
 
   type(tran_condition_list_type), pointer :: condition_list
@@ -4392,7 +5523,6 @@ subroutine GeopConditionDestroyList(condition_list)
   ! Author: Piyoosh Jaysaval
   ! Date: 01/26/21
   !
-
   implicit none
 
   type(geop_condition_list_type), pointer :: condition_list
@@ -4429,7 +5559,6 @@ subroutine GeopConditionDestroy(condition)
   ! Author: Piyoosh Jaysaval
   ! Date: 01/26/21
   !
-
   implicit none
 
   type(geop_condition_type), pointer :: condition

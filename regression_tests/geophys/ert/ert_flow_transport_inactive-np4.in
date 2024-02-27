@@ -13,6 +13,7 @@ SIMULATION
       MODE ERT
       OPTIONS
         COMPUTE_JACOBIAN
+        CALC_MAX_TRACER_CONCENTRATION
         SURVEY_TIMES h 2.7778d-4 6.d0 12.d0 24.d0 # 2.778d-4 ~= 1 second
         OUTPUT_ALL_SURVEYS
         MOBILITY_DATABASE ../../../database/mobilities.dat
@@ -89,7 +90,7 @@ CHEMISTRY
     Ca++
     Cl-
   /
-  USE_FULL_GEOCHEMISTRY
+  FORCE_READ_OF_REACTION_DATABASE
   DATABASE ../../../database/hanford.dat
   OUTPUT
     TOTAL
@@ -100,7 +101,6 @@ END
 #=========================== material properties ==============================
 MATERIAL_PROPERTY soil1
   ID 1
-  ELECTRICAL_CONDUCTIVITY 1.12d0
   POROSITY 0.25d0
   TORTUOSITY 0.5d0
   PERMEABILITY
