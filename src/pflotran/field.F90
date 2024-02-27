@@ -29,8 +29,6 @@ module Field_module
     Vec :: volume0
     Vec :: compressibility0
 
-    Vec :: electrical_conductivity
-
     !TODO(geh): move these Vecs into their respective pms
     ! residual vectors
     Vec :: flow_r
@@ -42,9 +40,8 @@ module Field_module
     Vec :: flow_xxdot, flow_xxdot_loc
     Vec :: flow_rhs
 
-    ! vectors for operator splitting
-    Vec :: tran_rhs
-    Vec :: tran_rhs_coef
+    ! vectors for advanced nonlinear solvers other than Newton - Heeho
+    Vec :: flow_scaled_xx, flow_work_loc
 
     Vec :: tran_log_xx, tran_work_loc
 
@@ -119,12 +116,11 @@ function FieldCreate()
   field%volume0 = PETSC_NULL_VEC
   field%compressibility0 = PETSC_NULL_VEC
 
-  ! Geophysics
-  field%electrical_conductivity = PETSC_NULL_VEC
-
   field%flow_r = PETSC_NULL_VEC
   field%flow_xx = PETSC_NULL_VEC
   field%flow_xx_loc = PETSC_NULL_VEC
+  field%flow_scaled_xx = PETSC_NULL_VEC
+  field%flow_work_loc = PETSC_NULL_VEC
   field%flow_dxx = PETSC_NULL_VEC
   field%flow_yy = PETSC_NULL_VEC
   field%flow_accum = PETSC_NULL_VEC
@@ -143,9 +139,6 @@ function FieldCreate()
   field%tran_work_loc = PETSC_NULL_VEC
 
   field%tvd_ghosts = PETSC_NULL_VEC
-
-  field%tran_rhs = PETSC_NULL_VEC
-  field%tran_rhs_coef = PETSC_NULL_VEC
 
   field%flow_mass_transfer = PETSC_NULL_VEC
   field%tran_mass_transfer = PETSC_NULL_VEC
@@ -210,11 +203,6 @@ subroutine FieldDestroy(field)
   if (field%tortuosity0 /= PETSC_NULL_VEC) then
     call VecDestroy(field%tortuosity0,ierr);CHKERRQ(ierr)
   endif
-
-  if (field%electrical_conductivity /= PETSC_NULL_VEC) then
-    call VecDestroy(field%electrical_conductivity,ierr);CHKERRQ(ierr)
-  endif
-
   if (field%perm0_xx /= PETSC_NULL_VEC) then
     call VecDestroy(field%perm0_xx,ierr);CHKERRQ(ierr)
   endif
@@ -252,6 +240,12 @@ subroutine FieldDestroy(field)
   if (field%flow_r /= PETSC_NULL_VEC) then
     call VecDestroy(field%flow_r,ierr);CHKERRQ(ierr)
   endif
+  if (field%flow_scaled_xx /= PETSC_NULL_VEC) then
+    call VecDestroy(field%flow_scaled_xx,ierr);CHKERRQ(ierr)
+  endif 
+  if (field%flow_work_loc /= PETSC_NULL_VEC) then
+    call VecDestroy(field%flow_work_loc,ierr);CHKERRQ(ierr)
+  endif 
   if (field%flow_xx /= PETSC_NULL_VEC) then
     call VecDestroy(field%flow_xx,ierr);CHKERRQ(ierr)
   endif
@@ -303,13 +297,6 @@ subroutine FieldDestroy(field)
   endif
   if (field%tran_work_loc /= PETSC_NULL_VEC) then
     call VecDestroy(field%tran_work_loc,ierr);CHKERRQ(ierr)
-  endif
-
-  if (field%tran_rhs /= PETSC_NULL_VEC) then
-    call VecDestroy(field%tran_rhs,ierr);CHKERRQ(ierr)
-  endif
-  if (field%tran_rhs_coef /= PETSC_NULL_VEC) then
-    call VecDestroy(field%tran_rhs_coef,ierr);CHKERRQ(ierr)
   endif
 
   if (field%flow_mass_transfer /= PETSC_NULL_VEC) then

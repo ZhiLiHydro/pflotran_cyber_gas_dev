@@ -23,6 +23,7 @@ subroutine BatchChemInitializeReactions(option, input, reaction)
   use Reaction_module
   use Reaction_Aux_module
   use Reaction_Database_module
+  use Reaction_Setup_module
   use Option_module
   use Input_Aux_module
   use String_module
@@ -50,19 +51,18 @@ subroutine BatchChemInitializeReactions(option, input, reaction)
   else
      ! TODO(bja): no chemistry block --> fatal error
   endif
-    
-  if (associated(reaction)) then
-    if (reaction%use_full_geochemistry) then
-       call DatabaseRead(reaction, option)
-       call BasisInit(reaction, option)    
-    else
-      ! NOTE(bja): do we need this for the batch chemistry driver?
 
-      ! turn off activity coefficients since the database has not been read
+  if (associated(reaction)) then
+    if (reaction%read_reaction_database) then
+      call ReactionDBReadDatabase(reaction, option)
+      call ReactionDBInitBasis(reaction, option)
+    else
       reaction%act_coef_update_frequency = ACT_COEF_FREQUENCY_OFF
-      allocate(reaction%primary_species_print(option%ntrandof))
-      reaction%primary_species_print = PETSC_TRUE
+      call ReactionSetupPrimaryPrint(reaction,option)
     endif
+    call ReactionSetupKinetics(reaction, option)
+    call ReactionSetupSpecificSpecies(reaction, option)
+    call ReactionSetupSpeciesSummary(reaction, option)
   endif
 
 end subroutine BatchChemInitializeReactions
@@ -78,7 +78,7 @@ subroutine BatchChemProcessConstraints(option, input, reaction, &
   use Reaction_Database_module
   use Reactive_Transport_Aux_module
   use Global_Aux_module
-  use Material_Aux_class
+  use Material_Aux_module
   use Transport_Constraint_module
   use Transport_Constraint_RT_module
   use Transport_Constraint_Base_module
@@ -94,11 +94,10 @@ subroutine BatchChemProcessConstraints(option, input, reaction, &
   class(reaction_rt_type), pointer :: reaction
   type(global_auxvar_type), pointer :: global_auxvars
   type(reactive_transport_auxvar_type), pointer :: rt_auxvars
-  class(material_auxvar_type), pointer :: material_auxvars
-  class(tran_constraint_coupler_rt_type), pointer :: constraint_coupler 
+  type(material_auxvar_type), pointer :: material_auxvars
+  class(tran_constraint_coupler_rt_type), pointer :: constraint_coupler
   type(tran_constraint_list_type), pointer :: transport_constraints
 
-  character(len=MAXSTRINGLENGTH) :: string
   character(len=MAXWORDLENGTH) :: card
   character(len=MAXWORDLENGTH) :: word
   class(tran_constraint_base_type), pointer :: base_constraint
@@ -106,7 +105,7 @@ subroutine BatchChemProcessConstraints(option, input, reaction, &
   class(tran_constraint_rt_type), pointer :: constraint
   PetscBool :: use_prev_soln_as_guess
   PetscInt :: num_iterations
-  
+
 
   !
   ! read the constraints...
@@ -134,7 +133,7 @@ subroutine BatchChemProcessConstraints(option, input, reaction, &
         tran_constraint => TranConstraintRTCreate(option)
         base_constraint => tran_constraint
         call InputReadWord(input, option, tran_constraint%name, PETSC_TRUE)
-        call InputErrorMsg(input, option, 'constraint', 'name') 
+        call InputErrorMsg(input, option, 'constraint', 'name')
         call PrintMsg(option, tran_constraint%name)
         call TranConstraintRTRead(tran_constraint, reaction, input, option)
         call TranConstraintAddToList(base_constraint, transport_constraints)
@@ -154,7 +153,7 @@ subroutine BatchChemProcessConstraints(option, input, reaction, &
   ! NOTE(bja): we only created one set of global and rt auxvars, so if
   ! there is more than one constratint in the input file, they will be
   ! over written.
-  do 
+  do
      if (.not. associated(base_constraint)) exit
      tran_constraint => TranConstraintRTCast(base_constraint)
      ! initialize constraints
@@ -171,10 +170,9 @@ subroutine BatchChemProcessConstraints(option, input, reaction, &
      constraint%free_ion_guess => tran_constraint%free_ion_guess
      constraint%minerals => tran_constraint%minerals
      constraint%surface_complexes => tran_constraint%surface_complexes
-     constraint%colloids => tran_constraint%colloids
      constraint_coupler%global_auxvar => global_auxvars
      constraint_coupler%rt_auxvar => rt_auxvars
-     
+
      ! equilibrate
      option%io_buffer = "equilibrate constraint : " // tran_constraint%name
      call PrintMsg(option)
@@ -184,33 +182,34 @@ subroutine BatchChemProcessConstraints(option, input, reaction, &
                                         num_iterations, &
                                         use_prev_soln_as_guess, &
                                         option)
-     call ReactionPrintConstraint(constraint_coupler, reaction, option)
+     call ReactionPrintConstraint(constraint_coupler%global_auxvar, &
+                                  constraint_coupler%rt_auxvar, &
+                                  constraint_coupler, reaction, option)
      base_constraint => base_constraint%next
   enddo
 
 end subroutine BatchChemProcessConstraints
-
 
 end module BatchChem
 
 
 ! ************************************************************************** !
 program pflotran_rxn
-  
+
 #include "petsc/finclude/petscsys.h"
   use petscsys
   use Reaction_module
   use Reaction_Aux_module
   use Reactive_Transport_Aux_module
   use Global_Aux_module
-  use Material_Aux_class
+  use Material_Aux_module
   use Reaction_Database_module
   use Communicator_Aux_module
   use Option_module
-  use Driver_module
+  use Driver_class
   use Input_Aux_module
   use String_module
-  
+
   use Transport_Constraint_module
   use Transport_Constraint_RT_module
   use Transport_Constraint_Base_module
@@ -222,7 +221,7 @@ program pflotran_rxn
 
 
   PetscErrorCode :: ierr
-  PetscBool :: option_found  
+  PetscBool :: option_found
   character(len=MAXSTRINGLENGTH) :: string
   character(len=MAXSTRINGLENGTH) :: filename_out
   class(reaction_rt_type), pointer :: reaction
@@ -232,15 +231,13 @@ program pflotran_rxn
 
   type(global_auxvar_type), pointer :: global_auxvars
   type(reactive_transport_auxvar_type), pointer :: rt_auxvars
-  class(material_auxvar_type), pointer :: material_auxvars
+  type(material_auxvar_type), pointer :: material_auxvars
 
-  character(len=MAXWORDLENGTH) :: card
-  character(len=MAXWORDLENGTH) :: word
   type(tran_constraint_list_type), pointer :: transport_constraints
-  class(tran_constraint_coupler_base_type), pointer :: constraint_coupler 
+  class(tran_constraint_coupler_base_type), pointer :: constraint_coupler
 
   driver => DriverCreate()
-  call MPI_Init(ierr)
+  call MPI_Init(ierr);CHKERRA(ierr)
   call CommInitPetsc(driver%comm,MPI_COMM_WORLD)
 
   option => OptionCreate()
@@ -256,7 +253,8 @@ program pflotran_rxn
   call InputGetCommandLineString(string, option%global_prefix, option_found, option)
 
   PETSC_COMM_WORLD = MPI_COMM_WORLD
-  call PetscInitialize(PETSC_NULL_CHARACTER, ierr);CHKERRQ(ierr)
+  call PetscInitialize(PETSC_NULL_CHARACTER,ierr)
+  CHKERRA(ierr)
 
   input => InputCreate(IN_UNIT, option%input_filename, option)
 
@@ -300,7 +298,7 @@ program pflotran_rxn
   ! global_auxvars%den_kg = option%flow%reference_water_density
   ! NOTE(bja): option%ref_density = 0.0, so we set it manually. This is a Bad Thing(TM)
   global_auxvars%den_kg = 998.2
-  global_auxvars%sat = option%flow%reference_saturation  
+  global_auxvars%sat = option%flow%reference_saturation
 
   ! create the constraint list
   allocate(transport_constraints)
@@ -319,7 +317,7 @@ program pflotran_rxn
   ! FIXME(bja) : causes error freeing memory.
   !call RTAuxVarDestroy(rt_auxvars)
   !call GlobalAuxVarDestroy(global_auxvars)
-  call ReactionDestroy(reaction,option)
+  call ReactionAuxDestroyAux(reaction,option)
   call GlobalAuxVarStrip(global_auxvars)
   deallocate(global_auxvars)
   nullify(global_auxvars)
@@ -332,8 +330,8 @@ program pflotran_rxn
   call InputDestroy(input)
   call OptionDestroy(option)
   call DriverDestroy(driver)
-  call PetscFinalize(ierr);CHKERRQ(ierr)
-  call MPI_Finalize(ierr)
+  call PetscFinalize(ierr);CHKERRA(ierr)
+  call MPI_Finalize(ierr);CHKERRA(ierr)
 
 end program pflotran_rxn
 

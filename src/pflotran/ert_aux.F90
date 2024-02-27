@@ -11,6 +11,7 @@ module ERT_Aux_module
   private
 
   type, public :: ert_auxvar_type
+    PetscReal :: bulk_conductivity
     PetscReal, pointer :: potential(:)    ! ERT potential for all electrodes
     PetscReal, pointer :: jacobian(:)     ! ERT jacobian for all measurements
     PetscReal, pointer :: delM(:)         ! system matrix derivative dM/dcond
@@ -28,6 +29,10 @@ module ERT_Aux_module
             ERTAuxVarCompute, ERTAuxVarInit, &
             ERTAuxCheckElectrodeBounds, &
             ERTAuxVarCopy
+
+  ! conductivity mapping types
+  PetscInt, parameter, public :: ARCHIE = 1
+  PetscInt, parameter, public :: WAXMAN_SMITS = 2
 
 contains
 
@@ -62,7 +67,7 @@ end function ERTAuxCreate
 
 ! ************************************************************************** !
 
-subroutine ERTAuxVarInit(auxvar,survey,option)
+subroutine ERTAuxVarInit(auxvar,survey,num_neighbors,option)
   !
   ! Initialize auxiliary object
   !
@@ -78,16 +83,29 @@ subroutine ERTAuxVarInit(auxvar,survey,option)
   type(ert_auxvar_type) :: auxvar
   type(survey_type) :: survey
   type(option_type) :: option
+  PetscInt :: num_neighbors
 
   allocate(auxvar%potential(survey%num_electrode))
+  auxvar%bulk_conductivity = 0.d0
   auxvar%potential = 0.d0
 
   nullify(auxvar%jacobian)
-  if (option%geophysics%compute_jacobian) then
-    allocate(auxvar%jacobian(survey%num_measurement))
-    auxvar%jacobian = 0.d0
-  endif
   nullify(auxvar%delM)
+
+  if (option%geophysics%compute_jacobian) then
+    if (num_neighbors >= 0) then
+      allocate(auxvar%delM(num_neighbors+1))
+      auxvar%delM = 0.d0
+    endif
+    if (associated(option%inversion)) then
+      if (.not.option%inversion%coupled_flow_ert) then
+        allocate(auxvar%jacobian(survey%num_measurement))
+      endif
+    else
+      allocate(auxvar%jacobian(survey%num_measurement))
+    endif
+    if (associated(auxvar%jacobian)) auxvar%jacobian = 0.d0
+  endif
 
 end subroutine ERTAuxVarInit
 
@@ -109,6 +127,7 @@ subroutine ERTAuxVarCopy(auxvar,auxvar2,option)
   type(option_type) :: option
 
   auxvar2%potential = auxvar%potential
+  auxvar2%bulk_conductivity = auxvar%bulk_conductivity
 
 end subroutine ERTAuxVarCopy
 
@@ -125,7 +144,7 @@ subroutine ERTAuxVarCompute(x,ert_auxvar,global_auxvar,rt_auxvar, &
   use Option_module
   use Global_Aux_module
   use Reactive_Transport_Aux_module
-  use Material_Aux_class
+  use Material_Aux_module
 
   implicit none
 
@@ -134,7 +153,7 @@ subroutine ERTAuxVarCompute(x,ert_auxvar,global_auxvar,rt_auxvar, &
   type(ert_auxvar_type) :: ert_auxvar
   type(global_auxvar_type) :: global_auxvar
   type(reactive_transport_auxvar_type) :: rt_auxvar
-  class(material_auxvar_type) :: material_auxvar
+  type(material_auxvar_type) :: material_auxvar
   PetscInt :: natural_id
 
   ! calculate bulk_conductivity = f(global,rt,material-auxars)

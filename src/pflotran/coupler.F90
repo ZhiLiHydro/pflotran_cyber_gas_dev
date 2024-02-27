@@ -33,7 +33,7 @@ module Coupler_module
     PetscInt :: igeop_condition                         ! id of condition in condition array/list
     PetscInt :: iregion                                 ! id of region in region array/list
     PetscInt :: iface                                   ! for structured grids only
-    PetscInt, pointer :: flow_aux_mapping(:)            ! maps flow_aux_real_var to primarhy dof
+    PetscInt, pointer :: flow_aux_mapping(:)            ! maps flow_aux_real_var to primary dof
     PetscInt, pointer :: flow_bc_type(:)                ! id of boundary condition type
     PetscInt, pointer :: flow_aux_int_var(:,:)          ! auxiliary array for integer value
     PetscReal, pointer :: flow_aux_real_var(:,:)        ! auxiliary array for real values
@@ -361,17 +361,15 @@ subroutine CouplerComputeConnections(grid,option,coupler)
 
   type(grid_type) :: grid
   type(option_type) :: option
-  type(coupler_type), pointer :: coupler_list
 
   PetscInt :: iconn
-  PetscInt :: cell_id_local, cell_id_ghosted
+  PetscInt :: cell_id_local
   PetscInt :: connection_itype
   PetscInt :: iface
   type(connection_set_type), pointer :: connection_set
   type(region_type), pointer :: region
   type(coupler_type), pointer :: coupler
   PetscBool :: nullify_connection_set
-  PetscErrorCode :: ierr
 
   if (.not.associated(coupler)) return
 
@@ -599,7 +597,7 @@ subroutine CouplerDestroy(coupler)
   nullify(coupler%flow_condition)     ! since these are simply pointers to
   nullify(coupler%tran_condition)     ! since these are simply pointers to
   nullify(coupler%geop_condition)
-  nullify(coupler%region)             ! conditoins in list, nullify
+  nullify(coupler%region)             ! conditions in list, nullify
 
   call DeallocateArray(coupler%flow_aux_mapping)
   call DeallocateArray(coupler%flow_bc_type)

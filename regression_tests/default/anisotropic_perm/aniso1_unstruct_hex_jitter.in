@@ -171,13 +171,13 @@ END
 #=========================== flow conditions ==================================
 FLOW_CONDITION initial
   TYPE
-    PRESSURE hydrostatic
+    LIQUID_PRESSURE hydrostatic
   END
   INTERPOLATION linear
   DATUM 0.d0 0.d0 1.d0
-  PRESSURE 1982000.d0
+  LIQUID_PRESSURE 1982000.d0
   GRADIENT
-    PRESSURE -10 0. 0.
+    LIQUID_PRESSURE -10 0. 0.
   END
 END
 

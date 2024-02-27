@@ -155,8 +155,7 @@ subroutine PNFAuxVarCompute(x,pnf_auxvar,global_auxvar, &
   use Option_module
   use Global_Aux_module
   use Characteristic_Curves_module
-  use Material_Aux_class
-  use Variables_module, only : SOIL_REFERENCE_PRESSURE
+  use Material_Aux_module
 
   implicit none
 
@@ -165,9 +164,6 @@ subroutine PNFAuxVarCompute(x,pnf_auxvar,global_auxvar, &
   type(pnf_auxvar_type) :: pnf_auxvar
   type(global_auxvar_type) :: global_auxvar
   PetscInt :: natural_id
-
-  PetscBool :: saturated
-  PetscReal :: dkr_dsat
 
   pnf_auxvar%head = x(PNF_LIQUID_PRESSURE_DOF)
   global_auxvar%temp = option%flow%reference_temperature

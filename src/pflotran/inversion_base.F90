@@ -4,7 +4,7 @@ module Inversion_Base_class
   use petscsys
 
   use PFLOTRAN_Constants_module
-  use Driver_module
+  use Driver_class
   use Timer_class
   use Option_Inversion_module
 
@@ -16,34 +16,38 @@ module Inversion_Base_class
     class(driver_type), pointer :: driver
     class(timer_type), pointer :: timer
     type(inversion_option_type), pointer :: inversion_option
-    PetscInt :: iteration                ! iteration number
+    PetscInt :: iteration        ! iteration number
     PetscInt :: maximum_iteration        ! Maximum iteration number
-    PetscBool :: converg_flag            ! convergence flag
+    PetscBool :: converged               ! convergence flag
   contains
     procedure, public :: Init => InversionBaseInit
-    procedure, public :: Initialize => InversionBaseInitialize
     procedure, public :: ReadBlock => InversionBaseReadBlock
-    procedure, public :: Step => InversionBaseThisOnly
-    procedure, public :: ConnectToFowardRun => InversionBaseThisOnly
+    procedure, public :: Step => InversionBaseStep
+    procedure, public :: InitializeForwardRun => InversionBaseThisAndOption
+    procedure, public :: SetupForwardRunLinkage => InversionBaseThisOnlyError
+    procedure, public :: ConnectToForwardRun => InversionBaseThisOnlyError
+    procedure, public :: ExecuteForwardRun => InversionBaseThisOnlyError
+    procedure, public :: DestroyForwardRun => InversionBaseThisOnlyError
+    procedure, public :: Checkpoint => InversionBaseThisOnly
+    procedure, public :: RestartReadData => InversionBaseThisOnly
     procedure, public :: InitializeIterationNumber => &
                            InversionBaseInitIterationNum
     procedure, public :: IncrementIteration => InversionBaseIncrementIteration
-    procedure, public :: UpdateParameters => InversionBaseThisOnly
-    procedure, public :: CalculateUpdate => InversionBaseThisOnly
-    procedure, public :: CalculateSensitivity => InversionBaseThisOnly
-    procedure, public :: OutputSensitivity => InversionBaseOutputSensitivity
-    procedure, public :: Invert => InversionBaseThisOnly
-    procedure, public :: CheckConvergence => InversionBaseThisOnly
-    procedure, public :: EvaluateCostFunction => InversionBaseThisOnly
-    procedure, public :: UpdateRegularizParameters => InversionBaseThisOnly
-    procedure, public :: WriteIterationInfo => InversionBaseThisOnly
+    procedure, public :: EvaluateCostFunction => InversionBaseThisOnlyError
+    procedure, public :: CheckConvergence => InversionBaseThisOnlyError
+    procedure, public :: WriteIterationInfo => InversionBaseThisOnlyError
+    procedure, public :: CalculateSensitivity => InversionBaseThisOnlyError
+    procedure, public :: ScaleSensitivity => InversionBaseThisOnlyError
+    procedure, public :: CalculateUpdate => InversionBaseThisOnlyError
+    procedure, public :: UpdateParameters => InversionBaseThisOnlyError
+    procedure, public :: UpdateRegularizationParameters => &
+                           InversionBaseThisOnlyError
     procedure, public :: Finalize => InversionBaseFinalize
     procedure, public :: Strip => InversionBaseStrip
   end type inversion_base_type
 
   public :: InversionBaseInit, &
             InversionBaseReadSelectCase, &
-            InversionBaseInitialize, &
             InversionBaseFinalize, &
             InversionBaseStrip, &
             InversionBaseDestroy
@@ -69,7 +73,7 @@ subroutine InversionBaseInit(this,driver)
 
   this%iteration = 0
   this%maximum_iteration = UNINITIALIZED_INTEGER
-  this%converg_flag = PETSC_FALSE
+  this%converged = PETSC_FALSE
 
 end subroutine InversionBaseInit
 
@@ -119,16 +123,50 @@ end subroutine InversionBaseReadSelectCase
 
 ! ************************************************************************** !
 
-subroutine InversionBaseInitialize(this)
+subroutine InversionBaseStep(this)
   !
-  ! Initializes inversion
+  ! Performes a single inversion iteration (forward runs, Jacobians, update)
   !
   ! Author: Glenn Hammond
-  ! Date: 06/04/21
-  !
+  ! Date: 03/21/22
+
+  use Option_module
+
   class(inversion_base_type) :: this
 
-end subroutine InversionBaseInitialize
+  type(option_type), pointer :: option
+
+  nullify(option)
+  call this%InitializeForwardRun(option)
+  call this%SetupForwardRunLinkage()
+  call this%ConnectToForwardRun()
+  call this%ExecuteForwardRun()
+  call this%CheckConvergence()
+  call this%WriteIterationInfo()
+  call this%Checkpoint()
+  if (.not.this%converged) then
+    call this%CalculateSensitivity()
+    call this%ScaleSensitivity()
+    call this%CalculateUpdate()
+    call this%UpdateRegularizationParameters()
+  endif
+  call this%DestroyForwardRun()
+
+  this%converged = PETSC_FALSE
+  if (this%iteration > this%maximum_iteration) this%converged = PETSC_TRUE
+
+end subroutine InversionBaseStep
+
+! ************************************************************************** !
+
+subroutine InversionBaseThisAndOption(this,option)
+
+  use Option_module
+
+  class(inversion_base_type) :: this
+  type(option_type), pointer :: option
+
+end subroutine InversionBaseThisAndOption
 
 ! ************************************************************************** !
 
@@ -136,10 +174,18 @@ subroutine InversionBaseThisOnly(this)
 
   class(inversion_base_type) :: this
 
+end subroutine InversionBaseThisOnly
+
+! ************************************************************************** !
+
+subroutine InversionBaseThisOnlyError(this)
+
+  class(inversion_base_type) :: this
+
   call this%driver%PrintErrMsg('An inversion routine that passes only "this" &
     &must be extended from the Base implementation.')
 
-end subroutine InversionBaseThisOnly
+end subroutine InversionBaseThisOnlyError
 
 ! ************************************************************************** !
 

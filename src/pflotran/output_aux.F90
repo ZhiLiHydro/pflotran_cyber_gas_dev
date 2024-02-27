@@ -12,22 +12,11 @@ module Output_Aux_module
   PetscInt, parameter, public :: INSTANTANEOUS_VARS = 1
   PetscInt, parameter, public :: AVERAGED_VARS = 2
 
-  PetscInt, parameter, public :: CHECKPOINT_BINARY = 1
-  PetscInt, parameter, public :: CHECKPOINT_HDF5 = 2
-  PetscInt, parameter, public :: CHECKPOINT_BOTH = 3
-
-  type, public :: checkpoint_option_type
-    character(len=MAXWORDLENGTH) :: tunit
-    PetscReal :: tconv
-    PetscReal :: periodic_time_incr
-    PetscInt :: periodic_ts_incr
-    PetscInt :: format
-  end type checkpoint_option_type
-
   type, public :: output_option_type
 
     character(len=MAXWORDLENGTH) :: tunit
     PetscReal :: tconv
+    PetscBool :: output_read
 
     PetscBool :: print_initial_obs
     PetscBool :: print_final_obs
@@ -38,6 +27,7 @@ module Output_Aux_module
     PetscBool :: print_ss_massbal
 
     PetscBool :: print_hdf5
+    PetscBool :: print_obs_hdf5
     PetscBool :: extend_hdf5_time_format
     PetscBool :: print_hdf5_vel_cent
     PetscBool :: print_hdf5_vel_face
@@ -57,6 +47,7 @@ module Output_Aux_module
 
     PetscBool :: print_vtk
     PetscBool :: print_vtk_vel_cent
+    PetscBool :: vtk_acknowledgment
 
     PetscBool :: print_observation
     PetscBool :: print_column_ids
@@ -109,6 +100,7 @@ module Output_Aux_module
 
   type, public :: output_variable_type
     character(len=MAXWORDLENGTH) :: name   ! string that appears in hdf5 file
+    character(len=MAXWORDLENGTH) :: subname
     character(len=MAXWORDLENGTH) :: units
     ! jmf: change to snapshot_plot_only?
     PetscBool :: plot_only
@@ -175,9 +167,8 @@ module Output_Aux_module
             OutputVariableAppendDefaults, &
             OpenAndWriteInputRecord, &
             OutputOptionDestroy, &
+            OutputVariableGetName, &
             OutputVariableListDestroy, &
-            CheckpointOptionCreate, &
-            CheckpointOptionDestroy, &
             OutputH5Create, &
             OutputH5Destroy
 
@@ -200,7 +191,9 @@ function OutputOptionCreate()
   type(output_option_type), pointer :: output_option
 
   allocate(output_option)
+  output_option%output_read = PETSC_FALSE
   output_option%print_hdf5 = PETSC_FALSE
+  output_option%print_obs_hdf5 = PETSC_FALSE
   output_option%extend_hdf5_time_format = PETSC_FALSE
   output_option%print_hdf5_vel_cent = PETSC_FALSE
   output_option%print_hdf5_vel_face = PETSC_FALSE
@@ -218,6 +211,7 @@ function OutputOptionCreate()
   output_option%print_tecplot_vel_face = PETSC_FALSE
   output_option%print_vtk = PETSC_FALSE
   output_option%print_vtk_vel_cent = PETSC_FALSE
+  output_option%vtk_acknowledgment = PETSC_FALSE
   output_option%print_observation = PETSC_FALSE
   output_option%print_column_ids = PETSC_FALSE
   output_option%print_explicit_primal_grid = PETSC_FALSE
@@ -326,6 +320,7 @@ function OutputOptionDuplicate(output_option)
   output_option2%print_tecplot_vel_face = output_option%print_tecplot_vel_face
   output_option2%print_vtk = output_option%print_vtk
   output_option2%print_vtk_vel_cent = output_option%print_vtk_vel_cent
+  output_option2%vtk_acknowledgment = output_option%vtk_acknowledgment
   output_option2%print_observation = output_option%print_observation
   output_option2%print_column_ids = output_option%print_column_ids
   output_option2%print_initial_obs = output_option%print_initial_obs
@@ -387,34 +382,6 @@ function OutputOptionDuplicate(output_option)
   OutputOptionDuplicate => output_option2
 
 end function OutputOptionDuplicate
-
-! ************************************************************************** !
-
-function CheckpointOptionCreate()
-  !
-  ! Creates output options object
-  !
-  ! Author: Glenn Hammond
-  ! Date: 11/07/07
-  !
-
-  implicit none
-
-  type(checkpoint_option_type), pointer :: CheckpointOptionCreate
-
-  type(checkpoint_option_type), pointer :: checkpoint_option
-
-  allocate(checkpoint_option)
-  checkpoint_option%tunit = ''
-  checkpoint_option%tconv = 0.d0
-  checkpoint_option%periodic_time_incr = UNINITIALIZED_DOUBLE
-  checkpoint_option%periodic_ts_incr = 0
-  !checkpoint_option%periodic_ts_incr = huge(checkpoint_option%periodic_ts_incr)
-  checkpoint_option%format = CHECKPOINT_BINARY
-
-  CheckpointOptionCreate => checkpoint_option
-
-end function CheckpointOptionCreate
 
 ! ************************************************************************** !
 
@@ -501,6 +468,7 @@ function OutputVariableCreate3(output_variable)
 
   new_output_variable => OutputVariableCreate()
   new_output_variable%name = output_variable%name
+  new_output_variable%subname = output_variable%subname
   new_output_variable%units = output_variable%units
   new_output_variable%plot_only = output_variable%plot_only
   new_output_variable%iformat = output_variable%iformat
@@ -528,6 +496,7 @@ subroutine OutputVariableInit(output_variable)
   type(output_variable_type) :: output_variable
 
   output_variable%name = ''
+  output_variable%subname = ''
   output_variable%units = ''
   output_variable%plot_only = PETSC_FALSE
   output_variable%iformat = 0
@@ -772,10 +741,12 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       case('LIQUID_SATURATION','LIQUID_DENSITY','GAS_SATURATION', &
            'GAS_DENSITY','TEMPERATURE','POROSITY','MINERAL_POROSITY', &
            'TORTUOSITY','NATURAL_ID','PROCESS_ID','VOLUME','MATERIAL_ID', &
+           'TORTUOSITY_X','TORTUOSITY_Y','TORTUOSITY_Z', &
            'MATERIAL_ID_KLUDGE_FOR_VISIT','X_COORDINATE','Y_COORDINATE', &
            'Z_COORDINATE', &
            'ELECTRICAL_CONDUCTIVITY','ELECTRICAL_POTENTIAL', &
-           'ELECTRICAL_JACOBIAN','ELECTRICAL_POTENTIAL_DIPOLE')
+           'ELECTRICAL_JACOBIAN','ELECTRICAL_POTENTIAL_DIPOLE', &
+           'SURFACE_ELECTRICAL_CONDUCTIVITY','WAXMAN_SMITS_CLAY_CONDUCTIVITY')
       case default
         call PrintErrMsg(option,'Output variable "' // trim(word) // &
           '" not supported when not running a flow mode.')
@@ -784,7 +755,10 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
   if (option%igeopmode == NULL_MODE) then
     select case(word)
       case('ELECTRICAL_CONDUCTIVITY','ELECTRICAL_POTENTIAL', &
-           'ELECTRICAL_JACOBIAN','ELECTRICAL_POTENTIAL_DIPOLE')
+           'ELECTRICAL_JACOBIAN','ELECTRICAL_POTENTIAL_DIPOLE', &
+           'ARCHIE_CEMENTATION_EXPONENT','ARCHIE_SATURATION_EXPONENT', &
+           'ARCHIE_TORTUOSITY_CONSTANT','SURFACE_ELECTRICAL_CONDUCTIVITY', &
+           'WAXMAN_SMITS_CLAY_CONDUCTIVITY')
         call PrintErrMsg(option,'Output variable "' // trim(word) // &
           '" not supported when not running a geophysics mode.')
     end select
@@ -868,6 +842,11 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       units = '1/Pa-s'
       category = OUTPUT_GENERIC
       id = GAS_MOBILITY
+    case ('GAS_VISCOSITY')
+      name = 'Gas Viscosity'
+      units = 'Pa-s'
+      category = OUTPUT_GENERIC
+      id = GAS_VISCOSITY
     case ('GAS_ENERGY')
       name = 'Gas Energy'
       units = 'MJ/kmol'
@@ -890,6 +869,16 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       units = ''
       category = OUTPUT_SATURATION
       id = HYDRATE_SATURATION
+    case ('PRECIPITATE_SATURATION')
+      name = 'Precipitate Saturation'
+      units = ''
+      category = OUTPUT_SATURATION
+      id = PRECIPITATE_SATURATION
+    case ('TRAPPED_GAS_SATURATION')
+      name = 'Trapped Gas Saturation'
+      units = ''
+      category = OUTPUT_SATURATION
+      id = TRAPPED_GAS_SATURATION
     case ('XGL')
       name = 'X_g^l'
       units = ''
@@ -908,6 +897,12 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       category = OUTPUT_GENERIC
       id = GAS_MOLE_FRACTION
       subvar = option%air_id
+    case ('XSL')
+      name = 'X_s^l'
+      units = ''
+      category = OUTPUT_GENERIC
+      id = LIQUID_MOLE_FRACTION
+      subvar = option%salt_id
     case ('XLG')
       name = 'X_l^g'
       units = ''
@@ -926,6 +921,12 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       category = OUTPUT_GENERIC
       id = LIQUID_MASS_FRACTION
       subvar = option%water_id
+    case ('WSL')
+      name = 'w_s^l'
+      units = ''
+      category = OUTPUT_GENERIC
+      id = LIQUID_MASS_FRACTION
+      subvar = option%salt_id
     case ('WGG')
       name = 'w_g^g'
       units = ''
@@ -958,6 +959,11 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       units = 'Pa'
       category = OUTPUT_PRESSURE
       id = SATURATION_PRESSURE
+    case ('CO2_PRESSURE')
+      name = 'CO2 Partial Pressure'
+      units = 'Pa'
+      category = OUTPUT_PRESSURE
+      id = CO2_PRESSURE
     case('THERMODYNAMIC_STATE')
       name = 'Thermodynamic State'
       units = ''
@@ -990,7 +996,27 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       name = 'Tortuosity'
       category = OUTPUT_GENERIC
       id = TORTUOSITY
-    case ('PERMEABILITY','PERMEABILITY_X')
+    case ('TORTUOSITY_X')
+      units = ''
+      name = 'Tortuosity X'
+      category = OUTPUT_GENERIC
+      id = TORTUOSITY
+    case ('TORTUOSITY_Y')
+      units = ''
+      name = 'Tortuosity Y'
+      category = OUTPUT_GENERIC
+      id = TORTUOSITY_Y
+    case ('TORTUOSITY_Z')
+      units = ''
+      name = 'Tortuosity Z'
+      category = OUTPUT_GENERIC
+      id = TORTUOSITY_Z
+    case ('PERMEABILITY')
+      units = 'm^2'
+      name = 'Permeability'
+      category = OUTPUT_GENERIC
+      id = PERMEABILITY
+    case ('PERMEABILITY_X')
       units = 'm^2'
       name = 'Permeability X'
       category = OUTPUT_GENERIC
@@ -1008,7 +1034,7 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
    case ('PERMEABILITY_XY')
       if (.not.option%flow%full_perm_tensor) then
         option%io_buffer = 'PERMEABILITY_XY only supported for &
-          full tensor permeability.'
+          &full tensor permeability.'
         call PrintErrMsg(option)
       endif
       units = 'm^2'
@@ -1018,7 +1044,7 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
     case ('PERMEABILITY_XZ')
       if (.not.option%flow%full_perm_tensor) then
         option%io_buffer = 'PERMEABILITY_XZ only supported for &
-          full tensor permeability.'
+          &full tensor permeability.'
         call PrintErrMsg(option)
       endif
       units = 'm^2'
@@ -1028,7 +1054,7 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
     case ('PERMEABILITY_YZ')
       if (.not.option%flow%full_perm_tensor) then
         option%io_buffer = 'PERMEABILITY_YZ only supported for &
-          full tensor permeability.'
+          &full tensor permeability.'
         call PrintErrMsg(option)
       endif
       units = 'm^2'
@@ -1060,6 +1086,11 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       name = 'Gas Relative Permeability'
       category = OUTPUT_GENERIC
       id = GAS_RELATIVE_PERMEABILITY
+    case('THERMAL_CONDUCTIVITY')
+      units = 'W/m-K'
+      name = 'Thermal Conductivity'
+      category = OUTPUT_GENERIC
+      id = THERMAL_CONDUCTIVITY
     case ('SOIL_COMPRESSIBILITY')
       units = ''
       name = 'Compressibility'
@@ -1155,7 +1186,12 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       units = 'Vm/S'
       name = 'Electrical Jacobian'
       category = OUTPUT_GENERIC
-      id = ELECTRICAL_JACOBIAN      
+      id = ELECTRICAL_JACOBIAN
+    case ('SMECTITE')
+      units = ''
+      name = 'Smectite'
+      category = OUTPUT_GENERIC
+      id = SMECTITE
     case ('ELECTRICAL_POTENTIAL_DIPOLE')
       if (option%ngeopdof <= 0) then
         call PrintErrMsg(option,trim(word)//' output only &
@@ -1165,6 +1201,45 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       name = 'Electrical Potential Dipole'
       category = OUTPUT_GENERIC
       id = ELECTRICAL_POTENTIAL_DIPOLE
+    case ('SOLUTE_CONCENTRATION')
+      units = 'M'
+      name = 'Solute Concentration'
+      category = OUTPUT_GENERIC
+      id = SOLUTE_CONCENTRATION
+    case ('ARCHIE_CEMENTATION_EXPONENT')
+      units = '-'
+      name = "Archie's Cementation Exponent"
+      category = OUTPUT_GENERIC
+      id = ARCHIE_CEMENTATION_EXPONENT
+    case ('ARCHIE_SATURATION_EXPONENT')
+      units = '-'
+      name = "Archie's Saturation Exponent"
+      category = OUTPUT_GENERIC
+      id = ARCHIE_SATURATION_EXPONENT
+    case ('ARCHIE_TORTUOSITY_CONSTANT')
+      units = '-'
+      name = "Archie's Tortuosity Constant"
+      category = OUTPUT_GENERIC
+      id = ARCHIE_TORTUOSITY_CONSTANT
+    case ('SURFACE_ELECTRICAL_CONDUCTIVITY')
+      units = 'S/m'
+      name = 'Surface Electrical Conductivity'
+      category = OUTPUT_GENERIC
+      id = SURFACE_ELECTRICAL_CONDUCTIVITY
+    case ('WAXMAN_SMITS_CLAY_CONDUCTIVITY')
+      units = 'S/m'
+      name = 'Waxman-Smits Clay Conductivity'
+      category = OUTPUT_GENERIC
+      id = WAXMAN_SMITS_CLAY_CONDUCTIVITY
+    case ('PARAMETER')
+      units = '?'
+      name = 'Parameter'
+      category = OUTPUT_GENERIC
+      id = NAMED_PARAMETER
+    case default
+      option%io_buffer = 'Unknown keyword "' // trim(word) // &
+        '" in OutputVariableToID.'
+      call PrintErrMsg(option)
   end select
 
 end subroutine OutputVariableToID
@@ -1192,7 +1267,8 @@ subroutine OutputWriteVariableListToHeader(fid,variable_list,cell_string, &
   PetscInt :: variable_count
 
   type(output_variable_type), pointer :: cur_variable
-  character(len=MAXWORDLENGTH) :: variable_name, units
+  character(len=MAXSTRINGLENGTH) :: variable_name
+  character(len=MAXWORDLENGTH) :: units
 
   variable_count = 0
   cur_variable => variable_list%first
@@ -1202,7 +1278,7 @@ subroutine OutputWriteVariableListToHeader(fid,variable_list,cell_string, &
       cur_variable => cur_variable%next
       cycle
     endif
-    variable_name = cur_variable%name
+    variable_name = OutputVariableGetName(cur_variable)
     units = cur_variable%units
     call OutputWriteToHeader(fid,variable_name,units,cell_string,icolumn)
     variable_count = variable_count + 1
@@ -1339,7 +1415,6 @@ subroutine OutputVariableAppendDefaults(output_variable_list,option)
   type(output_variable_list_type), pointer :: output_variable_list
   type(option_type), pointer :: option
 
-  character(len=MAXWORDLENGTH) :: word
   character(len=MAXWORDLENGTH) :: name, units
   type(output_variable_type), pointer :: output_variable
 
@@ -1404,12 +1479,32 @@ subroutine OpenAndWriteInputRecord(option)
     write(id,'(a18)',advance='no') 'group: '
     write(id,*) trim(option%group_prefix)
 
-    write(word,*) option%comm%mycommsize
+    write(word,*) option%comm%size
     write(id,'(a18)',advance='no') 'n processors: '
     write(id,*) trim(adjustl(word))
   endif
 
 end subroutine OpenAndWriteInputRecord
+
+! ************************************************************************** !
+
+function OutputVariableGetName(output_variable)
+  !
+  ! Returns the concatenated name of the variables
+  !
+  ! Author: Glenn Hammond
+  ! Date: 01/26/24
+
+  implicit none
+
+  type(output_variable_type) :: output_variable
+
+  character(len=:), allocatable :: OutputVariableGetName
+
+  OutputVariableGetName = trim(trim(output_variable%name) // ' ' // &
+                               output_variable%subname)
+
+end function OutputVariableGetName
 
 ! ************************************************************************** !
 
@@ -1457,27 +1552,6 @@ recursive subroutine OutputVariableDestroy(output_variable)
   nullify(output_variable)
 
 end subroutine OutputVariableDestroy
-
-! ************************************************************************** !
-
-subroutine CheckpointOptionDestroy(checkpoint_option)
-  !
-  ! Deallocates an output option
-  !
-  ! Author: Glenn Hammond
-  ! Date: 11/07/07
-  !
-
-  implicit none
-
-  type(checkpoint_option_type), pointer :: checkpoint_option
-
-  if (.not.associated(checkpoint_option)) return
-
-  deallocate(checkpoint_option)
-  nullify(checkpoint_option)
-
-end subroutine CheckpointOptionDestroy
 
 ! ************************************************************************** !
 

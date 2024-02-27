@@ -2,9 +2,9 @@ module Output_Common_module
 
 #include "petsc/finclude/petscvec.h"
   use petscvec
-  use Logging_module 
+  use Logging_module
   use Output_Aux_module
-  
+
   !note: only realization_base_type can be used throughout this module.
   use Realization_Base_class, only : realization_base_type
 
@@ -19,8 +19,8 @@ module Output_Common_module
   !geh: would prefer that this be local to Output_Tecplot_module, but needed
   !     in Output_Surface_module
   PetscInt, parameter, public :: TECPLOT_INTEGER = 0
-  PetscInt, parameter, public :: TECPLOT_REAL = 1  
-  
+  PetscInt, parameter, public :: TECPLOT_REAL = 1
+
   public :: OutputCommonInit, &
             OutputGetVariableArray, &
             OutputGetVariableAtCell, &
@@ -45,23 +45,23 @@ module Output_Common_module
             OutputGetExplicitAuxVars, &
             OutputGetExplicitCellInfo, &
             OutputCollectVelocityOrFlux
-              
+
 contains
 
 ! ************************************************************************** !
 
 subroutine OutputCommonInit()
-  ! 
+  !
   ! Initializes module variables for common formats
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 01/16/13
-  ! 
+  !
 
   use Option_module
 
   implicit none
-  
+
   ! set size to -1 in order to re-initialize parallel communication blocks
   max_local_size_saved = -1
 
@@ -70,37 +70,37 @@ end subroutine OutputCommonInit
 ! ************************************************************************** !
 
 function OutputFilenameID(output_option,option)
-  ! 
+  !
   ! Creates an ID for filename
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 01/13/12
-  ! 
+  !
 
   use Option_module
-  
+
   implicit none
-  
+
   type(option_type) :: option
   type(output_option_type) :: output_option
 
   character(len=MAXWORDLENGTH) :: OutputFilenameID
-  
+
   if (output_option%plot_number < 10) then
     write(OutputFilenameID,'("00",i1)') output_option%plot_number
   else if (output_option%plot_number < 100) then
-    write(OutputFilenameID,'("0",i2)') output_option%plot_number  
+    write(OutputFilenameID,'("0",i2)') output_option%plot_number
   else if (output_option%plot_number < 1000) then
-    write(OutputFilenameID,'(i3)') output_option%plot_number  
+    write(OutputFilenameID,'(i3)') output_option%plot_number
   else if (output_option%plot_number < 10000) then
-    write(OutputFilenameID,'(i4)') output_option%plot_number  
+    write(OutputFilenameID,'(i4)') output_option%plot_number
   else if (output_option%plot_number < 100000) then
-    write(OutputFilenameID,'(i5)') output_option%plot_number  
+    write(OutputFilenameID,'(i5)') output_option%plot_number
   else
     option%io_buffer = 'Plot number exceeds current maximum of 10^5.'
     call PrintErrMsgToDev(option,'ask for a higher maximum')
-  endif 
-  
+  endif
+
   OutputFilenameID = adjustl(OutputFilenameID)
 
 end function OutputFilenameID
@@ -108,22 +108,22 @@ end function OutputFilenameID
 ! ************************************************************************** !
 
 function OutputFilename(output_option,option,suffix,optional_string)
-  ! 
+  !
   ! Creates a filename for a Tecplot file
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 01/13/12
-  ! 
+  !
 
   use Option_module
-  
+
   implicit none
-  
+
   type(option_type) :: option
   type(output_option_type) :: output_option
   character(len=*) :: suffix
   character(len=*) :: optional_string
-  
+
   character(len=MAXSTRINGLENGTH) :: OutputFilename
 
   character(len=MAXWORDLENGTH) :: final_suffix
@@ -136,13 +136,13 @@ function OutputFilename(output_option,option,suffix,optional_string)
     final_optional_string = ''
   endif
   final_suffix = '.' // suffix
-  
+
   ! open file
   if (len_trim(output_option%plot_name) > 2) then
     OutputFilename = trim(output_option%plot_name) // &
             trim(final_optional_string) // &
             final_suffix
-  else  
+  else
     OutputFilename = trim(option%global_prefix) // &
             trim(option%group_prefix) // &
             trim(final_optional_string) // &
@@ -150,18 +150,18 @@ function OutputFilename(output_option,option,suffix,optional_string)
             trim(OutputFilenameID(output_option,option)) // &
             final_suffix
   endif
-  
+
 end function OutputFilename
 
 ! ************************************************************************** !
 
 subroutine OutputGetVariableArray(realization_base,vec,variable)
-  ! 
+  !
   ! Extracts variables indexed by ivar from a multivar array
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 10/25/07
-  ! 
+  !
 
 #include "petsc/finclude/petscvec.h"
   use petscvec
@@ -172,45 +172,45 @@ subroutine OutputGetVariableArray(realization_base,vec,variable)
   class(realization_base_type) :: realization_base
   Vec :: vec
   type(output_variable_type) :: variable
-  
+
   PetscErrorCode :: ierr
 
   call PetscLogEventBegin(logging%event_output_get_var_from_array, &
                           ierr);CHKERRQ(ierr)
-                        
+
   call RealizationGetVariable(realization_base,vec,variable%ivar, &
                               variable%isubvar,variable%isubsubvar)
 
   call PetscLogEventEnd(logging%event_output_get_var_from_array, &
                         ierr);CHKERRQ(ierr)
-  
+
 end subroutine OutputGetVariableArray
 
 ! ************************************************************************** !
 
 subroutine OutputConvertArrayToNatural(indices,array,local_size,global_size,option)
-  ! 
+  !
   ! Converts an array  to natural ordering
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 10/25/07
-  ! 
+  !
 #include "petsc/finclude/petscvec.h"
   use petscvec
   use Option_module
-  
+
   implicit none
 
   PetscInt :: local_size, global_size
   PetscInt :: indices(:)
   PetscReal, pointer :: array(:)
   type(option_type) :: option
-  
+
   Vec :: natural_vec
   PetscInt, allocatable :: indices_zero_based(:)
   PetscReal, pointer :: vec_ptr(:)
   PetscErrorCode :: ierr
-  
+
   call VecCreate(option%mycomm,natural_vec,ierr);CHKERRQ(ierr)
   call VecSetSizes(natural_vec,PETSC_DECIDE,global_size,ierr);CHKERRQ(ierr)
   call VecSetType(natural_vec,VECMPI,ierr);CHKERRQ(ierr)
@@ -218,8 +218,8 @@ subroutine OutputConvertArrayToNatural(indices,array,local_size,global_size,opti
   allocate(indices_zero_based(local_size))
   indices_zero_based(1:local_size) = indices(1:local_size)-1
 
-  call VecSetValues(natural_vec,local_size,indices_zero_based, &
-                    array,INSERT_VALUES,ierr);CHKERRQ(ierr)
+  call VecSetValues(natural_vec,local_size,indices_zero_based,array, &
+                    INSERT_VALUES,ierr);CHKERRQ(ierr)
 
   call VecAssemblyBegin(natural_vec,ierr);CHKERRQ(ierr)
   call VecAssemblyEnd(natural_vec,ierr);CHKERRQ(ierr)
@@ -227,36 +227,36 @@ subroutine OutputConvertArrayToNatural(indices,array,local_size,global_size,opti
   call VecGetLocalSize(natural_vec,local_size,ierr);CHKERRQ(ierr)
   deallocate(array)
   allocate(array(local_size))
-  
+
   call VecGetArrayF90(natural_vec,vec_ptr,ierr);CHKERRQ(ierr)
   array(1:local_size) = vec_ptr(1:local_size)
   call VecRestoreArrayF90(natural_vec,vec_ptr,ierr);CHKERRQ(ierr)
 
   call VecDestroy(natural_vec,ierr);CHKERRQ(ierr)
-  
+
 end subroutine OutputConvertArrayToNatural
 
 ! ************************************************************************** !
 
 function OutputGetVariableAtCell(realization_base,ghosted_id,variable)
-  ! 
+  !
   ! Extracts variables indexed by ivar from a multivar array
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 02/11/08
-  ! 
+  !
 
   use Realization_Base_class, only : RealizGetVariableValueAtCell
   use Grid_module
   use Option_module
 
   implicit none
-  
+
   PetscReal :: OutputGetVariableAtCell
   class(realization_base_type) :: realization_base
   PetscInt :: ghosted_id
   type(output_variable_type) :: variable
- 
+
   OutputGetVariableAtCell = &
     RealizGetVariableValueAtCell(realization_base,ghosted_id, &
                                  variable%ivar,variable%isubvar, &
@@ -268,19 +268,20 @@ end function OutputGetVariableAtCell
 
 function OutputGetVariableAtCoord(realization_base,variable,x,y,z, &
                                   num_cells,ghosted_ids)
-  ! 
+  !
   ! Extracts variables indexed by ivar from a multivar array
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 02/11/08
-  ! 
+  !
 
   use Realization_Base_class, only : RealizGetVariableValueAtCell
   use Grid_module
   use Option_module
+  use Patch_module
 
   implicit none
-  
+
   PetscReal :: OutputGetVariableAtCoord
   class(realization_base_type) :: realization_base
   type(output_variable_type) :: variable
@@ -288,6 +289,7 @@ function OutputGetVariableAtCoord(realization_base,variable,x,y,z, &
   PetscInt :: num_cells
   PetscInt :: ghosted_ids(num_cells)
 
+  type(patch_type), pointer :: patch
   type(grid_type), pointer :: grid
   PetscInt :: icell
   PetscInt :: ghosted_id
@@ -297,18 +299,21 @@ function OutputGetVariableAtCoord(realization_base,variable,x,y,z, &
   PetscReal :: dx, dy, dz
   PetscReal :: value, sum_value
   PetscReal :: weight, sum_weight, sum_root
-  
+
   sum_value = 0.d0
   sum_weight = 0.d0
-  
-  grid => realization_base%patch%grid
-  
+
+  patch => realization_base%patch
+  grid => patch%grid
+
   ivar = variable%ivar
   isubvar = variable%isubvar
   isubsubvar = variable%isubsubvar
 
   do icell=1, num_cells
     ghosted_id = ghosted_ids(icell)
+    ! skip inactive cells
+    if (patch%imat(ghosted_id) <= 0) cycle
     dx = x-grid%x(ghosted_id)
     dy = y-grid%y(ghosted_id)
     dz = z-grid%z(ghosted_id)
@@ -325,7 +330,7 @@ function OutputGetVariableAtCoord(realization_base,variable,x,y,z, &
     sum_weight = sum_weight + weight
     sum_value = sum_value + weight * value
   enddo
-  
+
   OutputGetVariableAtCoord = sum_value/sum_weight
 
 end function OutputGetVariableAtCoord
@@ -334,13 +339,13 @@ end function OutputGetVariableAtCoord
 
 subroutine OutputGetCellCenteredVelocities(realization_base,vec_x,vec_y, &
                                            vec_z, iphase)
-  ! 
+  !
   ! Computes the cell-centered velocity component
   ! as an averages of cell face velocities
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 10/25/07; refactored 01/31/14
-  ! 
+  !
 #include "petsc/finclude/petscvec.h"
   use petscvec
   use Logging_module
@@ -351,17 +356,16 @@ subroutine OutputGetCellCenteredVelocities(realization_base,vec_x,vec_y, &
 
   class(realization_base_type) :: realization_base
   Vec :: vec_x,vec_y,vec_z
-  PetscInt :: direction
   PetscInt :: iphase
-  
+
   PetscErrorCode :: ierr
-  
+
   PetscReal, pointer :: vec_x_ptr(:),vec_y_ptr(:),vec_z_ptr(:)
   PetscReal, allocatable :: velocities(:,:)
-  
+
   call PetscLogEventBegin(logging%event_output_get_cell_vel, &
                           ierr);CHKERRQ(ierr)
-                            
+
   allocate(velocities(3,realization_base%patch%grid%nlmax))
   call PatchGetCellCenteredVelocities(realization_base%patch,iphase,velocities)
 
@@ -378,7 +382,7 @@ subroutine OutputGetCellCenteredVelocities(realization_base,vec_x,vec_y, &
   call VecRestoreArrayF90(vec_z,vec_z_ptr,ierr);CHKERRQ(ierr)
 
   deallocate(velocities)
-  
+
   call PetscLogEventEnd(logging%event_output_get_cell_vel,ierr);CHKERRQ(ierr)
 
 end subroutine OutputGetCellCenteredVelocities
@@ -386,30 +390,30 @@ end subroutine OutputGetCellCenteredVelocities
 ! ************************************************************************** !
 
 subroutine OutputGetCellCoordinates(grid,vec,direction)
-  ! 
+  !
   ! Extracts coordinates of cells into a PetscVec
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 10/25/07
-  ! 
+  !
 
 #include "petsc/finclude/petscvec.h"
   use petscvec
   use Grid_module
   use Variables_module
-  
+
   implicit none
 
   type(grid_type) :: grid
   Vec :: vec
   PetscInt :: direction
   PetscErrorCode :: ierr
-  
+
   PetscInt :: i
   PetscReal, pointer :: vec_ptr(:)
-  
+
   call VecGetArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
-  
+
   if (direction == X_COORDINATE) then
     do i = 1,grid%nlmax
       vec_ptr(i) = grid%x(grid%nL2G(i))
@@ -423,41 +427,41 @@ subroutine OutputGetCellCoordinates(grid,vec,direction)
       vec_ptr(i) = grid%z(grid%nL2G(i))
     enddo
   endif
-  
+
   call VecRestoreArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
-  
+
 end subroutine OutputGetCellCoordinates
 
 ! ************************************************************************** !
 
 subroutine OutputGetVertexCoordinates(grid,vec,direction,option)
-  ! 
+  !
   ! Extracts vertex coordinates of cells into a PetscVec
-  ! 
+  !
   ! Author: Gautam Bisht
   ! Date: 11/01/2011
-  ! 
+  !
 
 #include "petsc/finclude/petscvec.h"
   use petscvec
   use Grid_module
   use Option_module
   use Variables_module, only : X_COORDINATE, Y_COORDINATE, Z_COORDINATE
-  
+
   implicit none
 
   type(grid_type) :: grid
   Vec :: vec
   PetscInt :: direction
   type(option_type) :: option
-  
+
   PetscInt :: ivertex
   PetscReal, pointer :: vec_ptr(:)
   PetscInt, allocatable :: indices(:)
   PetscReal, allocatable :: values(:)
   PetscErrorCode :: ierr
-  
-  if (option%comm%mycommsize == 1) then
+
+  if (option%comm%size == 1) then
     call VecGetArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
     select case(direction)
       case(X_COORDINATE)
@@ -494,26 +498,26 @@ subroutine OutputGetVertexCoordinates(grid,vec,direction,option)
         enddo
     end select
     indices(:) = grid%unstructured_grid%vertex_ids_natural(:)-1
-    call VecSetValues(vec,grid%unstructured_grid%num_vertices_local, &
-                      indices,values,INSERT_VALUES,ierr);CHKERRQ(ierr)
+    call VecSetValues(vec,grid%unstructured_grid%num_vertices_local,indices, &
+                      values,INSERT_VALUES,ierr);CHKERRQ(ierr)
     call VecAssemblyBegin(vec,ierr);CHKERRQ(ierr)
     deallocate(values)
     deallocate(indices)
     call VecAssemblyEnd(vec,ierr);CHKERRQ(ierr)
   endif
-  
+
 end subroutine OutputGetVertexCoordinates
 
 ! ************************************************************************** !
 
 subroutine OutputGetCellVertices(grid, vec)
-  ! 
+  !
   ! This routine returns a vector containing vertex ids in natural order of
   ! local cells for unstructured grid.
-  ! 
+  !
   ! Author: Gautam Bisht, ORNL
   ! Date: 05/31/12
-  ! 
+  !
 
 #include "petsc/finclude/petscvec.h"
   use petscvec
@@ -532,12 +536,12 @@ subroutine OutputGetCellVertices(grid, vec)
   PetscInt :: ivertex
   PetscReal, pointer :: vec_ptr(:)
   PetscErrorCode :: ierr
-  
-  ugrid => grid%unstructured_grid
-  
-  call VecGetArrayF90( vec, vec_ptr, ierr);CHKERRQ(ierr)
 
-  
+  ugrid => grid%unstructured_grid
+
+  call VecGetArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+
+
   ! initialize
   vec_ptr = UNINITIALIZED_DOUBLE
   do local_id=1, ugrid%nlmax
@@ -592,20 +596,20 @@ subroutine OutputGetCellVertices(grid, vec)
     end select
   enddo
 
-  call VecRestoreArrayF90( vec, vec_ptr, ierr);CHKERRQ(ierr)
+  call VecRestoreArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine OutputGetCellVertices
 
 ! ************************************************************************** !
 
 subroutine OutputGetCellVerticesExplicit(grid, vec)
-  ! 
+  !
   ! returns a vector containing vertex ids in natural order of
   ! local cells for unstructured grid of explicit type
-  ! 
+  !
   ! Author: Satish Karra
   ! Date: 07/16/13
-  ! 
+  !
 
 #include "petsc/finclude/petscvec.h"
   use petscvec
@@ -623,11 +627,11 @@ subroutine OutputGetCellVerticesExplicit(grid, vec)
   PetscInt :: ivertex, icell
   PetscReal, pointer :: vec_ptr(:)
   PetscErrorCode :: ierr
-  
+
   ugrid => grid%unstructured_grid
   explicit_grid => ugrid%explicit_grid
-  
-  call VecGetArrayF90( vec, vec_ptr, ierr);CHKERRQ(ierr)
+
+  call VecGetArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
   ! initialize
   vec_ptr = UNINITIALIZED_DOUBLE
@@ -674,7 +678,7 @@ subroutine OutputGetCellVerticesExplicit(grid, vec)
           enddo
           do ivertex = 5, 8
             vec_ptr(offset + ivertex) = 0
-          enddo          
+          enddo
         endif
       case (3)
         offset = (icell-1)*8
@@ -688,7 +692,7 @@ subroutine OutputGetCellVerticesExplicit(grid, vec)
     end select
   enddo
 
-  call VecRestoreArrayF90( vec, vec_ptr, ierr);CHKERRQ(ierr)
+  call VecRestoreArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine OutputGetCellVerticesExplicit
 
@@ -696,12 +700,12 @@ end subroutine OutputGetCellVerticesExplicit
 
 subroutine OutputXMFHeader(fid,time,nmax,xmf_vert_len,ngvert,filename, &
                            include_cell_centers)
-  ! 
+  !
   ! This subroutine writes header to a .xmf file
-  ! 
+  !
   ! Author: Gautam Bisht, LBNL
   ! Date: 10/29/12
-  ! 
+  !
 
   implicit none
 
@@ -713,10 +717,10 @@ subroutine OutputXMFHeader(fid,time,nmax,xmf_vert_len,ngvert,filename, &
   character(len=MAXSTRINGLENGTH) :: string, string2
   character(len=MAXWORDLENGTH) :: word
   PetscInt :: i
-  
+
   string='<?xml version="1.0" ?>'
   write(fid,'(a)') trim(string)
-  
+
   string='<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>'
   write(fid,'(a)') trim(string)
 
@@ -780,39 +784,39 @@ subroutine OutputXMFHeader(fid,time,nmax,xmf_vert_len,ngvert,filename, &
         case(3)
           word = 'ZC'
       end select
- 
+
       string='      <Attribute Name="' // trim(word) // &
              '" AttributeType="Scalar"  Center="Cell">'
       write(fid,'(a)') trim(string)
-    
+
       write(string2,*) nmax
       string='        <DataItem Dimensions="' // trim(adjustl(string2)) // &
              ' 1" Format="HDF"> '
       write(fid,'(a)') trim(string)
-    
+
       string='          ' // trim(filename) // ':/Domain/' // trim(word)
       write(fid,'(a)') trim(string)
-    
-      string='        </DataItem> ' 
+
+      string='        </DataItem> '
       write(fid,'(a)') trim(string)
-    
+
       string='      </Attribute>'
       write(fid,'(a)') trim(string)
     enddo
 
   endif
-    
+
 end subroutine OutputXMFHeader
 
 ! ************************************************************************** !
 
 subroutine OutputXMFFooter(fid)
-  ! 
+  !
   ! This subroutine writes footer to a .xmf file
-  ! 
+  !
   ! Author: Gautam Bisht, LBNL
   ! Date: 10/29/12
-  ! 
+  !
 
   implicit none
 
@@ -834,17 +838,17 @@ end subroutine OutputXMFFooter
 ! ************************************************************************** !
 
 subroutine OutputXMFAttribute(fid,nmax,attname,att_datasetname,mesh_type)
-  ! 
+  !
   ! Header for xdmf attribute with explicit grid
-  ! 
+  !
   ! Author: Gautam Bisht, Satish Karra, Glenn Hammond
   ! Date: 10/29/12, 07/17/13, 03/06/17
-  ! 
+  !
   implicit none
 
   PetscInt :: fid, nmax, mesh_type
   character(len=MAXSTRINGLENGTH) :: attname, att_datasetname
-  
+
   character(len=MAXSTRINGLENGTH) :: string,string2
   character(len=MAXWORDLENGTH) :: mesh_type_word
 
@@ -866,7 +870,7 @@ subroutine OutputXMFAttribute(fid,nmax,attname,att_datasetname,mesh_type)
   string='        ' // trim(att_datasetname)
   write(fid,'(a)') trim(string)
 
-  string='        </DataItem> ' 
+  string='        </DataItem> '
   write(fid,'(a)') trim(string)
 
   string='      </Attribute>'
@@ -877,13 +881,13 @@ end subroutine OutputXMFAttribute
 ! ************************************************************************** !
 
 subroutine OutputGetFaceVelUGrid(realization_base)
-  ! 
+  !
   ! This subroutine saves:
   !  - Face elocities at x/y/z directions, or
-  ! 
+  !
   ! Author: Gautam Bisht, LBNL
   ! Date: 06/15/2016
-  ! 
+  !
 
 #include "petsc/finclude/petscvec.h"
   use petscvec
@@ -900,7 +904,7 @@ subroutine OutputGetFaceVelUGrid(realization_base)
   use HDF5_Aux_module
   use Output_Aux_module
   use Field_module
-  
+
   implicit none
 
   class(realization_base_type) :: realization_base
@@ -915,10 +919,9 @@ subroutine OutputGetFaceVelUGrid(realization_base)
   type(ugdm_type),pointer :: ugdm
   type(output_option_type), pointer :: output_option
   type(field_type), pointer :: field
-  
+
   PetscInt :: local_id
   PetscInt :: ghosted_id
-  PetscInt :: idual
   PetscInt :: iconn
   PetscInt :: face_id
   PetscInt :: local_id_up,local_id_dn
@@ -928,36 +931,24 @@ subroutine OutputGetFaceVelUGrid(realization_base)
   PetscInt :: sum_connection
   PetscInt :: offset
   PetscInt :: cell_type
-  PetscInt :: local_size
   PetscInt :: i
-  PetscInt :: iface
-  PetscInt :: ndof
   PetscInt :: idx
 
-  PetscReal, pointer :: flowrates(:,:,:)
   PetscReal, pointer :: vx(:,:,:)
   PetscReal, pointer :: vy(:,:,:)
   PetscReal, pointer :: vz(:,:,:)
   PetscReal, pointer :: vec_ptr(:)
   PetscReal, pointer :: vec_ptr2(:)
-  PetscReal, pointer :: vec_ptr3(:)
   PetscReal, pointer :: vx_ptr(:)
   PetscReal, pointer :: vy_ptr(:)
   PetscReal, pointer :: vz_ptr(:)
-  PetscReal, pointer :: double_array(:)
   PetscReal :: vel_vector(3)
-  PetscReal :: dtime
 
-  Vec :: natural_flowrates_vec
   Vec :: natural_vx_vec
   Vec :: natural_vy_vec
   Vec :: natural_vz_vec
 
-  PetscMPIInt :: hdf5_err
   PetscErrorCode :: ierr
-  
-  character(len=MAXSTRINGLENGTH) :: string
-  character(len=MAXWORDLENGTH) :: unit_string
 
   patch => realization_base%patch
   grid => patch%grid
@@ -1009,8 +1000,8 @@ subroutine OutputGetFaceVelUGrid(realization_base)
   ! Interior Flowrates Terms -----------------------------------
   connection_set_list => grid%internal_connection_set_list
   cur_connection_set => connection_set_list%first
-  sum_connection = 0  
-  do 
+  sum_connection = 0
+  do
     if (.not.associated(cur_connection_set)) exit
 
     do iconn = 1, cur_connection_set%num_connections
@@ -1080,7 +1071,7 @@ subroutine OutputGetFaceVelUGrid(realization_base)
   ! Boundary Flowrates Terms -----------------------------------
   boundary_condition => patch%boundary_condition_list%first
   sum_connection = 0
-  do 
+  do
     if (.not.associated(boundary_condition)) exit
 
     cur_connection_set => boundary_condition%connection_set
@@ -1130,19 +1121,19 @@ subroutine OutputGetFaceVelUGrid(realization_base)
 
   ! Scatter flowrate from Global --> Natural order
   call VecScatterBegin(ugdm%scatter_gton,field%vx_face_inst,natural_vx_vec, &
-                        INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+                       INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
   call VecScatterEnd(ugdm%scatter_gton,field%vx_face_inst,natural_vx_vec, &
-                      INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+                     INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
 
   call VecScatterBegin(ugdm%scatter_gton,field%vy_face_inst,natural_vy_vec, &
-                        INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+                       INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
   call VecScatterEnd(ugdm%scatter_gton,field%vy_face_inst,natural_vy_vec, &
-                      INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+                     INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
 
   call VecScatterBegin(ugdm%scatter_gton,field%vz_face_inst,natural_vz_vec, &
-                        INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+                       INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
   call VecScatterEnd(ugdm%scatter_gton,field%vz_face_inst,natural_vz_vec, &
-                      INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+                     INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
 
   ! X-direction
   call VecGetArrayF90(natural_vx_vec,vec_ptr,ierr);CHKERRQ(ierr)
@@ -1185,19 +1176,19 @@ subroutine OutputGetFaceVelUGrid(realization_base)
   call VecDestroy(natural_vz_vec,ierr);CHKERRQ(ierr)
 
   call UGridDMDestroy(ugdm)
-  
+
 end subroutine OutputGetFaceVelUGrid
 
 ! ************************************************************************** !
 
 subroutine OutputGetFaceFlowrateUGrid(realization_base)
-  ! 
+  !
   ! This subroutine saves:
   !  - Mass/energy flowrate at all faces of a control volume
-  ! 
+  !
   ! Author: Gautam Bisht, LBNL
   ! Date: 06/15/2016
-  ! 
+  !
 
 #include "petsc/finclude/petscvec.h"
   use petscvec
@@ -1214,7 +1205,7 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
   use HDF5_Aux_module
   use Output_Aux_module
   use Field_module
-  
+
   implicit none
 
   class(realization_base_type) :: realization_base
@@ -1229,10 +1220,9 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
   type(ugdm_type),pointer :: ugdm
   type(output_option_type), pointer :: output_option
   type(field_type), pointer :: field
-  
+
   PetscInt :: local_id
   PetscInt :: ghosted_id
-  PetscInt :: idual
   PetscInt :: iconn
   PetscInt :: face_id
   PetscInt :: local_id_up,local_id_dn
@@ -1242,36 +1232,16 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
   PetscInt :: sum_connection
   PetscInt :: offset
   PetscInt :: cell_type
-  PetscInt :: local_size
-  PetscInt :: i
-  PetscInt :: iface
-  PetscInt :: ndof
   PetscInt :: idx
 
   PetscReal, pointer :: flowrates(:,:,:)
-  PetscReal, pointer :: vx(:,:,:)
-  PetscReal, pointer :: vy(:,:,:)
-  PetscReal, pointer :: vz(:,:,:)
   PetscReal, pointer :: vec_ptr(:)
   PetscReal, pointer :: vec_ptr2(:)
   PetscReal, pointer :: vec_ptr3(:)
-  PetscReal, pointer :: vx_ptr(:)
-  PetscReal, pointer :: vy_ptr(:)
-  PetscReal, pointer :: vz_ptr(:)
-  PetscReal, pointer :: double_array(:)
-  PetscReal :: vel_vector(3)
   PetscReal :: dtime
 
   Vec :: natural_flowrates_vec
-  Vec :: natural_vx_vec
-  Vec :: natural_vy_vec
-  Vec :: natural_vz_vec
-
-  PetscMPIInt :: hdf5_err
   PetscErrorCode :: ierr
-  
-  character(len=MAXSTRINGLENGTH) :: string
-  character(len=MAXWORDLENGTH) :: unit_string
 
   patch => realization_base%patch
   grid => patch%grid
@@ -1305,8 +1275,8 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
   ! Interior Flowrates Terms -----------------------------------
   connection_set_list => grid%internal_connection_set_list
   cur_connection_set => connection_set_list%first
-  sum_connection = 0  
-  do 
+  sum_connection = 0
+  do
     if (.not.associated(cur_connection_set)) exit
 
     do iconn = 1, cur_connection_set%num_connections
@@ -1355,7 +1325,7 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
   ! Boundary Flowrates Terms -----------------------------------
   boundary_condition => patch%boundary_condition_list%first
   sum_connection = 0
-  do 
+  do
     if (.not.associated(boundary_condition)) exit
 
     cur_connection_set => boundary_condition%connection_set
@@ -1389,10 +1359,12 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
   call VecRestoreArrayF90(field%flowrate_inst,vec_ptr,ierr);CHKERRQ(ierr)
 
   ! Scatter flowrate from Global --> Natural order
-  call VecScatterBegin(ugdm%scatter_gton,field%flowrate_inst,natural_flowrates_vec, &
-                        INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
-  call VecScatterEnd(ugdm%scatter_gton,field%flowrate_inst,natural_flowrates_vec, &
-                      INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+  call VecScatterBegin(ugdm%scatter_gton,field%flowrate_inst, &
+                       natural_flowrates_vec,INSERT_VALUES,SCATTER_FORWARD, &
+                       ierr);CHKERRQ(ierr)
+  call VecScatterEnd(ugdm%scatter_gton,field%flowrate_inst, &
+                     natural_flowrates_vec,INSERT_VALUES,SCATTER_FORWARD, &
+                     ierr);CHKERRQ(ierr)
 
   call VecGetArrayF90(natural_flowrates_vec,vec_ptr,ierr);CHKERRQ(ierr)
   call VecGetArrayF90(field%flowrate_inst,vec_ptr2,ierr);CHKERRQ(ierr)
@@ -1415,20 +1387,20 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
   call VecDestroy(natural_flowrates_vec,ierr);CHKERRQ(ierr)
 
   call UGridDMDestroy(ugdm)
-  
+
 end subroutine OutputGetFaceFlowrateUGrid
 
 ! ************************************************************************** !
 
 subroutine OutputGetExplicitIDsFlowrates(realization_base,count,vec_proc, &
                                          ids_up,ids_dn)
-  ! 
+  !
   ! Calculates the ids of the nodes of a
   ! connection for flow rats output
-  ! 
+  !
   ! Author: Satish Karra, LANL
   ! Date: 04/24/13
-  ! 
+  !
 
 #include "petsc/finclude/petscvec.h"
   use petscvec
@@ -1448,20 +1420,17 @@ subroutine OutputGetExplicitIDsFlowrates(realization_base,count,vec_proc, &
   type(grid_type), pointer :: grid
   type(grid_unstructured_type),pointer :: ugrid
   type(field_type), pointer :: field
-  type(ugdm_type), pointer :: ugdm  
+  type(ugdm_type), pointer :: ugdm
   type(connection_set_list_type), pointer :: connection_set_list
   type(connection_set_type), pointer :: cur_connection_set
 
-  
+
   PetscReal, pointer :: vec_ptr(:)
   PetscReal, pointer :: vec_ptr2(:)
   PetscReal, pointer :: vec_proc_ptr(:)
   PetscInt, pointer :: ids_up(:),ids_dn(:)
-  PetscInt :: offset
-  PetscInt :: istart,iend
   PetscInt :: iconn
   PetscErrorCode :: ierr
-  PetscReal :: val
   PetscInt :: ghosted_id_up, ghosted_id_dn
   PetscInt :: local_id_up, local_id_dn
   PetscReal :: proc_up, proc_dn, conn_proc
@@ -1469,19 +1438,18 @@ subroutine OutputGetExplicitIDsFlowrates(realization_base,count,vec_proc, &
   Vec :: global_vec
   Vec :: local_vec
   Vec :: vec_proc
-  PetscInt :: idof
-  
+
   patch => realization_base%patch
   grid => patch%grid
   ugrid => grid%unstructured_grid
   option => realization_base%option
   field => realization_base%field
-  
+
   call VecCreateMPI(option%mycomm, &
                     size(grid%unstructured_grid%explicit_grid%connections,2), &
                     PETSC_DETERMINE,vec_proc,ierr);CHKERRQ(ierr)
   call VecSet(vec_proc,0.d0,ierr);CHKERRQ(ierr)
-  
+
   call UGridCreateUGDM(grid%unstructured_grid,ugdm,ONE_INTEGER,option)
   call UGridDMCreateVector(grid%unstructured_grid,ugdm,global_vec, &
                            GLOBAL,option)
@@ -1490,20 +1458,20 @@ subroutine OutputGetExplicitIDsFlowrates(realization_base,count,vec_proc, &
   call VecGetArrayF90(global_vec,vec_ptr,ierr);CHKERRQ(ierr)
   vec_ptr = option%myrank
   call VecRestoreArrayF90(global_vec,vec_ptr,ierr);CHKERRQ(ierr)
-  
-  call VecScatterBegin(ugdm%scatter_gtol,global_vec,local_vec, &
-                       INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
-  call VecScatterEnd(ugdm%scatter_gtol,global_vec,local_vec, &
-                     INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
-                     
+
+  call VecScatterBegin(ugdm%scatter_gtol,global_vec,local_vec,INSERT_VALUES, &
+                       SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+  call VecScatterEnd(ugdm%scatter_gtol,global_vec,local_vec,INSERT_VALUES, &
+                     SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+
   call VecGetArrayF90(local_vec,vec_ptr2,ierr);CHKERRQ(ierr)
   call VecGetArrayF90(vec_proc,vec_proc_ptr,ierr);CHKERRQ(ierr)
-  
+
   connection_set_list => grid%internal_connection_set_list
   cur_connection_set => connection_set_list%first
-  sum_connection = 0  
+  sum_connection = 0
   count = 0
-  do 
+  do
     if (.not.associated(cur_connection_set)) exit
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
@@ -1526,13 +1494,13 @@ subroutine OutputGetExplicitIDsFlowrates(realization_base,count,vec_proc, &
 
   call VecAssemblyBegin(vec_proc,ierr);CHKERRQ(ierr)
   call VecAssemblyEnd(vec_proc,ierr);CHKERRQ(ierr)
-  
+
   ! Count the number of connections on a local process
   call VecGetArrayF90(vec_proc,vec_proc_ptr,ierr);CHKERRQ(ierr)
   cur_connection_set => connection_set_list%first
-  sum_connection = 0  
+  sum_connection = 0
   count = 0
-  do 
+  do
     if (.not.associated(cur_connection_set)) exit
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
@@ -1540,9 +1508,9 @@ subroutine OutputGetExplicitIDsFlowrates(realization_base,count,vec_proc, &
         count = count + 1
     enddo
     cur_connection_set => cur_connection_set%next
-  enddo  
+  enddo
   call VecRestoreArrayF90(vec_proc,vec_proc_ptr,ierr);CHKERRQ(ierr)
-  
+
 
   ! Count the number of connections on a local process
   allocate(ids_up(count))
@@ -1550,16 +1518,16 @@ subroutine OutputGetExplicitIDsFlowrates(realization_base,count,vec_proc, &
   call VecGetArrayF90(vec_proc,vec_proc_ptr,ierr);CHKERRQ(ierr)
   connection_set_list => grid%internal_connection_set_list
   cur_connection_set => connection_set_list%first
-  sum_connection = 0  
+  sum_connection = 0
   count = 0
-  do 
+  do
     if (.not.associated(cur_connection_set)) exit
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
       ghosted_id_up = cur_connection_set%id_up(iconn)
       ghosted_id_dn = cur_connection_set%id_dn(iconn)
       local_id_up = grid%nG2L(ghosted_id_up)
-      local_id_dn = grid%nG2L(ghosted_id_dn)      
+      local_id_dn = grid%nG2L(ghosted_id_dn)
       if (option%myrank == int(vec_proc_ptr(sum_connection))) then
         count = count + 1
         ids_up(count) = grid%nG2A(ghosted_id_up)
@@ -1567,7 +1535,7 @@ subroutine OutputGetExplicitIDsFlowrates(realization_base,count,vec_proc, &
       endif
     enddo
     cur_connection_set => cur_connection_set%next
-  enddo  
+  enddo
   call VecRestoreArrayF90(vec_proc,vec_proc_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine OutputGetExplicitIDsFlowrates
@@ -1576,13 +1544,13 @@ end subroutine OutputGetExplicitIDsFlowrates
 
 subroutine OutputGetExplicitFlowrates(realization_base,count,vec_proc, &
                                       flowrates,darcy,area)
-  ! 
+  !
   ! Forms a vector of magnitude of flowrates
   ! which will be printed out to file for particle tracking.
-  ! 
+  !
   ! Author: Satish Karra, LANL
   ! Date: 04/24/13
-  ! 
+  !
 
 #include "petsc/finclude/petscvec.h"
   use petscvec
@@ -1605,20 +1573,18 @@ subroutine OutputGetExplicitFlowrates(realization_base,count,vec_proc, &
   type(connection_set_list_type), pointer :: connection_set_list
   type(connection_set_type), pointer :: cur_connection_set
 
-  
+
   PetscReal, pointer :: vec_proc_ptr(:)
   PetscReal, pointer :: flowrates(:,:)
   PetscReal, pointer :: darcy(:), area(:)
-  PetscInt :: offset
   PetscInt :: iconn
   PetscErrorCode :: ierr
   PetscInt :: ghosted_id_up, ghosted_id_dn
   PetscInt :: local_id_up, local_id_dn
-  PetscReal :: proc_up, proc_dn, conn_proc
   PetscInt :: sum_connection, count
   Vec :: vec_proc
   PetscInt :: idof
-  
+
   patch => realization_base%patch
   grid => patch%grid
   ugrid => grid%unstructured_grid
@@ -1632,16 +1598,16 @@ subroutine OutputGetExplicitFlowrates(realization_base,count,vec_proc, &
   call VecGetArrayF90(vec_proc,vec_proc_ptr,ierr);CHKERRQ(ierr)
   connection_set_list => grid%internal_connection_set_list
   cur_connection_set => connection_set_list%first
-  sum_connection = 0  
+  sum_connection = 0
   count = 0
-  do 
+  do
     if (.not.associated(cur_connection_set)) exit
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
       ghosted_id_up = cur_connection_set%id_up(iconn)
       ghosted_id_dn = cur_connection_set%id_dn(iconn)
       local_id_up = grid%nG2L(ghosted_id_up)
-      local_id_dn = grid%nG2L(ghosted_id_dn)      
+      local_id_dn = grid%nG2L(ghosted_id_dn)
       if (option%myrank == int(vec_proc_ptr(sum_connection))) then
         count = count + 1
         do idof = 1,option%nflowdof
@@ -1653,7 +1619,7 @@ subroutine OutputGetExplicitFlowrates(realization_base,count,vec_proc, &
       endif
     enddo
     cur_connection_set => cur_connection_set%next
-  enddo  
+  enddo
   call VecRestoreArrayF90(vec_proc,vec_proc_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine OutputGetExplicitFlowrates
@@ -1681,7 +1647,7 @@ subroutine OutputGetExplicitAuxVars(realization_base,count,vec_proc,density)
   use Global_Aux_module
   use Richards_Aux_module
   use TH_Aux_module
-  use Material_Aux_class
+  use Material_Aux_module
 
   implicit none
 
@@ -1689,7 +1655,6 @@ subroutine OutputGetExplicitAuxVars(realization_base,count,vec_proc,density)
   type(option_type), pointer :: option
   type(patch_type), pointer :: patch
   type(grid_type), pointer :: grid
-  type(grid_unstructured_type),pointer :: ugrid
   type(field_type), pointer :: field
   type(connection_set_list_type), pointer :: connection_set_list
   type(connection_set_type), pointer :: cur_connection_set
@@ -1699,20 +1664,14 @@ subroutine OutputGetExplicitAuxVars(realization_base,count,vec_proc,density)
   type(richards_auxvar_type), pointer :: rich_auxvars(:)
 
   PetscReal, pointer :: vec_proc_ptr(:)
-  PetscReal, pointer :: flowrates(:,:)
-  PetscReal, pointer :: darcy(:)
   PetscReal, pointer :: density(:)
-  PetscInt :: offset
   PetscInt :: iconn
   PetscErrorCode :: ierr
   PetscInt :: ghosted_id_up, ghosted_id_dn
   PetscInt :: local_id_up, local_id_dn
-  PetscReal :: proc_up, proc_dn, conn_proc
   PetscInt :: sum_connection, count
   Vec :: vec_proc
-  PetscInt :: idof
   PetscInt :: icc_up, icc_dn
-  PetscReal :: sir_up, sir_dn
   PetscReal, parameter :: eps = 1.D-8
   PetscReal :: upweight
   PetscBool :: is_flowing
@@ -1779,7 +1738,7 @@ subroutine OutputGetExplicitAuxVars(realization_base,count,vec_proc,density)
     enddo
     cur_connection_set => cur_connection_set%next
   enddo
-      
+
   call VecRestoreArrayF90(vec_proc,vec_proc_ptr,ierr);CHKERRQ(ierr)
 
 
@@ -1789,13 +1748,13 @@ end subroutine OutputGetExplicitAuxVars
 
 subroutine OutputGetExplicitCellInfo(realization_base,num_cells,ids,sat,por, &
                                      density,pressure)
-  ! 
+  !
   ! Calculates porosity, saturation, density
   ! and pressure in a cell (explicit)
-  ! 
+  !
   ! Author: Satish Karra, LANL
   ! Date: 08/21/13
-  ! 
+  !
 #include "petsc/finclude/petscvec.h"
   use petscvec
   use Realization_Base_class, only : realization_base_type
@@ -1813,12 +1772,9 @@ subroutine OutputGetExplicitCellInfo(realization_base,num_cells,ids,sat,por, &
   type(option_type), pointer :: option
   type(patch_type), pointer :: patch
   type(grid_type), pointer :: grid
-  type(grid_unstructured_type),pointer :: ugrid
   type(field_type), pointer :: field
   type(global_auxvar_type), pointer :: global_auxvar(:)
 
-
-  PetscErrorCode :: ierr
   PetscInt :: num_cells
   PetscReal, pointer :: sat(:)
   PetscReal, pointer :: por(:)
@@ -1826,20 +1782,20 @@ subroutine OutputGetExplicitCellInfo(realization_base,num_cells,ids,sat,por, &
   PetscReal, pointer :: pressure(:)
   PetscInt, pointer :: ids(:)
   PetscInt :: local_id, ghosted_id
-  
+
   patch => realization_base%patch
   option => realization_base%option
   field => realization_base%field
   grid => patch%grid
   global_auxvar => patch%aux%Global%auxvars
-  
+
   num_cells = grid%nlmax
   allocate(sat(num_cells))
   allocate(por(num_cells))
   allocate(ids(num_cells))
   allocate(density(num_cells))
   allocate(pressure(num_cells))
-  
+
   do local_id = 1, num_cells
     ghosted_id = grid%nL2G(local_id)
     ids(local_id) = grid%nG2A(ghosted_id)
@@ -1855,13 +1811,13 @@ end subroutine OutputGetExplicitCellInfo
 
 subroutine OutputCollectVelocityOrFlux(realization_base, iphase, direction, &
                                        output_flux, array)
-  ! 
+  !
   ! Accumulates fluxes or velocities for a structured grid into a 1D array.
   ! This routine is called for HDF5 and Tecplot flux/velocity output.
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 03/26/18
-  ! 
+  !
   use Realization_Base_class, only : realization_base_type
   use Discretization_module
   use Patch_module
@@ -1872,7 +1828,7 @@ subroutine OutputCollectVelocityOrFlux(realization_base, iphase, direction, &
   use Connection_module
   use Coupler_module
   use DM_Kludge_module
-  
+
   implicit none
 
   class(realization_base_type) :: realization_base
@@ -1941,18 +1897,18 @@ subroutine OutputCollectVelocityOrFlux(realization_base, iphase, direction, &
   end select
 
 
-  ! must use a local vec so that potential boundary values can be 
+  ! must use a local vec so that potential boundary values can be
   ! accumulated across ghosted cells
   call DiscretizationCreateVector(discretization,ONEDOF,local_vec,LOCAL, &
-                                  option) 
+                                  option)
   call VecZeroEntries(local_vec,ierr);CHKERRQ(ierr)
   call VecGetArrayF90(local_vec,vec_ptr,ierr);CHKERRQ(ierr)
-  
+
   ! place interior velocities in a vector
   connection_set_list => grid%internal_connection_set_list
   cur_connection_set => connection_set_list%first
   sum_connection = 0
-  do 
+  do
     if (.not.associated(cur_connection_set)) exit
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
@@ -1986,7 +1942,7 @@ subroutine OutputCollectVelocityOrFlux(realization_base, iphase, direction, &
       max_global = grid%z_max_global
       min_global = grid%z_min_global
   end select
-  boundary_condition => patch%boundary_condition_list%first 
+  boundary_condition => patch%boundary_condition_list%first
   sum_connection = 0
   do
     if (.not.associated(boundary_condition)) exit
@@ -2000,7 +1956,7 @@ subroutine OutputCollectVelocityOrFlux(realization_base, iphase, direction, &
       scale = 1.d0
       if (dist(direction) < 0.d0) scale = -1.d0
       ! if the connection is on the domain boundary, we need to skip it.
-      ! use a small perturbation to determine 
+      ! use a small perturbation to determine
       face_location_pert = coord_ptr(ghosted_id) - &
                          (1.d0+perturbation)*dist(0)*dist(direction)
       if (face_location_pert >= max_global .or. &
@@ -2009,7 +1965,7 @@ subroutine OutputCollectVelocityOrFlux(realization_base, iphase, direction, &
       endif
       ! velocities are stored as the downwind face of the upwind cell.
       ! if the direction is positive, then the value needs to be assigned
-      ! to the downwind face of the next cell upwind in the specified 
+      ! to the downwind face of the next cell upwind in the specified
       ! direction.
       select case(direction)
         case(X_DIRECTION)
@@ -2024,7 +1980,7 @@ subroutine OutputCollectVelocityOrFlux(realization_base, iphase, direction, &
           &TecplotBlk while adding boundary values.'
         call PrintErrMsgByRankToDev(option,'')
       endif
-      ! I don't know why one would do this, but it is possible that a 
+      ! I don't know why one would do this, but it is possible that a
       ! boundary condition could be applied to an interior face shared
       ! by two active cells. Thus, we must sum.
       if (output_flux) then
@@ -2034,7 +1990,7 @@ subroutine OutputCollectVelocityOrFlux(realization_base, iphase, direction, &
       endif
       vec_ptr(ghosted_id) = vec_ptr(ghosted_id) + scale*value
     enddo
-    boundary_condition => boundary_condition%next 
+    boundary_condition => boundary_condition%next
   enddo
   call VecRestoreArrayF90(local_vec,vec_ptr,ierr);CHKERRQ(ierr)
 
@@ -2044,7 +2000,7 @@ subroutine OutputCollectVelocityOrFlux(realization_base, iphase, direction, &
   ! using DMLocalToGlobalBegin/End with ADD_VALUES. LocalToLocal does not
   ! work
   call DiscretizationCreateVector(discretization,ONEDOF,global_vec,GLOBAL, &
-                                  option) 
+                                  option)
   call VecZeroEntries(global_vec,ierr);CHKERRQ(ierr)
   call DMLocalToGlobalBegin(dm_ptr%dm,local_vec,ADD_VALUES,global_vec, &
                             ierr);CHKERRQ(ierr)
@@ -2052,20 +2008,20 @@ subroutine OutputCollectVelocityOrFlux(realization_base, iphase, direction, &
                           ierr);CHKERRQ(ierr)
 
   call VecGetArrayF90(global_vec,vec_ptr,ierr);CHKERRQ(ierr)
-  ! write out data set 
-  count = 0 
-  do k=1,nz_local 
-    do j=1,ny_local 
-      do i=1,nx_local 
-        count = count + 1 
+  ! write out data set
+  count = 0
+  do k=1,nz_local
+    do j=1,ny_local
+      do i=1,nx_local
+        count = count + 1
         local_id = i+(j-1)*structured_grid%nlx+ &
-                   (k-1)*structured_grid%nlxy 
+                   (k-1)*structured_grid%nlxy
         array(count) = vec_ptr(local_id)
-      enddo 
-    enddo 
-  enddo 
+      enddo
+    enddo
+  enddo
   call VecRestoreArrayF90(global_vec,vec_ptr,ierr);CHKERRQ(ierr)
-   
+
   call VecDestroy(local_vec,ierr);CHKERRQ(ierr)
   call VecDestroy(global_vec,ierr);CHKERRQ(ierr)
 

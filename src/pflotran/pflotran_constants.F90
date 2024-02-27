@@ -11,20 +11,20 @@ module PFLOTRAN_Constants_module
 
   private
 
-  PetscBool, parameter :: PFLOTRAN_RELEASE = PETSC_TRUE
-  PetscInt, parameter :: PFLOTRAN_VERSION_MAJOR = 4
+  PetscBool, parameter :: PFLOTRAN_RELEASE = PETSC_FALSE
+  PetscInt, parameter :: PFLOTRAN_VERSION_MAJOR = 5
   PetscInt, parameter :: PFLOTRAN_VERSION_MINOR = 0
   PetscInt, parameter :: PFLOTRAN_VERSION_PATCH = 0 ! (alpha < -1; beta = -1)
 
 #define VMAJOR 3
-#define VMINOR 16
-#define VSUBMINOR 2
+#define VMINOR 20
+#define VSUBMINOR 0
 #if (PETSC_VERSION_MAJOR < VMAJOR ||                    \
      (PETSC_VERSION_MAJOR == VMAJOR &&                  \
       (PETSC_VERSION_MINOR < VMINOR ||                  \
        (PETSC_VERSION_MINOR == VMINOR &&                \
         (PETSC_VERSION_SUBMINOR < VSUBMINOR)))))
-#error "Please use PETSc version 3.16.2 or later: 'git checkout v3.16.2' in $PETSC_DIR"
+#error "Please use PETSc version 3.20.0 or later: 'git checkout v3.20.0' in $PETSC_DIR"
 #endif
   ! MUST INCREMENT THIS NUMBER EVERYTIME A CHECKPOINT FILE IS
   ! MODIFIED TO PREVENT COMPATIBILITY ISSUES - geh.
@@ -32,17 +32,25 @@ module PFLOTRAN_Constants_module
 
   PetscInt, parameter, public :: MAXSTRINGLENGTH = 512
   PetscInt, parameter, public :: MAXWORDLENGTH = 32
+
+  ! Comment on file units: There are several ranges of file units that are
+  ! reserved for nested I/O, where nested file accesses cannot use the same
+  ! file unit as outer file units. Do not use integers that lie between the
+  ! ranges specified.
+
   PetscInt, parameter, public :: STDOUT_UNIT = stdout
   PetscInt, parameter, public :: DRIVER_OUT_UNIT = 14
   PetscInt, parameter, public :: FORWARD_OUT_UNIT = 15
-  PetscInt, parameter, public :: OUTPUT_UNIT = 16
-  PetscInt, parameter, public :: IN_UNIT = 17 ! 17-MAX_IN_UNIT are reserved
-  ! If you increase MAX_IN_UNIT, you MUST ensure that no other units #
-  ! lie between IN_UNIT and MAX_IN_UNIT, as these units are reserved
-  ! for embedded input files.
-  PetscInt, parameter, public :: MAX_IN_UNIT = 25
-  PetscInt, parameter, public :: IUNIT_TEMP = 86
+  ! Before you add file UNITS between FORWARD_OUT_UNIT and MAX_OUT_UNIT, read
+  ! comment on file units above.
+  PetscInt, parameter, public :: MAX_OUT_UNIT = 17
+  PetscInt, parameter, public :: OUTPUT_UNIT = 18 ! for output data files
+  PetscInt, parameter, public :: IN_UNIT = 19 
+  ! Before you add file UNITS between IN_UNIT and MAX_IN_UNIT, read
+  ! comment on file units above.
+  PetscInt, parameter, public :: MAX_IN_UNIT = 27
   ! Units 50-59 are reserved for reservoir engineering format files
+  PetscInt, parameter, public :: IUNIT_TEMP = 86
   ! EKG_UNIT = 87
   PetscInt, parameter, public :: INPUT_RECORD_UNIT = 88
   PetscInt, parameter, public :: HHISTORY_LENGTH = 1000
@@ -59,6 +67,7 @@ module PFLOTRAN_Constants_module
   PetscReal, parameter, public :: FMWH2O = 18.01534d0  ! kg/kmol h2o
   PetscReal, parameter, public :: FMWCO2 = 44.0098d0
   PetscReal, parameter, public :: FMWAIR = 28.96d0
+  PetscReal, parameter, public :: FMWCH4 = 16.04d0
 
   ! constants
   PetscReal, parameter, public :: DAYS_PER_YEAR = 365.d0
@@ -70,6 +79,8 @@ module PFLOTRAN_Constants_module
 #else
   PetscReal, parameter, public :: H2O_CRITICAL_PRESSURE = 22.064d6 ! Pa
 #endif
+
+  PetscReal, parameter, public :: CO2_CRITICAL_TEMPERATURE = 304.1282d0 !K
 
   ! conversion factors
   PetscReal, parameter, public :: LOG_TO_LN = 2.30258509299d0
@@ -160,6 +171,7 @@ module PFLOTRAN_Constants_module
   PetscInt, parameter, public :: H_MODE = 8
   PetscInt, parameter, public :: ZFLOW_MODE = 9
   PetscInt, parameter, public :: PNF_MODE = 10
+  PetscInt, parameter, public :: SCO2_MODE = 11
 
   ! transport modes
   PetscInt, parameter, public :: RT_MODE = 1
@@ -203,6 +215,8 @@ module PFLOTRAN_Constants_module
   PetscInt, parameter, public :: TOTAL_MASS_RATE_SS = 29
   PetscInt, parameter, public :: DIRICHLET_SEEPAGE_BC = 30
   PetscInt, parameter, public :: DIRICHLET_CONDUCTANCE_BC = 31
+  PetscInt, parameter, public :: MEMBRANE_BC = 32
+  PetscInt, parameter, public :: AT_SOLUBILITY_BC = 33
 
   PetscInt, parameter, public :: WELL_SS = 100
 
@@ -235,9 +249,6 @@ module PFLOTRAN_Constants_module
   PetscInt, parameter, public :: RICHARDS_PRESSURE_DOF = 1
   PetscInt, parameter, public :: RICHARDS_CONDUCTANCE_DOF = 2
 
-  PetscInt, parameter, public :: ZFLOW_PRESSURE_DOF = 1
-  PetscInt, parameter, public :: ZFLOW_CONDUCTANCE_DOF = 2
-
   PetscInt, parameter, public :: MIS_PRESSURE_DOF = 1
   PetscInt, parameter, public :: MIS_CONCENTRATION_DOF = 2
 
@@ -248,6 +259,7 @@ module PFLOTRAN_Constants_module
   ! phase ids
   PetscInt, parameter, public :: LIQUID_PHASE = 1
   PetscInt, parameter, public :: GAS_PHASE = 2
+  PetscInt, parameter, public :: PRECIPITATE_PHASE = 3
 
   PetscInt, parameter, public :: MAX_PHASE = 2
 
@@ -259,6 +271,7 @@ module PFLOTRAN_Constants_module
   PetscInt, parameter, public :: MATERIAL_ID_ARRAY = 1
   PetscInt, parameter, public :: CC_ID_ARRAY = 2  ! characteristic curves
   PetscInt, parameter, public :: CCT_ID_ARRAY = 3 ! charact. curves thermal
+  PetscInt, parameter, public :: MTF_ID_ARRAY = 4 ! material transform
 
   ! interpolation methods
   PetscInt, parameter, public :: INTERPOLATION_NULL = 0
@@ -275,6 +288,7 @@ module PFLOTRAN_Constants_module
   PetscInt, parameter, public :: PROCEED = 0
   PetscInt, parameter, public :: DONE = 1
   PetscInt, parameter, public :: FAIL = 2
+  PetscInt, parameter, public :: SKIP = 3
 
   ! Grid type
   PetscInt, parameter, public :: NULL_GRID = 0
@@ -295,6 +309,7 @@ module PFLOTRAN_Constants_module
   PetscInt, parameter, public :: GEOMECH_DISP_Z_DOF = 3
   PetscInt, parameter, public :: GEOMECH_ONE_WAY_COUPLED = 4
   PetscInt, parameter, public :: GEOMECH_TWO_WAY_COUPLED = 5
+  PetscInt, parameter, public :: GEOMECH_ERT_COUPLING = 6
 
   ! Macros that are used as 'vscatter_index' values
   PetscInt, parameter, public :: SUBSURF_TO_GEOMECHANICS = 3
@@ -315,7 +330,7 @@ module PFLOTRAN_Constants_module
   ! uninitialized values
   PetscInt, parameter, public :: UNINITIALIZED_INTEGER = -999
   PetscReal, parameter, public :: UNINITIALIZED_DOUBLE = -999.d0
-  
+
   ! maximum values
   PetscReal, parameter, public :: MAX_DOUBLE = 1.d20
 
@@ -325,7 +340,7 @@ module PFLOTRAN_Constants_module
   PetscInt, parameter, public :: CONVERGENCE_KEEP_ITERATING = 0
   PetscInt, parameter, public :: CONVERGENCE_FORCE_ITERATION = 1
   PetscInt, parameter, public :: CONVERGENCE_CONVERGED = 2
-
+  PetscInt, parameter, public :: CONVERGENCE_BREAKOUT_INNER_ITER = 3
   ! Dummy value
   PetscReal, parameter, public :: DUMMY_VALUE = UNINITIALIZED_DOUBLE
 

@@ -57,8 +57,8 @@ module Variables_module
   PetscInt, parameter, public :: PRIMARY_KD =              47
   PetscInt, parameter, public :: TOTAL_SORBED =            48
   PetscInt, parameter, public :: TOTAL_SORBED_MOBILE =     49
-  PetscInt, parameter, public :: COLLOID_MOBILE =          50
-  PetscInt, parameter, public :: COLLOID_IMMOBILE =        51
+!  PetscInt, parameter, public :: COLLOID_MOBILE =          50
+!  PetscInt, parameter, public :: COLLOID_IMMOBILE =        51
   PetscInt, parameter, public :: AGE =                     52
   PetscInt, parameter, public :: STATE =                   53
   PetscInt, parameter, public :: PROCESS_ID =              54
@@ -150,15 +150,59 @@ module Variables_module
 
   PetscInt, parameter, public :: K_ORTHOGONALITY_ERROR   = 124
 
-  PetscInt, parameter, public :: SECONDARY_CONTINUUM_UPDATED_CONC = 125
+  PetscInt, parameter, public :: ELECTRICAL_CONDUCTIVITY = 125
+  PetscInt, parameter, public :: ELECTRICAL_POTENTIAL    = 126
+  PetscInt, parameter, public :: ELECTRICAL_JACOBIAN     = 127
+  PetscInt, parameter, public :: ELECTRICAL_POTENTIAL_DIPOLE = 128
 
-  PetscInt, parameter, public :: ELECTRICAL_CONDUCTIVITY = 126
-  PetscInt, parameter, public :: ELECTRICAL_POTENTIAL    = 127
-  PetscInt, parameter, public :: ELECTRICAL_JACOBIAN     = 128
-  PetscInt, parameter, public :: ELECTRICAL_POTENTIAL_DIPOLE = 129
+  PetscInt, parameter, public :: EPSILON                 = 129
+  PetscInt, parameter, public :: DERIVATIVE              = 130
+  PetscInt, parameter, public :: DARCY_VELOCITY          = 131
 
-  PetscInt, parameter, public :: EPSILON = 130
+  PetscInt, parameter, public :: SECONDARY_CONTINUUM_UPDATED_CONC = 132
+  PetscInt, parameter, public :: SECONDARY_CONCENTRATION_GAS = 133
 
-  PetscInt, parameter, public :: DARCY_VELOCITY          = 141
+  PetscInt, parameter, public :: SOLUTE_CONCENTRATION    = 134
+  PetscInt, parameter, public :: HALF_MATRIX_WIDTH    = 135
+
+  PetscInt, parameter, public :: VG_ALPHA                = 136
+  PetscInt, parameter, public :: VG_M                    = 137
+  PetscInt, parameter, public :: VG_SR                   = 138
+
+  PetscInt, parameter, public :: NWT_AUXILIARY           = 139
+
+  PetscInt, parameter, public :: SMECTITE                = 140
+  PetscInt, parameter, public :: GAS_PARTIAL_PRESSURE    = 141
+
+  PetscInt, parameter, public :: WELL_LIQ_PRESSURE       = 142
+  PetscInt, parameter, public :: WELL_GAS_PRESSURE       = 143
+  PetscInt, parameter, public :: WELL_AQ_CONC            = 144
+  PetscInt, parameter, public :: WELL_AQ_MASS            = 145
+  PetscInt, parameter, public :: WELL_LIQ_Q              = 146
+  PetscInt, parameter, public :: WELL_GAS_Q              = 147
+  PetscInt, parameter, public :: WELL_LIQ_SATURATION       = 148
+  PetscInt, parameter, public :: WELL_GAS_SATURATION       = 149
+
+  PetscInt, parameter, public :: PRECIPITATE_SATURATION  = 150
+  PetscInt, parameter, public :: SOLUBLE_MATRIX          = 151
+
+  PetscInt, parameter, public :: ARCHIE_CEMENTATION_EXPONENT = 152
+  PetscInt, parameter, public :: ARCHIE_SATURATION_EXPONENT = 153
+  PetscInt, parameter, public :: ARCHIE_TORTUOSITY_CONSTANT = 154
+  PetscInt, parameter, public :: SURFACE_ELECTRICAL_CONDUCTIVITY = 155
+  PetscInt, parameter, public :: WAXMAN_SMITS_CLAY_CONDUCTIVITY = 156
+
+  PetscInt, parameter, public :: NUMBER_SECONDARY_CELLS = 157
+
+  PetscInt, parameter, public :: VERTICAL_PERM_ANISOTROPY_RATIO = 158
+  PetscInt, parameter, public :: TORTUOSITY_Y                   = 159
+  PetscInt, parameter, public :: TORTUOSITY_Z                   = 160
+  PetscInt, parameter, public :: NAMED_PARAMETER                = 161
+
+  PetscInt, parameter, public :: CO2_PRESSURE = 162
+  PetscInt, parameter, public :: LIQUID_SALT_MASS_FRAC = 163
+  PetscInt, parameter, public :: TRAPPED_GAS_SATURATION = 164
+
+  PetscInt, parameter, public :: THERMAL_CONDUCTIVITY = 165
 
 end module Variables_module

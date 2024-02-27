@@ -41,6 +41,7 @@ subroutine EOSRead(input,option)
   use Option_module
   use Input_Aux_module
   use String_module
+  use Communicator_Aux_module
 
   implicit none
 
@@ -50,7 +51,7 @@ subroutine EOSRead(input,option)
   character(len=MAXWORDLENGTH) :: keyword, word, subkeyword
   character(len=MAXWORDLENGTH) :: test_filename
   character(len=MAXSTRINGLENGTH) :: string
-  PetscReal :: tempreal, tempreal2
+  PetscReal :: tempreal
   PetscReal :: rks_tc = UNINITIALIZED_DOUBLE
   PetscReal :: rks_pc = UNINITIALIZED_DOUBLE
   PetscReal :: rks_acen = UNINITIALIZED_DOUBLE
@@ -121,9 +122,12 @@ subroutine EOSRead(input,option)
                 call InputErrorMsg(input,option,'REFERENCE_PRESSURE', &
                                    'EOS,WATER,DENSITY,EXPONENTIAL_TEMPERATURE')
                 call InputReadDouble(input,option,temparray(3))
-                call InputErrorMsg(input,option,'WATER_COMPRESSIBILITY', &
+                call InputErrorMsg(input,option,'REFERENCE_TEMPERATURE', &
                                    'EOS,WATER,DENSITY,EXPONENTIAL_TEMPERATURE')
                 call InputReadDouble(input,option,temparray(4))
+                call InputErrorMsg(input,option,'WATER_COMPRESSIBILITY', &
+                                   'EOS,WATER,DENSITY,EXPONENTIAL_TEMPERATURE')
+                call InputReadDouble(input,option,temparray(5))
                 call InputErrorMsg(input,option,'THERMAL_EXPANSION', &
                                    'EOS,WATER,DENSITY,EXPONENTIAL_TEMPERATURE')
               case('LINEAR')
@@ -167,7 +171,7 @@ subroutine EOSRead(input,option)
                 enddo
                 call InputPopBlock(input,option)
               case('IFC67','DEFAULT','BATZLE_AND_WANG','TGDPB01','PLANAR', &
-                              'TRANGENSTEIN','IF97')
+                              'TRANGENSTEIN','IF97','SPARROW','DRIESNER')
               case default
                 call InputKeywordUnrecognized(input,word,'EOS,WATER,DENSITY',option)
             end select
@@ -184,6 +188,8 @@ subroutine EOSRead(input,option)
                 call InputReadAndConvertUnits(input,temparray(1), &
                                'J/kmol','EOS,WATER,ENTHALPY,CONSTANT',option)
               case('IFC67','PAINTER','DEFAULT','PLANAR','IF97')
+              case('SPARROW','DRIESNER')
+                option%flow%enthalpy_depends_on_salinity = PETSC_TRUE
               case default
                 call InputKeywordUnrecognized(input,word, &
                                               'EOS,WATER,ENTHALPY',option)
@@ -200,7 +206,7 @@ subroutine EOSRead(input,option)
                                    'EOS,WATER,VISCOSITY,CONSTANT')
                 call InputReadAndConvertUnits(input,temparray(1), &
                               'Pa-s','EOS,WATER,VISCOSITY,CONSTANT',option)
-              case('DEFAULT','BATZLE_AND_WANG','GRABOWSKI')
+              case('DEFAULT','BATZLE_AND_WANG','GRABOWSKI','KESTIN')
               case default
                 call InputKeywordUnrecognized(input,word, &
                                               'EOS,WATER,VISCOSITY', &
@@ -242,8 +248,38 @@ subroutine EOSRead(input,option)
                        'EOS,WATER,STEAM_ENTHALPY',option)
             end select
             call EOSWaterSetSteamEnthalpy(word,temparray)
+          case('ICE_INTERNAL_ENERGY')
+            call InputReadCard(input,option,word)
+            call InputErrorMsg(input,option,'ICE_INTERNAL_ENERGY','EOS,WATER')
+            call StringToUpper(word)
+            select case(trim(word))
+              case('DEFAULT','FUKUSAKO')
+              case default
+                call InputKeywordUnrecognized(input,word, &
+                       'EOS,WATER,ICE_INTERNAL_ENERGY',option)
+            end select
+            call EOSWaterSetIceInternalEnergy(word,temparray)
+          case('SATURATION_PRESSURE')
+            call InputReadCard(input,option,word)
+            call InputErrorMsg(input,option,'SATURATION_PRESSURE','EOS,WATER')
+            call StringToUpper(word)
+            select case(trim(word))
+              case('HAAS','SPARROW')
+                option%flow%sat_pres_depends_on_salinity = PETSC_TRUE
+              case('IFC67','IF97','WAGNER_AND_PRUSS','HUANG-ICE','ICE')
+              case default
+                call InputKeywordUnrecognized(input,word, &
+                       'EOS,WATER,SATURATION_PRESSURE', &
+                       option)
+            end select
+            call EOSWaterSetSaturationPressure(word,temparray)
+          case('SALINITY')
+            call InputReadCard(input,option,word)
+            call InputErrorMsg(input,option,'SALINITY','EOS,WATER,SALINITY')
+            call StringToUpper(word)
+            call EOSWaterSetSalinity(input,trim(word),option)
           case('TEST')
-            if (option%comm%global_rank == 0) then
+            if (CommIsIORank(option%comm)) then
               call InputReadDouble(input,option,test_t_low)
               call InputErrorMsg(input,option,'T_low', &
                                  'EOS,WATER,TEST')
@@ -457,13 +493,15 @@ subroutine EOSRead(input,option)
                 call EOSGasSetHenryConstant(tempreal)
               case('DEFAULT')
                 call EOSGasSetHenry()
+              case('METHANE')
+                call EOSGasSetHenryMethane()
               case default
                 call InputKeywordUnrecognized(input,word, &
                                               'EOS,GAS,HENRYS_CONSTANT', &
                                               option)
             end select
           case('TEST')
-            if (option%comm%global_rank == 0) then
+            if (CommIsIORank(option%comm)) then
               call InputReadDouble(input,option,test_t_low)
               call InputErrorMsg(input,option,'T_low', &
                                  'EOS,GAS,TEST')
@@ -593,7 +631,7 @@ subroutine EOSRead(input,option)
             if (OptionIsIORank(option)) then
               call co2_span_wagner_db_write(temparray,subkeyword,option)
             end if
-            call MPI_Barrier(option%mycomm,ierr)
+            call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
             call EOSGasSetEOSDBase(subkeyword,option)
           case('DATABASE')
             call InputReadWord(input,option,word,PETSC_TRUE)
@@ -641,14 +679,14 @@ end subroutine EOSRead
 ! **************************************************************************** !
 
 subroutine EOSReferenceDensity(option)
-  ! 
+  !
   ! Calculates reference densities for phases if not specified in input file
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 02/08/18
-  ! 
+  !
   use Option_module
-  
+
   implicit none
   type(option_type) :: option
 

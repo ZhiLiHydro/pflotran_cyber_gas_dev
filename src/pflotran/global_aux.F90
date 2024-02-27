@@ -5,8 +5,8 @@ module Global_Aux_module
   use PFLOTRAN_Constants_module
 
   implicit none
-  
-  private 
+
+  private
 
   type, public :: global_auxvar_type
     PetscInt :: istate
@@ -31,9 +31,10 @@ module Global_Aux_module
     PetscReal, pointer :: dphi(:,:) !geh: why here?
 !geh    PetscReal :: scco2_eq_logK ! SC CO2
     PetscReal, pointer :: darcy_vel(:)
+    PetscReal, pointer :: parameters(:)
 
   end type global_auxvar_type
-  
+
   type, public :: global_type
     PetscReal :: time_t, time_tpdt
     PetscInt :: num_aux, num_aux_bc, num_aux_ss
@@ -41,12 +42,12 @@ module Global_Aux_module
     type(global_auxvar_type), pointer :: auxvars_bc(:)
     type(global_auxvar_type), pointer :: auxvars_ss(:)
   end type global_type
-  
+
   interface GlobalAuxVarDestroy
     module procedure GlobalAuxVarSingleDestroy
     module procedure GlobalAuxVarArrayDestroy
   end interface GlobalAuxVarDestroy
-  
+
   public :: GlobalAuxCreate, GlobalAuxDestroy, &
             GlobalAuxVarInit, GlobalAuxVarCopy, &
             GlobalAuxVarDestroy, GlobalAuxVarStrip
@@ -56,22 +57,22 @@ contains
 ! ************************************************************************** !
 
 function GlobalAuxCreate()
-  ! 
+  !
   ! Allocate and initialize auxiliary object
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 02/14/08
-  ! 
+  !
 
   use Option_module
 
   implicit none
-  
+
   type(global_type), pointer :: GlobalAuxCreate
-  
+
   type(global_type), pointer :: aux
 
-  allocate(aux) 
+  allocate(aux)
   aux%time_t = 0.d0
   aux%time_tpdt = 0.d0
   aux%num_aux = 0
@@ -82,28 +83,28 @@ function GlobalAuxCreate()
   nullify(aux%auxvars_ss)
 
   GlobalAuxCreate => aux
-  
+
 end function GlobalAuxCreate
 
 ! ************************************************************************** !
 
 subroutine GlobalAuxVarInit(auxvar,option)
-  ! 
+  !
   ! Initialize auxiliary object
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 02/14/08
-  ! 
+  !
   use Option_module
   use Utility_module, only: DeallocateArray
 
   implicit none
-  
+
   type(global_auxvar_type) :: auxvar
   type(option_type) :: option
 
   PetscInt :: nphase
-  
+
   auxvar%istate = 0
   auxvar%temp = 0.d0
 
@@ -127,6 +128,7 @@ subroutine GlobalAuxVarInit(auxvar,option)
   nullify(auxvar%mass_balance_delta)
   nullify(auxvar%dphi)
   nullify(auxvar%darcy_vel)
+  nullify(auxvar%parameters)
 
   nphase = max(option%nphase,option%transport%nphase)
 
@@ -146,13 +148,14 @@ subroutine GlobalAuxVarInit(auxvar,option)
   endif
 
   ! need these for reactive transport only if flow is computed
-  if (option%nflowdof > 0 .and. option%ntrandof > 0) then
+  if ((option%nflowdof > 0 .and. option%ntrandof > 0) .or. &
+       option%flow%store_state_variables_in_global) then
     allocate(auxvar%sat_store(nphase,TWO_INTEGER))
     auxvar%sat_store = 0.d0
     allocate(auxvar%den_kg_store(nphase,TWO_INTEGER))
     auxvar%den_kg_store = 0.d0
   endif
- 
+
   select case(option%iflowmode)
     case(ZFLOW_MODE)
       ! den_kg is only needed for transport
@@ -170,7 +173,7 @@ subroutine GlobalAuxVarInit(auxvar,option)
       allocate(auxvar%fugacoeff(ONE_INTEGER))
       auxvar%fugacoeff = 1.d0
       allocate(auxvar%fugacoeff_store(ONE_INTEGER,TWO_INTEGER))
-      auxvar%fugacoeff_store = 1.d0    
+      auxvar%fugacoeff_store = 1.d0
       allocate(auxvar%den_store(nphase,TWO_INTEGER))
       auxvar%den_store = 0.d0
       allocate(auxvar%m_nacl(TWO_INTEGER))
@@ -189,7 +192,7 @@ subroutine GlobalAuxVarInit(auxvar,option)
     ! allocate(auxvar%fugacoeff(ONE_INTEGER))
     ! auxvar%fugacoeff = 1.d0
     ! allocate(auxvar%fugacoeff_store(ONE_INTEGER,TWO_INTEGER))
-    ! auxvar%fugacoeff_store = 1.d0    
+    ! auxvar%fugacoeff_store = 1.d0
       allocate(auxvar%den_store(nphase,TWO_INTEGER))
       auxvar%den_store = 0.d0
     ! allocate(auxvar%m_nacl(TWO_INTEGER))
@@ -199,14 +202,14 @@ subroutine GlobalAuxVarInit(auxvar,option)
       nullify(auxvar%fugacoeff_store)
       nullify(auxvar%m_nacl)
       nullify(auxvar%reaction_rate)
-      nullify(auxvar%reaction_rate_store)  
-    case (G_MODE)
-      if (option%ntrandof > 0) then
+      nullify(auxvar%reaction_rate_store)
+    case (G_MODE,H_MODE,SCO2_MODE)
+      if (option%ntrandof > 0 .or. option%flow%store_state_variables_in_global) then
         allocate(auxvar%pres_store(nphase,TWO_INTEGER))
         auxvar%pres_store = 0.d0
         allocate(auxvar%temp_store(TWO_INTEGER))
         auxvar%temp_store = 0.d0
-!geh: these are allocated above        
+!geh: these are allocated above
 !geh        allocate(auxvar%den_kg_store(nphase,TWO_INTEGER))
 !geh        auxvar%den_kg_store = 0.d0
       endif
@@ -217,35 +220,40 @@ subroutine GlobalAuxVarInit(auxvar,option)
       endif
     case default
   end select
-  
+
   if (option%flow%density_depends_on_salinity) then
-    allocate(auxvar%m_nacl(ONE_INTEGER))
+    allocate(auxvar%m_nacl(TWO_INTEGER))
     auxvar%m_nacl = 0.d0
   endif
-  
+
   if (option%iflag /= 0 .and. option%compute_mass_balance_new) then
     allocate(auxvar%mass_balance(option%nflowspec,nphase))
     auxvar%mass_balance = 0.d0
     allocate(auxvar%mass_balance_delta(option%nflowspec,nphase))
     auxvar%mass_balance_delta = 0.d0
   endif
-  
+
+  if (option%parameter%num_parameters > 0) then
+    allocate(auxvar%parameters(option%parameter%num_parameters))
+    auxvar%parameters = 0.d0
+  endif
+
 end subroutine GlobalAuxVarInit
 
 ! ************************************************************************** !
 
 subroutine GlobalAuxVarCopy(auxvar,auxvar2,option)
-  ! 
+  !
   ! Copies an auxiliary variable
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 12/13/07
-  ! 
+  !
 
   use Option_module
 
   implicit none
-  
+
   type(global_auxvar_type) :: auxvar, auxvar2
   type(option_type) :: option
 
@@ -253,10 +261,12 @@ subroutine GlobalAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%pres = auxvar%pres
   auxvar2%temp = auxvar%temp
   auxvar2%sat = auxvar%sat
-  auxvar2%den = auxvar%den
   auxvar2%den_kg = auxvar%den_kg
 !  auxvar2%dphi = auxvar%dphi
 
+  if (associated(auxvar2%den)) then
+    auxvar2%den = auxvar%den
+  endif
   if (associated(auxvar2%darcy_vel)) then
     auxvar2%darcy_vel = auxvar%darcy_vel
   endif
@@ -267,28 +277,28 @@ subroutine GlobalAuxVarCopy(auxvar,auxvar2,option)
     auxvar2%m_nacl = auxvar%m_nacl
   endif
   if (associated(auxvar2%fugacoeff)) then
-    auxvar2%fugacoeff = auxvar%fugacoeff  
+    auxvar2%fugacoeff = auxvar%fugacoeff
   endif
   if (associated(auxvar2%xmass)) then
-    auxvar2%xmass = auxvar%xmass  
+    auxvar2%xmass = auxvar%xmass
   endif
   if (associated(auxvar2%pres_store)) then
-    auxvar2%pres_store = auxvar%pres_store  
+    auxvar2%pres_store = auxvar%pres_store
   endif
   if (associated(auxvar2%den_store)) then
-    auxvar2%den_store = auxvar%den_store  
+    auxvar2%den_store = auxvar%den_store
   endif
   if (associated(auxvar2%sat_store)) then
-    auxvar2%sat_store = auxvar%sat_store  
+    auxvar2%sat_store = auxvar%sat_store
   endif
   if (associated(auxvar2%den_kg_store)) then
     auxvar2%den_kg_store = auxvar%den_kg_store
   endif
   if (associated(auxvar2%temp_store)) then
-    auxvar2%temp_store = auxvar%temp_store  
+    auxvar2%temp_store = auxvar%temp_store
   endif
   if (associated(auxvar2%fugacoeff_store)) then
-    auxvar2%fugacoeff_store = auxvar%fugacoeff_store  
+    auxvar2%fugacoeff_store = auxvar%fugacoeff_store
   endif
 
   !geh: here we have to check on both as mass_balance often exists for bcs and
@@ -299,22 +309,26 @@ subroutine GlobalAuxVarCopy(auxvar,auxvar2,option)
     auxvar2%mass_balance_delta = auxvar%mass_balance_delta
   endif
 
+  if (associated(auxvar2%parameters)) then
+    auxvar2%parameters = auxvar%parameters
+  endif
+
 end subroutine GlobalAuxVarCopy
 
 ! ************************************************************************** !
 
 subroutine GlobalAuxVarSingleDestroy(auxvar)
-  ! 
+  !
   ! Deallocates a mode auxiliary object
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 01/10/12
-  ! 
+  !
 
   implicit none
 
   type(global_auxvar_type), pointer :: auxvar
-  
+
   if (associated(auxvar)) then
     call GlobalAuxVarStrip(auxvar)
     deallocate(auxvar)
@@ -326,23 +340,23 @@ end subroutine GlobalAuxVarSingleDestroy
 ! ************************************************************************** !
 
 subroutine GlobalAuxVarArrayDestroy(auxvars)
-  ! 
+  !
   ! Deallocates a mode auxiliary object
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 01/10/12
-  ! 
+  !
 
   implicit none
 
   type(global_auxvar_type), pointer :: auxvars(:)
-  
+
   PetscInt :: iaux
-  
+
   if (associated(auxvars)) then
     do iaux = 1, size(auxvars)
       call GlobalAuxVarStrip(auxvars(iaux))
-    enddo  
+    enddo
     deallocate(auxvars)
   endif
   nullify(auxvars)
@@ -352,19 +366,19 @@ end subroutine GlobalAuxVarArrayDestroy
 ! ************************************************************************** !
 
 subroutine GlobalAuxVarStrip(auxvar)
-  ! 
+  !
   ! Deallocates all members of single auxiliary object
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 01/10/12
-  ! 
+  !
 
   use Utility_module, only: DeallocateArray
 
   implicit none
 
   type(global_auxvar_type) :: auxvar
-  
+
   call DeallocateArray(auxvar%pres)
   call DeallocateArray(auxvar%sat)
   call DeallocateArray(auxvar%den)
@@ -383,35 +397,38 @@ subroutine GlobalAuxVarStrip(auxvar)
   call DeallocateArray(auxvar%den_kg_store)
   call DeallocateArray(auxvar%den_store)
   call DeallocateArray(auxvar%reaction_rate_store)
-  
+
   call DeallocateArray(auxvar%mass_balance)
   call DeallocateArray(auxvar%mass_balance_delta)
-  
+
+  call DeallocateArray(auxvar%parameters)
+
 end subroutine GlobalAuxVarStrip
 
 ! ************************************************************************** !
 
 subroutine GlobalAuxDestroy(aux)
-  ! 
+  !
   ! Deallocates a mode auxiliary object
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 02/14/08
-  ! 
+  !
+  use Utility_module
 
   implicit none
 
   type(global_type), pointer :: aux
-  
+
   if (.not.associated(aux)) return
-  
+
   call GlobalAuxVarDestroy(aux%auxvars)
   call GlobalAuxVarDestroy(aux%auxvars_bc)
   call GlobalAuxVarDestroy(aux%auxvars_ss)
-  
+
   deallocate(aux)
   nullify(aux)
-  
+
 end subroutine GlobalAuxDestroy
 
 end module Global_Aux_module

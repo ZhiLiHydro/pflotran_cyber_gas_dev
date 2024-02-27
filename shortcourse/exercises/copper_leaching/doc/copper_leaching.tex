@@ -134,16 +134,15 @@ The ``2D Copper Leaching Problem'' simulates groundwater flow and solute transpo
   \item Fully saturated, isothermal
   \item 12 primary species
   \item Transport DOFs = 12,288
-
-  \begin{tabular}{ll}
-  Scaling: & MacBook Pro\\
-  \midrule
-  1p&7.76 min\\
-  2p&4.52 min\\
-  4p&3.85 min
-  \end{tabular}
 \end{itemize}
-
+\hspace{4cm}
+\begin{tabular}{ll}
+  Scaling: & 2022 MacBook Pro\\
+  \midrule
+  1p&23.86 sec\\
+  2p&13.32 sec\\
+  4p&7.37 sec
+\end{tabular}
 }
 
 %-----------------------------------------------------------------------------
@@ -464,7 +463,7 @@ CHEMISTRY
   /
   SECONDARY_SPECIES
   /
-  GAS_SPECIES
+  PASSIVE_GAS_SPECIES
   /
   MINERALS
   /
@@ -567,7 +566,7 @@ and do not add to number of degrees of freedom
   \end{itemize}
 \begin{semiverbatim}
 
-  GAS_SPECIES
+  PASSIVE_GAS_SPECIES
     CO2(g)
     O2(g)
   /
@@ -696,9 +695,9 @@ END
 \begin{semiverbatim}
 FLOW_CONDITION initial
   TYPE
-    PRESSURE HYDROSTATIC \bluecomment{! hydrostatic condition}
+    LIQUID_PRESSURE HYDROSTATIC
   /
-  PRESSURE 201325.d0
+  LIQUID_PRESSURE 201325.d0
   DATUM 0.d0 0.d0 128.d0
 END
 
@@ -902,10 +901,6 @@ END
 \begin{frame}[fragile]\frametitle{\bf TIMESTEPPER}
 
 \begin{semiverbatim}
-TIMESTEPPER FLOW            
-  INITIALIZE_TO_STEADY_STATE 1.d-8 \bluecomment{! steady state}
-END
-
 TIMESTEPPER TRANSPORT
   TS_ACCELERATION 32
 END

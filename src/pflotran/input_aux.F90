@@ -149,7 +149,8 @@ module Input_Aux_module
             InputPushBlock, &
             InputPopBlock, &
             InputKeywordDeprecated, &
-            InputCheckKeywordBlockCount
+            InputCheckKeywordBlockCount, &
+            InputCountWordsInBuffer
 
 contains
 
@@ -175,7 +176,6 @@ function InputCreate1(fid,path,filename,option)
   type(input_type), pointer :: InputCreate1
   PetscInt :: istatus
   PetscInt :: islash
-  character(len=MAXSTRINGLENGTH) :: local_path
   character(len=MAXSTRINGLENGTH) :: full_path
   type(input_type), pointer :: input
   PetscBool, parameter :: back = PETSC_TRUE
@@ -218,6 +218,8 @@ function InputCreate1(fid,path,filename,option)
     if (len_trim(full_path) == 0) full_path = '<blank>'
     option%io_buffer = 'File: "' // trim(full_path) // '" not found.'
     call PrintErrMsg(option)
+    ! for non-blocking case, set error flag
+    input%ierr = 1
   endif
 
   InputCreate1 => input
@@ -604,6 +606,8 @@ subroutine InputReadDouble1(input, option, double)
 
     if (.not.InputError(input)) then
       read(word,*,iostat=input%ierr) double
+      ! catch NaNs
+      if (double /= double) input%ierr = 1
     endif
   endif
 
@@ -641,6 +645,8 @@ subroutine InputReadDouble2(string, option, double, ierr)
 
     if (.not.InputError(ierr)) then
       read(word,*,iostat=ierr) double
+      ! catch NaNs
+      if (double /= double) ierr = 1
     endif
   endif
 
@@ -723,12 +729,12 @@ subroutine InputReadPflotranString(input, option)
       call InputReadPflotranStringSlave(input, option)
     endif
     flag = input%ierr
-    call MPI_Bcast(flag,ONE_INTEGER_MPI,MPIU_INTEGER, &
-                   option%driver%io_rank,option%mycomm,ierr)
+    call MPI_Bcast(flag,ONE_INTEGER_MPI,MPIU_INTEGER,option%comm%io_rank, &
+                   option%mycomm,ierr);CHKERRQ(ierr)
     input%ierr = flag
     if (.not.InputError(input)) then
       call MPI_Bcast(input%buf,MAXSTRINGLENGTH,MPI_CHARACTER, &
-                     option%driver%io_rank,option%mycomm,ierr)
+                     option%comm%io_rank,option%mycomm,ierr);CHKERRQ(ierr)
     endif
   else
     call InputReadPflotranStringSlave(input, option)
@@ -813,17 +819,20 @@ subroutine InputReadPflotranStringSlave(input, option)
         call InputReadWord(tempstring,word,PETSC_FALSE,input%ierr)
         call StringToUpper(word)
         if (word(1:4) == 'SKIP') then
-          skip_count = skip_count + 1
-          call InputPushCard(input,word,option)
+          ! to avoid keywords that start with SKIP
+          if (len_trim(word) == 4) then
+            skip_count = skip_count + 1
+            call InputPushCard(input,word,option)
+          endif
         endif
-        if (word(1:4) == 'NOSK') then
+        if (word(1:6) == 'NOSKIP') then
           call InputPushCard(input,word,option)
           skip_count = skip_count - 1
           if (skip_count == 0) exit
         endif
       enddo
       if (InputError(input)) exit
-    else if (word(1:1) /= ' ' .and. word(1:4) /= 'NOSK') then
+    else if (word(1:1) /= ' ' .and. word(1:6) /= 'NOSKIP') then
       exit
     endif
   enddo
@@ -1222,7 +1231,7 @@ subroutine InputReadNChars1(input, option, chars, n, return_blank_error)
   PetscBool :: return_blank_error ! Return an error for a blank line
                                    ! Therefore, a blank line is not acceptable.
 
-  PetscInt :: n, begins, ends
+  PetscInt :: n
   character(len=n) :: chars
 
   if (InputError(input)) return
@@ -2009,8 +2018,6 @@ function getCommandLineArgumentCount()
 
   implicit none
 
-  integer :: iargc
-
   PetscInt :: getCommandLineArgumentCount
 
   ! initialize to zero
@@ -2682,11 +2689,12 @@ subroutine InputKeywordUnrecognized2(input,keyword,string,string2,option)
   option%io_buffer = 'Keyword "' // &
                      trim(keyword) // &
                      '" not recognized in ' // &
-                     trim(string) // '.'
+                     trim(string)
   if (len_trim(string2) > 0) then
     option%io_buffer = trim(option%io_buffer) // ' ' // &
-                     trim(string2) // '.'
+                     trim(string2)
   endif
+  option%io_buffer = trim(option%io_buffer) // '.'
   call PrintErrMsg(option)
 
 end subroutine InputKeywordUnrecognized2
@@ -2779,7 +2787,8 @@ subroutine InputReadAndConvertUnits(input,double_value,internal_units, &
     endif
     internal_units_word = trim(internal_units)
     double_value = double_value * &
-                   UnitsConvertToInternal(units,internal_units_word,option)
+                   UnitsConvertToInternal(units,internal_units_word, &
+                                          keyword_string,option)
   else
     string = trim(keyword_string) // ' units'
     call InputDefaultMsg(input,option,string)
@@ -2824,7 +2833,8 @@ function UnitReadAndConversionFactor(input,internal_units, &
     endif
     internal_units_word = trim(internal_units)
     UnitReadAndConversionFactor =  &
-                   UnitsConvertToInternal(units,internal_units_word,option)
+                   UnitsConvertToInternal(units,internal_units_word, &
+                                          keyword_string,option)
   else
     input%err_buf = keyword_string
     call InputCheckMandatoryUnits(input,option)
@@ -2939,13 +2949,13 @@ end subroutine InputRewind
 ! ************************************************************************** !
 
 subroutine InputCheckKeywordBlockCount(option)
-  ! 
-  ! Checks to ensure that the number of entered blocks due to nesting of 
+  !
+  ! Checks to ensure that the number of entered blocks due to nesting of
   ! keyword blocks in the input file is zero at the end of reading.
-  ! 
+  !
   ! Author: Glenn Hammond
   ! Date: 02/17/21
-  ! 
+  !
   use Option_module
 
   implicit none
@@ -2961,6 +2971,35 @@ subroutine InputCheckKeywordBlockCount(option)
   endif
 
 end subroutine InputCheckKeywordBlockCount
+
+! ************************************************************************** !
+
+function InputCountWordsInBuffer(input,option)
+  !
+  ! Returns the number of words in the input buffer (e.g., for counting the
+  ! number of integers on a line in the input file).
+  !
+  ! Author: Glenn Hammond
+  ! Date: 05/19/23
+  !
+  use Option_module
+
+  implicit none
+
+  type(input_type), pointer :: input
+  type(option_type) :: option
+
+  PetscInt :: InputCountWordsInBuffer
+  character(len=MAXWORDLENGTH) :: word
+
+  InputCountWordsInBuffer = 0
+  do
+    call InputReadWord(input,option,word,PETSC_TRUE) 
+    if (InputError(input)) exit
+    InputCountWordsInBuffer = InputCountWordsInBuffer + 1
+  enddo
+
+end function InputCountWordsInBuffer
 
 ! ************************************************************************** !
 
