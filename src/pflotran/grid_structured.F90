@@ -863,13 +863,13 @@ function StructGridComputeInternConnect(structured_grid, xc, yc, zc, option)
   type(connection_set_type), pointer :: connections
 
   ! these used in aniso calcs
-  type( aniso_data_structured_type), pointer :: aniso_data_struct
+  type( aniso_geom_data_structured_type), pointer :: aniso_geom_struct
   PetscReal :: distvec(1:3)
   PetscInt :: id
 
   PetscReal, pointer :: radius(:)
 
-  nullify(aniso_data_struct)
+  nullify(aniso_geom_struct)
 
   radius => xc
 
@@ -897,7 +897,8 @@ function StructGridComputeInternConnect(structured_grid, xc, yc, zc, option)
   endif
 
   if (option%connections_with_aniso_data .eqv. PETSC_TRUE) then
-    allocate(connections%aniso_data(size(connections%id_up)))
+    allocate(connections%aniso_geom(size(connections%id_up)))
+    allocate(connections%aniso_rich(size(connections%id_up))) ! SJB TODO - should initialise elsewhere (only grid code should be here)
   endif
 
   iconn = 0
@@ -945,163 +946,164 @@ function StructGridComputeInternConnect(structured_grid, xc, yc, zc, option)
               connections%area(iconn) = structured_grid%dy(id_up)* &
                                         structured_grid%dz(id_up)
 
-              if (associated(connections%aniso_data)) then
-                if (.not.associated(connections%aniso_data(iconn)%struct)) then
-                  allocate(connections%aniso_data(iconn)%struct)
+              if (associated(connections%aniso_geom)) then
+                if (.not.associated(connections%aniso_geom(iconn)%struct)) then
+                  allocate(connections%aniso_geom(iconn)%struct)
+                  allocate(connections%aniso_rich(iconn)%struct)  ! SJB TODO - should initialise elsewhere (only grid code should be here)
                 endif
-                aniso_data_struct => connections%aniso_data(iconn)%struct
+                aniso_geom_struct => connections%aniso_geom(iconn)%struct
 
-                aniso_data_struct%orientation = 'X'
+                aniso_geom_struct%orientation = 'X'
                 ! Set up ids of cells adjacent to the up and dn cells
-                aniso_data_struct%id_up_adjXm = -1 ! N/A connection in x-dir.
-                aniso_data_struct%id_up_adjXp = -1 ! N/A connection in x-dir.
-                aniso_data_struct%id_dn_adjXm = -1 ! N/A connection in x-dir.
-                aniso_data_struct%id_dn_adjXp = -1 ! N/A connection in x-dir.
-                aniso_data_struct%dist_up_adjXm = 0.d0 ! N/A
-                aniso_data_struct%dist_up_adjXp = 0.d0 ! N/A
-                aniso_data_struct%dist_dn_adjXm = 0.d0 ! N/A
-                aniso_data_struct%dist_dn_adjXp = 0.d0 ! N/A
+                aniso_geom_struct%id_up_adjXm = -1 ! N/A connection in x-dir.
+                aniso_geom_struct%id_up_adjXp = -1 ! N/A connection in x-dir.
+                aniso_geom_struct%id_dn_adjXm = -1 ! N/A connection in x-dir.
+                aniso_geom_struct%id_dn_adjXp = -1 ! N/A connection in x-dir.
+                aniso_geom_struct%dist_up_adjXm = 0.d0 ! N/A
+                aniso_geom_struct%dist_up_adjXp = 0.d0 ! N/A
+                aniso_geom_struct%dist_dn_adjXm = 0.d0 ! N/A
+                aniso_geom_struct%dist_dn_adjXp = 0.d0 ! N/A
                 if (j==0) then
-                  aniso_data_struct%id_up_adjYm = -1 ! -1 => no such cell
-                  aniso_data_struct%id_dn_adjYm = -1 ! -1 => no such cell
-                  aniso_data_struct%dist_up_adjYm = 0.d0 ! N/A
-                  aniso_data_struct%dist_dn_adjYm = 0.d0 ! N/A
+                  aniso_geom_struct%id_up_adjYm = -1 ! -1 => no such cell
+                  aniso_geom_struct%id_dn_adjYm = -1 ! -1 => no such cell
+                  aniso_geom_struct%dist_up_adjYm = 0.d0 ! N/A
+                  aniso_geom_struct%dist_dn_adjYm = 0.d0 ! N/A
                 else
-                  aniso_data_struct%id_up_adjYm = i + (j-1) * structured_grid%ngx + k * structured_grid%ngxy
-                  aniso_data_struct%id_dn_adjYm = aniso_data_struct%id_up_adjYm + 1
-                  aniso_data_struct%dist_up_adjYm = 0.5 * (structured_grid%dy(id_up) + &
-                                                          structured_grid%dy(aniso_data_struct%id_up_adjYm))
-                  aniso_data_struct%dist_dn_adjYm = 0.5 * (structured_grid%dy(id_dn) + &
-                                                          structured_grid%dy(aniso_data_struct%id_dn_adjYm))
+                  aniso_geom_struct%id_up_adjYm = i + (j-1) * structured_grid%ngx + k * structured_grid%ngxy
+                  aniso_geom_struct%id_dn_adjYm = aniso_geom_struct%id_up_adjYm + 1
+                  aniso_geom_struct%dist_up_adjYm = 0.5 * (structured_grid%dy(id_up) + &
+                                                          structured_grid%dy(aniso_geom_struct%id_up_adjYm))
+                  aniso_geom_struct%dist_dn_adjYm = 0.5 * (structured_grid%dy(id_dn) + &
+                                                          structured_grid%dy(aniso_geom_struct%id_dn_adjYm))
                 endif
                 if (j==structured_grid%ngy-1) then
-                  aniso_data_struct%id_up_adjYp = -1 ! -1 => no such cell
-                  aniso_data_struct%id_dn_adjYp = -1 ! -1 => no such cell
-                  aniso_data_struct%dist_up_adjYp = 0.d0 ! N/A
-                  aniso_data_struct%dist_dn_adjYp = 0.d0 ! N/A
+                  aniso_geom_struct%id_up_adjYp = -1 ! -1 => no such cell
+                  aniso_geom_struct%id_dn_adjYp = -1 ! -1 => no such cell
+                  aniso_geom_struct%dist_up_adjYp = 0.d0 ! N/A
+                  aniso_geom_struct%dist_dn_adjYp = 0.d0 ! N/A
                 else
-                  aniso_data_struct%id_up_adjYp = i + (j+1) * structured_grid%ngx + k * structured_grid%ngxy
-                  aniso_data_struct%id_dn_adjYp = aniso_data_struct%id_up_adjYp + 1
-                  aniso_data_struct%dist_up_adjYp = 0.5 * (structured_grid%dy(id_up) + &
-                                                          structured_grid%dy(aniso_data_struct%id_up_adjYp))
-                  aniso_data_struct%dist_dn_adjYp = 0.5 * (structured_grid%dy(id_dn) + &
-                                                          structured_grid%dy(aniso_data_struct%id_dn_adjYp))
+                  aniso_geom_struct%id_up_adjYp = i + (j+1) * structured_grid%ngx + k * structured_grid%ngxy
+                  aniso_geom_struct%id_dn_adjYp = aniso_geom_struct%id_up_adjYp + 1
+                  aniso_geom_struct%dist_up_adjYp = 0.5 * (structured_grid%dy(id_up) + &
+                                                          structured_grid%dy(aniso_geom_struct%id_up_adjYp))
+                  aniso_geom_struct%dist_dn_adjYp = 0.5 * (structured_grid%dy(id_dn) + &
+                                                          structured_grid%dy(aniso_geom_struct%id_dn_adjYp))
                 endif
                 if (k==0) then
-                  aniso_data_struct%id_up_adjZm = -1 ! -1 => no such cell
-                  aniso_data_struct%id_dn_adjZm = -1 ! -1 => no such cell
-                  aniso_data_struct%dist_up_adjZm = 0.d0 ! N/A
-                  aniso_data_struct%dist_dn_adjZm = 0.d0 ! N/A
+                  aniso_geom_struct%id_up_adjZm = -1 ! -1 => no such cell
+                  aniso_geom_struct%id_dn_adjZm = -1 ! -1 => no such cell
+                  aniso_geom_struct%dist_up_adjZm = 0.d0 ! N/A
+                  aniso_geom_struct%dist_dn_adjZm = 0.d0 ! N/A
                 else
-                  aniso_data_struct%id_up_adjZm = i + j * structured_grid%ngx + (k-1) * structured_grid%ngxy
-                  aniso_data_struct%id_dn_adjZm = aniso_data_struct%id_up_adjZm + 1
-                  aniso_data_struct%dist_up_adjZm = 0.5 * (structured_grid%dz(id_up) + &
-                                                          structured_grid%dz(aniso_data_struct%id_up_adjZm))
-                  aniso_data_struct%dist_dn_adjZm = 0.5 * (structured_grid%dz(id_dn) + &
-                                                          structured_grid%dz(aniso_data_struct%id_dn_adjZm))
+                  aniso_geom_struct%id_up_adjZm = i + j * structured_grid%ngx + (k-1) * structured_grid%ngxy
+                  aniso_geom_struct%id_dn_adjZm = aniso_geom_struct%id_up_adjZm + 1
+                  aniso_geom_struct%dist_up_adjZm = 0.5 * (structured_grid%dz(id_up) + &
+                                                          structured_grid%dz(aniso_geom_struct%id_up_adjZm))
+                  aniso_geom_struct%dist_dn_adjZm = 0.5 * (structured_grid%dz(id_dn) + &
+                                                          structured_grid%dz(aniso_geom_struct%id_dn_adjZm))
                 endif
                 if (k==structured_grid%ngz-1) then
-                  aniso_data_struct%id_up_adjZp = -1 ! -1 => no such cell
-                  aniso_data_struct%id_dn_adjZp = -1 ! -1 => no such cell
-                  aniso_data_struct%dist_up_adjZp = 0.d0 ! N/A
-                  aniso_data_struct%dist_dn_adjZp = 0.d0 ! N/A
+                  aniso_geom_struct%id_up_adjZp = -1 ! -1 => no such cell
+                  aniso_geom_struct%id_dn_adjZp = -1 ! -1 => no such cell
+                  aniso_geom_struct%dist_up_adjZp = 0.d0 ! N/A
+                  aniso_geom_struct%dist_dn_adjZp = 0.d0 ! N/A
                 else
-                  aniso_data_struct%id_up_adjZp = i + j * structured_grid%ngx + (k+1) * structured_grid%ngxy
-                  aniso_data_struct%id_dn_adjZp = aniso_data_struct%id_up_adjZp + 1
-                  aniso_data_struct%dist_up_adjZp = 0.5 * (structured_grid%dz(id_up) + &
-                                                          structured_grid%dz(aniso_data_struct%id_up_adjZp))
-                  aniso_data_struct%dist_dn_adjZp = 0.5 * (structured_grid%dz(id_dn) + &
-                                                          structured_grid%dz(aniso_data_struct%id_dn_adjZp))
+                  aniso_geom_struct%id_up_adjZp = i + j * structured_grid%ngx + (k+1) * structured_grid%ngxy
+                  aniso_geom_struct%id_dn_adjZp = aniso_geom_struct%id_up_adjZp + 1
+                  aniso_geom_struct%dist_up_adjZp = 0.5 * (structured_grid%dz(id_up) + &
+                                                          structured_grid%dz(aniso_geom_struct%id_up_adjZp))
+                  aniso_geom_struct%dist_dn_adjZp = 0.5 * (structured_grid%dz(id_dn) + &
+                                                          structured_grid%dz(aniso_geom_struct%id_dn_adjZp))
                 endif
 
                 ! Gravity terms
                 distvec = (/ xc(id_up),yc(id_up),zc(id_up) /)
-                aniso_data_struct%loc_gravity_up = dot_product(option%gravity,distvec)
+                aniso_geom_struct%loc_gravity_up = dot_product(option%gravity,distvec)
                 distvec = (/ xc(id_dn),yc(id_dn),zc(id_dn) /)
-                aniso_data_struct%loc_gravity_dn = dot_product(option%gravity,distvec)
-                if( aniso_data_struct%id_up_adjXm .NE. -1 ) then
-                    id = aniso_data_struct%id_up_adjXm
+                aniso_geom_struct%loc_gravity_dn = dot_product(option%gravity,distvec)
+                if( aniso_geom_struct%id_up_adjXm .NE. -1 ) then
+                    id = aniso_geom_struct%id_up_adjXm
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_up_adjXm = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_up_adjXm = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_up_adjXm = 0.d0
+                    aniso_geom_struct%loc_gravity_up_adjXm = 0.d0
                 endif
-                if( aniso_data_struct%id_up_adjXp .NE. -1 ) then
-                    id = aniso_data_struct%id_up_adjXp
+                if( aniso_geom_struct%id_up_adjXp .NE. -1 ) then
+                    id = aniso_geom_struct%id_up_adjXp
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_up_adjXp = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_up_adjXp = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_up_adjXp = 0.d0
+                    aniso_geom_struct%loc_gravity_up_adjXp = 0.d0
                 endif
-                if( aniso_data_struct%id_dn_adjXm .NE. -1 ) then
-                    id = aniso_data_struct%id_dn_adjXm
+                if( aniso_geom_struct%id_dn_adjXm .NE. -1 ) then
+                    id = aniso_geom_struct%id_dn_adjXm
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_dn_adjXm = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_dn_adjXm = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_dn_adjXm = 0.d0
+                    aniso_geom_struct%loc_gravity_dn_adjXm = 0.d0
                 endif
-                if( aniso_data_struct%id_dn_adjXp .NE. -1 ) then
-                    id = aniso_data_struct%id_dn_adjXp
+                if( aniso_geom_struct%id_dn_adjXp .NE. -1 ) then
+                    id = aniso_geom_struct%id_dn_adjXp
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_dn_adjXp = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_dn_adjXp = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_dn_adjXp = 0.d0
+                    aniso_geom_struct%loc_gravity_dn_adjXp = 0.d0
                 endif
-                if( aniso_data_struct%id_up_adjYm .NE. -1 ) then
-                    id = aniso_data_struct%id_up_adjYm
+                if( aniso_geom_struct%id_up_adjYm .NE. -1 ) then
+                    id = aniso_geom_struct%id_up_adjYm
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_up_adjYm = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_up_adjYm = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_up_adjYm = 0.d0
+                    aniso_geom_struct%loc_gravity_up_adjYm = 0.d0
                 endif
-                if( aniso_data_struct%id_up_adjYp .NE. -1 ) then
-                    id = aniso_data_struct%id_up_adjYp
+                if( aniso_geom_struct%id_up_adjYp .NE. -1 ) then
+                    id = aniso_geom_struct%id_up_adjYp
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_up_adjYp = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_up_adjYp = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_up_adjYp = 0.d0
+                    aniso_geom_struct%loc_gravity_up_adjYp = 0.d0
                 endif
-                if( aniso_data_struct%id_dn_adjYm .NE. -1 ) then
-                    id = aniso_data_struct%id_dn_adjYm
+                if( aniso_geom_struct%id_dn_adjYm .NE. -1 ) then
+                    id = aniso_geom_struct%id_dn_adjYm
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_dn_adjYm = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_dn_adjYm = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_dn_adjYm = 0.d0
+                    aniso_geom_struct%loc_gravity_dn_adjYm = 0.d0
                 endif
-                if( aniso_data_struct%id_dn_adjYp .NE. -1 ) then
-                    id = aniso_data_struct%id_dn_adjYp
+                if( aniso_geom_struct%id_dn_adjYp .NE. -1 ) then
+                    id = aniso_geom_struct%id_dn_adjYp
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_dn_adjYp = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_dn_adjYp = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_dn_adjYp = 0.d0
+                    aniso_geom_struct%loc_gravity_dn_adjYp = 0.d0
                 endif
-                if( aniso_data_struct%id_up_adjZm .NE. -1 ) then
-                    id = aniso_data_struct%id_up_adjZm
+                if( aniso_geom_struct%id_up_adjZm .NE. -1 ) then
+                    id = aniso_geom_struct%id_up_adjZm
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_up_adjZm = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_up_adjZm = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_up_adjZm = 0.d0
+                    aniso_geom_struct%loc_gravity_up_adjZm = 0.d0
                 endif
-                if( aniso_data_struct%id_up_adjZp .NE. -1 ) then
-                    id = aniso_data_struct%id_up_adjZp
+                if( aniso_geom_struct%id_up_adjZp .NE. -1 ) then
+                    id = aniso_geom_struct%id_up_adjZp
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_up_adjZp = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_up_adjZp = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_up_adjZp = 0.d0
+                    aniso_geom_struct%loc_gravity_up_adjZp = 0.d0
                 endif
-                if( aniso_data_struct%id_dn_adjZm .NE. -1 ) then
-                    id = aniso_data_struct%id_dn_adjZm
+                if( aniso_geom_struct%id_dn_adjZm .NE. -1 ) then
+                    id = aniso_geom_struct%id_dn_adjZm
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_dn_adjZm = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_dn_adjZm = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_dn_adjZm = 0.d0
+                    aniso_geom_struct%loc_gravity_dn_adjZm = 0.d0
                 endif
-                if( aniso_data_struct%id_dn_adjZp .NE. -1 ) then
-                    id = aniso_data_struct%id_dn_adjZp
+                if( aniso_geom_struct%id_dn_adjZp .NE. -1 ) then
+                    id = aniso_geom_struct%id_dn_adjZp
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_dn_adjZp = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_dn_adjZp = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_dn_adjZp = 0.d0
+                    aniso_geom_struct%loc_gravity_dn_adjZp = 0.d0
                 endif
               endif
             enddo
@@ -1195,163 +1197,164 @@ function StructGridComputeInternConnect(structured_grid, xc, yc, zc, option)
               connections%area(iconn) = structured_grid%dx(id_up)* &
                                     structured_grid%dz(id_up)
 
-              if (associated(connections%aniso_data)) then
-                if (.not.associated(connections%aniso_data(iconn)%struct)) then
-                  allocate(connections%aniso_data(iconn)%struct)
+              if (associated(connections%aniso_geom)) then
+                if (.not.associated(connections%aniso_geom(iconn)%struct)) then
+                  allocate(connections%aniso_geom(iconn)%struct)
+                  allocate(connections%aniso_rich(iconn)%struct)  ! SJB TODO - should initialise elsewhere (only grid code should be here)
                 endif
-                aniso_data_struct => connections%aniso_data(iconn)%struct
+                aniso_geom_struct => connections%aniso_geom(iconn)%struct
 
-                aniso_data_struct%orientation = 'Y'
+                aniso_geom_struct%orientation = 'Y'
                 ! Set up ids of cells adjacent to the up and dn cells
-                aniso_data_struct%id_up_adjYm = -1 ! N/A connection in y-dir.
-                aniso_data_struct%id_up_adjYp = -1 ! N/A connection in y-dir.
-                aniso_data_struct%id_dn_adjYm = -1 ! N/A connection in y-dir.
-                aniso_data_struct%id_dn_adjYp = -1 ! N/A connection in y-dir.
-                aniso_data_struct%dist_up_adjYm = 0.d0 ! N/A
-                aniso_data_struct%dist_up_adjYp = 0.d0 ! N/A
-                aniso_data_struct%dist_dn_adjYm = 0.d0 ! N/A
-                aniso_data_struct%dist_dn_adjYp = 0.d0 ! N/A
+                aniso_geom_struct%id_up_adjYm = -1 ! N/A connection in y-dir.
+                aniso_geom_struct%id_up_adjYp = -1 ! N/A connection in y-dir.
+                aniso_geom_struct%id_dn_adjYm = -1 ! N/A connection in y-dir.
+                aniso_geom_struct%id_dn_adjYp = -1 ! N/A connection in y-dir.
+                aniso_geom_struct%dist_up_adjYm = 0.d0 ! N/A
+                aniso_geom_struct%dist_up_adjYp = 0.d0 ! N/A
+                aniso_geom_struct%dist_dn_adjYm = 0.d0 ! N/A
+                aniso_geom_struct%dist_dn_adjYp = 0.d0 ! N/A
                 if (i==0) then
-                  aniso_data_struct%id_up_adjXm = -1 ! -1 => no such cell
-                  aniso_data_struct%id_dn_adjXm = -1 ! -1 => no such cell
-                  aniso_data_struct%dist_up_adjXm = 0.d0 ! N/A
-                  aniso_data_struct%dist_dn_adjXm = 0.d0 ! N/A
+                  aniso_geom_struct%id_up_adjXm = -1 ! -1 => no such cell
+                  aniso_geom_struct%id_dn_adjXm = -1 ! -1 => no such cell
+                  aniso_geom_struct%dist_up_adjXm = 0.d0 ! N/A
+                  aniso_geom_struct%dist_dn_adjXm = 0.d0 ! N/A
                 else
-                  aniso_data_struct%id_up_adjXm = (i-1) + 1 + (j-1) * structured_grid%ngx + k * structured_grid%ngxy
-                  aniso_data_struct%id_dn_adjXm = aniso_data_struct%id_up_adjXm + structured_grid%ngx
-                  aniso_data_struct%dist_up_adjXm = 0.5 * (structured_grid%dx(id_up) + &
-                                                          structured_grid%dx(aniso_data_struct%id_up_adjXm))
-                  aniso_data_struct%dist_dn_adjXm = 0.5 * (structured_grid%dx(id_dn) + &
-                                                          structured_grid%dx(aniso_data_struct%id_dn_adjXm))
+                  aniso_geom_struct%id_up_adjXm = (i-1) + 1 + (j-1) * structured_grid%ngx + k * structured_grid%ngxy
+                  aniso_geom_struct%id_dn_adjXm = aniso_geom_struct%id_up_adjXm + structured_grid%ngx
+                  aniso_geom_struct%dist_up_adjXm = 0.5 * (structured_grid%dx(id_up) + &
+                                                          structured_grid%dx(aniso_geom_struct%id_up_adjXm))
+                  aniso_geom_struct%dist_dn_adjXm = 0.5 * (structured_grid%dx(id_dn) + &
+                                                          structured_grid%dx(aniso_geom_struct%id_dn_adjXm))
                 endif
                 if (i==structured_grid%ngx-1) then
-                  aniso_data_struct%id_up_adjXp = -1 ! -1 => no such cell
-                  aniso_data_struct%id_dn_adjXp = -1 ! -1 => no such cell
-                  aniso_data_struct%dist_up_adjXp = 0.d0 ! N/A
-                  aniso_data_struct%dist_dn_adjXp = 0.d0 ! N/A
+                  aniso_geom_struct%id_up_adjXp = -1 ! -1 => no such cell
+                  aniso_geom_struct%id_dn_adjXp = -1 ! -1 => no such cell
+                  aniso_geom_struct%dist_up_adjXp = 0.d0 ! N/A
+                  aniso_geom_struct%dist_dn_adjXp = 0.d0 ! N/A
                 else
-                  aniso_data_struct%id_up_adjXp = (i+1) + 1 + (j-1) * structured_grid%ngx + k * structured_grid%ngxy
-                  aniso_data_struct%id_dn_adjXp = aniso_data_struct%id_up_adjXp + structured_grid%ngx
-                  aniso_data_struct%dist_up_adjXp = 0.5 * (structured_grid%dx(id_up) + &
-                                                          structured_grid%dx(aniso_data_struct%id_up_adjXp))
-                  aniso_data_struct%dist_dn_adjXp = 0.5 * (structured_grid%dx(id_dn) + &
-                                                          structured_grid%dx(aniso_data_struct%id_dn_adjXp))
+                  aniso_geom_struct%id_up_adjXp = (i+1) + 1 + (j-1) * structured_grid%ngx + k * structured_grid%ngxy
+                  aniso_geom_struct%id_dn_adjXp = aniso_geom_struct%id_up_adjXp + structured_grid%ngx
+                  aniso_geom_struct%dist_up_adjXp = 0.5 * (structured_grid%dx(id_up) + &
+                                                          structured_grid%dx(aniso_geom_struct%id_up_adjXp))
+                  aniso_geom_struct%dist_dn_adjXp = 0.5 * (structured_grid%dx(id_dn) + &
+                                                          structured_grid%dx(aniso_geom_struct%id_dn_adjXp))
                 endif
                 if (k==0) then
-                  aniso_data_struct%id_up_adjZm = -1 ! -1 => no such cell
-                  aniso_data_struct%id_dn_adjZm = -1 ! -1 => no such cell
-                  aniso_data_struct%dist_up_adjZm = 0.d0 ! N/A
-                  aniso_data_struct%dist_dn_adjZm = 0.d0 ! N/A
+                  aniso_geom_struct%id_up_adjZm = -1 ! -1 => no such cell
+                  aniso_geom_struct%id_dn_adjZm = -1 ! -1 => no such cell
+                  aniso_geom_struct%dist_up_adjZm = 0.d0 ! N/A
+                  aniso_geom_struct%dist_dn_adjZm = 0.d0 ! N/A
                 else
-                  aniso_data_struct%id_up_adjZm = i + 1 + (j-1) * structured_grid%ngx + (k-1) * structured_grid%ngxy
-                  aniso_data_struct%id_dn_adjZm = aniso_data_struct%id_up_adjZm + structured_grid%ngx
-                  aniso_data_struct%dist_up_adjZm = 0.5 * (structured_grid%dz(id_up) + &
-                                                          structured_grid%dz(aniso_data_struct%id_up_adjZm))
-                  aniso_data_struct%dist_dn_adjZm = 0.5 * (structured_grid%dz(id_dn) + &
-                                                          structured_grid%dz(aniso_data_struct%id_dn_adjZm))
+                  aniso_geom_struct%id_up_adjZm = i + 1 + (j-1) * structured_grid%ngx + (k-1) * structured_grid%ngxy
+                  aniso_geom_struct%id_dn_adjZm = aniso_geom_struct%id_up_adjZm + structured_grid%ngx
+                  aniso_geom_struct%dist_up_adjZm = 0.5 * (structured_grid%dz(id_up) + &
+                                                          structured_grid%dz(aniso_geom_struct%id_up_adjZm))
+                  aniso_geom_struct%dist_dn_adjZm = 0.5 * (structured_grid%dz(id_dn) + &
+                                                          structured_grid%dz(aniso_geom_struct%id_dn_adjZm))
                 endif
                 if (k==structured_grid%ngz-1) then
-                  aniso_data_struct%id_up_adjZp = -1 ! -1 => no such cell
-                  aniso_data_struct%id_dn_adjZp = -1 ! -1 => no such cell
-                  aniso_data_struct%dist_up_adjZp = 0.d0 ! N/A
-                  aniso_data_struct%dist_dn_adjZp = 0.d0 ! N/A
+                  aniso_geom_struct%id_up_adjZp = -1 ! -1 => no such cell
+                  aniso_geom_struct%id_dn_adjZp = -1 ! -1 => no such cell
+                  aniso_geom_struct%dist_up_adjZp = 0.d0 ! N/A
+                  aniso_geom_struct%dist_dn_adjZp = 0.d0 ! N/A
                 else
-                  aniso_data_struct%id_up_adjZp = i + 1 + (j-1) * structured_grid%ngx + (k+1) * structured_grid%ngxy
-                  aniso_data_struct%id_dn_adjZp = aniso_data_struct%id_up_adjZp + structured_grid%ngx
-                  aniso_data_struct%dist_up_adjZp = 0.5 * (structured_grid%dz(id_up) + &
-                                                          structured_grid%dz(aniso_data_struct%id_up_adjZp))
-                  aniso_data_struct%dist_dn_adjZp = 0.5 * (structured_grid%dz(id_dn) + &
-                                                          structured_grid%dz(aniso_data_struct%id_dn_adjZp))
+                  aniso_geom_struct%id_up_adjZp = i + 1 + (j-1) * structured_grid%ngx + (k+1) * structured_grid%ngxy
+                  aniso_geom_struct%id_dn_adjZp = aniso_geom_struct%id_up_adjZp + structured_grid%ngx
+                  aniso_geom_struct%dist_up_adjZp = 0.5 * (structured_grid%dz(id_up) + &
+                                                          structured_grid%dz(aniso_geom_struct%id_up_adjZp))
+                  aniso_geom_struct%dist_dn_adjZp = 0.5 * (structured_grid%dz(id_dn) + &
+                                                          structured_grid%dz(aniso_geom_struct%id_dn_adjZp))
                 endif
 
                 ! Gravity terms
                 distvec = (/ xc(id_up),yc(id_up),zc(id_up) /)
-                aniso_data_struct%loc_gravity_up = dot_product(option%gravity,distvec)
+                aniso_geom_struct%loc_gravity_up = dot_product(option%gravity,distvec)
                 distvec = (/ xc(id_dn),yc(id_dn),zc(id_dn) /)
-                aniso_data_struct%loc_gravity_dn = dot_product(option%gravity,distvec)
-                if( aniso_data_struct%id_up_adjXm .NE. -1 ) then
-                    id = aniso_data_struct%id_up_adjXm
+                aniso_geom_struct%loc_gravity_dn = dot_product(option%gravity,distvec)
+                if( aniso_geom_struct%id_up_adjXm .NE. -1 ) then
+                    id = aniso_geom_struct%id_up_adjXm
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_up_adjXm = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_up_adjXm = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_up_adjXm = 0.d0
+                    aniso_geom_struct%loc_gravity_up_adjXm = 0.d0
                 endif
-                if( aniso_data_struct%id_up_adjXp .NE. -1 ) then
-                    id = aniso_data_struct%id_up_adjXp
+                if( aniso_geom_struct%id_up_adjXp .NE. -1 ) then
+                    id = aniso_geom_struct%id_up_adjXp
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_up_adjXp = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_up_adjXp = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_up_adjXp = 0.d0
+                    aniso_geom_struct%loc_gravity_up_adjXp = 0.d0
                 endif
-                if( aniso_data_struct%id_dn_adjXm .NE. -1 ) then
-                    id = aniso_data_struct%id_dn_adjXm
+                if( aniso_geom_struct%id_dn_adjXm .NE. -1 ) then
+                    id = aniso_geom_struct%id_dn_adjXm
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_dn_adjXm = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_dn_adjXm = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_dn_adjXm = 0.d0
+                    aniso_geom_struct%loc_gravity_dn_adjXm = 0.d0
                 endif
-                if( aniso_data_struct%id_dn_adjXp .NE. -1 ) then
-                    id = aniso_data_struct%id_dn_adjXp
+                if( aniso_geom_struct%id_dn_adjXp .NE. -1 ) then
+                    id = aniso_geom_struct%id_dn_adjXp
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_dn_adjXp = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_dn_adjXp = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_dn_adjXp = 0.d0
+                    aniso_geom_struct%loc_gravity_dn_adjXp = 0.d0
                 endif
-                if( aniso_data_struct%id_up_adjYm .NE. -1 ) then
-                    id = aniso_data_struct%id_up_adjYm
+                if( aniso_geom_struct%id_up_adjYm .NE. -1 ) then
+                    id = aniso_geom_struct%id_up_adjYm
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_up_adjYm = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_up_adjYm = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_up_adjYm = 0.d0
+                    aniso_geom_struct%loc_gravity_up_adjYm = 0.d0
                 endif
-                if( aniso_data_struct%id_up_adjYp .NE. -1 ) then
-                    id = aniso_data_struct%id_up_adjYp
+                if( aniso_geom_struct%id_up_adjYp .NE. -1 ) then
+                    id = aniso_geom_struct%id_up_adjYp
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_up_adjYp = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_up_adjYp = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_up_adjYp = 0.d0
+                    aniso_geom_struct%loc_gravity_up_adjYp = 0.d0
                 endif
-                if( aniso_data_struct%id_dn_adjYm .NE. -1 ) then
-                    id = aniso_data_struct%id_dn_adjYm
+                if( aniso_geom_struct%id_dn_adjYm .NE. -1 ) then
+                    id = aniso_geom_struct%id_dn_adjYm
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_dn_adjYm = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_dn_adjYm = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_dn_adjYm = 0.d0
+                    aniso_geom_struct%loc_gravity_dn_adjYm = 0.d0
                 endif
-                if( aniso_data_struct%id_dn_adjYp .NE. -1 ) then
-                    id = aniso_data_struct%id_dn_adjYp
+                if( aniso_geom_struct%id_dn_adjYp .NE. -1 ) then
+                    id = aniso_geom_struct%id_dn_adjYp
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_dn_adjYp = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_dn_adjYp = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_dn_adjYp = 0.d0
+                    aniso_geom_struct%loc_gravity_dn_adjYp = 0.d0
                 endif
-                if( aniso_data_struct%id_up_adjZm .NE. -1 ) then
-                    id = aniso_data_struct%id_up_adjZm
+                if( aniso_geom_struct%id_up_adjZm .NE. -1 ) then
+                    id = aniso_geom_struct%id_up_adjZm
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_up_adjZm = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_up_adjZm = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_up_adjZm = 0.d0
+                    aniso_geom_struct%loc_gravity_up_adjZm = 0.d0
                 endif
-                if( aniso_data_struct%id_up_adjZp .NE. -1 ) then
-                    id = aniso_data_struct%id_up_adjZp
+                if( aniso_geom_struct%id_up_adjZp .NE. -1 ) then
+                    id = aniso_geom_struct%id_up_adjZp
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_up_adjZp = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_up_adjZp = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_up_adjZp = 0.d0
+                    aniso_geom_struct%loc_gravity_up_adjZp = 0.d0
                 endif
-                if( aniso_data_struct%id_dn_adjZm .NE. -1 ) then
-                    id = aniso_data_struct%id_dn_adjZm
+                if( aniso_geom_struct%id_dn_adjZm .NE. -1 ) then
+                    id = aniso_geom_struct%id_dn_adjZm
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_dn_adjZm = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_dn_adjZm = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_dn_adjZm = 0.d0
+                    aniso_geom_struct%loc_gravity_dn_adjZm = 0.d0
                 endif
-                if( aniso_data_struct%id_dn_adjZp .NE. -1 ) then
-                    id = aniso_data_struct%id_dn_adjZp
+                if( aniso_geom_struct%id_dn_adjZp .NE. -1 ) then
+                    id = aniso_geom_struct%id_dn_adjZp
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_dn_adjZp = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_dn_adjZp = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_dn_adjZp = 0.d0
+                    aniso_geom_struct%loc_gravity_dn_adjZp = 0.d0
                 endif
               endif
             enddo
@@ -1413,163 +1416,164 @@ function StructGridComputeInternConnect(structured_grid, xc, yc, zc, option)
               connections%area(iconn) = structured_grid%dx(id_up) * &
                                         structured_grid%dy(id_up)
 
-              if (associated(connections%aniso_data)) then
-                if (.not.associated(connections%aniso_data(iconn)%struct)) then
-                  allocate(connections%aniso_data(iconn)%struct)
+              if (associated(connections%aniso_geom)) then
+                if (.not.associated(connections%aniso_geom(iconn)%struct)) then
+                  allocate(connections%aniso_geom(iconn)%struct)
+                  allocate(connections%aniso_rich(iconn)%struct)  ! SJB TODO - should initialise elsewhere (only grid code should be here)
                 endif
-                aniso_data_struct => connections%aniso_data(iconn)%struct
+                aniso_geom_struct => connections%aniso_geom(iconn)%struct
 
-                aniso_data_struct%orientation = 'Z'
+                aniso_geom_struct%orientation = 'Z'
                 ! Set up ids of cells adjacent to the up and dn cells
-                aniso_data_struct%id_up_adjZm = -1 ! N/A connection in z-dir.
-                aniso_data_struct%id_up_adjZp = -1 ! N/A connection in z-dir.
-                aniso_data_struct%id_dn_adjZm = -1 ! N/A connection in z-dir.
-                aniso_data_struct%id_dn_adjZp = -1 ! N/A connection in z-dir.
-                aniso_data_struct%dist_up_adjZm = 0.d0 ! N/A
-                aniso_data_struct%dist_up_adjZp = 0.d0 ! N/A
-                aniso_data_struct%dist_dn_adjZm = 0.d0 ! N/A
-                aniso_data_struct%dist_dn_adjZp = 0.d0 ! N/A
+                aniso_geom_struct%id_up_adjZm = -1 ! N/A connection in z-dir.
+                aniso_geom_struct%id_up_adjZp = -1 ! N/A connection in z-dir.
+                aniso_geom_struct%id_dn_adjZm = -1 ! N/A connection in z-dir.
+                aniso_geom_struct%id_dn_adjZp = -1 ! N/A connection in z-dir.
+                aniso_geom_struct%dist_up_adjZm = 0.d0 ! N/A
+                aniso_geom_struct%dist_up_adjZp = 0.d0 ! N/A
+                aniso_geom_struct%dist_dn_adjZm = 0.d0 ! N/A
+                aniso_geom_struct%dist_dn_adjZp = 0.d0 ! N/A
                 if (i==0) then
-                  aniso_data_struct%id_up_adjXm = -1 ! -1 => no such cell
-                  aniso_data_struct%id_dn_adjXm = -1 ! -1 => no such cell
-                  aniso_data_struct%dist_up_adjXm = 0.d0 ! N/A
-                  aniso_data_struct%dist_dn_adjXm = 0.d0 ! N/A
+                  aniso_geom_struct%id_up_adjXm = -1 ! -1 => no such cell
+                  aniso_geom_struct%id_dn_adjXm = -1 ! -1 => no such cell
+                  aniso_geom_struct%dist_up_adjXm = 0.d0 ! N/A
+                  aniso_geom_struct%dist_dn_adjXm = 0.d0 ! N/A
                 else
-                  aniso_data_struct%id_up_adjXm = (i-1) + 1 + j * structured_grid%ngx + (k-1) * structured_grid%ngxy
-                  aniso_data_struct%id_dn_adjXm = aniso_data_struct%id_up_adjXm + structured_grid%ngxy
-                  aniso_data_struct%dist_up_adjXm = 0.5 * (structured_grid%dx(id_up) + &
-                                                          structured_grid%dx(aniso_data_struct%id_up_adjXm))
-                  aniso_data_struct%dist_dn_adjXm = 0.5 * (structured_grid%dx(id_dn) + &
-                                                          structured_grid%dx(aniso_data_struct%id_dn_adjXm))
+                  aniso_geom_struct%id_up_adjXm = (i-1) + 1 + j * structured_grid%ngx + (k-1) * structured_grid%ngxy
+                  aniso_geom_struct%id_dn_adjXm = aniso_geom_struct%id_up_adjXm + structured_grid%ngxy
+                  aniso_geom_struct%dist_up_adjXm = 0.5 * (structured_grid%dx(id_up) + &
+                                                          structured_grid%dx(aniso_geom_struct%id_up_adjXm))
+                  aniso_geom_struct%dist_dn_adjXm = 0.5 * (structured_grid%dx(id_dn) + &
+                                                          structured_grid%dx(aniso_geom_struct%id_dn_adjXm))
                 endif
                 if (i==structured_grid%ngx-1) then
-                  aniso_data_struct%id_up_adjXp = -1 ! -1 => no such cell
-                  aniso_data_struct%id_dn_adjXp = -1 ! -1 => no such cell
-                  aniso_data_struct%dist_up_adjXp = 0.d0 ! N/A
-                  aniso_data_struct%dist_dn_adjXp = 0.d0 ! N/A
+                  aniso_geom_struct%id_up_adjXp = -1 ! -1 => no such cell
+                  aniso_geom_struct%id_dn_adjXp = -1 ! -1 => no such cell
+                  aniso_geom_struct%dist_up_adjXp = 0.d0 ! N/A
+                  aniso_geom_struct%dist_dn_adjXp = 0.d0 ! N/A
                 else
-                  aniso_data_struct%id_up_adjXp = (i+1) + 1 + j * structured_grid%ngx + (k-1) * structured_grid%ngxy
-                  aniso_data_struct%id_dn_adjXp = aniso_data_struct%id_up_adjXp + structured_grid%ngxy
-                  aniso_data_struct%dist_up_adjXp = 0.5 * (structured_grid%dx(id_up) + &
-                                                          structured_grid%dx(aniso_data_struct%id_up_adjXp))
-                  aniso_data_struct%dist_dn_adjXp = 0.5 * (structured_grid%dx(id_dn) + &
-                                                          structured_grid%dx(aniso_data_struct%id_dn_adjXp))
+                  aniso_geom_struct%id_up_adjXp = (i+1) + 1 + j * structured_grid%ngx + (k-1) * structured_grid%ngxy
+                  aniso_geom_struct%id_dn_adjXp = aniso_geom_struct%id_up_adjXp + structured_grid%ngxy
+                  aniso_geom_struct%dist_up_adjXp = 0.5 * (structured_grid%dx(id_up) + &
+                                                          structured_grid%dx(aniso_geom_struct%id_up_adjXp))
+                  aniso_geom_struct%dist_dn_adjXp = 0.5 * (structured_grid%dx(id_dn) + &
+                                                          structured_grid%dx(aniso_geom_struct%id_dn_adjXp))
                 endif
                 if (j==0) then
-                  aniso_data_struct%id_up_adjYm = -1 ! -1 => no such cell
-                  aniso_data_struct%id_dn_adjYm = -1 ! -1 => no such cell
-                  aniso_data_struct%dist_up_adjYm = 0.d0 ! N/A
-                  aniso_data_struct%dist_dn_adjYm = 0.d0 ! N/A
+                  aniso_geom_struct%id_up_adjYm = -1 ! -1 => no such cell
+                  aniso_geom_struct%id_dn_adjYm = -1 ! -1 => no such cell
+                  aniso_geom_struct%dist_up_adjYm = 0.d0 ! N/A
+                  aniso_geom_struct%dist_dn_adjYm = 0.d0 ! N/A
                 else
-                  aniso_data_struct%id_up_adjYm = i + 1 + (j-1) * structured_grid%ngx + (k-1) * structured_grid%ngxy
-                  aniso_data_struct%id_dn_adjYm = aniso_data_struct%id_up_adjYm + structured_grid%ngxy
-                  aniso_data_struct%dist_up_adjYm = 0.5 * (structured_grid%dy(id_up) + &
-                                                          structured_grid%dy(aniso_data_struct%id_up_adjYm))
-                  aniso_data_struct%dist_dn_adjYm = 0.5 * (structured_grid%dy(id_dn) + &
-                                                          structured_grid%dy(aniso_data_struct%id_dn_adjYm))
+                  aniso_geom_struct%id_up_adjYm = i + 1 + (j-1) * structured_grid%ngx + (k-1) * structured_grid%ngxy
+                  aniso_geom_struct%id_dn_adjYm = aniso_geom_struct%id_up_adjYm + structured_grid%ngxy
+                  aniso_geom_struct%dist_up_adjYm = 0.5 * (structured_grid%dy(id_up) + &
+                                                          structured_grid%dy(aniso_geom_struct%id_up_adjYm))
+                  aniso_geom_struct%dist_dn_adjYm = 0.5 * (structured_grid%dy(id_dn) + &
+                                                          structured_grid%dy(aniso_geom_struct%id_dn_adjYm))
                 endif
                 if (j==structured_grid%ngy-1) then
-                  aniso_data_struct%id_up_adjYp = -1 ! -1 => no such cell
-                  aniso_data_struct%id_dn_adjYp = -1 ! -1 => no such cell
-                  aniso_data_struct%dist_up_adjYp = 0.d0 ! N/A
-                  aniso_data_struct%dist_dn_adjYp = 0.d0 ! N/A
+                  aniso_geom_struct%id_up_adjYp = -1 ! -1 => no such cell
+                  aniso_geom_struct%id_dn_adjYp = -1 ! -1 => no such cell
+                  aniso_geom_struct%dist_up_adjYp = 0.d0 ! N/A
+                  aniso_geom_struct%dist_dn_adjYp = 0.d0 ! N/A
                 else
-                  aniso_data_struct%id_up_adjYp = i + 1 + (j+1) * structured_grid%ngx + (k-1) * structured_grid%ngxy
-                  aniso_data_struct%id_dn_adjYp = aniso_data_struct%id_up_adjYp + structured_grid%ngxy
-                  aniso_data_struct%dist_up_adjYp = 0.5 * (structured_grid%dy(id_up) + &
-                                                          structured_grid%dy(aniso_data_struct%id_up_adjYp))
-                  aniso_data_struct%dist_dn_adjYp = 0.5 * (structured_grid%dy(id_dn) + &
-                                                          structured_grid%dy(aniso_data_struct%id_dn_adjYp))
+                  aniso_geom_struct%id_up_adjYp = i + 1 + (j+1) * structured_grid%ngx + (k-1) * structured_grid%ngxy
+                  aniso_geom_struct%id_dn_adjYp = aniso_geom_struct%id_up_adjYp + structured_grid%ngxy
+                  aniso_geom_struct%dist_up_adjYp = 0.5 * (structured_grid%dy(id_up) + &
+                                                          structured_grid%dy(aniso_geom_struct%id_up_adjYp))
+                  aniso_geom_struct%dist_dn_adjYp = 0.5 * (structured_grid%dy(id_dn) + &
+                                                          structured_grid%dy(aniso_geom_struct%id_dn_adjYp))
                 endif
 
                 ! Gravity terms
                 distvec = (/ xc(id_up),yc(id_up),zc(id_up) /)
-                aniso_data_struct%loc_gravity_up = dot_product(option%gravity,distvec)
+                aniso_geom_struct%loc_gravity_up = dot_product(option%gravity,distvec)
                 distvec = (/ xc(id_dn),yc(id_dn),zc(id_dn) /)
-                aniso_data_struct%loc_gravity_dn = dot_product(option%gravity,distvec)
-                if( aniso_data_struct%id_up_adjXm .NE. -1 ) then
-                    id = aniso_data_struct%id_up_adjXm
+                aniso_geom_struct%loc_gravity_dn = dot_product(option%gravity,distvec)
+                if( aniso_geom_struct%id_up_adjXm .NE. -1 ) then
+                    id = aniso_geom_struct%id_up_adjXm
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_up_adjXm = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_up_adjXm = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_up_adjXm = 0.d0
+                    aniso_geom_struct%loc_gravity_up_adjXm = 0.d0
                 endif
-                if( aniso_data_struct%id_up_adjXp .NE. -1 ) then
-                    id = aniso_data_struct%id_up_adjXp
+                if( aniso_geom_struct%id_up_adjXp .NE. -1 ) then
+                    id = aniso_geom_struct%id_up_adjXp
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_up_adjXp = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_up_adjXp = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_up_adjXp = 0.d0
+                    aniso_geom_struct%loc_gravity_up_adjXp = 0.d0
                 endif
-                if( aniso_data_struct%id_dn_adjXm .NE. -1 ) then
-                    id = aniso_data_struct%id_dn_adjXm
+                if( aniso_geom_struct%id_dn_adjXm .NE. -1 ) then
+                    id = aniso_geom_struct%id_dn_adjXm
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_dn_adjXm = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_dn_adjXm = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_dn_adjXm = 0.d0
+                    aniso_geom_struct%loc_gravity_dn_adjXm = 0.d0
                 endif
-                if( aniso_data_struct%id_dn_adjXp .NE. -1 ) then
-                    id = aniso_data_struct%id_dn_adjXp
+                if( aniso_geom_struct%id_dn_adjXp .NE. -1 ) then
+                    id = aniso_geom_struct%id_dn_adjXp
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_dn_adjXp = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_dn_adjXp = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_dn_adjXp = 0.d0
+                    aniso_geom_struct%loc_gravity_dn_adjXp = 0.d0
                 endif
-                if( aniso_data_struct%id_up_adjYm .NE. -1 ) then
-                    id = aniso_data_struct%id_up_adjYm
+                if( aniso_geom_struct%id_up_adjYm .NE. -1 ) then
+                    id = aniso_geom_struct%id_up_adjYm
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_up_adjYm = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_up_adjYm = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_up_adjYm = 0.d0
+                    aniso_geom_struct%loc_gravity_up_adjYm = 0.d0
                 endif
-                if( aniso_data_struct%id_up_adjYp .NE. -1 ) then
-                    id = aniso_data_struct%id_up_adjYp
+                if( aniso_geom_struct%id_up_adjYp .NE. -1 ) then
+                    id = aniso_geom_struct%id_up_adjYp
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_up_adjYp = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_up_adjYp = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_up_adjYp = 0.d0
+                    aniso_geom_struct%loc_gravity_up_adjYp = 0.d0
                 endif
-                if( aniso_data_struct%id_dn_adjYm .NE. -1 ) then
-                    id = aniso_data_struct%id_dn_adjYm
+                if( aniso_geom_struct%id_dn_adjYm .NE. -1 ) then
+                    id = aniso_geom_struct%id_dn_adjYm
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_dn_adjYm = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_dn_adjYm = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_dn_adjYm = 0.d0
+                    aniso_geom_struct%loc_gravity_dn_adjYm = 0.d0
                 endif
-                if( aniso_data_struct%id_dn_adjYp .NE. -1 ) then
-                    id = aniso_data_struct%id_dn_adjYp
+                if( aniso_geom_struct%id_dn_adjYp .NE. -1 ) then
+                    id = aniso_geom_struct%id_dn_adjYp
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_dn_adjYp = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_dn_adjYp = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_dn_adjYp = 0.d0
+                    aniso_geom_struct%loc_gravity_dn_adjYp = 0.d0
                 endif
-                if( aniso_data_struct%id_up_adjZm .NE. -1 ) then
-                    id = aniso_data_struct%id_up_adjZm
+                if( aniso_geom_struct%id_up_adjZm .NE. -1 ) then
+                    id = aniso_geom_struct%id_up_adjZm
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_up_adjZm = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_up_adjZm = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_up_adjZm = 0.d0
+                    aniso_geom_struct%loc_gravity_up_adjZm = 0.d0
                 endif
-                if( aniso_data_struct%id_up_adjZp .NE. -1 ) then
-                    id = aniso_data_struct%id_up_adjZp
+                if( aniso_geom_struct%id_up_adjZp .NE. -1 ) then
+                    id = aniso_geom_struct%id_up_adjZp
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_up_adjZp = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_up_adjZp = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_up_adjZp = 0.d0
+                    aniso_geom_struct%loc_gravity_up_adjZp = 0.d0
                 endif
-                if( aniso_data_struct%id_dn_adjZm .NE. -1 ) then
-                    id = aniso_data_struct%id_dn_adjZm
+                if( aniso_geom_struct%id_dn_adjZm .NE. -1 ) then
+                    id = aniso_geom_struct%id_dn_adjZm
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_dn_adjZm = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_dn_adjZm = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_dn_adjZm = 0.d0
+                    aniso_geom_struct%loc_gravity_dn_adjZm = 0.d0
                 endif
-                if( aniso_data_struct%id_dn_adjZp .NE. -1 ) then
-                    id = aniso_data_struct%id_dn_adjZp
+                if( aniso_geom_struct%id_dn_adjZp .NE. -1 ) then
+                    id = aniso_geom_struct%id_dn_adjZp
                     distvec = (/ xc(id),yc(id),zc(id) /)
-                    aniso_data_struct%loc_gravity_dn_adjZp = dot_product(option%gravity,distvec)
+                    aniso_geom_struct%loc_gravity_dn_adjZp = dot_product(option%gravity,distvec)
                 else
-                    aniso_data_struct%loc_gravity_dn_adjZp = 0.d0
+                    aniso_geom_struct%loc_gravity_dn_adjZp = 0.d0
                 endif
               endif
             enddo

@@ -148,7 +148,8 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
                                   rich_auxvar_dn,global_auxvar_dn, &
                                   material_auxvar_dn, &
                                   area, dist, &
-                                  aniso_data, &
+                                  aniso_geom, &
+                                  aniso_rich, &
                                   option, &
                                   characteristic_curves_up, &
                                   characteristic_curves_dn, &
@@ -204,7 +205,8 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
 
   PetscReal :: dv_darcy_dp_up, dv_darcy_dp_dn
 
-  type(aniso_data_type), pointer :: aniso_data
+  type(aniso_geom_data_type), pointer :: aniso_geom
+  type(aniso_richards_data_type), pointer :: aniso_rich
   PetscReal :: v_darcy_aniso
   PetscInt :: iadj
 
@@ -235,7 +237,7 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
 
   call ConnectionCalculateDistances(dist,option%gravity,dd_up,dd_dn, &
                                     dist_gravity,upweight)
-  if(.not. associated(aniso_data)) then
+  if(.not. associated(aniso_geom)) then
     call PermeabilityTensorToScalar(material_auxvar_up,dist,perm_up)
     call PermeabilityTensorToScalar(material_auxvar_dn,dist,perm_dn)
   else
@@ -244,7 +246,7 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
     ! consistent with anisotropic calculation (avoid collapsing to scalar).
     ! Additional anisotropic terms due to tangential head gradients are added
     ! by later call to RichardsFluxAniso()
-    if(associated(aniso_data%struct)) then
+    if(associated(aniso_geom%struct)) then
       ! structured grid case
       ! Can do same calls as isotropic case here, should just extract
       !       k_xx, k_yy or k_zz depending on orientation
@@ -255,8 +257,8 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
     else
       ! unstructured grid case
       ! u-direction is chosen to be normal to the interface, so
-      perm_up = aniso_data%unstruct%up%perm_uu
-      perm_dn = aniso_data%unstruct%dn%perm_uu
+      perm_up = aniso_rich%unstruct%up%perm_uu
+      perm_dn = aniso_rich%unstruct%dn%perm_uu
     endif
   endif  
 
@@ -302,16 +304,17 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
 
 
       ! calculate anisotropic contributions
-      if(associated(aniso_data)) then
+      if(associated(aniso_geom)) then
         ! Call RichardsFluxAniso with calc_derivs=PETSC_TRUE
-        Call RichardsFluxAniso(aniso_data,material_auxvar_up,material_auxvar_dn,&
+        Call RichardsFluxAniso(aniso_geom,aniso_rich,&
+                                material_auxvar_up,material_auxvar_dn,&
                                 global_auxvar_up,global_auxvar_dn,&
                                 option,dist,&
                                 ukvr,dukvr_dp_up,dukvr_dp_dn,&
                                 v_darcy, dv_darcy_dp_up, dv_darcy_dp_dn,&
                                 PETSC_TRUE,v_darcy_aniso)
         v_darcy = v_darcy + v_darcy_aniso
-        ! dv_darcy_aniso_dp_... terms are stored in aniso_data - used below
+        ! dv_darcy_aniso_dp_... terms are stored in aniso_rich - used below
       endif
 
       q = v_darcy * area
@@ -319,42 +322,42 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
       dq_dp_up = dv_darcy_dp_up*area
       dq_dp_dn = dv_darcy_dp_dn*area
       
-      if(associated(aniso_data)) then
+      if(associated(aniso_geom)) then
         ! (note ukvr and dukvr_dp_up/dn already taken account of in RichardsFluxAniso())
-        if(associated(aniso_data%struct)) then
+        if(associated(aniso_geom%struct)) then
           ! structured grid case
           ! add aniso terms to dq_dp_up/dn
-          dq_dp_up = dq_dp_up + aniso_data%struct%dv_darcy_aniso_dp_up * area
-          dq_dp_dn = dq_dp_dn + aniso_data%struct%dv_darcy_aniso_dp_dn * area
+          dq_dp_up = dq_dp_up + aniso_rich%struct%dv_darcy_aniso_dp_up * area
+          dq_dp_dn = dq_dp_dn + aniso_rich%struct%dv_darcy_aniso_dp_dn * area
           ! additional aniso terms for dv_darcy_aniso_dp_up/dn_adjX/Y/Z/pm
-          dq_dp_up_adjXm = aniso_data%struct%dv_darcy_aniso_dp_up_adjXm * area
-          dq_dp_dn_adjXm = aniso_data%struct%dv_darcy_aniso_dp_dn_adjXm * area
-          dq_dp_up_adjXp = aniso_data%struct%dv_darcy_aniso_dp_up_adjXp * area
-          dq_dp_dn_adjXp = aniso_data%struct%dv_darcy_aniso_dp_dn_adjXp * area
-          dq_dp_up_adjYm = aniso_data%struct%dv_darcy_aniso_dp_up_adjYm * area
-          dq_dp_dn_adjYm = aniso_data%struct%dv_darcy_aniso_dp_dn_adjYm * area
-          dq_dp_up_adjYp = aniso_data%struct%dv_darcy_aniso_dp_up_adjYp * area
-          dq_dp_dn_adjYp = aniso_data%struct%dv_darcy_aniso_dp_dn_adjYp * area
-          dq_dp_up_adjZm = aniso_data%struct%dv_darcy_aniso_dp_up_adjZm * area
-          dq_dp_dn_adjZm = aniso_data%struct%dv_darcy_aniso_dp_dn_adjZm * area
-          dq_dp_up_adjZp = aniso_data%struct%dv_darcy_aniso_dp_up_adjZp * area
-          dq_dp_dn_adjZp = aniso_data%struct%dv_darcy_aniso_dp_dn_adjZp * area
+          dq_dp_up_adjXm = aniso_rich%struct%dv_darcy_aniso_dp_up_adjXm * area
+          dq_dp_dn_adjXm = aniso_rich%struct%dv_darcy_aniso_dp_dn_adjXm * area
+          dq_dp_up_adjXp = aniso_rich%struct%dv_darcy_aniso_dp_up_adjXp * area
+          dq_dp_dn_adjXp = aniso_rich%struct%dv_darcy_aniso_dp_dn_adjXp * area
+          dq_dp_up_adjYm = aniso_rich%struct%dv_darcy_aniso_dp_up_adjYm * area
+          dq_dp_dn_adjYm = aniso_rich%struct%dv_darcy_aniso_dp_dn_adjYm * area
+          dq_dp_up_adjYp = aniso_rich%struct%dv_darcy_aniso_dp_up_adjYp * area
+          dq_dp_dn_adjYp = aniso_rich%struct%dv_darcy_aniso_dp_dn_adjYp * area
+          dq_dp_up_adjZm = aniso_rich%struct%dv_darcy_aniso_dp_up_adjZm * area
+          dq_dp_dn_adjZm = aniso_rich%struct%dv_darcy_aniso_dp_dn_adjZm * area
+          dq_dp_up_adjZp = aniso_rich%struct%dv_darcy_aniso_dp_up_adjZp * area
+          dq_dp_dn_adjZp = aniso_rich%struct%dv_darcy_aniso_dp_dn_adjZp * area
         endif
-        if(associated(aniso_data%unstruct)) then
+        if(associated(aniso_geom%unstruct)) then
           ! unstructured grid case
           ! add aniso terms to dq_dp_up/dn
 
-          allocate(dq_dp_up_adj(aniso_data%unstruct%up%num_adj))
-          allocate(dq_dp_dn_adj(aniso_data%unstruct%dn%num_adj))
+          allocate(dq_dp_up_adj(aniso_geom%unstruct%up%num_adj))
+          allocate(dq_dp_dn_adj(aniso_geom%unstruct%dn%num_adj))
 
-          dq_dp_up = dq_dp_up + aniso_data%unstruct%dv_darcy_aniso_dp_up * area
-          dq_dp_dn = dq_dp_dn + aniso_data%unstruct%dv_darcy_aniso_dp_dn * area
+          dq_dp_up = dq_dp_up + aniso_rich%unstruct%dv_darcy_aniso_dp_up * area
+          dq_dp_dn = dq_dp_dn + aniso_rich%unstruct%dv_darcy_aniso_dp_dn * area
           ! additional aniso terms for dv_darcy_aniso_dp_up/dn_adj
-          do iadj=1,aniso_data%unstruct%up%num_adj
-            dq_dp_up_adj(iadj) = aniso_data%unstruct%dv_darcy_aniso_dp_up_adj(iadj) * area
+          do iadj=1,aniso_geom%unstruct%up%num_adj
+            dq_dp_up_adj(iadj) = aniso_rich%unstruct%dv_darcy_aniso_dp_up_adj(iadj) * area
           enddo
-          do iadj=1,aniso_data%unstruct%dn%num_adj
-            dq_dp_dn_adj(iadj) = aniso_data%unstruct%dv_darcy_aniso_dp_dn_adj(iadj) * area
+          do iadj=1,aniso_geom%unstruct%dn%num_adj
+            dq_dp_dn_adj(iadj) = aniso_rich%unstruct%dv_darcy_aniso_dp_dn_adj(iadj) * area
           enddo
         endif
       endif
@@ -363,29 +366,29 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
       Jup(1,1) = (dq_dp_up*density_ave+q*dden_ave_dp_up)
       Jdn(1,1) = (dq_dp_dn*density_ave+q*dden_ave_dp_dn)
 
-      if(associated(aniso_data)) then
+      if(associated(aniso_geom)) then
         ! Note dden_ave_dp_up_adj etc. assumed = 0 so no dden_... terms below
         ! (The quantities below are used in RichardsJacobianInternalConn when constructing J)
-        if(associated(aniso_data%struct)) then
-          aniso_data%struct%Jup_adjXm = dq_dp_up_adjXm * density_ave
-          aniso_data%struct%Jdn_adjXm = dq_dp_dn_adjXm * density_ave
-          aniso_data%struct%Jup_adjXp = dq_dp_up_adjXp * density_ave
-          aniso_data%struct%Jdn_adjXp = dq_dp_dn_adjXp * density_ave
-          aniso_data%struct%Jup_adjYm = dq_dp_up_adjYm * density_ave
-          aniso_data%struct%Jdn_adjYm = dq_dp_dn_adjYm * density_ave
-          aniso_data%struct%Jup_adjYp = dq_dp_up_adjYp * density_ave
-          aniso_data%struct%Jdn_adjYp = dq_dp_dn_adjYp * density_ave
-          aniso_data%struct%Jup_adjZm = dq_dp_up_adjZm * density_ave
-          aniso_data%struct%Jdn_adjZm = dq_dp_dn_adjZm * density_ave
-          aniso_data%struct%Jup_adjZp = dq_dp_up_adjZp * density_ave
-          aniso_data%struct%Jdn_adjZp = dq_dp_dn_adjZp * density_ave
+        if(associated(aniso_geom%struct)) then
+          aniso_rich%struct%Jup_adjXm = dq_dp_up_adjXm * density_ave
+          aniso_rich%struct%Jdn_adjXm = dq_dp_dn_adjXm * density_ave
+          aniso_rich%struct%Jup_adjXp = dq_dp_up_adjXp * density_ave
+          aniso_rich%struct%Jdn_adjXp = dq_dp_dn_adjXp * density_ave
+          aniso_rich%struct%Jup_adjYm = dq_dp_up_adjYm * density_ave
+          aniso_rich%struct%Jdn_adjYm = dq_dp_dn_adjYm * density_ave
+          aniso_rich%struct%Jup_adjYp = dq_dp_up_adjYp * density_ave
+          aniso_rich%struct%Jdn_adjYp = dq_dp_dn_adjYp * density_ave
+          aniso_rich%struct%Jup_adjZm = dq_dp_up_adjZm * density_ave
+          aniso_rich%struct%Jdn_adjZm = dq_dp_dn_adjZm * density_ave
+          aniso_rich%struct%Jup_adjZp = dq_dp_up_adjZp * density_ave
+          aniso_rich%struct%Jdn_adjZp = dq_dp_dn_adjZp * density_ave
         endif
-        if(associated(aniso_data%unstruct)) then
-          do iadj=1,aniso_data%unstruct%up%num_adj
-            aniso_data%unstruct%Jup_adj(iadj) = dq_dp_up_adj(iadj) * density_ave
+        if(associated(aniso_geom%unstruct)) then
+          do iadj=1,aniso_geom%unstruct%up%num_adj
+            aniso_rich%unstruct%Jup_adj(iadj) = dq_dp_up_adj(iadj) * density_ave
           enddo
-          do iadj=1,aniso_data%unstruct%dn%num_adj
-            aniso_data%unstruct%Jdn_adj(iadj) = dq_dp_dn_adj(iadj) * density_ave
+          do iadj=1,aniso_geom%unstruct%dn%num_adj
+            aniso_rich%unstruct%Jdn_adj(iadj) = dq_dp_dn_adj(iadj) * density_ave
           enddo
         endif
       endif
@@ -411,7 +414,7 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
     call RichardsFlux(rich_auxvar_up,global_auxvar_up,material_auxvar_up, &
                       rich_auxvar_dn,global_auxvar_dn,material_auxvar_dn, &
                       area, dist, &
-                      aniso_data, &
+                      aniso_geom, aniso_rich, &
                       option,v_darcy,res)
     ideriv = 1
 !    pert_up = x_up(ideriv)*perturbation_tolerance
@@ -441,14 +444,14 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
                       rich_auxvar_dn,global_auxvar_dn, &
                       material_auxvar_dn, &
                       area, dist, &
-                      aniso_data, &
+                      aniso_geom, aniso_rich, &
                       option,v_darcy,res_pert_up)
     call RichardsFlux(rich_auxvar_up,global_auxvar_up, &
                       material_auxvar_up, &
                       rich_auxvar_pert_dn,global_auxvar_pert_dn, &
                       material_auxvar_pert_dn, &
                       area, dist, &
-                      aniso_data, &
+                      aniso_geom, aniso_rich, &
                       option,v_darcy,res_pert_dn)
     J_pert_up(1,ideriv) = (res_pert_up(1)-res(1))/pert_up
     J_pert_dn(1,ideriv) = (res_pert_dn(1)-res(1))/pert_dn
@@ -464,7 +467,8 @@ end subroutine RichardsFluxDerivative
 
 ! ************************************************************************** !
 
-subroutine RichardsFluxAniso(aniso_data, &
+subroutine RichardsFluxAniso(aniso_geom_data, &
+                            aniso_rich_data, &
                             material_auxvar_up,material_auxvar_dn, &
                             global_auxvar_up,global_auxvar_dn, &
                             option, &
@@ -489,7 +493,9 @@ subroutine RichardsFluxAniso(aniso_data, &
 
 
   ! inputs
-  type(aniso_data_type), pointer :: aniso_data
+  type(aniso_geom_data_type), pointer :: aniso_geom_data
+  type(aniso_richards_data_type), pointer :: aniso_rich_data
+  
   class(material_auxvar_type) :: material_auxvar_up, material_auxvar_dn
   type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
   type(option_type) :: option
@@ -497,7 +503,7 @@ subroutine RichardsFluxAniso(aniso_data, &
   PetscReal :: ukvr
 
   PetscReal :: dukvr_dp_up, dukvr_dp_dn
-  PetscBool :: calc_derivs ! terms are stored in aniso_data%dv_darcy_aniso_...
+  PetscBool :: calc_derivs ! terms are stored in aniso_rich%dv_darcy_aniso_...
 
   PetscReal :: v_darcy_iso ! v_darcy = Dq * ukvr * dphi, as calculated by RichardsFlux()
   PetscReal :: dv_darcy_iso_dp_up,dv_darcy_iso_dp_dn ! derivs of above
@@ -512,16 +518,19 @@ subroutine RichardsFluxAniso(aniso_data, &
   PetscReal :: gravity
 
   ! local - structured grid case
-  type(aniso_data_structured_type), pointer :: aniso_ds
-  type(aniso_deriv_data_structured_type), pointer :: aniso_dds
+  type(aniso_geom_data_structured_type), pointer :: aniso_geomds
+  type(aniso_richards_data_structured_type), pointer :: aniso_richds
+  type(aniso_richards_work_structured_type), pointer :: aniso_richdsw
   PetscReal :: k_up_xx, k_up_yy, k_up_zz, k_up_xy, k_up_yz, k_up_xz
   PetscReal :: k_dn_xx, k_dn_yy, k_dn_zz, k_dn_xy, k_dn_yz, k_dn_xz
   PetscReal :: dphi_x_up, dphi_x_dn, dphi_y_up, dphi_y_dn, dphi_z_up, dphi_z_dn
 
   ! local - unstructured grid case
-  type(aniso_data_unstructured_type), pointer :: aniso_du
-  type(aniso_deriv_data_unstructured_type), pointer :: aniso_ddu
-  type(aniso_data_unstructured_cell_type), pointer :: aniso_updn
+  type(aniso_geom_data_unstructured_type), pointer :: aniso_geomdu
+  type(aniso_geom_unstructured_cell_type), pointer :: aniso_geomupdn
+  type(aniso_richards_data_unstructured_type), pointer :: aniso_richdu
+  type(aniso_richards_work_unstructured_type), pointer :: aniso_richduw
+  type(aniso_richards_unstructured_cell_type), pointer :: aniso_richupdn
   PetscReal :: pres_updn, rho_updn
   PetscReal, target :: dphi_v_up, dphi_v_dn, dphi_w_up, dphi_w_dn
   PetscReal, pointer :: dphi, ddphi_dp, ddphi_dp_adj
@@ -529,11 +538,15 @@ subroutine RichardsFluxAniso(aniso_data, &
   PetscReal :: LSrhs(2), dot, res, dres_dp_up, dres_dp_dn, dres_dp_adj
   PetscReal :: dphi_du, d2phi_du_dp_up, d2phi_du_dp_dn
 
-  nullify(aniso_ds)
-  nullify(aniso_dds)
+  nullify(aniso_geomds)
+  nullify(aniso_richds)
+  nullify(aniso_richdsw)
 
-  nullify(aniso_du)
-  nullify(aniso_ddu)
+  nullify(aniso_geomdu)
+  nullify(aniso_geomupdn)
+  nullify(aniso_richdu)
+  nullify(aniso_richduw)
+  nullify(aniso_richupdn)
 
   nullify(dphi)
   nullify(ddphi_dp)
@@ -547,11 +560,12 @@ subroutine RichardsFluxAniso(aniso_data, &
   rho_dn = global_auxvar_dn%den(1) * FMWH2O
 
 
-  if(associated(aniso_data%struct)) then
+  if(associated(aniso_geom_data%struct)) then
     ! -- 
     ! -- structured grid case
     ! -- 
-    aniso_ds => aniso_data%struct
+    aniso_geomds => aniso_geom_data%struct
+    aniso_richds => aniso_rich_data%struct
 
     ! Permeability tensor to up/dn cells
     k_up_xx = MaterialAuxVarGetValue(material_auxvar_up,PERMEABILITY_X)
@@ -597,207 +611,207 @@ subroutine RichardsFluxAniso(aniso_data, &
     dphi_z_dn = 0.d0
 
     if (calc_derivs .EQV. PETSC_TRUE) then
-      allocate(aniso_dds)
+      allocate(aniso_richdsw)
 
-      aniso_dds%ddphi_x_dp_up_adjXm = 0.d0
-      aniso_dds%ddphi_x_dp_dn_adjXm = 0.d0
-      aniso_dds%ddphi_x_dp_up_adjXp = 0.d0
-      aniso_dds%ddphi_x_dp_dn_adjXp = 0.d0
-      aniso_dds%ddphi_x_dp_up       = 0.d0
-      aniso_dds%ddphi_x_dp_dn       = 0.d0
+      aniso_richdsw%ddphi_x_dp_up_adjXm = 0.d0
+      aniso_richdsw%ddphi_x_dp_dn_adjXm = 0.d0
+      aniso_richdsw%ddphi_x_dp_up_adjXp = 0.d0
+      aniso_richdsw%ddphi_x_dp_dn_adjXp = 0.d0
+      aniso_richdsw%ddphi_x_dp_up       = 0.d0
+      aniso_richdsw%ddphi_x_dp_dn       = 0.d0
 
-      aniso_dds%ddphi_y_dp_up_adjYm = 0.d0
-      aniso_dds%ddphi_y_dp_dn_adjYm = 0.d0
-      aniso_dds%ddphi_y_dp_up_adjYp = 0.d0
-      aniso_dds%ddphi_y_dp_dn_adjYp = 0.d0
-      aniso_dds%ddphi_y_dp_up       = 0.d0
-      aniso_dds%ddphi_y_dp_dn       = 0.d0
+      aniso_richdsw%ddphi_y_dp_up_adjYm = 0.d0
+      aniso_richdsw%ddphi_y_dp_dn_adjYm = 0.d0
+      aniso_richdsw%ddphi_y_dp_up_adjYp = 0.d0
+      aniso_richdsw%ddphi_y_dp_dn_adjYp = 0.d0
+      aniso_richdsw%ddphi_y_dp_up       = 0.d0
+      aniso_richdsw%ddphi_y_dp_dn       = 0.d0
 
-      aniso_dds%ddphi_z_dp_up_adjZm = 0.d0
-      aniso_dds%ddphi_z_dp_dn_adjZm = 0.d0
-      aniso_dds%ddphi_z_dp_up_adjZp = 0.d0
-      aniso_dds%ddphi_z_dp_dn_adjZp = 0.d0
-      aniso_dds%ddphi_z_dp_up       = 0.d0
-      aniso_dds%ddphi_z_dp_dn       = 0.d0
+      aniso_richdsw%ddphi_z_dp_up_adjZm = 0.d0
+      aniso_richdsw%ddphi_z_dp_dn_adjZm = 0.d0
+      aniso_richdsw%ddphi_z_dp_up_adjZp = 0.d0
+      aniso_richdsw%ddphi_z_dp_dn_adjZp = 0.d0
+      aniso_richdsw%ddphi_z_dp_up       = 0.d0
+      aniso_richdsw%ddphi_z_dp_dn       = 0.d0
     endif
 
     ! P gradient in x-dir - upstream
-    if( aniso_ds%id_up_adjXp .NE. -1 .AND. aniso_ds%id_up_adjXm .NE. -1 ) then ! has contribution in x-dir with adj p/m cells
-      dphi_x_up = ((aniso_ds%pres_up_adjXp - rho_up * aniso_ds%loc_gravity_up_adjXp) &
-                      - (aniso_ds%pres_up_adjXm - rho_up * aniso_ds%loc_gravity_up_adjXm)) &
-                      / (aniso_ds%dist_up_adjXp + aniso_ds%dist_up_adjXm)
+    if( aniso_geomds%id_up_adjXp .NE. -1 .AND. aniso_geomds%id_up_adjXm .NE. -1 ) then ! has contribution in x-dir with adj p/m cells
+      dphi_x_up = ((aniso_richds%pres_up_adjXp - rho_up * aniso_geomds%loc_gravity_up_adjXp) &
+                      - (aniso_richds%pres_up_adjXm - rho_up * aniso_geomds%loc_gravity_up_adjXm)) &
+                      / (aniso_geomds%dist_up_adjXp + aniso_geomds%dist_up_adjXm)
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%ddphi_x_dp_up_adjXm = -1.d0 / (aniso_ds%dist_up_adjXp + aniso_ds%dist_up_adjXm)
-        aniso_dds%ddphi_x_dp_up_adjXp =  1.d0 / (aniso_ds%dist_up_adjXp + aniso_ds%dist_up_adjXm)
-        aniso_dds%ddphi_x_dp_up       =  0.d0
+        aniso_richdsw%ddphi_x_dp_up_adjXm = -1.d0 / (aniso_geomds%dist_up_adjXp + aniso_geomds%dist_up_adjXm)
+        aniso_richdsw%ddphi_x_dp_up_adjXp =  1.d0 / (aniso_geomds%dist_up_adjXp + aniso_geomds%dist_up_adjXm)
+        aniso_richdsw%ddphi_x_dp_up       =  0.d0
       endif
-    else if ( aniso_ds%id_up_adjXp .NE. -1 ) then ! has contribution in x-dir with adj p cell
-      dphi_x_up = ((aniso_ds%pres_up_adjXp - rho_up * aniso_ds%loc_gravity_up_adjXp) &
-                    - (global_auxvar_up%pres(1) - rho_up * aniso_ds%loc_gravity_up)) &
-                    / aniso_ds%dist_up_adjXp
+    else if ( aniso_geomds%id_up_adjXp .NE. -1 ) then ! has contribution in x-dir with adj p cell
+      dphi_x_up = ((aniso_richds%pres_up_adjXp - rho_up * aniso_geomds%loc_gravity_up_adjXp) &
+                    - (global_auxvar_up%pres(1) - rho_up * aniso_geomds%loc_gravity_up)) &
+                    / aniso_geomds%dist_up_adjXp
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%ddphi_x_dp_up_adjXm =  0.d0
-        aniso_dds%ddphi_x_dp_up_adjXp =  1.d0 / aniso_ds%dist_up_adjXp
-        aniso_dds%ddphi_x_dp_up       = -1.d0 / aniso_ds%dist_up_adjXp
+        aniso_richdsw%ddphi_x_dp_up_adjXm =  0.d0
+        aniso_richdsw%ddphi_x_dp_up_adjXp =  1.d0 / aniso_geomds%dist_up_adjXp
+        aniso_richdsw%ddphi_x_dp_up       = -1.d0 / aniso_geomds%dist_up_adjXp
       endif
-    else if ( aniso_ds%id_up_adjXm .NE. -1 ) then ! has contribution in x-dir with adj m cell
-      dphi_x_up = ((global_auxvar_up%pres(1) - rho_up * aniso_ds%loc_gravity_up) &
-                    - (aniso_ds%pres_up_adjXm - rho_up * aniso_ds%loc_gravity_up_adjXm)) &
-                    / aniso_ds%dist_up_adjXm
+    else if ( aniso_geomds%id_up_adjXm .NE. -1 ) then ! has contribution in x-dir with adj m cell
+      dphi_x_up = ((global_auxvar_up%pres(1) - rho_up * aniso_geomds%loc_gravity_up) &
+                    - (aniso_richds%pres_up_adjXm - rho_up * aniso_geomds%loc_gravity_up_adjXm)) &
+                    / aniso_geomds%dist_up_adjXm
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%ddphi_x_dp_up_adjXm = -1.d0 / aniso_ds%dist_up_adjXm
-        aniso_dds%ddphi_x_dp_up_adjXp =  0.d0
-        aniso_dds%ddphi_x_dp_up       =  1.d0 / aniso_ds%dist_up_adjXm
+        aniso_richdsw%ddphi_x_dp_up_adjXm = -1.d0 / aniso_geomds%dist_up_adjXm
+        aniso_richdsw%ddphi_x_dp_up_adjXp =  0.d0
+        aniso_richdsw%ddphi_x_dp_up       =  1.d0 / aniso_geomds%dist_up_adjXm
       endif
     endif
 
     ! P gradient in x-dir - dnstream
-    if( aniso_ds%id_dn_adjXp .NE. -1 .AND. aniso_ds%id_dn_adjXm .NE. -1 ) then ! has contribution in x-dir with adj p/m cells
-      dphi_x_dn = ((aniso_ds%pres_dn_adjXp - rho_dn * aniso_ds%loc_gravity_dn_adjXp) &
-                    - (aniso_ds%pres_dn_adjXm - rho_dn * aniso_ds%loc_gravity_dn_adjXm)) &
-                    / (aniso_ds%dist_dn_adjXp + aniso_ds%dist_dn_adjXm)
+    if( aniso_geomds%id_dn_adjXp .NE. -1 .AND. aniso_geomds%id_dn_adjXm .NE. -1 ) then ! has contribution in x-dir with adj p/m cells
+      dphi_x_dn = ((aniso_richds%pres_dn_adjXp - rho_dn * aniso_geomds%loc_gravity_dn_adjXp) &
+                    - (aniso_richds%pres_dn_adjXm - rho_dn * aniso_geomds%loc_gravity_dn_adjXm)) &
+                    / (aniso_geomds%dist_dn_adjXp + aniso_geomds%dist_dn_adjXm)
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%ddphi_x_dp_dn_adjXm = -1.d0 / (aniso_ds%dist_dn_adjXp + aniso_ds%dist_dn_adjXm)
-        aniso_dds%ddphi_x_dp_dn_adjXp =  1.d0 / (aniso_ds%dist_dn_adjXp + aniso_ds%dist_dn_adjXm)
-        aniso_dds%ddphi_x_dp_dn       =  0.d0
+        aniso_richdsw%ddphi_x_dp_dn_adjXm = -1.d0 / (aniso_geomds%dist_dn_adjXp + aniso_geomds%dist_dn_adjXm)
+        aniso_richdsw%ddphi_x_dp_dn_adjXp =  1.d0 / (aniso_geomds%dist_dn_adjXp + aniso_geomds%dist_dn_adjXm)
+        aniso_richdsw%ddphi_x_dp_dn       =  0.d0
       endif
-    else if ( aniso_ds%id_dn_adjXp .NE. -1 ) then ! has contribution in x-dir with adj p cell
-      dphi_x_dn = ((aniso_ds%pres_dn_adjXp - rho_dn * aniso_ds%loc_gravity_dn_adjXp) &
-                  - (global_auxvar_dn%pres(1) - rho_dn * aniso_ds%loc_gravity_dn)) &
-                  / aniso_ds%dist_dn_adjXp
+    else if ( aniso_geomds%id_dn_adjXp .NE. -1 ) then ! has contribution in x-dir with adj p cell
+      dphi_x_dn = ((aniso_richds%pres_dn_adjXp - rho_dn * aniso_geomds%loc_gravity_dn_adjXp) &
+                  - (global_auxvar_dn%pres(1) - rho_dn * aniso_geomds%loc_gravity_dn)) &
+                  / aniso_geomds%dist_dn_adjXp
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%ddphi_x_dp_dn_adjXm =  0.d0
-        aniso_dds%ddphi_x_dp_dn_adjXp =  1.d0 / aniso_ds%dist_dn_adjXp
-        aniso_dds%ddphi_x_dp_dn       = -1.d0 / aniso_ds%dist_dn_adjXp
+        aniso_richdsw%ddphi_x_dp_dn_adjXm =  0.d0
+        aniso_richdsw%ddphi_x_dp_dn_adjXp =  1.d0 / aniso_geomds%dist_dn_adjXp
+        aniso_richdsw%ddphi_x_dp_dn       = -1.d0 / aniso_geomds%dist_dn_adjXp
       endif
-    else if ( aniso_ds%id_dn_adjXm .NE. -1 ) then ! has contribution in x-dir with adj m cell
-      dphi_x_dn = ((global_auxvar_dn%pres(1) - rho_dn * aniso_ds%loc_gravity_dn) &
-                  - (aniso_ds%pres_dn_adjXm - rho_dn * aniso_ds%loc_gravity_dn_adjXm)) &
-                  / aniso_ds%dist_dn_adjXm
+    else if ( aniso_geomds%id_dn_adjXm .NE. -1 ) then ! has contribution in x-dir with adj m cell
+      dphi_x_dn = ((global_auxvar_dn%pres(1) - rho_dn * aniso_geomds%loc_gravity_dn) &
+                  - (aniso_richds%pres_dn_adjXm - rho_dn * aniso_geomds%loc_gravity_dn_adjXm)) &
+                  / aniso_geomds%dist_dn_adjXm
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%ddphi_x_dp_dn_adjXm = -1.d0 / aniso_ds%dist_dn_adjXm
-        aniso_dds%ddphi_x_dp_dn_adjXp =  0.d0
-        aniso_dds%ddphi_x_dp_dn       =  1.d0 / aniso_ds%dist_dn_adjXm
+        aniso_richdsw%ddphi_x_dp_dn_adjXm = -1.d0 / aniso_geomds%dist_dn_adjXm
+        aniso_richdsw%ddphi_x_dp_dn_adjXp =  0.d0
+        aniso_richdsw%ddphi_x_dp_dn       =  1.d0 / aniso_geomds%dist_dn_adjXm
       endif
     endif
 
     ! P gradient in y-dir - upstream
-    if( aniso_ds%id_up_adjYp .NE. -1 .AND. aniso_ds%id_up_adjYm .NE. -1 ) then ! has contribution in y-dir with adj p/m cells
-      dphi_y_up = ((aniso_ds%pres_up_adjYp - rho_up * aniso_ds%loc_gravity_up_adjYp) &
-                    - (aniso_ds%pres_up_adjYm - rho_up * aniso_ds%loc_gravity_up_adjYm)) &
-                    / (aniso_ds%dist_up_adjYp + aniso_ds%dist_up_adjYm)
+    if( aniso_geomds%id_up_adjYp .NE. -1 .AND. aniso_geomds%id_up_adjYm .NE. -1 ) then ! has contribution in y-dir with adj p/m cells
+      dphi_y_up = ((aniso_richds%pres_up_adjYp - rho_up * aniso_geomds%loc_gravity_up_adjYp) &
+                    - (aniso_richds%pres_up_adjYm - rho_up * aniso_geomds%loc_gravity_up_adjYm)) &
+                    / (aniso_geomds%dist_up_adjYp + aniso_geomds%dist_up_adjYm)
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%ddphi_y_dp_up_adjYm = -1.d0 / (aniso_ds%dist_up_adjYp + aniso_ds%dist_up_adjYm)
-        aniso_dds%ddphi_y_dp_up_adjYp =  1.d0 / (aniso_ds%dist_up_adjYp + aniso_ds%dist_up_adjYm)
-        aniso_dds%ddphi_y_dp_up       =  0.d0
+        aniso_richdsw%ddphi_y_dp_up_adjYm = -1.d0 / (aniso_geomds%dist_up_adjYp + aniso_geomds%dist_up_adjYm)
+        aniso_richdsw%ddphi_y_dp_up_adjYp =  1.d0 / (aniso_geomds%dist_up_adjYp + aniso_geomds%dist_up_adjYm)
+        aniso_richdsw%ddphi_y_dp_up       =  0.d0
       endif
-    else if ( aniso_ds%id_up_adjYp .NE. -1 ) then ! has contribution in y-dir with adj p cell
-      dphi_y_up = ((aniso_ds%pres_up_adjYp - rho_up * aniso_ds%loc_gravity_up_adjYp) &
-                  - (global_auxvar_up%pres(1) - rho_up * aniso_ds%loc_gravity_up)) &
-                  / aniso_ds%dist_up_adjYp
+    else if ( aniso_geomds%id_up_adjYp .NE. -1 ) then ! has contribution in y-dir with adj p cell
+      dphi_y_up = ((aniso_richds%pres_up_adjYp - rho_up * aniso_geomds%loc_gravity_up_adjYp) &
+                  - (global_auxvar_up%pres(1) - rho_up * aniso_geomds%loc_gravity_up)) &
+                  / aniso_geomds%dist_up_adjYp
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%ddphi_y_dp_up_adjYm =  0.d0
-        aniso_dds%ddphi_y_dp_up_adjYp =  1.d0 / aniso_ds%dist_up_adjYp
-        aniso_dds%ddphi_y_dp_up       = -1.d0 / aniso_ds%dist_up_adjYp
+        aniso_richdsw%ddphi_y_dp_up_adjYm =  0.d0
+        aniso_richdsw%ddphi_y_dp_up_adjYp =  1.d0 / aniso_geomds%dist_up_adjYp
+        aniso_richdsw%ddphi_y_dp_up       = -1.d0 / aniso_geomds%dist_up_adjYp
       endif
-    else if ( aniso_ds%id_up_adjYm .NE. -1 ) then ! has contribution in y-dir with adj m cell
-      dphi_y_up = ((global_auxvar_up%pres(1) - rho_up * aniso_ds%loc_gravity_up) &
-                  - (aniso_ds%pres_up_adjYm - rho_up * aniso_ds%loc_gravity_up_adjYm)) &
-                  / aniso_ds%dist_up_adjYm
+    else if ( aniso_geomds%id_up_adjYm .NE. -1 ) then ! has contribution in y-dir with adj m cell
+      dphi_y_up = ((global_auxvar_up%pres(1) - rho_up * aniso_geomds%loc_gravity_up) &
+                  - (aniso_richds%pres_up_adjYm - rho_up * aniso_geomds%loc_gravity_up_adjYm)) &
+                  / aniso_geomds%dist_up_adjYm
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%ddphi_y_dp_up_adjYm = -1.d0 / aniso_ds%dist_up_adjYm
-        aniso_dds%ddphi_y_dp_up_adjYp =  0.d0
-        aniso_dds%ddphi_y_dp_up       =  1.d0 / aniso_ds%dist_up_adjYm
+        aniso_richdsw%ddphi_y_dp_up_adjYm = -1.d0 / aniso_geomds%dist_up_adjYm
+        aniso_richdsw%ddphi_y_dp_up_adjYp =  0.d0
+        aniso_richdsw%ddphi_y_dp_up       =  1.d0 / aniso_geomds%dist_up_adjYm
       endif
     endif
 
     ! P gradient in y-dir - dnstream
-    if( aniso_ds%id_dn_adjYp .NE. -1 .AND. aniso_ds%id_dn_adjYm .NE. -1 ) then ! has contribution in y-dir with adj p/m cells
-      dphi_y_dn = ((aniso_ds%pres_dn_adjYp - rho_dn * aniso_ds%loc_gravity_dn_adjYp) &
-                    - (aniso_ds%pres_dn_adjYm - rho_dn * aniso_ds%loc_gravity_dn_adjYm)) &
-                    / (aniso_ds%dist_dn_adjYp + aniso_ds%dist_dn_adjYm)
+    if( aniso_geomds%id_dn_adjYp .NE. -1 .AND. aniso_geomds%id_dn_adjYm .NE. -1 ) then ! has contribution in y-dir with adj p/m cells
+      dphi_y_dn = ((aniso_richds%pres_dn_adjYp - rho_dn * aniso_geomds%loc_gravity_dn_adjYp) &
+                    - (aniso_richds%pres_dn_adjYm - rho_dn * aniso_geomds%loc_gravity_dn_adjYm)) &
+                    / (aniso_geomds%dist_dn_adjYp + aniso_geomds%dist_dn_adjYm)
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%ddphi_y_dp_dn_adjYm = -1.d0 / (aniso_ds%dist_dn_adjYp + aniso_ds%dist_dn_adjYm)
-        aniso_dds%ddphi_y_dp_dn_adjYp =  1.d0 / (aniso_ds%dist_dn_adjYp + aniso_ds%dist_dn_adjYm)
-        aniso_dds%ddphi_y_dp_dn       =  0.d0
+        aniso_richdsw%ddphi_y_dp_dn_adjYm = -1.d0 / (aniso_geomds%dist_dn_adjYp + aniso_geomds%dist_dn_adjYm)
+        aniso_richdsw%ddphi_y_dp_dn_adjYp =  1.d0 / (aniso_geomds%dist_dn_adjYp + aniso_geomds%dist_dn_adjYm)
+        aniso_richdsw%ddphi_y_dp_dn       =  0.d0
       endif
-    else if ( aniso_ds%id_dn_adjYp .NE. -1 ) then ! has contribution in y-dir with adj p cell
-      dphi_y_dn = ((aniso_ds%pres_dn_adjYp - rho_dn * aniso_ds%loc_gravity_dn_adjYp) &
-                - (global_auxvar_dn%pres(1) - rho_dn * aniso_ds%loc_gravity_dn)) &
-                / aniso_ds%dist_dn_adjYp
+    else if ( aniso_geomds%id_dn_adjYp .NE. -1 ) then ! has contribution in y-dir with adj p cell
+      dphi_y_dn = ((aniso_richds%pres_dn_adjYp - rho_dn * aniso_geomds%loc_gravity_dn_adjYp) &
+                - (global_auxvar_dn%pres(1) - rho_dn * aniso_geomds%loc_gravity_dn)) &
+                / aniso_geomds%dist_dn_adjYp
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%ddphi_y_dp_dn_adjYm =  0.d0
-        aniso_dds%ddphi_y_dp_dn_adjYp =  1.d0 / aniso_ds%dist_dn_adjYp
-        aniso_dds%ddphi_y_dp_dn       = -1.d0 / aniso_ds%dist_dn_adjYp
+        aniso_richdsw%ddphi_y_dp_dn_adjYm =  0.d0
+        aniso_richdsw%ddphi_y_dp_dn_adjYp =  1.d0 / aniso_geomds%dist_dn_adjYp
+        aniso_richdsw%ddphi_y_dp_dn       = -1.d0 / aniso_geomds%dist_dn_adjYp
       endif
-    else if ( aniso_ds%id_dn_adjYm .NE. -1 ) then ! has contribution in y-dir with adj m cell
-      dphi_y_dn = ((global_auxvar_dn%pres(1) - rho_dn * aniso_ds%loc_gravity_dn) &
-                - (aniso_ds%pres_dn_adjYm - rho_dn * aniso_ds%loc_gravity_dn_adjYm)) &
-                / aniso_ds%dist_dn_adjYm
+    else if ( aniso_geomds%id_dn_adjYm .NE. -1 ) then ! has contribution in y-dir with adj m cell
+      dphi_y_dn = ((global_auxvar_dn%pres(1) - rho_dn * aniso_geomds%loc_gravity_dn) &
+                - (aniso_richds%pres_dn_adjYm - rho_dn * aniso_geomds%loc_gravity_dn_adjYm)) &
+                / aniso_geomds%dist_dn_adjYm
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%ddphi_y_dp_dn_adjYm = -1.d0 / aniso_ds%dist_dn_adjYm
-        aniso_dds%ddphi_y_dp_dn_adjYp =  0.d0
-        aniso_dds%ddphi_y_dp_dn       =  1.d0 / aniso_ds%dist_dn_adjYm
+        aniso_richdsw%ddphi_y_dp_dn_adjYm = -1.d0 / aniso_geomds%dist_dn_adjYm
+        aniso_richdsw%ddphi_y_dp_dn_adjYp =  0.d0
+        aniso_richdsw%ddphi_y_dp_dn       =  1.d0 / aniso_geomds%dist_dn_adjYm
       endif
     endif
 
     ! P gradient in z-dir - upstream
-    if( aniso_ds%id_up_adjZp .NE. -1 .AND. aniso_ds%id_up_adjZm .NE. -1 ) then ! has contribution in z-dir with adj p/m cells
-      dphi_z_up = ((aniso_ds%pres_up_adjZp - rho_up * aniso_ds%loc_gravity_up_adjZp) &
-                  - (aniso_ds%pres_up_adjZm - rho_up * aniso_ds%loc_gravity_up_adjZm)) &
-                  / (aniso_ds%dist_up_adjZp + aniso_ds%dist_up_adjZm)
+    if( aniso_geomds%id_up_adjZp .NE. -1 .AND. aniso_geomds%id_up_adjZm .NE. -1 ) then ! has contribution in z-dir with adj p/m cells
+      dphi_z_up = ((aniso_richds%pres_up_adjZp - rho_up * aniso_geomds%loc_gravity_up_adjZp) &
+                  - (aniso_richds%pres_up_adjZm - rho_up * aniso_geomds%loc_gravity_up_adjZm)) &
+                  / (aniso_geomds%dist_up_adjZp + aniso_geomds%dist_up_adjZm)
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%ddphi_z_dp_up_adjZm = -1.d0 / (aniso_ds%dist_up_adjZp + aniso_ds%dist_up_adjZm)
-        aniso_dds%ddphi_z_dp_up_adjZp =  1.d0 / (aniso_ds%dist_up_adjZp + aniso_ds%dist_up_adjZm)
-        aniso_dds%ddphi_z_dp_up       =  0.d0
+        aniso_richdsw%ddphi_z_dp_up_adjZm = -1.d0 / (aniso_geomds%dist_up_adjZp + aniso_geomds%dist_up_adjZm)
+        aniso_richdsw%ddphi_z_dp_up_adjZp =  1.d0 / (aniso_geomds%dist_up_adjZp + aniso_geomds%dist_up_adjZm)
+        aniso_richdsw%ddphi_z_dp_up       =  0.d0
       endif
-    else if ( aniso_ds%id_up_adjZp .NE. -1 ) then ! has contribution in z-dir with adj p cell
-      dphi_z_up = ((aniso_ds%pres_up_adjZp - rho_up * aniso_ds%loc_gravity_up_adjZp) &
-                - (global_auxvar_up%pres(1) - rho_up * aniso_ds%loc_gravity_up)) &
-                / aniso_ds%dist_up_adjZp
+    else if ( aniso_geomds%id_up_adjZp .NE. -1 ) then ! has contribution in z-dir with adj p cell
+      dphi_z_up = ((aniso_richds%pres_up_adjZp - rho_up * aniso_geomds%loc_gravity_up_adjZp) &
+                - (global_auxvar_up%pres(1) - rho_up * aniso_geomds%loc_gravity_up)) &
+                / aniso_geomds%dist_up_adjZp
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%ddphi_z_dp_up_adjZm =  0.d0
-        aniso_dds%ddphi_z_dp_up_adjZp =  1.d0 / aniso_ds%dist_up_adjZp
-        aniso_dds%ddphi_z_dp_up       = -1.d0 / aniso_ds%dist_up_adjZp
+        aniso_richdsw%ddphi_z_dp_up_adjZm =  0.d0
+        aniso_richdsw%ddphi_z_dp_up_adjZp =  1.d0 / aniso_geomds%dist_up_adjZp
+        aniso_richdsw%ddphi_z_dp_up       = -1.d0 / aniso_geomds%dist_up_adjZp
       endif
-    else if ( aniso_ds%id_up_adjZm .NE. -1 ) then ! has contribution in z-dir with adj m cell
-      dphi_z_up = ((global_auxvar_up%pres(1) - rho_up * aniso_ds%loc_gravity_up) &
-                - (aniso_ds%pres_up_adjZm - rho_up * aniso_ds%loc_gravity_up_adjZm)) &
-                / aniso_ds%dist_up_adjZm
+    else if ( aniso_geomds%id_up_adjZm .NE. -1 ) then ! has contribution in z-dir with adj m cell
+      dphi_z_up = ((global_auxvar_up%pres(1) - rho_up * aniso_geomds%loc_gravity_up) &
+                - (aniso_richds%pres_up_adjZm - rho_up * aniso_geomds%loc_gravity_up_adjZm)) &
+                / aniso_geomds%dist_up_adjZm
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%ddphi_z_dp_up_adjZm = -1.d0 / aniso_ds%dist_up_adjZm
-        aniso_dds%ddphi_z_dp_up_adjZp =  0.d0
-        aniso_dds%ddphi_z_dp_up       =  1.d0 / aniso_ds%dist_up_adjZm
+        aniso_richdsw%ddphi_z_dp_up_adjZm = -1.d0 / aniso_geomds%dist_up_adjZm
+        aniso_richdsw%ddphi_z_dp_up_adjZp =  0.d0
+        aniso_richdsw%ddphi_z_dp_up       =  1.d0 / aniso_geomds%dist_up_adjZm
       endif
     endif
 
     ! P gradient in z-dir - dnstream
-    if( aniso_ds%id_dn_adjZp .NE. -1 .AND. aniso_ds%id_dn_adjZm .NE. -1 ) then ! has contribution in z-dir with adj p/m cells
-      dphi_z_dn = ((aniso_ds%pres_dn_adjZp - rho_dn * aniso_ds%loc_gravity_dn_adjZp) &
-                  - (aniso_ds%pres_dn_adjZm - rho_dn * aniso_ds%loc_gravity_dn_adjZm)) &
-                  / (aniso_ds%dist_dn_adjZp + aniso_ds%dist_dn_adjZm)
+    if( aniso_geomds%id_dn_adjZp .NE. -1 .AND. aniso_geomds%id_dn_adjZm .NE. -1 ) then ! has contribution in z-dir with adj p/m cells
+      dphi_z_dn = ((aniso_richds%pres_dn_adjZp - rho_dn * aniso_geomds%loc_gravity_dn_adjZp) &
+                  - (aniso_richds%pres_dn_adjZm - rho_dn * aniso_geomds%loc_gravity_dn_adjZm)) &
+                  / (aniso_geomds%dist_dn_adjZp + aniso_geomds%dist_dn_adjZm)
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%ddphi_z_dp_dn_adjZm = -1.d0 / (aniso_ds%dist_dn_adjZp + aniso_ds%dist_dn_adjZm)
-        aniso_dds%ddphi_z_dp_dn_adjZp =  1.d0 / (aniso_ds%dist_dn_adjZp + aniso_ds%dist_dn_adjZm)
-        aniso_dds%ddphi_z_dp_dn       =  0.d0
+        aniso_richdsw%ddphi_z_dp_dn_adjZm = -1.d0 / (aniso_geomds%dist_dn_adjZp + aniso_geomds%dist_dn_adjZm)
+        aniso_richdsw%ddphi_z_dp_dn_adjZp =  1.d0 / (aniso_geomds%dist_dn_adjZp + aniso_geomds%dist_dn_adjZm)
+        aniso_richdsw%ddphi_z_dp_dn       =  0.d0
       endif
-    else if ( aniso_ds%id_dn_adjZp .NE. -1 ) then ! has contribution in z-dir with adj p cell
-      dphi_z_dn = ((aniso_ds%pres_dn_adjZp - rho_dn * aniso_ds%loc_gravity_dn_adjZp) &
-              - (global_auxvar_dn%pres(1) - rho_dn * aniso_ds%loc_gravity_dn)) &
-              / aniso_ds%dist_dn_adjZp
+    else if ( aniso_geomds%id_dn_adjZp .NE. -1 ) then ! has contribution in z-dir with adj p cell
+      dphi_z_dn = ((aniso_richds%pres_dn_adjZp - rho_dn * aniso_geomds%loc_gravity_dn_adjZp) &
+              - (global_auxvar_dn%pres(1) - rho_dn * aniso_geomds%loc_gravity_dn)) &
+              / aniso_geomds%dist_dn_adjZp
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%ddphi_z_dp_dn_adjZm =  0.d0
-        aniso_dds%ddphi_z_dp_dn_adjZp =  1.d0 / aniso_ds%dist_dn_adjZp
-        aniso_dds%ddphi_z_dp_dn       = -1.d0 / aniso_ds%dist_dn_adjZp
+        aniso_richdsw%ddphi_z_dp_dn_adjZm =  0.d0
+        aniso_richdsw%ddphi_z_dp_dn_adjZp =  1.d0 / aniso_geomds%dist_dn_adjZp
+        aniso_richdsw%ddphi_z_dp_dn       = -1.d0 / aniso_geomds%dist_dn_adjZp
       endif
-    else if ( aniso_ds%id_dn_adjZm .NE. -1 ) then ! has contribution in z-dir with adj m cell
-      dphi_z_dn = ((global_auxvar_dn%pres(1) - rho_dn * aniso_ds%loc_gravity_dn) &
-              - (aniso_ds%pres_dn_adjZm - rho_dn * aniso_ds%loc_gravity_dn_adjZm)) &
-              / aniso_ds%dist_dn_adjZm
+    else if ( aniso_geomds%id_dn_adjZm .NE. -1 ) then ! has contribution in z-dir with adj m cell
+      dphi_z_dn = ((global_auxvar_dn%pres(1) - rho_dn * aniso_geomds%loc_gravity_dn) &
+              - (aniso_richds%pres_dn_adjZm - rho_dn * aniso_geomds%loc_gravity_dn_adjZm)) &
+              / aniso_geomds%dist_dn_adjZm
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%ddphi_z_dp_dn_adjZm = -1.d0 / aniso_ds%dist_dn_adjZm
-        aniso_dds%ddphi_z_dp_dn_adjZp =  0.d0
-        aniso_dds%ddphi_z_dp_dn       =  1.d0 / aniso_ds%dist_dn_adjZm
+        aniso_richdsw%ddphi_z_dp_dn_adjZm = -1.d0 / aniso_geomds%dist_dn_adjZm
+        aniso_richdsw%ddphi_z_dp_dn_adjZp =  0.d0
+        aniso_richdsw%ddphi_z_dp_dn       =  1.d0 / aniso_geomds%dist_dn_adjZm
       endif
     endif
 
@@ -806,7 +820,7 @@ subroutine RichardsFluxAniso(aniso_data, &
     !   dphi_x_up, dphi_x_dn, dphi_y_up, dphi_y_dn, dphi_z_up, dphi_z_dn
 
     ! Calculate anisotropic darcy contribution for given orientation
-    if ( aniso_ds%orientation .eq. 'X' ) then
+    if ( aniso_geomds%orientation .eq. 'X' ) then
       v_darcy_aniso_up = -1.d0 * (k_up_xy * dphi_y_up + k_up_xz * dphi_z_up) * ukvr
       v_darcy_aniso_dn = -1.d0 * (k_dn_xy * dphi_y_dn + k_dn_xz * dphi_z_dn) * ukvr
       mu_up =       dist(-1) *dist(0)/k_up_xx  ! weight - up (dist part = dist to interface)
@@ -814,34 +828,34 @@ subroutine RichardsFluxAniso(aniso_data, &
       ! average up/dn components to obtain a consistent interface midpoint pressure
       v_darcy_aniso = (mu_up*v_darcy_aniso_up + mu_dn*v_darcy_aniso_dn) / (mu_up + mu_dn)
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%dv_darcy_aniso_up_dp_up_adjXm = 0.d0
-        aniso_dds%dv_darcy_aniso_up_dp_up_adjXp = 0.d0
+        aniso_richdsw%dv_darcy_aniso_up_dp_up_adjXm = 0.d0
+        aniso_richdsw%dv_darcy_aniso_up_dp_up_adjXp = 0.d0
 
-        aniso_dds%dv_darcy_aniso_up_dp_up_adjYm = -1.0d0 * k_up_xy * aniso_dds%ddphi_y_dp_up_adjYm * ukvr
-        aniso_dds%dv_darcy_aniso_up_dp_up_adjYp = -1.0d0 * k_up_xy * aniso_dds%ddphi_y_dp_up_adjYp * ukvr
+        aniso_richdsw%dv_darcy_aniso_up_dp_up_adjYm = -1.0d0 * k_up_xy * aniso_richdsw%ddphi_y_dp_up_adjYm * ukvr
+        aniso_richdsw%dv_darcy_aniso_up_dp_up_adjYp = -1.0d0 * k_up_xy * aniso_richdsw%ddphi_y_dp_up_adjYp * ukvr
 
-        aniso_dds%dv_darcy_aniso_up_dp_up_adjZm = -1.0d0 * k_up_xz * aniso_dds%ddphi_z_dp_up_adjZm * ukvr
-        aniso_dds%dv_darcy_aniso_up_dp_up_adjZp = -1.0d0 * k_up_xz * aniso_dds%ddphi_z_dp_up_adjZp * ukvr
+        aniso_richdsw%dv_darcy_aniso_up_dp_up_adjZm = -1.0d0 * k_up_xz * aniso_richdsw%ddphi_z_dp_up_adjZm * ukvr
+        aniso_richdsw%dv_darcy_aniso_up_dp_up_adjZp = -1.0d0 * k_up_xz * aniso_richdsw%ddphi_z_dp_up_adjZp * ukvr
 
-        aniso_dds%dv_darcy_aniso_up_dp_up = &
-              -1.d0 * ((k_up_xy * aniso_dds%ddphi_y_dp_up + k_up_xz * aniso_dds%ddphi_z_dp_up) * ukvr &
+        aniso_richdsw%dv_darcy_aniso_up_dp_up = &
+              -1.d0 * ((k_up_xy * aniso_richdsw%ddphi_y_dp_up + k_up_xz * aniso_richdsw%ddphi_z_dp_up) * ukvr &
               + (k_up_xy * dphi_y_up +  k_up_xz * dphi_z_up) * dukvr_dp_up)
 
-        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXm = 0.d0
-        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXp = 0.d0
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjXm = 0.d0
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjXp = 0.d0
 
-        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYm = -1.0d0 * k_dn_xy * aniso_dds%ddphi_y_dp_dn_adjYm * ukvr
-        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYp = -1.0d0 * k_dn_xy * aniso_dds%ddphi_y_dp_dn_adjYp * ukvr
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjYm = -1.0d0 * k_dn_xy * aniso_richdsw%ddphi_y_dp_dn_adjYm * ukvr
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjYp = -1.0d0 * k_dn_xy * aniso_richdsw%ddphi_y_dp_dn_adjYp * ukvr
 
-        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZm = -1.0d0 * k_dn_xz * aniso_dds%ddphi_z_dp_dn_adjZm * ukvr
-        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZp = -1.0d0 * k_dn_xz * aniso_dds%ddphi_z_dp_dn_adjZp * ukvr
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjZm = -1.0d0 * k_dn_xz * aniso_richdsw%ddphi_z_dp_dn_adjZm * ukvr
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjZp = -1.0d0 * k_dn_xz * aniso_richdsw%ddphi_z_dp_dn_adjZp * ukvr
 
-        aniso_dds%dv_darcy_aniso_dn_dp_dn = &
-              -1.d0 * ((k_dn_xy * aniso_dds%ddphi_y_dp_dn + k_dn_xz * aniso_dds%ddphi_z_dp_dn) * ukvr &
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn = &
+              -1.d0 * ((k_dn_xy * aniso_richdsw%ddphi_y_dp_dn + k_dn_xz * aniso_richdsw%ddphi_z_dp_dn) * ukvr &
               + (k_dn_xy * dphi_y_dn +  k_dn_xz * dphi_z_dn) * dukvr_dp_dn)
       endif
     endif
-    if ( aniso_ds%orientation .eq. 'Y' ) then
+    if ( aniso_geomds%orientation .eq. 'Y' ) then
       v_darcy_aniso_up = -1.d0 * (k_up_xy * dphi_x_up + k_up_yz * dphi_z_up) * ukvr
       v_darcy_aniso_dn = -1.d0 * (k_dn_xy * dphi_x_dn + k_dn_yz * dphi_z_dn) * ukvr
       mu_up =       dist(-1) *dist(0)/k_up_yy  ! weight - up (dist part = dist to interface)
@@ -849,34 +863,34 @@ subroutine RichardsFluxAniso(aniso_data, &
       ! average up/dn components to obtain a consistent interface midpoint pressure
       v_darcy_aniso = (mu_up*v_darcy_aniso_up + mu_dn*v_darcy_aniso_dn) / (mu_up + mu_dn)
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%dv_darcy_aniso_up_dp_up_adjXm = -1.0d0 * k_up_xy * aniso_dds%ddphi_x_dp_up_adjXm * ukvr
-        aniso_dds%dv_darcy_aniso_up_dp_up_adjXp = -1.0d0 * k_up_xy * aniso_dds%ddphi_x_dp_up_adjXp * ukvr
+        aniso_richdsw%dv_darcy_aniso_up_dp_up_adjXm = -1.0d0 * k_up_xy * aniso_richdsw%ddphi_x_dp_up_adjXm * ukvr
+        aniso_richdsw%dv_darcy_aniso_up_dp_up_adjXp = -1.0d0 * k_up_xy * aniso_richdsw%ddphi_x_dp_up_adjXp * ukvr
 
-        aniso_dds%dv_darcy_aniso_up_dp_up_adjYm = 0.d0
-        aniso_dds%dv_darcy_aniso_up_dp_up_adjYp = 0.d0
+        aniso_richdsw%dv_darcy_aniso_up_dp_up_adjYm = 0.d0
+        aniso_richdsw%dv_darcy_aniso_up_dp_up_adjYp = 0.d0
 
-        aniso_dds%dv_darcy_aniso_up_dp_up_adjZm = -1.0d0 * k_up_yz * aniso_dds%ddphi_z_dp_up_adjZm * ukvr
-        aniso_dds%dv_darcy_aniso_up_dp_up_adjZp = -1.0d0 * k_up_yz * aniso_dds%ddphi_z_dp_up_adjZp * ukvr
+        aniso_richdsw%dv_darcy_aniso_up_dp_up_adjZm = -1.0d0 * k_up_yz * aniso_richdsw%ddphi_z_dp_up_adjZm * ukvr
+        aniso_richdsw%dv_darcy_aniso_up_dp_up_adjZp = -1.0d0 * k_up_yz * aniso_richdsw%ddphi_z_dp_up_adjZp * ukvr
 
-        aniso_dds%dv_darcy_aniso_up_dp_up = &
-              -1.d0 * ((k_up_xy * aniso_dds%ddphi_x_dp_up + k_up_yz * aniso_dds%ddphi_z_dp_up) * ukvr &
+        aniso_richdsw%dv_darcy_aniso_up_dp_up = &
+              -1.d0 * ((k_up_xy * aniso_richdsw%ddphi_x_dp_up + k_up_yz * aniso_richdsw%ddphi_z_dp_up) * ukvr &
               + (k_up_xy * dphi_x_up +  k_up_yz * dphi_z_up) * dukvr_dp_up)
 
-        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXm = -1.0d0 * k_dn_xy * aniso_dds%ddphi_x_dp_dn_adjXm * ukvr
-        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXp = -1.0d0 * k_dn_xy * aniso_dds%ddphi_x_dp_dn_adjXp * ukvr
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjXm = -1.0d0 * k_dn_xy * aniso_richdsw%ddphi_x_dp_dn_adjXm * ukvr
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjXp = -1.0d0 * k_dn_xy * aniso_richdsw%ddphi_x_dp_dn_adjXp * ukvr
 
-        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYm = 0.d0
-        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYp = 0.d0
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjYm = 0.d0
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjYp = 0.d0
 
-        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZm = -1.0d0 * k_dn_yz * aniso_dds%ddphi_z_dp_dn_adjZm * ukvr
-        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZp = -1.0d0 * k_dn_yz * aniso_dds%ddphi_z_dp_dn_adjZp * ukvr
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjZm = -1.0d0 * k_dn_yz * aniso_richdsw%ddphi_z_dp_dn_adjZm * ukvr
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjZp = -1.0d0 * k_dn_yz * aniso_richdsw%ddphi_z_dp_dn_adjZp * ukvr
 
-        aniso_dds%dv_darcy_aniso_dn_dp_dn = &
-              -1.d0 * ((k_dn_xy * aniso_dds%ddphi_x_dp_dn + k_dn_yz * aniso_dds%ddphi_z_dp_dn) * ukvr &
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn = &
+              -1.d0 * ((k_dn_xy * aniso_richdsw%ddphi_x_dp_dn + k_dn_yz * aniso_richdsw%ddphi_z_dp_dn) * ukvr &
               + (k_dn_xy * dphi_x_dn +  k_dn_yz * dphi_z_dn) * dukvr_dp_dn)
       endif
     endif
-    if ( aniso_ds%orientation .eq. 'Z' ) then
+    if ( aniso_geomds%orientation .eq. 'Z' ) then
       v_darcy_aniso_up = -1.d0 * (k_up_xz * dphi_x_up + k_up_yz * dphi_y_up) * ukvr
       v_darcy_aniso_dn = -1.d0 * (k_dn_xz * dphi_x_dn + k_dn_yz * dphi_y_dn) * ukvr
       mu_up =       dist(-1) *dist(0)/k_up_zz  ! weight - up (dist part = dist to interface)
@@ -884,79 +898,80 @@ subroutine RichardsFluxAniso(aniso_data, &
       ! average up/dn components to obtain a consistent interface midpoint pressure
       v_darcy_aniso = (mu_up*v_darcy_aniso_up + mu_dn*v_darcy_aniso_dn) / (mu_up + mu_dn)
       if (calc_derivs .EQV. PETSC_TRUE) then
-        aniso_dds%dv_darcy_aniso_up_dp_up_adjXm = -1.0d0 * k_up_xz * aniso_dds%ddphi_x_dp_up_adjXm * ukvr
-        aniso_dds%dv_darcy_aniso_up_dp_up_adjXp = -1.0d0 * k_up_xz * aniso_dds%ddphi_x_dp_up_adjXp * ukvr
+        aniso_richdsw%dv_darcy_aniso_up_dp_up_adjXm = -1.0d0 * k_up_xz * aniso_richdsw%ddphi_x_dp_up_adjXm * ukvr
+        aniso_richdsw%dv_darcy_aniso_up_dp_up_adjXp = -1.0d0 * k_up_xz * aniso_richdsw%ddphi_x_dp_up_adjXp * ukvr
 
-        aniso_dds%dv_darcy_aniso_up_dp_up_adjYm = -1.0d0 * k_up_yz * aniso_dds%ddphi_y_dp_up_adjYm * ukvr
-        aniso_dds%dv_darcy_aniso_up_dp_up_adjYp = -1.0d0 * k_up_yz * aniso_dds%ddphi_y_dp_up_adjYp * ukvr
+        aniso_richdsw%dv_darcy_aniso_up_dp_up_adjYm = -1.0d0 * k_up_yz * aniso_richdsw%ddphi_y_dp_up_adjYm * ukvr
+        aniso_richdsw%dv_darcy_aniso_up_dp_up_adjYp = -1.0d0 * k_up_yz * aniso_richdsw%ddphi_y_dp_up_adjYp * ukvr
 
-        aniso_dds%dv_darcy_aniso_up_dp_up_adjZm = 0.d0
-        aniso_dds%dv_darcy_aniso_up_dp_up_adjZp = 0.d0
+        aniso_richdsw%dv_darcy_aniso_up_dp_up_adjZm = 0.d0
+        aniso_richdsw%dv_darcy_aniso_up_dp_up_adjZp = 0.d0
 
-        aniso_dds%dv_darcy_aniso_up_dp_up = &
-              -1.d0 * ((k_up_xz * aniso_dds%ddphi_x_dp_up + k_up_yz * aniso_dds%ddphi_y_dp_up) * ukvr &
+        aniso_richdsw%dv_darcy_aniso_up_dp_up = &
+              -1.d0 * ((k_up_xz * aniso_richdsw%ddphi_x_dp_up + k_up_yz * aniso_richdsw%ddphi_y_dp_up) * ukvr &
               + (k_up_xz * dphi_x_up +  k_up_yz * dphi_y_up) * dukvr_dp_up)
 
-        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXm = -1.0d0 * k_dn_xz * aniso_dds%ddphi_x_dp_dn_adjXm * ukvr
-        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXp = -1.0d0 * k_dn_xz * aniso_dds%ddphi_x_dp_dn_adjXp * ukvr
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjXm = -1.0d0 * k_dn_xz * aniso_richdsw%ddphi_x_dp_dn_adjXm * ukvr
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjXp = -1.0d0 * k_dn_xz * aniso_richdsw%ddphi_x_dp_dn_adjXp * ukvr
 
-        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYm = -1.0d0 * k_dn_yz * aniso_dds%ddphi_y_dp_dn_adjYm * ukvr
-        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYp = -1.0d0 * k_dn_yz * aniso_dds%ddphi_y_dp_dn_adjYp * ukvr
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjYm = -1.0d0 * k_dn_yz * aniso_richdsw%ddphi_y_dp_dn_adjYm * ukvr
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjYp = -1.0d0 * k_dn_yz * aniso_richdsw%ddphi_y_dp_dn_adjYp * ukvr
 
-        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZm = 0.d0
-        aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZp = 0.d0
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjZm = 0.d0
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjZp = 0.d0
 
-        aniso_dds%dv_darcy_aniso_dn_dp_dn = &
-              -1.d0 * ((k_dn_xz * aniso_dds%ddphi_x_dp_dn + k_dn_yz * aniso_dds%ddphi_y_dp_dn) * ukvr &
+        aniso_richdsw%dv_darcy_aniso_dn_dp_dn = &
+              -1.d0 * ((k_dn_xz * aniso_richdsw%ddphi_x_dp_dn + k_dn_yz * aniso_richdsw%ddphi_y_dp_dn) * ukvr &
               + (k_dn_xz * dphi_x_dn +  k_dn_yz * dphi_y_dn) * dukvr_dp_dn)
       endif
     endif
     
     ! dbg
-    ! call PrintAnisoData(aniso_data)
+    ! call PrintAnisoData(aniso_geom_data)
     ! write (*,"(' v_darcy_aniso=',e10.3)") v_darcy_aniso
 
     if (calc_derivs .EQV. PETSC_TRUE) then
-      aniso_ds%dv_darcy_aniso_dp_up_adjXm = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up_adjXm) &
+      aniso_richds%dv_darcy_aniso_dp_up_adjXm = (mu_up * aniso_richdsw%dv_darcy_aniso_up_dp_up_adjXm) &
                                               / (mu_up + mu_dn)
-      aniso_ds%dv_darcy_aniso_dp_dn_adjXm = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXm) &
+      aniso_richds%dv_darcy_aniso_dp_dn_adjXm = (mu_dn * aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjXm) &
                                               / (mu_up + mu_dn)
-      aniso_ds%dv_darcy_aniso_dp_up_adjXp = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up_adjXp) &
+      aniso_richds%dv_darcy_aniso_dp_up_adjXp = (mu_up * aniso_richdsw%dv_darcy_aniso_up_dp_up_adjXp) &
                                               / (mu_up + mu_dn)
-      aniso_ds%dv_darcy_aniso_dp_dn_adjXp = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn_adjXp) &
-                                              / (mu_up + mu_dn)
-
-      aniso_ds%dv_darcy_aniso_dp_up_adjYm = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up_adjYm) &
-                                              / (mu_up + mu_dn)
-      aniso_ds%dv_darcy_aniso_dp_dn_adjYm = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYm) &
-                                              / (mu_up + mu_dn)
-      aniso_ds%dv_darcy_aniso_dp_up_adjYp = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up_adjYp) &
-                                              / (mu_up + mu_dn)
-      aniso_ds%dv_darcy_aniso_dp_dn_adjYp = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn_adjYp) &
+      aniso_richds%dv_darcy_aniso_dp_dn_adjXp = (mu_dn * aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjXp) &
                                               / (mu_up + mu_dn)
 
-      aniso_ds%dv_darcy_aniso_dp_up_adjZm = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up_adjZm) &
+      aniso_richds%dv_darcy_aniso_dp_up_adjYm = (mu_up * aniso_richdsw%dv_darcy_aniso_up_dp_up_adjYm) &
                                               / (mu_up + mu_dn)
-      aniso_ds%dv_darcy_aniso_dp_dn_adjZm = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZm) &
+      aniso_richds%dv_darcy_aniso_dp_dn_adjYm = (mu_dn * aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjYm) &
                                               / (mu_up + mu_dn)
-      aniso_ds%dv_darcy_aniso_dp_up_adjZp = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up_adjZp) &
+      aniso_richds%dv_darcy_aniso_dp_up_adjYp = (mu_up * aniso_richdsw%dv_darcy_aniso_up_dp_up_adjYp) &
                                               / (mu_up + mu_dn)
-      aniso_ds%dv_darcy_aniso_dp_dn_adjZp = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn_adjZp) &
+      aniso_richds%dv_darcy_aniso_dp_dn_adjYp = (mu_dn * aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjYp) &
                                               / (mu_up + mu_dn)
 
-      aniso_ds%dv_darcy_aniso_dp_up = (mu_up * aniso_dds%dv_darcy_aniso_up_dp_up) / (mu_up + mu_dn)
-      aniso_ds%dv_darcy_aniso_dp_dn = (mu_dn * aniso_dds%dv_darcy_aniso_dn_dp_dn) / (mu_up + mu_dn)
+      aniso_richds%dv_darcy_aniso_dp_up_adjZm = (mu_up * aniso_richdsw%dv_darcy_aniso_up_dp_up_adjZm) &
+                                              / (mu_up + mu_dn)
+      aniso_richds%dv_darcy_aniso_dp_dn_adjZm = (mu_dn * aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjZm) &
+                                              / (mu_up + mu_dn)
+      aniso_richds%dv_darcy_aniso_dp_up_adjZp = (mu_up * aniso_richdsw%dv_darcy_aniso_up_dp_up_adjZp) &
+                                              / (mu_up + mu_dn)
+      aniso_richds%dv_darcy_aniso_dp_dn_adjZp = (mu_dn * aniso_richdsw%dv_darcy_aniso_dn_dp_dn_adjZp) &
+                                              / (mu_up + mu_dn)
 
-      deallocate(aniso_dds)
+      aniso_richds%dv_darcy_aniso_dp_up = (mu_up * aniso_richdsw%dv_darcy_aniso_up_dp_up) / (mu_up + mu_dn)
+      aniso_richds%dv_darcy_aniso_dp_dn = (mu_dn * aniso_richdsw%dv_darcy_aniso_dn_dp_dn) / (mu_up + mu_dn)
+
+      deallocate(aniso_richdsw)
     endif
   else
     ! -- 
     ! -- unstructured grid case
     ! -- 
-    aniso_du => aniso_data%unstruct
+    aniso_geomdu => aniso_geom_data%unstruct
+    aniso_richdu => aniso_rich_data%unstruct
 
     ! !dbg 
-    ! call PrintAnisoData(aniso_data)
+    ! call PrintAnisoData(aniso_geom_data)
 
     ! v,w are the coordinate vectors in the plane of the interface over which flux is being calculated
     dphi_v_up = 0
@@ -965,23 +980,23 @@ subroutine RichardsFluxAniso(aniso_data, &
     dphi_w_dn = 0
 
     if (calc_derivs) then
-      allocate(aniso_ddu)
-      allocate(aniso_ddu%ddphi_v_up_dp_up_adj(aniso_du%up%num_adj)) 
-      allocate(aniso_ddu%ddphi_w_up_dp_up_adj(aniso_du%up%num_adj)) 
-      allocate(aniso_ddu%ddphi_v_dn_dp_dn_adj(aniso_du%dn%num_adj))
-      allocate(aniso_ddu%ddphi_w_dn_dp_dn_adj(aniso_du%dn%num_adj))
-      aniso_ddu%ddphi_v_up_dp_up     = 0 ! scalar
-      aniso_ddu%ddphi_v_up_dp_dn     = 0 ! scalar
-      aniso_ddu%ddphi_v_up_dp_up_adj = 0 ! array
-      aniso_ddu%ddphi_w_up_dp_up     = 0 ! scalar
-      aniso_ddu%ddphi_w_up_dp_dn     = 0 ! scalar
-      aniso_ddu%ddphi_w_up_dp_up_adj = 0 ! array
-      aniso_ddu%ddphi_v_dn_dp_dn     = 0 ! scalar
-      aniso_ddu%ddphi_v_dn_dp_up     = 0 ! scalar
-      aniso_ddu%ddphi_v_dn_dp_dn_adj = 0 ! array
-      aniso_ddu%ddphi_w_dn_dp_dn     = 0 ! scalar
-      aniso_ddu%ddphi_w_dn_dp_up     = 0 ! scalar
-      aniso_ddu%ddphi_w_dn_dp_dn_adj = 0 ! array
+      allocate(aniso_richduw)
+      allocate(aniso_richduw%ddphi_v_up_dp_up_adj(aniso_geomdu%up%num_adj)) 
+      allocate(aniso_richduw%ddphi_w_up_dp_up_adj(aniso_geomdu%up%num_adj)) 
+      allocate(aniso_richduw%ddphi_v_dn_dp_dn_adj(aniso_geomdu%dn%num_adj))
+      allocate(aniso_richduw%ddphi_w_dn_dp_dn_adj(aniso_geomdu%dn%num_adj))
+      aniso_richduw%ddphi_v_up_dp_up     = 0 ! scalar
+      aniso_richduw%ddphi_v_up_dp_dn     = 0 ! scalar
+      aniso_richduw%ddphi_v_up_dp_up_adj = 0 ! array
+      aniso_richduw%ddphi_w_up_dp_up     = 0 ! scalar
+      aniso_richduw%ddphi_w_up_dp_dn     = 0 ! scalar
+      aniso_richduw%ddphi_w_up_dp_up_adj = 0 ! array
+      aniso_richduw%ddphi_v_dn_dp_dn     = 0 ! scalar
+      aniso_richduw%ddphi_v_dn_dp_up     = 0 ! scalar
+      aniso_richduw%ddphi_v_dn_dp_dn_adj = 0 ! array
+      aniso_richduw%ddphi_w_dn_dp_dn     = 0 ! scalar
+      aniso_richduw%ddphi_w_dn_dp_up     = 0 ! scalar
+      aniso_richduw%ddphi_w_dn_dp_dn_adj = 0 ! array
     endif
 
 
@@ -989,12 +1004,14 @@ subroutine RichardsFluxAniso(aniso_data, &
 
       if (iupdn==1) then
         ! upstream
-        aniso_updn => aniso_du%up
+        aniso_geomupdn => aniso_geomdu%up
+        aniso_richupdn => aniso_richdu%up
         pres_updn = global_auxvar_up%pres(1)
         rho_updn = rho_up
       else
         ! downstream
-        aniso_updn => aniso_du%dn
+        aniso_geomupdn => aniso_geomdu%dn
+        aniso_richupdn => aniso_richdu%dn
         pres_updn = global_auxvar_dn%pres(1)
         rho_updn = rho_dn
       endif
@@ -1002,81 +1019,81 @@ subroutine RichardsFluxAniso(aniso_data, &
       ! Calculate ddphi_du from v_darcy (= Dq * ukvr * dphi) supplied by RichardsFlux(),
       ! where Dq = (perm_up * perm_dn)/(dd_up*perm_dn + dd_dn*perm_up)
       ! (NB. ddphi_du is basically -(P_up-P_dn)/dist) + gravity terms)
-      dphi_du = -1.d0* v_darcy_iso / (ukvr*aniso_updn%perm_uu)
-      d2phi_du_dp_up = -1.d0* dv_darcy_iso_dp_up / (ukvr*aniso_updn%perm_uu) &
-                       + v_darcy_iso * dukvr_dp_up / (ukvr*ukvr*aniso_updn%perm_uu)
-      d2phi_du_dp_dn = -1.d0* dv_darcy_iso_dp_dn / (ukvr*aniso_updn%perm_uu) &
-                       + v_darcy_iso * dukvr_dp_dn / (ukvr*ukvr*aniso_updn%perm_uu)
+      dphi_du = -1.d0* v_darcy_iso / (ukvr*aniso_richupdn%perm_uu)
+      d2phi_du_dp_up = -1.d0* dv_darcy_iso_dp_up / (ukvr*aniso_richupdn%perm_uu) &
+                       + v_darcy_iso * dukvr_dp_up / (ukvr*ukvr*aniso_richupdn%perm_uu)
+      d2phi_du_dp_dn = -1.d0* dv_darcy_iso_dp_dn / (ukvr*aniso_richupdn%perm_uu) &
+                       + v_darcy_iso * dukvr_dp_dn / (ukvr*ukvr*aniso_richupdn%perm_uu)
 
-      do iadj = 1,aniso_updn%num_adj
+      do iadj = 1,aniso_geomupdn%num_adj
         ! Could form inv(M)*sum(rhs_terms) here, but it's easier to accumulate the derivative
         ! if written as sum(inv(M)*rhs_term)
-        dot = aniso_updn%dists_vw(1,iadj)*aniso_updn%dists_vw(1,iadj) &
-              + aniso_updn%dists_vw(2,iadj)*aniso_updn%dists_vw(2,iadj)
-        res =  (aniso_updn%pres_adj(iadj) - rho_updn*aniso_updn%adu_cell_adj(iadj)%ptr%loc_gravity ) &
-                 - (pres_updn - rho_updn*aniso_updn%loc_gravity) &
-                 - dphi_du*aniso_updn%dists_u(iadj)
+        dot = aniso_geomupdn%dists_vw(1,iadj)*aniso_geomupdn%dists_vw(1,iadj) &
+              + aniso_geomupdn%dists_vw(2,iadj)*aniso_geomupdn%dists_vw(2,iadj)
+        res =  (aniso_richupdn%pres_adj(iadj) - rho_updn*aniso_geomupdn%adu_cell_adj(iadj)%ptr%loc_gravity ) &
+                 - (pres_updn - rho_updn*aniso_geomupdn%loc_gravity) &
+                 - dphi_du*aniso_geomupdn%dists_u(iadj)
 
-        LSrhs(1) = (1.d0/dot) * aniso_updn%dists_vw(1,iadj)
-        LSrhs(2) = (1.d0/dot) * aniso_updn%dists_vw(2,iadj)
+        LSrhs(1) = (1.d0/dot) * aniso_geomupdn%dists_vw(1,iadj)
+        LSrhs(2) = (1.d0/dot) * aniso_geomupdn%dists_vw(2,iadj)
 
         if (iupdn==1) then
           ! upstream
           ! apply inverse of LS matrix-residual
-          dphi_v_up = dphi_v_up + aniso_updn%LSMatInv(1,1)*LSrhs(1)*res + aniso_updn%LSMatInv(1,2)*LSrhs(2)*res
-          dphi_w_up = dphi_w_up + aniso_updn%LSMatInv(2,1)*LSrhs(1)*res + aniso_updn%LSMatInv(2,2)*LSrhs(2)*res
+          dphi_v_up = dphi_v_up + aniso_geomupdn%LSMatInv(1,1)*LSrhs(1)*res + aniso_geomupdn%LSMatInv(1,2)*LSrhs(2)*res
+          dphi_w_up = dphi_w_up + aniso_geomupdn%LSMatInv(2,1)*LSrhs(1)*res + aniso_geomupdn%LSMatInv(2,2)*LSrhs(2)*res
           if (calc_derivs) then
-            dres_dp_up  = -1.d0 - d2phi_du_dp_up*aniso_updn%dists_u(iadj)
-            dres_dp_dn  =       - d2phi_du_dp_dn*aniso_updn%dists_u(iadj)
+            dres_dp_up  = -1.d0 - d2phi_du_dp_up*aniso_geomupdn%dists_u(iadj)
+            dres_dp_dn  =       - d2phi_du_dp_dn*aniso_geomupdn%dists_u(iadj)
             dres_dp_adj =  1.d0
     
-            aniso_ddu%ddphi_v_up_dp_up = aniso_ddu%ddphi_v_up_dp_up                         &
-                                         + aniso_updn%LSMatInv(1,1) * LSrhs(1) * dres_dp_up &
-                                         + aniso_updn%LSMatInv(1,2) * LSrhs(2) * dres_dp_up 
-            aniso_ddu%ddphi_v_up_dp_dn = aniso_ddu%ddphi_v_up_dp_dn                         &
-                                         + aniso_updn%LSMatInv(1,1) * LSrhs(1) * dres_dp_dn &
-                                         + aniso_updn%LSMatInv(1,2) * LSrhs(2) * dres_dp_dn 
+            aniso_richduw%ddphi_v_up_dp_up = aniso_richduw%ddphi_v_up_dp_up                         &
+                                         + aniso_geomupdn%LSMatInv(1,1) * LSrhs(1) * dres_dp_up &
+                                         + aniso_geomupdn%LSMatInv(1,2) * LSrhs(2) * dres_dp_up 
+            aniso_richduw%ddphi_v_up_dp_dn = aniso_richduw%ddphi_v_up_dp_dn                         &
+                                         + aniso_geomupdn%LSMatInv(1,1) * LSrhs(1) * dres_dp_dn &
+                                         + aniso_geomupdn%LSMatInv(1,2) * LSrhs(2) * dres_dp_dn 
 
-            aniso_ddu%ddphi_w_up_dp_up = aniso_ddu%ddphi_w_up_dp_up                         &
-                                         + aniso_updn%LSMatInv(2,1) * LSrhs(1) * dres_dp_up &
-                                         + aniso_updn%LSMatInv(2,2) * LSrhs(2) * dres_dp_up
-            aniso_ddu%ddphi_w_up_dp_dn = aniso_ddu%ddphi_w_up_dp_dn                         &
-                                         + aniso_updn%LSMatInv(2,1) * LSrhs(1) * dres_dp_dn &
-                                         + aniso_updn%LSMatInv(2,2) * LSrhs(2) * dres_dp_dn
+            aniso_richduw%ddphi_w_up_dp_up = aniso_richduw%ddphi_w_up_dp_up                         &
+                                         + aniso_geomupdn%LSMatInv(2,1) * LSrhs(1) * dres_dp_up &
+                                         + aniso_geomupdn%LSMatInv(2,2) * LSrhs(2) * dres_dp_up
+            aniso_richduw%ddphi_w_up_dp_dn = aniso_richduw%ddphi_w_up_dp_dn                         &
+                                         + aniso_geomupdn%LSMatInv(2,1) * LSrhs(1) * dres_dp_dn &
+                                         + aniso_geomupdn%LSMatInv(2,2) * LSrhs(2) * dres_dp_dn
 
-            aniso_ddu%ddphi_v_up_dp_up_adj(iadj) = aniso_updn%LSMatInv(1,1) * LSrhs(1) * dres_dp_adj &
-                                                 + aniso_updn%LSMatInv(1,2) * LSrhs(2) * dres_dp_adj
-            aniso_ddu%ddphi_w_up_dp_up_adj(iadj) = aniso_updn%LSMatInv(2,1) * LSrhs(1) * dres_dp_adj &
-                                                 + aniso_updn%LSMatInv(2,2) * LSrhs(2) * dres_dp_adj
+            aniso_richduw%ddphi_v_up_dp_up_adj(iadj) = aniso_geomupdn%LSMatInv(1,1) * LSrhs(1) * dres_dp_adj &
+                                                 + aniso_geomupdn%LSMatInv(1,2) * LSrhs(2) * dres_dp_adj
+            aniso_richduw%ddphi_w_up_dp_up_adj(iadj) = aniso_geomupdn%LSMatInv(2,1) * LSrhs(1) * dres_dp_adj &
+                                                 + aniso_geomupdn%LSMatInv(2,2) * LSrhs(2) * dres_dp_adj
           endif
         else
           ! downstream
           ! apply inverse of LS matrix-residual
-          dphi_v_dn = dphi_v_dn + aniso_updn%LSMatInv(1,1)*LSrhs(1)*res + aniso_updn%LSMatInv(1,2)*LSrhs(2)*res
-          dphi_w_dn = dphi_w_dn + aniso_updn%LSMatInv(2,1)*LSrhs(1)*res + aniso_updn%LSMatInv(2,2)*LSrhs(2)*res
+          dphi_v_dn = dphi_v_dn + aniso_geomupdn%LSMatInv(1,1)*LSrhs(1)*res + aniso_geomupdn%LSMatInv(1,2)*LSrhs(2)*res
+          dphi_w_dn = dphi_w_dn + aniso_geomupdn%LSMatInv(2,1)*LSrhs(1)*res + aniso_geomupdn%LSMatInv(2,2)*LSrhs(2)*res
           if (calc_derivs) then
-            dres_dp_up  =       - d2phi_du_dp_up*aniso_updn%dists_u(iadj)
-            dres_dp_dn  = -1.d0 - d2phi_du_dp_dn*aniso_updn%dists_u(iadj)
+            dres_dp_up  =       - d2phi_du_dp_up*aniso_geomupdn%dists_u(iadj)
+            dres_dp_dn  = -1.d0 - d2phi_du_dp_dn*aniso_geomupdn%dists_u(iadj)
             dres_dp_adj =  1.d0
     
-            aniso_ddu%ddphi_v_dn_dp_dn = aniso_ddu%ddphi_v_dn_dp_dn                         &
-                                         + aniso_updn%LSMatInv(1,1) * LSrhs(1) * dres_dp_dn &
-                                         + aniso_updn%LSMatInv(1,2) * LSrhs(2) * dres_dp_dn
-            aniso_ddu%ddphi_v_dn_dp_up = aniso_ddu%ddphi_v_dn_dp_up                         &
-                                         + aniso_updn%LSMatInv(1,1) * LSrhs(1) * dres_dp_up &
-                                         + aniso_updn%LSMatInv(1,2) * LSrhs(2) * dres_dp_up
+            aniso_richduw%ddphi_v_dn_dp_dn = aniso_richduw%ddphi_v_dn_dp_dn                         &
+                                         + aniso_geomupdn%LSMatInv(1,1) * LSrhs(1) * dres_dp_dn &
+                                         + aniso_geomupdn%LSMatInv(1,2) * LSrhs(2) * dres_dp_dn
+            aniso_richduw%ddphi_v_dn_dp_up = aniso_richduw%ddphi_v_dn_dp_up                         &
+                                         + aniso_geomupdn%LSMatInv(1,1) * LSrhs(1) * dres_dp_up &
+                                         + aniso_geomupdn%LSMatInv(1,2) * LSrhs(2) * dres_dp_up
                                          
-            aniso_ddu%ddphi_w_dn_dp_dn = aniso_ddu%ddphi_w_dn_dp_dn                         &
-                                         + aniso_updn%LSMatInv(2,1) * LSrhs(1) * dres_dp_dn &
-                                         + aniso_updn%LSMatInv(2,2) * LSrhs(2) * dres_dp_dn
-            aniso_ddu%ddphi_w_dn_dp_up = aniso_ddu%ddphi_w_dn_dp_up                         &
-                                         + aniso_updn%LSMatInv(2,1) * LSrhs(1) * dres_dp_up &
-                                         + aniso_updn%LSMatInv(2,2) * LSrhs(2) * dres_dp_up
+            aniso_richduw%ddphi_w_dn_dp_dn = aniso_richduw%ddphi_w_dn_dp_dn                         &
+                                         + aniso_geomupdn%LSMatInv(2,1) * LSrhs(1) * dres_dp_dn &
+                                         + aniso_geomupdn%LSMatInv(2,2) * LSrhs(2) * dres_dp_dn
+            aniso_richduw%ddphi_w_dn_dp_up = aniso_richduw%ddphi_w_dn_dp_up                         &
+                                         + aniso_geomupdn%LSMatInv(2,1) * LSrhs(1) * dres_dp_up &
+                                         + aniso_geomupdn%LSMatInv(2,2) * LSrhs(2) * dres_dp_up
                                         
-            aniso_ddu%ddphi_v_dn_dp_dn_adj(iadj) = aniso_updn%LSMatInv(1,1) * LSrhs(1) * dres_dp_adj &
-                                                 + aniso_updn%LSMatInv(1,2) * LSrhs(2) * dres_dp_adj
-            aniso_ddu%ddphi_w_dn_dp_dn_adj(iadj) = aniso_updn%LSMatInv(2,1) * LSrhs(1) * dres_dp_adj &
-                                                 + aniso_updn%LSMatInv(2,2) * LSrhs(2) * dres_dp_adj
+            aniso_richduw%ddphi_v_dn_dp_dn_adj(iadj) = aniso_geomupdn%LSMatInv(1,1) * LSrhs(1) * dres_dp_adj &
+                                                 + aniso_geomupdn%LSMatInv(1,2) * LSrhs(2) * dres_dp_adj
+            aniso_richduw%ddphi_w_dn_dp_dn_adj(iadj) = aniso_geomupdn%LSMatInv(2,1) * LSrhs(1) * dres_dp_adj &
+                                                 + aniso_geomupdn%LSMatInv(2,2) * LSrhs(2) * dres_dp_adj
           endif
         endif
       enddo
@@ -1084,47 +1101,51 @@ subroutine RichardsFluxAniso(aniso_data, &
     enddo
 
     ! Calculate anisotropic darcy contribution in up/dn cells
-    v_darcy_aniso_up = -1.d0 * (aniso_du%up%perm_uv * dphi_v_up + aniso_du%up%perm_uw * dphi_w_up) * ukvr
-    v_darcy_aniso_dn = -1.d0 * (aniso_du%dn%perm_uv * dphi_v_dn + aniso_du%dn%perm_uw * dphi_w_dn) * ukvr
-    mu_up =       dist(-1) *dist(0)/aniso_du%up%perm_uu  ! weight - up (dist to interface/Kuu)
-    mu_dn = (1.d0-dist(-1))*dist(0)/aniso_du%dn%perm_uu  ! weight - dn (dist to interface/Kuu)
+    v_darcy_aniso_up = -1.d0 * (aniso_richdu%up%perm_uv * dphi_v_up + aniso_richdu%up%perm_uw * dphi_w_up) * ukvr
+    v_darcy_aniso_dn = -1.d0 * (aniso_richdu%dn%perm_uv * dphi_v_dn + aniso_richdu%dn%perm_uw * dphi_w_dn) * ukvr
+    mu_up =       dist(-1) *dist(0)/aniso_richdu%up%perm_uu  ! weight - up (dist to interface/Kuu)
+    mu_dn = (1.d0-dist(-1))*dist(0)/aniso_richdu%dn%perm_uu  ! weight - dn (dist to interface/Kuu)
     ! average up/dn components to obtain a consistent interface midpoint pressure
     v_darcy_aniso = (mu_up*v_darcy_aniso_up + mu_dn*v_darcy_aniso_dn) / (mu_up + mu_dn)
 
     if (calc_derivs) then
-      aniso_du%dv_darcy_aniso_dp_up = (mu_up/(mu_up+mu_dn)) * &
-                                      (-1.0d0 * (  aniso_du%up%perm_uv * aniso_ddu%ddphi_v_up_dp_up &
-                                                 + aniso_du%up%perm_uw * aniso_ddu%ddphi_w_up_dp_up) * ukvr &
-                                       -1.0d0 * (aniso_du%up%perm_uv * dphi_v_up + aniso_du%up%perm_uw * dphi_w_up) * dukvr_dp_up) &
+      aniso_richdu%dv_darcy_aniso_dp_up = (mu_up/(mu_up+mu_dn)) * &
+                                      (-1.0d0 * (  aniso_richdu%up%perm_uv * aniso_richduw%ddphi_v_up_dp_up &
+                                                 + aniso_richdu%up%perm_uw * aniso_richduw%ddphi_w_up_dp_up) * ukvr &
+                                       -1.0d0 * (aniso_richdu%up%perm_uv * dphi_v_up &
+                                                 + aniso_richdu%up%perm_uw * dphi_w_up) * dukvr_dp_up) &
                                        + (mu_dn/(mu_up+mu_dn)) * &
-                                       (-1.0d0 * (  aniso_du%dn%perm_uv * aniso_ddu%ddphi_v_dn_dp_up &
-                                                  + aniso_du%dn%perm_uw * aniso_ddu%ddphi_w_dn_dp_up) * ukvr &
-                                       -1.0d0 * (aniso_du%dn%perm_uv * dphi_v_dn + aniso_du%dn%perm_uw * dphi_w_dn) * dukvr_dp_up)
-      aniso_du%dv_darcy_aniso_dp_dn = (mu_dn/(mu_up+mu_dn)) * &
-                                      (-1.0d0 * (  aniso_du%dn%perm_uv * aniso_ddu%ddphi_v_dn_dp_dn &
-                                                 + aniso_du%dn%perm_uw * aniso_ddu%ddphi_w_dn_dp_dn) * ukvr &
-                                       -1.0d0 * (aniso_du%dn%perm_uv * dphi_v_dn + aniso_du%dn%perm_uw * dphi_w_dn) * dukvr_dp_dn) &
+                                       (-1.0d0 * (  aniso_richdu%dn%perm_uv * aniso_richduw%ddphi_v_dn_dp_up &
+                                                  + aniso_richdu%dn%perm_uw * aniso_richduw%ddphi_w_dn_dp_up) * ukvr &
+                                       -1.0d0 * (aniso_richdu%dn%perm_uv * dphi_v_dn &
+                                                 + aniso_richdu%dn%perm_uw * dphi_w_dn) * dukvr_dp_up)
+      aniso_richdu%dv_darcy_aniso_dp_dn = (mu_dn/(mu_up+mu_dn)) * &
+                                      (-1.0d0 * (  aniso_richdu%dn%perm_uv * aniso_richduw%ddphi_v_dn_dp_dn &
+                                                 + aniso_richdu%dn%perm_uw * aniso_richduw%ddphi_w_dn_dp_dn) * ukvr &
+                                       -1.0d0 * (aniso_richdu%dn%perm_uv * dphi_v_dn &
+                                                 + aniso_richdu%dn%perm_uw * dphi_w_dn) * dukvr_dp_dn) &
                                        + (mu_up/(mu_up+mu_dn)) * &
-                                       (-1.0d0 * (  aniso_du%up%perm_uv * aniso_ddu%ddphi_v_up_dp_dn &
-                                                  + aniso_du%up%perm_uw * aniso_ddu%ddphi_w_up_dp_dn) * ukvr &
-                                        -1.0d0 * (aniso_du%up%perm_uv * dphi_v_up + aniso_du%up%perm_uw * dphi_w_up) * dukvr_dp_dn) 
-      do iadj=1,aniso_du%up%num_adj
-        aniso_du%dv_darcy_aniso_dp_up_adj(iadj) = (mu_up/(mu_up+mu_dn)) * &
-                                               -1.0d0 * (  aniso_du%up%perm_uv * aniso_ddu%ddphi_v_up_dp_up_adj(iadj) &
-                                                         + aniso_du%up%perm_uw * aniso_ddu%ddphi_w_up_dp_up_adj(iadj)) * ukvr
+                                       (-1.0d0 * (  aniso_richdu%up%perm_uv * aniso_richduw%ddphi_v_up_dp_dn &
+                                                  + aniso_richdu%up%perm_uw * aniso_richduw%ddphi_w_up_dp_dn) * ukvr &
+                                        -1.0d0 * (aniso_richdu%up%perm_uv * dphi_v_up &
+                                                  + aniso_richdu%up%perm_uw * dphi_w_up) * dukvr_dp_dn) 
+      do iadj=1,aniso_geomdu%up%num_adj
+        aniso_richdu%dv_darcy_aniso_dp_up_adj(iadj) = (mu_up/(mu_up+mu_dn)) * &
+                                  -1.0d0 * (  aniso_richdu%up%perm_uv * aniso_richduw%ddphi_v_up_dp_up_adj(iadj) &
+                                            + aniso_richdu%up%perm_uw * aniso_richduw%ddphi_w_up_dp_up_adj(iadj)) * ukvr
       enddo
-      do iadj=1,aniso_du%dn%num_adj
-        aniso_du%dv_darcy_aniso_dp_dn_adj(iadj) = (mu_dn/(mu_up+mu_dn)) * &
-                                               -1.0d0 * (  aniso_du%dn%perm_uv * aniso_ddu%ddphi_v_dn_dp_dn_adj(iadj) &
-                                                         + aniso_du%dn%perm_uw * aniso_ddu%ddphi_w_dn_dp_dn_adj(iadj)) * ukvr
+      do iadj=1,aniso_geomdu%dn%num_adj
+        aniso_richdu%dv_darcy_aniso_dp_dn_adj(iadj) = (mu_dn/(mu_up+mu_dn)) * &
+                                  -1.0d0 * (  aniso_richdu%dn%perm_uv * aniso_richduw%ddphi_v_dn_dp_dn_adj(iadj) &
+                                            + aniso_richdu%dn%perm_uw * aniso_richduw%ddphi_w_dn_dp_dn_adj(iadj)) * ukvr
       enddo
       ! dbg
-      ! call PrintAnisoData(aniso_data)
+      ! call PrintAnisoData(aniso_geom_data)
       ! write (*,"(' v_darcy_aniso=',e10.3)") v_darcy_aniso
     endif
 
     if (calc_derivs) then
-      deallocate(aniso_ddu)
+      deallocate(aniso_richduw)
     endif
   endif
 end subroutine RichardsFluxAniso
@@ -1136,7 +1157,8 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
                         rich_auxvar_dn,global_auxvar_dn, &
                         material_auxvar_dn, &
                         area, dist, &
-                        aniso_data, &
+                        aniso_geom, &
+                        aniso_rich, &
                         option,v_darcy,Res)
   !
   ! Computes the internal flux terms for the residual
@@ -1164,7 +1186,8 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
   PetscReal :: ukvr,Dq
   PetscReal :: upweight, density_ave, gravity, dphi
 
-  type(aniso_data_type), pointer :: aniso_data
+  type(aniso_geom_data_type), pointer :: aniso_geom
+  type(aniso_richards_data_type), pointer :: aniso_rich
   PetscReal :: v_darcy_aniso
 
   fluxm = 0.d0
@@ -1173,7 +1196,7 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
 
   call ConnectionCalculateDistances(dist,option%gravity,dd_up,dd_dn, &
                                     dist_gravity,upweight)
-  if(.not. associated(aniso_data)) then
+  if(.not. associated(aniso_geom)) then
     call PermeabilityTensorToScalar(material_auxvar_up,dist,perm_up)
     call PermeabilityTensorToScalar(material_auxvar_dn,dist,perm_dn)
   else
@@ -1182,7 +1205,7 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
     ! consistent with anisotropic calculation (avoid collapsing to scalar).
     ! Additional anisotropic terms due to tangential head gradients are added
     ! by later call to RichardsFluxAniso()
-    if(associated(aniso_data%struct)) then
+    if(associated(aniso_geom%struct)) then
       ! structured grid case
       ! Can do same calls as isotropic case here, should just extract
       !       k_xx, k_yy or k_zz depending on orientation
@@ -1193,8 +1216,8 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
     else
       ! unstructured grid case
       ! u-direction is chosen to be parallel to centre->centre direction, so
-      perm_up = aniso_data%unstruct%up%perm_uu
-      perm_dn = aniso_data%unstruct%dn%perm_uu
+      perm_up = aniso_rich%unstruct%up%perm_uu
+      perm_dn = aniso_rich%unstruct%dn%perm_uu
     endif
   endif
 
@@ -1229,10 +1252,10 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
       v_darcy= Dq * ukvr * dphi
 
       ! add anisotropic contributions
-      if(associated(aniso_data)) then
-        ! Call PrintAnisoData(aniso_data)
+      if(associated(aniso_geom)) then
+        ! Call PrintAnisoData(aniso_geom)
         ! Call RichardsFluxAniso with calc_derivs=PETSC_FALSE
-        Call RichardsFluxAniso(aniso_data,material_auxvar_up,material_auxvar_dn,&
+        Call RichardsFluxAniso(aniso_geom,aniso_rich,material_auxvar_up,material_auxvar_dn,&
                                   global_auxvar_up,global_auxvar_dn,&
                                   option,dist,&
                                   ukvr,0.d0,0.d0,&

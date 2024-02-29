@@ -29,8 +29,10 @@ module Connection_module
     PetscInt, pointer :: face_id(:)    ! list of ids of faces (in local order)
     type(connection_set_type), pointer :: next
 
-    type(aniso_data_type), pointer :: aniso_data(:)                ! anisotropy data, one set per connection (if needed)
+    type(aniso_geom_data_type), pointer :: aniso_geom(:)           ! anisotropy data, one set per connection (if needed)
     type(connection_set_type), pointer :: ghost_ghost_connections  ! extra connections for use in anisotropy calcs
+    ! SJB TODO - the following should be moved out of Connection - which should be purely geometry
+    type(aniso_richards_data_type), pointer :: aniso_rich(:)       ! Richards anisotropy data, one set per connection (if needed)
   end type connection_set_type
 
 
@@ -85,7 +87,8 @@ function ConnectionCreate(num_connections,connection_itype)
   nullify(connection%id_dn)
   nullify(connection%id_up2)
   nullify(connection%id_dn2)
-  nullify(connection%aniso_data)
+  nullify(connection%aniso_geom)
+  nullify(connection%aniso_rich)
   nullify(connection%face_id)
   nullify(connection%dist)
   nullify(connection%intercp)

@@ -1825,9 +1825,13 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
   type(point3d_type) :: point_up, point_dn
   type(point3d_type) :: intercept1, intercept2, intercept
 
-  type(aniso_data_type), pointer :: aniso_data
-  type(aniso_data_unstructured_type), pointer :: aniso_data_unstruct
-  type(aniso_data_unstructured_cell_type), pointer :: aniso_updn
+  type(aniso_geom_data_type), pointer :: aniso_geom
+  type(aniso_geom_data_unstructured_type), pointer :: aniso_geom_unstruct
+  type(aniso_geom_unstructured_cell_type), pointer :: aniso_updn
+
+  type(aniso_richards_data_type), pointer :: aniso_rich ! SJB TODO - should initialise elsewhere (only grid code should be here)
+
+  
   PetscInt :: count_up_adj, count_dn_adj, iupdn, iadj, conn_id
   PetscReal :: dot, det
   PetscReal :: MLS(2,2)
@@ -2396,57 +2400,69 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
       enddo
     enddo
 
-    ! Populate aniso_data
-    allocate(connections%aniso_data(nconn))
-    allocate(connectionsgg%aniso_data(nconngg))
+    ! Populate aniso_geom
+    allocate(connections%aniso_geom(nconn))
+    allocate(connectionsgg%aniso_geom(nconngg))
+
+    allocate(connections%aniso_rich(nconn))
+    allocate(connectionsgg%aniso_rich(nconngg))
 
     ! Loop over ALL connections (standard ones for local-local and local-ghost and extra ones for ghost-ghost)
     do iconn = 1,nconn+nconngg
       if(iconn .le. nconn) then
-        aniso_data => connections%aniso_data(iconn)
+        aniso_geom => connections%aniso_geom(iconn)
+        aniso_rich => connections%aniso_rich(iconn)
       else
-        aniso_data => connectionsgg%aniso_data(iconn-nconn)
+        aniso_geom => connectionsgg%aniso_geom(iconn-nconn)
+        aniso_rich => connectionsgg%aniso_rich(iconn-nconn)
       endif
-      if (.not.associated(aniso_data%unstruct)) then
+      if (.not.associated(aniso_geom%unstruct)) then
         ! SJB - would be better to not be using MAX_VERT_PER_FACE here - could get nfaces for up/dn cells
-        allocate(aniso_data%unstruct)
-        allocate(aniso_data%unstruct%dv_darcy_aniso_dp_up_adj(MAX_VERT_PER_FACE))
-        allocate(aniso_data%unstruct%dv_darcy_aniso_dp_dn_adj(MAX_VERT_PER_FACE))
-        allocate(aniso_data%unstruct%Jup_adj(MAX_VERT_PER_FACE))
-        allocate(aniso_data%unstruct%Jdn_adj(MAX_VERT_PER_FACE))
-        aniso_data%unstruct%dv_darcy_aniso_dp_up_adj = 0
-        aniso_data%unstruct%dv_darcy_aniso_dp_dn_adj = 0
-        aniso_data%unstruct%Jup_adj = 0
-        aniso_data%unstruct%Jdn_adj = 0
+        allocate(aniso_geom%unstruct)
+
         ! allocate adjacency info
-        allocate(aniso_data%unstruct%up)
-        allocate(aniso_data%unstruct%dn)
-        allocate(aniso_data%unstruct%up%cell_id_adj(MAX_VERT_PER_FACE))
-        allocate(aniso_data%unstruct%dn%cell_id_adj(MAX_VERT_PER_FACE))
-        allocate(aniso_data%unstruct%up%face_id_adj(MAX_VERT_PER_FACE))
-        allocate(aniso_data%unstruct%dn%face_id_adj(MAX_VERT_PER_FACE))
-        allocate(aniso_data%unstruct%up%adu_cell_adj(MAX_VERT_PER_FACE))
-        allocate(aniso_data%unstruct%dn%adu_cell_adj(MAX_VERT_PER_FACE))
-        aniso_data%unstruct%up%cell_id_adj = 0
-        aniso_data%unstruct%dn%cell_id_adj = 0
-        aniso_data%unstruct%up%face_id_adj = 0
-        aniso_data%unstruct%dn%face_id_adj = 0
-        aniso_data%unstruct%up%num_adj = 0
-        aniso_data%unstruct%dn%num_adj = 0
+        allocate(aniso_geom%unstruct%up)
+        allocate(aniso_geom%unstruct%dn)
+        allocate(aniso_geom%unstruct%up%cell_id_adj(MAX_VERT_PER_FACE))
+        allocate(aniso_geom%unstruct%dn%cell_id_adj(MAX_VERT_PER_FACE))
+        allocate(aniso_geom%unstruct%up%face_id_adj(MAX_VERT_PER_FACE))
+        allocate(aniso_geom%unstruct%dn%face_id_adj(MAX_VERT_PER_FACE))
+        allocate(aniso_geom%unstruct%up%adu_cell_adj(MAX_VERT_PER_FACE))
+        allocate(aniso_geom%unstruct%dn%adu_cell_adj(MAX_VERT_PER_FACE))
+        aniso_geom%unstruct%up%cell_id_adj = 0
+        aniso_geom%unstruct%dn%cell_id_adj = 0
+        aniso_geom%unstruct%up%face_id_adj = 0
+        aniso_geom%unstruct%dn%face_id_adj = 0
+        aniso_geom%unstruct%up%num_adj = 0
+        aniso_geom%unstruct%dn%num_adj = 0
         ! allocate (u,v,w) coords
-        allocate(aniso_data%unstruct%uvec(1:3))
-        allocate(aniso_data%unstruct%vvec(1:3))
-        allocate(aniso_data%unstruct%wvec(1:3))
-        aniso_data%unstruct%uvec = 0.d0
-        aniso_data%unstruct%vvec = 0.d0
-        aniso_data%unstruct%wvec = 0.d0
+        allocate(aniso_geom%unstruct%uvec(1:3))
+        allocate(aniso_geom%unstruct%vvec(1:3))
+        allocate(aniso_geom%unstruct%wvec(1:3))
+        aniso_geom%unstruct%uvec = 0.d0
+        aniso_geom%unstruct%vvec = 0.d0
+        aniso_geom%unstruct%wvec = 0.d0
+
+        ! SJB TODO - should initialise elsewhere (only grid code should be here)
+        allocate(aniso_rich%unstruct)
+        allocate(aniso_rich%unstruct%dv_darcy_aniso_dp_up_adj(MAX_VERT_PER_FACE))
+        allocate(aniso_rich%unstruct%dv_darcy_aniso_dp_dn_adj(MAX_VERT_PER_FACE))
+        allocate(aniso_rich%unstruct%Jup_adj(MAX_VERT_PER_FACE))
+        allocate(aniso_rich%unstruct%Jdn_adj(MAX_VERT_PER_FACE))
+        aniso_rich%unstruct%dv_darcy_aniso_dp_up_adj = 0
+        aniso_rich%unstruct%dv_darcy_aniso_dp_dn_adj = 0
+        aniso_rich%unstruct%Jup_adj = 0
+        aniso_rich%unstruct%Jdn_adj = 0
+
         ! allocate pressure adjacency data
-        allocate(aniso_data%unstruct%up%pres_adj(MAX_VERT_PER_FACE))
-        allocate(aniso_data%unstruct%dn%pres_adj(MAX_VERT_PER_FACE))
-        aniso_data%unstruct%up%pres_adj = 0.d0
-        aniso_data%unstruct%dn%pres_adj = 0.d0
+        allocate(aniso_rich%unstruct%up)
+        allocate(aniso_rich%unstruct%dn)
+        allocate(aniso_rich%unstruct%up%pres_adj(MAX_VERT_PER_FACE))
+        allocate(aniso_rich%unstruct%dn%pres_adj(MAX_VERT_PER_FACE))
+        aniso_rich%unstruct%up%pres_adj = 0.d0
+        aniso_rich%unstruct%dn%pres_adj = 0.d0
       endif
-      aniso_data_unstruct => aniso_data%unstruct
+      aniso_geom_unstruct => aniso_geom%unstruct
 
       ! store face_id
       if(iconn .le. nconn) then
@@ -2454,7 +2470,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
       else
         face_id = connectionsgg%face_id(iconn-nconn)
       endif
-      aniso_data_unstruct%conn_face_id = face_id
+      aniso_geom_unstruct%conn_face_id = face_id
 
       do iupdn = 1,2
         if (iupdn==1) then
@@ -2479,14 +2495,14 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
         v1 = (/ grid_x(local_id), grid_y(local_id), grid_z(local_id) /)
         if (iupdn==1) then
           ! upstream
-          aniso_data_unstruct%up%cell_id = local_id
-          aniso_data_unstruct%up%cell_pos = v1
-          aniso_data_unstruct%up%loc_gravity = DotProduct(option%gravity,v1)
+          aniso_geom_unstruct%up%cell_id = local_id
+          aniso_geom_unstruct%up%cell_pos = v1
+          aniso_geom_unstruct%up%loc_gravity = DotProduct(option%gravity,v1)
         else
           ! downstream
-          aniso_data_unstruct%dn%cell_id = local_id
-          aniso_data_unstruct%dn%cell_pos = v1
-          aniso_data_unstruct%dn%loc_gravity = DotProduct(option%gravity,v1)
+          aniso_geom_unstruct%dn%cell_id = local_id
+          aniso_geom_unstruct%dn%cell_pos = v1
+          aniso_geom_unstruct%dn%loc_gravity = DotProduct(option%gravity,v1)
         endif
 
         if(iconn .le. nconn) then
@@ -2565,14 +2581,14 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
                   ! record adjacency info. (cell_id2 is adjacent)
                   if (iupdn==1) then
                     count_up_adj = count_up_adj + 1
-                    aniso_data_unstruct%up%cell_id_adj(count_up_adj) = cell_id2
-                    aniso_data_unstruct%up%face_id_adj(count_up_adj) = face_id2
-                    aniso_data_unstruct%up%num_adj = aniso_data_unstruct%up%num_adj + 1
+                    aniso_geom_unstruct%up%cell_id_adj(count_up_adj) = cell_id2
+                    aniso_geom_unstruct%up%face_id_adj(count_up_adj) = face_id2
+                    aniso_geom_unstruct%up%num_adj = aniso_geom_unstruct%up%num_adj + 1
                   else
                     count_dn_adj = count_dn_adj + 1
-                    aniso_data_unstruct%dn%cell_id_adj(count_dn_adj) = cell_id2
-                    aniso_data_unstruct%dn%face_id_adj(count_dn_adj) = face_id2
-                    aniso_data_unstruct%dn%num_adj = aniso_data_unstruct%dn%num_adj + 1
+                    aniso_geom_unstruct%dn%cell_id_adj(count_dn_adj) = cell_id2
+                    aniso_geom_unstruct%dn%face_id_adj(count_dn_adj) = face_id2
+                    aniso_geom_unstruct%dn%num_adj = aniso_geom_unstruct%dn%num_adj + 1
                   endif
                 endif
               else
@@ -2595,7 +2611,7 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
       else
         v1 = connectionsgg%dist(1:3,iconn-nconn)
       endif
-      aniso_data_unstruct%uvec = v1/sqrt(DotProduct(v1,v1))
+      aniso_geom_unstruct%uvec = v1/sqrt(DotProduct(v1,v1))
 
       ! set v based on two of the face vertices, resolved to be perpendicular to u
       point1 = unstructured_grid%vertices(unstructured_grid%face_to_vertex(1,face_id))
@@ -2603,12 +2619,12 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
       v1(1) = point2%x-point1%x
       v1(2) = point2%y-point1%y
       v1(3) = point2%z-point1%z
-      v2 = v1 - DotProduct(v1,aniso_data_unstruct%uvec)*aniso_data_unstruct%uvec
-      aniso_data_unstruct%vvec = v2/sqrt(DotProduct(v2,v2))
+      v2 = v1 - DotProduct(v1,aniso_geom_unstruct%uvec)*aniso_geom_unstruct%uvec
+      aniso_geom_unstruct%vvec = v2/sqrt(DotProduct(v2,v2))
 
       ! set w perpendicular to u,v
-      vcross = CrossProduct(aniso_data_unstruct%uvec,aniso_data_unstruct%vvec)
-      aniso_data_unstruct%wvec = vcross / sqrt(DotProduct(vcross,vcross))
+      vcross = CrossProduct(aniso_geom_unstruct%uvec,aniso_geom_unstruct%vvec)
+      aniso_geom_unstruct%wvec = vcross / sqrt(DotProduct(vcross,vcross))
     enddo
 
     deallocate(temp_int_2d)
@@ -2616,8 +2632,8 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
 
     ! dbg
 !    do iconn = 1,nconn
-!      aniso_data => connections%aniso_data(iconn)
-!      Call PrintAnisoData(aniso_data)
+!      aniso_geom => connections%aniso_geom(iconn)
+!      Call PrintAnisoData(aniso_geom)
 !    enddo
     ! dbg - write connections file
 !    write(string,"('connections_',i1,'_of_',i1,'.txt')") option%myrank, option%mycommsize
@@ -2625,64 +2641,64 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
 !    write(77,"('RANK ',i4)") option%myrank
 !    do iconn = 1,nconn
 !      write(77,"('Connection ',i4)") iconn
-!      aniso_data_unstruct => connections%aniso_data(iconn)%unstruct
+!      aniso_geom_unstruct => connections%aniso_geom(iconn)%unstruct
 !      ! up
 !      write(77,"('  up ',i4)") connections%id_up(iconn)
-!      do i=1,aniso_data_unstruct%up%num_adj
-!        write(77,"('    -> ',i4)") aniso_data_unstruct%up%cell_id_adj(i)
+!      do i=1,aniso_geom_unstruct%up%num_adj
+!        write(77,"('    -> ',i4)") aniso_geom_unstruct%up%cell_id_adj(i)
 !      enddo
 !      ! dn
 !      write(77,"('  dn ',i4)") connections%id_dn(iconn)
-!      do i=1,aniso_data_unstruct%dn%num_adj
-!        write(77,"('    -> ',i4)") aniso_data_unstruct%dn%cell_id_adj(i)
+!      do i=1,aniso_geom_unstruct%dn%num_adj
+!        write(77,"('    -> ',i4)") aniso_geom_unstruct%dn%cell_id_adj(i)
 !      enddo
 !    enddo
 !    close(77)
 
     ! Loop over connections again and construct interpolation machinery parameters
     do iconn = 1,nconn
-      aniso_data_unstruct => connections%aniso_data(iconn)%unstruct
+      aniso_geom_unstruct => connections%aniso_geom(iconn)%unstruct
       do iface = 1,MAX_VERT_PER_FACE ! SJB - would be better to not be using MAX_VERT_PER_FACE here - could get nfaces for up/dn cells
         ! up
-        face_id = aniso_data_unstruct%up%face_id_adj(iface)
+        face_id = aniso_geom_unstruct%up%face_id_adj(iface)
         if(face_id .gt. 0) then
           ! local-local or local-ghost
           conn_id = unstructured_grid%face_to_connection(face_id)
           ! store ptr to aniso data for adjacent cell
-          if( aniso_data_unstruct%up%cell_id == connections%aniso_data(conn_id)%unstruct%up%cell_id ) then ! dn is adj
-            aniso_data_unstruct%up%adu_cell_adj(iface)%ptr => connections%aniso_data(conn_id)%unstruct%dn
+          if( aniso_geom_unstruct%up%cell_id == connections%aniso_geom(conn_id)%unstruct%up%cell_id ) then ! dn is adj
+            aniso_geom_unstruct%up%adu_cell_adj(iface)%ptr => connections%aniso_geom(conn_id)%unstruct%dn
           else ! up is adj
-            aniso_data_unstruct%up%adu_cell_adj(iface)%ptr => connections%aniso_data(conn_id)%unstruct%up
+            aniso_geom_unstruct%up%adu_cell_adj(iface)%ptr => connections%aniso_geom(conn_id)%unstruct%up
           endif
         else if(face_id .lt. 0) then
           ! ghost-ghost
           conn_id = face_to_connectiongg(-face_id)
           ! store ptr to aniso data for adjacent cell
-          if( aniso_data_unstruct%up%cell_id == connectionsgg%aniso_data(conn_id)%unstruct%up%cell_id ) then ! dn is adj
-            aniso_data_unstruct%up%adu_cell_adj(iface)%ptr => connectionsgg%aniso_data(conn_id)%unstruct%dn
+          if( aniso_geom_unstruct%up%cell_id == connectionsgg%aniso_geom(conn_id)%unstruct%up%cell_id ) then ! dn is adj
+            aniso_geom_unstruct%up%adu_cell_adj(iface)%ptr => connectionsgg%aniso_geom(conn_id)%unstruct%dn
           else ! up is adj
-            aniso_data_unstruct%up%adu_cell_adj(iface)%ptr => connectionsgg%aniso_data(conn_id)%unstruct%up
+            aniso_geom_unstruct%up%adu_cell_adj(iface)%ptr => connectionsgg%aniso_geom(conn_id)%unstruct%up
           endif
         endif
         ! dn
-        face_id = aniso_data_unstruct%dn%face_id_adj(iface)
+        face_id = aniso_geom_unstruct%dn%face_id_adj(iface)
         if(face_id .gt. 0) then
           ! local-local or local-ghost
           conn_id = unstructured_grid%face_to_connection(face_id)
           ! store ptr to aniso data for adjacent cell
-          if( aniso_data_unstruct%dn%cell_id == connections%aniso_data(conn_id)%unstruct%dn%cell_id ) then ! up is adj
-            aniso_data_unstruct%dn%adu_cell_adj(iface)%ptr => connections%aniso_data(conn_id)%unstruct%up
+          if( aniso_geom_unstruct%dn%cell_id == connections%aniso_geom(conn_id)%unstruct%dn%cell_id ) then ! up is adj
+            aniso_geom_unstruct%dn%adu_cell_adj(iface)%ptr => connections%aniso_geom(conn_id)%unstruct%up
           else ! dn is adj
-            aniso_data_unstruct%dn%adu_cell_adj(iface)%ptr => connections%aniso_data(conn_id)%unstruct%dn
+            aniso_geom_unstruct%dn%adu_cell_adj(iface)%ptr => connections%aniso_geom(conn_id)%unstruct%dn
           endif
         else if(face_id .lt. 0) then
           ! ghost-ghost
           conn_id = face_to_connectiongg(-face_id)
           ! store ptr to aniso data for adjacent cell
-          if( aniso_data_unstruct%dn%cell_id == connectionsgg%aniso_data(conn_id)%unstruct%dn%cell_id ) then ! up is adj
-            aniso_data_unstruct%dn%adu_cell_adj(iface)%ptr => connectionsgg%aniso_data(conn_id)%unstruct%up
+          if( aniso_geom_unstruct%dn%cell_id == connectionsgg%aniso_geom(conn_id)%unstruct%dn%cell_id ) then ! up is adj
+            aniso_geom_unstruct%dn%adu_cell_adj(iface)%ptr => connectionsgg%aniso_geom(conn_id)%unstruct%up
           else ! dn is adj
-            aniso_data_unstruct%dn%adu_cell_adj(iface)%ptr => connectionsgg%aniso_data(conn_id)%unstruct%dn
+            aniso_geom_unstruct%dn%adu_cell_adj(iface)%ptr => connectionsgg%aniso_geom(conn_id)%unstruct%dn
           endif
         endif
       enddo
@@ -2693,10 +2709,10 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
       do iupdn = 1,2
         if (iupdn==1) then
           ! upstream
-          aniso_updn => aniso_data_unstruct%up
+          aniso_updn => aniso_geom_unstruct%up
         else
           ! downstream
-          aniso_updn => aniso_data_unstruct%dn
+          aniso_updn => aniso_geom_unstruct%dn
         endif
 
         allocate(aniso_updn%dists_u(1:aniso_updn%num_adj))
@@ -2723,9 +2739,9 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
           v1(2) = point2%y - point1%y
           v1(3) = point2%z - point1%z
 
-          aniso_updn%dists_u(iadj)    = DotProduct(v1,aniso_data_unstruct%uvec)
-          aniso_updn%dists_vw(1,iadj) = DotProduct(v1,aniso_data_unstruct%vvec)
-          aniso_updn%dists_vw(2,iadj) = DotProduct(v1,aniso_data_unstruct%wvec)
+          aniso_updn%dists_u(iadj)    = DotProduct(v1,aniso_geom_unstruct%uvec)
+          aniso_updn%dists_vw(1,iadj) = DotProduct(v1,aniso_geom_unstruct%vvec)
+          aniso_updn%dists_vw(2,iadj) = DotProduct(v1,aniso_geom_unstruct%wvec)
 
           if(aniso_updn%dists_vw(1,iadj) .ne. 0.d0) no_v_contrib = PETSC_FALSE
           if(aniso_updn%dists_vw(2,iadj) .ne. 0.d0) no_w_contrib = PETSC_FALSE
@@ -2778,8 +2794,8 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
 
     ! dbg
 !    do iconn = 1,nconn
-!      aniso_data => connections%aniso_data(iconn)
-!      Call PrintAnisoData(aniso_data)
+!      aniso_geom => connections%aniso_geom(iconn)
+!      Call PrintAnisoData(aniso_geom)
 !    enddo
   endif
 
