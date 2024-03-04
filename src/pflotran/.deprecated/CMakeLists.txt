@@ -236,6 +236,7 @@ set(MODE_SOURCES
 	reactive_transport.F90
 	richards.F90
 	richards_common.F90
+	anisodata_richards.F90
 	th.F90
 	wipp_flow.F90
 	wipp_flow_common.F90

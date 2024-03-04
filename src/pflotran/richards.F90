@@ -693,7 +693,7 @@ end subroutine RichardsUpdateAuxVars
 subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,&
                                     aniso_geom,aniso_rich)
   !
-  ! Updates the adjacent pressure etc in the anisotropy_data structure
+  ! Updates the adjacent pressure etc in the anisotropy_richards_data structure
   ! the Richards problem
   !
   ! Author: Steve Benbow
@@ -701,7 +701,8 @@ subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,&
   !
 
   use Global_Aux_module
-  use Anisotropy_Data_module
+  use Anisotropy_Geom_Data_module
+  use Anisotropy_Richards_Data_module
   use Material_Aux_module
 
   implicit none
@@ -1546,7 +1547,8 @@ subroutine RichardsResidualInternalConn(r,realization,skip_conn_type,ierr)
   !
 
   use Connection_module
-  use Anisotropy_Data_module
+  use Anisotropy_Geom_Data_module
+  use Anisotropy_Richards_Data_module
   use Realization_Subsurface_class
   use Patch_module
   use Grid_module
@@ -2296,7 +2298,8 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
   !
 
   use Connection_module
-  use Anisotropy_Data_module
+  use Anisotropy_Geom_Data_module
+  use Anisotropy_Richards_Data_module
   use Realization_Subsurface_class
   use Option_module
   use Patch_module

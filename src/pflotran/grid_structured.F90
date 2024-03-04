@@ -5,7 +5,8 @@ module Grid_Structured_module
   use PFLOTRAN_Constants_module
   use Utility_module, only : Equal
 
-  use Anisotropy_Data_module
+  use Anisotropy_Geom_Data_module
+  use Anisotropy_Richards_Data_module
 
   implicit none
 

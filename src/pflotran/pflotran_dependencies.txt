@@ -1,5 +1,8 @@
 anisodata.o : \
   pflotran_constants.o
+anisodata_richards.o : \
+  anisodata.o \
+  pflotran_constants.o
 auxiliary.o : \
   ert_aux.o \
   general_aux.o \
@@ -189,9 +192,10 @@ condition_control.o : \
   variables.o \
   wipp_flow_aux.o
 connection.o : \
+  anisodata.o \
+  anisodata_richards.o \
   pflotran_constants.o \
-  utility.o \
-  anisodata.o
+  utility.o
 convergence.o : \
   grid.o \
   option.o \
@@ -978,12 +982,16 @@ grid.o : \
   string.o \
   utility.o
 grid_structured.o : \
+  anisodata.o \
+  anisodata_richards.o \
   connection.o \
   input_aux.o \
   option.o \
   pflotran_constants.o \
   utility.o
 grid_unstructured.o : \
+  anisodata.o \
+  anisodata_richards.o \
   connection.o \
   geometry.o \
   grid_unstructured_aux.o \
@@ -3238,6 +3246,8 @@ regression.o : \
   timestepper_base.o \
   utility.o
 richards.o : \
+  anisodata.o \
+  anisodata_richards.o \
   connection.o \
   coupler.o \
   debug.o \
@@ -3278,6 +3288,8 @@ richards_aux.o : \
   pflotran_constants.o \
   utility.o
 richards_common.o : \
+  anisodata.o \
+  anisodata_richards.o \
   characteristic_curves.o \
   connection.o \
   eos_water.o \

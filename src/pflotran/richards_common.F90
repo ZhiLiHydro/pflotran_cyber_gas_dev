@@ -165,7 +165,8 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
   use Characteristic_Curves_module
   use Material_Aux_module
   use Connection_module
-  use Anisotropy_Data_module
+  use Anisotropy_Geom_Data_module
+  use Anisotropy_Richards_Data_module
 
   implicit none
 
@@ -487,7 +488,8 @@ subroutine RichardsFluxAniso(aniso_geom_data, &
 !
   use Option_module
   use Material_Aux_module
-  use Anisotropy_Data_module
+  use Anisotropy_Geom_Data_module
+  use Anisotropy_Richards_Data_module
   use Variables_module
   use Connection_module
 
@@ -1169,7 +1171,8 @@ subroutine RichardsFlux(rich_auxvar_up,global_auxvar_up, &
   use Option_module
   use Material_Aux_module
   use Connection_module
-  use Anisotropy_Data_module
+  use Anisotropy_Geom_Data_module
+  use Anisotropy_Richards_Data_module
 
   implicit none
 

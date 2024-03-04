@@ -3,7 +3,8 @@ module Connection_module
 #include "petsc/finclude/petscsys.h"
   use petscsys
   use PFLOTRAN_Constants_module
-  use Anisotropy_Data_module
+  use Anisotropy_Geom_Data_module
+  use Anisotropy_Richards_Data_module
 
   implicit none
 
