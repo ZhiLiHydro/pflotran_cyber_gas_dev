@@ -6,7 +6,6 @@ module Grid_Structured_module
   use Utility_module, only : Equal
 
   use Anisotropy_Geom_Data_module
-  use Anisotropy_Richards_Data_module
 
   implicit none
 
@@ -899,7 +898,6 @@ function StructGridComputeInternConnect(structured_grid, xc, yc, zc, option)
 
   if (option%connections_with_aniso_data .eqv. PETSC_TRUE) then
     allocate(connections%aniso_geom(size(connections%id_up)))
-    allocate(connections%aniso_rich(size(connections%id_up))) ! SJB TODO - should initialise elsewhere (only grid code should be here)
   endif
 
   iconn = 0
@@ -950,7 +948,6 @@ function StructGridComputeInternConnect(structured_grid, xc, yc, zc, option)
               if (associated(connections%aniso_geom)) then
                 if (.not.associated(connections%aniso_geom(iconn)%struct)) then
                   allocate(connections%aniso_geom(iconn)%struct)
-                  allocate(connections%aniso_rich(iconn)%struct)  ! SJB TODO - should initialise elsewhere (only grid code should be here)
                 endif
                 aniso_geom_struct => connections%aniso_geom(iconn)%struct
 
@@ -1201,7 +1198,6 @@ function StructGridComputeInternConnect(structured_grid, xc, yc, zc, option)
               if (associated(connections%aniso_geom)) then
                 if (.not.associated(connections%aniso_geom(iconn)%struct)) then
                   allocate(connections%aniso_geom(iconn)%struct)
-                  allocate(connections%aniso_rich(iconn)%struct)  ! SJB TODO - should initialise elsewhere (only grid code should be here)
                 endif
                 aniso_geom_struct => connections%aniso_geom(iconn)%struct
 
@@ -1420,7 +1416,6 @@ function StructGridComputeInternConnect(structured_grid, xc, yc, zc, option)
               if (associated(connections%aniso_geom)) then
                 if (.not.associated(connections%aniso_geom(iconn)%struct)) then
                   allocate(connections%aniso_geom(iconn)%struct)
-                  allocate(connections%aniso_rich(iconn)%struct)  ! SJB TODO - should initialise elsewhere (only grid code should be here)
                 endif
                 aniso_geom_struct => connections%aniso_geom(iconn)%struct
 

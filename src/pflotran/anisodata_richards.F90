@@ -2,7 +2,7 @@ module Anisotropy_Richards_Data_module
 
   ! Module for managing additional data needed in Richards' flux calculations to
   ! deal with full (off-diagonal) anisotropy terms
-  
+    
 #include "petsc/finclude/petscsys.h"
   use petscsys
   use PFLOTRAN_Constants_module
@@ -10,7 +10,7 @@ module Anisotropy_Richards_Data_module
   implicit none
   
   public :: PermInnerProd
-  public :: PrintRichardsAnisoData
+!  public :: PrintRichardsAnisoData
   
   ! -- 
   ! -- Data structures for calculating anisotropic gradient contributions in STRUCTURED GRIDS.
@@ -166,47 +166,47 @@ module Anisotropy_Richards_Data_module
     end function PermInnerProd
   
     ! for debugging:
-    subroutine PrintRichardsAnisoData( aniso_rich, aniso_geom )
+    ! subroutine PrintRichardsAnisoData( aniso_rich, aniso_geom )
   
-      use Anisotropy_Geom_Data_module
+    !   use Anisotropy_Geom_Data_module
 
-      type( aniso_richards_data_type ), pointer :: aniso_rich
-      type( aniso_geom_data_type ), pointer :: aniso_geom
-      integer ierr,rank,size,i
+    !   type( aniso_richards_data_type ), pointer :: aniso_rich
+    !   type( aniso_geom_data_type ), pointer :: aniso_geom
+    !   integer ierr,rank,size,i
   
-      call MPI_Comm_rank(MPI_COMM_WORLD,rank,ierr)
-      call MPI_Comm_size(MPI_COMM_WORLD,size,ierr)
+    !   call MPI_Comm_rank(MPI_COMM_WORLD,rank,ierr)
+    !   call MPI_Comm_size(MPI_COMM_WORLD,size,ierr)
   
 
-      if(associated(aniso_rich%unstruct)) then
-        ! transformed perm for face
-        write(*, "('  perm up,dn')")
-          write(*, "('    perm_uu = ',e10.3,',',e10.3)") &
-            aniso_rich%unstruct%up%perm_uu, aniso_rich%unstruct%dn%perm_uu
-          write(*, "('    perm_vv = ',e10.3,',',e10.3)") &
-            aniso_rich%unstruct%up%perm_vv, aniso_rich%unstruct%dn%perm_vv
-          write(*, "('    perm_ww = ',e10.3,',',e10.3)") &
-            aniso_rich%unstruct%up%perm_ww, aniso_rich%unstruct%dn%perm_ww
-          write(*, "('    perm_uv = ',e10.3,',',e10.3)") &
-            aniso_rich%unstruct%up%perm_uv, aniso_rich%unstruct%dn%perm_uv
-          write(*, "('    perm_uw = ',e10.3,',',e10.3)") &
-            aniso_rich%unstruct%up%perm_uw, aniso_rich%unstruct%dn%perm_uw
-          write(*, "('    perm_vw = ',e10.3,',',e10.3)") &
-            aniso_rich%unstruct%up%perm_vw, aniso_rich%unstruct%dn%perm_vw
-          ! pressures
-          write(*, "('  Pressures - upstream')")
-          do i=1,aniso_geom%unstruct%up%num_adj
-            if (aniso_geom%unstruct%up%cell_id_adj(i) == 0) cycle
-            write(*, "('    ',i2,'. pres_adj=',e10.3)") i,aniso_rich%unstruct%up%pres_adj(i)
-          enddo
-          write(*, "('  Pressures - downstream')")
-          do i=1,aniso_geom%unstruct%dn%num_adj
-            if (aniso_geom%unstruct%dn%cell_id_adj(i) == 0) cycle
-            write(*, "('    ',i2,'. pres_adj=',e10.3)") i,aniso_rich%unstruct%dn%pres_adj(i)
-          enddo
+    !   if(associated(aniso_rich%unstruct)) then
+    !     ! transformed perm for face
+    !     write(*, "('  perm up,dn')")
+    !       write(*, "('    perm_uu = ',e10.3,',',e10.3)") &
+    !         aniso_rich%unstruct%up%perm_uu, aniso_rich%unstruct%dn%perm_uu
+    !       write(*, "('    perm_vv = ',e10.3,',',e10.3)") &
+    !         aniso_rich%unstruct%up%perm_vv, aniso_rich%unstruct%dn%perm_vv
+    !       write(*, "('    perm_ww = ',e10.3,',',e10.3)") &
+    !         aniso_rich%unstruct%up%perm_ww, aniso_rich%unstruct%dn%perm_ww
+    !       write(*, "('    perm_uv = ',e10.3,',',e10.3)") &
+    !         aniso_rich%unstruct%up%perm_uv, aniso_rich%unstruct%dn%perm_uv
+    !       write(*, "('    perm_uw = ',e10.3,',',e10.3)") &
+    !         aniso_rich%unstruct%up%perm_uw, aniso_rich%unstruct%dn%perm_uw
+    !       write(*, "('    perm_vw = ',e10.3,',',e10.3)") &
+    !         aniso_rich%unstruct%up%perm_vw, aniso_rich%unstruct%dn%perm_vw
+    !       ! pressures
+    !       write(*, "('  Pressures - upstream')")
+    !       do i=1,aniso_geom%unstruct%up%num_adj
+    !         if (aniso_geom%unstruct%up%cell_id_adj(i) == 0) cycle
+    !         write(*, "('    ',i2,'. pres_adj=',e10.3)") i,aniso_rich%unstruct%up%pres_adj(i)
+    !       enddo
+    !       write(*, "('  Pressures - downstream')")
+    !       do i=1,aniso_geom%unstruct%dn%num_adj
+    !         if (aniso_geom%unstruct%dn%cell_id_adj(i) == 0) cycle
+    !         write(*, "('    ',i2,'. pres_adj=',e10.3)") i,aniso_rich%unstruct%dn%pres_adj(i)
+    !       enddo
   
-      endif
-    end subroutine
+    !   endif
+    ! end subroutine
 
 end module Anisotropy_Richards_Data_module
   

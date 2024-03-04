@@ -9,7 +9,6 @@ module Grid_Unstructured_module
   use PFLOTRAN_Constants_module
 
   use Anisotropy_Geom_Data_module
-  use Anisotropy_Richards_Data_module
 
   implicit none
 
@@ -1830,9 +1829,6 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
   type(aniso_geom_data_unstructured_type), pointer :: aniso_geom_unstruct
   type(aniso_geom_unstructured_cell_type), pointer :: aniso_updn
 
-  type(aniso_richards_data_type), pointer :: aniso_rich ! SJB TODO - should initialise elsewhere (only grid code should be here)
-
-  
   PetscInt :: count_up_adj, count_dn_adj, iupdn, iadj, conn_id
   PetscReal :: dot, det
   PetscReal :: MLS(2,2)
@@ -2405,17 +2401,12 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
     allocate(connections%aniso_geom(nconn))
     allocate(connectionsgg%aniso_geom(nconngg))
 
-    allocate(connections%aniso_rich(nconn))
-    allocate(connectionsgg%aniso_rich(nconngg))
-
     ! Loop over ALL connections (standard ones for local-local and local-ghost and extra ones for ghost-ghost)
     do iconn = 1,nconn+nconngg
       if(iconn .le. nconn) then
         aniso_geom => connections%aniso_geom(iconn)
-        aniso_rich => connections%aniso_rich(iconn)
       else
         aniso_geom => connectionsgg%aniso_geom(iconn-nconn)
-        aniso_rich => connectionsgg%aniso_rich(iconn-nconn)
       endif
       if (.not.associated(aniso_geom%unstruct)) then
         ! SJB - would be better to not be using MAX_VERT_PER_FACE here - could get nfaces for up/dn cells
@@ -2443,25 +2434,6 @@ function UGridComputeInternConnect(unstructured_grid,grid_x,grid_y,grid_z, &
         aniso_geom%unstruct%uvec = 0.d0
         aniso_geom%unstruct%vvec = 0.d0
         aniso_geom%unstruct%wvec = 0.d0
-
-        ! SJB TODO - should initialise elsewhere (only grid code should be here)
-        allocate(aniso_rich%unstruct)
-        allocate(aniso_rich%unstruct%dv_darcy_aniso_dp_up_adj(MAX_VERT_PER_FACE))
-        allocate(aniso_rich%unstruct%dv_darcy_aniso_dp_dn_adj(MAX_VERT_PER_FACE))
-        allocate(aniso_rich%unstruct%Jup_adj(MAX_VERT_PER_FACE))
-        allocate(aniso_rich%unstruct%Jdn_adj(MAX_VERT_PER_FACE))
-        aniso_rich%unstruct%dv_darcy_aniso_dp_up_adj = 0
-        aniso_rich%unstruct%dv_darcy_aniso_dp_dn_adj = 0
-        aniso_rich%unstruct%Jup_adj = 0
-        aniso_rich%unstruct%Jdn_adj = 0
-
-        ! allocate pressure adjacency data
-        allocate(aniso_rich%unstruct%up)
-        allocate(aniso_rich%unstruct%dn)
-        allocate(aniso_rich%unstruct%up%pres_adj(MAX_VERT_PER_FACE))
-        allocate(aniso_rich%unstruct%dn%pres_adj(MAX_VERT_PER_FACE))
-        aniso_rich%unstruct%up%pres_adj = 0.d0
-        aniso_rich%unstruct%dn%pres_adj = 0.d0
       endif
       aniso_geom_unstruct => aniso_geom%unstruct
 

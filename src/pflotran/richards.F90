@@ -691,7 +691,7 @@ end subroutine RichardsUpdateAuxVars
 ! ************************************************************************** !
 
 subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,&
-                                    aniso_geom,aniso_rich)
+                                    aniso_geom)
   !
   ! Updates the adjacent pressure etc in the anisotropy_richards_data structure
   ! the Richards problem
@@ -708,21 +708,29 @@ subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,&
   implicit none
 
   type(global_auxvar_type), pointer :: global_auxvars(:)
-  type(aniso_geom_data_type), pointer :: aniso_geom
-  type(aniso_richards_data_type), pointer :: aniso_rich
   type(material_auxvar_type), pointer ::material_auxvars(:)
+  type(aniso_geom_data_type), pointer :: aniso_geom
 
   PetscInt, pointer :: ghosted_id_adj(:)
   PetscReal, pointer :: ghosted_pres_adj(:)
-  PetscInt :: i
+  PetscInt :: i, sz_up, sz_dn
 
   PetscReal, pointer :: perm(:)
   PetscInt :: ghosted_id
+
+  type(aniso_richards_data_type), pointer :: aniso_rich
 
   if(associated(aniso_geom%struct)) then
     ! --
     ! -- structured grid case
     ! --
+
+    aniso_rich => aniso_geom%aniso_rich ! already allocated
+
+    if(.not. associated(aniso_rich%struct)) then
+      ! allocated on first use
+      allocate(aniso_rich%struct)
+    endif
 
     allocate(ghosted_id_adj(12))
     allocate(ghosted_pres_adj(12))
@@ -769,6 +777,33 @@ subroutine RichardsUpdateAnisoData(global_auxvars,material_auxvars,&
     ! --
     ! -- unstructured grid case
     ! --
+
+    aniso_rich => aniso_geom%aniso_rich ! already allocated
+
+    if(.not. associated(aniso_rich%unstruct)) then
+      sz_up = size(aniso_geom%unstruct%up%cell_id_adj)
+      sz_dn = size(aniso_geom%unstruct%dn%cell_id_adj)
+
+      ! allocated on first use
+      allocate(aniso_rich%unstruct)
+
+      allocate(aniso_rich%unstruct%dv_darcy_aniso_dp_up_adj(sz_up))
+      allocate(aniso_rich%unstruct%dv_darcy_aniso_dp_dn_adj(sz_dn))
+      allocate(aniso_rich%unstruct%Jup_adj(sz_up))
+      allocate(aniso_rich%unstruct%Jdn_adj(sz_dn))
+      !aniso_rich%unstruct%dv_darcy_aniso_dp_up_adj = 0
+      !aniso_rich%unstruct%dv_darcy_aniso_dp_dn_adj = 0
+      !aniso_rich%unstruct%Jup_adj = 0
+      !aniso_rich%unstruct%Jdn_adj = 0
+
+      ! allocate pressure adjacency data
+      allocate(aniso_rich%unstruct%up)
+      allocate(aniso_rich%unstruct%dn)
+      allocate(aniso_rich%unstruct%up%pres_adj(sz_up))
+      allocate(aniso_rich%unstruct%dn%pres_adj(sz_dn))
+      !aniso_rich%unstruct%up%pres_adj = 0.d0
+      !aniso_rich%unstruct%dn%pres_adj = 0.d0
+    endif
 
     ! Pressure adjacency data
     do i=1,aniso_geom%unstruct%up%num_adj
@@ -1614,6 +1649,17 @@ subroutine RichardsResidualInternalConn(r,realization,skip_conn_type,ierr)
   sum_connection = 0
   do
     if (.not.associated(cur_connection_set)) exit
+
+    ! Initialise Richards anisotropy data, if needed
+    if (associated(cur_connection_set%aniso_geom)) then
+      do iconn = 1, cur_connection_set%num_connections
+        aniso_geom => cur_connection_set%aniso_geom(iconn)
+        if (.not. associated(aniso_geom%aniso_rich)) then
+          allocate(aniso_geom%aniso_rich)
+        endif
+      enddo
+    endif
+
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
 
@@ -1635,8 +1681,8 @@ subroutine RichardsResidualInternalConn(r,realization,skip_conn_type,ierr)
 
       if (associated(cur_connection_set%aniso_geom)) then
         aniso_geom => cur_connection_set%aniso_geom(iconn)
-        aniso_rich => cur_connection_set%aniso_rich(iconn) ! SJB TODO - Richards' data should not be on connection
-        call RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_geom,aniso_rich)
+        aniso_rich => aniso_geom%aniso_rich
+        call RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_geom)
       endif
 
 
@@ -1648,7 +1694,7 @@ subroutine RichardsResidualInternalConn(r,realization,skip_conn_type,ierr)
                       material_auxvars(ghosted_id_dn), &
                       cur_connection_set%area(iconn), &
                       cur_connection_set%dist(:,iconn), &
-                      aniso_geom, aniso_rich, &
+                      aniso_geom, &
                       option,v_darcy,Res)
 
       patch%internal_velocities(1,sum_connection) = v_darcy
@@ -2405,8 +2451,8 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
 
       if (associated(cur_connection_set%aniso_geom)) then
         aniso_geom => cur_connection_set%aniso_geom(iconn)
-        aniso_rich => cur_connection_set%aniso_rich(iconn) ! SJB TODO - Richards' data should not be on connection
-        call RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_geom,aniso_rich)
+        aniso_rich => aniso_geom%aniso_rich
+        call RichardsUpdateAnisoData(global_auxvars,material_auxvars,aniso_geom)
       endif
 
       call RichardsFluxDerivative(rich_auxvars(ghosted_id_up), &
@@ -2417,7 +2463,7 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
                      material_auxvars(ghosted_id_dn), &
                      cur_connection_set%area(iconn), &
                      cur_connection_set%dist(-1:3,iconn),&
-                     aniso_geom, aniso_rich, &
+                     aniso_geom, &
                      option,&
                      patch%characteristic_curves_array(icc_up)%ptr, &
                      patch%characteristic_curves_array(icc_dn)%ptr, &

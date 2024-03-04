@@ -4,7 +4,6 @@ module Connection_module
   use petscsys
   use PFLOTRAN_Constants_module
   use Anisotropy_Geom_Data_module
-  use Anisotropy_Richards_Data_module
 
   implicit none
 
@@ -32,8 +31,6 @@ module Connection_module
 
     type(aniso_geom_data_type), pointer :: aniso_geom(:)           ! anisotropy data, one set per connection (if needed)
     type(connection_set_type), pointer :: ghost_ghost_connections  ! extra connections for use in anisotropy calcs
-    ! SJB TODO - the following should be moved out of Connection - which should be purely geometry
-    type(aniso_richards_data_type), pointer :: aniso_rich(:)       ! Richards anisotropy data, one set per connection (if needed)
   end type connection_set_type
 
 
@@ -89,7 +86,6 @@ function ConnectionCreate(num_connections,connection_itype)
   nullify(connection%id_up2)
   nullify(connection%id_dn2)
   nullify(connection%aniso_geom)
-  nullify(connection%aniso_rich)
   nullify(connection%face_id)
   nullify(connection%dist)
   nullify(connection%intercp)

@@ -7,6 +7,9 @@ module Anisotropy_Geom_Data_module
   use petscsys
   use PFLOTRAN_Constants_module
 
+  ! List process model data types that use anisotropy geom data here
+  use Anisotropy_Richards_Data_module
+
   implicit none
 
   public :: PrintAnisoData
@@ -144,6 +147,9 @@ module Anisotropy_Geom_Data_module
   type, public :: aniso_geom_data_type
     type( aniso_geom_data_structured_type), pointer :: struct => null()
     type( aniso_geom_data_unstructured_type), pointer :: unstruct => null()
+
+    ! List process model data types that use anisotropy geom data here
+    type( aniso_richards_data_type), pointer :: aniso_rich => null()
   end type aniso_geom_data_type
 
 
