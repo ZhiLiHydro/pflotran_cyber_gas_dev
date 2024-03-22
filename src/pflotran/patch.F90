@@ -217,7 +217,6 @@ subroutine PatchLocalizeRegions(patch,regions,option)
   !
   ! Author: Glenn Hammond
   ! Date: 02/22/08
-  !
 
   use Option_module
   use Output_Aux_module
@@ -239,6 +238,10 @@ subroutine PatchLocalizeRegions(patch,regions,option)
     call RegionAddToList(patch_region,patch%region_list)
     cur_region => cur_region%next
   enddo
+
+  ! must be called after patch%region_list is created and before
+  ! GridLocalizeRegions
+  call PatchMapMaterialRegions(patch)
 
   !geh: All grids must be localized through GridLocalizeRegions.  Patch
   !     should not differentiate between structured/unstructured, etc.
@@ -11532,6 +11535,57 @@ subroutine PatchUnsupportedVariable4(ivar,option)
   call PatchUnsupportedVariable('','',ivar,option)
 
 end subroutine PatchUnsupportedVariable4
+
+! ************************************************************************** !
+
+subroutine PatchMapMaterialRegions(patch)
+  !
+  ! Maps cells to a region based on their material ID
+  !
+  ! Author: Glenn Hammond
+  ! Date: 03/22/24
+  !
+  use Option_module
+  use Region_module
+
+  implicit none
+
+  type(patch_type) :: patch
+
+  type(region_type), pointer :: cur_region
+  type(material_property_type), pointer :: material_property
+  character(len=MAXWORDLENGTH) :: material_name
+  PetscInt :: icell, i
+  PetscInt, allocatable :: cell_ids(:)
+
+  ! if region is based on material ID, map the ids
+  cur_region => patch%region_list%first
+  do
+    if (.not.associated(cur_region)) exit
+    if (cur_region%def_type == DEFINED_BY_MATERIAL) then
+      material_name = trim(cur_region%filename)
+      material_property => &
+        MaterialPropGetPtrFromArray(material_name, &
+                                    patch%material_property_array)
+      allocate(cell_ids(patch%grid%nlmax))
+      cell_ids = 0
+      i = 0
+      do icell = 1, patch%grid%nlmax
+        if (patch%imat(icell) == material_property%internal_id) then
+          i = i+1
+          cell_ids(i) = icell
+        endif
+      enddo
+      if (i > 0) then
+        allocate(cur_region%cell_ids(i))
+        cur_region%cell_ids = cell_ids(1:i)
+      endif
+      deallocate(cell_ids)
+    endif
+    cur_region => cur_region%next
+  enddo
+
+end subroutine PatchMapMaterialRegions
 
 ! ************************************************************************** !
 

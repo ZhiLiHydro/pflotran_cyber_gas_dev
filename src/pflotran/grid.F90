@@ -736,6 +736,10 @@ subroutine GridLocalizeRegions(grid,region_list,option)
         if (associated(region%cell_ids)) then
           region%num_cells = size(region%cell_ids)
         endif
+      case (DEFINED_BY_MATERIAL)
+        if (associated(region%cell_ids)) then
+          region%num_cells = size(region%cell_ids)
+        endif
       case default
         option%io_buffer = 'GridLocalizeRegions: Region definition not &
           &recognized for region "' // trim(region%name) // '".'

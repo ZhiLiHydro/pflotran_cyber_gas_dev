@@ -21,6 +21,7 @@ module Region_module
   PetscInt, parameter, public :: DEFINED_BY_POLY_BOUNDARY_FACE = 8
   PetscInt, parameter, public :: DEFINED_BY_POLY_CELL_CENTER = 9
   PetscInt, parameter, public :: DEFINED_BY_CARTESIAN_BOUNDARY = 10
+  PetscInt, parameter, public :: DEFINED_BY_MATERIAL = 11
 
   type, public :: block_type
     PetscInt :: i1,i2,j1,j2,k1,k2
@@ -36,7 +37,7 @@ module Region_module
     type(point3d_type), pointer :: coordinates(:)
     PetscInt :: iface
     PetscInt :: num_cells
-    PetscInt, pointer :: cell_ids(:)
+    PetscInt, pointer :: cell_ids(:) ! local, non-ghosted
     PetscInt, pointer :: faces(:)
     !TODO(geh): Tear anything to do with structured/unstructured grids other
     !           than cell id ane face id out of region.
@@ -417,7 +418,10 @@ subroutine RegionRead(region,input,option)
 
   character(len=MAXWORDLENGTH) :: keyword, word
   character(len=MAXSTRINGLENGTH) :: string
+  character(len=:), allocatable :: err_string
   PetscInt :: icount
+
+  err_string = 'REGION'
 
   input%ierr = 0
   call InputPushBlock(input,option)
@@ -428,7 +432,7 @@ subroutine RegionRead(region,input,option)
     if (InputCheckExit(input,option)) exit
 
     call InputReadCard(input,option,keyword)
-    call InputErrorMsg(input,option,'keyword','REGION')
+    call InputErrorMsg(input,option,'keyword',err_string)
     call StringToUpper(keyword)
 
     select case(trim(keyword))
@@ -439,24 +443,24 @@ subroutine RegionRead(region,input,option)
         if (InputError(input)) then
           input%ierr = 0
           call InputReadPflotranString(input,option)
-          call InputReadStringErrorMsg(input,option,'REGION')
+          call InputReadStringErrorMsg(input,option,err_string)
           call InputReadInt(input,option,region%i1)
         endif
-        call InputErrorMsg(input,option,'i1','REGION')
+        call InputErrorMsg(input,option,'i1',err_string)
         call InputReadInt(input,option,region%i2)
-        call InputErrorMsg(input,option,'i2','REGION')
+        call InputErrorMsg(input,option,'i2',err_string)
         call InputReadInt(input,option,region%j1)
-        call InputErrorMsg(input,option,'j1','REGION')
+        call InputErrorMsg(input,option,'j1',err_string)
         call InputReadInt(input,option,region%j2)
-        call InputErrorMsg(input,option,'j2','REGION')
+        call InputErrorMsg(input,option,'j2',err_string)
         call InputReadInt(input,option,region%k1)
-        call InputErrorMsg(input,option,'k1','REGION')
+        call InputErrorMsg(input,option,'k1',err_string)
         call InputReadInt(input,option,region%k2)
-        call InputErrorMsg(input,option,'k2','REGION')
+        call InputErrorMsg(input,option,'k2',err_string)
       case('CARTESIAN_BOUNDARY')
         region%def_type = DEFINED_BY_CARTESIAN_BOUNDARY
         call InputReadCard(input,option,word)
-        call InputErrorMsg(input,option,'cartesian boundary face','REGION')
+        call InputErrorMsg(input,option,'cartesian boundary face',err_string)
         call StringToUpper(word)
         select case(word)
           case('WEST')
@@ -483,14 +487,14 @@ subroutine RegionRead(region,input,option)
         if (InputError(input)) then
           input%ierr = 0
           call InputReadPflotranString(input,option)
-          call InputReadStringErrorMsg(input,option,'REGION')
+          call InputReadStringErrorMsg(input,option,err_string)
           call InputReadDouble(input,option,region%coordinates(ONE_INTEGER)%x)
         endif
-        call InputErrorMsg(input,option,'x-coordinate','REGION')
+        call InputErrorMsg(input,option,'x-coordinate',err_string)
         call InputReadDouble(input,option,region%coordinates(ONE_INTEGER)%y)
-        call InputErrorMsg(input,option,'y-coordinate','REGION')
+        call InputErrorMsg(input,option,'y-coordinate',err_string)
         call InputReadDouble(input,option,region%coordinates(ONE_INTEGER)%z)
-        call InputErrorMsg(input,option,'z-coordinate','REGION')
+        call InputErrorMsg(input,option,'z-coordinate',err_string)
       case('COORDINATES')
         region%def_type = DEFINED_BY_COORD
         call GeometryReadCoordinates(input,option,region%name, &
@@ -506,12 +510,12 @@ subroutine RegionRead(region,input,option)
           if (InputError(input)) exit
           if (InputCheckExit(input,option)) exit
           call InputReadCard(input,option,word)
-          call InputErrorMsg(input,option,'keyword','REGION')
+          call InputErrorMsg(input,option,'keyword',err_string)
           call StringToUpper(word)
           select case(trim(word))
             case('TYPE')
               call InputReadCard(input,option,word)
-              call InputErrorMsg(input,option,'polygon type','REGION')
+              call InputErrorMsg(input,option,'polygon type',err_string)
               call StringToUpper(word)
               select case(word)
                 case('BOUNDARY_FACES_IN_VOLUME')
@@ -540,7 +544,7 @@ subroutine RegionRead(region,input,option)
         call InputPopBlock(input,option)
       case('FILE')
         call InputReadFilename(input,option,region%filename)
-        call InputErrorMsg(input,option,'filename','REGION')
+        call InputErrorMsg(input,option,'filename',err_string)
       case('LIST')
         call InputReadPflotranString(input, option)
         string = trim(input%buf)
@@ -561,7 +565,7 @@ subroutine RegionRead(region,input,option)
         end select
       case('FACE')
         call InputReadCard(input,option,word)
-        call InputErrorMsg(input,option,'face','REGION')
+        call InputErrorMsg(input,option,'face',err_string)
         call StringToUpper(word)
         select case(word)
           case('WEST')
@@ -581,8 +585,13 @@ subroutine RegionRead(region,input,option)
               '" not recognized.'
             call PrintErrMsg(option)
         end select
+      case('MATERIAL')
+        region%def_type = DEFINED_BY_MATERIAL
+        call InputReadWord(input,option,word,PETSC_TRUE)
+        call InputErrorMsg(input,option,keyword,err_string)
+        region%filename = trim(word)
       case default
-        call InputKeywordUnrecognized(input,keyword,'REGION',option)
+        call InputKeywordUnrecognized(input,keyword,err_string,option)
     end select
   enddo
   call InputPopBlock(input,option)
