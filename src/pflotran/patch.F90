@@ -1581,11 +1581,11 @@ subroutine PatchUpdateCouplerAuxVarsG(patch,coupler,option)
               case(ANY_STATE)
                 string = 'any phase state'
             end select
-            option%io_buffer = 'A ' // trim(string) // ' cell was found &
-              &within a HYDROSTATIC_BC boundary condition for GENERAL mode. &
-              &A hydrostatic boundary condition may not be used to set &
-              &state variables in the vadose zone for GENERAL mode.'
-            call PrintErrMsg(option)
+            ! option%io_buffer = 'A ' // trim(string) // ' cell was found &
+            !   &within a HYDROSTATIC_BC boundary condition for GENERAL mode. &
+            !   &A hydrostatic boundary condition may not be used to set &
+            !   &state variables in the vadose zone for GENERAL mode.'
+            ! call PrintErrMsg(option)
           endif
         enddo
         dof1 = PETSC_TRUE; dof2 = PETSC_TRUE; dof3 = PETSC_TRUE;
