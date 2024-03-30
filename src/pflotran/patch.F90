@@ -1427,7 +1427,7 @@ subroutine PatchUpdateCouplerAuxVarsG(patch,coupler,option)
   PetscReal :: temperature, p_sat, p_cap, s_liq, xmol, xmol2, por
   PetscReal :: relative_humidity
   PetscReal :: gas_sat, air_pressure, gas_pressure, liq_pressure, &
-               precipitate_sat
+               precipitate_sat, salt_mole_frac
 
   PetscReal :: dummy_real
   character(len=MAXSTRINGLENGTH) :: string
@@ -1484,7 +1484,11 @@ subroutine PatchUpdateCouplerAuxVarsG(patch,coupler,option)
         class is(dataset_ascii_type)
           gas_sat = general%gas_saturation%dataset%rarray(1)
           if (general_salt) then
-            precipitate_sat = general%precipitate_saturation%dataset%rarray(1)
+            if (associated(general%precipitate_saturation)) then
+              precipitate_sat = general%precipitate_saturation%dataset%rarray(1)
+            elseif (associated(general%salt_mole_fraction)) then
+              salt_mole_frac = general%salt_mole_fraction%dataset%rarray(1)
+            endif
           endif
           if (gas_sat > 0.d0 .and. gas_sat < 1.d0) then
             coupler%flow_aux_int_var(GENERAL_STATE_INDEX,1:num_connections) = &
@@ -2435,6 +2439,8 @@ subroutine PatchUpdateCouplerAuxVarsG(patch,coupler,option)
           call DatasetUnknownClass(selector,option, &
                                    'PatchUpdateCouplerAuxVarsG')
       end select
+    else
+      coupler%flow_bc_type(GENERAL_SALT_EQUATION_INDEX) = NEUMANN_BC
     endif
   endif
 
