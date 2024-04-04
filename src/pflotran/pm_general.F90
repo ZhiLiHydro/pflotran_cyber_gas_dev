@@ -424,6 +424,8 @@ subroutine PMGeneralReadSimOptionsBlock(this,input)
       case('SOLUBLE_MATRIX')
         option%io_buffer = "Matrix solubility is now entered in material properties as SOLUBLE."
         call PrintErrMsg(option)
+      case('GAS_FIRST')
+        general_gas_first = PETSC_TRUE
       case('UPDATE_PERMEABILITY')
         general_update_permeability = PETSC_TRUE
         call InputReadDouble(input,option,permeability_func_porosity_exp)

@@ -57,6 +57,7 @@ module General_Aux_module
   PetscBool, public :: gen_chk_max_dpl_liq_state_only = PETSC_FALSE
   PetscBool, public :: general_kelvin_equation = PETSC_FALSE
   PetscBool, public :: general_compute_surface_tension = PETSC_FALSE
+  PetscBool, public :: general_gas_first = PETSC_FALSE
 
   ! debugging
   PetscInt, public :: general_ni_count
@@ -1347,6 +1348,10 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
     u_water_vapor = u_water_vapor * 1.d-6 ! J/kmol -> MJ/kmol
     gen_auxvar%den(gid) = den_water_vapor + den_air
     gen_auxvar%den_kg(gid) = den_kg_water_vapor + den_air*fmw_comp(gid)
+    if (general_gas_first) then
+      gen_auxvar%den(lid) = gen_auxvar%den(gid)
+      gen_auxvar%den_kg(lid) = gen_auxvar%den_kg(gid)
+    endif
     ! if xmol not set for gas phase, as is the case for LIQUID_STATE,
     ! set based on densities
 !    if (gen_auxvar%xmol(acid,gid) < 1.d-40) then
@@ -1528,6 +1533,9 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
     else
       call EOSGasViscosity(gen_auxvar%temp,gen_auxvar%pres(apid), &
                            gen_auxvar%pres(gid),den_air,visg,ierr)
+    endif
+    if (general_gas_first) then
+      gen_auxvar%mobility(lid) = krg/visg
     endif
     gen_auxvar%mobility(gid) = krg/visg
     gen_auxvar%kr(gid) = krg
