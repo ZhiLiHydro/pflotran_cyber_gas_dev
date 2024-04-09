@@ -2240,20 +2240,19 @@ subroutine GeneralAuxVarCompute4(x,gen_auxvar,global_auxvar,material_auxvar, &
         gen_auxvar%sat(pid) = x(GENERAL_PRECIPITATE_SAT_DOF)
       endif
 
-      call GeneralAuxNaClSolubility(gen_auxvar%temp,NaClSolubility,solubility_function)
-      gen_auxvar%xmol(sid,lid) = NaClSolubility
-      if (gen_auxvar%istatechng) then
-        gen_auxvar%sat(lid) = min(1.d0,max(0.d0,gen_auxvar%sat(lid)))
-        if (soluble_matrix) then
-          gen_auxvar%sat(pid) = 0.d0
-          gen_auxvar%effective_porosity = min(1.d0,max(0.d0,gen_auxvar%effective_porosity))
-        else
-          gen_auxvar%sat(pid) = min(1.d0,max(0.d0,gen_auxvar%sat(pid)))
-        endif
-      endif
-
       if (general_2ph_energy_dof == GENERAL_TEMPERATURE_INDEX) then
         gen_auxvar%temp = x(GENERAL_ENERGY_DOF)
+        call GeneralAuxNaClSolubility(gen_auxvar%temp,NaClSolubility,solubility_function)
+        gen_auxvar%xmol(sid,lid) = NaClSolubility
+        if (gen_auxvar%istatechng) then
+          gen_auxvar%sat(lid) = min(1.d0,max(0.d0,gen_auxvar%sat(lid)))
+          if (soluble_matrix) then
+            gen_auxvar%sat(pid) = 0.d0
+            gen_auxvar%effective_porosity = min(1.d0,max(0.d0,gen_auxvar%effective_porosity))
+          else
+            gen_auxvar%sat(pid) = min(1.d0,max(0.d0,gen_auxvar%sat(pid)))
+          endif
+        endif
         aux(1) = gen_auxvar%xmol(sid,lid)
         call EOSWaterSaturationPressureExt(gen_auxvar%temp,aux, &
                                            gen_auxvar%pres(spid),ierr)
@@ -2265,14 +2264,8 @@ subroutine GeneralAuxVarCompute4(x,gen_auxvar,global_auxvar,material_auxvar, &
         gen_auxvar%pres(vpid) = gen_auxvar%pres(spid)
         gen_auxvar%pres(apid) = gen_auxvar%pres(gid) - gen_auxvar%pres(vpid)
       else
-        gen_auxvar%pres(apid) = x(GENERAL_ENERGY_DOF)
-        gen_auxvar%pres(vpid) = gen_auxvar%pres(gid) - gen_auxvar%pres(apid)
-
-        gen_auxvar%pres(spid) = gen_auxvar%pres(vpid)
-        guess = gen_auxvar%temp
-        call EOSWaterSaturationTemperature(gen_auxvar%temp, &
-                                           gen_auxvar%pres(spid),dummy, &
-                                           guess,ierr)
+        option%io_buffer = 'Non-temperature two-phase not implemented for 4-dof GENERAL mode.'
+        call PrintErrMsg(option)
       endif
 
       gen_auxvar%sat(lid) = 1.d0 - gen_auxvar%sat(gid) - gen_auxvar%sat(pid)
