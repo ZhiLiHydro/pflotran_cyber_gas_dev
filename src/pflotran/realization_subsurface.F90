@@ -1849,7 +1849,7 @@ subroutine RealizationAddWaypointsToList(realization,waypoint_list)
         call TimeStorageGetTimes(sub_condition%dataset%time_storage, option, &
                                 final_time, times)
         if (associated(times)) then
-          if (size(times) > 20000) then
+          if (size(times) > 10000000) then
             option%io_buffer = 'For flow condition "' // &
               trim(cur_flow_condition%name) // &
               '" dataset "' // trim(sub_condition%name) // &
