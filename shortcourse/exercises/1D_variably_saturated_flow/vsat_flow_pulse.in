@@ -55,7 +55,7 @@ END
 
 #=========================== output options ===================================
 OUTPUT
-  TIMES y 0.1 0.2 0.3 1.0
+  TIMES y ...
   FORMAT TECPLOT POINT
 END
 
@@ -103,12 +103,7 @@ FLOW_CONDITION recharge
   TYPE
     LIQUID_FLUX NEUMANN
   /
-  LIQUID_FLUX LIST
-    TIME_UNITS y
-    DATA_UNITS cm/y
-    0. 100.
-    0.2 0.
-  /
+  ...
 END
 
 #=========================== condition couplers ===============================
