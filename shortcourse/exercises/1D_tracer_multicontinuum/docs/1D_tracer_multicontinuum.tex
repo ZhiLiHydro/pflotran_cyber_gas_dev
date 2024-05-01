@@ -304,10 +304,10 @@ MATERIAL_PROPERTY soil1
   \magentacomment{SECONDARY_CONTINUUM
     TYPE SLAB               \bluecomment{! single fracture}
     LENGTH 1.0              \bluecomment{! half fracture spacing [m]}
-    AREA 1.0                \bluecomment{! specific surface area [1/m]}
     NUM_CELLS 50            \bluecomment{! secondary cells per primary}
     EPSILON 0.00005d0       \bluecomment{! fracture volume fraction}
-    LIQUID_DIFFUSION_COEFFICIENT 1.6d-10  \bluecomment{! includes tortuosity}
+    \bluecomment{! includes tortuosity}
+    LIQUID_DIFFUSION_COEFFICIENT 1.6d-10  
     POROSITY 0.01
   / }
 END
@@ -352,7 +352,6 @@ CHEMISTRY
     HALF_LIFE 12.35 y
   /
   LOG_FORMULATION
-  DATABASE ../../../database/hanford.dat
   OUTPUT
     All
     TOTAL
@@ -427,11 +426,6 @@ CONSTRAINT inlet_constraint
   /
 /
 
-\magentacomment{SECONDARY_CONSTRAINT sec    \bluecomment{! initial secondary constraint}
-  CONCENTRATIONS
-    Tracer  1.d-20  T 
-  /
-/}
 \end{semiverbatim}
 }
 
@@ -676,9 +670,10 @@ CONSTRAINT inlet_constraint
   CONCENTRATIONS
     Tracer  \magentacomment{1.d-20}  T
   /
+  \magentacomment{SECONDARY_CONSTRAINT initial_sec_contraint}
 /
 
-SECONDARY_CONSTRAINT sec
+CONSTRAINT initial_sec_constraint
   CONCENTRATIONS
     Tracer  \magentacomment{1.d0}  T 
   /

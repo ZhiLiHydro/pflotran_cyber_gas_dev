@@ -21,7 +21,7 @@ filenames = pft.get_full_paths(path,files)
 f = plt.figure(figsize=(6,6))
 plt.subplot(1,1,1)
 f.suptitle("1D Tracer - Concentration in Fracture",fontsize=16)
-plt.xlabel('Z [m]')
+plt.xlabel('Distance in Fracture [m]')
 plt.ylabel('Concentration [M]')
 
 

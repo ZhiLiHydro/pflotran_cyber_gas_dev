@@ -20,8 +20,8 @@ filenames = pft.get_full_paths(path,files)
 
 f = plt.figure(figsize=(8,6))
 plt.subplot(1,1,1)
-f.suptitle("1D Tracer - Concentration in Matrix at z = 2 [m]",fontsize=16)
-plt.xlabel('x [m]')
+f.suptitle("1D Tracer - Concentration in Matrix at x = 2 [m]",fontsize=16)
+plt.xlabel('Distance into Matrix [m]')
 plt.ylabel('Concentration [M]')
 
 

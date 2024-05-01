@@ -7,7 +7,7 @@ SIMULATION
     SUBSURFACE_TRANSPORT transport
       MODE GIRT
       OPTIONS
-        MULTIPLE_CONTINUUM
+        ...
       /
     /
   /
@@ -17,13 +17,7 @@ SUBSURFACE
 #=========================== useful tranport parameters ==================
 SPECIFIED_VELOCITY #Darcy flux / specific discharge (vol/area/time)
   UNIFORM? YES
-  DATASET 5d-6 0.d0 0.d0 m/d
-END
-#=========================== numerical methods ========================
-NUMERICAL_METHODS TRANSPORT
-  NEWTON_SOLVER
-    DTOL 1.d20
-  /
+  DATASET ... 0.d0 0.d0 m/d
 END
 
 #=========================== chemistry ========================================
@@ -34,10 +28,18 @@ CHEMISTRY
 
   RADIOACTIVE_DECAY_REACTION
     REACTION Tracer <->
-    HALF_LIFE 12.35 y
+    HALF_LIFE ... y
   /
+#  SORPTION
+#    ISOTHERM_REACTIONS
+#    Tracer
+#      TYPE LINEAR
+#        DISTRIBUTION_COEFFICIENT 0.d0
+#	...
+#      /
+#    /
+#  /
   LOG_FORMULATION
-  DATABASE ../../../database/hanford.dat
   OUTPUT
     All
     TOTAL
@@ -67,15 +69,10 @@ MATERIAL_PROPERTY soil1
   POROSITY 1.d0
   TORTUOSITY 1.d0
   ROCK_DENSITY 2700.d0 #kg/m3
-  LONGITUDINAL_DISPERSIVITY 0.5 #m
+  LONGITUDINAL_DISPERSIVITY ... #m
 
   SECONDARY_CONTINUUM
-    TYPE SLAB
-    LENGTH 1.0
-    NUM_CELLS 50
-    EPSILON 0.00005d0
-    LIQUID_DIFFUSION_COEFFICIENT 1.6d-10
-    POROSITY 0.01
+    ...
    /
 END
 
@@ -129,7 +126,7 @@ END
 
 OBSERVATION 
   REGION obs
-  SECONDARY_CONCENTRATION
+  ...
 /
 
 #==== transport conditions=====================================================
@@ -186,11 +183,6 @@ CONSTRAINT inlet_constraint
   /
 /
 
-#==================== secondary continuum initial constraint ==================
-SECONDARY_CONSTRAINT sec
-  CONCENTRATIONS
-    Tracer  1.d-20  T 
-  /
-/
+
 
 END_SUBSURFACE

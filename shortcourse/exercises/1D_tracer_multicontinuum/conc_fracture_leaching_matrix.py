@@ -21,7 +21,7 @@ filenames = pft.get_full_paths(path,files)
 
 f = plt.figure(figsize=(8,6))
 plt.subplot(1,1,1)
-f.suptitle("1D Tracer - Concentration in Fracture at z = 2 [m] with leaching matrix",fontsize=16)
+f.suptitle("1D Tracer - Concentration in Fracture at x = 2 [m] with leaching matrix",fontsize=16)
 plt.xlabel('Time [days]')
 plt.ylabel('Concentration [M]')
 

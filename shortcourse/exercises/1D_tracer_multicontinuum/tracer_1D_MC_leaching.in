@@ -19,12 +19,6 @@ SPECIFIED_VELOCITY #Darcy flux / specific discharge (vol/area/time)
   UNIFORM? YES
   DATASET 5d-6 0.d0 0.d0 m/d
 END
-#=========================== numerical methods ========================
-NUMERICAL_METHODS TRANSPORT
-  NEWTON_SOLVER
-    DTOL 1.d20
-  /
-END
 
 #=========================== chemistry ========================================
 CHEMISTRY
@@ -57,7 +51,6 @@ CHEMISTRY
     /
   /
   LOG_FORMULATION
-  DATABASE ../../../database/hanford.dat
   OUTPUT
     All
     TOTAL
@@ -158,6 +151,7 @@ TRANSPORT_CONDITION background
   CONSTRAINT_LIST
     0.d0 initial_constraint
   /
+  ...
 END
 
 TRANSPORT_CONDITION inlet
@@ -207,10 +201,6 @@ CONSTRAINT inlet_constraint
 /
 
 #==================== secondary continuum initial constraint ==================
-SECONDARY_CONSTRAINT sec
-  CONCENTRATIONS
-    Tracer  1.d0  T 
-  /
-/
+...
 
 END_SUBSURFACE
