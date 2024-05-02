@@ -57,7 +57,7 @@ CHEMISTRY
   ACTIVITY_COEFFICIENTS TIMESTEP
   OUTPUT
     PH
-    FREE_ION
+    TOTAL
     ALL
   /
 END
@@ -153,7 +153,7 @@ END
 CONSTRAINT inlet_constraint
   CONCENTRATIONS
     H+     5.         P
-    HCO3-  1.d-3      F
+    HCO3-  1.d-3      T
     Ca++   1.d-6      Z
   /
 END

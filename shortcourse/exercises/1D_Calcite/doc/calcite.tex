@@ -403,7 +403,7 @@ CHEMISTRY
   ACTIVITY_COEFFICIENTS TIMESTEP  \bluecomment{! time step lagged}
   OUTPUT                          \bluecomment{!   activity}
     PH                            \bluecomment{!   coefficients}
-    FREE_ION  \bluecomment{! free ion concentrations}
+    TOTAL     \bluecomment{! total component concentrations}
     ALL       \bluecomment{! print primary species}
   /
 END
@@ -439,7 +439,7 @@ END  \bluecomment{! <-- closes out CONSTRAINT card}
 CONSTRAINT inlet_constraint \bluecomment{! named: \greencomment{inlet_constraint}}
   CONCENTRATIONS
     H+     5.         P  \bluecomment{! \redcomment{P} = pH; analogous to -log(F)}
-    HCO3-  1.d-3      F  \bluecomment{! \redcomment{F} = free ion concentration}
+    HCO3-  1.d-3      T  \bluecomment{! \redcomment{T} = total component}
     Ca++   1.d-6      Z  \bluecomment{! \redcomment{Z} = charge balance}
   /  \bluecomment{! <-- closes out block; \redcomment{note no MINERAL block}}
 END
