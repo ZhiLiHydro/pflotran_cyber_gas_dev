@@ -137,15 +137,10 @@ END
 
 #=========================== flow conditions ==================================
 FLOW_CONDITION liquid_pressure
-  TYPE
-    LIQUID_PRESSURE HYDROSTATIC
-    MOLE_FRACTION DIRICHLET
-    TEMPERATURE DIRICHLET
-  /
-  DATUM 0.d0 0.d0 3.d0 
-  LIQUID_PRESSURE 101325.d0
-  MOLE_FRACTION 1.d-8
-  TEMPERATURE 28.d0
+# Fill in flow conditions here for
+# liquid pressure: 1 atm at 3 m,
+# 1E-8 mole fraction of air,
+# 28 C temperature
 END
 
 FLOW_CONDITION partially_saturated

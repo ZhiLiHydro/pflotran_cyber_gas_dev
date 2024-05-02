@@ -25,27 +25,27 @@ END
 
 #=========================== datasets ===================================
 DATASET liquid_pressure
-  FILENAME ./ic_dataset.h5
+  FILENAME ...
   HDF5_DATASET_NAME bounding_liquid_pressure
 END
 
 DATASET mole_fraction
-  FILENAME ./ic_dataset.h5
+  FILENAME ...
   HDF5_DATASET_NAME bounding_mole_fraction
 END
 
 DATASET gas_pressure
-  FILENAME ./ic_dataset.h5
+  FILENAME ...
   HDF5_DATASET_NAME bounding_gas_pressure
 END
 
 DATASET gas_saturation
-  FILENAME ./ic_dataset.h5
+  FILENAME ...
   HDF5_DATASET_NAME bounding_gas_saturation
 END 
 
 DATASET temperature
-  FILENAME ./ic_dataset.h5
+  FILENAME ...
   HDF5_DATASET_NAME bounding_temperature
 END
 
@@ -181,11 +181,11 @@ FLOW_CONDITION initial
     GAS_PRESSURE DIRICHLET
     GAS_SATURATION DIRICHLET
   /
-  LIQUID_PRESSURE DATASET liquid_pressure
-  MOLE_FRACTION DATASET mole_fraction
-  TEMPERATURE DATASET temperature
-  GAS_PRESSURE DATASET gas_pressure
-  GAS_SATURATION DATASET gas_saturation
+  LIQUID_PRESSURE DATASET ...
+  MOLE_FRACTION DATASET ...
+  TEMPERATURE DATASET ...
+  GAS_PRESSURE DATASET ...
+  GAS_SATURATION DATASET ...
 END
 
 FLOW_CONDITION unsaturated
@@ -195,10 +195,10 @@ FLOW_CONDITION unsaturated
     RELATIVE_HUMIDITY DIRICHLET
     TEMPERATURE DIRICHLET
   /
-  GAS_PRESSURE DATASET gas_pressure 
+  GAS_PRESSURE DATASET ...
   RELATIVE_HUMIDITY 0.5
   #GAS_SATURATION 8.9d-1 
-  TEMPERATURE DATASET temperature 
+  TEMPERATURE DATASET ...
 
 END
 
