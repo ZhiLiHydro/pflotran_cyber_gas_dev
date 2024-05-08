@@ -394,18 +394,8 @@ BOUNDARY_CONDITION top
 END
 
 # source 
-SOURCE_SINK injection_well
-  FLOW_CONDITION injection
-  TRANSPORT_CONDITION injection
-  REGION injection_well
-END
 
 # sink 
-SOURCE_SINK extraction_well
-  FLOW_CONDITION extraction
-  TRANSPORT_CONDITION initial
-  REGION extraction_well
-END
 
 #=========================== stratigraphy couplers ============================
 STRATA
