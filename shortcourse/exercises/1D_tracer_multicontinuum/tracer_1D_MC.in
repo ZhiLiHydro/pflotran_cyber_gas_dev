@@ -7,7 +7,6 @@ SIMULATION
     SUBSURFACE_TRANSPORT transport
       MODE GIRT
       OPTIONS
-        ...
       /
     /
   /
@@ -17,7 +16,7 @@ SUBSURFACE
 #=========================== useful tranport parameters ==================
 SPECIFIED_VELOCITY #Darcy flux / specific discharge (vol/area/time)
   UNIFORM? YES
-  DATASET ... 0.d0 0.d0 m/d
+  DATASET 5.d-6 0.d0 0.d0 m/d
 END
 
 #=========================== chemistry ========================================
@@ -28,14 +27,14 @@ CHEMISTRY
 
   RADIOACTIVE_DECAY_REACTION
     REACTION Tracer <->
-    HALF_LIFE ... y
+    HALF_LIFE 0.d0 y
   /
 #  SORPTION
 #    ISOTHERM_REACTIONS
 #    Tracer
 #      TYPE LINEAR
 #        DISTRIBUTION_COEFFICIENT 0.d0
-#	...
+#
 #      /
 #    /
 #  /
@@ -66,14 +65,11 @@ FLUID_PROPERTY
 #========================= material properties ===================
 MATERIAL_PROPERTY soil1
   ID 1
-  POROSITY 1.d0
+  POROSITY 1.0d0
   TORTUOSITY 1.d0
   ROCK_DENSITY 2700.d0 #kg/m3
-  LONGITUDINAL_DISPERSIVITY ... #m
+  LONGITUDINAL_DISPERSIVITY 0.d0 #m
 
-  SECONDARY_CONTINUUM
-    ...
-   /
 END
 
 #========================= output options =========================
@@ -126,7 +122,6 @@ END
 
 OBSERVATION 
   REGION obs
-  ...
 /
 
 #==== transport conditions=====================================================
