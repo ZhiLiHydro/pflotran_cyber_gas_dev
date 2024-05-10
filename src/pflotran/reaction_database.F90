@@ -1934,6 +1934,8 @@ subroutine ReactionDBInitBasis(reaction,option)
                                            max_num_prefactors,mineral%nkinmnrl))
         mineral%kinmnrl_pref_atten_coef = 0.d0
       endif
+      allocate(mineral%kinmnrl_mapping(mineral%nkinmnrl))
+      mineral%kinmnrl_mapping = 0
     endif
 
     ! Determine whether mineral scale factor is used in any TST reactions
@@ -2282,6 +2284,14 @@ subroutine ReactionDBInitBasis(reaction,option)
 
         mineral%kinmnrl_molar_vol(ikinmnrl) = cur_mineral%molar_volume
         mineral%kinmnrl_molar_wt(ikinmnrl) = cur_mineral%molar_weight
+
+        ! remap minerals for parallel kinetic pathways
+        if (len_trim(tstrxn%remap_name) > 0) then
+          mineral%kinmnrl_mapping(ikinmnrl) = &
+            ReactionMnrlGetKinMnrlIDFromName(tstrxn%remap_name,mineral,option)
+        else
+          mineral%kinmnrl_mapping(ikinmnrl) = ikinmnrl
+        endif
         ikinmnrl = ikinmnrl + 1
       endif
 

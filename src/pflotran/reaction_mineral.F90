@@ -233,6 +233,9 @@ subroutine ReactionMnrlReadKinetics(mineral,input,option)
             case('VOLUME_FRACTION_EPSILON')
               call InputReadDouble(input,option,tstrxn%vol_frac_epsilon)
               call InputErrorMsg(input,option,word,error_string)
+            case('REMAP_TO')
+              call InputReadWord(input,option,tstrxn%remap_name,PETSC_TRUE)
+              call InputErrorMsg(input,option,word,error_string)
             case('PREFACTOR')
               error_string = 'CHEMISTRY,MINERAL_KINETICS,PREFACTOR'
               prefactor => ReactionMnrlCreateTSTPrefactor()
@@ -670,7 +673,7 @@ subroutine ReactionMnrlKineticRate(Res,Jac,compute_derivative,rt_auxvar, &
   type(global_auxvar_type) :: global_auxvar
   type(material_auxvar_type) :: material_auxvar
 
-  PetscInt :: i, j, imnrl, icomp, jcomp, iphase, ncomp
+  PetscInt :: i, j, imnrl, icomp, jcomp, iphase, ncomp, imnrl_remapped
   PetscInt :: ipref, ipref_species
   ! I am assuming a maximum of 10 prefactors and 5 species per prefactor
   PetscReal :: tempreal
@@ -752,7 +755,7 @@ subroutine ReactionMnrlKineticRate(Res,Jac,compute_derivative,rt_auxvar, &
   rt_auxvar%mnrl_rate(:) = 0.d0
 
   do imnrl = 1, mineral%nkinmnrl ! for each mineral
-
+    imnrl_remapped = mineral%kinmnrl_mapping(imnrl)
 #ifdef SOLID_SOLUTION
     call ReactionMnrlKineticRateSingle(imnrl,ln_act,ln_sec_act,rt_auxvar, &
                                        global_auxvar,QK,Im,Im_const, &
@@ -799,12 +802,13 @@ subroutine ReactionMnrlKineticRate(Res,Jac,compute_derivative,rt_auxvar, &
 
     sign_ = sign(1.d0,affinity_factor)
 
-    if (rt_auxvar%mnrl_volfrac(imnrl) > 0 .or. sign_ < 0.d0) then
+    if (rt_auxvar%mnrl_volfrac(imnrl_remapped) > 0 .or. sign_ < 0.d0) then
       if (mineral%kinmnrl_irreversible(imnrl) == 1 .and. sign_ < 0.d0) cycle
 
-!    if ((mineral%kinmnrl_irreversible(imnrl) == 0 &
-!      .and. (rt_auxvar%mnrl_volfrac(imnrl) > 0.d0 .or. sign_ < 0.d0)) &
-!      .or. (mineral%kinmnrl_irreversible(imnrl) == 1 .and. sign_ < 0.d0)) then
+!    if ((mineral%kinmnrl_irreversible(imnrl) == 0 .and. &
+!      (rt_auxvar%mnrl_volfrac(imnrl_remapped) > 0.d0 .or. &
+!       sign_ < 0.d0)) .or. &
+!      (mineral%kinmnrl_irreversible(imnrl) == 1 .and. sign_ < 0.d0)) then
 
 !     check for supersaturation threshold for precipitation
 !     if (associated(mineral%kinmnrl_affinity_threshold)) then
@@ -1120,6 +1124,7 @@ subroutine ReactionMnrlKineticRateSingle(imnrl,ln_act,ln_sec_act,rt_auxvar, &
 
   PetscReal :: lnQK
   PetscInt :: i, imnrl, icomp, ncomp, ipref, ipref_species
+  PetscInt :: imnrl_remapped
   PetscReal :: sign_
 
   PetscReal :: ln_spec_act
@@ -1129,6 +1134,8 @@ subroutine ReactionMnrlKineticRateSingle(imnrl,ln_act,ln_sec_act,rt_auxvar, &
   PetscReal :: TREF = 25.d0
 
   cycle_ = PETSC_FALSE
+
+  imnrl_remapped = mineral%kinmnrl_mapping(imnrl)
 
   ! compute ion activity product
   lnQK = -mineral%kinmnrl_logK(imnrl)*LOG_TO_LN
@@ -1160,14 +1167,14 @@ subroutine ReactionMnrlKineticRateSingle(imnrl,ln_act,ln_sec_act,rt_auxvar, &
 
   sign_ = sign(1.d0,affinity_factor)
 
-  if (rt_auxvar%mnrl_volfrac(imnrl) > 0.d0 .or. sign_ < 0.d0) then
+  if (rt_auxvar%mnrl_volfrac(imnrl_remapped) > 0.d0 .or. sign_ < 0.d0) then
     if (mineral%kinmnrl_irreversible(imnrl) == 1 .and. sign_ < 0.d0) then
       cycle_ = PETSC_TRUE
       return
     endif
 
-!  if ((mineral%kinmnrl_irreversible(imnrl) == 0 &
-!    .and. (rt_auxvar%mnrl_volfrac(imnrl) > 0.d0 .or. sign_ < 0.d0)) &
+!  if ((mineral%kinmnrl_irreversible(imnrl) == 0 .and. &
+!    (rt_auxvar%mnrl_volfrac(imnrl_remapped) > 0.d0 .or. sign_ < 0.d0)) &
 !    .or. (mineral%kinmnrl_irreversible(imnrl) == 1 .and. sign_ < 0.d0)) then
 
 !     check for supersaturation threshold for precipitation
@@ -1483,7 +1490,7 @@ subroutine ReactionMnrlUpdateKineticState(rt_auxvar,global_auxvar, &
   PetscBool :: kinetic_state_updated
   type(option_type) :: option
 
-  PetscInt :: imnrl, iaqspec, ncomp, icomp
+  PetscInt :: imnrl, iaqspec, ncomp, icomp, imnrl_remapped
   PetscReal :: delta_volfrac
   PetscReal :: res(reaction%ncomp) ! has to be sized accurately
   PetscReal :: jac(1,1) ! strictly a dummy array
@@ -1503,10 +1510,11 @@ subroutine ReactionMnrlUpdateKineticState(rt_auxvar,global_auxvar, &
     delta_volfrac = rt_auxvar%mnrl_rate(imnrl)* &
                     reaction%mineral%kinmnrl_molar_vol(imnrl)* &
                     option%tran_dt
-    rt_auxvar%mnrl_volfrac(imnrl) = rt_auxvar%mnrl_volfrac(imnrl) + &
-                                    delta_volfrac
-    if (rt_auxvar%mnrl_volfrac(imnrl) < 0.d0) &
-      rt_auxvar%mnrl_volfrac(imnrl) = 0.d0
+    imnrl_remapped = reaction%mineral%kinmnrl_mapping(imnrl)
+    rt_auxvar%mnrl_volfrac(imnrl_remapped) = &
+      rt_auxvar%mnrl_volfrac(imnrl_remapped) + delta_volfrac
+!    if (rt_auxvar%mnrl_volfrac(imnrl) < 0.d0) &
+!      rt_auxvar%mnrl_volfrac(imnrl) = 0.d0
 
     ! CO2-specific
     if (option%iflowmode == MPH_MODE) then
@@ -1529,6 +1537,11 @@ subroutine ReactionMnrlUpdateKineticState(rt_auxvar,global_auxvar, &
           reaction%mineral%kinmnrlh2ostoich(imnrl)/option%flow_dt
       endif
     endif
+  enddo
+
+  do imnrl = 1, reaction%mineral%nkinmnrl
+    if (rt_auxvar%mnrl_volfrac(imnrl) < 0.d0) &
+      rt_auxvar%mnrl_volfrac(imnrl) = 0.d0
   enddo
 
 end subroutine ReactionMnrlUpdateKineticState

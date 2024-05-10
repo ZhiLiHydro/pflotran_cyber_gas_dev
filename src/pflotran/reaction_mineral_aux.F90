@@ -43,6 +43,7 @@ module Reaction_Mineral_Aux_module
     PetscReal :: armor_crit_vol_frac
     PetscReal :: surf_area_epsilon
     PetscReal :: vol_frac_epsilon
+    character(len=MAXWORDLENGTH) :: remap_name
     type(transition_state_prefactor_type), pointer :: prefactor
     type(transition_state_rxn_type), pointer :: next
   end type transition_state_rxn_type
@@ -134,6 +135,7 @@ module Reaction_Mineral_Aux_module
     PetscReal, pointer :: kinmnrl_surf_area_epsilon(:)
     PetscReal, pointer :: kinmnrl_vol_frac_epsilon(:)
     PetscInt, pointer :: kinmnrl_irreversible(:)
+    PetscInt, pointer :: kinmnrl_mapping(:)
 
   end type mineral_type
 
@@ -233,6 +235,7 @@ function ReactionMnrlCreateAux()
 
   nullify(mineral%kinmnrl_surf_area_epsilon)
   nullify(mineral%kinmnrl_vol_frac_epsilon)
+  nullify(mineral%kinmnrl_mapping)
 
   ReactionMnrlCreateAux => mineral
 
@@ -300,6 +303,7 @@ function ReactionMnrlCreateTSTRxn()
   tstrxn%surf_area_epsilon = 0.d0
   tstrxn%vol_frac_epsilon = 0.d0
   tstrxn%rate = 0.d0
+  tstrxn%remap_name = ''
   nullify(tstrxn%prefactor)
   nullify(tstrxn%next)
 
@@ -509,7 +513,6 @@ function ReactionMnrlGetMnrlIDFromName1(name,mineral,option)
   ! Date: 09/04/08
   !
   use Option_module
-  use String_module
 
   implicit none
 
