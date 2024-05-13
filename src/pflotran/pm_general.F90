@@ -181,7 +181,11 @@ subroutine PMGeneralSetFlowMode(pm,option)
   option%air_id = 2
 
   if (option%nflowdof == 0 .or. option%nflowdof == 3) then
-    option%nphase = 2
+    if (general_freezing_flag) then
+      option%nphase = 3
+    else
+      option%nphase = 2
+    endif
     option%nflowdof = 3
     option%nflowspec = 2
     general_max_states = 3
@@ -465,6 +469,8 @@ subroutine PMGeneralReadSimOptionsBlock(this,input)
          call InputErrorMsg(input,option,keyword,error_string)
          general_salt_src_flag = PETSC_TRUE
          general_max_pres_srcsink = tempreal
+      case('FREEZING')
+         general_freezing_flag = PETSC_TRUE
       case default
         call InputKeywordUnrecognized(input,keyword,'GENERAL Mode',option)
     end select

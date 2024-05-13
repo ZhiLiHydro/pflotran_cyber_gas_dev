@@ -57,6 +57,10 @@ module General_Aux_module
   PetscBool, public :: gen_chk_max_dpl_liq_state_only = PETSC_FALSE
   PetscBool, public :: general_kelvin_equation = PETSC_FALSE
   PetscBool, public :: general_compute_surface_tension = PETSC_FALSE
+  PetscBool, public :: general_freezing_flag = PETSC_FALSE
+  PetscReal, parameter :: ICE_DENSITY_KG = 920.d0 !kg/m^3
+  PetscReal, parameter :: ICE_DENSITY = 50.86d0 !mol/L
+  PetscReal, parameter :: L_ICE = 6033.54 !J/mol
 
   ! debugging
   PetscInt, public :: general_ni_count
@@ -595,15 +599,17 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
   class(creep_closure_type), pointer :: creep_closure
   PetscInt :: natural_id
 
-  PetscInt :: gid, lid, acid, wid, eid
+  PetscInt :: gid, lid, acid, wid, eid, iid
   PetscReal :: cell_pressure, water_vapor_pressure
   PetscReal :: den_water_vapor, den_kg_water_vapor
   PetscReal :: u_water_vapor, h_water_vapor
-  PetscReal :: den_air, h_air, u_air
+  PetscReal :: den_air, h_air, u_air, u_ice, h_ice
   PetscReal :: xmol_air_in_gas, xmol_water_in_gas
   PetscReal :: krl, visl, dvis_dp, dvis_dT, dvis_dpa
   PetscReal :: dkrl_dsatl, dkrl_dsatg
   PetscReal :: dkrg_dsatl, dkrg_dsatg
+  PetscReal :: dsat_dpres, Pc
+  PetscReal :: du_ice_dT, du_ice_dP
   PetscReal :: krg, visg
   PetscReal :: K_H_tilde
   PetscReal :: guess, dummy
@@ -641,6 +647,7 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
   cpid = option%capillary_pressure_id
   vpid = option%vapor_pressure_id
   spid = option%saturation_pressure_id
+  iid = 3
 
   acid = option%air_id ! air component id
   wid = option%water_id
@@ -719,7 +726,19 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
       ! necessary for water since we do not calculate water diffusion
       ! explicitly.  set mole fractions to zero in gas phase.
       gen_auxvar%xmol(:,gid) = 0.d0
-      gen_auxvar%sat(lid) = 1.d0
+      if (general_freezing_flag) then 
+        if (gen_auxvar%temp <= 0.d0) then
+          ! Clausius-Clayperon equation
+          Pc = -(gen_auxvar%temp) * (L_ICE * ICE_DENSITY * 1.d6) / (T273K)
+          ! Get the corresponding liquid saturation
+          call characteristic_curves%saturation_function% &
+               Saturation(Pc,gen_auxvar%sat(lid),dsat_dpres,option)
+        endif
+        gen_auxvar%sat(iid) = 1.d0 - gen_auxvar%sat(lid)
+      else
+        gen_auxvar%sat(lid) = 1.d0
+      endif
+     
       gen_auxvar%sat(gid) = 0.d0
 
       if (.not.option%flow%sat_pres_depends_on_salinity) then
@@ -966,13 +985,23 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
         gen_auxvar%sat(gid) = max(0.d0,gen_auxvar%sat(gid))
         gen_auxvar%sat(gid) = min(1.d0,gen_auxvar%sat(gid))
       endif
+
       cell_pressure = max(gen_auxvar%pres(lid),gen_auxvar%pres(gid), &
                       gen_auxvar%pres(spid))
       gen_auxvar%sat(lid) = 1.d0 - gen_auxvar%sat(gid)
-      call characteristic_curves%saturation_function% &
-               CapillaryPressure(gen_auxvar%sat(lid), &
-                                 gen_auxvar%pres(cpid),dpc_dsatl,option)
-
+      if (general_freezing_flag) then
+        if (gen_auxvar%temp <= 0.d0) then
+          ! Clausius-Clayperon equation
+          Pc = -(gen_auxvar%temp) * (L_ICE * ICE_DENSITY * 1.d6) / (T273K)
+          ! Get the corresponding liquid saturation
+          call characteristic_curves%saturation_function% &
+               Saturation(Pc,gen_auxvar%sat(lid),dsat_dpres,option)
+        endif
+      else
+        call characteristic_curves%saturation_function% &
+                 CapillaryPressure(gen_auxvar%sat(lid), &
+                                   gen_auxvar%pres(cpid),dpc_dsatl,option)
+      endif
       if (general_2ph_energy_dof == GENERAL_TEMPERATURE_INDEX) then
         gen_auxvar%temp = x(GENERAL_ENERGY_DOF)
         if (general_compute_surface_tension) then
@@ -1379,6 +1408,18 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
     gen_auxvar%H(gid) = gen_auxvar%U(gid) + &
                         ! Pa / kmol/m^3 * 1.e-6 = MJ/kmol
                         gen_auxvar%pres(gid)/gen_auxvar%den(gid) * 1.d-6
+    
+    if (general_freezing_flag) then
+        call EOSWaterInternalEnergyIce(gen_auxvar%temp, U_ice, du_ice_dT, du_ice_dP,ierr)
+        U_ice = U_ice * 1.d-3
+        gen_auxvar%xmol(wid,iid) = 1.d0
+        gen_auxvar%xmol(gid,iid) = 0.d0
+        gen_auxvar%den(iid) = ICE_DENSITY
+        gen_auxvar%den_kg(iid) = ICE_DENSITY_KG
+        gen_auxvar%U(iid) = U_ice
+        gen_auxvar%H(iid) = U_ice
+        gen_auxvar%mobility(iid) = 0.d0
+    endif
 
     if (associated(gen_auxvar%d)) then
       gen_auxvar%d%Uv = u_water_vapor

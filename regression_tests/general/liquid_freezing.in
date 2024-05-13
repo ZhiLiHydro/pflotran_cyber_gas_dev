@@ -1,0 +1,228 @@
+#Description:
+
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE GENERAL
+      OPTIONS
+        FREEZING
+        CHECK_MAX_DPL_LIQ_STATE_ONLY
+        GAS_STATE_AIR_MASS_DOF WATER_MOL_FRAC
+      /
+    /
+  /
+END
+
+SUBSURFACE
+
+#=========================== numerical methods ================================
+NUMERICAL_METHODS FLOW
+
+  TIMESTEPPER
+    #  MAX_STEPS -1
+    SATURATION_CHANGE_GOVERNOR 1.d0
+    CONCENTRATION_CHANGE_GOVERNOR 0.5d0
+  /
+
+  NEWTON_SOLVER
+    USE_EUCLIDEAN_NORM_CONVERGENCE
+    MAXIMUM_NUMBER_OF_ITERATIONS 15
+    RTOL 1.d-8
+    ATOL 1.d-8
+    STOL 1.d-30
+  /
+
+  LINEAR_SOLVER
+    SOLVER DIRECT
+  /
+
+END
+
+#=========================== regression =======================================
+REGRESSION
+  CELL_IDS
+    1
+    2
+  /
+END
+
+#=========================== flow mode ========================================
+
+#=========================== debug settings ===================================
+#USE_TOUCH_OPTIONS
+
+#DEBUG
+#MATVIEW_JACOBIAN
+#VECVIEW_RESIDUAL
+#VECVIEW_SOLUTION
+#/
+
+#=========================== time stepper options =============================
+
+#=========================== discretization ===================================
+GRID
+  TYPE STRUCTURED
+  NXYZ 2 1 1
+  BOUNDS
+    0.d0 0.d0 0.d0
+    2.d0 1.d0 1.d0
+  /
+/
+
+#=========================== solver options ===================================
+
+
+#=========================== fluid properties =================================
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.d-9
+/
+
+#=========================== material properties ==============================
+MATERIAL_PROPERTY  Hanford
+  ID 5
+  CHARACTERISTIC_CURVES cc1
+  POROSITY 0.25
+  TORTUOSITY 0.5
+  ROCK_DENSITY 2650.d-3 kg/L
+  THERMAL_CONDUCTIVITY_DRY 0.5d-6 MW/m-C
+  THERMAL_CONDUCTIVITY_WET 2.d-6 MW/m-C
+  HEAT_CAPACITY 830.d-6 MJ/kg-C
+  PERMEABILITY
+    PERM_X 1.d-12
+    PERM_Y 1.d-12
+    PERM_Z 1.d-12
+  /
+/
+
+#=========================== saturation functions =============================
+CHARACTERISTIC_CURVES cc1
+  SATURATION_FUNCTION VAN_GENUCHTEN
+    LIQUID_RESIDUAL_SATURATION 0.d0
+    ALPHA 1.d-4
+    M 0.5d0
+    MAX_CAPILLARY_PRESSURE 1.d6
+  /
+  PERMEABILITY_FUNCTION MUALEM
+    PHASE LIQUID
+    LIQUID_RESIDUAL_SATURATION 0.d0
+    M 0.5d0
+  /
+  PERMEABILITY_FUNCTION MUALEM_VG_GAS
+    PHASE GAS
+    LIQUID_RESIDUAL_SATURATION 0.d0
+    GAS_RESIDUAL_SATURATION 1.d-40
+    M 0.5d0
+  /
+/
+
+#=========================== output options ===================================
+OUTPUT
+  FORMAT HDF5
+  PERIODIC TIMESTEP 4
+  VARIABLES
+    LIQUID_SATURATION
+    TEMPERATURE
+  /
+/
+
+#=========================== times ============================================
+TIME
+  FINAL_TIME 1. y
+  INITIAL_TIMESTEP_SIZE 1.d0 s
+  MAXIMUM_TIMESTEP_SIZE 0.001d0 y
+/
+
+#=========================== regions ==========================================
+REGION all
+  COORDINATES
+    0.d0 0.d0 0.d0
+    2.d0 1.d0 1.d0
+  /
+/
+
+REGION west
+  FACE WEST
+  COORDINATES
+    0.d0 0.d0 0.d0
+    0.d0 1.d0 1.d0
+  /
+/
+
+REGION east
+  FACE EAST
+  COORDINATES
+    2.d0 0.d0 0.d0
+    2.d0 1.d0 1.d0
+  /
+/
+
+REGION liquid_side
+  COORDINATE 0.5d0 0.5d0 0.5d0
+/
+
+REGION gas_side
+  COORDINATE 1.5d0 0.5d0 0.5d0
+/
+
+#=========================== observation points ===============================
+OBSERVATION
+  REGION liquid_side
+  VELOCITY
+/
+
+OBSERVATION
+  REGION gas_side
+  VELOCITY
+/
+
+#=========================== flow conditions ==================================
+FLOW_CONDITION liquid_phase
+  TYPE
+    LIQUID_PRESSURE DIRICHLET
+    MOLE_FRACTION DIRICHLET
+    TEMPERATURE DIRICHLET
+  /
+  LIQUID_PRESSURE 111325.d0
+  MOLE_FRACTION 1.d-10
+  TEMPERATURE 2.5d0
+/
+
+FLOW_CONDITION freezing_side
+  TYPE
+    LIQUID_PRESSURE DIRICHLET
+    MOLE_FRACTION DIRICHLET
+    TEMPERATURE DIRICHLET
+  /
+  LIQUID_PRESSURE 111325.d0
+  MOLE_FRACTION 1.d-10
+  TEMPERATURE -5.d0
+/
+
+#=========================== condition couplers ===============================
+INITIAL_CONDITION
+  FLOW_CONDITION liquid_phase
+  REGION all
+/
+
+
+#skip
+BOUNDARY_CONDITION west
+  FLOW_CONDITION liquid_phase
+  REGION west
+/
+
+BOUNDARY_CONDITION east
+  FLOW_CONDITION freezing_side
+  REGION east
+/
+#noskip
+
+#=========================== stratigraphy couplers ============================
+STRATA
+  MATERIAL Hanford
+  REGION all
+/
+
+
+END_SUBSURFACE
