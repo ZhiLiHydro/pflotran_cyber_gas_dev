@@ -733,6 +733,8 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
           ! Get the corresponding liquid saturation
           call characteristic_curves%saturation_function% &
                Saturation(Pc,gen_auxvar%sat(lid),dsat_dpres,option)
+        else
+          gen_auxvar%sat(lid) = 1.d0
         endif
         gen_auxvar%sat(iid) = 1.d0 - gen_auxvar%sat(lid)
       else
@@ -1408,18 +1410,6 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
     gen_auxvar%H(gid) = gen_auxvar%U(gid) + &
                         ! Pa / kmol/m^3 * 1.e-6 = MJ/kmol
                         gen_auxvar%pres(gid)/gen_auxvar%den(gid) * 1.d-6
-    
-    if (general_freezing_flag) then
-        call EOSWaterInternalEnergyIce(gen_auxvar%temp, U_ice, du_ice_dT, du_ice_dP,ierr)
-        U_ice = U_ice * 1.d-3
-        gen_auxvar%xmol(wid,iid) = 1.d0
-        gen_auxvar%xmol(gid,iid) = 0.d0
-        gen_auxvar%den(iid) = ICE_DENSITY
-        gen_auxvar%den_kg(iid) = ICE_DENSITY_KG
-        gen_auxvar%U(iid) = U_ice
-        gen_auxvar%H(iid) = U_ice
-        gen_auxvar%mobility(iid) = 0.d0
-    endif
 
     if (associated(gen_auxvar%d)) then
       gen_auxvar%d%Uv = u_water_vapor
@@ -1583,6 +1573,18 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
       gen_auxvar%d%mug_T = dvis_dT
       gen_auxvar%d%mug_pg = dvis_dp
     endif
+  endif
+
+  if (general_freezing_flag) then
+      call EOSWaterInternalEnergyIce(gen_auxvar%temp, U_ice, du_ice_dT, du_ice_dP,ierr)
+      U_ice = U_ice * 1.d-3
+      gen_auxvar%xmol(wid,iid) = 1.d0
+      gen_auxvar%xmol(gid,iid) = 0.d0
+      gen_auxvar%den(iid) = ICE_DENSITY
+      gen_auxvar%den_kg(iid) = ICE_DENSITY_KG
+      gen_auxvar%U(iid) = U_ice
+      gen_auxvar%H(iid) = U_ice
+      gen_auxvar%mobility(iid) = 0.d0
   endif
 
 #if 0
