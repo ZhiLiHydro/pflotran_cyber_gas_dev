@@ -35,6 +35,7 @@ module Characteristic_Curves_Base_module
     procedure, public :: SetupPolynomials => SFBaseSetupPolynomials
     procedure, public :: CapillaryPressure => SFBaseCapillaryPressure
     procedure, public :: Saturation => SFBaseSaturation
+    procedure, public :: FreezingSaturation => SFBaseFreezingSaturation
     procedure, public :: EffectiveSaturation => SFBaseEffectiveSaturation
     procedure, public :: D2SatDP2 => SFBaseD2SatDP2
 !    procedure, public :: CalcInterfacialTension => SFBaseSurfaceTension
@@ -44,6 +45,7 @@ module Characteristic_Curves_Base_module
     procedure, public :: SetResidualSaturation => SFBaseSetResidualSaturation
     procedure, public :: SetAlpha_ => SFBaseSetNeedsToBeExtended
     procedure, public :: SetM_ => SFBaseSetNeedsToBeExtended
+!    procedure, public :: SFBaseSetNeedsToBeExtended
   end type sat_func_base_type
 
 !-----------------------------------------------------------------------------
@@ -78,6 +80,7 @@ module Characteristic_Curves_Base_module
             SFBaseTest, &
             SFBaseCapillaryPressure, &
             SFBaseSaturation, &
+            SFBaseFreezingSaturation, &
             RPFBaseInit, &
             RPFBaseVerify, &
             RPFBaseTest, &
@@ -270,6 +273,29 @@ subroutine SFBaseSaturation(this,capillary_pressure, &
   call PrintErrMsg(option)
 
 end subroutine SFBaseSaturation
+
+! ************************************************************************** !
+
+subroutine SFBaseFreezingSaturation(this,capillary_pressure,temperature, &
+                                    liquid_saturation,gas_saturation,ice_saturation,&
+                                    dsat_dpres,option)
+  use Option_module
+
+  implicit none
+
+  class(sat_func_base_type) :: this
+  PetscReal, intent(in) :: capillary_pressure
+  PetscReal, intent(in) :: temperature
+  PetscReal, intent(out) :: liquid_saturation
+  PetscReal, intent(out) :: gas_saturation
+  PetscReal, intent(out) :: ice_saturation
+  PetscReal, intent(out) :: dsat_dpres
+  type(option_type), intent(inout) :: option
+
+  option%io_buffer = 'SFBaseFreezingSaturation must be extended.'
+  call PrintErrMsg(option)
+
+end subroutine SFBaseFreezingSaturation
 
 ! ************************************************************************** !
 

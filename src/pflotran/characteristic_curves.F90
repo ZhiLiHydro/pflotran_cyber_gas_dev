@@ -127,6 +127,8 @@ subroutine CharacteristicCurvesRead(this,input,option)
             this%saturation_function => SFConstantCreate()
           case('VAN_GENUCHTEN')
             this%saturation_function => SFVGCreate()
+          case('VAN_GENUCHTEN_PAINTER_EXPLICIT')
+            this%saturation_function => SFVGPECreate()
           case('BROOKS_COREY')
             this%saturation_function => SFBCCreate()
           case('BROOKS_COREY_SPE11')
@@ -432,6 +434,8 @@ function SaturationFunctionRead(saturation_function,input,option) &
       error_string = trim(error_string) // 'CONSTANT'
     class is(sat_func_VG_type)
       error_string = trim(error_string) // 'VAN_GENUCHTEN'
+    class is(sat_func_VGPE_type)
+      error_string = trim(error_string) // 'VAN_GENUCHTEN_PAINTER_EXP'
     class is(sat_func_BC_type)
       error_string = trim(error_string) // 'BROOKS_COREY'
     class is (sat_func_BC_SPE11_type)
@@ -521,6 +525,29 @@ function SaturationFunctionRead(saturation_function,input,option) &
         end select
     !------------------------------------------
       class is(sat_func_VG_type)
+        select case(keyword)
+          case('M')
+            call InputReadDouble(input,option,m)
+            sf%m = m
+            call InputErrorMsg(input,option,keyword,error_string)
+          case('ALPHA')
+            call InputReadDouble(input,option,alpha)
+            sf%alpha = alpha
+            call InputErrorMsg(input,option,keyword,error_string)
+          case('LOOP_INVARIANT')
+            loop_invariant = PETSC_TRUE
+          case('UNSATURATED_EXTENSION')
+            call InputReadCard(input,option,unsat_ext)
+            call InputErrorMsg(input,option,keyword,error_string)
+          case('LIQUID_JUNCTION_SATURATION')
+            call InputReadDouble(input,option,Slj)
+            call InputErrorMsg(input,option,keyword,error_string)
+          case default
+            call InputKeywordUnrecognized(input,keyword, &
+                   'van Genuchten saturation function',option)
+        end select
+    !------------------------------------------
+      class is(sat_func_VGPE_type)
         select case(keyword)
           case('M')
             call InputReadDouble(input,option,m)
@@ -1010,6 +1037,10 @@ function SaturationFunctionRead(saturation_function,input,option) &
     else ! Old object type is used to identify common invariants
       select type (saturation_function)
       class is (sat_func_VG_type)
+        call StringtoUpper(unsat_ext)
+        sf_swap => SFVGctor(unsat_ext, alpha, m, Sr, Sgt_max, vg_rpf_opt, &
+                            Pcmax, Slj)
+      class is (sat_func_VGPE_type)
         call StringtoUpper(unsat_ext)
         sf_swap => SFVGctor(unsat_ext, alpha, m, Sr, Sgt_max, vg_rpf_opt, &
                             Pcmax, Slj)
@@ -2396,6 +2427,15 @@ subroutine CharCurvesInputRecord(char_curve_list)
       !---------------------------------
         class is (sat_func_VG_type)
           write(id,'(a)') 'van Genuchten'
+          write(id,'(a29)',advance='no') 'm: '
+          write(word1,*) sf%m
+          write(id,'(a)') adjustl(trim(word1))
+          write(id,'(a29)',advance='no') 'alpha: '
+          write(word1,*) sf%alpha
+          write(id,'(a)') adjustl(trim(word1))
+      !---------------------------------
+        class is (sat_func_VGPE_type)
+          write(id,'(a)') 'Frozen van Genuchten/Painter Explicit'
           write(id,'(a29)',advance='no') 'm: '
           write(word1,*) sf%m
           write(id,'(a)') adjustl(trim(word1))

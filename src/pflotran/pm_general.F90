@@ -471,6 +471,10 @@ subroutine PMGeneralReadSimOptionsBlock(this,input)
          general_max_pres_srcsink = tempreal
       case('FREEZING')
          general_freezing_flag = PETSC_TRUE
+         !EOSWaterSetDensity('PAINTER')
+         !EOSWaterSetEnthalpy('PAINTER')
+         option%io_buffer = ' GENERAL: using FREEZING submode.'
+         call PrintMsg(option)
       case default
         call InputKeywordUnrecognized(input,keyword,'GENERAL Mode',option)
     end select

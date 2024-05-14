@@ -726,23 +726,17 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
       ! necessary for water since we do not calculate water diffusion
       ! explicitly.  set mole fractions to zero in gas phase.
       gen_auxvar%xmol(:,gid) = 0.d0
+      gen_auxvar%pres(cpid) = 0.d0
       if (general_freezing_flag) then 
-        if (gen_auxvar%temp <= 0.d0) then
-          ! Clausius-Clayperon equation
-          Pc = -(gen_auxvar%temp) * (L_ICE * ICE_DENSITY * 1.d6) / (T273K)
-          ! Get the corresponding liquid saturation
-          call characteristic_curves%saturation_function% &
-               Saturation(Pc,gen_auxvar%sat(lid),dsat_dpres,option)
-        else
-          gen_auxvar%sat(lid) = 1.d0
-        endif
-        gen_auxvar%sat(iid) = 1.d0 - gen_auxvar%sat(lid)
+        call characteristic_curves%saturation_function% &
+             FreezingSaturation(gen_auxvar%pres(cpid),gen_auxvar%temp,gen_auxvar%sat(lid),&
+                        gen_auxvar%sat(gid),gen_auxvar%sat(iid),&
+                        dsat_dpres,option)
       else
         gen_auxvar%sat(lid) = 1.d0
+        gen_auxvar%sat(gid) = 0.d0
       endif
-     
-      gen_auxvar%sat(gid) = 0.d0
-
+!      print *, 'general sl/g/i:', gen_auxvar%sat(:), 'temp: ', gen_auxvar%temp
       if (.not.option%flow%sat_pres_depends_on_salinity) then
         if (associated(gen_auxvar%d)) then
           call EOSWaterSaturationPressure(gen_auxvar%temp, &
@@ -991,18 +985,15 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
       cell_pressure = max(gen_auxvar%pres(lid),gen_auxvar%pres(gid), &
                       gen_auxvar%pres(spid))
       gen_auxvar%sat(lid) = 1.d0 - gen_auxvar%sat(gid)
-      if (general_freezing_flag) then
-        if (gen_auxvar%temp <= 0.d0) then
-          ! Clausius-Clayperon equation
-          Pc = -(gen_auxvar%temp) * (L_ICE * ICE_DENSITY * 1.d6) / (T273K)
-          ! Get the corresponding liquid saturation
-          call characteristic_curves%saturation_function% &
-               Saturation(Pc,gen_auxvar%sat(lid),dsat_dpres,option)
-        endif
-      else
+
+      call characteristic_curves%saturation_function% &
+               CapillaryPressure(gen_auxvar%sat(lid), &
+                                 gen_auxvar%pres(cpid),dpc_dsatl,option)
+      if (general_freezing_flag) then 
         call characteristic_curves%saturation_function% &
-                 CapillaryPressure(gen_auxvar%sat(lid), &
-                                   gen_auxvar%pres(cpid),dpc_dsatl,option)
+             FreezingSaturation(gen_auxvar%pres(cpid),gen_auxvar%temp,gen_auxvar%sat(lid),&
+                        gen_auxvar%sat(gid),gen_auxvar%sat(iid),&
+                        dsat_dpres,option)
       endif
       if (general_2ph_energy_dof == GENERAL_TEMPERATURE_INDEX) then
         gen_auxvar%temp = x(GENERAL_ENERGY_DOF)
