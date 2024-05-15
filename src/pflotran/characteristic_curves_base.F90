@@ -276,7 +276,7 @@ end subroutine SFBaseSaturation
 
 ! ************************************************************************** !
 
-subroutine SFBaseFreezingSaturation(this,capillary_pressure,temperature, &
+subroutine SFBaseFreezingSaturation(this,capillary_pressure,temperature,calc_pc, &
                                     liquid_saturation,gas_saturation,ice_saturation,&
                                     dsat_dpres,option)
   use Option_module
@@ -284,10 +284,11 @@ subroutine SFBaseFreezingSaturation(this,capillary_pressure,temperature, &
   implicit none
 
   class(sat_func_base_type) :: this
-  PetscReal, intent(in) :: capillary_pressure
+  PetscReal, intent(inout) :: capillary_pressure
   PetscReal, intent(in) :: temperature
-  PetscReal, intent(out) :: liquid_saturation
-  PetscReal, intent(out) :: gas_saturation
+  PetscBool, intent(in) :: calc_pc
+  PetscReal, intent(inout) :: liquid_saturation
+  PetscReal, intent(inout) :: gas_saturation
   PetscReal, intent(out) :: ice_saturation
   PetscReal, intent(out) :: dsat_dpres
   type(option_type), intent(inout) :: option

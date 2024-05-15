@@ -729,14 +729,14 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
       gen_auxvar%pres(cpid) = 0.d0
       if (general_freezing_flag) then 
         call characteristic_curves%saturation_function% &
-             FreezingSaturation(gen_auxvar%pres(cpid),gen_auxvar%temp,gen_auxvar%sat(lid),&
-                        gen_auxvar%sat(gid),gen_auxvar%sat(iid),&
+             FreezingSaturation(gen_auxvar%pres(cpid),gen_auxvar%temp,PETSC_FALSE, &
+                        gen_auxvar%sat(lid),gen_auxvar%sat(gid),gen_auxvar%sat(iid),&
                         dsat_dpres,option)
       else
         gen_auxvar%sat(lid) = 1.d0
         gen_auxvar%sat(gid) = 0.d0
       endif
-!      print *, 'general sl/g/i:', gen_auxvar%sat(:), 'temp: ', gen_auxvar%temp
+      !print *, 'general sl/g/i:', gen_auxvar%sat(:), 'temp: ', gen_auxvar%temp
       if (.not.option%flow%sat_pres_depends_on_salinity) then
         if (associated(gen_auxvar%d)) then
           call EOSWaterSaturationPressure(gen_auxvar%temp, &
@@ -971,10 +971,6 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
     case(TWO_PHASE_STATE)
 
       gen_auxvar%pres(gid) = x(GENERAL_GAS_PRESSURE_DOF)
-
-      !man
-      !gen_auxvar%pres(gid) = max(0.d0,gen_auxvar%pres(gid))
-
       gen_auxvar%sat(gid) = x(GENERAL_GAS_SATURATION_DOF)
       gen_auxvar%sat(lid) = 1.d0 - gen_auxvar%sat(gid)
       if (gen_auxvar%istatechng) then
@@ -990,10 +986,12 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
                CapillaryPressure(gen_auxvar%sat(lid), &
                                  gen_auxvar%pres(cpid),dpc_dsatl,option)
       if (general_freezing_flag) then 
-        call characteristic_curves%saturation_function% &
-             FreezingSaturation(gen_auxvar%pres(cpid),gen_auxvar%temp,gen_auxvar%sat(lid),&
-                        gen_auxvar%sat(gid),gen_auxvar%sat(iid),&
-                        dsat_dpres,option)
+        if (gen_auxvar%temp < 0.d0) then
+          call characteristic_curves%saturation_function% &
+               FreezingSaturation(gen_auxvar%pres(cpid),gen_auxvar%temp,PETSC_TRUE, &
+                          gen_auxvar%sat(lid),gen_auxvar%sat(gid),gen_auxvar%sat(iid),&
+                          dsat_dpres,option)
+        endif
       endif
       if (general_2ph_energy_dof == GENERAL_TEMPERATURE_INDEX) then
         gen_auxvar%temp = x(GENERAL_ENERGY_DOF)

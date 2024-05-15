@@ -46,7 +46,21 @@ module Characteristic_Curves_Common_module
     procedure, public :: SetAlpha_ => SFVGSetAlpha
     procedure, public :: SetM_ => SFVGSetM
   end type sat_func_VG_type
-
+  !---------------------------------------------------------------------------
+  type, public, extends(sat_func_base_type) :: sat_func_VGPE_type
+    PetscReal :: alpha
+    PetscReal :: m
+  contains
+    procedure, public :: Init => SFVGPEInit
+    procedure, public :: Verify => SFVGPEVerify
+    procedure, public :: CapillaryPressure => SFVGPECapillaryPressure
+    procedure, public :: FreezingSaturation => SFVGPESaturation
+    procedure, public :: D2SatDP2 => SFVGPED2SatDP2
+    procedure, public :: GetAlpha_ => SFVGPEGetAlpha
+    procedure, public :: GetM_ => SFVGPEGetM
+    procedure, public :: SetAlpha_ => SFVGPESetAlpha
+    procedure, public :: SetM_ => SFVGPESetM
+  end type sat_func_VGPE_type
   !---------------------------------------------------------------------------
   type, public, extends(sat_func_base_type) :: sat_func_BC_type
     PetscReal :: alpha
@@ -160,7 +174,17 @@ module Characteristic_Curves_Common_module
     procedure, public :: Verify => RPFMualemVGGasVerify
     procedure, public :: RelativePermeability => RPFMualemVGGasRelPerm
   end type rpf_Mualem_VG_gas_type
-
+  !---------------------------------------------------------------------------
+  ! type, public, extends(rel_perm_func_base_type) :: rpf_Mualem_VGPE_freezing_type
+  !   PetscReal :: m
+  ! contains
+  !   procedure, public :: Init => RPFMualemVGPELiqInit
+  !   procedure, public :: Verify => RPFMualemVGPELiqVerify
+  !   procedure, public :: SetupPolynomials => RPFMualemVGPESetupPolynomials
+  !   procedure, public :: RelativePermeability => RPFMualemVGPELiqRelPerm
+  !   procedure, public :: GetM_ => RPFMualemVGPEGetM
+  !   procedure, public :: SetM_ => RPFMualemVGPESetM
+  ! end type rpf_Mualem_VGPE_freezing_type
   !---------------------------------------------------------------------------
   type, public, extends(rel_perm_func_base_type) :: rpf_Burdine_BC_liq_type
     PetscReal :: lambda
@@ -339,6 +363,7 @@ module Characteristic_Curves_Common_module
             SFDefaultCreate, &
             SFConstantCreate, &
             SFVGCreate, &
+            SFVGPECreate, &
             SFBCCreate, &
             SFBCSPE11Create, &
             SFLinearCreate, &
@@ -1034,6 +1059,380 @@ subroutine SFVGSetM(this,tempreal)
   this%m = tempreal
 
 end subroutine SFVGSetM
+
+! ************************************************************************** !
+! ************************************************************************** !
+
+function SFVGPECreate()
+
+  ! Creates the van Genutchten capillary pressure function object
+
+  implicit none
+
+  class(sat_func_VGPE_type), pointer :: SFVGPECreate
+
+  allocate(SFVGPECreate)
+  call SFVGPECreate%Init()
+
+end function SFVGPECreate
+
+! ************************************************************************** !
+
+subroutine SFVGPEInit(this)
+
+  ! Creates the van Genutchten capillary pressure function object
+
+  implicit none
+
+  class(sat_func_VGPE_type) :: this
+
+  call SFBaseInit(this)
+  this%alpha = UNINITIALIZED_DOUBLE
+  this%m = UNINITIALIZED_DOUBLE
+
+  this%analytical_derivative_available = PETSC_TRUE
+
+end subroutine SFVGPEInit
+
+! ************************************************************************** !
+
+subroutine SFVGPEVerify(this,name,option)
+
+  use Option_module
+
+  implicit none
+
+  class(sat_func_VGPE_type) :: this
+  character(len=MAXSTRINGLENGTH) :: name
+  type(option_type) :: option
+
+  character(len=MAXSTRINGLENGTH) :: string
+
+  if (index(name,'SATURATION_FUNCTION') > 0) then
+    string = name
+  else
+    string = trim(name) // 'SATURATION_FUNCTION,VAN_GENUCHTEN'
+  endif
+  call SFBaseVerify(this,string,option)
+  if (Uninitialized(this%alpha)) then
+    option%io_buffer = UninitializedMessage('ALPHA',string)
+    call PrintErrMsg(option)
+  endif
+  if (Uninitialized(this%m)) then
+    option%io_buffer = UninitializedMessage('M',string)
+    call PrintErrMsg(option)
+  endif
+
+end subroutine SFVGPEVerify
+
+! ************************************************************************** !
+
+subroutine SFVGPECapillaryPressure(this,liquid_saturation, &
+                                 capillary_pressure,dpc_dsatl,option)
+  !
+  ! Computes the capillary_pressure as a function of saturation
+  !
+  ! (1) Chen, J., J.W. Hopmans, M.E. Grismer (1999) "Parameter estimation of
+  !     of two-fluid capillary pressure-saturation and permeability functions",
+  !     Advances in Water Resources, Vol. 22, No. 5, pp 479-493,
+  !     http://dx.doi.org/10.1016/S0309-1708(98)00025-6.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 12/11/07, 09/23/14
+  !
+  use Option_module
+
+  implicit none
+
+  class(sat_func_VGPE_type) :: this
+  PetscReal, intent(in) :: liquid_saturation
+  PetscReal, intent(out) :: capillary_pressure
+  PetscReal, intent(out) :: dpc_dsatl
+  type(option_type), intent(inout) :: option
+
+  PetscReal :: n
+  PetscReal :: Se
+
+  PetscReal :: neg_one_over_m
+  PetscReal :: one_over_n
+  PetscReal :: dSe_dsatl
+  PetscReal :: Se_sup_neg_one_over_m
+  PetscReal :: Se_sup_neg_one_over_m_minus_one
+
+  dpc_dsatl = 0.d0
+
+  if (liquid_saturation <= this%Sr) then
+    capillary_pressure = this%pcmax
+    return
+  else if (liquid_saturation >= 1.d0) then
+    capillary_pressure = 0.d0
+    return
+  endif
+
+  n = 1.d0/(1.d0-this%m)
+  neg_one_over_m = -1.d0/this%m
+  one_over_n = 1.d0/n
+  dSe_dsatl = 1.d0 / (1.d0-this%Sr)
+  Se = (liquid_saturation-this%Sr)*dSe_dsatl
+  Se_sup_neg_one_over_m = Se**neg_one_over_m
+  Se_sup_neg_one_over_m_minus_one = Se_sup_neg_one_over_m - 1.d0
+  capillary_pressure = (Se_sup_neg_one_over_m_minus_one**one_over_n)/this%alpha
+  dpc_dsatl = capillary_pressure/Se_sup_neg_one_over_m_minus_one * &
+              one_over_n * neg_one_over_m * Se_sup_neg_one_over_m / Se * &
+              dSe_dsatl
+
+#if defined(MATCH_TOUGH2)
+  if (liquid_saturation > 0.999d0) then
+    capillary_pressure = capillary_pressure*(1.d0-liquid_saturation)/0.001d0
+    dpc_dsatl = dpc_dsatl*(1.d0-liquid_saturation)/0.001d0 +
+                capillary_pressure*(-1.d0)/0.001d0
+  endif
+#endif
+
+  if (capillary_pressure > this%pcmax) then
+    capillary_pressure = this%pcmax
+    dpc_dsatl = 0.d0
+  endif
+
+end subroutine SFVGPECapillaryPressure
+
+! ************************************************************************** !
+
+subroutine SFVGPESaturation(this,capillary_pressure,temperature,calc_pc,&
+                            liquid_saturation,gas_saturation,ice_saturation,&
+                            dsat_dpres,option)
+  !
+  ! Computes the saturation of ice, water vapor, and liquid water
+  ! (and associated derivatives) as a function capillary pressure.
+  !
+  ! (1) Chen, J., J.W. Hopmans, M.E. Grismer (1999) "Parameter estimation of
+  !     of two-fluid capillary pressure-saturation and permeability functions",
+  !     Advances in Water Resources, Vol. 22, No. 5, pp 479-493,
+  !     http://dx.doi.org/10.1016/S0309-1708(98)00025-6.
+  ! (2) Painter, S. L. (2011). Three-phase numerical model of water migration
+  !     in partially frozen geological media: model formulation, validation, and
+  !     applications. Computational Geosciences, 15, 69-85.
+  !
+  ! Author: David Fukuyama, based on subroutines:
+  !         SFVGPESaturation, SatFuncComputeIcePExplicit
+  ! Date: 05/13/24
+  !
+  use Option_module
+  use Utility_module
+
+  implicit none
+
+  class(sat_func_VGPE_type) :: this
+  PetscReal, intent(inout) :: capillary_pressure
+  PetscReal, intent(in) :: temperature ! deg C
+  PetscBool, intent(in) :: calc_pc
+  PetscReal, intent(inout) :: liquid_saturation
+  PetscReal, intent(inout) :: gas_saturation
+  PetscReal, intent(out) :: ice_saturation
+  PetscReal, intent(out) :: dsat_dpres
+  type(option_type), intent(inout) :: option
+
+  PetscReal, parameter :: pc_alpha_n_epsilon = 1.d-15
+  PetscReal, parameter :: interfacial_tensions_ratio = 2.33
+  PetscReal, parameter :: den_ice = 9.167d2 !kg/m^3 at 273.15 K
+  PetscReal :: T_K
+  PetscReal :: n
+  PetscReal :: pc_il_alpha, pc_alpha
+  PetscReal :: pc_il_alpha_n, pc_alpha_n
+  PetscReal :: one_plus_pc_il_alpha_n, one_plus_pc_alpha_n
+  PetscReal :: Se
+  PetscReal :: dSe_dpc
+  PetscReal :: function_A, function_B
+  PetscReal :: Se_sup_neg_one_over_m,Se_sup_neg_one_over_m_minus_one
+  PetscReal :: one_over_n, neg_one_over_m
+  PetscReal :: gamma, pc_il
+  PetscReal :: dfunc_A_temp, dfunc_B_pl
+  PetscReal, parameter :: dpc_dpres = -1.d0
+
+  !T_K = temperature! + T273K ! temperature in Kelvin
+  dsat_dpres = 0.d0
+  n = 1.d0 / (1.d0 - this%m)
+
+  ! if (associated(this%pres_poly)) then
+  !   if (capillary_pressure < this%pres_poly%low) then
+  !     liquid_saturation = 1.d0
+  !     return
+  !   else if (capillary_pressure < this%pres_poly%high) then
+  !     call CubicPolynomialEvaluate(this%pres_poly%coefficients, &
+  !                                  capillary_pressure,Se,dSe_dpc)
+  !     liquid_saturation = this%Sr + (1.d0-this%Sr)*Se
+  !     dsat_dpres = (1.d0-this%Sr)*dSe_dpc*dpc_dpres
+  !     return
+  !   endif
+  ! endif
+  if (calc_pc) then
+    !calculate pcil
+    gamma = den_ice*HEAT_OF_FUSION*interfacial_tensions_ratio
+    pc_il = gamma * (-1.d0 * (temperature)) / T273K
+    pc_il_alpha = pc_il * this%alpha
+    pc_il_alpha_n = pc_il_alpha ** n
+    one_plus_pc_il_alpha_n = 1.d0 + pc_il_alpha_n
+    Se = one_plus_pc_il_alpha_n**(-this%m)
+    liquid_saturation = (1.d0 - gas_saturation) * Se
+    ice_saturation = 1.d0 - liquid_saturation - gas_saturation
+    !print *, 'se,sl,sg,si: ', Se, liquid_saturation, gas_saturation, ice_saturation
+    !calculate capillary pressure
+    Se = liquid_saturation / (liquid_saturation + gas_saturation)
+    one_over_n = 1.d0 / n
+    neg_one_over_m = -1.d0 / this%m
+    Se_sup_neg_one_over_m = Se**neg_one_over_m
+    Se_sup_neg_one_over_m_minus_one = Se_sup_neg_one_over_m - 1.d0
+    capillary_pressure = (Se_sup_neg_one_over_m_minus_one**one_over_n)/this%alpha
+  else
+    if (capillary_pressure <= 0.d0) then
+      function_B = 1.d0
+      dfunc_B_pl = 0.d0
+    else
+      pc_alpha = capillary_pressure*this%alpha
+      pc_alpha_n = pc_alpha**n
+      one_plus_pc_alpha_n = 1.d0 + pc_alpha_n
+      Se = one_plus_pc_alpha_n**(-this%m)
+      dSe_dpc = -this%m*n*this%alpha*pc_alpha_n/(pc_alpha*one_plus_pc_alpha_n**(this%m+1))
+      ! if (pc >= pth) then
+      !   dSe_dpc_at_pth = -m*n*(1.d0 + (alpha*pth)**n)**(-1.d0-m)*(alpha**n*pth**(n-1.d0))
+      !   Se = (pc - 1.d8)*dSe_dpc_at_pth
+      !   dSe_dpc = dSe_dpc_at_pth
+      ! ! write (*,*) option%myrank, 'pc:', pc, 'Se:', Se, 'dSe_dpc', dSe_dpc
+      ! endif
+      function_B = 1.d0/Se
+      dfunc_B_pl = 1.d0/(Se**(2.d0))*dSe_dpc
+      !geh:  This conditional does not catch potential cancelation in
+      !      the dkr_sat deriviative calculation.  Therefore, I am setting
+      !      an epsilon here
+      !   if (1.d0 + pc_alpha_n == 1.d0) then ! check for zero perturbation
+      !if (pc_alpha_n < pc_alpha_n_epsilon) then
+       ! liquid_saturation = 1.d0
+       !switch_to_saturated = PETSC_TRUE
+       ! return
+      !endif
+
+    endif
+
+    if (temperature >= 0.d0) then
+      function_A = 1.d0
+      dfunc_A_temp = 0.d0
+    else
+      gamma = den_ice*HEAT_OF_FUSION*interfacial_tensions_ratio
+      pc_il = gamma * (-1.d0 * (temperature)) / T273K
+      pc_il_alpha = pc_il * this%alpha
+      pc_il_alpha_n = pc_il_alpha ** n
+      one_plus_pc_il_alpha_n = 1.d0 + pc_il_alpha_n
+      Se = one_plus_pc_il_alpha_n**(-this%m)
+      function_A = 1.d0 / Se
+      dfunc_A_temp = (gamma/T273K)*1.d0/(Se**(2.d0))*(-this%m)* &
+                         ((one_plus_pc_il_alpha_n)**(-this%m - 1.d0))*n* &
+                         (pc_il**(n - 1.d0))*(this%alpha**n)
+    endif
+
+    liquid_saturation = 1.d0 / (function_A + function_B - 1.d0)
+    gas_saturation = liquid_saturation * (function_B - 1.d0)
+    ice_saturation = liquid_saturation * (function_A - 1.d0)
+    dsat_dpres = - 1.d0/(function_A + function_B - 1.d0)**(2.d0)*(dfunc_B_pl)
+  endif
+  
+end subroutine SFVGPESaturation
+
+! ************************************************************************** !
+
+subroutine SFVGPED2SatDP2(this,pc,d2s_dp2,option)
+
+  use Option_module
+
+  implicit none
+
+  class(sat_func_VGPE_type) :: this
+  PetscReal, intent(in) :: pc
+  PetscReal, intent(out) :: d2s_dp2
+  type(option_type), intent(inout) :: option
+
+  PetscReal, parameter :: pc_alpha_n_epsilon = 1.d-15
+  PetscReal :: n
+  PetscReal :: pc_alpha
+  PetscReal :: pc_alpha_n
+  PetscReal :: one_plus_pc_alpha_n
+  PetscReal :: Se
+  PetscReal :: d2Se_dpc2
+  PetscReal, parameter :: dpc_dpres = -1.d0
+
+  if (pc <= 0.d0) then
+    d2s_dp2 = 0.d0
+    return
+  else
+    n = 1.d0/(1.d0-this%m)
+    pc_alpha = pc*this%alpha
+    pc_alpha_n = pc_alpha**n
+    if (pc_alpha_n < pc_alpha_n_epsilon) then
+      d2s_dp2 = 0.d0
+      return
+    endif
+    one_plus_pc_alpha_n = 1.d0+pc_alpha_n
+    Se = one_plus_pc_alpha_n**(-this%m)
+
+    d2Se_dpc2 = this%m*n*(pc_alpha_n) * one_plus_pc_alpha_n**(-this%m-2.d0)* &
+               ( (this%m *n + 1.d0)*pc_alpha_n - n + 1.d0)/ pc**2.d0
+    d2s_dp2 = (1.d0-this%Sr)*d2Se_dpc2*(dpc_dpres*dpc_dpres)
+  endif
+
+end subroutine SFVGPED2SatDP2
+
+! ************************************************************************** !
+
+function SFVGPEGetAlpha(this)
+
+  implicit none
+
+  class(sat_func_VGPE_type) :: this
+
+  PetscReal :: SFVGPEGetAlpha
+
+  SFVGPEGetAlpha = this%alpha
+
+end function SFVGPEGetAlpha
+
+! ************************************************************************** !
+
+function SFVGPEGetM(this)
+
+  implicit none
+
+  class(sat_func_VGPE_type) :: this
+
+  PetscReal :: SFVGPEGetM
+
+  SFVGPEGetM = this%m
+
+end function SFVGPEGetM
+
+! ************************************************************************** !
+
+subroutine SFVGPESetAlpha(this,tempreal)
+
+  implicit none
+
+  class(sat_func_VGPE_type) :: this
+  PetscReal :: tempreal
+
+  this%alpha = tempreal
+
+end subroutine SFVGPESetAlpha
+
+! ************************************************************************** !
+
+subroutine SFVGPESetM(this,tempreal)
+
+  implicit none
+
+  class(sat_func_VGPE_type) :: this
+  PetscReal :: tempreal
+
+  this%m = tempreal
+
+end subroutine SFVGPESetM
 
 ! ************************************************************************** !
 ! ************************************************************************** !
