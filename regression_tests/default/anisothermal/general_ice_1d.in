@@ -1,0 +1,265 @@
+#Description: 1D test problem for THC mode with ice
+#vertical domain
+#05/14/24
+#David Fukuyama
+
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE GENERAL
+      OPTIONS
+        FREEZING
+      /
+    /
+  /
+END
+
+SUBSURFACE
+
+#=========================== numerical methods ================================
+NUMERICAL_METHODS FLOW
+
+  TIMESTEPPER
+    TS_ACCELERATION 25
+    PRESSURE_CHANGE_GOVERNOR 1.e5
+    TEMPERATURE_CHANGE_GOVERNOR 0.1
+    CONCENTRATION_CHANGE_GOVERNOR 1.d-1
+    #MAX_STEPS 1
+  /
+
+  NEWTON_SOLVER
+    USE_INFINITY_NORM_CONVERGENCE
+    ATOL 1D-12
+    RTOL 1D-8
+    STOL 1D-12
+    ITOL 1D-8
+    #ITOL_STOMP 1D-8
+    MAX_NORM 1d6
+    MAXIMUM_NUMBER_OF_ITERATIONS 100
+    MAXF 1000
+  /
+
+END
+
+#===================== EOS ===============================
+EOS WATER
+  DENSITY IF97
+  ENTHALPY IF97
+  VISCOSITY DEFAULT
+  SATURATION_PRESSURE HUANG-ICE
+END
+
+#=========================== regression =======================================
+REGRESSION
+  CELLS_PER_PROCESS 2
+  CELL_IDS
+    1
+    51
+    100
+  /
+/
+
+#===================== Discretization =========================
+GRID
+  TYPE STRUCTURED
+  ORIGIN 0.d0 0.d0 0.d0
+  NXYZ 1 1 100
+  BOUNDS
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 10.d0
+  /
+END
+#===================== Solver options ========================
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.d-9
+/
+
+#========================= material properties ===================
+MATERIAL_PROPERTY soil1
+  ID 1
+  POROSITY 0.45d0
+  TORTUOSITY 0.01d0
+  ROCK_DENSITY 2700
+  SPECIFIC_HEAT 837.d0
+  THERMAL_CONDUCTIVITY_DRY 0.25d0
+  THERMAL_CONDUCTIVITY_WET 1.3d0
+  THERMAL_COND_EXPONENT 0.45
+  THERMAL_CONDUCTIVITY_FROZEN 2.3588d0
+  THERMAL_COND_EXPONENT_FROZEN 0.95
+  SATURATION_FUNCTION cc1
+  LONGITUDINAL_DISPERSIVITY 3.1536d0
+  PERMEABILITY
+    PERM_X 1.3d-13
+    PERM_Y 1.3d-13
+    PERM_Z 1.3d-13
+  /
+/
+
+#========================= saturation functions ==================
+CHARACTERISTIC_CURVES cc1
+  SATURATION_FUNCTION VAN_GENUCHTEN_PAINTER_EXPLICIT
+    LOOP_INVARIANT
+    LIQUID_RESIDUAL_SATURATION 0.05d0
+    ALPHA 2.83d-4 
+    M 0.721d0 #equals lambda
+    MAX_CAPILLARY_PRESSURE 1.d12
+  /
+  PERMEABILITY_FUNCTION MUALEM
+    PHASE LIQUID
+    LIQUID_RESIDUAL_SATURATION 0.005d0
+    M 0.721d0
+  /
+  PERMEABILITY_FUNCTION MUALEM_VG_GAS
+    PHASE GAS
+    LIQUID_RESIDUAL_SATURATION 0.05d0
+    GAS_RESIDUAL_SATURATION 1.d-40
+    M 0.721d0
+  /
+/
+
+#========================= output options =========================
+
+OUTPUT
+  PERIODIC TIMESTEP 5
+  TIMES y 0.25d0 0.5d0 0.75d0 1.d0 2.d0 3.d0 4.d0 5.d0 6.d0 7.d0 8.d0 9.d0 10.d0
+  #SCREEN PERIODIC 10
+  #PERIODIC_OBSERVATION TIMESTEP 1
+  #FORMAT TECPLOT POINT
+  FORMAT HDF5
+  VELOCITY_AT_CENTER
+  VARIABLES
+    LIQUID_PRESSURE
+    LIQUID_SATURATION
+    GAS_PRESSURE
+    GAS_SATURATION
+    ICE_SATURATION
+    LIQUID_MOLE_FRACTIONS
+  /  
+/
+
+
+#======================== times ====================================
+TIME
+FINAL_TIME 10.d0 y
+INITIAL_TIMESTEP_SIZE 1.d-12 y
+MAXIMUM_TIMESTEP_SIZE 1.d-1 y
+/
+
+#=========================== regions ===============================
+REGION all
+  COORDINATES
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 10.d0
+  /
+END
+
+REGION vadose
+  COORDINATES
+    0.d0 0.d0 5.d0
+    1.d0 1.d0 10.d0
+  /
+END
+
+REGION bottom_half
+  COORDINATES
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 5.d0
+  /
+END
+
+REGION top
+  FACE TOP
+  COORDINATES
+    0.d0 0.d0 10.d0
+    1.d0 1.d0 10.d0
+  /
+END
+
+REGION bottom
+  FACE BOTTOM
+  COORDINATES
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 0.d0
+  /
+END
+
+#======================= flow conditions ===============================
+FLOW_CONDITION initial
+  TYPE
+    LIQUID_PRESSURE DIRICHLET#HYDROSTATIC
+    MOLE_FRACTION DIRICHLET
+    TEMPERATURE DIRICHLET
+  /
+#  DATUM 0.d0 0.d0 10.d0
+  LIQUID_PRESSURE 111325.D0
+  MOLE_FRACTION 1.D-12
+  TEMPERATURE -5.D0
+END
+
+FLOW_CONDITION initial_vadose
+  TYPE
+    GAS_PRESSURE DIRICHLET
+    GAS_SATURATION DIRICHLET
+    TEMPERATURE DIRICHLET
+  /
+  GAS_PRESSURE 101325.D0
+  GAS_SATURATION 0.20D0
+  TEMPERATURE -5.D0
+/
+
+FLOW_CONDITION top
+  TYPE
+    LIQUID_FLUX NEUMANN
+    GAS_FLUX NEUMANN
+    TEMPERATURE DIRICHLET
+  /
+  LIQUID_FLUX 0.d0
+  GAS_FLUX 0.D0
+  TEMPERATURE -5.D0
+END
+
+
+FLOW_CONDITION bottom
+  TYPE
+    LIQUID_PRESSURE HYDROSTATIC
+    MOLE_FRACTION DIRICHLET
+    TEMPERATURE DIRICHLET
+  /
+  DATUM 0.d0 0.d0 10.d0
+  LIQUID_PRESSURE 101325.d0
+  MOLE_FRACTION 1.D-12
+  TEMPERATURE 5.d0
+END
+
+#========================== initial and boundary conditions =================
+# initial condition
+INITIAL_CONDITION
+  FLOW_CONDITION initial
+  REGION bottom_half
+END
+
+INITIAL_CONDITION
+  FLOW_CONDITION initial#_vadose
+  REGION vadose
+END
+skip
+# top boundary condition
+BOUNDARY_CONDITION
+  FLOW_CONDITION initial#_vadose
+  REGION top
+END
+
+# bottom boundary condition
+BOUNDARY_CONDITION
+  FLOW_CONDITION bottom
+  REGION bottom
+END
+noskip
+#===================== stratigraphy couplers ==============================
+STRATA
+  REGION all
+  MATERIAL soil1
+END
+
+END_SUBSURFACE
