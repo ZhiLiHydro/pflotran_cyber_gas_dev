@@ -206,4 +206,6 @@ module Variables_module
   PetscInt, parameter, public :: THERMAL_CONDUCTIVITY = 165
   PetscInt, parameter, public :: MATERIAL_ELECTRICAL_CONDUCTIVITY = 166
 
+  PetscInt, parameter, public :: TOTAL_SORBED_UFD = 167
+
 end module Variables_module

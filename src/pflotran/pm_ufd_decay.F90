@@ -884,6 +884,8 @@ subroutine PMUFDDecaySetup(this)
   use Material_module
   use Secondary_Continuum_Aux_module
   use NW_Transport_Aux_module
+  use Output_Aux_module
+  use Variables_module, only : TOTAL_SORBED_UFD
 
   implicit none
 
@@ -930,10 +932,11 @@ subroutine PMUFDDecaySetup(this)
   type(element_type), pointer :: element
   type(element_Kd_type), pointer :: element_Kd
   PetscInt, allocatable :: num_isotopes_per_element(:)
-  character(len=MAXWORDLENGTH) :: word
+  character(len=MAXWORDLENGTH) :: word, name, units
   type(material_property_ptr_type), pointer :: material_property_array(:)
   type(material_property_type), pointer :: material_property
   type(sec_transport_type), pointer :: rt_sec_transport_vars(:)
+  type(output_variable_list_type), pointer :: output_list
   PetscInt :: icount, jcount, num_continuum
   PetscInt :: ghosted_id
   PetscInt :: max_daughters_per_isotope
@@ -1150,6 +1153,20 @@ subroutine PMUFDDecaySetup(this)
     if (associated(reaction)) then
       this%isotope_to_primary_species(isotope%iisotope) = &
         ReactionAuxGetPriSpecIDFromName(isotope%name,reaction,option)
+      output_list => this%realization%output_option%output_snap_variable_list
+      name = 'Total Sorbed ' // trim(isotope%name)
+      units = 'mol/m^3'
+      call OutputVariableAddtoList(output_list,name,OUTPUT_CONCENTRATION, &
+           units,TOTAL_SORBED_UFD, &
+           this%isotope_to_primary_species(isotope%iisotope))
+      if (.not.associated( &
+                this%realization%output_option%output_snap_variable_list, &
+                this%realization%output_option%output_obs_variable_list)) then
+        output_list => this%realization%output_option%output_obs_variable_list
+        call OutputVariableAddtoList(output_list,name,OUTPUT_CONCENTRATION, &
+             units,TOTAL_SORBED_UFD, &
+             this%isotope_to_primary_species(isotope%iisotope))
+      endif
     elseif (associated(reaction_nw)) then
       this%isotope_to_primary_species(isotope%iisotope) = &
         NWTGetSpeciesIDFromName(isotope%name,reaction_nw,option)

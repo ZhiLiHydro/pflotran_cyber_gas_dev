@@ -48,12 +48,53 @@
       Min:   9.9999577800886E-21
      Mean:   9.9999999999957E-21
         1:   1.0000042219698E-20
+-- CONCENTRATION: Total Sorbed I-129 --
+      Max:   0.0000000000000E+00
+      Min:   0.0000000000000E+00
+     Mean:   0.0000000000000E+00
+        1:   0.0000000000000E+00
+-- CONCENTRATION: Total Sorbed Am-241 --
+      Max:   6.0036250300606E-14
+      Min:   6.0036250299655E-14
+     Mean:   6.0036250300130E-14
+        1:   6.0036250299655E-14
+-- CONCENTRATION: Total Sorbed Np-237 --
+      Max:   4.6444397940834E-15
+      Min:   3.6416160279100E-15
+     Mean:   3.9758907646777E-15
+        1:   3.6416164720397E-15
+-- CONCENTRATION: Total Sorbed U-233 --
+      Max:   6.1170606303007E-15
+      Min:   6.1170601833299E-15
+     Mean:   6.1170603324800E-15
+        1:   6.1170601833299E-15
+-- CONCENTRATION: Total Sorbed Th-229 --
+      Max:   2.5067087564403E-14
+      Min:   2.5067087563450E-14
+     Mean:   2.5067087563927E-14
+        1:   2.5067087563450E-14
+-- CONCENTRATION: Total Sorbed Tc-99 --
+      Max:   1.9905716757421E-04
+      Min:   1.6983045775137E-09
+     Mean:   1.3270475948032E-04
+        1:   1.9905541256216E-04
+-- CONCENTRATION: Total Sorbed Pu-240 --
+      Max:   1.9905716757421E-04
+      Min:   1.6981856865961E-09
+     Mean:   1.3270475944069E-04
+        1:   1.9905541256216E-04
+-- CONCENTRATION: Total Sorbed C-tracer --
+      Max:   0.0000000000000E+00
+      Min:   0.0000000000000E+00
+     Mean:   0.0000000000000E+00
+        1:   0.0000000000000E+00
 -- DISCRETE: Material ID --
       Max:         2
       Min:         1
      Mean:   1.3333333333333E+00
         1:         1
 -- SOLUTION: Flow --
+   Time (seconds):   2.3942446000000E-02
    Time Steps:          122
    Newton Iterations:          128
    Linear Solver Iterations:          126
@@ -61,6 +102,7 @@
    Solution 2-Norm:   3.4897940597421E+05
    Residual 2-Norm:   1.1495307539241E-18
 -- SOLUTION: Transport --
+   Time (seconds):   2.7656958000000E-02
    Time Steps:          122
    Newton Iterations:          122
    Linear Solver Iterations:          122

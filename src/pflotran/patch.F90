@@ -7465,7 +7465,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
          SURFACE_CMPLX,SURFACE_CMPLX_FREE,SURFACE_SITE_DENSITY, &
          KIN_SURFACE_CMPLX,KIN_SURFACE_CMPLX_FREE, PRIMARY_ACTIVITY_COEF, &
          SECONDARY_ACTIVITY_COEF,PRIMARY_KD,TOTAL_SORBED,TOTAL_SORBED_MOBILE, &
-         AGE,TOTAL_BULK,IMMOBILE_SPECIES, &
+         TOTAL_SORBED_UFD,AGE,TOTAL_BULK,IMMOBILE_SPECIES, &
          GAS_CONCENTRATION,GAS_PARTIAL_PRESSURE,REACTION_AUXILIARY)
 
       select case(ivar)
@@ -7732,6 +7732,12 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
               enddo
             endif
           endif
+        case(TOTAL_SORBED_UFD)
+          do local_id=1,grid%nlmax
+            ghosted_id = grid%nL2G(local_id)
+            vec_ptr(local_id) = &
+              patch%aux%RT%auxvars(ghosted_id)%total_sorb_eq(isubvar)
+          enddo
         case(AGE)
           do local_id=1,grid%nlmax
             ghosted_id = grid%nL2G(local_id)
@@ -8913,7 +8919,7 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
          SURFACE_CMPLX,SURFACE_CMPLX_FREE,SURFACE_SITE_DENSITY, &
          KIN_SURFACE_CMPLX,KIN_SURFACE_CMPLX_FREE, PRIMARY_ACTIVITY_COEF, &
          SECONDARY_ACTIVITY_COEF,PRIMARY_KD, TOTAL_SORBED, &
-         TOTAL_SORBED_MOBILE,AGE,TOTAL_BULK, &
+         TOTAL_SORBED_UFD,TOTAL_SORBED_MOBILE,AGE,TOTAL_BULK, &
          IMMOBILE_SPECIES,GAS_CONCENTRATION,GAS_PARTIAL_PRESSURE, &
          REACTION_AUXILIARY)
 
@@ -9061,6 +9067,8 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
               enddo
             endif
           endif
+        case(TOTAL_SORBED_UFD)
+          value = patch%aux%RT%auxvars(ghosted_id)%total_sorb_eq(isubvar)
         case(AGE)
           if (patch%aux%RT%auxvars(ghosted_id)%pri_molal(isubvar) > &
               0.d0) then

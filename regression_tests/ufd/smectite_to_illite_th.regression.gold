@@ -68,6 +68,20 @@
         2:   0.0000000000000E+00
         3:   0.0000000000000E+00
         4:   0.0000000000000E+00
+-- CONCENTRATION: Total Sorbed Sr90 --
+      Max:   1.5065637890220E-12
+      Min:   1.1813535029424E-16
+     Mean:   7.1559828913581E-13
+        2:   1.2672770968120E-14
+        3:   8.1476067800563E-15
+        4:   8.5628392075868E-15
+-- CONCENTRATION: Total Sorbed Cs137 --
+      Max:   4.6713030140237E-15
+      Min:   1.8273440056587E-16
+     Mean:   2.5675864992347E-15
+        2:   1.9316260884969E-15
+        3:   1.2436642475137E-15
+        4:   1.4996934365511E-15
 -- DISCRETE: Material ID --
       Max:         5
       Min:         1
@@ -76,6 +90,7 @@
         3:         4
         4:         5
 -- SOLUTION: Flow --
+   Time (seconds):   8.2381627000000E-02
    Time Steps:          177
    Newton Iterations:          421
    Linear Solver Iterations:          421
@@ -83,6 +98,7 @@
    Solution 2-Norm:   7.1976951712806E+06
    Residual 2-Norm:   3.6162197657448E-11
 -- SOLUTION: Transport --
+   Time (seconds):   3.7688784000000E-02
    Time Steps:          177
    Newton Iterations:          177
    Linear Solver Iterations:          177
