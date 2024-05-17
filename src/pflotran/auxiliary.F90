@@ -18,6 +18,7 @@ module Auxiliary_module
   use PNF_Aux_module
   use SCO2_Aux_module
   use Secondary_Continuum_Aux_module
+  use Immiscible_Aux_module
   use InlineSurface_Aux_module
   use Inversion_Aux_module
 
@@ -40,6 +41,7 @@ module Auxiliary_module
     type(hydrate_type), pointer :: Hydrate
     type(wippflo_type), pointer :: WIPPFlo
     type(sco2_type), pointer :: SCO2
+    type(immiscible_type), pointer :: Immiscible
     type(material_type), pointer :: Material
     type(material_transform_type), pointer :: MTransform
     type(ert_type), pointer :: ERT
@@ -76,12 +78,12 @@ subroutine AuxInit(aux)
   nullify(aux%ZFlow)
   nullify(aux%PNF)
   nullify(aux%ERT)
-
   nullify(aux%Mphase)
   nullify(aux%General)
   nullify(aux%Hydrate)
   nullify(aux%WIPPFlo)
   nullify(aux%SCO2)
+  nullify(aux%Immiscible)
   nullify(aux%Material)
   nullify(aux%MTransform)
   nullify(aux%SC_heat)
@@ -117,6 +119,7 @@ subroutine AuxDestroy(aux)
   call HydrateAuxDestroy(aux%Hydrate)
   call WIPPFloAuxDestroy(aux%WIPPFlo)
   call SCO2AuxDestroy(aux%SCO2)
+  call ImmiscibleAuxDestroy(aux%Immiscible)
   call MaterialAuxDestroy(aux%Material)
   call MaterialTransformDestroy(aux%MTransform)
   call ERTAuxDestroy(aux%ERT)
@@ -136,6 +139,7 @@ subroutine AuxDestroy(aux)
   nullify(aux%Hydrate)
   nullify(aux%WIPPFlo)
   nullify(aux%SCO2)
+  nullify(aux%Immiscible)
   nullify(aux%Material)
   nullify(aux%MTransform)
   nullify(aux%ERT)
