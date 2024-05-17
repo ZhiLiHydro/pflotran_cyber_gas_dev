@@ -912,6 +912,7 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
   use Transport_Constraint_module
   use General_Aux_module
   use WIPP_Flow_Aux_module
+  use Immiscible_Aux_module
   use Dataset_Common_HDF5_class
 
   implicit none
@@ -1047,6 +1048,17 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
               case(WF_MODE)
                 allocate(coupler%flow_aux_mapping(WIPPFLO_MAX_INDEX))
                 allocate(coupler%flow_bc_type(THREE_INTEGER))
+                allocate(coupler%flow_aux_real_var(TWO_INTEGER, &
+                                                   num_connections))
+                allocate(coupler%flow_aux_int_var(ONE_INTEGER,num_connections))
+                coupler%flow_aux_mapping = 0
+                coupler%flow_bc_type = 0
+                coupler%flow_aux_real_var = 0.d0
+                coupler%flow_aux_int_var = 0
+
+              case(IMMISCIBLE_MODE)
+                allocate(coupler%flow_aux_mapping(IMMIS_MAX_DOF))
+                allocate(coupler%flow_bc_type(TWO_INTEGER))
                 allocate(coupler%flow_aux_real_var(TWO_INTEGER, &
                                                    num_connections))
                 allocate(coupler%flow_aux_int_var(ONE_INTEGER,num_connections))
@@ -1304,6 +1316,8 @@ subroutine PatchUpdateCouplerAuxVars(patch,coupler_list,force_update_flag, &
             call PatchUpdateCouplerAuxVarsRich(patch,coupler,option)
           case(ZFLOW_MODE)
             call PatchUpdateCouplerAuxVarsZFlow(patch,coupler,option)
+          case(IMMISCIBLE_MODE)
+            call PatchUpdateCouplerAuxVarsImmis(patch,coupler,option)
           case(PNF_MODE)
             call PatchUpdateCouplerAuxVarsPNF(patch,coupler,option)
           case(SCO2_MODE)
@@ -4502,6 +4516,125 @@ end subroutine PatchUpdateCouplerAuxVarsZFlow
 
 ! ************************************************************************** !
 
+subroutine PatchUpdateCouplerAuxVarsImmis(patch,coupler,option)
+  !
+  ! Updates flow auxiliary variables associated with a coupler for
+  ! IMMISCIBLE_MODE
+  !
+  ! Author: Glenn Hammond
+  ! Date: 05/17/24
+  !
+
+  use Option_module
+  use Condition_module
+  use Hydrostatic_module
+  use Immiscible_Aux_module
+
+  use Grid_module
+  use Dataset_Common_HDF5_class
+  use Dataset_Gridded_HDF5_class
+  use Dataset_Ascii_class
+  use Dataset_module
+
+  implicit none
+
+  type(patch_type) :: patch
+  type(coupler_type), pointer :: coupler
+  type(option_type) :: option
+
+  type(flow_condition_type), pointer :: flow_condition
+  PetscInt :: water_index, water_aux_index, energy_index, solute_index
+  PetscInt :: num_connections
+  PetscBool :: hydrostatic_update_called
+
+  hydrostatic_update_called = PETSC_FALSE
+  num_connections = coupler%connection_set%num_connections
+
+  call PrintErrMsg(option,'PatchUpdateCouplerAuxVarsImmis must be setup')
+
+!  water_index = coupler%flow_aux_mapping(ZFLOW_COND_WATER_INDEX)
+!  water_aux_index = coupler%flow_aux_mapping(ZFLOW_COND_WATER_AUX_INDEX)
+!  energy_index = coupler%flow_aux_mapping(ZFLOW_COND_ENERGY_INDEX)
+!  solute_index = coupler%flow_aux_mapping(ZFLOW_COND_SOLUTE_INDEX)
+
+  flow_condition => coupler%flow_condition
+  if (associated(flow_condition%pressure)) then
+    coupler%flow_bc_type(water_index) = flow_condition%pressure%itype
+    select case(flow_condition%pressure%itype)
+      case(DIRICHLET_BC,NEUMANN_BC,ZERO_GRADIENT_BC, &
+           DIRICHLET_SEEPAGE_BC,DIRICHLET_CONDUCTANCE_BC)
+        select type(dataset => &
+                    flow_condition%pressure%dataset)
+          class is(dataset_ascii_type)
+            coupler%flow_aux_real_var(water_index,1:num_connections) = &
+              dataset%rarray(1)
+          class is(dataset_gridded_hdf5_type)
+            call PatchUpdateCouplerGridDataset(coupler,option,patch%grid, &
+                                               dataset,water_index)
+          class is(dataset_common_hdf5_type)
+            ! skip cell indexed datasets used in initial conditions
+          class default
+            call PrintMsg(option,'pressure%itype,DIRICHLET-type')
+            call DatasetUnknownClass(dataset,option, &
+                                     'PatchUpdateCouplerAuxVarsZFlow')
+        end select
+        select case(flow_condition%pressure%itype)
+          case(DIRICHLET_CONDUCTANCE_BC)
+            coupler%flow_aux_real_var(water_aux_index,1:num_connections) = &
+                                           flow_condition%pressure%aux_real(1)
+        end select
+      case(HYDROSTATIC_BC,HYDROSTATIC_SEEPAGE_BC,HYDROSTATIC_CONDUCTANCE_BC)
+        hydrostatic_update_called = PETSC_TRUE
+        call HydrostaticUpdateCoupler(coupler,option,patch%grid)
+      case(HET_DIRICHLET_BC,HET_HYDROSTATIC_SEEPAGE_BC, &
+           HET_HYDROSTATIC_CONDUCTANCE_BC)
+        call PatchUpdateHetroCouplerAuxVars(patch,coupler, &
+                flow_condition%pressure%dataset, &
+                water_index,option)
+        if (flow_condition%pressure%itype == &
+            HET_HYDROSTATIC_CONDUCTANCE_BC) then
+          coupler%flow_aux_real_var(water_aux_index, &
+                                    1:num_connections) = &
+            flow_condition%pressure%aux_real(1)
+        endif
+    end select
+  endif
+
+  if (associated(flow_condition%rate)) then
+    coupler%flow_bc_type(water_index) = flow_condition%rate%itype
+    coupler%flow_aux_real_var(water_index,1:num_connections) = &
+          flow_condition%rate%dataset%rarray(1)
+    select case(flow_condition%rate%itype)
+      case(SCALED_VOLUMETRIC_RATE_SS)
+        call PatchScaleSourceSink(patch,coupler, &
+                                  flow_condition%rate%isubtype,option)
+! not yet supported
+!      case(HET_VOL_RATE_SS)
+!        call PatchUpdateHetroCouplerAuxVars(patch,coupler, &
+!                flow_condition%rate%dataset, &
+!                water_index,option)
+      case default
+    end select
+  endif
+
+  if (associated(flow_condition%concentration)) then
+    coupler%flow_bc_type(solute_index) = flow_condition%concentration%itype
+    select case(flow_condition%concentration%itype)
+      case(DIRICHLET_BC,ZERO_GRADIENT_BC)
+        if (.not.hydrostatic_update_called) then
+          coupler%flow_aux_real_var(solute_index,1:num_connections) = &
+            flow_condition%concentration%dataset%rarray(1)
+        endif
+      case(NEUMANN_BC)
+        option%io_buffer = 'NEUMANN_BC not supported for ZFLOW concentration'
+        call PrintErrMsg(option)
+    end select
+  endif
+
+end subroutine PatchUpdateCouplerAuxVarsImmis
+
+! ************************************************************************** !
+
 subroutine PatchUpdateCouplerAuxVarsPNF(patch,coupler,option)
   !
   ! Updates flow auxiliary variables associated
@@ -5782,7 +5915,7 @@ subroutine PatchScaleSourceSink(patch,source_sink,iscale_type,option)
       !geh: This is a scaling factor that is stored that would be applied to
       !     all phases.
       case(RICHARDS_MODE,RICHARDS_TS_MODE,G_MODE,H_MODE,TH_MODE,TH_TS_MODE, &
-           WF_MODE,SCO2_MODE)
+           WF_MODE,SCO2_MODE,IMMISCIBLE_MODE)
         source_sink%flow_aux_real_var(ONE_INTEGER,iconn) = &
           vec_ptr(local_id)
       case(ZFLOW_MODE)
@@ -6362,6 +6495,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
   use WIPP_Flow_Aux_module, only : WIPPFloScalePerm
   use ZFlow_Aux_module
   use SCO2_Aux_module, only : sco2_fmw => fmw_comp
+  use Immiscible_Aux_module
   use Output_Aux_module
   use Variables_module
   use Material_Aux_module
@@ -6662,6 +6796,9 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
           case default
             call PatchUnsupportedVariable('ZFLOW',ivar,option)
         end select
+
+      else if (associated(patch%aux%Immiscible)) then
+        call PrintErrMsg(option,'PatchGetVariable1 not set up for Immiscible')
 
       else if (associated(patch%aux%Mphase)) then
 
@@ -7993,6 +8130,13 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
               patch%aux%WIPPFlo%auxvars(ZERO_INTEGER,grid%nL2G(local_id))% &
                 kr(option%liquid_phase)
           enddo
+        case(IMMISCIBLE_MODE)
+          do local_id=1,grid%nlmax
+            call PrintErrMsg(option,'fix immiscible rel perm output')
+!            vec_ptr(local_id) = &
+!              patch%aux%Immiscible%auxvars(ZERO_INTEGER,grid%nL2G(local_id))% &
+!                kr(option%liquid_phase)
+          enddo
         case(SCO2_MODE)
           do local_id=1,grid%nlmax
             vec_ptr(local_id) = &
@@ -8359,6 +8503,7 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
   use WIPP_Flow_Aux_module, only : WIPPFloScalePerm
   use ZFlow_Aux_module
   use SCO2_Aux_module
+  use Immiscible_Aux_module
   use Material_Aux_module
   use Characteristic_Curves_Thermal_module
 
@@ -8555,6 +8700,8 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
           case default
             call PatchUnsupportedVariable('ZFLOW',ivar,option)
         end select
+      else if (associated(patch%aux%Immiscible)) then
+        call PrintErrMsg(option,'PatchGetVariableValueAtCell not set up for Immiscible')
       else if (associated(patch%aux%Mphase)) then
         select case(ivar)
           case(MAXIMUM_PRESSURE)
@@ -9356,6 +9503,11 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
         case(WF_MODE)
           value = patch%aux%WIPPFlo%auxvars(ZERO_INTEGER,ghosted_id)% &
                     kr(option%liquid_phase)
+        case(IMMISCIBLE_MODE)
+            call PrintErrMsg(option,'fix immiscible rel perm output')
+
+!          value = patch%aux%Immiscible%auxvars(ZERO_INTEGER,ghosted_id)% &
+!                    kr(option%liquid_phase)
         case(SCO2_MODE)
           value = patch%aux%SCO2%auxvars(ZERO_INTEGER,ghosted_id)% &
                     kr(option%liquid_phase)

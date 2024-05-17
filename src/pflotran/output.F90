@@ -1800,6 +1800,7 @@ subroutine OutputPrintCouplers(realization_base,istep)
   use ZFlow_Aux_module
   use PNF_Aux_module
   use Richards_Aux_module
+  use Immiscible_Aux_module
 
   class(realization_base_type) :: realization_base
   PetscInt :: istep
@@ -1844,6 +1845,11 @@ subroutine OutputPrintCouplers(realization_base,istep)
     case(PNF_MODE)
       iauxvars(1) = PNF_LIQUID_PRESSURE_DOF
       auxvar_names(1) = 'pressure'
+    case(IMMISCIBLE_MODE)
+      iauxvars(1) = IMMIS_GAS_PRESSURE_DOF
+      auxvar_names(1) = 'gas pressure'
+      iauxvars(2) = IMMIS_GAS_SATURATION_DOF
+      auxvar_names(2) = 'gas saturation'
     case(G_MODE)
       iauxvars(1) = GENERAL_LIQUID_PRESSURE_DOF
       auxvar_names(1) = 'liquid_pressure'
@@ -1943,6 +1949,7 @@ subroutine OutputPrintCouplersH5(realization_base,istep)
   use SCO2_Aux_module
   use PNF_Aux_module
   use ZFlow_Aux_module
+  use Immiscible_Aux_module
   use String_module
   use Discretization_module
   use Output_Common_module
@@ -2009,6 +2016,11 @@ subroutine OutputPrintCouplersH5(realization_base,istep)
     case(PNF_MODE)
       iauxvars(1) = PNF_LIQUID_PRESSURE_DOF
       auxvar_names(1) = 'pressure'
+    case(IMMISCIBLE_MODE)
+      iauxvars(1) = IMMIS_GAS_PRESSURE_DOF
+      auxvar_names(1) = 'gas pressure'
+      iauxvars(2) = IMMIS_GAS_SATURATION_DOF
+      auxvar_names(2) = 'gas saturation'
     case(G_MODE)
       iauxvars(1) = GENERAL_LIQUID_PRESSURE_DOF
       auxvar_names(1) = 'liquid_pressure'

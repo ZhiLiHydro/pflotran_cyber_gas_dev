@@ -13,6 +13,7 @@ module Immiscible_Aux_module
   PetscReal, public :: immis_density_kg = 1000.d0
   PetscReal, public :: immis_density_kmol = UNINITIALIZED_DOUBLE
   PetscReal, public :: immis_viscosity = 1.d-3
+  PetscReal, public :: immis_fmw(2)
 
   PetscReal, public :: immis_rel_pert = 1.d-8
   PetscReal, public :: immis_pres_min_pert = 1.d-2
@@ -38,10 +39,12 @@ module Immiscible_Aux_module
   PetscInt, public :: immis_debug_cell_id
 
   ! process models
-  PetscInt, public :: immis_liq_flow_eq = UNINITIALIZED_INTEGER
-  PetscInt, public :: immis_heat_tran_eq = UNINITIALIZED_INTEGER
-  PetscInt, public :: immis_sol_tran_eq = UNINITIALIZED_INTEGER
-  PetscInt, parameter, public :: IMMIS_MAX_DOF = 3
+  PetscInt, parameter, public :: immis_liq_flow_eq = 9
+  PetscInt, parameter, public :: immis_heat_tran_eq = 9
+  PetscInt, parameter, public :: immis_sol_tran_eq = 9
+  PetscInt, parameter, public :: IMMIS_GAS_PRESSURE_DOF = 9
+  PetscInt, parameter, public :: IMMIS_GAS_SATURATION_DOF = 9
+  PetscInt, parameter, public :: IMMIS_MAX_DOF = 9
 
   PetscInt, parameter, public :: IMMIS_COND_WATER_INDEX = 1
   PetscInt, parameter, public :: IMMIS_COND_ENERGY_INDEX = 2
@@ -117,8 +120,7 @@ module Immiscible_Aux_module
             ImmiscibleAuxVarPerturb, &
             ImmiscibleAuxMapConditionIndices, &
             ImmisciblePrintAuxVars, &
-            ImmiscibleOutputAuxVars, &
-            ImmiscibleAuxTensorialRelPerm
+            ImmiscibleOutputAuxVars
 
 contains
 
@@ -422,46 +424,6 @@ subroutine ImmiscibleAuxVarPerturb(x,immis_auxvar,global_auxvar, &
   endif
 
 end subroutine ImmiscibleAuxVarPerturb
-
-! ************************************************************************** !
-
-subroutine ImmiscibleAuxTensorialRelPerm(auxvar,tensorial_rel_perm_exponent, &
-                                    dist,rel_perm,drel_perm_dp,option)
-  !
-  ! Copies an auxiliary variable
-  !
-  ! Author: Glenn Hammond
-  ! Date: 05/16/24
-  !
-
-  use Option_module
-  use Utility_module
-
-  implicit none
-
-  type(immiscible_auxvar_type) :: auxvar
-  PetscReal :: tensorial_rel_perm_exponent(3)
-  PetscReal :: dist(-1:3)
-  PetscReal :: rel_perm
-  PetscReal :: drel_perm_dp
-  type(option_type) :: option
-
-  PetscReal :: exponent_
-  PetscReal :: tensorial_scale
-
-  exponent_ = UtilityTensorToScalar(dist,tensorial_rel_perm_exponent)
-
-  ! remember that the default 0.5 was subtracted from the tensorial value
-  ! in ImmiscibleSetup. If 0.5 is specified for the tensorial exponent in the
-  ! input file, this value will be 0.
-  tensorial_scale = auxvar%effective_saturation**exponent_
-  rel_perm = auxvar%kr * tensorial_scale
-  drel_perm_dp = auxvar%dkr_dp * tensorial_scale + &
-                 exponent_ * rel_perm / &
-                 auxvar%effective_saturation * &
-                 auxvar%deffsat_dp
-
-end subroutine ImmiscibleAuxTensorialRelPerm
 
 ! ************************************************************************** !
 

@@ -1338,7 +1338,7 @@ subroutine CondControlAssignFlowInitCond(realization)
     end select
 
   select case(option%iflowmode)
-    case(RICHARDS_MODE,RICHARDS_TS_MODE,ZFLOW_MODE,PNF_MODE)
+    case(RICHARDS_MODE,RICHARDS_TS_MODE,ZFLOW_MODE,IMMISCIBLE_MODE,PNF_MODE)
     case default
       call GlobalUpdateState(realization)
   end select
@@ -2215,7 +2215,7 @@ subroutine CondControlScaleSourceSink(realization)
 
         select case(option%iflowmode)
           case(RICHARDS_MODE,RICHARDS_TS_MODE,G_MODE,WF_MODE,H_MODE,&
-               ZFLOW_MODE,SCO2_MODE)
+               ZFLOW_MODE,SCO2_MODE,IMMISCIBLE_MODE)
               call GridGetGhostedNeighbors(grid,ghosted_id,DMDA_STENCIL_STAR, &
                                           x_width,y_width,z_width, &
                                           x_count,y_count,z_count, &
@@ -2253,8 +2253,6 @@ subroutine CondControlScaleSourceSink(realization)
                             grid%structured_grid%dy(neighbor_ghosted_id)
               enddo
               vec_ptr(local_id) = vec_ptr(local_id) + sum
-          case(TH_MODE,TH_TS_MODE)
-          case(MPH_MODE)
         end select
 
       enddo
@@ -2269,7 +2267,7 @@ subroutine CondControlScaleSourceSink(realization)
         local_id = cur_connection_set%id_dn(iconn)
         select case(option%iflowmode)
           case(RICHARDS_MODE,RICHARDS_TS_MODE,G_MODE,WF_MODE,H_MODE, &
-               ZFLOW_MODE,SCO2_MODE)
+               ZFLOW_MODE,SCO2_MODE,IMMISCIBLE_MODE)
             cur_source_sink%flow_aux_real_var(ONE_INTEGER,iconn) = &
               vec_ptr(local_id)
         end select

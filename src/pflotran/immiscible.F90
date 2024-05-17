@@ -118,15 +118,15 @@ subroutine ImmiscibleSetup(realization)
   temp_int = 0
   if (Initialized(immis_liq_flow_eq)) then
     temp_int = temp_int + 1
-    immis_liq_flow_eq = temp_int
+!    immis_liq_flow_eq = temp_int
   endif
   if (Initialized(immis_heat_tran_eq)) then
     temp_int = temp_int + 1
-    immis_heat_tran_eq = temp_int
+!    immis_heat_tran_eq = temp_int
   endif
   if (Initialized(immis_sol_tran_eq)) then
     temp_int = temp_int + 1
-    immis_sol_tran_eq = temp_int
+!    immis_sol_tran_eq = temp_int
   endif
 
   immis_numerical_derivatives = option%flow%numerical_derivatives
@@ -361,7 +361,7 @@ subroutine ImmiscibleComputeMassBalance(realization,mass_balance)
   implicit none
 
   class(realization_subsurface_type) :: realization
-  PetscReal :: mass_balance(1)
+  PetscReal :: mass_balance(2)
 
   type(option_type), pointer :: option
   type(patch_type), pointer :: patch

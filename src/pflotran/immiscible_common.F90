@@ -302,26 +302,12 @@ subroutine ImmiscibleFluxHarmonicPermOnly(immiscible_auxvar_up,global_auxvar_up,
                        gravity_term
       dkr_dpup = 0.d0
       dkr_dpdn = 0.d0
-      if (immis_tensorial_rel_perm) then
-        if (delta_pressure >= 0.d0) then
-          call ImmiscibleAuxTensorialRelPerm(immiscible_auxvar_up, &
-                  immiscible_parameter% &
-                    tensorial_rel_perm_exponent(:,material_auxvar_up%id), &
-                  dist,kr,dkr_dpup,option)
-        else
-          call ImmiscibleAuxTensorialRelPerm(immiscible_auxvar_dn, &
-                  immiscible_parameter% &
-                    tensorial_rel_perm_exponent(:,material_auxvar_dn%id), &
-                  dist,kr,dkr_dpdn,option)
-        endif
+      if (delta_pressure >= 0.d0) then
+        kr = immiscible_auxvar_up%kr
+        dkr_dpup = immiscible_auxvar_up%dkr_dp
       else
-        if (delta_pressure >= 0.d0) then
-          kr = immiscible_auxvar_up%kr
-          dkr_dpup = immiscible_auxvar_up%dkr_dp
-        else
-          kr = immiscible_auxvar_dn%kr
-          dkr_dpdn = immiscible_auxvar_dn%dkr_dp
-        endif
+        kr = immiscible_auxvar_dn%kr
+        dkr_dpdn = immiscible_auxvar_dn%dkr_dp
       endif
 
       if (kr > floweps) then
@@ -615,28 +601,12 @@ subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
                 ddelta_pressure_dpdn = 0.d0
               endif
           end select
-          if (immis_tensorial_rel_perm) then
-            if (delta_pressure >= 0.d0) then
-              call ImmiscibleAuxTensorialRelPerm(immiscible_auxvar_up, &
-                      immiscible_parameter% &
-                        tensorial_rel_perm_exponent(:,material_auxvar_dn%id), &
-                      dist,kr,dkr_dp,option)
-              ! override as the upwind pressure is fixed
-              dkr_dp = 0.d0
-            else
-              call ImmiscibleAuxTensorialRelPerm(immiscible_auxvar_dn, &
-                      immiscible_parameter% &
-                        tensorial_rel_perm_exponent(:,material_auxvar_dn%id), &
-                      dist,kr,dkr_dp,option)
-            endif
+          if (delta_pressure >= 0.d0) then
+            kr = immiscible_auxvar_up%kr
+            dkr_dp = 0.d0
           else
-            if (delta_pressure >= 0.d0) then
-              kr = immiscible_auxvar_up%kr
-              dkr_dp = 0.d0
-            else
-              kr = immiscible_auxvar_dn%kr
-              dkr_dp = immiscible_auxvar_dn%dkr_dp
-            endif
+            kr = immiscible_auxvar_dn%kr
+            dkr_dp = immiscible_auxvar_dn%dkr_dp
           endif
 
           ! v_darcy[m/sec] = perm[m^2] / dist[m] * kr[-] / mu[Pa-sec]

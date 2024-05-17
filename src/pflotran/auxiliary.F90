@@ -35,13 +35,13 @@ module Auxiliary_module
     type(th_type), pointer :: TH
     type(richards_type), pointer :: Richards
     type(zflow_type), pointer :: ZFlow
+    type(immiscible_type), pointer :: Immiscible
     type(pnf_type), pointer :: PNF
     type(mphase_type), pointer :: Mphase
     type(general_type), pointer :: General
     type(hydrate_type), pointer :: Hydrate
     type(wippflo_type), pointer :: WIPPFlo
     type(sco2_type), pointer :: SCO2
-    type(immiscible_type), pointer :: Immiscible
     type(material_type), pointer :: Material
     type(material_transform_type), pointer :: MTransform
     type(ert_type), pointer :: ERT
@@ -76,6 +76,7 @@ subroutine AuxInit(aux)
   nullify(aux%TH)
   nullify(aux%Richards)
   nullify(aux%ZFlow)
+  nullify(aux%Immiscible)
   nullify(aux%PNF)
   nullify(aux%ERT)
   nullify(aux%Mphase)
@@ -83,7 +84,6 @@ subroutine AuxInit(aux)
   nullify(aux%Hydrate)
   nullify(aux%WIPPFlo)
   nullify(aux%SCO2)
-  nullify(aux%Immiscible)
   nullify(aux%Material)
   nullify(aux%MTransform)
   nullify(aux%SC_heat)
@@ -113,13 +113,13 @@ subroutine AuxDestroy(aux)
   call THAuxDestroy(aux%TH)
   call RichardsAuxDestroy(aux%Richards)
   call ZFlowAuxDestroy(aux%ZFlow)
+  call ImmiscibleAuxDestroy(aux%Immiscible)
   call PNFAuxDestroy(aux%PNF)
   call MphaseAuxDestroy(aux%Mphase)
   call GeneralAuxDestroy(aux%General)
   call HydrateAuxDestroy(aux%Hydrate)
   call WIPPFloAuxDestroy(aux%WIPPFlo)
   call SCO2AuxDestroy(aux%SCO2)
-  call ImmiscibleAuxDestroy(aux%Immiscible)
   call MaterialAuxDestroy(aux%Material)
   call MaterialTransformDestroy(aux%MTransform)
   call ERTAuxDestroy(aux%ERT)
@@ -133,13 +133,13 @@ subroutine AuxDestroy(aux)
   nullify(aux%NWT)
   nullify(aux%Richards)
   nullify(aux%ZFlow)
+  nullify(aux%Immiscible)
   nullify(aux%PNF)
   nullify(aux%Mphase)
   nullify(aux%General)
   nullify(aux%Hydrate)
   nullify(aux%WIPPFlo)
   nullify(aux%SCO2)
-  nullify(aux%Immiscible)
   nullify(aux%Material)
   nullify(aux%MTransform)
   nullify(aux%ERT)
