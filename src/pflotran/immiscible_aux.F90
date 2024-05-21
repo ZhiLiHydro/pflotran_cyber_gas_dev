@@ -11,26 +11,20 @@ module Immiscible_Aux_module
   private
 
   PetscReal, public :: immis_density_kg = 1000.d0
-  PetscReal, public :: immis_density_kmol = UNINITIALIZED_DOUBLE
   PetscReal, public :: immis_viscosity = 1.d-3
-  PetscReal, public :: immis_fmw(2)
+  PetscReal, public :: immis_fmw(2) = [FMWH2O,FMWAIR]
 
   PetscReal, public :: immis_rel_pert = 1.d-8
   PetscReal, public :: immis_pres_min_pert = 1.d-2
-  PetscReal, public :: immis_temp_min_pert = 1.d-6 ! not based on anything
-  PetscReal, public :: immis_conc_min_pert = 1.d-6 ! not based on anything
+  PetscReal, public :: immis_sat_min_pert = 1.d-10
 
   PetscReal, pointer, public :: immis_min_pert(:)
 
   PetscBool, public :: immis_calc_accum = PETSC_TRUE
   PetscBool, public :: immis_calc_flux = PETSC_TRUE
   PetscBool, public :: immis_calc_bcflux = PETSC_TRUE
-  PetscBool, public :: immis_calc_chem = PETSC_TRUE
 
   PetscBool, public :: immis_numerical_derivatives = PETSC_FALSE
-  PetscBool, public :: immis_simult_function_evals = PETSC_TRUE
-  PetscBool, public :: immis_tensorial_rel_perm = PETSC_FALSE
-  PetscBool, public :: immis_acknowledge_no_compress = PETSC_FALSE
 
   ! debugging
   PetscInt, public :: immis_ni_count
@@ -39,53 +33,34 @@ module Immiscible_Aux_module
   PetscInt, public :: immis_debug_cell_id
 
   ! process models
-  PetscInt, parameter, public :: immis_liq_flow_eq = 9
-  PetscInt, parameter, public :: immis_heat_tran_eq = 9
-  PetscInt, parameter, public :: immis_sol_tran_eq = 9
-  PetscInt, parameter, public :: IMMIS_GAS_PRESSURE_DOF = 9
-  PetscInt, parameter, public :: IMMIS_GAS_SATURATION_DOF = 9
-  PetscInt, parameter, public :: IMMIS_MAX_DOF = 9
+  PetscInt, parameter, public :: IMMIS_GAS_PRESSURE_DOF = 1
+  PetscInt, parameter, public :: IMMIS_GAS_SATURATION_DOF = 2
+  PetscInt, parameter, public :: IMMIS_MAX_DOF = IMMIS_GAS_SATURATION_DOF
 
-  PetscInt, parameter, public :: IMMIS_COND_WATER_INDEX = 1
-  PetscInt, parameter, public :: IMMIS_COND_ENERGY_INDEX = 2
-  PetscInt, parameter, public :: IMMIS_COND_SOLUTE_INDEX = 3
-  PetscInt, parameter, public :: IMMIS_COND_WATER_AUX_INDEX = 4
-  PetscInt, parameter, public :: IMMIS_MAX_INDEX = 4
+  PetscInt, parameter, public :: IMMIS_COND_LIQUID_INDEX = 1
+  PetscInt, parameter, public :: IMMIS_COND_GAS_INDEX = 2
 
   PetscInt, parameter, public :: IMMIS_UPDATE_FOR_DERIVATIVE = -1
   PetscInt, parameter, public :: IMMIS_UPDATE_FOR_FIXED_ACCUM = 0
   PetscInt, parameter, public :: IMMIS_UPDATE_FOR_ACCUM = 1
   PetscInt, parameter, public :: IMMIS_UPDATE_FOR_BOUNDARY = 2
 
-  PetscInt, parameter, public :: IMMIS_LIQ_SAT_WRT_LIQ_PRES = 1
-  PetscInt, parameter, public :: IMMIS_LIQ_PRES_WRT_POROS = 2
-
-  PetscInt, parameter, public :: IMMIS_ADJOINT_PERMEABILITY = 1
-  PetscInt, parameter, public :: IMMIS_ADJOINT_POROSITY = 2
-  PetscBool, public :: immis_calc_adjoint = PETSC_FALSE
-  PetscInt, public :: immis_adjoint_parameter = IMMIS_ADJOINT_PERMEABILITY
+  PetscInt, parameter, public :: IMMIS_GAS_SAT_WRT_GAS_PRES = 1
+  PetscInt, parameter, public :: IMMIS_GAS_PRES_WRT_POROS = 2
 
   type, public :: immiscible_auxvar_type
-    PetscReal :: pres ! liquid pressure
-    PetscReal :: sat  ! liquid saturation
+    PetscReal :: pres ! gas pressure
+    PetscReal :: sat  ! gas saturation
     PetscReal :: pc   ! capillary pressure
-    PetscReal :: kr   ! relative permeability
-    PetscReal :: effective_porosity
-    PetscReal :: dpor_dp
+    PetscReal :: kr(2) ! relative permeability
+    RetscReal :: effective_porosity
     PetscReal :: dsat_dp ! derivative of saturation wrt pressure
     PetscReal :: dkr_dp  ! derivative of rel. perm. wrt pressure
-    PetscReal :: effective_saturation
-    PetscReal :: deffsat_dp
-    PetscReal :: temp ! temperature
-    PetscReal :: conc ! concentration
-    PetscReal :: pert
-    PetscReal :: mat_pert(1)
+    PetscReal :: pert(2)
   end type immiscible_auxvar_type
 
   type, public :: immiscible_parameter_type
     PetscBool :: check_post_converged
-    PetscReal, pointer :: tensorial_rel_perm_exponent(:,:)
-    PetscReal :: diffusion_coef
   end type immiscible_parameter_type
 
   type, public :: immiscible_type
@@ -96,7 +71,6 @@ module Immiscible_Aux_module
     type(immiscible_auxvar_type), pointer :: auxvars(:,:)
     type(immiscible_auxvar_type), pointer :: auxvars_bc(:)
     type(immiscible_auxvar_type), pointer :: auxvars_ss(:)
-    type(material_auxvar_type), pointer :: material_auxvars_pert(:,:)
     type(matrix_zeroing_type), pointer :: matrix_zeroing
   end type immiscible_type
 
@@ -132,7 +106,6 @@ function ImmiscibleAuxCreate(option)
   !
   ! Author: Glenn Hammond
   ! Date: 05/16/24
-  !
 
   use Option_module
 
@@ -160,8 +133,6 @@ function ImmiscibleAuxCreate(option)
 
   allocate(aux%immiscible_parameter)
   aux%immiscible_parameter%check_post_converged = PETSC_FALSE
-  nullify(aux%immiscible_parameter%tensorial_rel_perm_exponent)
-  aux%immiscible_parameter%diffusion_coef = 0.d0
 
   ImmiscibleAuxCreate => aux
 
@@ -175,7 +146,6 @@ subroutine ImmiscibleAuxVarInit(auxvar,option)
   !
   ! Author: Glenn Hammond
   ! Date: 05/16/24
-  !
 
   use Option_module
 
@@ -189,16 +159,9 @@ subroutine ImmiscibleAuxVarInit(auxvar,option)
   auxvar%pc = 0.d0
   auxvar%kr = 0.d0
   auxvar%effective_porosity = 0.d0
-  auxvar%dpor_dp = 0.d0
-  auxvar%dsat_dp = 0.d0
   auxvar%dkr_dp = 0.d0
-  auxvar%effective_saturation = UNINITIALIZED_DOUBLE
-  auxvar%deffsat_dp = UNINITIALIZED_DOUBLE
-  auxvar%temp = 0.d0
-  auxvar%conc = 0.d0
 
   auxvar%pert = 0.d0
-  auxvar%mat_pert = 0.d0
 
 end subroutine ImmiscibleAuxVarInit
 
@@ -210,7 +173,6 @@ subroutine ImmiscibleAuxVarCopy(auxvar,auxvar2,option)
   !
   ! Author: Glenn Hammond
   ! Date: 05/16/24
-  !
 
   use Option_module
 
@@ -224,13 +186,7 @@ subroutine ImmiscibleAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%pc = auxvar%pc
   auxvar2%kr = auxvar%kr
   auxvar2%effective_porosity = auxvar%effective_porosity
-  auxvar2%dpor_dp = auxvar%dpor_dp
-  auxvar2%dsat_dp = auxvar%dsat_dp
   auxvar2%dkr_dp = auxvar%dkr_dp
-  auxvar2%effective_saturation = auxvar%effective_saturation
-  auxvar2%deffsat_dp = auxvar%deffsat_dp
-  auxvar2%temp = auxvar%temp
-  auxvar2%conc = auxvar%conc
   auxvar2%pert = auxvar%pert
 
 end subroutine ImmiscibleAuxVarCopy
@@ -245,7 +201,6 @@ subroutine ImmiscibleAuxVarCompute(x,immis_auxvar,global_auxvar, &
   !
   ! Author: Glenn Hammond
   ! Date: 05/16/24
-  !
 
   use Option_module
   use Global_Aux_module
@@ -267,21 +222,8 @@ subroutine ImmiscibleAuxVarCompute(x,immis_auxvar,global_auxvar, &
   PetscReal :: dkr_dsat
   PetscReal :: deffsat_dsat
 
-  if (immis_liq_flow_eq > 0) then
-    immis_auxvar%pres = x(immis_liq_flow_eq)
-  else
-    immis_auxvar%pres = option%flow%reference_pressure
-  endif
-  if (immis_heat_tran_eq > 0) then
-    immis_auxvar%temp = x(immis_heat_tran_eq)
-  else
-    immis_auxvar%temp = option%flow%reference_temperature
-  endif
-  if (immis_sol_tran_eq > 0) then
-    immis_auxvar%conc = x(immis_sol_tran_eq)
-  else
-    immis_auxvar%conc = 0.d0
-  endif
+  immis_auxvar%pres = x(IMMIS_GAS_PRESSURE_DOF)
+  immis_auxvar%sat = x(IMMIS_GAS_SATURATION_DOF)
 
   ! %porosity should never be used. set to bogus value to catch misuse
   material_auxvar%porosity = -888.d0

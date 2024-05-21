@@ -244,7 +244,7 @@ subroutine FactorySubsurfaceSetFlowMode(pm_flow,pm_well,option)
       option%iflowmode = IMMISCIBLE_MODE
       option%nphase = 2
       option%nflowdof = 2
-      option%nflowspec = 2
+      option%nflowspec = 1
       option%use_isothermal = PETSC_TRUE
       option%flow%store_fluxes = PETSC_TRUE
     class is (pm_pnf_type)

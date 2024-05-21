@@ -29,7 +29,6 @@ module Immiscible_Common_module
                          area, dist, &
                          immiscible_parameter, &
                          option,v_darcy,Res,Jup,Jdn, &
-                         dResdparamup,dResdparamdn, &
                          calculate_derivatives, &
                          debug_connection)
       use Immiscible_Aux_module
@@ -48,8 +47,6 @@ module Immiscible_Common_module
       PetscReal :: Res(IMMIS_MAX_DOF)
       PetscReal :: Jup(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
       PetscReal :: Jdn(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
-      PetscReal :: dResdparamup(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
-      PetscReal :: dResdparamdn(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
       PetscBool :: calculate_derivatives
       PetscBool :: debug_connection
     end subroutine FluxDummy
@@ -60,7 +57,6 @@ module Immiscible_Common_module
                            area,dist, &
                            immiscible_parameter, &
                            option,v_darcy,Res,Jdn, &
-                           dResdparamdn, &
                            calculate_derivatives, &
                            debug_connection)
       use Immiscible_Aux_module
@@ -81,7 +77,6 @@ module Immiscible_Common_module
       PetscReal :: v_darcy
       PetscReal :: Res(IMMIS_MAX_DOF)
       PetscReal :: Jdn(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
-      PetscReal :: dResdparamdn(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
       PetscBool :: calculate_derivatives
       PetscBool :: debug_connection
     end subroutine BCFluxDummy
@@ -102,8 +97,9 @@ contains
 
 ! ************************************************************************** !
 
-subroutine ImmiscibleAccumulation(immiscible_auxvar,global_auxvar,material_auxvar, &
-                             option,Res,Jac,dResdparam,calculate_derivatives)
+subroutine ImmiscibleAccumulation(immiscible_auxvar,global_auxvar, &
+                                  material_auxvar,option,Res,Jac, &
+                                  calculate_derivatives)
   !
   ! Computes the non-fixed portion of the accumulation
   ! term for the residual
@@ -123,7 +119,6 @@ subroutine ImmiscibleAccumulation(immiscible_auxvar,global_auxvar,material_auxva
   type(option_type) :: option
   PetscReal :: Res(IMMIS_MAX_DOF)
   PetscReal :: Jac(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
-  PetscReal :: dResdparam(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
   PetscBool :: calculate_derivatives
 
   PetscReal :: porosity
@@ -145,28 +140,27 @@ subroutine ImmiscibleAccumulation(immiscible_auxvar,global_auxvar,material_auxva
   saturation = immiscible_auxvar%sat
   por_sat = saturation * porosity
 
-  if (immis_liq_flow_eq > 0) then
-    ! accumulation term units = m^3 liquid/s
-    ! Res[m^3 liquid/sec] = sat[m^3 liquid/m^3 void] * por[m^3 void/m^3 bulk] *
-    !                       vol[m^3 bulk] / dt[sec]
-    tempreal = volume_over_dt * immis_density_kmol
-    Res(immis_liq_flow_eq) = por_sat * tempreal
+  ! accumulation term units = kg comp/s
+  ! Res[kg comp/sec] = den[kg comp/m^3 phase] * sat[m^3 phase/m^3 void] *
+  !                    por[m^3 void/m^3 bulk] * vol[m^3 bulk] / dt[sec]
+  do iphase = 1, 2
+    tempreal = volume_over_dt * immis_density_kg *
+    Res(iphase) = por_sat * tempreal
+  enddo
 
-    if (calculate_derivatives) then
-      Jac(immis_liq_flow_eq,immis_liq_flow_eq) = &
-        tempreal * (immiscible_auxvar%dsat_dp * porosity + &
-                    saturation * immiscible_auxvar%dpor_dp)
-      if (immis_calc_adjoint) then
-        select case(immis_adjoint_parameter)
-          case(IMMIS_ADJOINT_POROSITY)
-            dResdparam(immis_liq_flow_eq,1) = &
-              tempreal * immiscible_auxvar%sat
-        end select
-      endif
+  if (calculate_derivatives) then
+    Jac(immis_liq_flow_eq,immis_liq_flow_eq) = &
+      tempreal * (immiscible_auxvar%dsat_dp * porosity + &
+                  saturation * immiscible_auxvar%dpor_dp)
+    if (immis_calc_adjoint) then
+      select case(immis_adjoint_parameter)
+        case(IMMIS_ADJOINT_POROSITY)
+          dResdparam(immis_liq_flow_eq,1) = &
+            tempreal * immiscible_auxvar%sat
+      end select
     endif
   endif
 
-#if defined(SOLUTE_TRANSPORT)
   if (immis_sol_tran_eq > 0) then
     ! accumulation term units = mol/s
     ! Res[mole/sec] = c [mol/L] * 1000 [L/m^3 liquid]
