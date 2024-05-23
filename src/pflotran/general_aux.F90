@@ -728,6 +728,7 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
       gen_auxvar%xmol(:,gid) = 0.d0
       gen_auxvar%pres(cpid) = 0.d0
       if (general_freezing_flag) then 
+        gen_auxvar%sat(gid) = 0.d0
         call characteristic_curves%saturation_function% &
              FreezingSaturation(gen_auxvar%pres(cpid),gen_auxvar%temp,PETSC_FALSE, &
                         gen_auxvar%sat(lid),gen_auxvar%sat(gid),gen_auxvar%sat(iid),&
@@ -736,7 +737,6 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
         gen_auxvar%sat(lid) = 1.d0
         gen_auxvar%sat(gid) = 0.d0
       endif
-      !print *, 'general sl/g/i:', gen_auxvar%sat(:), 'temp: ', gen_auxvar%temp
       if (.not.option%flow%sat_pres_depends_on_salinity) then
         if (associated(gen_auxvar%d)) then
           call EOSWaterSaturationPressure(gen_auxvar%temp, &
@@ -812,7 +812,6 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
         gen_auxvar%pres(vpid) = gen_auxvar%pres(lid) - gen_auxvar%pres(apid)
       endif
       gen_auxvar%pres(cpid) = 0.d0
-
       if (associated(gen_auxvar%d)) then
         gen_auxvar%d%pv_p = 1.d0 - gen_auxvar%d%Hc_p*gen_auxvar%xmol(acid,lid)
         gen_auxvar%d%pv_T = -gen_auxvar%d%Hc_T*gen_auxvar%xmol(acid,lid)
@@ -1575,7 +1574,6 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
       gen_auxvar%H(iid) = U_ice
       gen_auxvar%mobility(iid) = 0.d0
   endif
-
 #if 0
   if (option%iflag == GENERAL_UPDATE_FOR_ACCUM) then
     write(*,'(a,i3,2f13.4,es13.6,f13.4,a3)') 'i/l/g/x[a/l]/t: ', &
@@ -2980,7 +2978,6 @@ subroutine GeneralAuxVarUpdateState(x,gen_auxvar,global_auxvar, &
       !    pres(lid)*(1.d0-window_epsilon)) then
       if (gen_auxvar%pres(vpid) <= gen_auxvar%pres(spid)*(1.d0- &
           window_epsilon)) then
-
           global_auxvar%istate = TWO_PHASE_STATE
           liq_epsilon = general_phase_chng_epsilon
           istatechng = PETSC_TRUE
@@ -3864,8 +3861,10 @@ subroutine GeneralAuxVarPerturb(gen_auxvar,global_auxvar, &
        else
          pert(GENERAL_LIQUID_STATE_X_MOLE_DOF) = perturbation_tolerance
        endif
-       pert(GENERAL_ENERGY_DOF) = -1.d0 * &
-         (perturbation_tolerance*x(GENERAL_ENERGY_DOF) + min_perturbation)
+     !  pert(GENERAL_ENERGY_DOF) = -1.d0 * &
+     !    (perturbation_tolerance*x(GENERAL_ENERGY_DOF) + min_perturbation)
+       pert(GENERAL_ENERGY_DOF) = 1.d0 * &
+            max(perturbation_tolerance*x(GENERAL_ENERGY_DOF), 8.66d-7)
 #endif
 #endif
     case(GAS_STATE)

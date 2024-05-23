@@ -1273,11 +1273,10 @@ subroutine SFVGPESaturation(this,capillary_pressure,temperature,calc_pc,&
     pc_il_alpha_n = pc_il_alpha ** n
     one_plus_pc_il_alpha_n = 1.d0 + pc_il_alpha_n
     Se = one_plus_pc_il_alpha_n**(-this%m)
-    liquid_saturation = (1.d0 - gas_saturation) * Se
+    liquid_saturation = Se - Se * this%Sr + this%Sr!(1.d0 - gas_saturation) * Se
     ice_saturation = 1.d0 - liquid_saturation - gas_saturation
-    !print *, 'se,sl,sg,si: ', Se, liquid_saturation, gas_saturation, ice_saturation
     !calculate capillary pressure
-    Se = liquid_saturation / (liquid_saturation + gas_saturation)
+    Se = max(0.d0,min(1.d0,liquid_saturation / (liquid_saturation + gas_saturation)))
     one_over_n = 1.d0 / n
     neg_one_over_m = -1.d0 / this%m
     Se_sup_neg_one_over_m = Se**neg_one_over_m
@@ -1292,6 +1291,7 @@ subroutine SFVGPESaturation(this,capillary_pressure,temperature,calc_pc,&
       pc_alpha_n = pc_alpha**n
       one_plus_pc_alpha_n = 1.d0 + pc_alpha_n
       Se = one_plus_pc_alpha_n**(-this%m)
+      Se = Se - Se * this%Sr + this%Sr
       dSe_dpc = -this%m*n*this%alpha*pc_alpha_n/(pc_alpha*one_plus_pc_alpha_n**(this%m+1))
       ! if (pc >= pth) then
       !   dSe_dpc_at_pth = -m*n*(1.d0 + (alpha*pth)**n)**(-1.d0-m)*(alpha**n*pth**(n-1.d0))
@@ -1323,6 +1323,7 @@ subroutine SFVGPESaturation(this,capillary_pressure,temperature,calc_pc,&
       pc_il_alpha_n = pc_il_alpha ** n
       one_plus_pc_il_alpha_n = 1.d0 + pc_il_alpha_n
       Se = one_plus_pc_il_alpha_n**(-this%m)
+      Se = Se - Se * this%Sr + this%Sr
       function_A = 1.d0 / Se
       dfunc_A_temp = (gamma/T273K)*1.d0/(Se**(2.d0))*(-this%m)* &
                          ((one_plus_pc_il_alpha_n)**(-this%m - 1.d0))*n* &
