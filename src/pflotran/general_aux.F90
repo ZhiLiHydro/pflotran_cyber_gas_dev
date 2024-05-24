@@ -603,12 +603,12 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
   PetscReal :: cell_pressure, water_vapor_pressure
   PetscReal :: den_water_vapor, den_kg_water_vapor
   PetscReal :: u_water_vapor, h_water_vapor
-  PetscReal :: den_air, h_air, u_air, u_ice, h_ice
+  PetscReal :: den_air, h_air, u_air, u_ice
   PetscReal :: xmol_air_in_gas, xmol_water_in_gas
   PetscReal :: krl, visl, dvis_dp, dvis_dT, dvis_dpa
   PetscReal :: dkrl_dsatl, dkrl_dsatg
   PetscReal :: dkrg_dsatl, dkrg_dsatg
-  PetscReal :: dsat_dpres, Pc
+  PetscReal :: dsat_dpres
   PetscReal :: du_ice_dT, du_ice_dP
   PetscReal :: krg, visg
   PetscReal :: K_H_tilde
@@ -3861,10 +3861,13 @@ subroutine GeneralAuxVarPerturb(gen_auxvar,global_auxvar, &
        else
          pert(GENERAL_LIQUID_STATE_X_MOLE_DOF) = perturbation_tolerance
        endif
-     !  pert(GENERAL_ENERGY_DOF) = -1.d0 * &
-     !    (perturbation_tolerance*x(GENERAL_ENERGY_DOF) + min_perturbation)
-       pert(GENERAL_ENERGY_DOF) = 1.d0 * &
-            max(perturbation_tolerance*x(GENERAL_ENERGY_DOF), 8.66d-7)
+       if (x(GENERAL_ENERGY_DOF) > 0.d0) then
+         pert(GENERAL_ENERGY_DOF) = -1.d0 * &
+           (perturbation_tolerance*x(GENERAL_ENERGY_DOF) + min_perturbation)
+       else
+         pert(GENERAL_ENERGY_DOF) = 1.d0 * &
+              max(perturbation_tolerance*x(GENERAL_ENERGY_DOF), 8.66d-7)
+       endif
 #endif
 #endif
     case(GAS_STATE)
