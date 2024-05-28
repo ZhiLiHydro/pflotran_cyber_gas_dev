@@ -1235,7 +1235,6 @@ subroutine SFVGPESaturation(this,capillary_pressure,temperature,calc_pc,&
   PetscReal, parameter :: pc_alpha_n_epsilon = 1.d-15
   PetscReal, parameter :: interfacial_tensions_ratio = 2.33
   PetscReal, parameter :: den_ice = 9.167d2 !kg/m^3 at 273.15 K
-  PetscReal :: T_K
   PetscReal :: n
   PetscReal :: pc_il_alpha, pc_alpha
   PetscReal :: pc_il_alpha_n, pc_alpha_n
@@ -1249,22 +1248,9 @@ subroutine SFVGPESaturation(this,capillary_pressure,temperature,calc_pc,&
   PetscReal :: dfunc_A_temp, dfunc_B_pl
   PetscReal, parameter :: dpc_dpres = -1.d0
 
-  !T_K = temperature! + T273K ! temperature in Kelvin
   dsat_dpres = 0.d0
   n = 1.d0 / (1.d0 - this%m)
 
-  ! if (associated(this%pres_poly)) then
-  !   if (capillary_pressure < this%pres_poly%low) then
-  !     liquid_saturation = 1.d0
-  !     return
-  !   else if (capillary_pressure < this%pres_poly%high) then
-  !     call CubicPolynomialEvaluate(this%pres_poly%coefficients, &
-  !                                  capillary_pressure,Se,dSe_dpc)
-  !     liquid_saturation = this%Sr + (1.d0-this%Sr)*Se
-  !     dsat_dpres = (1.d0-this%Sr)*dSe_dpc*dpc_dpres
-  !     return
-  !   endif
-  ! endif
   if (calc_pc) then
     !calculate pcil
     gamma = den_ice*HEAT_OF_FUSION*interfacial_tensions_ratio
@@ -1293,24 +1279,8 @@ subroutine SFVGPESaturation(this,capillary_pressure,temperature,calc_pc,&
       Se = one_plus_pc_alpha_n**(-this%m)
       Se = Se - Se * this%Sr + this%Sr
       dSe_dpc = -this%m*n*this%alpha*pc_alpha_n/(pc_alpha*one_plus_pc_alpha_n**(this%m+1))
-      ! if (pc >= pth) then
-      !   dSe_dpc_at_pth = -m*n*(1.d0 + (alpha*pth)**n)**(-1.d0-m)*(alpha**n*pth**(n-1.d0))
-      !   Se = (pc - 1.d8)*dSe_dpc_at_pth
-      !   dSe_dpc = dSe_dpc_at_pth
-      ! ! write (*,*) option%myrank, 'pc:', pc, 'Se:', Se, 'dSe_dpc', dSe_dpc
-      ! endif
       function_B = 1.d0/Se
       dfunc_B_pl = 1.d0/(Se**(2.d0))*dSe_dpc
-      !geh:  This conditional does not catch potential cancelation in
-      !      the dkr_sat deriviative calculation.  Therefore, I am setting
-      !      an epsilon here
-      !   if (1.d0 + pc_alpha_n == 1.d0) then ! check for zero perturbation
-      !if (pc_alpha_n < pc_alpha_n_epsilon) then
-       ! liquid_saturation = 1.d0
-       !switch_to_saturated = PETSC_TRUE
-       ! return
-      !endif
-
     endif
 
     if (temperature >= 0.d0) then
