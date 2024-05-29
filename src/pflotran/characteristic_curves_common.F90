@@ -1251,67 +1251,33 @@ subroutine SFVGPESaturation(this,capillary_pressure,temperature,calc_pc,&
   dsat_dpres = 0.d0
   n = 1.d0 / (1.d0 - this%m)
 
-  if (calc_pc) then
-    !calculate pcil
+  if (capillary_pressure <= 0.d0) then
+    function_B = 1.d0
+    dfunc_B_pl = 0.d0
+    Sl_app = 1.d0
+  else
+    pc_alpha = capillary_pressure*this%alpha
+    pc_alpha_n = pc_alpha**n
+    one_plus_pc_alpha_n = 1.d0 + pc_alpha_n
+    Sl_app = one_plus_pc_alpha_n**(-this%m)
+  endif
+
+  if (temperature > 0.d0) then
+    function_A = 1.d0
+    dfunc_A_temp = 0.d0
+    Suf = 1.d0
+    Sm = this%Sr * Suf
+  else
     gamma = den_ice*HEAT_OF_FUSION*interfacial_tensions_ratio
     pc_il = gamma * (-1.d0 * (temperature)) / T273K
     pc_il_alpha = pc_il * this%alpha
     pc_il_alpha_n = pc_il_alpha ** n
     one_plus_pc_il_alpha_n = 1.d0 + pc_il_alpha_n
-    Se = one_plus_pc_il_alpha_n**(-this%m)
-    liquid_saturation = Se - Se * this%Sr + this%Sr!(1.d0 - gas_saturation) * Se
-    ice_saturation = 1.d0 - liquid_saturation - gas_saturation
-    !calculate capillary pressure
-    Se = max(0.d0,min(1.d0,liquid_saturation / (liquid_saturation + gas_saturation)))
-    one_over_n = 1.d0 / n
-    neg_one_over_m = -1.d0 / this%m
-    Se_sup_neg_one_over_m = Se**neg_one_over_m
-    Se_sup_neg_one_over_m_minus_one = Se_sup_neg_one_over_m - 1.d0
-    capillary_pressure = (Se_sup_neg_one_over_m_minus_one**one_over_n)/this%alpha
-  else
-    if (capillary_pressure <= 0.d0) then
-      function_B = 1.d0
-      dfunc_B_pl = 0.d0
-      Sl_app = 1.d0
-    else
-      pc_alpha = capillary_pressure*this%alpha
-      pc_alpha_n = pc_alpha**n
-      one_plus_pc_alpha_n = 1.d0 + pc_alpha_n
-      Sl_app = one_plus_pc_alpha_n**(-this%m)
-!      Se = Se - Se * this%Sr + this%Sr
-!      dSe_dpc = -this%m*n*this%alpha*pc_alpha_n/(pc_alpha*one_plus_pc_alpha_n**(this%m+1))
-!      function_B = 1.d0/Se
-!      dfunc_B_pl = 1.d0/(Se**(2.d0))*dSe_dpc
-    endif
-
-    if (temperature >= 0.d0) then
-      function_A = 1.d0
-      dfunc_A_temp = 0.d0
-      Suf = 1.d0
-      Sm = this%Sr * Suf
-    else
-      gamma = den_ice*HEAT_OF_FUSION*interfacial_tensions_ratio
-      pc_il = gamma * (-1.d0 * (temperature)) / T273K
-      pc_il_alpha = pc_il * this%alpha
-      pc_il_alpha_n = pc_il_alpha ** n
-      one_plus_pc_il_alpha_n = 1.d0 + pc_il_alpha_n
-      Suf = one_plus_pc_il_alpha_n**(-this%m)
-      Sm = this%Sr * Suf
-!      Se = Se - Se * this%Sr + this%Sr
-!      function_A = 1.d0 / Se
-!      dfunc_A_temp = (gamma/T273K)*1.d0/(Se**(2.d0))*(-this%m)* &
-!                         ((one_plus_pc_il_alpha_n)**(-this%m - 1.d0))*n* &
-!                         (pc_il**(n - 1.d0))*(this%alpha**n)
-    endif
-    liquid_saturation = (Sl_app * (1.d0 - Sm) + Sm) / (1 - (Sl_app * (Suf - 1.d0)) / Suf)
-    ice_saturation = (-liquid_saturation * (Suf - 1.d0)) / Suf
-    gas_saturation = max(0.d0,1.d0 - liquid_saturation - ice_saturation)
-!    print *, 'Sl/i/g: ', liquid_saturation, ice_saturation, gas_saturation
-!    liquid_saturation = 1.d0 / (function_A + function_B - 1.d0)
-!    gas_saturation = liquid_saturation * (function_B - 1.d0)
-!    ice_saturation = liquid_saturation * (function_A - 1.d0)
-!    dsat_dpres = - 1.d0/(function_A + function_B - 1.d0)**(2.d0)*(dfunc_B_pl)
+    Suf = one_plus_pc_il_alpha_n**(-this%m)
+    Sm = this%Sr * Suf
   endif
+  liquid_saturation = Suf * (1.d0 - gas_saturation)
+  ice_saturation = 1.d0 - liquid_saturation - gas_saturation
   
 end subroutine SFVGPESaturation
 

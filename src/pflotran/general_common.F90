@@ -484,6 +484,7 @@ subroutine GeneralFlux(gen_auxvar_up,global_auxvar_up, &
   PetscReal :: tot_mole_flux1, salt_mole_flux
   PetscReal :: stpd_up, stpd_dn
   PetscReal :: sat_up, sat_dn, den_up, den_dn
+  PetscReal :: ice_sat_up, ice_sat_dn
   PetscReal :: temp_ave, stpd_ave_over_dist, tempreal
   PetscReal :: k_eff_up, k_eff_dn, k_eff_ave, heat_flux
 
@@ -526,6 +527,7 @@ subroutine GeneralFlux(gen_auxvar_up,global_auxvar_up, &
   PetscReal :: dkeff_up_dTup, dkeff_dn_dTdn
   PetscReal :: dkeff_ave_dkeffup, dkeff_ave_dkeffdn
   PetscReal :: dheat_flux_ddelta_temp, dheat_flux_dkeff_ave
+  PetscReal :: dkt_up_dtemp, dkt_dn_dtemp, dkt_up_dsati, dkt_dn_dsati
 
   PetscReal :: Jlup(3,3), Jldn(3,3)
   PetscReal :: Jgup(3,3), Jgdn(3,3)
@@ -2398,16 +2400,26 @@ subroutine GeneralFlux(gen_auxvar_up,global_auxvar_up, &
 
   call thermal_cc_dn%thermal_conductivity_function% &
        TCondTensorToScalar(dist,option)
-
   ! thermal conductivity a function of temperature and liquid saturation
-  call thermal_cc_up%thermal_conductivity_function%CalculateTCond(sat_up, &
-       gen_auxvar_up%temp,gen_auxvar_up%effective_porosity, &
-       k_eff_up,dkeff_up_dsatlup,dkeff_up_dTup,option)
+  if (general_freezing_flag) then
+    ice_sat_up = gen_auxvar_up%sat(3)
+    ice_sat_dn = gen_auxvar_dn%sat(3)
+    call thermal_cc_up%thermal_conductivity_function%CalculateFTCond(sat_up, &
+         ice_sat_up,gen_auxvar_up%temp,gen_auxvar_up%effective_porosity, &
+         k_eff_up,dkeff_up_dsatlup,dkt_up_dsati,dkt_up_dtemp,option)
 
-  call thermal_cc_dn%thermal_conductivity_function%CalculateTCond(sat_dn, &
-       gen_auxvar_dn%temp,gen_auxvar_dn%effective_porosity, &
-       k_eff_dn,dkeff_dn_dsatldn,dkeff_dn_dTdn,option)
-
+    call thermal_cc_dn%thermal_conductivity_function%CalculateFTCond(sat_dn, &
+         ice_sat_dn,gen_auxvar_dn%temp,gen_auxvar_dn%effective_porosity, &
+         k_eff_dn,dkeff_dn_dsatldn,dkt_dn_dsati,dkt_dn_dtemp,option)
+  else
+    call thermal_cc_up%thermal_conductivity_function%CalculateTCond(sat_up, &
+         gen_auxvar_up%temp,gen_auxvar_up%effective_porosity, &
+         k_eff_up,dkeff_up_dsatlup,dkeff_up_dTup,option)
+  
+    call thermal_cc_dn%thermal_conductivity_function%CalculateTCond(sat_dn, &
+         gen_auxvar_dn%temp,gen_auxvar_dn%effective_porosity, &
+         k_eff_dn,dkeff_dn_dsatldn,dkeff_dn_dTdn,option)
+  endif
   if (k_eff_up > 0.d0 .or. k_eff_dn > 0.d0) then
     tempreal = k_eff_up*dist_dn + k_eff_dn*dist_up
     k_eff_ave = k_eff_up*k_eff_dn/tempreal
@@ -2550,7 +2562,7 @@ subroutine GeneralBCFlux(ibndtype,auxvar_mapping,auxvars, &
   PetscReal :: gravity_term
   PetscReal :: mobility, q, kr
   PetscReal :: tot_mole_flux, tot_mole_flux1
-  PetscReal :: sat_dn, perm_dn, den_dn
+  PetscReal :: sat_dn, perm_dn, den_dn, ice_sat_dn
   PetscReal :: temp_ave, stpd_ave_over_dist
   PetscReal :: k_eff_dn, k_eff_ave, heat_flux
   PetscReal :: boundary_pressure
@@ -2601,6 +2613,7 @@ subroutine GeneralBCFlux(ibndtype,auxvar_mapping,auxvars, &
   PetscReal :: dkeff_dn_dsatldn, dkeff_dn_dTdn
   PetscReal :: dkeff_ave_dkeffdn
   PetscReal :: dheat_flux_ddelta_temp, dheat_flux_dkeff_ave
+  PetscReal :: dkt_dn_dtemp, dkt_dn_dsati
 
   ! DELETE
 
@@ -3917,11 +3930,17 @@ subroutine GeneralBCFlux(ibndtype,auxvar_mapping,auxvars, &
     case (DIRICHLET_BC)
       sat_dn = gen_auxvar_dn%sat(option%liquid_phase)
       call thermal_cc_dn%thermal_conductivity_function% &
-           TCondTensorToScalar(dist,option)
-      call thermal_cc_dn%thermal_conductivity_function%CalculateTCond(sat_dn, &
-           gen_auxvar_dn%temp,gen_auxvar_dn%effective_porosity, &
-           k_eff_dn,dkeff_dn_dsatldn,dkeff_dn_dTdn,option)
-
+             TCondTensorToScalar(dist,option)
+      if (general_freezing_flag) then
+        ice_sat_dn = gen_auxvar_dn%sat(3)
+        call thermal_cc_dn%thermal_conductivity_function%CalculateFTCond(sat_dn, &
+             ice_sat_dn,gen_auxvar_dn%temp,gen_auxvar_dn%effective_porosity, &
+             k_eff_dn,dkeff_dn_dsatldn,dkt_dn_dsati,dkt_dn_dtemp,option)
+      else
+        call thermal_cc_dn%thermal_conductivity_function%CalculateTCond(sat_dn, &
+             gen_auxvar_dn%temp,gen_auxvar_dn%effective_porosity, &
+             k_eff_dn,dkeff_dn_dsatldn,dkeff_dn_dTdn,option)
+      endif
       dkeff_ave_dkeffdn = 1.d0 / dist(0)
       k_eff_ave = k_eff_dn * dkeff_ave_dkeffdn
       ! units:

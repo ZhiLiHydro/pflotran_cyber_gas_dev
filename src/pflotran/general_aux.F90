@@ -979,19 +979,24 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
 
       cell_pressure = max(gen_auxvar%pres(lid),gen_auxvar%pres(gid), &
                       gen_auxvar%pres(spid))
-      gen_auxvar%sat(lid) = 1.d0 - gen_auxvar%sat(gid)
-
-      call characteristic_curves%saturation_function% &
+      if (general_freezing_flag) then 
+        ! calculate capillary pressure, ice saturation, and liquid saturation based on 
+        ! temperature and gas saturation.
+        gen_auxvar%sat(lid) = 1.d0 - gen_auxvar%sat(gid)
+        call characteristic_curves%saturation_function% &
                CapillaryPressure(gen_auxvar%sat(lid), &
                                  gen_auxvar%pres(cpid),dpc_dsatl,option)
-      if (general_freezing_flag) then 
-        if (gen_auxvar%temp < 0.d0) then
-          call characteristic_curves%saturation_function% &
-               FreezingSaturation(gen_auxvar%pres(cpid),gen_auxvar%temp,PETSC_TRUE, &
-                          gen_auxvar%sat(lid),gen_auxvar%sat(gid),gen_auxvar%sat(iid),&
-                          dsat_dpres,option)
-        endif
+        call characteristic_curves%saturation_function% &
+             FreezingSaturation(gen_auxvar%pres(cpid),gen_auxvar%temp,PETSC_FALSE, &
+                        gen_auxvar%sat(lid),gen_auxvar%sat(gid),gen_auxvar%sat(iid),&
+                        dsat_dpres,option)
+      else
+        gen_auxvar%sat(lid) = 1.d0 - gen_auxvar%sat(gid)
+        call characteristic_curves%saturation_function% &
+               CapillaryPressure(gen_auxvar%sat(lid), &
+                                 gen_auxvar%pres(cpid),dpc_dsatl,option)
       endif
+      !print *, 'sat ', gen_auxvar%sat(:)
       if (general_2ph_energy_dof == GENERAL_TEMPERATURE_INDEX) then
         gen_auxvar%temp = x(GENERAL_ENERGY_DOF)
         if (general_compute_surface_tension) then
@@ -1529,7 +1534,7 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
       global_auxvar%istate == TWO_PHASE_STATE) then
     ! this does not need to be calculated for GAS_STATE (=1)
     call characteristic_curves%gas_rel_perm_function% &
-           RelativePermeability(gen_auxvar%sat(lid),krg,dkrg_dsatl,option)
+           RelativePermeability(1.d0 - gen_auxvar%sat(gid),krg,dkrg_dsatl,option)
     ! dkrl_sat is with respect to liquid pressure, but the primary dependent
     ! variable is gas pressure.  therefore, negate
     dkrg_dsatg = -1.d0 * dkrg_dsatl
@@ -1574,6 +1579,7 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
       gen_auxvar%H(iid) = U_ice
       gen_auxvar%mobility(iid) = 0.d0
   endif
+!  print *, 'l/g/pc pressure: ', gen_auxvar%pres(lid),gen_auxvar%pres(gid),gen_auxvar%pres(cpid), 'cell: ', natural_id
 #if 0
   if (option%iflag == GENERAL_UPDATE_FOR_ACCUM) then
     write(*,'(a,i3,2f13.4,es13.6,f13.4,a3)') 'i/l/g/x[a/l]/t: ', &
@@ -4053,8 +4059,12 @@ subroutine GeneralAuxVarPerturb(gen_auxvar,global_auxvar, &
            pert(GENERAL_ENERGY_DOF) = -1.d0 * &
              (perturbation_tolerance*x(GENERAL_ENERGY_DOF)+min_perturbation)
          else
-           pert(GENERAL_ENERGY_DOF) = &
-             perturbation_tolerance*x(GENERAL_ENERGY_DOF)+min_perturbation
+!           if (x(GENERAL_ENERGY_DOF) > 0.d0) then
+!             pert(GENERAL_ENERGY_DOF) = &
+!               perturbation_tolerance*x(GENERAL_ENERGY_DOF)+min_perturbation
+!           else
+             pert(GENERAL_ENERGY_DOF) = min_perturbation
+!           endif
          endif
        else
          ! here GENERAL_2PH_STATE_AIR_PRESSURE_DOF = GENERAL_ENERGY_DOF
