@@ -4059,12 +4059,12 @@ subroutine GeneralAuxVarPerturb(gen_auxvar,global_auxvar, &
            pert(GENERAL_ENERGY_DOF) = -1.d0 * &
              (perturbation_tolerance*x(GENERAL_ENERGY_DOF)+min_perturbation)
          else
-!           if (x(GENERAL_ENERGY_DOF) > 0.d0) then
-!             pert(GENERAL_ENERGY_DOF) = &
-!               perturbation_tolerance*x(GENERAL_ENERGY_DOF)+min_perturbation
-!           else
+           if (x(GENERAL_ENERGY_DOF) > 0.d0) then
+             pert(GENERAL_ENERGY_DOF) = &
+               perturbation_tolerance*x(GENERAL_ENERGY_DOF)+min_perturbation
+           else
              pert(GENERAL_ENERGY_DOF) = min_perturbation
-!           endif
+           endif
          endif
        else
          ! here GENERAL_2PH_STATE_AIR_PRESSURE_DOF = GENERAL_ENERGY_DOF
