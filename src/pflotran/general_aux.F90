@@ -2984,9 +2984,9 @@ subroutine GeneralAuxVarUpdateState(x,gen_auxvar,global_auxvar, &
       !    pres(lid)*(1.d0-window_epsilon)) then
       if (gen_auxvar%pres(vpid) <= gen_auxvar%pres(spid)*(1.d0- &
           window_epsilon)) then
-          global_auxvar%istate = TWO_PHASE_STATE
-          liq_epsilon = general_phase_chng_epsilon
-          istatechng = PETSC_TRUE
+!          global_auxvar%istate = TWO_PHASE_STATE
+!          liq_epsilon = general_phase_chng_epsilon
+!          istatechng = PETSC_TRUE
 
         if (option%iflag == GENERAL_UPDATE_FOR_ACCUM) then
           write(state_change_string,'(''Liquid -> 2 Phase at Cell '',i8)') &
@@ -4063,7 +4063,8 @@ subroutine GeneralAuxVarPerturb(gen_auxvar,global_auxvar, &
              pert(GENERAL_ENERGY_DOF) = &
                perturbation_tolerance*x(GENERAL_ENERGY_DOF)+min_perturbation
            else
-             pert(GENERAL_ENERGY_DOF) = min_perturbation
+             pert(GENERAL_ENERGY_DOF) = &
+               1.d0*perturbation_tolerance*x(GENERAL_ENERGY_DOF)+min_perturbation
            endif
          endif
        else
