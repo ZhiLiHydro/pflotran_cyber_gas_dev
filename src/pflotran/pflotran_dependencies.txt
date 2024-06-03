@@ -991,6 +991,7 @@ grid_unstructured.o : \
   hdf5_aux.o \
   input_aux.o \
   option.o \
+  petsc_utility.o \
   pflotran_constants.o \
   string.o \
   utility.o

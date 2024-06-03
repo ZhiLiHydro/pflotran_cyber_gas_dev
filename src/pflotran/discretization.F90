@@ -641,9 +641,14 @@ subroutine DiscretizationCreateDMs(discretization, o_nflowdof, o_ntrandof, &
       discretization%dm_index_to_ndof(NPHASEDOF) = o_nphase
       discretization%dm_index_to_ndof(NFLOWDOF) = o_nflowdof
       discretization%dm_index_to_ndof(NTRANDOF) = o_ntrandof
+      ! this function must be called to set up str_grid%lxs, etc.
+      call StructGridComputeLocalBounds(discretization%grid%structured_grid, &
+                                        discretization%dm_1dof%dm,option)
+      discretization%grid%nlmax = discretization%grid%structured_grid%nlmax
+      discretization%grid%ngmax = discretization%grid%structured_grid%ngmax
+      discretization%grid%global_offset = &
+        discretization%grid%structured_grid%global_offset
     case(UNSTRUCTURED_GRID)
-
-
       select case(discretization%grid%itype)
         case(IMPLICIT_UNSTRUCTURED_GRID)
           ! petsc will call parmetis to calculate the graph/dual
@@ -671,8 +676,15 @@ subroutine DiscretizationCreateDMs(discretization, o_nflowdof, o_ntrandof, &
           ugrid => discretization%grid%unstructured_grid
           call UGridPolyhedraDecompose(ugrid,option)
       end select
+      discretization%grid%nmax = discretization%grid%unstructured_grid%nmax
+      discretization%grid%nlmax = discretization%grid%unstructured_grid%nlmax
+      discretization%grid%ngmax = discretization%grid%unstructured_grid%ngmax
+      discretization%grid%global_offset = &
+        discretization%grid%unstructured_grid%global_offset
   end select
 
+  call UGridAddWellCells(discretization%grid%unstructured_grid,option)
+  call GridExpandGhostCells(discretization%grid,option)
 
   !-----------------------------------------------------------------------
   ! Generate the DM objects that will manage communication.
@@ -702,23 +714,6 @@ subroutine DiscretizationCreateDMs(discretization, o_nflowdof, o_ntrandof, &
                                 ndof,discretization%stencil_width, &
                                 discretization%stencil_type,option)
   endif
-
-  select case(discretization%itype)
-    case(STRUCTURED_GRID)
-      ! this function must be called to set up str_grid%lxs, etc.
-      call StructGridComputeLocalBounds(discretization%grid%structured_grid, &
-                                        discretization%dm_1dof%dm,option)
-      discretization%grid%nlmax = discretization%grid%structured_grid%nlmax
-      discretization%grid%ngmax = discretization%grid%structured_grid%ngmax
-      discretization%grid%global_offset = &
-        discretization%grid%structured_grid%global_offset
-    case(UNSTRUCTURED_GRID)
-      discretization%grid%nmax = discretization%grid%unstructured_grid%nmax
-      discretization%grid%nlmax = discretization%grid%unstructured_grid%nlmax
-      discretization%grid%ngmax = discretization%grid%unstructured_grid%ngmax
-      discretization%grid%global_offset = &
-        discretization%grid%unstructured_grid%global_offset
-  end select
 
 end subroutine DiscretizationCreateDMs
 

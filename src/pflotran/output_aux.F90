@@ -743,7 +743,7 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
            'TORTUOSITY','NATURAL_ID','PROCESS_ID','VOLUME','MATERIAL_ID', &
            'TORTUOSITY_X','TORTUOSITY_Y','TORTUOSITY_Z', &
            'MATERIAL_ID_KLUDGE_FOR_VISIT','X_COORDINATE','Y_COORDINATE', &
-           'Z_COORDINATE', &
+           'Z_COORDINATE','PETSC_ID', &
            'ELECTRICAL_CONDUCTIVITY','ELECTRICAL_POTENTIAL', &
            'ELECTRICAL_JACOBIAN','ELECTRICAL_POTENTIAL_DIPOLE', &
            'MATERIAL_ELECTRICAL_CONDUCTIVITY', &
@@ -1107,7 +1107,22 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       units = ''
       name = 'Natural ID'
       category = OUTPUT_DISCRETE
-      id = NATURAL_ID
+      id = NATURAL_CELL_ID
+    case ('PETSC_ID')
+      units = ''
+      name = 'PETSc ID'
+      category = OUTPUT_DISCRETE
+      id = PETSC_CELL_ID
+    case ('LOCAL_ID')
+      units = ''
+      name = 'Local ID'
+      category = OUTPUT_DISCRETE
+      id = LOCAL_CELL_ID
+    case ('GHOSTED_ID')
+      units = ''
+      name = 'Ghosted ID'
+      category = OUTPUT_DISCRETE
+      id = GHOSTED_CELL_ID
     case ('PROCESS_ID')
       units = ''
       name = 'Process ID'

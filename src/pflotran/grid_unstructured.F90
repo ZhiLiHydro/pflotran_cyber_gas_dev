@@ -34,7 +34,8 @@ module Grid_Unstructured_module
             UGridEnsureRightHandRule, &
             UGridMapSideSet, &
             UGridMapSideSet2, &
-            UGridMapBoundFacesInPolVol
+            UGridMapBoundFacesInPolVol, &
+            UGridExpandGhostCells
 
 contains
 
@@ -3312,5 +3313,65 @@ subroutine UGridGetBoundaryFaces(unstructured_grid,option,boundary_faces)
   endif
 
 end subroutine UGridGetBoundaryFaces
+
+! ************************************************************************** !
+
+subroutine UGridExpandGhostCells(ugrid,scatter_gtol,global_vec,local_vec, &
+                                 option)
+  !
+  ! Expands arrays assocated with ghost cells due to a change in ghosting
+  ! as prescribed by scatter_gtol
+  !
+  ! Author: Glenn Hammond
+  ! Date: 06/03/24
+
+  use Option_module
+  use Petsc_Utility_module
+  use Utility_module
+
+  implicit none
+
+  type(grid_unstructured_type) :: ugrid
+  VecScatter :: scatter_gtol ! global (non-ghosted) to local (ghosted
+  Vec :: global_vec
+  Vec :: local_vec
+  type(option_type) :: option
+
+  PetscInt, allocatable :: int_array(:)
+  PetscInt, allocatable :: int_array2d(:,:)
+
+  PetscInt :: ivertex
+  PetscErrorCode :: ierr
+
+  ! cell type
+  allocate(int_array(ugrid%nlmax))
+  int_array = ugrid%cell_type(1:ugrid%nlmax)
+  call DeallocateArray(ugrid%cell_type)
+  allocate(ugrid%cell_type(ugrid%ngmax))
+  ugrid%cell_type = UNINITIALIZED_INTEGER
+  call PetUtilLoadVec(global_vec,int_array)
+  call VecScatterBegin(scatter_gtol,global_vec,local_vec,INSERT_VALUES, &
+                       SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+  call VecScatterEnd(scatter_gtol,global_vec,local_vec,INSERT_VALUES, &
+                     SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+  call PetUtilUnloadVec(local_vec,ugrid%cell_type)
+
+  allocate(int_array2d(0:ugrid%max_nvert_per_cell,size(ugrid%cell_vertices,2)))
+  int_array2d = ugrid%cell_vertices
+  call DeallocateArray(ugrid%cell_vertices)
+  allocate(ugrid%cell_vertices(0:ugrid%max_nvert_per_cell,ugrid%ngmax))
+  ugrid%cell_vertices = UNINITIALIZED_INTEGER
+  do ivertex = 0, ugrid%max_nvert_per_cell
+    int_array = int_array2d(ivertex,1:ugrid%nlmax)
+    call PetUtilLoadVec(global_vec,int_array)
+    call VecScatterBegin(scatter_gtol,global_vec,local_vec,INSERT_VALUES, &
+                        SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+    call VecScatterEnd(scatter_gtol,global_vec,local_vec,INSERT_VALUES, &
+                      SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+    call PetUtilUnloadVec(local_vec,ugrid%cell_vertices(ivertex,:))
+  enddo
+  deallocate(int_array2d)
+
+end subroutine UGridExpandGhostCells
 
 end module Grid_Unstructured_module

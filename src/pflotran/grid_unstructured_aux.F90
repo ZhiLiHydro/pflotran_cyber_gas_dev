@@ -182,6 +182,8 @@ module Grid_Unstructured_Aux_module
             UGridCalculateDist, &
             UGridExplicitDestroy
 
+  public :: UGridAddWellCells
+
 contains
 
 ! ************************************************************************** !
@@ -2337,5 +2339,95 @@ subroutine UGridCalculateDist(pt_up, pt_dn, pt_center, vol_up, vol_dn, &
   dist(1:3) = unit_vector
 
 end subroutine UGridCalculateDist
+
+! ************************************************************************** !
+
+subroutine UGridAddWellCells(ugrid,option)
+
+  use Option_module
+  use Utility_module
+
+  implicit none
+
+  type(grid_unstructured_type) :: ugrid
+  type(option_type) :: option
+
+  PetscInt :: well_cells(8) = [2,3,6,7,10,11,14,15]
+  PetscInt :: count
+  PetscInt, allocatable :: int_array(:)
+  PetscInt, pointer :: int_array2(:)
+  PetscInt :: i, ii
+  PetscInt :: petsc_id
+
+  PetscErrorCode :: ierr
+
+  count = size(well_cells)
+  allocate(int_array(count))
+  int_array = well_cells
+  print *, 'before: ', option%myrank, int_array
+  int_array = int_array - 1
+  call AOApplicationToPetsc(ugrid%ao_natural_to_petsc,count, &
+                            int_array,ierr);CHKERRQ(ierr)
+  int_array = int_array + 1
+  print *, 'after : ', option%myrank, int_array
+
+  ! remove duplicate local cells
+  ii = 0
+  allocate(int_array2(count))
+  do i = 1, count
+    petsc_id = int_array(i)
+    if (petsc_id > ugrid%global_offset .and. &
+        petsc_id <= ugrid%global_offset + ugrid%nlmax) then
+      ! skip
+    else
+      ii = ii + 1
+      int_array2(ii) = int_array(i)
+    endif
+  enddo
+  if (ii /= count) then
+    deallocate(int_array)
+    allocate(int_array(ii))
+    int_array(:) = int_array2(1:ii)
+    count = ii
+    call DeallocateArray(int_array2)
+  endif
+
+  allocate(int_array2(ugrid%num_ghost_cells+count))
+  int_array2(1:ugrid%num_ghost_cells) = ugrid%ghost_cell_ids_petsc
+  int_array2(ugrid%num_ghost_cells+1:ugrid%num_ghost_cells+count) = &
+    int_array
+  deallocate(int_array)
+  call UtilitySortArray(int_array2)
+  ii = 0
+  do i = 1, ugrid%num_ghost_cells+count
+    if (int_array2(ii) /= int_array2(i)) then
+      ii = ii + 1
+    endif
+    int_array2(ii) = int_array2(i)
+  enddo
+  call DeallocateArray(ugrid%ghost_cell_ids_petsc)
+  allocate(ugrid%ghost_cell_ids_petsc(ii))
+  ugrid%ghost_cell_ids_petsc => int_array2(1:ii)
+  ugrid%num_ghost_cells = size(ugrid%ghost_cell_ids_petsc)
+  ugrid%ngmax = ugrid%nlmax + ugrid%num_ghost_cells
+
+#if 0
+  ! IS for petsc numbering of local ghosted cells
+  call ISDestroy(ugdm%is_ghosted_petsc)
+  allocate(int_array(unstructured_grid%ngmax))
+  do local_id = 1, unstructured_grid%nlmax
+    int_array(local_id) = (local_id-1) + unstructured_grid%global_offset
+  enddo
+  do ghosted_id = 1,unstructured_grid%num_ghost_cells
+    int_array(unstructured_grid%nlmax+ghosted_id) = &
+      (unstructured_grid%ghost_cell_ids_petsc(ghosted_id)-1)
+  enddo
+  call ISCreateBlock(option%mycomm,ndof,unstructured_grid%ngmax,int_array, &
+                     PETSC_COPY_VALUES,ugdm%is_ghosted_petsc, &
+                     ierr);CHKERRQ(ierr)
+  deallocate(int_array)
+#endif
+
+end subroutine UGridAddWellCells
 
 end module Grid_Unstructured_Aux_module
