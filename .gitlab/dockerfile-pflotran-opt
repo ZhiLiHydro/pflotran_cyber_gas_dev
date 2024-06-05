@@ -1,0 +1,14 @@
+ARG IMAGE
+FROM $IMAGE
+
+ENV PFLOTRAN_DIR=/scratch
+ENV SRC_DIR=$PFLOTRAN_DIR/src/pflotran ARTIFACT_DIR=/tmp/test-pflotran
+
+WORKDIR $PFLOTRAN_DIR
+COPY . .
+RUN $PFLOTRAN_DIR/.gitlab/info.sh
+RUN $PFLOTRAN_DIR/.gitlab/pre-check-pflotran.sh
+RUN $PFLOTRAN_DIR/.gitlab/build-pflotran.sh
+
+WORKDIR $PFLOTRAN_DIR
+RUN $PFLOTRAN_DIR/.gitlab/test-pflotran-run-only.sh

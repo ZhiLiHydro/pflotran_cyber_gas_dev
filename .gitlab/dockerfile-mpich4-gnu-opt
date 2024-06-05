@@ -1,0 +1,16 @@
+FROM ubuntu:jammy
+
+RUN apt-get update -qq && \
+    apt-get install -y git make cmake gcc gfortran g++ lcov
+RUN apt-get install -y python3 python3-h5py
+RUN apt-get install -y wget
+RUN apt-get install -y vim
+
+WORKDIR /scratch
+RUN wget https://www.mpich.org/static/downloads/4.1.2/mpich-4.1.2.tar.gz
+COPY ./.gitlab/build-mpich4-gnu-opt.sh .
+RUN /scratch/build-mpich4-gnu-opt.sh
+
+# must be run from $PFLOTRAN_DIR
+# docker build -f ./.gitlab/dockerfile-mpich4-gnu-opt -t pflotran/mpich4-gnu-opt:ubuntu22 .
+
