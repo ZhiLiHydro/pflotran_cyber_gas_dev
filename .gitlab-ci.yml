@@ -76,6 +76,34 @@ pflotran:
     paths:
       - test-pflotran
 
+pflotran-opt:
+  stage: pflotran
+  script:
+    - BUILD_STATUS=running BUILD_KEY=push ./.gitlab/build_status
+    - export PETSC_VERSION=$(cat ./.gitlab/petsc-git-version.txt)
+#    - export IMAGE=$CI_REGISTRY_IMAGE:$PETSC_VERSION
+    - export IMAGE=pflotran/petsc:${PETSC_VERSION}-opt
+    - export NEW_IMAGE=$CI_REGISTRY_IMAGE:${CI_COMMIT_SHA}-opt
+    - docker pull $IMAGE || true
+    - >
+      docker build
+      -f ./.gitlab/dockerfile-pflotran-opt
+      --build-arg IMAGE=$IMAGE
+      --cache-from $IMAGE
+      --tag $NEW_IMAGE
+      . || true
+    # DO NOT PUSH THE NEW IMAGE
+    # copy regression results from image by launching container, copying
+    # and destorying the container
+    - id=$(docker create $NEW_IMAGE)
+    - docker cp $id:/tmp/test-pflotran .
+    - docker rm -v $id
+    - exit $(grep -c 'failed' ./test-pflotran/status)
+  artifacts:
+    when: always
+    paths:
+      - test-pflotran
+
 pflotran-intel:
   stage: pflotran
   script:

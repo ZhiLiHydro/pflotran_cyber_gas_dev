@@ -14,4 +14,4 @@ WORKDIR $PFLOTRAN_DIR
 # these environment variables bypass an opempi test that prevents execution
 # as root, but root doesn't matter when running GitLab CI
 ENV OMPI_ALLOW_RUN_AS_ROOT=1 OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
-RUN $PFLOTRAN_DIR/.gitlab/test-pflotran-intel.sh
+RUN $PFLOTRAN_DIR/.gitlab/test-pflotran-run-only.sh
