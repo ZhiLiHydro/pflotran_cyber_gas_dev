@@ -1932,8 +1932,12 @@ subroutine PMSCO2CheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
               endif
           end select
 
-          if (idof /= FIVE_INTEGER) then
+          if (idof /= SCO2_WELL_DOF) then
             if (res_scaled > this%residual_scaled_inf_tol(idof)) then
+              converged_scaled = PETSC_FALSE
+            endif
+          else
+            if (res_scaled > this%residual_scaled_inf_tol(ONE_INTEGER)) then
               converged_scaled = PETSC_FALSE
             endif
           endif

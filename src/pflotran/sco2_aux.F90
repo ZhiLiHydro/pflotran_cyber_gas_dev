@@ -136,7 +136,6 @@ module SCO2_Aux_module
   PetscInt, parameter, public :: SCO2_SEQUENTIAL_WELL = THREE_INTEGER
 
   type, public :: sco2_well_aux_type
-    ! These are useful for printing
     PetscReal :: pl   ! liquid pressure
     PetscReal :: pg   ! gas pressure
     PetscReal :: sl   ! liquid saturation
@@ -373,6 +372,8 @@ subroutine SCO2AuxVarInit(auxvar,option)
     auxvar%well%Qg = UNINITIALIZED_DOUBLE
     auxvar%well%bh_p = UNINITIALIZED_DOUBLE
     auxvar%well%pressure_bump = 0.d0
+  else
+    nullify(auxvar%well)
   endif
 
 end subroutine SCO2AuxVarInit

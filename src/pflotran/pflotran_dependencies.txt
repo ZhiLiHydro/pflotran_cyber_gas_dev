@@ -546,6 +546,7 @@ factory_subsurface_linkage.o : \
   pm_auxiliary.o \
   pm_base.o \
   pm_ert.o \
+  pm_hydrate.o \
   pm_inversion.o \
   pm_material_transform.o \
   pm_nwt.o \
@@ -1052,6 +1053,7 @@ hdf5_aux.o : \
   print.o \
   string.o
 hydrate.o : \
+  condition.o \
   connection.o \
   coupler.o \
   debug.o \
@@ -1070,6 +1072,7 @@ hydrate.o : \
   output_aux.o \
   patch.o \
   pflotran_constants.o \
+  pm_well.o \
   realization_subsurface.o \
   saturation_function.o \
   srcsink_sandbox.o \
@@ -1960,6 +1963,7 @@ pm_hydrate.o : \
   pflotran_constants.o \
   pm_base.o \
   pm_subsurface_flow.o \
+  pm_well.o \
   realization_base.o \
   realization_subsurface.o \
   saturation_function.o \
@@ -2364,6 +2368,7 @@ pm_well.o : \
   geometry.o \
   global_aux.o \
   grid.o \
+  hydrate_aux.o \
   input_aux.o \
   material_aux.o \
   nw_transport_aux.o \

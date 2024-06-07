@@ -1968,7 +1968,7 @@ subroutine SCO2Jacobian(snes,xx,A,B,realization,pm_well,ierr)
   ! Well Terms
   ! Need to update all well source/sink terms wrt
   ! perturbation in bottom pressure
-  if (sco2_well_coupling == FULLY_IMPLICIT_WELL) then
+  if (sco2_well_coupling == SCO2_FULLY_IMPLICIT_WELL) then
     if (associated(pm_well)) then
       cur_well => pm_well
       do
@@ -2008,7 +2008,7 @@ subroutine SCO2Jacobian(snes,xx,A,B,realization,pm_well,ierr)
                             inactive_rows_local_ghosted, &
                           qsrc,PETSC_NULL_VEC,PETSC_NULL_VEC, &
                           ierr);CHKERRQ(ierr)
-    if (sco2_well_coupling == FULLY_IMPLICIT_WELL) then
+    if (sco2_well_coupling == SCO2_FULLY_IMPLICIT_WELL) then
       if (associated(pm_well)) then
         cur_well => pm_well
         do
