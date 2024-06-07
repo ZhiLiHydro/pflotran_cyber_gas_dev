@@ -883,6 +883,7 @@ subroutine KdtreeHeapify(a,i_in)
   type(kdtree_result) :: temp
 
   i = i_in
+  largest = i+1
 
   do while (largest /= i)
     l = 2 * i
