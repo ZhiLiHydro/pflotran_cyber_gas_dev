@@ -8,7 +8,7 @@ WORKDIR $PFLOTRAN_DIR
 COPY . .
 RUN $PFLOTRAN_DIR/.gitlab/info.sh
 RUN $PFLOTRAN_DIR/.gitlab/pre-check-pflotran.sh
-RUN $PFLOTRAN_DIR/.gitlab/build-pflotran.sh
+RUN $PFLOTRAN_DIR/.gitlab/build-pflotran-opt.sh
 
 WORKDIR $PFLOTRAN_DIR
 RUN $PFLOTRAN_DIR/.gitlab/test-pflotran-run-only.sh
