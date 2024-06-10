@@ -274,6 +274,7 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
   PetscReal :: stoich_aq,stoich_im
   PetscReal :: exchange ! mol/(m^3_pore s) 
   PetscInt :: im_id
+
   ! Global stuff (Check global_aux.F90)
   volume = material_auxvar%volume
   porosity = material_auxvar%porosity
@@ -323,27 +324,25 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
   det_rate = stoich_im * exchange * volume * porosity  ! [mol/s]
 ! unit       [-]  [mol/(m^3_pore s)] [m^3_bulk] [m^3_pore/m^3_bulk]
 
+  im_id = this%species_im_id+reaction%offset_immobile
 ! residual
   Residual(this%species_aq_id) = &
     Residual(this%species_aq_id) - att_rate
 
-  Residual(this%species_im_id + reaction%offset_immobile) = &
-    Residual(this%species_im_id + reaction%offset_immobile) &
-    - det_rate   
+  Residual(im_id) = Residual(im_id) - det_rate   
 
 ! Jacobian
-!  if (compute_derivative) then    
-!    Jacobian(this%species_aq_id,this%species_aq_id) = &
-!      Jacobian(this%species_aq_id,this%species_aq_id) - &   
-!      (att_rate/aq_conc) * &
-!      rt_auxvar%aqueous%dtotal(this%species_aq_id,this%species_aq_id,iphase) 
-!
-!    im_id = this%species_im_id+reaction%offset_immobile
+  if (compute_derivative) then    
+    Jacobian(this%species_aq_id,this%species_aq_id) = &
+      Jacobian(this%species_aq_id,this%species_aq_id) - &   
+      (att_rate/aq_conc) * &
+      rt_auxvar%aqueous%dtotal(this%species_aq_id,this%species_aq_id,iphase) 
+
 !    Jacobian(im_id,im_id) = Jacobian(im_id,im_id) - &
 !      (det_rate/aq_conc) * &
-!      rt_auxvar%aqueous%dtotal(this%species_aq_id,this%species_aq_id,iphase)
-!
-!  end if    
+!      rt_auxvar%immobile(im_id)
+
+  end if    
 
   ! Residual - 1D array storing Residual entries in units mol/sec
   ! Jacobian - 2D array storing Jacobian entries in units kg water/sec
