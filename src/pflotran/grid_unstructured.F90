@@ -3339,14 +3339,13 @@ subroutine UGridExpandGhostCells(ugrid,scatter_gtol,global_vec,local_vec, &
   type(option_type) :: option
 
   PetscInt, allocatable :: int_array(:)
-  PetscInt, allocatable :: int_array2d(:)
 
   PetscInt, allocatable :: cell_vertices_natural(:,:)
-  type(point3d_type), allocatable :: vertex_coordinates(:)
-  PetscReal, allocatable :: real_array_local(:)
-  PetscReal, allocatable :: real_array_ghosted(:)
+!  type(point3d_type), allocatable :: vertex_coordinates(:)
+  PetscInt :: num_cells_ghosted_previous
 
   PetscInt :: ivertex
+  PetscInt :: icell
   PetscErrorCode :: ierr
 
   ! ugrid%cell_type
@@ -3362,16 +3361,11 @@ subroutine UGridExpandGhostCells(ugrid,scatter_gtol,global_vec,local_vec, &
                      SCATTER_FORWARD,ierr);CHKERRQ(ierr)
   call PetUtilUnloadVec(local_vec,ugrid%cell_type)
 
-#if 0
-  ! natural vertices as point3d
-  allocate()
-
   ! ugrid%cell_vertices
-  allocate(cell_vertices_natural(0:ugrid%max_nvert_per_cell,grid%ngmax))
-  allocate(vertex_coordinates(grid%ngmax))
-  cell_vertices_natural = UNINITIALIZED_INTEGER
+  allocate(cell_vertices_natural(0:ugrid%max_nvert_per_cell,ugrid%ngmax))
+  num_cells_ghosted_previous = size(ugrid%cell_vertices,2)
   do ivertex = 0, ugrid%max_nvert_per_cell
-    do icell = 1, grid%nlmax
+    do icell = 1, ugrid%nlmax
       int_array(icell) = ugrid%vertex_ids_natural(ugrid%cell_vertices(ivertex,icell))
     enddo
     call PetUtilLoadVec(global_vec,int_array)
@@ -3380,8 +3374,25 @@ subroutine UGridExpandGhostCells(ugrid,scatter_gtol,global_vec,local_vec, &
     call VecScatterEnd(scatter_gtol,global_vec,local_vec,INSERT_VALUES, &
                       SCATTER_FORWARD,ierr);CHKERRQ(ierr)
     call PetUtilUnloadVec(local_vec,cell_vertices_natural(ivertex,:))
+    do icell = 1, ugrid%nlmax
+      int_array(icell) = ugrid%vertex_ids_natural(ugrid%cell_vertices(ivertex,icell))
+    enddo
+    ! ensure that nothing has changes with originals
+    do icell = 1, num_cells_ghosted_previous
+      if (ugrid%vertex_ids_natural(ugrid%cell_vertices(ivertex,icell)) /= &
+          cell_vertices_natural(ivertex,icell)) then
+        option%io_buffer = 'Mismatch in vertex id natural numbering due to &
+            &introduction of well cells (UGridExpandGhostCells)'
+        call PrintErrMsgByRank(option)
+      endif
+    enddo
   enddo
 
+!  call DeallocateArray(ugrid%vertex_ids_natural)
+!  ugrid%vertex_ids_natural => cell_vertices_natural
+!  nullify(cell_vertices_natural)
+
+#if 0
   allocate(real_array_local(grid%nlmax))
   allocate(real_array_ghosted(grid%ngmax))
   allocate(vertex_coordinates(grid%ngmax))

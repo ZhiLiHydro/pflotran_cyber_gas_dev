@@ -2352,55 +2352,104 @@ subroutine UGridAddWellCells(ugrid,option)
   type(option_type) :: option
 
   PetscInt :: well_cells(8) = [2,3,6,7,10,11,14,15]
-  PetscInt :: count
-  PetscInt, allocatable :: int_array(:)
+  PetscInt, pointer :: int_array(:)
   PetscInt, pointer :: int_array2(:)
-  PetscInt, allocatable :: permutation(:)
-  PetscInt, allocatable :: map_old_to_new(:)
-  PetscInt, allocatable :: map_full_to_compressed(:)
-  PetscInt, allocatable :: map_old_to_new_compressed(:)
-  PetscInt, allocatable :: ghost_cells_optimized(:)
+!  PetscInt, allocatable :: permutation(:)
+!  PetscInt, allocatable :: map_old_to_new(:)
+!  PetscInt, allocatable :: map_full_to_compressed(:)
+!  PetscInt, allocatable :: map_old_to_new_compressed(:)
+!  PetscInt, allocatable :: ghost_cells_optimized(:)
   PetscInt :: i, ii
+  PetscInt :: num_well_cells
+  PetscInt :: num_non_local_well_cells
   PetscInt :: petsc_id
-  PetscInt :: num_ghost_cells_new
 
-  PetscInt, allocatable :: geh_ghost_cell_ids(:)
-  PetscInt, allocatable :: new_ghost_cells(:)
+!  PetscInt, allocatable :: geh_ghost_cell_ids(:)
+  PetscInt, pointer :: new_ghost_cells(:)
 
   PetscErrorCode :: ierr
 
-  count = size(well_cells)
-  allocate(int_array(count))
+  num_well_cells = size(well_cells)
+  allocate(int_array(num_well_cells))
+
+  ! convert well cell ids from natural to petsc
   int_array = well_cells
-  call PetscSortInt(count,int_array,ierr);CHKERRQ(ierr)
+  call PetscSortInt(num_well_cells,int_array,ierr);CHKERRQ(ierr)
   print *, 'before: ', option%myrank, int_array
   int_array = int_array - 1
-  call AOApplicationToPetsc(ugrid%ao_natural_to_petsc,count, &
+  call AOApplicationToPetsc(ugrid%ao_natural_to_petsc,num_well_cells, &
                             int_array,ierr);CHKERRQ(ierr)
   int_array = int_array + 1
   print *, 'after : ', option%myrank, int_array
 
   ! remove cells that are local (on process)
-  ii = 0
-  allocate(int_array2(count))
-  do i = 1, count
+  num_non_local_well_cells = 0
+  allocate(int_array2(num_well_cells))
+  do i = 1, num_well_cells
     petsc_id = int_array(i)
     if (petsc_id > ugrid%global_offset .and. &
         petsc_id <= ugrid%global_offset + ugrid%nlmax) then
       ! skip
     else
-      ii = ii + 1
-      int_array2(ii) = int_array(i)
+      num_non_local_well_cells = num_non_local_well_cells + 1
+      int_array2(num_non_local_well_cells) = int_array(i)
     endif
   enddo
-  if (ii /= count) then
-    deallocate(int_array)
-    allocate(int_array(ii))
-    int_array(:) = int_array2(1:ii)
-    count = ii
-    call DeallocateArray(int_array2)
-  endif
+  call DeallocateArray(int_array)
 
+  ! resize
+  new_ghost_cells => TruncateArray(int_array2,num_non_local_well_cells)
+
+  ! remove cells that are already ghosted
+  call PetscSortInt(num_non_local_well_cells,new_ghost_cells, &
+                    ierr);CHKERRQ(ierr)
+  ! remove potential duplicates
+  ii = 1
+  do i = 2, num_non_local_well_cells
+    if (new_ghost_cells(ii) /= new_ghost_cells(i)) then
+      ii = ii + 1
+      new_ghost_cells(ii) = new_ghost_cells(i)
+    endif
+  enddo
+  num_non_local_well_cells = ii
+  new_ghost_cells => TruncateArray(new_ghost_cells,num_non_local_well_cells)
+
+  ! find duplicates among existing ghost cells (both arrays should be sorted)
+  ! neither list should contain duplicates at this point
+  i = 1
+  ii = 1
+  do
+    if (ugrid%ghost_cell_ids_petsc(i) < new_ghost_cells(ii)) then
+      i = i + 1
+    else if (ugrid%ghost_cell_ids_petsc(i) > new_ghost_cells(ii)) then
+      ii = ii + 1
+    else ! they match
+      new_ghost_cells(ii) = -new_ghost_cells(ii)
+      ii = ii + 1
+    endif
+    if (i > ugrid%num_ghost_cells .or. ii > num_non_local_well_cells) exit
+  enddo
+  ii = 0
+  do i = 1, num_non_local_well_cells
+    if (new_ghost_cells(i) > 0) then
+      ii = ii + 1
+      new_ghost_cells(ii) = new_ghost_cells(i)
+    endif
+  enddo
+  new_ghost_cells => TruncateArray(new_ghost_cells,ii)
+
+  ! append well ghost cells to ghost cell array
+  int_array => ugrid%ghost_cell_ids_petsc
+  allocate(ugrid%ghost_cell_ids_petsc(ugrid%num_ghost_cells+ii))
+  ugrid%ghost_cell_ids_petsc(1:ugrid%num_ghost_cells) = int_array(:)
+  ugrid%ghost_cell_ids_petsc(ugrid%num_ghost_cells+1: &
+                             ugrid%num_ghost_cells+ii) = new_ghost_cells(:)
+  call DeallocateArray(new_ghost_cells)
+  ugrid%num_ghost_cells = size(ugrid%ghost_cell_ids_petsc)
+  ugrid%ngmax = ugrid%nlmax + ugrid%num_ghost_cells
+
+
+#if 0
   allocate(geh_ghost_cell_ids(4))
   geh_ghost_cell_ids = [5,7,6,8]
   allocate(new_ghost_cells(2))
@@ -2467,6 +2516,8 @@ subroutine UGridAddWellCells(ugrid,option)
   print *, 'map_old_to_new_compressed: ', map_old_to_new_compressed
 
   stop
+#endif
+
 
 #if 0
   ii = 0
