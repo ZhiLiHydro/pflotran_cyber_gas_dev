@@ -3328,6 +3328,7 @@ subroutine UGridExpandGhostCells(ugrid,scatter_gtol,global_vec,local_vec, &
   use Option_module
   use Petsc_Utility_module
   use Utility_module
+  use Geometry_module
 
   implicit none
 
@@ -3338,12 +3339,17 @@ subroutine UGridExpandGhostCells(ugrid,scatter_gtol,global_vec,local_vec, &
   type(option_type) :: option
 
   PetscInt, allocatable :: int_array(:)
-  PetscInt, allocatable :: int_array2d(:,:)
+  PetscInt, allocatable :: int_array2d(:)
+
+  PetscInt, allocatable :: cell_vertices_natural(:,:)
+  type(point3d_type), allocatable :: vertex_coordinates(:)
+  PetscReal, allocatable :: real_array_local(:)
+  PetscReal, allocatable :: real_array_ghosted(:)
 
   PetscInt :: ivertex
   PetscErrorCode :: ierr
 
-  ! cell type
+  ! ugrid%cell_type
   allocate(int_array(ugrid%nlmax))
   int_array = ugrid%cell_type(1:ugrid%nlmax)
   call DeallocateArray(ugrid%cell_type)
@@ -3356,13 +3362,68 @@ subroutine UGridExpandGhostCells(ugrid,scatter_gtol,global_vec,local_vec, &
                      SCATTER_FORWARD,ierr);CHKERRQ(ierr)
   call PetUtilUnloadVec(local_vec,ugrid%cell_type)
 
-  allocate(int_array2d(0:ugrid%max_nvert_per_cell,size(ugrid%cell_vertices,2)))
-  int_array2d = ugrid%cell_vertices
-  call DeallocateArray(ugrid%cell_vertices)
-  allocate(ugrid%cell_vertices(0:ugrid%max_nvert_per_cell,ugrid%ngmax))
-  ugrid%cell_vertices = UNINITIALIZED_INTEGER
+#if 0
+  ! natural vertices as point3d
+  allocate()
+
+  ! ugrid%cell_vertices
+  allocate(cell_vertices_natural(0:ugrid%max_nvert_per_cell,grid%ngmax))
+  allocate(vertex_coordinates(grid%ngmax))
+  cell_vertices_natural = UNINITIALIZED_INTEGER
   do ivertex = 0, ugrid%max_nvert_per_cell
-    int_array = int_array2d(ivertex,1:ugrid%nlmax)
+    do icell = 1, grid%nlmax
+      int_array(icell) = ugrid%vertex_ids_natural(ugrid%cell_vertices(ivertex,icell))
+    enddo
+    call PetUtilLoadVec(global_vec,int_array)
+    call VecScatterBegin(scatter_gtol,global_vec,local_vec,INSERT_VALUES, &
+                        SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+    call VecScatterEnd(scatter_gtol,global_vec,local_vec,INSERT_VALUES, &
+                      SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+    call PetUtilUnloadVec(local_vec,cell_vertices_natural(ivertex,:))
+  enddo
+
+  allocate(real_array_local(grid%nlmax))
+  allocate(real_array_ghosted(grid%ngmax))
+  allocate(vertex_coordinates(grid%ngmax))
+  do ivertex = 0, ugrid%max_nvert_per_cell
+    do i = 1, 4
+      do icell = 1, grid%nlmax
+        select case(i)
+          case(1)
+            real_array(icell) = ugrid%vertices(ugrid%cell_vertices(ivertex,icell))%x
+          case(2)
+            real_array(icell) = ugrid%vertices(ugrid%cell_vertices(ivertex,icell))%y
+          case(3)
+            real_array(icell) = ugrid%vertices(ugrid%cell_vertices(ivertex,icell))%z
+        end select
+      enddo
+      call PetUtilLoadVec(global_vec,real_array)
+      call VecScatterBegin(scatter_gtol,global_vec,local_vec,INSERT_VALUES, &
+                          SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+      call VecScatterEnd(scatter_gtol,global_vec,local_vec,INSERT_VALUES, &
+                        SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+      call PetUtilUnloadVec(local_vec,real_array_ghosted)
+      do icell = 1, grid%ngmax
+        select case(i)
+          case(1)
+            vertex_coordinates(icell)%x = real_array_ghosted(icell)
+          case(2)
+            vertex_coordinates(icell)%y = real_array_ghosted(icell)
+          case(3)
+            vertex_coordinates(icell)%z = real_array_ghosted(icell)
+        end select
+      enddo
+    enddo
+  enddo
+
+  ! ugrid%vertex_ids_natural
+  !   first have to copy natural vertex ids into an array size identical to
+  !   cell_vertices and then scatter accordingly
+  do icell = 1, grid%nlmax
+    do ivertex = 1, ugrid%max_nvert_per_cell
+      int_array(ivertex) = &
+        ugrid%vertex_ids_natural(ugrid%cell_vertices(ivertex,icell))
+    enddo
     call PetUtilLoadVec(global_vec,int_array)
     call VecScatterBegin(scatter_gtol,global_vec,local_vec,INSERT_VALUES, &
                         SCATTER_FORWARD,ierr);CHKERRQ(ierr)
@@ -3370,7 +3431,8 @@ subroutine UGridExpandGhostCells(ugrid,scatter_gtol,global_vec,local_vec, &
                       SCATTER_FORWARD,ierr);CHKERRQ(ierr)
     call PetUtilUnloadVec(local_vec,ugrid%cell_vertices(ivertex,:))
   enddo
-  deallocate(int_array2d)
+#endif
+
 
 end subroutine UGridExpandGhostCells
 
