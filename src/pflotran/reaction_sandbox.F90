@@ -18,6 +18,7 @@ module Reaction_Sandbox_module
   use Reaction_Sand_FlexBioHill_class
   use Reaction_Sandbox_BioTH_class
   use Reaction_Sandbox_Radon_class
+  use Reaction_Sandbox_Particle_class
 
   ! Add new reacton sandbox classes here.
 
@@ -189,6 +190,8 @@ subroutine RSandboxRead2(local_sandbox_list,input,option)
         new_sandbox => SimpleCreate()
       case('UFD-WP')
         new_sandbox => WastePackageCreate()
+      case('PARTICLE_TRANSPORT')
+        new_sandbox => ParticleCreate()
       case default
         call InputKeywordUnrecognized(input,word, &
                                       'CHEMISTRY,REACTION_SANDBOX',option)
