@@ -671,6 +671,13 @@ subroutine DiscretizationCreateDMs(discretization, o_nflowdof, o_ntrandof, &
           ugrid => discretization%grid%unstructured_grid
           call UGridPolyhedraDecompose(ugrid,option)
       end select
+
+      discretization%grid%nmax = discretization%grid%unstructured_grid%nmax
+      discretization%grid%nlmax = discretization%grid%unstructured_grid%nlmax
+      discretization%grid%ngmax = discretization%grid%unstructured_grid%ngmax
+      discretization%grid%global_offset = &
+        discretization%grid%unstructured_grid%global_offset
+
   end select
 
 
@@ -713,11 +720,6 @@ subroutine DiscretizationCreateDMs(discretization, o_nflowdof, o_ntrandof, &
       discretization%grid%global_offset = &
         discretization%grid%structured_grid%global_offset
     case(UNSTRUCTURED_GRID)
-      discretization%grid%nmax = discretization%grid%unstructured_grid%nmax
-      discretization%grid%nlmax = discretization%grid%unstructured_grid%nlmax
-      discretization%grid%ngmax = discretization%grid%unstructured_grid%ngmax
-      discretization%grid%global_offset = &
-        discretization%grid%unstructured_grid%global_offset
   end select
 
 end subroutine DiscretizationCreateDMs
