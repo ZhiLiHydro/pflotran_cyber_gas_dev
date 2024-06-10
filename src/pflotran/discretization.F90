@@ -643,6 +643,10 @@ subroutine DiscretizationCreateDMs(discretization, o_nflowdof, o_ntrandof, &
       discretization%dm_index_to_ndof(NTRANDOF) = o_ntrandof
     case(UNSTRUCTURED_GRID)
 
+      if (option%insert_well_cells) then
+        call UGridAddWellCells(discretization%grid%unstructured_grid,option)
+        call GridExpandGhostCells(discretization%grid,option)
+      endif
 
       select case(discretization%grid%itype)
         case(IMPLICIT_UNSTRUCTURED_GRID)

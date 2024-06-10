@@ -169,6 +169,8 @@ module Option_module
 
     PetscBool :: print_ekg
 
+    PetscBool :: insert_well_cells
+
   end type option_type
 
   interface OptionCreate
@@ -437,6 +439,8 @@ subroutine OptionInitAll(option)
   option%input_filename = ''
 
   option%out_of_table = PETSC_FALSE
+
+  option%insert_well_cells = PETSC_FALSE
 
   call OptionInitRealization(option)
 

@@ -180,7 +180,8 @@ module Grid_Unstructured_Aux_module
             UGridNaturalToPetsc, &
             UGridCreateOldVec, &
             UGridCalculateDist, &
-            UGridExplicitDestroy
+            UGridExplicitDestroy, &
+            UGridAddWellCells
 
 contains
 
@@ -2337,5 +2338,169 @@ subroutine UGridCalculateDist(pt_up, pt_dn, pt_center, vol_up, vol_dn, &
   dist(1:3) = unit_vector
 
 end subroutine UGridCalculateDist
+
+! ************************************************************************** !
+
+subroutine UGridAddWellCells(ugrid,option)
+
+  use Option_module
+  use Utility_module
+
+  implicit none
+
+  type(grid_unstructured_type) :: ugrid
+  type(option_type) :: option
+
+  PetscInt :: well_cells(8) = [2,3,6,7,10,11,14,15]
+  PetscInt :: count
+  PetscInt, allocatable :: int_array(:)
+  PetscInt, pointer :: int_array2(:)
+  PetscInt, allocatable :: permutation(:)
+  PetscInt, allocatable :: map_old_to_new(:)
+  PetscInt, allocatable :: map_full_to_compressed(:)
+  PetscInt, allocatable :: map_old_to_new_compressed(:)
+  PetscInt, allocatable :: ghost_cells_optimized(:)
+  PetscInt :: i, ii
+  PetscInt :: petsc_id
+  PetscInt :: num_ghost_cells_new
+
+  PetscInt, allocatable :: geh_ghost_cell_ids(:)
+  PetscInt, allocatable :: new_ghost_cells(:)
+
+  PetscErrorCode :: ierr
+
+  count = size(well_cells)
+  allocate(int_array(count))
+  int_array = well_cells
+  call PetscSortInt(count,int_array,ierr);CHKERRQ(ierr)
+  print *, 'before: ', option%myrank, int_array
+  int_array = int_array - 1
+  call AOApplicationToPetsc(ugrid%ao_natural_to_petsc,count, &
+                            int_array,ierr);CHKERRQ(ierr)
+  int_array = int_array + 1
+  print *, 'after : ', option%myrank, int_array
+
+  ! remove cells that are local (on process)
+  ii = 0
+  allocate(int_array2(count))
+  do i = 1, count
+    petsc_id = int_array(i)
+    if (petsc_id > ugrid%global_offset .and. &
+        petsc_id <= ugrid%global_offset + ugrid%nlmax) then
+      ! skip
+    else
+      ii = ii + 1
+      int_array2(ii) = int_array(i)
+    endif
+  enddo
+  if (ii /= count) then
+    deallocate(int_array)
+    allocate(int_array(ii))
+    int_array(:) = int_array2(1:ii)
+    count = ii
+    call DeallocateArray(int_array2)
+  endif
+
+  allocate(geh_ghost_cell_ids(4))
+  geh_ghost_cell_ids = [5,7,6,8]
+  allocate(new_ghost_cells(2))
+  new_ghost_cells = [7,2,3,6]
+
+  num_ghost_cells_new = size(geh_ghost_cell_ids)+size(new_ghost_cells)
+  allocate(int_array2(num_ghost_cells_new))
+  int_array2(1:size(geh_ghost_cell_ids)) = geh_ghost_cell_ids
+  int_array2(size(geh_ghost_cell_ids)+1:num_ghost_cells_new) = new_ghost_cells
+
+
+  print *, 'int_array2 (before): ', int_array2
+  allocate(permutation(num_ghost_cells_new))
+  permutation = [ (i,i=1,num_ghost_cells_new) ]
+  print *, 'permutation (before): ', permutation
+  permutation = permutation - 1
+  call PetscSortIntWithPermutation(num_ghost_cells_new,int_array2, &
+                                   permutation,ierr);CHKERRQ(ierr)
+  permutation = permutation + 1
+  print *, 'permutation (after): ', permutation
+  print *, 'int_array2 (after): ', [ (int_array2(permutation(i)),i=1,num_ghost_cells_new) ]
+
+  allocate(map_old_to_new(size(geh_ghost_cell_ids)))
+  ii = 0
+  do i = 1, num_ghost_cells_new
+    if (permutation(i) <= size(geh_ghost_cell_ids)) then
+      ii = ii + 1
+      map_old_to_new(ii) = i
+    endif
+  enddo
+  deallocate(int_array)
+
+  allocate(int_array(num_ghost_cells_new))
+  do i = 1, num_ghost_cells_new
+    int_array(i) = int_array2(permutation(i))
+  enddo
+  call DeallocateArray(int_array2)
+  print *, 'int_array: ', int_array
+
+  allocate(map_full_to_compressed(num_ghost_cells_new))
+  ii = 1
+  map_full_to_compressed(1) = 1
+  do i = 2, num_ghost_cells_new
+    if (int_array(ii) /= int_array(i)) then
+      ii = ii + 1
+      int_array(ii) = int_array(i)
+    endif
+    map_full_to_compressed(i) = ii
+  enddo
+  int_array(ii+1:num_ghost_cells_new) = UNINITIALIZED_INTEGER
+  allocate(ghost_cells_optimized(ii))
+  ghost_cells_optimized = int_array(1:ii)
+
+  allocate(map_old_to_new_compressed(size(map_old_to_new)))
+  map_old_to_new_compressed = UNINITIALIZED_INTEGER
+  do i = 1, size(map_old_to_new_compressed)
+    map_old_to_new_compressed(i) = map_full_to_compressed(map_old_to_new(i))
+  enddo
+
+  print *, 'int_array: ', int_array
+  print *, 'ghost_cells_optimized: ', ghost_cells_optimized
+  print *, 'map_old_to_new: ', map_old_to_new
+  print *, 'map_full_to_compressed: ', map_full_to_compressed
+  print *, 'map_old_to_new_compressed: ', map_old_to_new_compressed
+
+  stop
+
+#if 0
+  ii = 0
+  do i = 1, num_ghost_cells_new
+    if (int_array2(permutation(ii)) /= int_array2(permutation(i))) then
+      ii = ii + 1
+    endif
+    int_array2(permutation(ii)) = int_array2(ipermutation(i))
+    permutation(ii) =
+  enddo
+  call DeallocateArray(ugrid%ghost_cell_ids_petsc)
+  allocate(ugrid%ghost_cell_ids_petsc(ii))
+  ugrid%ghost_cell_ids_petsc => int_array2(1:ii)
+  ugrid%num_ghost_cells = size(ugrid%ghost_cell_ids_petsc)
+  ugrid%ngmax = ugrid%nlmax + ugrid%num_ghost_cells
+#endif
+
+#if 0
+  ! IS for petsc numbering of local ghosted cells
+  call ISDestroy(ugdm%is_ghosted_petsc)
+  allocate(int_array(unstructured_grid%ngmax))
+  do local_id = 1, unstructured_grid%nlmax
+    int_array(local_id) = (local_id-1) + unstructured_grid%global_offset
+  enddo
+  do ghosted_id = 1,unstructured_grid%num_ghost_cells
+    int_array(unstructured_grid%nlmax+ghosted_id) = &
+      (unstructured_grid%ghost_cell_ids_petsc(ghosted_id)-1)
+  enddo
+  call ISCreateBlock(option%mycomm,ndof,unstructured_grid%ngmax,int_array, &
+                     PETSC_COPY_VALUES,ugdm%is_ghosted_petsc, &
+                     ierr);CHKERRQ(ierr)
+  deallocate(int_array)
+#endif
+
+end subroutine UGridAddWellCells
 
 end module Grid_Unstructured_Aux_module

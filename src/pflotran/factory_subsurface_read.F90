@@ -2438,6 +2438,11 @@ subroutine FactorySubsurfReadInput(simulation,input)
         call ParameterAddToList(parameter,realization%parameter_list)
         nullify(parameter)
 
+!......................
+
+      case ('INSERT_WELL_CELLS')
+        option%insert_well_cells = PETSC_TRUE
+
 !....................
       case ('END_SUBSURFACE')
         exit
