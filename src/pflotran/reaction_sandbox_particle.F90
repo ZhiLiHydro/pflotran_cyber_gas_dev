@@ -264,7 +264,7 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
   PetscReal :: rho_f
   PetscReal :: g
   PetscReal :: viscosity
-  PetscReal :: psi_b,psi_d
+  PetscReal :: psi_b,psi_d, dpsi_b_dc
   PetscReal :: k_d ! deposition rate (attachment rate)
   PetscReal :: k_r ! remobilization rate (deachment rate)
   PetscReal :: smax
@@ -273,7 +273,8 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
   PetscReal :: att_rate, det_rate  ! mol/sec
   PetscReal :: stoich_aq,stoich_im
   PetscReal :: exchange ! mol/(m^3_pore s) 
-  PetscInt :: im_id
+  PetscInt :: im_id, aq_id
+  PetscReal :: tempreal
 
   ! Global stuff (Check global_aux.F90)
   volume = material_auxvar%volume
@@ -304,7 +305,7 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
 !    print *, 'attachment rate:',k_d
     smax = this%max_solid_conc
 !    print *, 'max solid conc:',smax
-    psi_b = BlockingFunction(im_conc,smax)
+    call BlockingFunction(im_conc,smax,psi_b,dpsi_b_dc)
 !    print *, 'psi_b:',psi_b
     ! eqn 5.13
     exchange = liquid_saturation * k_d * psi_b * aq_conc *1.d3! mol/(m^3_pore s)
@@ -324,6 +325,7 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
   det_rate = stoich_im * exchange * volume * porosity  ! [mol/s]
 ! unit       [-]  [mol/(m^3_pore s)] [m^3_bulk] [m^3_pore/m^3_bulk]
 
+  aq_id = this%species_aq_id
   im_id = this%species_im_id+reaction%offset_immobile
 ! residual
   Residual(this%species_aq_id) = &
@@ -332,15 +334,29 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
   Residual(im_id) = Residual(im_id) - det_rate   
 
 ! Jacobian
-  if (compute_derivative) then    
-    Jacobian(this%species_aq_id,this%species_aq_id) = &
-      Jacobian(this%species_aq_id,this%species_aq_id) - &   
-      (att_rate/aq_conc) * &
-      rt_auxvar%aqueous%dtotal(this%species_aq_id,this%species_aq_id,iphase) 
+  if (compute_derivative) then
+    ! best not to divide by aq_conc as the number blows up as aq_conc
+    ! approaches zero (though aq_conc will never be zero)
+    tempreal = liquid_saturation * k_d * psi_b * 1.d3 * volume * porosity
+    Jacobian(aq_id,aq_id) = Jacobian(aq_id,aq_id) - stoich_aq * tempreal
+    Jacobian(im_id,aq_id) = Jacobian(im_id,aq_id) - stoich_im * tempreal
+
+    ! cannot divide att_rate by psi_b since psi_b can be zero
+    tempreal = liquid_saturation * k_d * dpsi_b_dc * aq_conc * 1.d3 * &
+               volume * porosity
+
+    Jacobian(aq_id,im_id) = Jacobian(this%species_aq_id,im_id) - stoich_aq * tempreal
+    Jacobian(im_id,im_id) = Jacobian(im_id,im_id) - stoich_im * tempreal
 
 !    Jacobian(im_id,im_id) = Jacobian(im_id,im_id) - &
 !      (det_rate/aq_conc) * &
 !      rt_auxvar%immobile(im_id)
+
+    ! at this point, Jacobian(aq_id,aq_id) units are L_water/sec
+    ! need to multiply by dtotal [kg water/L water] to get kg_water/sec
+    Jacobian(1:reaction%naqcomp,1:reaction%naqcomp) = &
+      Jacobian(1:reaction%naqcomp,1:reaction%naqcomp) * &
+      rt_auxvar%aqueous%dtotal(:,:,iphase)
 
   end if    
 
@@ -697,7 +713,7 @@ function DetachmentRate(this)
 
 end function
 
-function BlockingFunction(im_conc,im_max_conc)
+subroutine BlockingFunction(im_conc,im_max_conc,psi_b,dpsi_b_dc)
   !
   ! Compute blocking function
   ! Eqn 5.7 in Muller 2015
@@ -708,12 +724,13 @@ function BlockingFunction(im_conc,im_max_conc)
   
   implicit none
 
-  PetscReal :: BlockingFunction
+  PetscReal :: psi_b, dpsi_b_dc
   PetscReal :: im_conc,im_max_conc 
 
-  BlockingFunction = 1.d0-(im_conc/im_max_conc)
+  dpsi_b_dc = -1.d0/im_max_conc
+  psi_b = 1.d0 + im_conc*dpsi_b_dc
 
-end function
+end subroutine BlockingFunction
 
 function DepthDepRetenFunction(d50,dx,beta)
   !
