@@ -2522,7 +2522,7 @@ subroutine GridExpandGhostCells(grid,option)
   deallocate(int_array)
   deallocate(int_array2)
 
-#define UGRID_DEBUG 1
+!#define UGRID_DEBUG
 #if UGRID_DEBUG
   if (option%myrank == 0) print *, 'is_local'
   call ISView(is_local,PETSC_VIEWER_STDOUT_WORLD,ierr);CHKERRQ(ierr)
