@@ -169,7 +169,7 @@ module Option_module
 
     PetscBool :: print_ekg
 
-    PetscBool :: insert_well_cells
+    PetscInt, pointer :: well_cells(:)
 
   end type option_type
 
@@ -440,7 +440,7 @@ subroutine OptionInitAll(option)
 
   option%out_of_table = PETSC_FALSE
 
-  option%insert_well_cells = PETSC_FALSE
+  nullify(option%well_cells)
 
   call OptionInitRealization(option)
 
@@ -1541,6 +1541,11 @@ subroutine OptionDestroy(option)
   implicit none
 
   type(option_type), pointer :: option
+
+  if (associated(option%well_cells)) then
+    deallocate(option%well_cells)
+    nullify(option%well_cells)
+  endif
 
   call PrintDestroyFlags(option%print_flags)
   call OptionFlowDestroy(option%flow)

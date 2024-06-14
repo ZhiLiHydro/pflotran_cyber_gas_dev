@@ -2350,7 +2350,6 @@ subroutine UGridAddWellCells(ugrid,option)
   type(grid_unstructured_type) :: ugrid
   type(option_type) :: option
 
-  PetscInt :: well_cells(8) = [2,3,6,7,10,11,14,15]
   PetscInt, pointer :: int_array(:)
   PetscInt, pointer :: int_array2(:)
 !  PetscInt, allocatable :: permutation(:)
@@ -2361,6 +2360,7 @@ subroutine UGridAddWellCells(ugrid,option)
   PetscInt :: i, ii
   PetscInt :: num_well_cells
   PetscInt :: num_non_local_well_cells
+  PetscInt :: num_local_well_cells
   PetscInt :: petsc_id
 
 !  PetscInt, allocatable :: geh_ghost_cell_ids(:)
@@ -2368,11 +2368,11 @@ subroutine UGridAddWellCells(ugrid,option)
 
   PetscErrorCode :: ierr
 
-  num_well_cells = size(well_cells)
+  num_well_cells = size(option%well_cells)
   allocate(int_array(num_well_cells))
 
   ! convert well cell ids from natural to petsc
-  int_array = well_cells
+  int_array = option%well_cells
   call PetscSortInt(num_well_cells,int_array,ierr);CHKERRQ(ierr)
   int_array = int_array - 1
   call AOApplicationToPetsc(ugrid%ao_natural_to_petsc,num_well_cells, &
@@ -2380,19 +2380,26 @@ subroutine UGridAddWellCells(ugrid,option)
   int_array = int_array + 1
 
   ! remove cells that are local (on process)
+  num_local_well_cells = 0
   num_non_local_well_cells = 0
   allocate(int_array2(num_well_cells))
   do i = 1, num_well_cells
     petsc_id = int_array(i)
     if (petsc_id > ugrid%global_offset .and. &
         petsc_id <= ugrid%global_offset + ugrid%nlmax) then
-      ! skip
+      num_local_well_cells = num_local_well_cells + 1
     else
       num_non_local_well_cells = num_non_local_well_cells + 1
       int_array2(num_non_local_well_cells) = int_array(i)
     endif
   enddo
   call DeallocateArray(int_array)
+
+  if (num_local_well_cells == 0 .or. & ! no well cell on process
+      ! all well cells are on process
+      num_local_well_cells > 0 .and. num_non_local_well_cells == 0) then
+    return
+  endif
 
   ! resize
   new_ghost_cells => TruncateArray(int_array2,num_non_local_well_cells)

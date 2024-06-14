@@ -51,8 +51,8 @@ module PM_Richards_class
   public :: PMRichardsCreate, &
             PMRichardsInit, &
             PMRichardsDestroy, &
-            PMRichardsCheckConvergence
-
+            PMRichardsCheckConvergence, &
+            PMRichardsSetupWell
 
 contains
 
@@ -266,6 +266,75 @@ subroutine PMRichardsSetup(this)
   call PMSubsurfaceFlowSetup(this)
 
 end subroutine PMRichardsSetup
+
+! ************************************************************************** !
+
+subroutine PMRichardsSetupWell(this,Jac,Jacpre)
+  !
+  ! Sets up auxvars and parameters
+  !
+  ! Author: Glenn Hammond
+  ! Date: 04/11/24
+
+  use Richards_module
+  use Grid_module
+  use Grid_Unstructured_Aux_module
+
+  implicit none
+
+  class(pm_richards_type) :: this
+  Mat :: Jac
+  Mat :: Jacpre
+
+  type(grid_type), pointer :: grid
+  type(grid_unstructured_type), pointer :: ugrid
+  PetscInt :: i, j
+  PetscInt :: irow_petsc, icol_petsc
+  PetscReal, allocatable :: values(:,:)
+  PetscInt, allocatable :: int_array(:)
+  PetscErrorCode :: ierr
+
+  if (associated(this%option%well_cells)) then
+    grid => this%realization%patch%grid
+    ugrid => grid%unstructured_grid
+    if (associated(ugrid)) then
+      allocate(int_array(size(this%option%well_cells)))
+      int_array = this%option%well_cells
+      int_array = int_array - 1
+      call AOApplicationToPetsc(ugrid%ao_natural_to_petsc,size(int_array), &
+                                int_array,ierr);CHKERRQ(ierr)
+      int_array = int_array + 1
+      allocate(values(this%option%nflowdof,this%option%nflowdof))
+      values = 0.d0
+      do i = 1, size(int_array)
+        irow_petsc = int_array(i)
+        if (irow_petsc > ugrid%global_offset .and. &
+            irow_petsc <= ugrid%global_offset + ugrid%nlmax) then
+          do j = 1, size(int_array)
+            icol_petsc = int_array(j)
+            call MatSetValuesBlocked(Jac,1,irow_petsc-1,1,icol_petsc-1, &
+                                    values,ADD_VALUES,ierr);CHKERRQ(ierr)
+            print *, this%option%myrank, ' : ', irow_petsc, icol_petsc
+            if (Jac /= Jacpre) then
+              call MatSetValuesBlocked(Jacpre,1,irow_petsc-1,1,icol_petsc-1, &
+                                      values,ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+          enddo
+        endif
+      enddo
+      deallocate(values)
+      deallocate(int_array)
+    endif
+  endif
+
+  call MatAssemblyBegin(Jac,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+  call MatAssemblyEnd(Jac,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+  if (Jac /= Jacpre) then
+    call MatAssemblyBegin(Jacpre,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+    call MatAssemblyEnd(Jacpre,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+  endif
+
+end subroutine PMRichardsSetupWell
 
 ! ************************************************************************** !
 

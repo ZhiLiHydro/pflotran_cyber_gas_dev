@@ -677,7 +677,7 @@ subroutine DiscretizationCreateDMs(discretization, o_nflowdof, o_ntrandof, &
       discretization%grid%global_offset = &
         discretization%grid%unstructured_grid%global_offset
 
-      if (option%insert_well_cells .and. option%comm%size > 1) then
+      if (associated(option%well_cells) .and. option%comm%size > 1) then
         call UGridAddWellCells(discretization%grid%unstructured_grid,option)
         call GridExpandGhostCells(discretization%grid,option)
       endif

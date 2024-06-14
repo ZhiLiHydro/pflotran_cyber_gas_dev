@@ -323,6 +323,7 @@ subroutine PMCSubsurfaceSetupSolvers_TimestepperSNES(this)
               Initialized(pm%saturation_change_limit)) then
               add_pre_check = PETSC_TRUE
           endif
+          call PMRichardsSetupWell(pm,solver%M,solver%Mpre)
         class is(pm_general_type)
           add_pre_check = PETSC_TRUE
         class is(pm_hydrate_type)

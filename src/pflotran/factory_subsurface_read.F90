@@ -2441,7 +2441,18 @@ subroutine FactorySubsurfReadInput(simulation,input)
 !......................
 
       case ('INSERT_WELL_CELLS')
-        option%insert_well_cells = PETSC_TRUE
+        allocate(option%well_cells(1000))
+        option%well_cells = UNINITIALIZED_INTEGER
+        temp_int = 0
+        do
+          temp_int = temp_int + 1
+          call InputReadInt(input,option,option%well_cells(temp_int))
+          if (input%ierr /= 0) then
+            temp_int = temp_int - 1
+            exit
+          endif
+        enddo
+        option%well_cells => TruncateArray(option%well_cells,temp_int)
 
 !....................
       case ('END_SUBSURFACE')
