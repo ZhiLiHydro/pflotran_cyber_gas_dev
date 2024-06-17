@@ -427,6 +427,10 @@ subroutine FactorySubsurfSetupRealization(simulation)
   use Patch_module
   use Parameter_module
   use EOS_module !to be removed as already present above
+  use Discretization_module
+
+  use Grid_module
+  use Grid_Unstructured_Aux_module
 
   implicit none
 
@@ -487,6 +491,14 @@ subroutine FactorySubsurfSetupRealization(simulation)
   end select
 
   ! create grid and allocate vectors
+  call DiscretizationDecomposeDomain(realization%discretization,option)
+#if 1
+  if (associated(option%well_cells) .and. option%comm%size > 1) then
+    call UGridAddWellCells(realization%discretization%grid%unstructured_grid, &
+                           option)
+    call GridExpandGhostCells(realization%discretization%grid,option)
+  endif
+#endif
   call RealizationCreateDiscretization(realization)
 
   ! read any regions provided in external files

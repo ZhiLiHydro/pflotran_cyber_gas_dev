@@ -484,6 +484,8 @@ factory_subsurface.o : \
   eos.o \
   factory_subsurface_linkage.o \
   global.o \
+  grid.o \
+  grid_unstructured_aux.o \
   init_common.o \
   init_subsurface.o \
   init_subsurface_flow.o \
@@ -2109,6 +2111,7 @@ pm_richards.o : \
   general_aux.o \
   global_aux.o \
   grid.o \
+  grid_unstructured_aux.o \
   input_aux.o \
   option.o \
   patch.o \

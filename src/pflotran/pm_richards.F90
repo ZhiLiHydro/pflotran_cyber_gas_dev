@@ -320,7 +320,6 @@ subroutine PMRichardsSetupWell(this,Jac,Jacpre)
             icol_petsc = int_array(j)
             call MatSetValuesBlocked(Jac,1,irow_petsc-1,1,icol_petsc-1, &
                                     values,INSERT_VALUES,ierr);CHKERRQ(ierr)
-            print *, this%option%myrank, ' : ', irow_petsc, icol_petsc
             if (Jac /= Jacpre) then
               call MatSetValuesBlocked(Jacpre,1,irow_petsc-1,1,icol_petsc-1, &
                                       values,INSERT_VALUES,ierr);CHKERRQ(ierr)
@@ -338,10 +337,10 @@ subroutine PMRichardsSetupWell(this,Jac,Jacpre)
       call MatAssemblyEnd(Jacpre,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
     endif
 
-    call MatSetOption(Jac,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_FALSE, &
+    call MatSetOption(Jac,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE, &
                       ierr);CHKERRQ(ierr)
     if (Jac /= Jacpre) then
-      call MatSetOption(Jacpre,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_FALSE, &
+      call MatSetOption(Jacpre,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE, &
                         ierr);CHKERRQ(ierr)
     endif
   endif
