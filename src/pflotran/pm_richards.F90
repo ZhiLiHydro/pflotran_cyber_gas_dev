@@ -295,6 +295,12 @@ subroutine PMRichardsSetupWell(this,Jac,Jacpre)
   PetscErrorCode :: ierr
 
   if (associated(this%option%well_cells)) then
+    call MatSetOption(Jac,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_FALSE, &
+                      ierr);CHKERRQ(ierr)
+    if (Jac /= Jacpre) then
+      call MatSetOption(Jacpre,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_FALSE, &
+                        ierr);CHKERRQ(ierr)
+    endif
     grid => this%realization%patch%grid
     ugrid => grid%unstructured_grid
     if (associated(ugrid)) then
@@ -313,11 +319,11 @@ subroutine PMRichardsSetupWell(this,Jac,Jacpre)
           do j = 1, size(int_array)
             icol_petsc = int_array(j)
             call MatSetValuesBlocked(Jac,1,irow_petsc-1,1,icol_petsc-1, &
-                                    values,ADD_VALUES,ierr);CHKERRQ(ierr)
+                                    values,INSERT_VALUES,ierr);CHKERRQ(ierr)
             print *, this%option%myrank, ' : ', irow_petsc, icol_petsc
             if (Jac /= Jacpre) then
               call MatSetValuesBlocked(Jacpre,1,irow_petsc-1,1,icol_petsc-1, &
-                                      values,ADD_VALUES,ierr);CHKERRQ(ierr)
+                                      values,INSERT_VALUES,ierr);CHKERRQ(ierr)
             endif
           enddo
         endif
@@ -325,13 +331,19 @@ subroutine PMRichardsSetupWell(this,Jac,Jacpre)
       deallocate(values)
       deallocate(int_array)
     endif
-  endif
+    call MatAssemblyBegin(Jac,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+    call MatAssemblyEnd(Jac,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+    if (Jac /= Jacpre) then
+      call MatAssemblyBegin(Jacpre,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+      call MatAssemblyEnd(Jacpre,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+    endif
 
-  call MatAssemblyBegin(Jac,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
-  call MatAssemblyEnd(Jac,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
-  if (Jac /= Jacpre) then
-    call MatAssemblyBegin(Jacpre,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
-    call MatAssemblyEnd(Jacpre,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+    call MatSetOption(Jac,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_FALSE, &
+                      ierr);CHKERRQ(ierr)
+    if (Jac /= Jacpre) then
+      call MatSetOption(Jacpre,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_FALSE, &
+                        ierr);CHKERRQ(ierr)
+    endif
   endif
 
 end subroutine PMRichardsSetupWell
