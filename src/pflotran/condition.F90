@@ -236,7 +236,7 @@ function FlowConditionCreate(option)
   nullify(condition%default_time_storage)
   condition%is_transient = PETSC_FALSE
   condition%sync_time_with_update = PETSC_FALSE
-  condition%do_not_sync_time_with_update = PETSC_TRUE
+  condition%do_not_sync_time_with_update = PETSC_FALSE
   condition%time_units = ''
   condition%length_units = ''
   condition%id = 0
