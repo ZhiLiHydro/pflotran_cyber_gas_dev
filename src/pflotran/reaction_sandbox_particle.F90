@@ -310,7 +310,6 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
     ! eqn 5.13
     exchange = liquid_saturation * k_d * psi_b * aq_conc * rho_f/1.d3 ! mol/(m^3_pore s)
 ! unit       [m^3_water/m^3_pore] [1/s]  [-]  [mol/kg_water]  [kg_water/m^3_water]
-!    print *, 'exchange rate:',exchange 
 !  elseif (this%n_model==2) then
 !  elseif (this%n_model==3) then
 !  elseif (this%n_model==4) then
