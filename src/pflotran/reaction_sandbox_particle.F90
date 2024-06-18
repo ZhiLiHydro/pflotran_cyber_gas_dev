@@ -20,11 +20,11 @@ module Reaction_Sandbox_Particle_class
     ! Model index
     PetscInt :: n_model ! M-1~6 six models in Table5.2
 
-    !ID number of bioparticle species
+    !ID number of particle species
     PetscInt :: species_aq_id ! Aqueous species
     PetscInt :: species_im_id ! Immobile species
 
-    !Name of bioparticle species
+    !Name of particle species
     character(len=MAXWORDLENGTH) :: name_aqueous
     character(len=MAXWORDLENGTH) :: name_immobile
 
@@ -134,13 +134,13 @@ subroutine ParticleRead(this,input,option)
         call InputReadWord(input,option,this%name_aqueous,PETSC_TRUE)
         call InputErrorMsg(input,option,'PARTICLE_NAME_AQ', &
                'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT')
-!      print *, 'aqueous name:',this%name_aqueous
+
       case('PARTICLE_NAME_IM')
         ! Immobile particle name 
         call InputReadWord(input,option,this%name_immobile,PETSC_TRUE)
         call InputErrorMsg(input,option,'PARTICLE_NAME_IM', &
                'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT')
-!      print*, 'solid name:',this%name_immobile
+
       case('DEPOSTION_LANGMUIRIAN_BLOCKING')
         this%n_model = 1
         call InputPushBlock(input,option)
@@ -149,26 +149,16 @@ subroutine ParticleRead(this,input,option)
           if (InputError(input)) exit
           if (InputCheckExit(input,option)) exit
           call InputReadCard(input,option,word)
-          call InputErrorMsg(input,option,'CONSTANT', &
-                 'CHEMISTRY,REACTION_SANDBOX,BIOPARTICLE&
-                 &,RATE_ATTACHMENT')
+          call InputErrorMsg(input,option,word, &
+                 'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT')
           call StringToUpper(word)  
           select case(trim(word))
-          ! Read kd in Eqn 5.13
             case('ATTACHMENT_RATE')
+            ! Read kd in Eqn 5.13
               call ReadAttachmentRate(this,input,word,option)              
-!              print *,'attachment rate:',this%attachment_rate
-!              print *,'diam_collector:',this%diam_collector
-!              print *,'diam_particle:',this%diam_particle
-!              print *,'hamaker_constant', this%hamaker_constant
-!              print *,'density_particle', this%density_particle
-!              print *,'alpha_efficiency', this%alpha_efficiency
-
             case('MAX_SOLID_CONCENTRATION')
             ! Read Smax in Eqn 5.13 in mol/m^3 bulk
               call ReadMaxSolidConc(this,input,word,option)
-!              print *, 'max solid conc:',this%max_solid_conc
-
             case default
               call InputKeywordUnrecognized(input,word, &
                      'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT,&
@@ -261,23 +251,27 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
   PetscReal :: liquid_saturation      ! m^3 water / m^3 pore space
   PetscReal :: L_water                ! L water
   PetscReal :: temperature
+  PetscReal :: bulk_density
   PetscReal :: rho_f
   PetscReal :: g
   PetscReal :: viscosity
   PetscReal :: psi_b,psi_d
+  PetscReal :: dpsi_b_dc ![m^3_bulk/mol]
   PetscReal :: k_d ! deposition rate (attachment rate)
   PetscReal :: k_r ! remobilization rate (deachment rate)
   PetscReal :: smax
-  PetscReal :: aq_conc !mol/L
-  PetscReal :: im_conc !mol/m^3
+  PetscReal :: aq_conc !mol/kg_water
+  PetscReal :: im_conc !mol/m^3_bulk
   PetscReal :: att_rate, det_rate  ! mol/sec
   PetscReal :: stoich_aq,stoich_im
   PetscReal :: exchange ! mol/(m^3_pore s) 
-  PetscInt :: im_id
+  PetscInt :: aq_id,im_id
+  PetscReal :: tempreal
 
   ! Global stuff (Check global_aux.F90)
   volume = material_auxvar%volume
   porosity = material_auxvar%porosity
+  bulk_density = material_auxvar%soil_particle_density
   liquid_saturation = global_auxvar%sat(iphase)
   L_water = porosity*liquid_saturation*volume*1.d3
   viscosity = 0.0008891
@@ -288,8 +282,8 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
   g = EARTH_GRAVITY
 
   ! Assign concentrations of Vaq and Vim
-  aq_conc = rt_auxvar%total(this%species_aq_id,iphase)
-  im_conc = rt_auxvar%immobile(this%species_im_id)
+  aq_conc = rt_auxvar%pri_molal(this%species_aq_id) ! mol/kg_water
+  im_conc = rt_auxvar%immobile(this%species_im_id)  ! mol/m^3_bulk
 
   ! stoichiometries
   ! reactants have negative stoichiometry
@@ -301,14 +295,15 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
   ! M-1 in table 5.2
     k_d = AttachmentRate(this,global_auxvar,iphase,temperature,viscosity, &
                         porosity,rho_f)
-!    print *, 'attachment rate:',k_d
     smax = this%max_solid_conc
-!    print *, 'max solid conc:',smax
-    psi_b = BlockingFunction(im_conc,smax)
-!    print *, 'psi_b:',psi_b
+    call BlockingFunction(im_conc,smax,psi_b,dpsi_b_dc)
     ! eqn 5.13
-    exchange = liquid_saturation * k_d * psi_b * aq_conc *1.d3! mol/(m^3_pore s)
-! unit       [m^3_water/m^3_pore] [1/s]  [-]    [mol/L]  [L/m^3_water]
+    exchange = &    ![mol/(kg_bulk s)]
+             liquid_saturation * k_d * psi_b * aq_conc * rho_f &
+! unit     [m^3_water/m^3_pore] [1/s]  [-] [mol/kg_water] [kg_water/m^3_water]
+             * porosity / bulk_density        
+! unit   [m^3_pore/m^3_bulk] [kg_bulk/m^3_bulk]            
+
 !    print *, 'exchange rate:',exchange 
 !  elseif (this%n_model==2) then
 !  elseif (this%n_model==3) then
@@ -318,29 +313,36 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
   
   end if  
 
-  att_rate = stoich_aq * exchange * volume * porosity  ! [mol/s]
-! unit       [-]  [mol/(m^3_pore s)] [m^3_bulk] [m^3_pore/m^3_bulk]
+  att_rate = stoich_aq * exchange * volume * bulk_density  ! [mol/s]
+! unit       [-]  [mol/(kg_bulk s)] [m^3_bulk] [kg_bulk/m^3_bulk]
 
-  det_rate = stoich_im * exchange * volume * porosity  ! [mol/s]
-! unit       [-]  [mol/(m^3_pore s)] [m^3_bulk] [m^3_pore/m^3_bulk]
+  det_rate = stoich_im * exchange * volume * bulk_density  ! [mol/s]
+! unit       [-]  [mol/(kg_bulk s)] [m^3_bulk] [kg_bulk/m^3_bulk]
 
+  aq_id = this%species_aq_id
   im_id = this%species_im_id+reaction%offset_immobile
 ! residual
-  Residual(this%species_aq_id) = &
-    Residual(this%species_aq_id) - att_rate
-
+  Residual(aq_id) = Residual(aq_id) - att_rate
   Residual(im_id) = Residual(im_id) - det_rate   
 
 ! Jacobian
   if (compute_derivative) then    
-    Jacobian(this%species_aq_id,this%species_aq_id) = &
-      Jacobian(this%species_aq_id,this%species_aq_id) - &   
-      (att_rate/aq_conc) * &
-      rt_auxvar%aqueous%dtotal(this%species_aq_id,this%species_aq_id,iphase) 
+    tempreal = & ! [kg_water/s]
+             liquid_saturation * k_d * psi_b * &
+!unit      [m^3_water/m^3_pore] [1/s]   [-]                 
+             rho_f * volume * porosity 
+!unit  [kg_water/m^3_water] [m^3_bulk] [m^3_pore/m^3_bulk]
 
-!    Jacobian(im_id,im_id) = Jacobian(im_id,im_id) - &
-!      (det_rate/aq_conc) * &
-!      rt_auxvar%immobile(im_id)
+    Jacobian(aq_id,aq_id) = Jacobian(aq_id,aq_id) - stoich_aq * tempreal
+    Jacobian(im_id,aq_id) = Jacobian(im_id,aq_id) - stoich_im * tempreal   
+
+    tempreal = & ! [m^3_bulk/s]
+             liquid_saturation * k_d * dpsi_b_dc * & !bulk_density * & 
+!unit      [m^3_water/m^3_pore] [1/s] [m^3_bulk/mol] [kg_bulk/m^3_bulk]
+             aq_conc * rho_f * volume * porosity
+!unit       [mol/L] [L/m^3_water] [m^3_bulk] [m^3_pore/m^3_bulk]
+    Jacobian(aq_id,im_id) = Jacobian(aq_id,im_id) - stoich_aq * tempreal
+    Jacobian(im_id,im_id) = Jacobian(im_id,im_id) - stoich_im * tempreal
 
   end if    
 
@@ -511,7 +513,7 @@ subroutine ReadAttachmentRateModel(this,input,word,option)
                &FILTRATION_MODEL')
 
       case('DIAMETER_PARTICLE')
-      ! Diameter of the bioparticle [m]
+      ! Diameter of the particle [m]
         call InputReadDouble(input,option,this%diam_particle)
         call InputErrorMsg(input,option,'DIAMETER_PARTICLE', &
                'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT, &
@@ -525,7 +527,7 @@ subroutine ReadAttachmentRateModel(this,input,word,option)
                &FILTRATION_MODEL')
 
       case('DENSITY_PARTICLE')
-      ! Density of the bioparticles [kg/m3]
+      ! Density of the particles [kg/m3]
         call InputReadDouble(input,option,this%density_particle)
         call InputErrorMsg(input,option,'DENSITY_PARTICLE', &
                'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT, &
@@ -697,23 +699,25 @@ function DetachmentRate(this)
 
 end function
 
-function BlockingFunction(im_conc,im_max_conc)
+subroutine BlockingFunction(im_conc,im_max_conc,psi_b,dpsi_b_dc)
   !
   ! Compute blocking function
   ! Eqn 5.7 in Muller 2015
   !
   ! Author: Bryan He
-  ! Date: 06/07/2024
-  !
+  ! Date: 06/07/2024 created
+  !       06/11/2024 modified following Glenn's suggestion
   
   implicit none
 
-  PetscReal :: BlockingFunction
+  PetscReal :: psi_b, dpsi_b_dc 
   PetscReal :: im_conc,im_max_conc 
 
-  BlockingFunction = 1.d0-(im_conc/im_max_conc)
+  dpsi_b_dc = min(0.d0,-1.d0/im_max_conc)
 
-end function
+  psi_b = 1.d0 + im_conc*dpsi_b_dc
+
+end subroutine BlockingFunction
 
 function DepthDepRetenFunction(d50,dx,beta)
   !
