@@ -268,8 +268,8 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
   PetscReal :: k_d ! deposition rate (attachment rate)
   PetscReal :: k_r ! remobilization rate (deachment rate)
   PetscReal :: smax
-  PetscReal :: aq_conc !mol/L
-  PetscReal :: im_conc !mol/m^3
+  PetscReal :: aq_conc !mol/kg_water
+  PetscReal :: im_conc !mol/m^3_bulk
   PetscReal :: att_rate, det_rate  ! mol/sec
   PetscReal :: stoich_aq,stoich_im
   PetscReal :: exchange ! mol/(m^3_pore s) 
@@ -289,8 +289,8 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
   g = EARTH_GRAVITY
 
   ! Assign concentrations of Vaq and Vim
-  aq_conc = rt_auxvar%total(this%species_aq_id,iphase)
-  im_conc = rt_auxvar%immobile(this%species_im_id)
+  aq_conc = rt_auxvar%pri_molal(this%species_aq_id) ! mol/kg_water
+  im_conc = rt_auxvar%immobile(this%species_im_id)  ! mol/m^3_bulk
 
   ! stoichiometries
   ! reactants have negative stoichiometry
@@ -308,8 +308,8 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
     call BlockingFunction(im_conc,smax,psi_b,dpsi_b_dc)
 !    print *, 'psi_b:',psi_b
     ! eqn 5.13
-    exchange = liquid_saturation * k_d * psi_b * aq_conc *1.d3! mol/(m^3_pore s)
-! unit       [m^3_water/m^3_pore] [1/s]  [-]    [mol/L]  [L/m^3_water]
+    exchange = liquid_saturation * k_d * psi_b * aq_conc * rho_f/1.d3 ! mol/(m^3_pore s)
+! unit       [m^3_water/m^3_pore] [1/s]  [-]  [mol/kg_water]  [kg_water/m^3_water]
 !    print *, 'exchange rate:',exchange 
 !  elseif (this%n_model==2) then
 !  elseif (this%n_model==3) then
@@ -337,12 +337,12 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
   if (compute_derivative) then
     ! best not to divide by aq_conc as the number blows up as aq_conc
     ! approaches zero (though aq_conc will never be zero)
-    tempreal = liquid_saturation * k_d * psi_b * 1.d3 * volume * porosity
+    tempreal = liquid_saturation * k_d * psi_b * (rho_f/1.d3) * volume * porosity
     Jacobian(aq_id,aq_id) = Jacobian(aq_id,aq_id) - stoich_aq * tempreal
     Jacobian(im_id,aq_id) = Jacobian(im_id,aq_id) - stoich_im * tempreal
 
     ! cannot divide att_rate by psi_b since psi_b can be zero
-    tempreal = liquid_saturation * k_d * dpsi_b_dc * aq_conc * 1.d3 * &
+    tempreal = liquid_saturation * k_d * dpsi_b_dc * aq_conc * (rho_f/1.d3) * &
                volume * porosity
 
     Jacobian(aq_id,im_id) = Jacobian(this%species_aq_id,im_id) - stoich_aq * tempreal
@@ -354,9 +354,9 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
 
     ! at this point, Jacobian(aq_id,aq_id) units are L_water/sec
     ! need to multiply by dtotal [kg water/L water] to get kg_water/sec
-    Jacobian(1:reaction%naqcomp,1:reaction%naqcomp) = &
-      Jacobian(1:reaction%naqcomp,1:reaction%naqcomp) * &
-      rt_auxvar%aqueous%dtotal(:,:,iphase)
+!    Jacobian(1:reaction%naqcomp,1:reaction%naqcomp) = &
+!      Jacobian(1:reaction%naqcomp,1:reaction%naqcomp) * &
+!      rt_auxvar%aqueous%dtotal(:,:,iphase)
 
   end if    
 
