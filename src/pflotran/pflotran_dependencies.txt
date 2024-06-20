@@ -3,6 +3,7 @@ auxiliary.o : \
   general_aux.o \
   global_aux.o \
   hydrate_aux.o \
+  immiscible_aux.o \
   inlinesurface_aux.o \
   inversion_aux.o \
   material_aux.o \
@@ -548,6 +549,7 @@ factory_subsurface.o : \
   pm_general.o \
   pm_geomechanics_force.o \
   pm_hydrate.o \
+  pm_immiscible.o \
   pm_inversion.o \
   pm_material_transform.o \
   pm_mphase.o \
@@ -1711,6 +1713,7 @@ output.o : \
   grid.o \
   hdf5.o \
   hydrate_aux.o \
+  immiscible_aux.o \
   input_aux.o \
   logging.o \
   option.o \
@@ -1836,6 +1839,8 @@ output_observation.o : \
   grid.o \
   grid_structured.o \
   hydrate.o \
+  immiscible.o \
+  immiscible_aux.o \
   integral_flux.o \
   logging.o \
   material_aux.o \
@@ -1935,6 +1940,7 @@ patch.o : \
   grid_unstructured_cell.o \
   hydrate_aux.o \
   hydrostatic.o \
+  immiscible_aux.o \
   integral_flux.o \
   material.o \
   material_aux.o \
@@ -2769,6 +2775,7 @@ pmc_subsurface.o : \
   pm_base_pointer.o \
   pm_general.o \
   pm_hydrate.o \
+  pm_immiscible.o \
   pm_nwt.o \
   pm_richards.o \
   pm_rt.o \

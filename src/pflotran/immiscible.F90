@@ -15,7 +15,7 @@ module Immiscible_module
   public :: ImmiscibleSetup, &
             ImmiscibleInitializeTimestep, &
             ImmiscibleUpdateSolution, &
-            ImmiscibleTimeCut,&
+            ImmiscibleTimeCut, &
             ImmiscibleUpdateAuxVars, &
             ImmiscibleUpdateFixedAccum, &
             ImmiscibleComputeMassBalance, &
@@ -289,7 +289,7 @@ subroutine ImmiscibleComputeMassBalance(realization,mass_balance)
 
   PetscInt :: local_id
   PetscInt :: ghosted_id
-  PetscInt, parameter :: iphase = 1
+  PetscInt :: iphase = 1
 
   option => realization%option
   patch => realization%patch
@@ -308,10 +308,11 @@ subroutine ImmiscibleComputeMassBalance(realization,mass_balance)
     do iphase = 1, option%nflowdof
       ! volume_phase = saturation*porosity*volume
       mass_balance(iphase) = mass_balance(iphase) + &
-          immiscible_auxvars(ZERO_INTEGER,ghosted_id)%sat* &
-          immiscible_auxvars(ZERO_INTEGER,ghosted_id)%effective_porosity* &
+          immiscible_auxvars(ZERO_INTEGER,ghosted_id)%den_kg(iphase) * &
+          immiscible_auxvars(ZERO_INTEGER,ghosted_id)%sat(iphase) * &
+          material_auxvars(ghosted_id)%porosity * &
           material_auxvars(ghosted_id)%volume
-    endif
+    enddo
   enddo
 
 end subroutine ImmiscibleComputeMassBalance
@@ -510,19 +511,6 @@ subroutine ImmiscibleUpdateAuxVars(realization)
             &ImmiscibleUpdateAuxVars'
           call PrintErrMsg(option)
       end select
-      select case(boundary_condition%flow_bc_type(solute_index))
-        case(DIRICHLET_BC,HYDROSTATIC_BC)
-          xxbc(IMMIS_GAS_SATURATION_DOF) = &
-            boundary_condition%flow_aux_real_var(gas_index,iconn)
-        case(ZERO_GRADIENT_BC)
-          xxbc(IMMIS_GAS_SATURATION_DOF) = &
-            xx_loc_p(ghosted_offset+IMMIS_GAS_SATURATION_DOF)
-        case default
-          option%io_buffer = 'gas boundary itype not set up in &
-            ImmiscibleUpdateAuxVars'
-          call PrintErrMsg(option)
-      end select
-
       ! IMMIS_UPDATE_FOR_BOUNDARY indicates call from non-perturbation
       option%iflag = IMMIS_UPDATE_FOR_BOUNDARY
       call ImmiscibleAuxVarCompute(xxbc,immiscible_auxvars_bc(sum_connection), &
@@ -640,7 +628,7 @@ subroutine ImmiscibleUpdateFixedAccum(realization)
     call ImmiscibleAccumulation(immiscible_auxvars(ZERO_INTEGER,ghosted_id), &
                            global_auxvars(ghosted_id), &
                            material_auxvars(ghosted_id), &
-                           option,Res,Jdum,)
+                           option,Res,Jdum,.not.immis_numerical_derivatives)
     call PetUtilVecSVBL(accum_p,local_id,Res,ndof,PETSC_TRUE)
   enddo
 
@@ -721,19 +709,12 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
   PetscReal :: Res(IMMIS_MAX_DOF)
   PetscReal :: Jup(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
   PetscReal :: Jdn(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
-  Mat :: MatdResdparam
-  PetscBool :: store_adjoint
   PetscReal :: v_darcy
 
   PetscInt :: ndof
   PetscInt :: istart, iend
 
   ndof = realization%option%nflowdof
-
-  MatdResdparam = PETSC_NULL_MAT
-  dResdparamup = UNINITIALIZED_DOUBLE  ! to catch bugs
-  dResdparamdn = UNINITIALIZED_DOUBLE
-  dResdparam = UNINITIALIZED_DOUBLE
 
   discretization => realization%discretization
   option => realization%option
@@ -748,10 +729,7 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
   global_auxvars_bc => patch%aux%Global%auxvars_bc
   global_auxvars_ss => patch%aux%Global%auxvars_ss
   material_auxvars => patch%aux%Material%auxvars
-  material_auxvars_pert => patch%aux%Immiscible%material_auxvars_pert
 
-  store_adjoint = PETSC_FALSE
-  MatdResdparam = PETSC_NULL_MAT
   call MatZeroEntries(A,ierr);CHKERRQ(ierr)
 
   ! Communication -----------------------------------------
@@ -806,7 +784,7 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
       call ImmiscibleAccumDerivative(immiscible_auxvars(:,ghosted_id), &
                                 global_auxvars(ghosted_id), &
                                 material_auxvars(ghosted_id), &
-                                option,Res,Jup,dResdparam)
+                                option,Res,Jup)
       call PetUtilVecSVBL(r_p,local_id,Res,ndof,PETSC_FALSE)
       call PetUtilVecSVBL(accum_p2,local_id,Res,ndof,PETSC_TRUE)
       call PetUtilMatSVBL(A,ghosted_id,ghosted_id,Jup,ndof)
@@ -848,12 +826,12 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
                               cur_connection_set%area(iconn), &
                               cur_connection_set%dist(:,iconn), &
                               immiscible_parameter,option,v_darcy, &
-                              Res,Jup, &
+                              Res,Jup,Jdn, &
                               (local_id_up == immis_debug_cell_id .or. &
                                local_id_dn == immis_debug_cell_id))
         patch%internal_velocities(:,sum_connection) = v_darcy
         if (associated(patch%internal_flow_fluxes)) then
-          patch%internal_flow_fluxes(1,sum_connection) = Res(immis_liq_flow_eq)
+          patch%internal_flow_fluxes(:,sum_connection) = Res(:)
         endif
 
         if (local_id_up > 0) then
@@ -912,7 +890,7 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
                                 local_id == immis_debug_cell_id)
         patch%boundary_velocities(:,sum_connection) = v_darcy
         if (associated(patch%boundary_flow_fluxes)) then
-          patch%boundary_flow_fluxes(1,sum_connection) = Res(immis_liq_flow_eq)
+          patch%boundary_flow_fluxes(:,sum_connection) = Res(:)
         endif
         if (option%compute_mass_balance_new) then
           ! contribution to boundary
@@ -954,7 +932,7 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
         patch%ss_flow_vol_fluxes(:,sum_connection) = ss_flow_vol_flux
       endif
       if (associated(patch%ss_flow_fluxes)) then
-        patch%ss_flow_fluxes(:,sum_connection) = Res(1)
+        patch%ss_flow_fluxes(:,sum_connection) = Res(:)
       endif
       if (option%compute_mass_balance_new) then
         ! contribution to boundary
@@ -976,7 +954,7 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
 
   call VecRestoreArrayF90(r,r_p,ierr);CHKERRQ(ierr)
 
-  if (immis_simult_function_evals) then
+  if (immis_simultaneous_res_jac_calc) then
 
     call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
     call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)

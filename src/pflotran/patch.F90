@@ -4543,7 +4543,7 @@ subroutine PatchUpdateCouplerAuxVarsImmis(patch,coupler,option)
   type(option_type) :: option
 
   type(flow_condition_type), pointer :: flow_condition
-  PetscInt :: water_index, water_aux_index, energy_index, solute_index
+  PetscInt :: water_index, water_aux_index
   PetscInt :: num_connections
   PetscBool :: hydrostatic_update_called
 
@@ -4614,20 +4614,6 @@ subroutine PatchUpdateCouplerAuxVarsImmis(patch,coupler,option)
 !                flow_condition%rate%dataset, &
 !                water_index,option)
       case default
-    end select
-  endif
-
-  if (associated(flow_condition%concentration)) then
-    coupler%flow_bc_type(solute_index) = flow_condition%concentration%itype
-    select case(flow_condition%concentration%itype)
-      case(DIRICHLET_BC,ZERO_GRADIENT_BC)
-        if (.not.hydrostatic_update_called) then
-          coupler%flow_aux_real_var(solute_index,1:num_connections) = &
-            flow_condition%concentration%dataset%rarray(1)
-        endif
-      case(NEUMANN_BC)
-        option%io_buffer = 'NEUMANN_BC not supported for ZFLOW concentration'
-        call PrintErrMsg(option)
     end select
   endif
 

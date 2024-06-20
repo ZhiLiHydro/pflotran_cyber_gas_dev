@@ -23,6 +23,7 @@ module Immiscible_Aux_module
   PetscBool, public :: immis_calc_accum = PETSC_TRUE
   PetscBool, public :: immis_calc_flux = PETSC_TRUE
   PetscBool, public :: immis_calc_bcflux = PETSC_TRUE
+  PetscBool, public :: immis_simultaneous_res_jac_calc = PETSC_TRUE
 
   PetscBool, public :: immis_numerical_derivatives = PETSC_FALSE
 
@@ -39,6 +40,7 @@ module Immiscible_Aux_module
 
   PetscInt, parameter, public :: IMMIS_COND_LIQUID_INDEX = 1
   PetscInt, parameter, public :: IMMIS_COND_GAS_INDEX = 2
+  PetscInt, parameter, public :: IMMIS_MAX_INDEX = 2
 
   PetscInt, parameter, public :: IMMIS_UPDATE_FOR_DERIVATIVE = -1
   PetscInt, parameter, public :: IMMIS_UPDATE_FOR_FIXED_ACCUM = 0
@@ -49,14 +51,12 @@ module Immiscible_Aux_module
   PetscInt, parameter, public :: IMMIS_GAS_PRES_WRT_POROS = 2
 
   type, public :: immiscible_auxvar_type
-    PetscReal :: pres ! gas pressure
-    PetscReal :: sat  ! gas saturation
-    PetscReal :: pc   ! capillary pressure
+    PetscReal :: pres(3)
+    PetscReal :: sat(2)
+    PetscReal :: den_kg(2)
+    PetscReal :: mu(2)
     PetscReal :: kr(2) ! relative permeability
-    RetscReal :: effective_porosity
-    PetscReal :: dsat_dp ! derivative of saturation wrt pressure
-    PetscReal :: dkr_dp  ! derivative of rel. perm. wrt pressure
-    PetscReal :: pert(2)
+    PetscReal :: pert
   end type immiscible_auxvar_type
 
   type, public :: immiscible_parameter_type
@@ -92,7 +92,6 @@ module Immiscible_Aux_module
             ImmiscibleAuxVarDestroy, &
             ImmiscibleAuxVarStrip, &
             ImmiscibleAuxVarPerturb, &
-            ImmiscibleAuxMapConditionIndices, &
             ImmisciblePrintAuxVars, &
             ImmiscibleOutputAuxVars
 
@@ -128,7 +127,6 @@ function ImmiscibleAuxCreate(option)
   nullify(aux%auxvars)
   nullify(aux%auxvars_bc)
   nullify(aux%auxvars_ss)
-  nullify(aux%material_auxvars_pert)
   nullify(aux%matrix_zeroing)
 
   allocate(aux%immiscible_parameter)
@@ -156,10 +154,9 @@ subroutine ImmiscibleAuxVarInit(auxvar,option)
 
   auxvar%pres = 0.d0
   auxvar%sat = 0.d0
-  auxvar%pc = 0.d0
+  auxvar%den_kg = 0.d0
+  auxvar%mu = 0.d0
   auxvar%kr = 0.d0
-  auxvar%effective_porosity = 0.d0
-  auxvar%dkr_dp = 0.d0
 
   auxvar%pert = 0.d0
 
@@ -183,10 +180,10 @@ subroutine ImmiscibleAuxVarCopy(auxvar,auxvar2,option)
 
   auxvar2%pres = auxvar%pres
   auxvar2%sat = auxvar%sat
-  auxvar2%pc = auxvar%pc
+  auxvar2%den_kg = auxvar%den_kg
+  auxvar2%mu = auxvar%mu
   auxvar2%kr = auxvar%kr
-  auxvar2%effective_porosity = auxvar%effective_porosity
-  auxvar2%dkr_dp = auxvar%dkr_dp
+
   auxvar2%pert = auxvar%pert
 
 end subroutine ImmiscibleAuxVarCopy
@@ -218,32 +215,12 @@ subroutine ImmiscibleAuxVarCompute(x,immis_auxvar,global_auxvar, &
   PetscBool :: update_porosity
   PetscInt :: natural_id
 
-  PetscBool :: saturated
   PetscReal :: dkr_dsat
-  PetscReal :: deffsat_dsat
 
   immis_auxvar%pres = x(IMMIS_GAS_PRESSURE_DOF)
   immis_auxvar%sat = x(IMMIS_GAS_SATURATION_DOF)
 
-  ! %porosity should never be used. set to bogus value to catch misuse
-  material_auxvar%porosity = -888.d0
-
-  if (update_porosity .and. soil_compressibility_index > 0 .and. &
-      immis_auxvar%pres > 0.d0) then
-    call MaterialCompressSoil(material_auxvar,immis_auxvar%pres, &
-                              immis_auxvar%effective_porosity, &
-                              immis_auxvar%dpor_dp)
-  else
-    immis_auxvar%effective_porosity = material_auxvar%porosity_base
-    immis_auxvar%dpor_dp = 0.d0
-  endif
-  material_auxvar%porosity = immis_auxvar%effective_porosity
-
-  ! For a very large negative liquid pressure (e.g. -1.d18), the capillary
-  ! pressure can go near infinite, resulting in ds_dp being < 1.d-40 below
-  ! and flipping the cell to saturated, when it is really far from saturated.
-  ! The large negative liquid pressure is then passed to the EOS causing it
-  ! to blow up.  Therefore, we truncate to the max capillary pressure here.
+#if 0
   immis_auxvar%pc = min(option%flow%reference_pressure - immis_auxvar%pres, &
                         characteristic_curves%saturation_function%pcmax)
 
@@ -260,16 +237,9 @@ subroutine ImmiscibleAuxVarCompute(x,immis_auxvar,global_auxvar, &
       dkr_dsat = 0.d0
       call characteristic_curves%liq_rel_perm_function% &
                        RelativePermeability(immis_auxvar%sat, &
-                                            immis_auxvar%kr, &
+                                            immis_auxvar%kr(1), &
                                             dkr_dsat,option)
       immis_auxvar%dkr_dp = immis_auxvar%dsat_dp * dkr_dsat
-      if (immis_tensorial_rel_perm) then
-        call characteristic_curves%liq_rel_perm_function% &
-          EffectiveSaturation(immis_auxvar%sat, &
-                              immis_auxvar%effective_saturation, &
-                              deffsat_dsat,option)
-        immis_auxvar%deffsat_dp = deffsat_dsat * immis_auxvar%dsat_dp
-      endif
     endif
   else
     saturated = PETSC_TRUE
@@ -285,16 +255,8 @@ subroutine ImmiscibleAuxVarCompute(x,immis_auxvar,global_auxvar, &
     immis_auxvar%kr = 1.d0
     immis_auxvar%dsat_dp = 0.d0
     immis_auxvar%dkr_dp = 0.d0
-    immis_auxvar%effective_saturation = 1.d0
-    immis_auxvar%deffsat_dp = 0.d0
   endif
-
-  if (option%iflag /= IMMIS_UPDATE_FOR_DERIVATIVE) then
-    global_auxvar%sat(1) = immis_auxvar%sat
-    if (size(global_auxvar%sat) > 1) then
-      global_auxvar%sat(2) = 1.d0 - global_auxvar%sat(1)
-    endif
-  endif
+#endif
 
 end subroutine ImmiscibleAuxVarCompute
 
@@ -302,7 +264,6 @@ end subroutine ImmiscibleAuxVarCompute
 
 subroutine ImmiscibleAuxVarPerturb(x,immis_auxvar,global_auxvar, &
                               material_auxvar, &
-                              material_auxvar_pert, &
                               characteristic_curves, &
                               natural_id, &
                               option)
@@ -324,10 +285,9 @@ subroutine ImmiscibleAuxVarPerturb(x,immis_auxvar,global_auxvar, &
   type(immiscible_auxvar_type) :: immis_auxvar(0:)
   type(global_auxvar_type) :: global_auxvar
   type(material_auxvar_type) :: material_auxvar
-  type(material_auxvar_type) :: material_auxvar_pert(:)
   class(characteristic_curves_type) :: characteristic_curves
 
-  PetscInt :: idof, i
+  PetscInt :: idof
   PetscReal :: x_pert(IMMIS_MAX_DOF), pert
 
   ! IMMIS_UPDATE_FOR_DERIVATIVE indicates call from perturbation
@@ -342,28 +302,6 @@ subroutine ImmiscibleAuxVarPerturb(x,immis_auxvar,global_auxvar, &
                             characteristic_curves,natural_id, &
                             PETSC_TRUE,option)
   enddo
-
-  if (immis_calc_adjoint) then
-    idof = 1
-    call MaterialAuxVarCopy(material_auxvar,material_auxvar_pert(idof),option)
-    if (immis_adjoint_parameter == IMMIS_ADJOINT_POROSITY) then
-      pert = material_auxvar%porosity_base*immis_rel_pert
-      material_auxvar_pert(idof)%porosity_base = &
-        material_auxvar_pert(idof)%porosity_base + pert
-    else if (immis_adjoint_parameter == IMMIS_ADJOINT_PERMEABILITY) then
-      pert = material_auxvar%permeability(1)*immis_rel_pert
-      do i = 1, size(material_auxvar%permeability)
-        material_auxvar_pert(idof)%permeability(i) = &
-          material_auxvar_pert(idof)%permeability(i) + pert
-      enddo
-    endif
-    call ImmiscibleAuxVarCompute(x,immis_auxvar(option%nflowdof+1), &
-                            global_auxvar, &
-                            material_auxvar_pert(idof), &
-                            characteristic_curves,natural_id, &
-                            PETSC_TRUE,option)
-    immis_auxvar(ZERO_INTEGER)%mat_pert(idof) = pert
-  endif
 
 end subroutine ImmiscibleAuxVarPerturb
 
@@ -391,6 +329,7 @@ subroutine ImmisciblePrintAuxVars(immis_auxvar,global_auxvar,material_auxvar, &
   character(len=*) :: string
   type(option_type) :: option
 
+#if 0
   print *, '--------------------------------------------------------'
   print *, trim(string)
   print *, '                 cell id: ', natural_id
@@ -400,10 +339,8 @@ subroutine ImmisciblePrintAuxVars(immis_auxvar,global_auxvar,material_auxvar, &
   print *, '      liquid sat (deriv): ', immis_auxvar%dsat_dp
   print *, '         liquid rel perm: ', immis_auxvar%kr
   print *, ' liquid rel perm (deriv): ', immis_auxvar%dkr_dp
-  print *, '      effective porosity: ', immis_auxvar%effective_porosity
-  print *, '   eff. porosity (deriv): ', immis_auxvar%dpor_dp
   print *, '--------------------------------------------------------'
-
+#endif
 end subroutine ImmisciblePrintAuxVars
 
 ! ************************************************************************** !
@@ -440,7 +377,7 @@ subroutine ImmiscibleOutputAuxVars1(immis_auxvar,global_auxvar,material_auxvar, 
   else
     open(unit=IUNIT_TEMP,file=string2)
   endif
-
+#if 0
   write(IUNIT_TEMP,*) '--------------------------------------------------------'
   write(IUNIT_TEMP,*) trim(string)
   write(IUNIT_TEMP,*) '             cell id: ', natural_id
@@ -451,60 +388,11 @@ subroutine ImmiscibleOutputAuxVars1(immis_auxvar,global_auxvar,material_auxvar, 
   write(IUNIT_TEMP,*) '      liquid sat (deriv): ', immis_auxvar%dsat_dp
   write(IUNIT_TEMP,*) '         liquid rel perm: ', immis_auxvar%kr
   write(IUNIT_TEMP,*) ' liquid rel perm (deriv): ', immis_auxvar%dkr_dp
-  write(IUNIT_TEMP,*) '      effective porosity: ', immis_auxvar%effective_porosity
-  write(IUNIT_TEMP,*) '   eff. porosity (deriv): ', immis_auxvar%dpor_dp
   write(IUNIT_TEMP,*) '--------------------------------------------------------'
 
   close(IUNIT_TEMP)
-
+#endif
 end subroutine ImmiscibleOutputAuxVars1
-
-! ************************************************************************** !
-
-function ImmiscibleAuxMapConditionIndices(include_water_aux)
-  !
-  ! Maps indexing of conditions
-  !
-  ! Author: Glenn Hammond
-  ! Date: 05/16/24
-  !
-
-  use Option_module
-
-  implicit none
-
-  PetscBool :: include_water_aux
-
-  PetscInt, pointer :: ImmiscibleAuxMapConditionIndices(:)
-
-  PetscInt, pointer :: mapping(:)
-
-  PetscInt :: temp_int
-
-  allocate(mapping(IMMIS_MAX_INDEX))
-  mapping = UNINITIALIZED_INTEGER
-
-  temp_int = 0
-  if (immis_liq_flow_eq > 0) then
-    temp_int = temp_int + 1
-    mapping(IMMIS_COND_WATER_INDEX) = temp_int
-    if (include_water_aux) then
-      temp_int = temp_int + 1
-      mapping(IMMIS_COND_WATER_AUX_INDEX) = temp_int
-    endif
-  endif
-  if (immis_heat_tran_eq > 0) then
-    temp_int = temp_int + 1
-    mapping(IMMIS_COND_ENERGY_INDEX) = temp_int
-  endif
-  if (immis_sol_tran_eq > 0) then
-    temp_int = temp_int + 1
-    mapping(IMMIS_COND_SOLUTE_INDEX) = temp_int
-  endif
-
-  ImmiscibleAuxMapConditionIndices => mapping
-
-end function ImmiscibleAuxMapConditionIndices
 
 ! ************************************************************************** !
 
@@ -649,12 +537,10 @@ subroutine ImmiscibleAuxDestroy(aux)
   call ImmiscibleAuxVarDestroy(aux%auxvars)
   call ImmiscibleAuxVarDestroy(aux%auxvars_bc)
   call ImmiscibleAuxVarDestroy(aux%auxvars_ss)
-  call ImmiscibleMaterialAuxVarDestroy(aux%material_auxvars_pert)
 
   call MatrixZeroingDestroy(aux%matrix_zeroing)
 
   if (associated(aux%immiscible_parameter)) then
-    call DeallocateArray(aux%immiscible_parameter%tensorial_rel_perm_exponent)
     deallocate(aux%immiscible_parameter)
   endif
   nullify(aux%immiscible_parameter)

@@ -218,8 +218,6 @@ subroutine PMImmiscibleReadSimOptionsBlock(this,input)
         immis_calc_flux = PETSC_FALSE
       case('NO_BCFLUX')
         immis_calc_bcflux = PETSC_FALSE
-      case('TENSORIAL_RELATIVE_PERMEABILITY')
-        immis_tensorial_rel_perm = PETSC_TRUE
       case('LIQUID_DENSITY')
         call InputReadDouble(input,option,immis_density_kg)
         call InputErrorMsg(input,option,keyword,error_string)
@@ -238,10 +236,6 @@ subroutine PMImmiscibleReadSimOptionsBlock(this,input)
     end select
   enddo
   call InputPopBlock(input,option)
-
-  immis_density_kmol = immis_density_kg / FMWH2O
-  array(1) = immis_density_kg ! dist is the aux array
-  call EOSWaterSetDensity('CONSTANT',array)
 
 end subroutine PMImmiscibleReadSimOptionsBlock
 
@@ -415,6 +409,7 @@ recursive subroutine PMImmiscibleInitializeRun(this)
   if (this%steady_state) immis_calc_accum = PETSC_FALSE
 
   ivar = 0
+#if 0
   if (immis_liq_flow_eq > 0) then
     ivar = ivar + 2
   endif
@@ -433,6 +428,7 @@ recursive subroutine PMImmiscibleInitializeRun(this)
     this%max_change_ivar(ivar) = SOLUTE_CONCENTRATION
     ivar = ivar + 1
   endif
+#endif
 
   ! need to allocate vectors for max change
   i = size(this%max_change_ivar)
@@ -616,7 +612,7 @@ subroutine PMImmiscibleResidual(this,snes,xx,r,ierr)
 
   call PMSubsurfaceFlowUpdatePropertiesNI(this)
   ! calculate residual
-  if (immis_simult_function_evals) then
+  if (immis_simultaneous_res_jac_calc) then
     call SNESGetJacobian(snes,M,PETSC_NULL_MAT,PETSC_NULL_FUNCTION, &
                          PETSC_NULL_INTEGER,ierr);CHKERRQ(ierr)
     call ImmiscibleResidual(snes,xx,r,M,this%realization,ierr)
@@ -743,6 +739,7 @@ subroutine PMImmiscibleCheckUpdatePre(this,snes,X,dX,changed,ierr)
 
   call VecGetArrayF90(dX,dX_p,ierr);CHKERRQ(ierr)
   call VecGetArrayReadF90(X,X_p,ierr);CHKERRQ(ierr)
+#if 0
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
     if (patch%imat(ghosted_id) <= 0) cycle
@@ -781,6 +778,7 @@ subroutine PMImmiscibleCheckUpdatePre(this,snes,X,dX,changed,ierr)
       endif
     endif
   enddo
+#endif
   call VecRestoreArrayF90(dX,dX_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayReadF90(X,X_p,ierr);CHKERRQ(ierr)
 
@@ -859,6 +857,7 @@ subroutine PMImmiscibleCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
     ghosted_id = grid%nL2G(local_id)
     if (patch%imat(ghosted_id) <= 0) cycle
 
+#if 0
     offset = (local_id-1)*option%nflowdof
     if (immis_liq_flow_eq > 0) then
       ! maximum absolute change in liquid pressure over Newton iteration
@@ -876,6 +875,7 @@ subroutine PMImmiscibleCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
         max_abs_conc_change_NI = tempreal
       endif
     endif
+#endif
   enddo
 
   if (Initialized(this%max_allow_liq_pres_change_ni) .and. &
@@ -964,6 +964,7 @@ subroutine PMImmiscibleCheckConvergence(this,snes,it,xnorm,unorm, &
 
   residual_vec = field%flow_r
   ! check residual terms
+#if 0
   call VecGetArrayReadF90(residual_vec,r_p,ierr);CHKERRQ(ierr)
   call VecGetArrayReadF90(field%flow_accum2,accum2_p,ierr);CHKERRQ(ierr)
   call VecGetArrayReadF90(field%flow_xx,X1_p,ierr);CHKERRQ(ierr)
@@ -992,6 +993,7 @@ subroutine PMImmiscibleCheckConvergence(this,snes,it,xnorm,unorm, &
       endif
     endif
   enddo
+#endif
 
   ! the following flags are used in detemining convergence
   ! currently none
@@ -1189,7 +1191,7 @@ subroutine PMImmiscibleMaxChange(this)
   i = size(max_change_global)
   call MPI_Allreduce(MPI_IN_PLACE,max_change_global,i,MPI_DOUBLE_PRECISION, &
                      MPI_MAX,option%mycomm,ierr);CHKERRQ(ierr)
-
+#if 0
   ivar = 1
   if (immis_liq_flow_eq > 0) then
     write(option%io_buffer,'("  --> max change: dpl= ",1pe12.4, " dsl= ",&
@@ -1207,6 +1209,7 @@ subroutine PMImmiscibleMaxChange(this)
     ivar = ivar+1
     call PrintMsg(option)
   endif
+#endif
   deallocate(max_change_global)
 
 end subroutine PMImmiscibleMaxChange
