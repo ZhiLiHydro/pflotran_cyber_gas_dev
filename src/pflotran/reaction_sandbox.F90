@@ -18,6 +18,13 @@ module Reaction_Sandbox_module
   use Reaction_Sand_FlexBioHill_class
   use Reaction_Sandbox_BioTH_class
   use Reaction_Sandbox_Radon_class
+  use Reaction_Sandbox_SomDec_class
+  use Reaction_Sandbox_PlantN_class
+  use Reaction_Sandbox_Langmuir_class
+  use Reaction_Sandbox_Microbial_class
+  use Reaction_Sandbox_Nitrif_class
+  use Reaction_Sandbox_Denitr_class
+  use Reaction_Sandbox_Degas_class
 
   ! Add new reacton sandbox classes here.
 
@@ -189,6 +196,20 @@ subroutine RSandboxRead2(local_sandbox_list,input,option)
         new_sandbox => SimpleCreate()
       case('UFD-WP')
         new_sandbox => WastePackageCreate()
+      case('SOMDECOMP')
+        new_sandbox => SomDecCreate()
+      case('PLANTN')
+        new_sandbox => PlantNCreate()
+      case('CLM-MICROBIAL')
+        new_sandbox => MicrobialCreate()
+      case('NITRIFICATION')
+        new_sandbox => NitrifCreate()
+      case('DENITRIFICATION')
+        new_sandbox => DenitrCreate()
+      case('DEGAS')
+        new_sandbox => degasCreate()
+      case('LANGMUIR')
+        new_sandbox => LangmuirCreate()
       case default
         call InputKeywordUnrecognized(input,word, &
                                       'CHEMISTRY,REACTION_SANDBOX',option)

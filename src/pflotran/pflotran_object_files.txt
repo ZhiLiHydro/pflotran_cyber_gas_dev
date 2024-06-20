@@ -123,6 +123,7 @@ shared_mode_aux_obj = \
 # DO NOT place any object files that depend on the discretization within
 # util_obj
 chem_obj = \
+	${common_src}elm_rspfuncs.o \
 	${common_src}reaction_database.o \
 	${common_src}reaction_database_aux.o \
 	${common_src}reaction_equation.o \
@@ -150,14 +151,21 @@ chem_obj = \
 	${common_src}reaction_sandbox_calcite.o \
 	${common_src}reaction_sandbox_chromium.o \
 	${common_src}reaction_sandbox_clm_cn.o \
+  ${common_src}reaction_sandbox_degas.o \
+  ${common_src}reaction_sandbox_denitr.o \
 	${common_src}reaction_sandbox_example.o \
 	${common_src}reaction_sandbox_equilibrate.o \
 	${common_src}reaction_sandbox_flexbiohill.o \
 	${common_src}reaction_sandbox_gas.o \
+  ${common_src}reaction_sandbox_langmu.o \
+  ${common_src}reaction_sandbox_microbial.o \
+  ${common_src}reaction_sandbox_nitrif.o \
+  ${common_src}reaction_sandbox_plantn.o \
 	${common_src}reaction_sandbox_pnnl_cyber.o \
 	${common_src}reaction_sandbox_pnnl_lambda.o \
 	${common_src}reaction_sandbox_radon.o \
 	${common_src}reaction_sandbox_simple.o \
+  ${common_src}reaction_sandbox_somdec.o \
 	${common_src}reaction_sandbox_ufd_wp.o \
 	${common_src}reaction_setup.o \
 	${common_src}reaction_solid_solution.o \

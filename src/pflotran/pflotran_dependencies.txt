@@ -326,6 +326,8 @@ driver.o : \
   communicator_aux.o \
   pflotran_constants.o \
   print.o
+elm_rspfuncs.o : \
+  pflotran_constants.o
 eos.o : \
   co2_span_wagner.o \
   communicator_aux.o \
@@ -2849,14 +2851,21 @@ reaction_sandbox.o : \
   reaction_sandbox_calcite.o \
   reaction_sandbox_chromium.o \
   reaction_sandbox_clm_cn.o \
+  reaction_sandbox_degas.o \
+  reaction_sandbox_denitr.o \
   reaction_sandbox_equilibrate.o \
   reaction_sandbox_example.o \
   reaction_sandbox_flexbiohill.o \
   reaction_sandbox_gas.o \
+  reaction_sandbox_langmu.o \
+  reaction_sandbox_microbial.o \
+  reaction_sandbox_nitrif.o \
+  reaction_sandbox_plantn.o \
   reaction_sandbox_pnnl_cyber.o \
   reaction_sandbox_pnnl_lambda.o \
   reaction_sandbox_radon.o \
   reaction_sandbox_simple.o \
+  reaction_sandbox_somdec.o \
   reaction_sandbox_ufd_wp.o \
   reactive_transport_aux.o \
   string.o \
@@ -2929,6 +2938,34 @@ reaction_sandbox_clm_cn.o : \
   reactive_transport_aux.o \
   string.o \
   utility.o
+reaction_sandbox_degas.o : \
+  co2eos.o \
+  global_aux.o \
+  input_aux.o \
+  material_aux.o \
+  option.o \
+  pflotran_constants.o \
+  reaction_aux.o \
+  reaction_immobile_aux.o \
+  reaction_sandbox_base.o \
+  reactive_transport_aux.o \
+  string.o \
+  th_aux.o \
+  units.o
+reaction_sandbox_denitr.o : \
+  elm_rspfuncs.o \
+  global_aux.o \
+  input_aux.o \
+  material_aux.o \
+  option.o \
+  pflotran_constants.o \
+  reaction_aux.o \
+  reaction_immobile_aux.o \
+  reaction_sandbox_base.o \
+  reactive_transport_aux.o \
+  string.o \
+  units.o \
+  utility.o
 reaction_sandbox_equilibrate.o : \
   global_aux.o \
   input_aux.o \
@@ -2973,6 +3010,62 @@ reaction_sandbox_gas.o : \
   reaction_sandbox_base.o \
   reactive_transport_aux.o \
   string.o
+reaction_sandbox_langmu.o : \
+  elm_rspfuncs.o \
+  global_aux.o \
+  input_aux.o \
+  material_aux.o \
+  option.o \
+  pflotran_constants.o \
+  reaction_aux.o \
+  reaction_immobile_aux.o \
+  reaction_sandbox_base.o \
+  reactive_transport_aux.o \
+  string.o \
+  units.o
+reaction_sandbox_microbial.o : \
+  elm_rspfuncs.o \
+  global_aux.o \
+  input_aux.o \
+  material_aux.o \
+  option.o \
+  pflotran_constants.o \
+  reaction_aux.o \
+  reaction_database_aux.o \
+  reaction_immobile_aux.o \
+  reaction_sandbox_base.o \
+  reactive_transport_aux.o \
+  string.o \
+  units.o \
+  utility.o
+reaction_sandbox_nitrif.o : \
+  elm_rspfuncs.o \
+  global_aux.o \
+  input_aux.o \
+  material_aux.o \
+  option.o \
+  pflotran_constants.o \
+  reaction_aux.o \
+  reaction_immobile_aux.o \
+  reaction_sandbox_base.o \
+  reactive_transport_aux.o \
+  string.o \
+  units.o \
+  utility.o
+reaction_sandbox_plantn.o : \
+  elm_rspfuncs.o \
+  global_aux.o \
+  input_aux.o \
+  material_aux.o \
+  option.o \
+  pflotran_constants.o \
+  reaction_aux.o \
+  reaction_immobile_aux.o \
+  reaction_sandbox_base.o \
+  reactive_transport_aux.o \
+  string.o \
+  units.o \
+  utility.o
 reaction_sandbox_pnnl_cyber.o : \
   global_aux.o \
   input_aux.o \
@@ -3024,6 +3117,21 @@ reaction_sandbox_simple.o : \
   reaction_immobile_aux.o \
   reaction_sandbox_base.o \
   reactive_transport_aux.o
+reaction_sandbox_somdec.o : \
+  elm_rspfuncs.o \
+  global_aux.o \
+  input_aux.o \
+  material_aux.o \
+  option.o \
+  pflotran_constants.o \
+  reaction_aux.o \
+  reaction_gas_aux.o \
+  reaction_immobile_aux.o \
+  reaction_sandbox_base.o \
+  reactive_transport_aux.o \
+  string.o \
+  units.o \
+  utility.o
 reaction_sandbox_ufd_wp.o : \
   global_aux.o \
   input_aux.o \
