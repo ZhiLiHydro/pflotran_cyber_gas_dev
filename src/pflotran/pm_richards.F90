@@ -279,6 +279,7 @@ subroutine PMRichardsSetupWell(this,Jac,Jacpre)
   use Richards_module
   use Grid_module
   use Grid_Unstructured_Aux_module
+  use Option_module
 
   implicit none
 
@@ -286,15 +287,52 @@ subroutine PMRichardsSetupWell(this,Jac,Jacpre)
   Mat :: Jac
   Mat :: Jacpre
 
+  ISLocalToGlobalMapping :: rmapping
+  ISLocalToGlobalMapping :: cmapping
+
   type(grid_type), pointer :: grid
   type(grid_unstructured_type), pointer :: ugrid
-  PetscInt :: i, j
+  PetscInt :: irow(8), icol(8), ii, jj, i, j
   PetscInt :: irow_petsc, icol_petsc
   PetscReal, allocatable :: values(:,:)
   PetscInt, allocatable :: int_array(:)
   PetscErrorCode :: ierr
 
   if (associated(this%option%well_cells)) then
+
+    call MatGetLocalToGlobalMapping(Jac,rmapping,cmapping,ierr);CHKERRQ(ierr)
+    call PrintMsg(this%option,'rmapping 0')
+    call ISLocalToGlobalMappingView(rmapping,PETSC_VIEWER_STDOUT_WORLD,ierr);CHKERRQ(ierr)
+    call PrintMsg(this%option,'cmapping 0')
+    call ISLocalToGlobalMappingView(cmapping,PETSC_VIEWER_STDOUT_WORLD,ierr);CHKERRQ(ierr)
+
+#if 0
+    call PrintMsg(this%option,'J 0')
+    call MatZeroEntries(Jac,ierr);CHKERRQ(ierr)
+    allocate(values(this%option%nflowdof,this%option%nflowdof))
+    values = 0.d0
+    values = 100 + dble(this%option%myrank)
+    select case(this%option%myrank)
+      case(0)
+        i = 2 ! 2,11 -> 1,10
+        j = 8
+      case(1)
+        i = 5 ! 10,12 -> 9,11
+        j = 13
+      case(2)
+        i = 2  ! 12,10 -> 11,9
+        j = 9
+      case(3)
+        i = 2  !
+        j = 10
+    end select
+    call MatSetValuesBlockedLocal(Jac,1,i-1,1,j-1,values, &
+                                  INSERT_VALUES,ierr);CHKERRQ(ierr)
+    call MatAssemblyBegin(Jac,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+    call MatAssemblyEnd(Jac,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+    call MatView(Jac,PETSC_VIEWER_STDOUT_WORLD,ierr);CHKERRQ(ierr)
+#endif
+
     call MatSetOption(Jac,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_FALSE, &
                       ierr);CHKERRQ(ierr)
     if (Jac /= Jacpre) then
@@ -337,6 +375,11 @@ subroutine PMRichardsSetupWell(this,Jac,Jacpre)
       call MatAssemblyEnd(Jacpre,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
     endif
 
+!    call MatSetLocalToGlobalMapping(Jac, &
+!      this%realization%discretization%dm_nflowdof%ugdm%mapping_ltog, &
+!      this%realization%discretization%dm_nflowdof%ugdm%mapping_ltog, &
+!                                  ierr);CHKERRQ(ierr)
+
     call MatSetOption(Jac,MAT_NEW_NONZERO_LOCATION_ERR,PETSC_TRUE, &
                       ierr);CHKERRQ(ierr)
     if (Jac /= Jacpre) then
@@ -344,6 +387,45 @@ subroutine PMRichardsSetupWell(this,Jac,Jacpre)
                         ierr);CHKERRQ(ierr)
     endif
   endif
+
+  call PrintMsg(this%option,'ugdm mapping 0')
+  call ISLocalToGlobalMappingView(this%realization%discretization%dm_nflowdof%ugdm%mapping_ltog, &
+                                  PETSC_VIEWER_STDOUT_WORLD,ierr);CHKERRQ(ierr)
+
+  call MatGetLocalToGlobalMapping(Jac,rmapping,cmapping,ierr);CHKERRQ(ierr)
+  call PrintMsg(this%option,'rmapping 1')
+  call ISLocalToGlobalMappingView(rmapping,PETSC_VIEWER_STDOUT_WORLD,ierr);CHKERRQ(ierr)
+  call PrintMsg(this%option,'cmapping 1')
+  call ISLocalToGlobalMappingView(cmapping,PETSC_VIEWER_STDOUT_WORLD,ierr);CHKERRQ(ierr)
+
+  call PrintMsg(this%option,'J 1')
+  call MatZeroEntries(Jac,ierr);CHKERRQ(ierr)
+  ii = size(irow)*size(icol)
+  allocate(values(this%option%nflowdof*ii,this%option%nflowdof*ii))
+  values = UNINITIALIZED_DOUBLE
+  select case(this%option%myrank)
+      case(0)
+        irow = [1,3,5,6,7,9,10,11]
+      case(1)
+        irow = [5,6,2,4,9,10,8,11]
+      case(2)
+        irow = [9,5,10,11,1,3,7,8]
+      case(3)
+        irow = [9,10,11,6,7,8,2,4]
+  end select
+  icol = irow
+  do ii = 1, size(irow)
+    do jj = 1, size(icol)
+      values(:,:) = 1000 + dble(this%option%myrank)*100 + ii*10+jj
+      call MatSetValuesBlockedLocal(Jac,1,irow(ii)-1,1,icol(jj)-1,values, &
+                                    INSERT_VALUES,ierr);CHKERRQ(ierr)
+    enddo
+  enddo
+  call MatAssemblyBegin(Jac,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+  call MatAssemblyEnd(Jac,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+  call MatView(Jac,PETSC_VIEWER_STDOUT_WORLD,ierr);CHKERRQ(ierr)
+  deallocate(values)
+  stop
 
 end subroutine PMRichardsSetupWell
 
