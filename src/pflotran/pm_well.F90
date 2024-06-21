@@ -4773,14 +4773,14 @@ subroutine PMWellUpdateReservoirWIPP(pm_well,wippflo_update_index)
     reservoir%dy(k) = reservoir%tmp_flow(k,19)
     reservoir%dz(k) = reservoir%tmp_flow(k,20)
   enddo
-    
+
   if (pm_well%transport) then
     do k = 1,pm_well%well_grid%nsegments
       reservoir%aqueous_conc(:,k) = reservoir%tmp_tran(:,k,1)
       reservoir%aqueous_mass(:,k) = reservoir%tmp_tran(:,k,2)
     enddo
   endif
-  
+
 end subroutine PMWellUpdateReservoirWIPP
 
 ! ************************************************************************** !
