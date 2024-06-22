@@ -12,20 +12,19 @@ module PM_Immiscible_class
 
   private
 
-  PetscInt, parameter :: MAX_CHANGE_LIQ_PRES_NI = 1
-  PetscInt, parameter :: MAX_CHANGE_CONC_NI = 2
-  PetscInt, parameter :: MAX_RES_LIQ_EQ = 3
-  PetscInt, parameter :: MAX_RES_SOL_EQ = 4
+  PetscInt, parameter :: MAX_CHANGE_PRES_NI = 1
+  PetscInt, parameter :: MAX_CHANGE_SAT_NI = 2
+  PetscInt, parameter :: MAX_RES_WET_EQ = 3
+  PetscInt, parameter :: MAX_RES_NONWET_EQ = 4
 
   type, public, extends(pm_subsurface_flow_type) :: pm_immiscible_type
     PetscInt, pointer :: max_change_ivar(:)
-    PetscReal :: max_allow_liq_pres_change_ni
-    PetscReal :: liq_pres_change_ts_governor
-    PetscReal :: liq_sat_change_ts_governor
-    PetscInt :: convergence_flags(MAX_RES_SOL_EQ)
-    PetscReal :: convergence_reals(MAX_RES_SOL_EQ)
+    PetscReal :: max_allow_pres_change_ni
+    PetscReal :: pres_change_ts_governor
+    PetscReal :: sat_change_ts_governor
+    PetscInt :: convergence_flags(MAX_RES_NONWET_EQ)
+    PetscReal :: convergence_reals(MAX_RES_NONWET_EQ)
     PetscReal :: sat_update_trunc_ni
-    PetscReal :: unsat_to_sat_pres_damping_ni
     PetscInt :: convergence_verbosity
   contains
     procedure, public :: ReadSimulationOptionsBlock => &
@@ -104,8 +103,8 @@ subroutine PMImmiscibleInitObject(this)
   class(pm_immiscible_type) :: this
 
   call PMSubsurfaceFlowInit(this)
-  this%name = 'Z Flow'
-  this%header = 'Z FLOW'
+  this%name = 'Immiscible Flow'
+  this%header = 'IMMISIBLE FLOW'
 
   nullify(this%max_change_ivar)
 
@@ -118,11 +117,10 @@ subroutine PMImmiscibleInitObject(this)
   this%check_post_convergence = PETSC_TRUE
   this%convergence_verbosity = 0
 
-  this%max_allow_liq_pres_change_ni = UNINITIALIZED_DOUBLE
-  this%liq_pres_change_ts_governor = 5.d5    ! [Pa]
-  this%liq_sat_change_ts_governor = 1.d0
+  this%max_allow_pres_change_ni = UNINITIALIZED_DOUBLE
+  this%pres_change_ts_governor = 5.d5    ! [Pa]
+  this%sat_change_ts_governor = 1.d0
   this%sat_update_trunc_ni = UNINITIALIZED_DOUBLE
-  this%unsat_to_sat_pres_damping_ni = UNINITIALIZED_DOUBLE
 
   this%convergence_flags = 0
   this%convergence_reals = 0.d0
@@ -183,27 +181,6 @@ subroutine PMImmiscibleReadSimOptionsBlock(this,input)
     if (found) cycle
 
     select case(trim(keyword))
-      case('PROCESSES')
-        local_error_string = trim(error_string) // ',' // keyword
-        call InputPushBlock(input,option)
-        do
-          call InputReadPflotranString(input,option)
-          if (InputCheckExit(input,option)) exit
-          call InputReadCard(input,option,keyword)
-          call InputErrorMsg(input,option,'keyword',local_error_string)
-          call StringToUpper(keyword)
-          select case(trim(keyword))
-            case('LIQUID_FLOW')
-!              immis_liq_flow_eq = 1     ! these serve as flags until updated
-            case('HEAT_TRANSFER')
-!              immis_heat_tran_eq = 1
-            case('SOLUTE_TRANSPORT')
-!              immis_sol_tran_eq = 1
-            case default
-              call InputKeywordUnrecognized(input,keyword,'Immiscible Mode',option)
-          end select
-        enddo
-        call InputPopBlock(input,option)
       case('VERBOSE_CONVERGENCE')
         this%convergence_verbosity = 1
         call InputReadInt(input,option,temp_int)
@@ -218,16 +195,6 @@ subroutine PMImmiscibleReadSimOptionsBlock(this,input)
         immis_calc_flux = PETSC_FALSE
       case('NO_BCFLUX')
         immis_calc_bcflux = PETSC_FALSE
-      case('LIQUID_DENSITY')
-        call InputReadDouble(input,option,immis_density_kg)
-        call InputErrorMsg(input,option,keyword,error_string)
-        call InputReadAndConvertUnits(input,immis_density_kg,'kg/m^3', &
-                                      trim(error_string)//','//keyword,option)
-      case('LIQUID_VISCOSITY')
-        call InputReadDouble(input,option,immis_viscosity)
-        call InputErrorMsg(input,option,keyword,error_string)
-        call InputReadAndConvertUnits(input,immis_viscosity,'Pa-s', &
-                                      trim(error_string)//','//keyword,option)
       case('DEBUG_CELL_ID')
         call InputReadInt(input,option,immis_debug_cell_id)
         call InputErrorMsg(input,option,keyword,error_string)
@@ -242,7 +209,7 @@ end subroutine PMImmiscibleReadSimOptionsBlock
 ! ************************************************************************** !
 
 subroutine PMImmiscibleReadTSSelectCase(this,input,keyword,found, &
-                                   error_string,option)
+                                        error_string,option)
   !
   ! Read timestepper settings specific to the IMMISCIBLE process model
   !
@@ -269,14 +236,14 @@ subroutine PMImmiscibleReadTSSelectCase(this,input,keyword,found, &
 
   found = PETSC_TRUE
   select case(trim(keyword))
-    case('LIQ_SAT_CHANGE_TS_GOVERNOR')
-      call InputReadDouble(input,option,this%liq_sat_change_ts_governor)
+    case('SAT_CHANGE_TS_GOVERNOR')
+      call InputReadDouble(input,option,this%sat_change_ts_governor)
       call InputErrorMsg(input,option,keyword,error_string)
-    case('LIQ_PRES_CHANGE_TS_GOVERNOR')
-      call InputReadDouble(input,option,this%liq_pres_change_ts_governor)
+    case('PRES_CHANGE_TS_GOVERNOR')
+      call InputReadDouble(input,option,this%pres_change_ts_governor)
       call InputErrorMsg(input,option,keyword,error_string)
       ! units conversion since it is absolute
-      call InputReadAndConvertUnits(input,this%liq_pres_change_ts_governor, &
+      call InputReadAndConvertUnits(input,this%pres_change_ts_governor, &
                                     'Pa',keyword,option)
     case default
       found = PETSC_FALSE
@@ -287,7 +254,7 @@ end subroutine PMImmiscibleReadTSSelectCase
 ! ************************************************************************** !
 
 subroutine PMImmiscibleReadNewtonSelectCase(this,input,keyword,found, &
-                                       error_string,option)
+                                            error_string,option)
   !
   ! Reads input file parameters associated with the IMMISCIBLE process model
   ! Newton solver convergence
@@ -330,22 +297,19 @@ subroutine PMImmiscibleReadNewtonSelectCase(this,input,keyword,found, &
       call InputReadDouble(input,option,immis_rel_pert)
       call InputErrorMsg(input,option,keyword,error_string)
       ! no units conversion since it is relative
-    case('MIN_LIQ_PRESSURE_PERTURBATION')
+    case('MIN_PRESSURE_PERTURBATION')
       call InputReadDouble(input,option,immis_pres_min_pert)
       call InputErrorMsg(input,option,keyword,error_string)
       call InputReadAndConvertUnits(input,immis_pres_min_pert, &
                                     'Pa',keyword,option)
-    case('MAX_ALLOW_LIQ_PRES_CHANGE_NI')
-      call InputReadDouble(input,option,this%max_allow_liq_pres_change_ni)
+    case('MAX_ALLOW_PRES_CHANGE_NI')
+      call InputReadDouble(input,option,this%max_allow_pres_change_ni)
       call InputErrorMsg(input,option,keyword,error_string)
       ! units conversion since it is absolute
-      call InputReadAndConvertUnits(input,this%max_allow_liq_pres_change_ni, &
+      call InputReadAndConvertUnits(input,this%max_allow_pres_change_ni, &
                                     'Pa',keyword,option)
     case('SATURATION_UPDATE_TRUNCATION_NI')
       call InputReadDouble(input,option,this%sat_update_trunc_ni)
-      call InputErrorMsg(input,option,keyword,error_string)
-    case('UNSAT_TO_SAT_PRESSURE_DAMPING_NI')
-      call InputReadDouble(input,option,this%unsat_to_sat_pres_damping_ni)
       call InputErrorMsg(input,option,keyword,error_string)
     case default
       found = PETSC_FALSE
@@ -408,27 +372,11 @@ recursive subroutine PMImmiscibleInitializeRun(this)
 
   if (this%steady_state) immis_calc_accum = PETSC_FALSE
 
-  ivar = 0
-#if 0
-  if (immis_liq_flow_eq > 0) then
-    ivar = ivar + 2
-  endif
-  if (immis_sol_tran_eq > 0) then
-    ivar = ivar + 1
-  endif
-  allocate(this%max_change_ivar(ivar))
-  ivar = 1
-  if (immis_liq_flow_eq > 0) then
-    this%max_change_ivar(ivar) = LIQUID_PRESSURE
-    ivar = ivar + 1
-    this%max_change_ivar(ivar) = LIQUID_SATURATION
-    ivar = ivar + 1
-  endif
-  if (immis_sol_tran_eq > 0) then
-    this%max_change_ivar(ivar) = SOLUTE_CONCENTRATION
-    ivar = ivar + 1
-  endif
-#endif
+  allocate(this%max_change_ivar(4))
+  this%max_change_ivar(1) = LIQUID_PRESSURE
+  this%max_change_ivar(2) = GAS_PRESSURE
+  this%max_change_ivar(3) = LIQUID_SATURATION
+  this%max_change_ivar(4) = GAS_SATURATION
 
   ! need to allocate vectors for max change
   i = size(this%max_change_ivar)
@@ -446,12 +394,6 @@ recursive subroutine PMImmiscibleInitializeRun(this)
   if (Initialized(this%temperature_change_governor)) then
     option%io_buffer = 'TEMPERATURE_CHANGE_GOVERNOR &
       &may not be used with IMMISCIBLE.'
-    call PrintErrMsg(option)
-  endif
-
-  if (soil_compressibility_index == 0 .and. associated(option%inversion)) then
-    option%io_buffer = 'Soil compressibility must be employed for Immiscible &
-      &when used for inversion.'
     call PrintErrMsg(option)
   endif
 
@@ -558,10 +500,10 @@ subroutine PMImmiscibleUpdateTimestep(this,update_dt, &
   if (update_dt .and. iacceleration /= 0) then
     dt_prev = dt
     ! calculate the time step ramping factor
-    sat_ratio = (2.d0*this%liq_sat_change_ts_governor)/ &
-                (this%liq_sat_change_ts_governor+this%max_saturation_change)
-    pres_ratio = (2.d0*this%liq_pres_change_ts_governor)/ &
-                (this%liq_pres_change_ts_governor+this%max_pressure_change)
+    sat_ratio = (2.d0*this%sat_change_ts_governor)/ &
+                (this%sat_change_ts_governor+this%max_saturation_change)
+    pres_ratio = (2.d0*this%pres_change_ts_governor)/ &
+                (this%pres_change_ts_governor+this%max_pressure_change)
     ! pick minimum time step from calc'd ramping factor or maximum ramping factor
     dt = min(min(sat_ratio,pres_ratio)*dt,time_step_max_growth_factor*dt)
     ! make sure time step is within bounds given in the input deck
@@ -711,13 +653,12 @@ subroutine PMImmiscibleCheckUpdatePre(this,snes,X,dX,changed,ierr)
   PetscInt :: local_id, ghosted_id
   PetscInt :: offset
   PetscInt :: p_index
-  PetscReal :: p_ref, pc, p_target
+  PetscReal :: pc, p_target
   PetscReal :: p0, p1, dp
   PetscReal :: sl
   PetscReal :: tempreal
   PetscReal, pointer :: X_p(:)
   PetscReal, pointer :: dX_p(:)
-  PetscBool :: unsat_to_sat_damping_flag
   PetscBool :: sat_update_trunc_flag
   type(immiscible_auxvar_type), pointer :: immiscible_auxvars(:,:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
@@ -733,8 +674,6 @@ subroutine PMImmiscibleCheckUpdatePre(this,snes,X,dX,changed,ierr)
   this%convergence_reals = 0.d0
   changed = PETSC_FALSE
 
-  p_ref = option%flow%reference_pressure
-  unsat_to_sat_damping_flag = Initialized(this%unsat_to_sat_pres_damping_ni)
   sat_update_trunc_flag = Initialized(this%sat_update_trunc_ni)
 
   call VecGetArrayF90(dX,dX_p,ierr);CHKERRQ(ierr)
@@ -787,7 +726,7 @@ end subroutine PMImmiscibleCheckUpdatePre
 ! ************************************************************************** !
 
 subroutine PMImmiscibleCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
-                                  X1_changed,ierr)
+                                       X1_changed,ierr)
   !
   ! Author: Glenn Hammond
   ! Date: 05/17/24
@@ -826,12 +765,10 @@ subroutine PMImmiscibleCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
   PetscInt :: offset
   PetscReal :: tempreal
 
-  PetscBool :: converged_liquid_pressure
+  PetscBool :: converged_wetting_pressure
+  PetscBool :: converged_nonwetting_pressure
   PetscReal :: max_abs_pressure_change_NI
   PetscInt :: max_abs_pressure_change_NI_cell
-  PetscBool :: converged_concentration
-  PetscReal :: max_abs_conc_change_NI
-  PetscInt :: max_abs_conc_change_NI_cell
 
   grid => this%realization%patch%grid
   option => this%realization%option
@@ -847,12 +784,10 @@ subroutine PMImmiscibleCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
   call VecGetArrayF90(dX,dX_p,ierr);CHKERRQ(ierr)
   call VecGetArrayReadF90(X0,X0_p,ierr);CHKERRQ(ierr)
   call VecGetArrayF90(X1,X1_p,ierr);CHKERRQ(ierr)
-  converged_liquid_pressure = PETSC_TRUE
-  converged_concentration = PETSC_FALSE
+  converged_wetting_pressure = PETSC_TRUE
+  converged_nonwetting_pressure = PETSC_TRUE
   max_abs_pressure_change_NI = 0.d0
   max_abs_pressure_change_NI_cell = 0
-  max_abs_conc_change_NI = 0.d0
-  max_abs_conc_change_NI_cell = 0
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
     if (patch%imat(ghosted_id) <= 0) cycle
@@ -878,20 +813,19 @@ subroutine PMImmiscibleCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
 #endif
   enddo
 
-  if (Initialized(this%max_allow_liq_pres_change_ni) .and. &
-      max_abs_pressure_change_NI > this%max_allow_liq_pres_change_ni) then
-    converged_liquid_pressure = PETSC_FALSE
+  if (Initialized(this%max_allow_pres_change_ni) .and. &
+      max_abs_pressure_change_NI > this%max_allow_pres_change_ni) then
+    converged_wetting_pressure = PETSC_FALSE
   endif
 
   ! the following flags are used in detemining convergence
-  if (.not.converged_liquid_pressure) then
-    this%convergence_flags(MAX_CHANGE_LIQ_PRES_NI) = &
+  if (.not.converged_wetting_pressure) then
+    this%convergence_flags(MAX_CHANGE_PRES_NI) = &
       max_abs_pressure_change_NI_cell
   endif
 
   ! the following flags are for REPORTING purposes only
-  this%convergence_reals(MAX_CHANGE_LIQ_PRES_NI) = max_abs_pressure_change_NI
-  this%convergence_reals(MAX_CHANGE_CONC_NI) = max_abs_conc_change_NI
+  this%convergence_reals(MAX_CHANGE_PRES_NI) = max_abs_pressure_change_NI
 
   call VecRestoreArrayF90(dX,dX_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayReadF90(X0,X0_p,ierr);CHKERRQ(ierr)
@@ -902,7 +836,7 @@ end subroutine PMImmiscibleCheckUpdatePost
 ! ************************************************************************** !
 
 subroutine PMImmiscibleCheckConvergence(this,snes,it,xnorm,unorm, &
-                                   fnorm,reason,ierr)
+                                        fnorm,reason,ierr)
   ! Author: Glenn Hammond
   ! Date: 05/17/24
   !
@@ -944,10 +878,10 @@ subroutine PMImmiscibleCheckConvergence(this,snes,it,xnorm,unorm, &
   PetscInt :: local_id, ghosted_id
   PetscInt :: converged_flag
 
-  PetscReal :: max_abs_res_liq_
-  PetscInt :: max_abs_res_liq_cell
-  PetscReal :: max_abs_res_sol_
-  PetscInt :: max_abs_res_sol_cell
+  PetscReal :: max_abs_res_wet_
+  PetscInt :: max_abs_res_wet_cell
+  PetscReal :: max_abs_res_nonwet_
+  PetscInt :: max_abs_res_nonwet_cell
   PetscInt :: offset
   PetscMPIInt :: int_mpi
 
@@ -977,9 +911,9 @@ subroutine PMImmiscibleCheckConvergence(this,snes,it,xnorm,unorm, &
       accumulation = accum2_p(offset+immis_liq_flow_eq)
       ! residual
       tempreal = dabs(residual)
-      if (tempreal > max_abs_res_liq_) then
-        max_abs_res_liq_ = tempreal
-        max_abs_res_liq_cell = grid%nG2A(ghosted_id)
+      if (tempreal > max_abs_res_wet_) then
+        max_abs_res_wet_ = tempreal
+        max_abs_res_wet_cell = grid%nG2A(ghosted_id)
       endif
     endif
     if (immis_sol_tran_eq > 0) then
@@ -987,9 +921,9 @@ subroutine PMImmiscibleCheckConvergence(this,snes,it,xnorm,unorm, &
       accumulation = accum2_p(offset+immis_sol_tran_eq)
       ! residual
       tempreal = dabs(residual)
-      if (tempreal > max_abs_res_sol_) then
-        max_abs_res_sol_ = tempreal
-        max_abs_res_sol_cell = grid%nG2A(ghosted_id)
+      if (tempreal > max_abs_res_nonwet_) then
+        max_abs_res_nonwet_ = tempreal
+        max_abs_res_nonwet_cell = grid%nG2A(ghosted_id)
       endif
     endif
   enddo
@@ -999,17 +933,19 @@ subroutine PMImmiscibleCheckConvergence(this,snes,it,xnorm,unorm, &
   ! currently none
 
   ! the following flags are for REPORTING purposes only
-  this%convergence_flags(MAX_RES_LIQ_EQ) = max_abs_res_liq_cell
-  this%convergence_reals(MAX_RES_LIQ_EQ) = max_abs_res_liq_
-  this%convergence_flags(MAX_RES_SOL_EQ) = max_abs_res_sol_cell
-  this%convergence_reals(MAX_RES_SOL_EQ) = max_abs_res_sol_
+  this%convergence_flags(MAX_RES_WET_EQ) = max_abs_res_wet_cell
+  this%convergence_reals(MAX_RES_WET_EQ) = max_abs_res_wet_
+  this%convergence_flags(MAX_RES_NONWET_EQ) = max_abs_res_nonwet_cell
+  this%convergence_reals(MAX_RES_NONWET_EQ) = max_abs_res_nonwet_
 
   if (this%convergence_verbosity >= 10) then
     print *, option%myrank, &
-      this%convergence_flags(MAX_RES_LIQ_EQ), &
-      this%convergence_reals(MAX_RES_LIQ_EQ), &
-      this%convergence_flags(MAX_CHANGE_LIQ_PRES_NI), &
-      this%convergence_reals(MAX_CHANGE_LIQ_PRES_NI)
+      this%convergence_flags(MAX_RES_WET_EQ), &
+      this%convergence_reals(MAX_RES_WET_EQ), &
+      this%convergence_flags(MAX_RES_NONWET_EQ), &
+      this%convergence_reals(MAX_RES_NONWET_EQ), &
+      this%convergence_flags(MAX_CHANGE_PRES_NI), &
+      this%convergence_reals(MAX_CHANGE_PRES_NI)
   endif
 
   int_mpi = size(this%convergence_flags)
@@ -1023,12 +959,12 @@ subroutine PMImmiscibleCheckConvergence(this,snes,it,xnorm,unorm, &
   ! these conditionals cannot change order
   reason_string = '---| '
   converged_flag = CONVERGENCE_CONVERGED
-  if (this%convergence_flags(MAX_CHANGE_LIQ_PRES_NI) > 0) then
+  if (this%convergence_flags(MAX_CHANGE_PRES_NI) > 0) then
     reason_string(1:1) = 'P'
     converged_flag = CONVERGENCE_KEEP_ITERATING
   endif
-  if (this%convergence_flags(MAX_CHANGE_CONC_NI) > 0) then
-    reason_string(2:2) = 'C'
+  if (this%convergence_flags(MAX_CHANGE_SAT_NI) > 0) then
+    reason_string(2:2) = 'S'
     converged_flag = CONVERGENCE_KEEP_ITERATING
   endif
 
@@ -1036,24 +972,24 @@ subroutine PMImmiscibleCheckConvergence(this,snes,it,xnorm,unorm, &
       OptionPrintToScreen(option)) then
     if (option%comm%size > 1) then
       write(*,'(4x,"Rsn: ",a10,2es10.2)') reason_string, &
-        this%convergence_reals(MAX_RES_LIQ_EQ), &
-        this%convergence_reals(MAX_CHANGE_LIQ_PRES_NI)
+        this%convergence_reals(MAX_RES_WET_EQ), &
+        this%convergence_reals(MAX_CHANGE_PRES_NI)
     else if (grid%nmax > 9999) then
       write(*,'(4x,"Rsn: ",a10,2(i8,es10.2))') reason_string, &
-        this%convergence_flags(MAX_RES_LIQ_EQ), &
-        this%convergence_reals(MAX_RES_LIQ_EQ), &
-        this%convergence_flags(MAX_CHANGE_LIQ_PRES_NI), &
-        this%convergence_reals(MAX_CHANGE_LIQ_PRES_NI)
+        this%convergence_flags(MAX_RES_WET_EQ), &
+        this%convergence_reals(MAX_RES_WET_EQ), &
+        this%convergence_flags(MAX_CHANGE_PRES_NI), &
+        this%convergence_reals(MAX_CHANGE_PRES_NI)
     else
       write(*,'(4x,"Rsn: ",a10,2(i5,es10.2))') reason_string, &
-        this%convergence_flags(MAX_RES_LIQ_EQ), &
-        this%convergence_reals(MAX_RES_LIQ_EQ), &
-        this%convergence_flags(MAX_CHANGE_LIQ_PRES_NI), &
-        this%convergence_reals(MAX_CHANGE_LIQ_PRES_NI)
+        this%convergence_flags(MAX_RES_WET_EQ), &
+        this%convergence_reals(MAX_RES_WET_EQ), &
+        this%convergence_flags(MAX_CHANGE_PRES_NI), &
+        this%convergence_reals(MAX_CHANGE_PRES_NI)
     endif
   endif
 
-  if (Initialized(this%max_allow_liq_pres_change_ni)) then
+  if (Initialized(this%max_allow_pres_change_ni)) then
     option%convergence = converged_flag
   else
     ! forced standard 2 norms

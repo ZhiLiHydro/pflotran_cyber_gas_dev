@@ -1057,15 +1057,15 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
                 coupler%flow_aux_int_var = 0
 
               case(IMMISCIBLE_MODE)
-                allocate(coupler%flow_aux_mapping(IMMIS_MAX_DOF))
+!                allocate(coupler%flow_aux_mapping(IMMIS_MAX_DOF))
                 allocate(coupler%flow_bc_type(TWO_INTEGER))
                 allocate(coupler%flow_aux_real_var(TWO_INTEGER, &
                                                    num_connections))
-                allocate(coupler%flow_aux_int_var(ONE_INTEGER,num_connections))
-                coupler%flow_aux_mapping = 0
+!                allocate(coupler%flow_aux_int_var(ONE_INTEGER,num_connections))
+!                coupler%flow_aux_mapping = 0
                 coupler%flow_bc_type = 0
                 coupler%flow_aux_real_var = 0.d0
-                coupler%flow_aux_int_var = 0
+!                coupler%flow_aux_int_var = 0
 
               case(SCO2_MODE)
                 allocate(coupler%flow_aux_mapping(SCO2_MAX_INDEX))
@@ -1077,6 +1077,7 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
                 coupler%flow_bc_type = 0
                 coupler%flow_aux_real_var = 0.d0
                 coupler%flow_aux_int_var = 0
+
               case default
                 option%io_buffer = 'Failed allocation for flow condition "' // &
                   trim(coupler%flow_condition%name)

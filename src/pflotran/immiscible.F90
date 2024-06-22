@@ -731,6 +731,17 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
   material_auxvars => patch%aux%Material%auxvars
 
   call MatZeroEntries(A,ierr);CHKERRQ(ierr)
+  call VecGetArrayF90(r,r_p,ierr);CHKERRQ(ierr)
+  Jup = 0.d0
+  Jup(1,1) = 1.d0
+  Jup(2,2) = 1.d0
+  Res = 0.d0
+  do local_id = 1, grid%nlmax
+    ghosted_id = grid%nL2G(local_id)
+    call PetUtilVecSVBL(r_p,local_id,Res,ndof,PETSC_FALSE)
+    call PetUtilMatSVBL(A,ghosted_id,ghosted_id,Jup,ndof)
+  enddo
+  call VecRestoreArrayF90(r,r_p,ierr);CHKERRQ(ierr)
 
   ! Communication -----------------------------------------
   ! must be called before ImmiscibleUpdateAuxVars()
