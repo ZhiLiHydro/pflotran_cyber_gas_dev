@@ -38,9 +38,14 @@ module Immiscible_Aux_module
   PetscInt, parameter, public :: IMMIS_GAS_SATURATION_DOF = 2
   PetscInt, parameter, public :: IMMIS_MAX_DOF = IMMIS_GAS_SATURATION_DOF
 
-  PetscInt, parameter, public :: IMMIS_COND_LIQUID_INDEX = 1
-  PetscInt, parameter, public :: IMMIS_COND_GAS_INDEX = 2
-  PetscInt, parameter, public :: IMMIS_MAX_INDEX = 2
+  PetscInt, parameter, public :: IMMIS_LIQUID_EQUATION_INDEX = 1
+  PetscInt, parameter, public :: IMMIS_GAS_EQUATION_INDEX = 2
+
+  PetscInt, parameter, public :: IMMIS_GAS_PRESSURE_INDEX = 1
+  PetscInt, parameter, public :: IMMIS_GAS_SATURATION_INDEX = 2
+  PetscInt, parameter, public :: IMMIS_LIQUID_FLUX_INDEX = 3
+  PetscInt, parameter, public :: IMMIS_GAS_FLUX_INDEX = 4
+  PetscInt, parameter, public :: IMMIS_MAX_INDEX = 4
 
   PetscInt, parameter, public :: IMMIS_UPDATE_FOR_DERIVATIVE = -1
   PetscInt, parameter, public :: IMMIS_UPDATE_FOR_FIXED_ACCUM = 0
@@ -199,10 +204,12 @@ subroutine ImmiscibleAuxVarCompute(x,immis_auxvar,global_auxvar, &
   ! Author: Glenn Hammond
   ! Date: 05/16/24
 
-  use Option_module
-  use Global_Aux_module
   use Characteristic_Curves_module
+  use EOS_Gas_module
+  use EOS_Water_module
+  use Global_Aux_module
   use Material_Aux_module
+  use Option_module
 
   implicit none
 
@@ -215,46 +222,51 @@ subroutine ImmiscibleAuxVarCompute(x,immis_auxvar,global_auxvar, &
   PetscBool :: update_porosity
   PetscInt :: natural_id
 
-  immis_auxvar%pres = x(IMMIS_GAS_PRESSURE_DOF)
-  immis_auxvar%sat = x(IMMIS_GAS_SATURATION_DOF)
+  PetscInt, parameter :: lid = 1
+  PetscInt, parameter :: gid = 2
+  PetscInt, parameter :: cpid = 3
+  PetscReal :: dpc_dsatl
+  PetscReal :: den_air_mol
+  PetscReal :: cell_pressure, saturation_pressure
+  PetscReal :: dummy, dkrl_dsatl, dkrg_dsatl
+  PetscInt :: ierr
 
-#if 0
-  immis_auxvar%pc = min(option%flow%reference_pressure - immis_auxvar%pres, &
-                        characteristic_curves%saturation_function%pcmax)
+  immis_auxvar%pres = 0.d0
+  immis_auxvar%sat = 0.d0
+  immis_auxvar%den_kg = 0.d0
+  immis_auxvar%mu = 0.d0
+  immis_auxvar%kr = 0.d0
 
-  if (immis_auxvar%pc > 0.d0) then
-    saturated = PETSC_FALSE
-    call characteristic_curves%saturation_function% &
-                               Saturation(immis_auxvar%pc, &
-                                          immis_auxvar%sat, &
-                                          immis_auxvar%dsat_dp,option)
-    ! if ds_dp is 0, we consider the cell saturated.
-    if (immis_auxvar%dsat_dp < 1.d-40) then
-      saturated = PETSC_TRUE
-    else
-      dkr_dsat = 0.d0
-      call characteristic_curves%liq_rel_perm_function% &
-                       RelativePermeability(immis_auxvar%sat, &
-                                            immis_auxvar%kr(1), &
-                                            dkr_dsat,option)
-      immis_auxvar%dkr_dp = immis_auxvar%dsat_dp * dkr_dsat
-    endif
-  else
-    saturated = PETSC_TRUE
-  endif
+  global_auxvar%temp = option%flow%reference_temperature
 
-  ! the purpose for splitting this condition from the 'else' statement
-  ! above is due to SaturationFunctionCompute switching a cell to
-  ! saturated to prevent unstable (potentially infinite) derivatives when
-  ! capillary pressure is very small
-  if (saturated) then
-    immis_auxvar%pc = 0.d0
-    immis_auxvar%sat = 1.d0
-    immis_auxvar%kr = 1.d0
-    immis_auxvar%dsat_dp = 0.d0
-    immis_auxvar%dkr_dp = 0.d0
-  endif
-#endif
+  immis_auxvar%pres(gid) = x(IMMIS_GAS_PRESSURE_DOF)
+  immis_auxvar%sat(gid) = x(IMMIS_GAS_SATURATION_DOF)
+  immis_auxvar%sat(lid) = 1.d0 - immis_auxvar%sat(gid)
+  call characteristic_curves%saturation_function% &
+         CapillaryPressure(immis_auxvar%sat(lid),immis_auxvar%pres(cpid), &
+                           dpc_dsatl,option)
+  immis_auxvar%pres(lid) = immis_auxvar%pres(gid) - immis_auxvar%pres(cpid)
+
+  cell_pressure = immis_auxvar%pres(gid)
+  call EOSWaterDensity(global_auxvar%temp,cell_pressure, &
+                       immis_auxvar%den_kg(lid),dummy,ierr)
+  call EOSGasDensity(global_auxvar%temp,cell_pressure,den_air_mol,ierr)
+  immis_auxvar%den_kg(gid) = den_air_mol*immis_fmw(gid)
+
+  call EOSWaterSaturationPressure(global_auxvar%temp, &
+                                  saturation_pressure,dummy,ierr)
+  call EOSWaterViscosity(global_auxvar%temp,cell_pressure, &
+                          saturation_pressure,immis_auxvar%mu(lid),ierr)
+  call EOSGasViscosity(global_auxvar%temp,immis_auxvar%pres(gid), &
+                       immis_auxvar%pres(gid),den_air_mol, &
+                       immis_auxvar%mu(gid),ierr)
+
+  call characteristic_curves%liq_rel_perm_function% &
+           RelativePermeability(immis_auxvar%sat(lid),immis_auxvar%kr(lid), &
+                                dkrl_dsatl,option)
+  call characteristic_curves%gas_rel_perm_function% &
+           RelativePermeability(immis_auxvar%sat(lid),immis_auxvar%kr(gid), &
+                                dkrg_dsatl,option)
 
 end subroutine ImmiscibleAuxVarCompute
 

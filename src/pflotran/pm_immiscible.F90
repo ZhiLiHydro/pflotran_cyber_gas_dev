@@ -567,13 +567,13 @@ subroutine PMImmiscibleResidual(this,snes,xx,r,ierr)
   endif
 
   if (this%realization%debug%vecview_residual) then
-    string = 'ZFresidual'
+    string = 'Immis_residual'
     call DebugCreateViewer(this%realization%debug,string,this%option,viewer)
     call VecView(r,viewer,ierr);CHKERRQ(ierr)
     call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
   endif
   if (this%realization%debug%vecview_solution) then
-    string = 'ZFxx'
+    string = 'Immis_xx'
     call DebugCreateViewer(this%realization%debug,string,this%option,viewer)
     call VecView(xx,viewer,ierr);CHKERRQ(ierr)
     call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
@@ -606,7 +606,7 @@ subroutine PMImmiscibleJacobian(this,snes,xx,A,B,ierr)
   ! the Jacobian was already calculated in PMImmiscibleResidual
 
   if (this%realization%debug%matview_Matrix) then
-    call DebugWriteFilename(this%realization%debug,string,'ZFjacobian','', &
+    call DebugWriteFilename(this%realization%debug,string,'Immis_jacobian','', &
                             immis_ts_count,immis_ts_cut_count, &
                             immis_ni_count)
     call DebugCreateViewer(this%realization%debug,string,this%option,viewer)
@@ -870,7 +870,6 @@ subroutine PMImmiscibleCheckConvergence(this,snes,it,xnorm,unorm, &
   SNESConvergedReason :: reason
   PetscErrorCode :: ierr
 
-#if 0
   Vec :: residual_vec
   PetscReal, pointer :: r_p(:)
   PetscReal, pointer :: accum2_p(:)
@@ -911,6 +910,13 @@ subroutine PMImmiscibleCheckConvergence(this,snes,it,xnorm,unorm, &
   call VecGetArrayReadF90(residual_vec,r_p,ierr);CHKERRQ(ierr)
   call VecGetArrayReadF90(field%flow_accum2,accum2_p,ierr);CHKERRQ(ierr)
   call VecGetArrayReadF90(field%flow_xx,X1_p,ierr);CHKERRQ(ierr)
+
+  max_abs_res_wet_ = UNINITIALIZED_DOUBLE
+  max_abs_res_wet_cell = UNINITIALIZED_INTEGER
+  max_abs_res_nonwet_ = UNINITIALIZED_DOUBLE
+  max_abs_res_nonwet_cell = UNINITIALIZED_INTEGER
+
+#if 0
   do local_id = 1, grid%nlmax
     offset = (local_id-1)*option%nflowdof
     ghosted_id = grid%nL2G(local_id)
@@ -936,6 +942,7 @@ subroutine PMImmiscibleCheckConvergence(this,snes,it,xnorm,unorm, &
       endif
     endif
   enddo
+#endif
 
   ! the following flags are used in detemining convergence
   ! currently none
@@ -1010,7 +1017,6 @@ subroutine PMImmiscibleCheckConvergence(this,snes,it,xnorm,unorm, &
 
   call PMSubsurfaceFlowCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
                                         reason,ierr)
-#endif
 
 end subroutine PMImmiscibleCheckConvergence
 

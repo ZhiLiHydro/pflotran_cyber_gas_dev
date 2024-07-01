@@ -52,20 +52,18 @@ subroutine ImmiscibleSetup(realization)
 
   class(realization_subsurface_type) :: realization
 
-#if 0
   type(option_type), pointer :: option
   type(patch_type),pointer :: patch
   type(grid_type), pointer :: grid
   type(output_variable_list_type), pointer :: list
   type(material_parameter_type), pointer :: material_parameter
   type(immiscible_parameter_type), pointer :: immiscible_parameter
-  type(fluid_property_type), pointer :: cur_fluid_property
 
   PetscInt :: ghosted_id, iconn, sum_connection, local_id
   PetscBool :: error_found
   PetscInt :: flag(3)
-  PetscInt :: temp_int, idof, imat
   PetscBool, allocatable :: dof_is_active(:)
+  PetscInt :: temp_int, idof
   PetscErrorCode :: ierr
                                                 ! extra index for derivatives
   type(immiscible_auxvar_type), pointer :: immiscible_auxvars(:,:)
@@ -187,7 +185,6 @@ subroutine ImmiscibleSetup(realization)
   immis_ts_count = 0
   immis_ts_cut_count = 0
   immis_ni_count = 0
-#endif
 
 end subroutine ImmiscibleSetup
 
@@ -448,7 +445,7 @@ subroutine ImmiscibleUpdateAuxVars(realization)
   PetscInt :: ghosted_start, ghosted_end, ghosted_offset
   PetscReal, pointer :: xx_loc_p(:)
   PetscReal :: xxbc(realization%option%nflowdof)
-  PetscInt :: liquid_index, gas_index
+  PetscInt :: gas_pressure_index
   PetscErrorCode :: ierr
 
   option => realization%option
@@ -491,8 +488,8 @@ subroutine ImmiscibleUpdateAuxVars(realization)
   do
     if (.not.associated(boundary_condition)) exit
     cur_connection_set => boundary_condition%connection_set
-    liquid_index = boundary_condition%flow_aux_mapping(IMMIS_COND_LIQUID_INDEX)
-    gas_index = boundary_condition%flow_aux_mapping(IMMIS_COND_GAS_INDEX)
+    gas_pressure_index = &
+      boundary_condition%flow_aux_mapping(IMMIS_GAS_PRESSURE_INDEX)
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
       local_id = cur_connection_set%id_dn(iconn)
@@ -501,15 +498,15 @@ subroutine ImmiscibleUpdateAuxVars(realization)
       !geh: negate to indicate boundary connection, not actual cell
       natural_id = -grid%nG2A(ghosted_id)
       ghosted_offset = (ghosted_id-1)*option%nflowdof
-      select case(boundary_condition%flow_bc_type(liquid_index))
+      select case(boundary_condition%flow_bc_type(IMMIS_LIQUID_EQUATION_INDEX))
         case(DIRICHLET_BC,HYDROSTATIC_BC)
           xxbc(IMMIS_GAS_PRESSURE_DOF) = &
-            boundary_condition%flow_aux_real_var(liquid_index,iconn)
+            boundary_condition%flow_aux_real_var(gas_pressure_index,iconn)
         case(NEUMANN_BC)
           xxbc(IMMIS_GAS_PRESSURE_DOF) = &
             xx_loc_p(ghosted_offset+IMMIS_GAS_PRESSURE_DOF)
         case default
-          option%io_buffer = 'liquid flow boundary itype not set up in &
+          option%io_buffer = 'flow boundary itype not set up in &
             &ImmiscibleUpdateAuxVars'
           call PrintErrMsg(option)
       end select
@@ -672,7 +669,6 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
   class(realization_subsurface_type) :: realization
   PetscErrorCode :: ierr
 
-#if 0
   PetscViewer :: viewer
   type(discretization_type), pointer :: discretization
   type(grid_type), pointer :: grid
@@ -745,6 +741,7 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
   enddo
   call VecRestoreArrayF90(r,r_p,ierr);CHKERRQ(ierr)
 
+#if 0
   ! Communication -----------------------------------------
   ! must be called before ImmiscibleUpdateAuxVars()
   call DiscretizationGlobalToLocal(discretization,xx,field%flow_xx_loc,NFLOWDOF)
@@ -966,6 +963,7 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
   endif
 
   call VecRestoreArrayF90(r,r_p,ierr);CHKERRQ(ierr)
+#endif
 
   if (immis_simultaneous_res_jac_calc) then
 
@@ -980,15 +978,6 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
                               inactive_rows_local_ghosted, &
                             scale,PETSC_NULL_VEC,PETSC_NULL_VEC, &
                             ierr);CHKERRQ(ierr)
-    endif
-
-    if (realization%debug%matview_Matrix) then
-      call DebugWriteFilename(realization%debug,string,'ZFjacobian','', &
-                              immis_ts_count,immis_ts_cut_count, &
-                              immis_ni_count)
-      call DebugCreateViewer(realization%debug,string,option,viewer)
-      call MatView(A,viewer,ierr);CHKERRQ(ierr)
-      call DebugViewerDestroy(realization%debug,viewer)
     endif
   endif
 
@@ -1011,23 +1000,6 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
                             ierr);CHKERRQ(ierr)
   endif
 
-  if (realization%debug%vecview_residual) then
-    call DebugWriteFilename(realization%debug,string,'Immis_residual','', &
-                            immis_ts_count,immis_ts_cut_count, &
-                            immis_ni_count)
-    call DebugCreateViewer(realization%debug,string,option,viewer)
-    call VecView(r,viewer,ierr);CHKERRQ(ierr)
-    call DebugViewerDestroy(realization%debug,viewer)
-  endif
-  if (realization%debug%vecview_solution) then
-    call DebugWriteFilename(realization%debug,string,'Immis_xx','', &
-                            immis_ts_count,immis_ts_cut_count, &
-                            immis_ni_count)
-    call DebugCreateViewer(realization%debug,string,option,viewer)
-    call VecView(xx,viewer,ierr);CHKERRQ(ierr)
-    call DebugViewerDestroy(realization%debug,viewer)
-  endif
-#endif
 end subroutine ImmiscibleResidual
 
 ! ************************************************************************** !

@@ -2066,6 +2066,8 @@ subroutine FlowConditionGeneralRead(condition,input,option)
       flow_mode_chars = 'General Mode'
     case(WF_MODE)
       flow_mode_chars = 'WIPP Flow Mode'
+    case(IMMISCIBLE_MODE)
+      flow_mode_chars = 'Immiscible Flow Mode'
   end select
 
   rate_string = 'not_assigned'
@@ -2079,7 +2081,7 @@ subroutine FlowConditionGeneralRead(condition,input,option)
   default_time_storage%time_interpolation_method = INTERPOLATION_STEP
 
   select case(option%iflowmode)
-    case(G_MODE,WF_MODE)
+    case(G_MODE,WF_MODE,IMMISCIBLE_MODE)
       general => FlowGeneralConditionCreate(option)
       condition%general => general
   end select
@@ -2131,7 +2133,7 @@ subroutine FlowConditionGeneralRead(condition,input,option)
           call InputErrorMsg(input,option,'keyword','CONDITION,TYPE')
           call StringToUpper(word)
           select case(option%iflowmode)
-            case(G_MODE,WF_MODE)
+            case(G_MODE,WF_MODE,IMMISCIBLE_MODE)
               sub_condition_ptr => &
                 FlowGeneralSubConditionPtr(input,word,general,option)
           end select
@@ -2256,7 +2258,7 @@ subroutine FlowConditionGeneralRead(condition,input,option)
           call InputErrorMsg(input,option,'keyword','CONDITION,TYPE')
           call StringToUpper(word)
           select case(option%iflowmode)
-            case(G_MODE,WF_MODE)
+            case(G_MODE,WF_MODE,IMMISCIBLE_MODE)
               sub_condition_ptr => &
                 FlowGeneralSubConditionPtr(input,word,general,option)
           end select
@@ -2276,7 +2278,7 @@ subroutine FlowConditionGeneralRead(condition,input,option)
       case('CONDUCTANCE')
         word = 'LIQUID_PRESSURE'
         select case(option%iflowmode)
-          case(G_MODE,WF_MODE)
+          case(G_MODE,WF_MODE,IMMISCIBLE_MODE)
             sub_condition_ptr => &
                 FlowGeneralSubConditionPtr(input,word,general,option)
         end select
@@ -2287,7 +2289,7 @@ subroutine FlowConditionGeneralRead(condition,input,option)
            'LIQUID_FLUX','GAS_FLUX','ENERGY_FLUX','RELATIVE_HUMIDITY', &
            'SALT_MOLE_FRACTION','PRECIPITATE_SATURATION')
         select case(option%iflowmode)
-          case(G_MODE,WF_MODE)
+          case(G_MODE,WF_MODE,IMMISCIBLE_MODE)
             sub_condition_ptr => &
                 FlowGeneralSubConditionPtr(input,word,general,option)
         end select
@@ -2305,7 +2307,7 @@ subroutine FlowConditionGeneralRead(condition,input,option)
             input%force_units = PETSC_TRUE
             input%err_buf = word
             select case(option%iflowmode)
-              case(WF_MODE)
+              case(WF_MODE,IMMISCIBLE_MODE)
                 internal_units = trim(rate_string) // ',' // trim(rate_string)
               case(G_MODE)
                 if (.not. general_salt) then
@@ -2374,7 +2376,8 @@ subroutine FlowConditionGeneralRead(condition,input,option)
       condition%iphase = ANY_STATE
     elseif (associated(general%liquid_flux) .and. &
             associated(general%gas_flux) .and. &
-            (option%iflowmode == WF_MODE .or. &
+            ((option%iflowmode == WF_MODE .or. &
+              option%iflowmode == IMMISCIBLE_MODE) .or. &
              associated(general%energy_flux) .or. &
              associated(general%temperature))) then
       condition%iphase = ANY_STATE
@@ -2457,7 +2460,7 @@ subroutine FlowConditionGeneralRead(condition,input,option)
             condition%iphase = GAS_STATE
           endif
         endif
-      else
+      elseif (option%iflowmode == WF_MODE) then
         if (.not.associated(general%liquid_pressure)) then
           option%io_buffer = 'WIPP Flow Mode non-rate condition must include &
             &a liquid pressure'
@@ -2477,6 +2480,18 @@ subroutine FlowConditionGeneralRead(condition,input,option)
           endif
         else
            condition%iphase = TWO_PHASE_STATE
+        endif
+      else
+        condition%iphase = TWO_PHASE_STATE
+        if (.not.associated(general%gas_pressure)) then
+          option%io_buffer = 'Immiscible Mode non-rate condition must include &
+            &a gas pressure'
+          call PrintErrMsg(option)
+        endif
+        if (.not.associated(general%gas_saturation)) then
+          option%io_buffer = 'Immisible Mode non-rate condition must include &
+            &a gas saturation'
+          call PrintErrMsg(option)
         endif
       endif
     endif
