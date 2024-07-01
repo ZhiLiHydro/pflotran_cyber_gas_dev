@@ -4601,6 +4601,48 @@ subroutine PatchUpdateCouplerAuxVarsImmis(patch,coupler,option)
     end select
   endif
 
+  if (associated(flow_condition%saturation)) then
+    coupler%flow_bc_type(water_index) = flow_condition%saturation%itype
+    select case(flow_condition%pressure%itype)
+      case(DIRICHLET_BC,NEUMANN_BC,ZERO_GRADIENT_BC, &
+           DIRICHLET_SEEPAGE_BC,DIRICHLET_CONDUCTANCE_BC)
+        select type(dataset => &
+                    flow_condition%pressure%dataset)
+          class is(dataset_ascii_type)
+            coupler%flow_aux_real_var(water_index,1:num_connections) = &
+              dataset%rarray(1)
+          class is(dataset_gridded_hdf5_type)
+            call PatchUpdateCouplerGridDataset(coupler,option,patch%grid, &
+                                               dataset,water_index)
+          class is(dataset_common_hdf5_type)
+            ! skip cell indexed datasets used in initial conditions
+          class default
+            call PrintMsg(option,'pressure%itype,DIRICHLET-type')
+            call DatasetUnknownClass(dataset,option, &
+                                     'PatchUpdateCouplerAuxVarsZFlow')
+        end select
+        select case(flow_condition%pressure%itype)
+          case(DIRICHLET_CONDUCTANCE_BC)
+            coupler%flow_aux_real_var(water_aux_index,1:num_connections) = &
+                                           flow_condition%pressure%aux_real(1)
+        end select
+      case(HYDROSTATIC_BC,HYDROSTATIC_SEEPAGE_BC,HYDROSTATIC_CONDUCTANCE_BC)
+        hydrostatic_update_called = PETSC_TRUE
+        call HydrostaticUpdateCoupler(coupler,option,patch%grid)
+      case(HET_DIRICHLET_BC,HET_HYDROSTATIC_SEEPAGE_BC, &
+           HET_HYDROSTATIC_CONDUCTANCE_BC)
+        call PatchUpdateHetroCouplerAuxVars(patch,coupler, &
+                flow_condition%pressure%dataset, &
+                water_index,option)
+        if (flow_condition%pressure%itype == &
+            HET_HYDROSTATIC_CONDUCTANCE_BC) then
+          coupler%flow_aux_real_var(water_aux_index, &
+                                    1:num_connections) = &
+            flow_condition%pressure%aux_real(1)
+        endif
+    end select
+  endif
+
   if (associated(flow_condition%rate)) then
     coupler%flow_bc_type(water_index) = flow_condition%rate%itype
     coupler%flow_aux_real_var(water_index,1:num_connections) = &
