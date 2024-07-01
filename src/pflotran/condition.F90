@@ -1677,17 +1677,6 @@ subroutine FlowConditionRead(condition,input,option)
       option%io_buffer = 'SCO2 Flow mode not supported in original &
         &FlowConditionRead.'
       call PrintErrMsg(option)
-    case(IMMISCIBLE_MODE)
-      if (associated(pressure)) then
-        condition%pressure => pressure
-      endif
-      if (associated(saturation)) then
-        condition%saturation => saturation
-      endif
-      condition%num_sub_conditions = 2
-      allocate(condition%sub_condition_ptr(condition%num_sub_conditions))
-      condition%sub_condition_ptr(ONE_INTEGER)%ptr => pressure
-      condition%sub_condition_ptr(TWO_INTEGER)%ptr => saturation
     case(MPH_MODE)
       if (.not.associated(pressure) .and. .not.associated(rate)&
            .and. .not.associated(well) .and. .not.associated(saturation)) then

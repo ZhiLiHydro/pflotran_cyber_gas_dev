@@ -52,6 +52,7 @@ subroutine ImmiscibleSetup(realization)
 
   class(realization_subsurface_type) :: realization
 
+#if 0
   type(option_type), pointer :: option
   type(patch_type),pointer :: patch
   type(grid_type), pointer :: grid
@@ -186,6 +187,7 @@ subroutine ImmiscibleSetup(realization)
   immis_ts_count = 0
   immis_ts_cut_count = 0
   immis_ni_count = 0
+#endif
 
 end subroutine ImmiscibleSetup
 
@@ -669,8 +671,9 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
   Mat :: A
   class(realization_subsurface_type) :: realization
   PetscErrorCode :: ierr
-  PetscViewer :: viewer
 
+#if 0
+  PetscViewer :: viewer
   type(discretization_type), pointer :: discretization
   type(grid_type), pointer :: grid
   type(patch_type), pointer :: patch
@@ -686,7 +689,6 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
   type(global_auxvar_type), pointer :: global_auxvars_bc(:)
   type(global_auxvar_type), pointer :: global_auxvars_ss(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
-  type(material_auxvar_type), pointer :: material_auxvars_pert(:,:)
   type(connection_set_list_type), pointer :: connection_set_list
   type(connection_set_type), pointer :: cur_connection_set
 
@@ -1025,7 +1027,7 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
     call VecView(xx,viewer,ierr);CHKERRQ(ierr)
     call DebugViewerDestroy(realization%debug,viewer)
   endif
-
+#endif
 end subroutine ImmiscibleResidual
 
 ! ************************************************************************** !

@@ -215,8 +215,6 @@ subroutine ImmiscibleAuxVarCompute(x,immis_auxvar,global_auxvar, &
   PetscBool :: update_porosity
   PetscInt :: natural_id
 
-  PetscReal :: dkr_dsat
-
   immis_auxvar%pres = x(IMMIS_GAS_PRESSURE_DOF)
   immis_auxvar%sat = x(IMMIS_GAS_SATURATION_DOF)
 

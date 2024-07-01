@@ -151,6 +151,7 @@ subroutine PMImmiscibleReadSimOptionsBlock(this,input)
   class(pm_immiscible_type) :: this
   type(input_type), pointer :: input
 
+#if 0
   character(len=MAXWORDLENGTH) :: keyword
   type(option_type), pointer :: option
   character(len=MAXSTRINGLENGTH) :: error_string
@@ -203,6 +204,7 @@ subroutine PMImmiscibleReadSimOptionsBlock(this,input)
     end select
   enddo
   call InputPopBlock(input,option)
+#endif
 
 end subroutine PMImmiscibleReadSimOptionsBlock
 
@@ -359,6 +361,7 @@ recursive subroutine PMImmiscibleInitializeRun(this)
 
   class(pm_immiscible_type) :: this
 
+#if 0
   PetscInt :: i
   PetscErrorCode :: ierr
   type(field_type), pointer :: field
@@ -396,6 +399,7 @@ recursive subroutine PMImmiscibleInitializeRun(this)
       &may not be used with IMMISCIBLE.'
     call PrintErrMsg(option)
   endif
+#endif
 
 end subroutine PMImmiscibleInitializeRun
 
@@ -647,6 +651,7 @@ subroutine PMImmiscibleCheckUpdatePre(this,snes,X,dX,changed,ierr)
   PetscBool :: changed
   PetscErrorCode :: ierr
 
+#if 0
   type(grid_type), pointer :: grid
   type(option_type), pointer :: option
   type(patch_type), pointer :: patch
@@ -720,6 +725,7 @@ subroutine PMImmiscibleCheckUpdatePre(this,snes,X,dX,changed,ierr)
 #endif
   call VecRestoreArrayF90(dX,dX_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayReadF90(X,X_p,ierr);CHKERRQ(ierr)
+#endif
 
 end subroutine PMImmiscibleCheckUpdatePre
 
@@ -752,6 +758,7 @@ subroutine PMImmiscibleCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
   PetscBool :: X1_changed
   PetscErrorCode :: ierr
 
+#if 0
   type(grid_type), pointer :: grid
   type(option_type), pointer :: option
   type(field_type), pointer :: field
@@ -830,6 +837,7 @@ subroutine PMImmiscibleCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
   call VecRestoreArrayF90(dX,dX_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayReadF90(X0,X0_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayF90(X1,X1_p,ierr);CHKERRQ(ierr)
+#endif
 
 end subroutine PMImmiscibleCheckUpdatePost
 
@@ -862,6 +870,7 @@ subroutine PMImmiscibleCheckConvergence(this,snes,it,xnorm,unorm, &
   SNESConvergedReason :: reason
   PetscErrorCode :: ierr
 
+#if 0
   Vec :: residual_vec
   PetscReal, pointer :: r_p(:)
   PetscReal, pointer :: accum2_p(:)
@@ -898,7 +907,7 @@ subroutine PMImmiscibleCheckConvergence(this,snes,it,xnorm,unorm, &
 
   residual_vec = field%flow_r
   ! check residual terms
-#if 0
+
   call VecGetArrayReadF90(residual_vec,r_p,ierr);CHKERRQ(ierr)
   call VecGetArrayReadF90(field%flow_accum2,accum2_p,ierr);CHKERRQ(ierr)
   call VecGetArrayReadF90(field%flow_xx,X1_p,ierr);CHKERRQ(ierr)
@@ -927,7 +936,6 @@ subroutine PMImmiscibleCheckConvergence(this,snes,it,xnorm,unorm, &
       endif
     endif
   enddo
-#endif
 
   ! the following flags are used in detemining convergence
   ! currently none
@@ -1002,6 +1010,7 @@ subroutine PMImmiscibleCheckConvergence(this,snes,it,xnorm,unorm, &
 
   call PMSubsurfaceFlowCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
                                         reason,ierr)
+#endif
 
 end subroutine PMImmiscibleCheckConvergence
 
@@ -1086,6 +1095,7 @@ subroutine PMImmiscibleMaxChange(this)
 
   class(pm_immiscible_type) :: this
 
+#if 0
   class(realization_subsurface_type), pointer :: realization
   type(option_type), pointer :: option
   type(field_type), pointer :: field
@@ -1147,6 +1157,7 @@ subroutine PMImmiscibleMaxChange(this)
   endif
 #endif
   deallocate(max_change_global)
+#endif
 
 end subroutine PMImmiscibleMaxChange
 

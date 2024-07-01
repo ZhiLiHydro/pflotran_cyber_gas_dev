@@ -4553,8 +4553,8 @@ subroutine PatchUpdateCouplerAuxVarsImmis(patch,coupler,option)
 
   call PrintErrMsg(option,'PatchUpdateCouplerAuxVarsImmis must be setup')
 
-!  water_index = coupler%flow_aux_mapping(ZFLOW_COND_WATER_INDEX)
-!  water_aux_index = coupler%flow_aux_mapping(ZFLOW_COND_WATER_AUX_INDEX)
+  water_index = UNINITIALIZED_INTEGER !coupler%flow_aux_mapping(ZFLOW_COND_WATER_INDEX)
+  water_aux_index = UNINITIALIZED_INTEGER !coupler%flow_aux_mapping(ZFLOW_COND_WATER_AUX_INDEX)
 !  energy_index = coupler%flow_aux_mapping(ZFLOW_COND_ENERGY_INDEX)
 !  solute_index = coupler%flow_aux_mapping(ZFLOW_COND_SOLUTE_INDEX)
 

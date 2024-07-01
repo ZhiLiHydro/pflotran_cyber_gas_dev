@@ -675,6 +675,7 @@ factory_subsurface_read.o : \
   pm_fracture.o \
   pm_general.o \
   pm_hydrate.o \
+  pm_immiscible.o \
   pm_material_transform.o \
   pm_mphase.o \
   pm_nwt.o \

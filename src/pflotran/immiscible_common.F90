@@ -121,6 +121,7 @@ subroutine ImmiscibleAccumulation(immiscible_auxvar,global_auxvar, &
   PetscReal :: Jac(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
   PetscBool :: calculate_derivatives
 
+#if 0
   PetscReal :: porosity
   PetscReal :: saturation
   PetscReal :: por_sat
@@ -146,7 +147,6 @@ subroutine ImmiscibleAccumulation(immiscible_auxvar,global_auxvar, &
                   material_auxvar%volume / option%flow_dt
   enddo
 
-#if 0
   if (calculate_derivatives) then
     Jac(immis_liq_flow_eq,immis_liq_flow_eq) = &
       tempreal * (immiscible_auxvar%dsat_dp * porosity + &
@@ -195,6 +195,7 @@ subroutine ImmiscibleFluxHarmonicPermOnly(immiscible_auxvar_up,global_auxvar_up,
   PetscBool :: calculate_derivatives
   PetscBool :: debug_connection
 
+#if 0
   PetscReal :: dist_gravity  ! distance along gravity vector
   PetscReal :: dist_up, dist_dn
   PetscReal :: upweight
@@ -234,7 +235,6 @@ subroutine ImmiscibleFluxHarmonicPermOnly(immiscible_auxvar_up,global_auxvar_up,
   delta_pressure = 0.d0
   delta_conc = 0.d0
 
-#if 0
   call ConnectionCalculateDistances(dist,option%gravity,dist_up,dist_dn, &
                                     dist_gravity,upweight)
 
@@ -331,6 +331,7 @@ subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
   PetscBool :: calculate_derivatives
   PetscBool :: debug_connection
 
+#if 0
   PetscInt :: bc_type
   PetscInt :: idof
   PetscReal :: perm_ave_over_dist_visc
@@ -369,7 +370,6 @@ subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
   dperm_dK = 0.d0
   delta_pressure = 0.d0
   delta_conc = 0.d0
-#if 0
   if (immis_liq_flow_eq > 0) then
     call PermeabilityTensorToScalar(material_auxvar_dn,dist,perm_dn)
 
@@ -490,6 +490,7 @@ subroutine ImmiscibleSrcSink(option,flow_aux_real_var,flow_src_sink_mapping, &
   PetscReal :: Jdn(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
   PetscBool :: calculate_derivatives
 
+#if 0
   PetscReal :: tempreal
   PetscReal :: qsrc_m3, qsrc_L
   PetscReal, parameter :: L_per_m3 = 1.d3
@@ -498,7 +499,6 @@ subroutine ImmiscibleSrcSink(option,flow_aux_real_var,flow_src_sink_mapping, &
   Res = 0.d0
   Jdn = 0.d0
 
-#if 0
   if (immis_liq_flow_eq > 0) then
     dof_index = flow_src_sink_mapping(IMMIS_COND_WATER_INDEX)
     qsrc_m3 = 0.d0
