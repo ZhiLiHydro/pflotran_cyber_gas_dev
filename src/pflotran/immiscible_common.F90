@@ -185,33 +185,23 @@ subroutine ImmiscibleFluxHarmonicPermOnly(immiscible_auxvar_up,global_auxvar_up,
   PetscBool :: calculate_derivatives
   PetscBool :: debug_connection
 
-#if 0
   PetscReal :: dist_gravity  ! distance along gravity vector
   PetscReal :: dist_up, dist_dn
   PetscReal :: upweight
 
-  PetscReal :: perm_ave_over_dist_visc
+  PetscReal :: perm_ave_over_dist
   PetscReal :: perm_up, perm_dn
   PetscReal :: delta_pressure
   PetscReal :: gravity_term
-  PetscReal :: kr, q
+  PetscReal :: density_ave
+  PetscReal :: mobility, q
   PetscReal :: dkr_dpup, dkr_dpdn
   PetscReal :: tempreal
-  PetscReal :: numerator, denominator
   PetscReal :: dperm_ave_dKup, dperm_ave_dKdn
   PetscReal :: delta_conc
   PetscReal :: dq_dpup, dq_dpdn
   PetscReal :: dq_dKup, dq_dKdn
-  PetscReal, parameter :: L_per_m3 = 1.d3
-  PetscReal :: conc_upwind, dconc_upwind_dup, dconc_upwind_ddn
-  PetscReal :: D_hyd_up, D_hyd_dn
-  PetscReal :: D_molecular
-  PetscReal, parameter :: D_mech_up = 0.d0, D_mech_dn = 0.d0
-  PetscReal :: Deff_over_dist
-  PetscReal :: dD_mech_up_dpup, dD_mech_dn_dpdn
-  PetscReal :: dDeff_over_dist_dpup, dDeff_over_dist_dpdn
-  PetscReal :: dD_hyd_up_dpup, dD_hyd_dn_dpdn
-  PetscReal :: dDeff_over_dist_dKup, dDeff_over_dist_dKdn
+  PetscInt :: iphase
 
   Res = 0.d0
   Jup = 0.d0
@@ -228,58 +218,60 @@ subroutine ImmiscibleFluxHarmonicPermOnly(immiscible_auxvar_up,global_auxvar_up,
   call ConnectionCalculateDistances(dist,option%gravity,dist_up,dist_dn, &
                                     dist_gravity,upweight)
 
-  if (immis_liq_flow_eq > 0) then
+  call PermeabilityTensorToScalar(material_auxvar_up,dist,perm_up)
+  call PermeabilityTensorToScalar(material_auxvar_dn,dist,perm_dn)
 
-    call PermeabilityTensorToScalar(material_auxvar_up,dist,perm_up)
-    call PermeabilityTensorToScalar(material_auxvar_dn,dist,perm_dn)
+  perm_ave_over_dist = perm_up * perm_dn / (dist_up*perm_dn + dist_dn*perm_up)
 
-    numerator = perm_up * perm_dn
-    denominator = dist_up*perm_dn + dist_dn*perm_up
-    perm_ave_over_dist_visc = numerator / (denominator * immis_viscosity)
+  do iphase = 1, 2
 
-    if (immiscible_auxvar_up%kr + immiscible_auxvar_dn%kr > floweps) then
+    if (immiscible_auxvar_up%kr(iphase) + &
+        immiscible_auxvar_dn%kr(iphase) > floweps) then
 
-      gravity_term = immis_density_kg * dist_gravity
-      delta_pressure = immiscible_auxvar_up%pres - &
-                       immiscible_auxvar_dn%pres + &
+      density_ave = 0.5*(immiscible_auxvar_up%den_kg(iphase) + &
+                         immiscible_auxvar_dn%den_kg(iphase))
+      gravity_term = density_ave * dist_gravity
+      delta_pressure = immiscible_auxvar_up%pres(iphase) - &
+                       immiscible_auxvar_dn%pres(iphase) + &
                        gravity_term
-      dkr_dpup = 0.d0
-      dkr_dpdn = 0.d0
+!      dkr_dpup = 0.d0
+!      dkr_dpdn = 0.d0
       if (delta_pressure >= 0.d0) then
-        kr = immiscible_auxvar_up%kr
-        dkr_dpup = immiscible_auxvar_up%dkr_dp
+        mobility = immiscible_auxvar_up%kr(iphase) / &
+                   immiscible_auxvar_up%mu(iphase)
+!        dkr_dpup = immiscible_auxvar_up%dkr_dp
       else
-        kr = immiscible_auxvar_dn%kr
-        dkr_dpdn = immiscible_auxvar_dn%dkr_dp
+        mobility = immiscible_auxvar_dn%kr(iphase) / &
+                   immiscible_auxvar_dn%mu(iphase)
+!        dkr_dpdn = immiscible_auxvar_dn%dkr_dp
       endif
 
-      if (kr > floweps) then
+      if (mobility > floweps) then
         ! v_darcy[m/sec] = perm[m^2] / dist[m] * kr[-] / mu[Pa-sec]
         !                    dP[Pa]]
-        v_darcy = perm_ave_over_dist_visc * kr * delta_pressure
+        v_darcy = perm_ave_over_dist * mobility * delta_pressure
         ! q[m^3 liquid/sec] = v_darcy[m/sec] * area[m^2]
         q = v_darcy * area
         ! Res[m^3 liquid/sec]
-        Res(immis_liq_flow_eq) = Res(immis_liq_flow_eq) + &
-                                                 q * immis_density_kmol
+        Res(iphase) = Res(iphase) + q * density_ave
 
         if (calculate_derivatives) then
-          tempreal = perm_ave_over_dist_visc * area
-          dq_dpup = tempreal * (delta_pressure * dkr_dpup + kr)
-          dq_dpdn = tempreal * (delta_pressure * dkr_dpdn - kr)
-          Jup(immis_liq_flow_eq,immis_liq_flow_eq) = &
-                                              dq_dpup * immis_density_kmol
-          Jdn(immis_liq_flow_eq,immis_liq_flow_eq) = &
-                                              dq_dpdn * immis_density_kmol
+!          tempreal = perm_ave_over_dist_visc * area
+!          dq_dpup = tempreal * (delta_pressure * dkr_dpup + kr)
+!          dq_dpdn = tempreal * (delta_pressure * dkr_dpdn - kr)
+!          Jup(immis_liq_flow_eq,immis_liq_flow_eq) = &
+!                                              dq_dpup * immis_density_kmol
+!          Jdn(immis_liq_flow_eq,immis_liq_flow_eq) = &
+!                                              dq_dpdn * immis_density_kmol
         endif
       endif
     endif
     if (debug_connection) then
-      write(*,'(9x,"IFF(res,kr,dp): ",8es12.4)') Res(immis_liq_flow_eq), &
-                                                 kr, delta_pressure
+      write(*,'(9x,"IFF(res,kr,dp): ",8es12.4)') Res(iphase), &
+                                                 mobility, delta_pressure
     endif
-  endif
-#endif
+  enddo
+
 end subroutine ImmiscibleFluxHarmonicPermOnly
 
 ! ************************************************************************** !

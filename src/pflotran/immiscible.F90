@@ -806,7 +806,7 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
     r_p = 0.d0
   endif
 #endif
-#if 0
+#if 1
   if (immis_calc_flux) then
     ! Interior Flux Terms -----------------------------------
     connection_set_list => grid%internal_connection_set_list
