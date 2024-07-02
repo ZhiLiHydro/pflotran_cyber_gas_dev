@@ -121,38 +121,28 @@ subroutine ImmiscibleAccumulation(immiscible_auxvar,global_auxvar, &
   PetscReal :: Jac(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
   PetscBool :: calculate_derivatives
 
-#if 0
-  PetscReal :: porosity
-  PetscReal :: saturation
-  PetscReal :: por_sat
-  PetscReal :: volume_over_dt
-  PetscReal :: tempreal
   PetscInt :: iphase
-  PetscReal, parameter :: L_per_m3 = 1.d3
 
   Res = 0.d0
   Jac = 0.d0
-
-   ! v_over_t[m^3 bulk/sec] = vol[m^3 bulk] / dt[sec]
-  volume_over_dt = material_auxvar%volume / option%flow_dt
-  porosity = material_auxvar%porosity
 
   ! accumulation term units = kg comp/s
   ! Res[kg comp/sec] = den[kg comp/m^3 phase] * sat[m^3 phase/m^3 void] *
   !                    por[m^3 void/m^3 bulk] * vol[m^3 bulk] / dt[sec]
   do iphase = 1, 2
     Res(iphase) = immiscible_auxvar%den_kg(iphase) * &
-                  immiscible_auxvar%den_kg(iphase) * &
-                  material_auxvar%porosity * &
-                  material_auxvar%volume / option%flow_dt
+                  immiscible_auxvar%sat(iphase)
+
   enddo
+  Res(:) = Res(:) * material_auxvar%porosity * &
+                    material_auxvar%volume / option%flow_dt
 
   if (calculate_derivatives) then
-    Jac(immis_liq_flow_eq,immis_liq_flow_eq) = &
-      tempreal * (immiscible_auxvar%dsat_dp * porosity + &
-                  saturation * immiscible_auxvar%dpor_dp)
+    stop 'Implement derivative in ImmiscibleAccumulation'
+    !Jac(immis_liq_flow_eq,immis_liq_flow_eq) = &
+    !  tempreal * (immiscible_auxvar%dsat_dp * porosity + &
+    !              saturation * immiscible_auxvar%dpor_dp)
   endif
-#endif
 
 end subroutine ImmiscibleAccumulation
 

@@ -288,7 +288,7 @@ subroutine ImmiscibleComputeMassBalance(realization,mass_balance)
 
   PetscInt :: local_id
   PetscInt :: ghosted_id
-  PetscInt :: iphase = 1
+  PetscInt :: iphase
 
   option => realization%option
   patch => realization%patch
@@ -729,6 +729,8 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
   material_auxvars => patch%aux%Material%auxvars
 
   call MatZeroEntries(A,ierr);CHKERRQ(ierr)
+
+#if 0
   call VecGetArrayF90(r,r_p,ierr);CHKERRQ(ierr)
   Jup = 0.d0
   Jup(1,1) = 1.d0
@@ -740,8 +742,8 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
     call PetUtilMatSVBL(A,ghosted_id,ghosted_id,Jup,ndof)
   enddo
   call VecRestoreArrayF90(r,r_p,ierr);CHKERRQ(ierr)
-
-#if 0
+#endif
+#if 1
   ! Communication -----------------------------------------
   ! must be called before ImmiscibleUpdateAuxVars()
   call DiscretizationGlobalToLocal(discretization,xx,field%flow_xx_loc,NFLOWDOF)
@@ -803,7 +805,8 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
   else
     r_p = 0.d0
   endif
-
+#endif
+#if 0
   if (immis_calc_flux) then
     ! Interior Flux Terms -----------------------------------
     connection_set_list => grid%internal_connection_set_list
