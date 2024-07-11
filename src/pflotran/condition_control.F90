@@ -55,6 +55,8 @@ subroutine CondControlAssignFlowInitCond(realization)
   use WIPP_Flow_Aux_module, wf_dof_to_primary_variable => dof_to_primary_variable
   use Hydrate_Aux_module, hyd_dof_to_primary_variable => dof_to_primary_variable
   use SCO2_Aux_module, sco2_dof_to_primary_variable => dof_to_primary_variable
+  use Immiscible_Aux_module, immis_dof_to_primary_variable => &
+                               dof_to_primary_variable
 
   implicit none
 
@@ -1254,6 +1256,78 @@ subroutine CondControlAssignFlowInitCond(realization)
 
         call VecRestoreArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
 
+      case(IMMISCIBLE_MODE)
+
+        call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+
+        xx_p = UNINITIALIZED_DOUBLE
+
+        initial_condition => patch%initial_condition_list%first
+        do
+
+          if (.not.associated(initial_condition)) exit
+
+          dataset_flag = PETSC_FALSE
+          do idof = 1, option%nflowdof
+            dataset =>  initial_condition%flow_condition% &
+                              sub_condition_ptr(idof)%ptr%dataset
+            select type(dataset_ptr => dataset)
+              class is(dataset_gridded_hdf5_type)
+                ! already mapped to flow_aux_real_var
+                if (.not.associated(initial_condition%flow_aux_real_var)) then
+                  option%io_buffer = 'A gridded dataset is being &
+                    &used with IMMISCIBLE, yet flow_aux_real_var is not &
+                    &allocated.'
+                  call PrintErrMsgToDev(option,'')
+                endif
+              class is(dataset_common_hdf5_type)
+                dataset_flag(idof) = PETSC_TRUE
+                call VecRestoreArrayF90(field%flow_xx,xx_p, &
+                                        ierr);CHKERRQ(ierr)
+                call ConditionControlMapDatasetToVec(realization, &
+                        initial_condition%flow_condition% &
+                          sub_condition_ptr(idof)%ptr%dataset,idof, &
+                        field%flow_xx,GLOBAL)
+                call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+            end select
+          enddo
+
+          if (associated(initial_condition%flow_aux_real_var)) then
+            istate = 0
+            do iconn=1,initial_condition%connection_set%num_connections
+              local_id = initial_condition%connection_set%id_dn(iconn)
+              ghosted_id = grid%nL2G(local_id)
+              if (patch%imat(ghosted_id) <= 0) then
+                iend = local_id*option%nflowdof
+                ibegin = iend-option%nflowdof+1
+                xx_p(ibegin:iend) = 0.d0
+                patch%aux%Global%auxvars(ghosted_id)%istate = 0
+                cycle
+              endif
+              offset = (local_id-1)*option%nflowdof
+              do idof = 1, option%nflowdof
+                if (dataset_flag(idof)) cycle
+                xx_p(offset+idof) = &
+                  initial_condition%flow_aux_real_var( &
+                    initial_condition%flow_aux_mapping( &
+                      immis_dof_to_primary_variable(idof)),iconn)
+              enddo
+              patch%aux%Global%auxvars(ghosted_id)%istate = istate
+            enddo
+          else
+            if (.not.associated(initial_condition%flow_condition)) then
+              option%io_buffer = 'Flow condition is NULL in initial condition'
+              call PrintErrMsg(option)
+            endif
+            option%io_buffer = 'IMMISCIBLE block in CondControlAssignFlowInit&
+              &Cond must be expanded'
+            call PrintErrMsg(option)
+          endif
+          initial_condition => initial_condition%next
+        enddo
+
+        call VecRestoreArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+
       case default
         ! assign initial conditions values to domain
         call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
@@ -1338,7 +1412,7 @@ subroutine CondControlAssignFlowInitCond(realization)
     end select
 
   select case(option%iflowmode)
-    case(RICHARDS_MODE,RICHARDS_TS_MODE,ZFLOW_MODE,IMMISCIBLE_MODE,PNF_MODE)
+    case(RICHARDS_MODE,RICHARDS_TS_MODE,ZFLOW_MODE,PNF_MODE)
     case default
       call GlobalUpdateState(realization)
   end select
@@ -1357,7 +1431,8 @@ subroutine CondControlAssignFlowInitCond(realization)
   call VecMin(field%work,PETSC_NULL_INTEGER,tempreal,ierr);CHKERRQ(ierr)
   if (tempreal < 0.d0) then
 !    print *, tempreal
-    option%io_buffer = 'Uninitialized cells in domain.'
+    option%io_buffer = 'Uninitialized STATE in domain &
+      &(CondControlAssignFlowInitCond).'
     call PrintErrMsg(option)
   endif
 

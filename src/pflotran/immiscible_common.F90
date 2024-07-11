@@ -198,7 +198,6 @@ subroutine ImmiscibleFluxHarmonicPermOnly(immiscible_auxvar_up,global_auxvar_up,
   PetscReal :: dkr_dpup, dkr_dpdn
   PetscReal :: tempreal
   PetscReal :: dperm_ave_dKup, dperm_ave_dKdn
-  PetscReal :: delta_conc
   PetscReal :: dq_dpup, dq_dpdn
   PetscReal :: dq_dKup, dq_dKdn
   PetscInt :: iphase
@@ -213,7 +212,6 @@ subroutine ImmiscibleFluxHarmonicPermOnly(immiscible_auxvar_up,global_auxvar_up,
   dq_dKup = 0.d0
   dq_dKdn = 0.d0
   delta_pressure = 0.d0
-  delta_conc = 0.d0
 
   call ConnectionCalculateDistances(dist,option%gravity,dist_up,dist_dn, &
                                     dist_gravity,upweight)
@@ -228,8 +226,8 @@ subroutine ImmiscibleFluxHarmonicPermOnly(immiscible_auxvar_up,global_auxvar_up,
     if (immiscible_auxvar_up%kr(iphase) + &
         immiscible_auxvar_dn%kr(iphase) > floweps) then
 
-      density_ave = 0.5*(immiscible_auxvar_up%den_kg(iphase) + &
-                         immiscible_auxvar_dn%den_kg(iphase))
+      density_ave = 0.5d0*(immiscible_auxvar_up%den_kg(iphase) + &
+                           immiscible_auxvar_dn%den_kg(iphase))
       gravity_term = density_ave * dist_gravity
       delta_pressure = immiscible_auxvar_up%pres(iphase) - &
                        immiscible_auxvar_dn%pres(iphase) + &
@@ -313,10 +311,9 @@ subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
   PetscBool :: calculate_derivatives
   PetscBool :: debug_connection
 
-#if 0
   PetscInt :: bc_type
   PetscInt :: idof
-  PetscReal :: perm_ave_over_dist_visc
+  PetscReal :: perm_ave_over_dist
   PetscReal :: dist_gravity
   PetscReal :: delta_pressure
   PetscReal :: gravity_term
@@ -324,24 +321,15 @@ subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
   PetscReal :: dkr_dp
   PetscReal :: perm_dn
   PetscReal :: boundary_pressure
+  PetscReal :: density_ave
+  PetscReal :: mobility
   PetscReal :: ddelta_pressure_dpdn
   PetscBool :: derivative_toggle
   PetscReal :: dperm_dK
-  PetscReal :: delta_conc
   PetscReal :: dq_dpdn
   PetscReal :: dq_dKdn
-  PetscReal, parameter :: L_per_m3 = 1.d3
-  PetscReal :: conc_upwind, dconc_upwind_ddn
-  PetscReal :: D_hyd_dn
-  PetscReal :: D_molecular = 0.d0
-  PetscReal, parameter :: D_mech_dn = 0.d0
-  PetscReal :: Deff_over_dist
-  PetscReal :: dispersion_scale
-  PetscReal :: dD_mech_dn_dpdn
-  PetscReal :: dDeff_over_dist_dpdn
-  PetscReal :: dDeff_over_dist_dKdn
-  PetscReal :: dD_hyd_dn_dpdn
   PetscReal :: tempreal
+  PetscInt :: iphase
 
   Res = 0.d0
   Jdn = 0.d0
@@ -351,92 +339,84 @@ subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
   dq_dKdn = 0.d0
   dperm_dK = 0.d0
   delta_pressure = 0.d0
-  delta_conc = 0.d0
-  if (immis_liq_flow_eq > 0) then
-    call PermeabilityTensorToScalar(material_auxvar_dn,dist,perm_dn)
 
-    kr = 0.d0
-    bc_type = ibndtype(auxvar_mapping(IMMIS_COND_WATER_INDEX))
-    derivative_toggle = PETSC_TRUE
-    select case(bc_type)
-      ! figure out the direction of flow
-      case(DIRICHLET_BC,DIRICHLET_SEEPAGE_BC,DIRICHLET_CONDUCTANCE_BC, &
-           HYDROSTATIC_BC,HYDROSTATIC_SEEPAGE_BC,HYDROSTATIC_CONDUCTANCE_BC)
-        if (immiscible_auxvar_up%kr + immiscible_auxvar_dn%kr > floweps) then
-          ! dist(0) = scalar - magnitude of distance
-          ! gravity = vector(3)
-          ! dist(1:3) = vector(3) - unit vector
-          dist_gravity = dist(0) * dot_product(option%gravity,dist(1:3))
+  call PermeabilityTensorToScalar(material_auxvar_dn,dist,perm_dn)
 
-          if (bc_type == DIRICHLET_CONDUCTANCE_BC .or. &
-              bc_type == HYDROSTATIC_CONDUCTANCE_BC) then
-            idof = auxvar_mapping(IMMIS_COND_WATER_AUX_INDEX)
-            perm_ave_over_dist_visc = auxvars(idof) / immis_viscosity
-          else
-            perm_ave_over_dist_visc = perm_dn / (dist(0) * immis_viscosity)
+  do iphase = 1, 2
+
+    if (immiscible_auxvar_up%kr(iphase) + &
+        immiscible_auxvar_dn%kr(iphase) > floweps) then
+
+      kr = 0.d0
+      bc_type = ibndtype(auxvar_mapping(iphase))
+      derivative_toggle = PETSC_TRUE
+      select case(bc_type)
+        ! figure out the direction of flow
+        case(DIRICHLET_BC,DIRICHLET_SEEPAGE_BC,DIRICHLET_CONDUCTANCE_BC, &
+            HYDROSTATIC_BC,HYDROSTATIC_SEEPAGE_BC,HYDROSTATIC_CONDUCTANCE_BC)
+          if (immiscible_auxvar_up%kr(iphase) + &
+              immiscible_auxvar_dn%kr(iphase) > floweps) then
+            ! dist(0) = scalar - magnitude of distance
+            ! gravity = vector(3)
+            ! dist(1:3) = vector(3) - unit vector
+            dist_gravity = dist(0) * dot_product(option%gravity,dist(1:3))
+
+            perm_ave_over_dist = perm_dn / dist(0)
             dperm_dK = 1.d0 / (dist(0) * immis_viscosity)
+
+            density_ave = 0.5d0*(immiscible_auxvar_up%den_kg(iphase) + &
+                                immiscible_auxvar_dn%den_kg(iphase))
+            gravity_term = immis_density_kg * dist_gravity
+            boundary_pressure = immiscible_auxvar_up%pres(iphase)
+            delta_pressure = boundary_pressure - &
+                            immiscible_auxvar_dn%pres(iphase) + &
+                            gravity_term
+  !          ddelta_pressure_dpdn = -1.d0
+            if (delta_pressure >= 0.d0) then
+              mobility = immiscible_auxvar_up%kr(iphase) / &
+                        immiscible_auxvar_up%mu(iphase)
+  !            dkr_dp = 0.d0
+            else
+              mobility = immiscible_auxvar_dn%kr(iphase) / &
+                        immiscible_auxvar_dn%mu(iphase)
+  !            dkr_dp = immiscible_auxvar_dn%dkr_dp
+            endif
+
+            ! v_darcy[m/sec] = perm[m^2] / dist[m] * kr[-] / mu[Pa-sec]
+            !                    dP[Pa]]
+            v_darcy = perm_ave_over_dist * mobility * delta_pressure
           endif
 
-          boundary_pressure = immiscible_auxvar_up%pres
-          gravity_term = immis_density_kg * dist_gravity
-          delta_pressure = boundary_pressure - &
-                          immiscible_auxvar_dn%pres + &
-                          gravity_term
-          ddelta_pressure_dpdn = -1.d0
-          select case(bc_type)
-            case(DIRICHLET_SEEPAGE_BC,DIRICHLET_CONDUCTANCE_BC, &
-                 HYDROSTATIC_SEEPAGE_BC,HYDROSTATIC_CONDUCTANCE_BC)
-                  ! flow in         ! boundary cell is <= pref
-              if (delta_pressure > 0.d0 .and. &
-                  immiscible_auxvar_up%pres - &
-                    option%flow%reference_pressure < eps) then
-                delta_pressure = 0.d0
-                ddelta_pressure_dpdn = 0.d0
-              endif
-          end select
-          if (delta_pressure >= 0.d0) then
-            kr = immiscible_auxvar_up%kr
-            dkr_dp = 0.d0
-          else
-            kr = immiscible_auxvar_dn%kr
-            dkr_dp = immiscible_auxvar_dn%dkr_dp
+        case(NEUMANN_BC)
+          idof = auxvar_mapping(IMMIS_GAS_SATURATION_INDEX+iphase)
+          if (dabs(auxvars(idof)) > floweps) then
+            v_darcy = auxvars(idof)
           endif
-
-          ! v_darcy[m/sec] = perm[m^2] / dist[m] * kr[-] / mu[Pa-sec]
-          !                    dP[Pa]]
-          v_darcy = perm_ave_over_dist_visc * kr * delta_pressure
+          derivative_toggle = PETSC_FALSE
+        case default
+          option%io_buffer = &
+            'Boundary condition type (' // trim(StringWrite(bc_type)) // &
+            ') not recognized in ImmiscibleBCFlux phase loop.'
+          call PrintErrMsg(option)
+      end select
+      if (dabs(v_darcy) > 0.d0 .or. mobility > 0.d0) then
+        ! q[m^3 liquid/sec] = v_darcy[m/sec] * area[m^2]
+        q = v_darcy * area
+        ! Res[m^3 liquid/sec]
+        Res(iphase) = Res(iphase) + q * density_ave
+        if (calculate_derivatives .and. derivative_toggle) then
+          ! derivative toggle takes care of the NEUMANN side
+  !        dq_dpdn = area * perm_ave_over_dist_visc * &
+  !                  (dkr_dp * delta_pressure + ddelta_pressure_dpdn * kr)
+  !        Jdn(immis_liq_flow_eq,immis_liq_flow_eq) = dq_dpdn * immis_density_kmol
         endif
-
-      case(NEUMANN_BC)
-        idof = auxvar_mapping(IMMIS_COND_WATER_INDEX)
-        if (dabs(auxvars(idof)) > floweps) then
-          v_darcy = auxvars(idof)
-        endif
-        derivative_toggle = PETSC_FALSE
-      case default
-        option%io_buffer = &
-          'Boundary condition type (' // trim(StringWrite(bc_type)) // &
-          ') not recognized in ImmiscibleBCFlux phase loop.'
-        call PrintErrMsg(option)
-    end select
-    if (dabs(v_darcy) > 0.d0 .or. kr > 0.d0) then
-      ! q[m^3 liquid/sec] = v_darcy[m/sec] * area[m^2]
-      q = v_darcy * area
-      ! Res[m^3 liquid/sec]
-      Res(immis_liq_flow_eq) = Res(immis_liq_flow_eq) + q * immis_density_kmol
-      if (calculate_derivatives .and. derivative_toggle) then
-        ! derivative toggle takes care of the NEUMANN side
-        dq_dpdn = area * perm_ave_over_dist_visc * &
-                  (dkr_dp * delta_pressure + ddelta_pressure_dpdn * kr)
-        Jdn(immis_liq_flow_eq,immis_liq_flow_eq) = dq_dpdn * immis_density_kmol
+      endif
+      if (debug_connection) then
+        write(*,'(9x,"BFF(res,kr,dp): ",8es12.4)') Res(iphase), &
+                                                  kr, delta_pressure
       endif
     endif
-    if (debug_connection) then
-      write(*,'(9x,"BFF(res,kr,dp): ",8es12.4)') Res(immis_liq_flow_eq), &
-                                                 kr, delta_pressure
-    endif
-  endif
-#endif
+  enddo
 
 end subroutine ImmiscibleBCFluxHarmonicPermOnly
 

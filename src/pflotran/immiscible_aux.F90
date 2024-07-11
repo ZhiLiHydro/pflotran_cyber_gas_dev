@@ -52,8 +52,7 @@ module Immiscible_Aux_module
   PetscInt, parameter, public :: IMMIS_UPDATE_FOR_ACCUM = 1
   PetscInt, parameter, public :: IMMIS_UPDATE_FOR_BOUNDARY = 2
 
-  PetscInt, parameter, public :: IMMIS_GAS_SAT_WRT_GAS_PRES = 1
-  PetscInt, parameter, public :: IMMIS_GAS_PRES_WRT_POROS = 2
+  PetscInt, public :: dof_to_primary_variable(2)
 
   type, public :: immiscible_auxvar_type
     PetscReal :: pres(3)
@@ -122,6 +121,10 @@ function ImmiscibleAuxCreate(option)
   type(immiscible_type), pointer :: aux
 
   nullify(immis_min_pert)
+
+  dof_to_primary_variable(1:2) = &
+    reshape([IMMIS_GAS_PRESSURE_DOF,IMMIS_GAS_SATURATION_DOF], &
+             shape(dof_to_primary_variable))
 
   allocate(aux)
   aux%auxvars_up_to_date = PETSC_FALSE
