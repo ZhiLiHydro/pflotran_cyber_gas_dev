@@ -669,7 +669,7 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
   class(realization_subsurface_type) :: realization
   PetscErrorCode :: ierr
 
-  PetscViewer :: viewer
+!  PetscViewer :: viewer
   type(discretization_type), pointer :: discretization
   type(grid_type), pointer :: grid
   type(patch_type), pointer :: patch
@@ -701,7 +701,7 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
   PetscReal, pointer :: xx_loc_p(:)
   PetscReal, pointer :: vec_p(:)
 
-  character(len=MAXSTRINGLENGTH) :: string
+!  character(len=MAXSTRINGLENGTH) :: string
 
   PetscInt :: icc_up, icc_dn
   PetscReal :: Res(IMMIS_MAX_DOF)

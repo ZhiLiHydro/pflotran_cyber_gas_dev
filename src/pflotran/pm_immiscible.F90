@@ -883,19 +883,19 @@ subroutine PMImmiscibleCheckConvergence(this,snes,it,xnorm,unorm, &
   type(immiscible_auxvar_type), pointer :: immiscible_auxvars(:,:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
 
-  PetscInt :: local_id, ghosted_id
+!  PetscInt :: local_id, ghosted_id
   PetscInt :: converged_flag
 
   PetscReal :: max_abs_res_wet_
   PetscInt :: max_abs_res_wet_cell
   PetscReal :: max_abs_res_nonwet_
   PetscInt :: max_abs_res_nonwet_cell
-  PetscInt :: offset
+!  PetscInt :: offset
   PetscMPIInt :: int_mpi
 
-  PetscReal :: accumulation
-  PetscReal :: residual
-  PetscReal :: tempreal
+!  PetscReal :: accumulation
+!  PetscReal :: residual
+!  PetscReal :: tempreal
 
   grid => this%realization%patch%grid
   option => this%realization%option

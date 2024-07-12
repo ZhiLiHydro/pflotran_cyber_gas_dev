@@ -195,9 +195,9 @@ subroutine ImmiscibleFluxHarmonicPermOnly(immiscible_auxvar_up,global_auxvar_up,
   PetscReal :: gravity_term
   PetscReal :: density_ave
   PetscReal :: mobility, q
-  PetscReal :: dkr_dpup, dkr_dpdn
-  PetscReal :: tempreal
-  PetscReal :: dperm_ave_dKup, dperm_ave_dKdn
+!  PetscReal :: dkr_dpup, dkr_dpdn
+!  PetscReal :: tempreal
+!  PetscReal :: dperm_ave_dKup, dperm_ave_dKdn
   PetscReal :: dq_dpup, dq_dpdn
   PetscReal :: dq_dKup, dq_dKdn
   PetscInt :: iphase
@@ -318,17 +318,17 @@ subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
   PetscReal :: delta_pressure
   PetscReal :: gravity_term
   PetscReal :: kr, q
-  PetscReal :: dkr_dp
+!  PetscReal :: dkr_dp
   PetscReal :: perm_dn
   PetscReal :: boundary_pressure
   PetscReal :: density_ave
   PetscReal :: mobility
-  PetscReal :: ddelta_pressure_dpdn
+!  PetscReal :: ddelta_pressure_dpdn
   PetscBool :: derivative_toggle
   PetscReal :: dperm_dK
   PetscReal :: dq_dpdn
   PetscReal :: dq_dKdn
-  PetscReal :: tempreal
+!  PetscReal :: tempreal
   PetscInt :: iphase
 
   Res = 0.d0
