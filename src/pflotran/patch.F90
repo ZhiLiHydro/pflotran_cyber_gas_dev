@@ -926,6 +926,7 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
 
   type(coupler_type), pointer :: coupler
   class(tran_constraint_coupler_base_type), pointer :: cur_constraint_coupler
+  type(flow_general_condition_type), pointer :: general
   PetscInt :: ndof
   character(len=MAXSTRINGLENGTH) :: string
   PetscInt :: temp_int
@@ -1057,11 +1058,20 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
                 coupler%flow_aux_int_var = 0
 
               case(IMMISCIBLE_MODE)
+                general => coupler%flow_condition%general
                 allocate(coupler%flow_aux_mapping(IMMIS_MAX_INDEX))
                 allocate(coupler%flow_bc_type(TWO_INTEGER))
-                allocate(coupler%flow_aux_real_var(TWO_INTEGER, &
-                                                   num_connections))
+                ! allocate later once size is calculated
+                nullify(coupler%flow_aux_real_var)
+                coupler%flow_aux_mapping = 0
                 coupler%flow_bc_type = 0
+                temp_int = 0
+                if (associated(general%gas_pressure)) temp_int = temp_int + 1
+                if (associated(general%gas_saturation)) temp_int = temp_int + 1
+                if (associated(general%liquid_flux)) temp_int = temp_int + 1
+                if (associated(general%gas_flux)) temp_int = temp_int + 1
+                if (associated(general%rate)) temp_int = temp_int + 1
+                allocate(coupler%flow_aux_real_var(temp_int,num_connections))
                 coupler%flow_aux_real_var = 0.d0
 
               case(SCO2_MODE)
@@ -1536,7 +1546,8 @@ subroutine PatchUpdateCouplerAuxVarsWF(patch,coupler,option)
   if (associated(general%rate)) then
     select case(general%rate%itype)
       case(SCALED_MASS_RATE_SS,SCALED_VOLUMETRIC_RATE_SS)
-        call PatchScaleSourceSink(patch,coupler,general%rate%isubtype,option)
+        call PatchScaleSourceSink(patch,coupler,general%rate%isubtype, &
+                                  ONE_INTEGER,option)
         dof1 = PETSC_TRUE
         dof2 = PETSC_TRUE
     end select
@@ -2610,7 +2621,8 @@ subroutine PatchUpdateCouplerAuxVarsG(patch,coupler,option)
   if (associated(general%rate)) then
     select case(general%rate%itype)
       case(SCALED_MASS_RATE_SS,SCALED_VOLUMETRIC_RATE_SS)
-        call PatchScaleSourceSink(patch,coupler,general%rate%isubtype,option)
+        call PatchScaleSourceSink(patch,coupler,general%rate%isubtype, &
+                                  ONE_INTEGER,option)
     end select
   endif
 
@@ -3918,7 +3930,8 @@ subroutine PatchUpdateCouplerAuxVarsH(patch,coupler,option)
   if (associated(hydrate%rate)) then
     select case(hydrate%rate%itype)
       case(SCALED_MASS_RATE_SS,SCALED_VOLUMETRIC_RATE_SS)
-        call PatchScaleSourceSink(patch,coupler,hydrate%rate%isubtype,option)
+        call PatchScaleSourceSink(patch,coupler,hydrate%rate%isubtype, &
+                                  ONE_INTEGER,option)
     end select
   endif
 
@@ -4024,7 +4037,7 @@ subroutine PatchUpdateCouplerAuxVarsMPH(patch,coupler,option)
     select case(flow_condition%rate%itype)
       case(SCALED_MASS_RATE_SS,SCALED_VOLUMETRIC_RATE_SS)
         call PatchScaleSourceSink(patch,coupler,flow_condition%rate%isubtype, &
-                                  option)
+                                  ONE_INTEGER,option)
     end select
   endif
   if (associated(flow_condition%saturation)) then
@@ -4248,7 +4261,7 @@ subroutine PatchUpdateCouplerAuxVarsTH(patch,coupler,option)
                                             TH_PRESSURE_DOF,option)
       case(SCALED_MASS_RATE_SS,SCALED_VOLUMETRIC_RATE_SS,PRES_REG_MASS_RATE_SS)
         call PatchScaleSourceSink(patch,coupler,flow_condition%rate%isubtype, &
-                                  option)
+                                  ONE_INTEGER,option)
         rate_scale_type = flow_condition%rate%isubtype
       case(MASS_RATE_SS,VOLUMETRIC_RATE_SS)
       ! do nothing here
@@ -4270,7 +4283,8 @@ subroutine PatchUpdateCouplerAuxVarsTH(patch,coupler,option)
       case (SCALED_ENERGY_RATE_SS)
         if (rate_scale_type == 0) then
           call PatchScaleSourceSink(patch,coupler, &
-                                    flow_condition%energy_rate%isubtype,option)
+                                    flow_condition%energy_rate%isubtype, &
+                                    ONE_INTEGER,option)
         else if (rate_scale_type == flow_condition%energy_rate%isubtype) then
           !geh: do nothing as it is taken care of later.
         else
@@ -4384,8 +4398,8 @@ subroutine PatchUpdateCouplerAuxVarsRich(patch,coupler,option)
     select case(flow_condition%rate%itype)
       case(SCALED_MASS_RATE_SS,SCALED_VOLUMETRIC_RATE_SS, &
            PRES_REG_MASS_RATE_SS)
-        call PatchScaleSourceSink(patch,coupler, &
-                                  flow_condition%rate%isubtype,option)
+        call PatchScaleSourceSink(patch,coupler,flow_condition%rate%isubtype, &
+                                  ONE_INTEGER,option)
       case (HET_VOL_RATE_SS,HET_MASS_RATE_SS)
         call PatchUpdateHetroCouplerAuxVars(patch,coupler, &
                 flow_condition%rate%dataset, &
@@ -4485,8 +4499,8 @@ subroutine PatchUpdateCouplerAuxVarsZFlow(patch,coupler,option)
           flow_condition%rate%dataset%rarray(1)
     select case(flow_condition%rate%itype)
       case(SCALED_VOLUMETRIC_RATE_SS)
-        call PatchScaleSourceSink(patch,coupler, &
-                                  flow_condition%rate%isubtype,option)
+        call PatchScaleSourceSink(patch,coupler,flow_condition%rate%isubtype, &
+                                  water_aux_index,option)
 ! not yet supported
 !      case(HET_VOL_RATE_SS)
 !        call PatchUpdateHetroCouplerAuxVars(patch,coupler, &
@@ -4560,19 +4574,20 @@ subroutine PatchUpdateCouplerAuxVarsImmis(patch,coupler,option)
   dof2 = PETSC_FALSE
   real_count = 0
   if (associated(general%gas_pressure)) then
+    coupler%flow_bc_type(IMMIS_LIQUID_EQUATION_INDEX) = &
+      general%gas_pressure%itype
     real_count = real_count + 1
     coupler%flow_aux_mapping(IMMIS_GAS_PRESSURE_INDEX) = real_count
     select case(general%gas_pressure%itype)
       case(DIRICHLET_BC)
-        coupler%flow_bc_type(IMMIS_LIQUID_EQUATION_INDEX) = DIRICHLET_BC
         select type(dataset => general%gas_pressure%dataset)
           class is(dataset_ascii_type)
             coupler%flow_aux_real_var(real_count,1:num_connections) = &
               dataset%rarray(1)
           class is(dataset_gridded_hdf5_type)
             call PatchUpdateCouplerGridDataset(coupler,option, &
-                                                patch%grid,dataset, &
-                                                real_count)
+                                               patch%grid,dataset, &
+                                               real_count)
           class is(dataset_common_hdf5_type)
             ! skip cell indexed datasets used in initial conditions
           class default
@@ -4581,7 +4596,6 @@ subroutine PatchUpdateCouplerAuxVarsImmis(patch,coupler,option)
         end select
         dof1 = PETSC_TRUE
       case(HYDROSTATIC_BC)
-        coupler%flow_bc_type(IMMIS_LIQUID_EQUATION_INDEX) = HYDROSTATIC_BC
         call HydrostaticUpdateCoupler(coupler,option,patch%grid)
         dof1 = PETSC_TRUE
       case default
@@ -4595,19 +4609,19 @@ subroutine PatchUpdateCouplerAuxVarsImmis(patch,coupler,option)
   endif
 
   if (associated(general%gas_saturation)) then
+    coupler%flow_bc_type(IMMIS_GAS_EQUATION_INDEX) = DIRICHLET_BC
     real_count = real_count + 1
     coupler%flow_aux_mapping(IMMIS_GAS_SATURATION_INDEX) = real_count
     select case(general%gas_saturation%itype)
       case(DIRICHLET_BC)
-        coupler%flow_bc_type(IMMIS_GAS_EQUATION_INDEX) = DIRICHLET_BC
         select type(dataset => general%gas_saturation%dataset)
           class is(dataset_ascii_type)
             coupler%flow_aux_real_var(real_count,1:num_connections) = &
               dataset%rarray(1)
           class is(dataset_gridded_hdf5_type)
             call PatchUpdateCouplerGridDataset(coupler,option, &
-                                                patch%grid,dataset, &
-                                                real_count)
+                                               patch%grid,dataset, &
+                                               real_count)
           class is(dataset_common_hdf5_type)
             ! skip cell indexed datasets used in initial conditions
           class default
@@ -4668,9 +4682,12 @@ subroutine PatchUpdateCouplerAuxVarsImmis(patch,coupler,option)
   endif
 
   if (associated(general%rate)) then
+    real_count = real_count + 1
+    coupler%flow_aux_mapping(IMMIS_RATE_SCALE_INDEX) = real_count
     select case(general%rate%itype)
       case(SCALED_MASS_RATE_SS,SCALED_VOLUMETRIC_RATE_SS)
-        call PatchScaleSourceSink(patch,coupler,general%rate%isubtype,option)
+        call PatchScaleSourceSink(patch,coupler,general%rate%isubtype, &
+                                  real_count,option)
         dof1 = PETSC_TRUE
         dof2 = PETSC_TRUE
     end select
@@ -4759,8 +4776,8 @@ subroutine PatchUpdateCouplerAuxVarsPNF(patch,coupler,option)
   if (associated(flow_condition%rate)) then
     select case(flow_condition%rate%itype)
       case(SCALED_VOLUMETRIC_RATE_SS)
-        call PatchScaleSourceSink(patch,coupler, &
-                                  flow_condition%rate%isubtype,option)
+        call PatchScaleSourceSink(patch,coupler,flow_condition%rate%isubtype, &
+                                  PNF_LIQUID_PRESSURE_DOF,option)
     end select
   endif
 
@@ -5615,7 +5632,8 @@ subroutine PatchUpdateCouplerAuxVarsSCO2(patch,coupler,option)
   if (associated(sco2%rate)) then
     select case(sco2%rate%itype)
       case(SCALED_MASS_RATE_SS,SCALED_VOLUMETRIC_RATE_SS)
-        call PatchScaleSourceSink(patch,coupler,sco2%rate%isubtype,option)
+        call PatchScaleSourceSink(patch,coupler,sco2%rate%isubtype, &
+                                  ONE_INTEGER,option)
     end select
   endif
 
@@ -5818,7 +5836,7 @@ end subroutine PatchUpdateCouplerSaturation
 
 ! ************************************************************************** !
 
-subroutine PatchScaleSourceSink(patch,source_sink,iscale_type,option)
+subroutine PatchScaleSourceSink(patch,source_sink,iscale_type,index_,option)
   !
   ! Scales select source/sinks based on perms*volume
   !
@@ -5843,6 +5861,7 @@ subroutine PatchScaleSourceSink(patch,source_sink,iscale_type,option)
   type(patch_type) :: patch
   type(coupler_type) :: source_sink
   PetscInt :: iscale_type
+  PetscInt :: index_
   type(option_type) :: option
 
   PetscErrorCode :: ierr
@@ -5972,17 +5991,14 @@ subroutine PatchScaleSourceSink(patch,source_sink,iscale_type,option)
       !     all phases.
       case(RICHARDS_MODE,RICHARDS_TS_MODE,G_MODE,H_MODE,TH_MODE,TH_TS_MODE, &
            WF_MODE,SCO2_MODE,IMMISCIBLE_MODE)
-        source_sink%flow_aux_real_var(ONE_INTEGER,iconn) = &
-          vec_ptr(local_id)
+        source_sink%flow_aux_real_var(index_,iconn) = vec_ptr(local_id)
       case(ZFLOW_MODE)
         if (zflow_calc_adjoint .and. iscale_type /= SCALE_BY_VOLUME) then
           option%io_buffer = 'ZFLOW inversion must factor in derivative &
             &of scaled source/sink by permeability'
           call PrintErrMsg(option)
         endif
-        source_sink%flow_aux_real_var( &
-            source_sink%flow_aux_mapping(ZFLOW_COND_WATER_AUX_INDEX),&
-            iconn) = vec_ptr(local_id)
+        source_sink%flow_aux_real_var(index_,iconn) = vec_ptr(local_id)
       case(MPH_MODE,PNF_MODE)
         option%io_buffer = 'PatchScaleSourceSink not set up for flow mode'
         call PrintErrMsg(option)

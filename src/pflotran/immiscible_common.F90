@@ -40,7 +40,7 @@ module Immiscible_Common_module
       type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
       type(material_auxvar_type) :: material_auxvar_up, material_auxvar_dn
       type(option_type) :: option
-      PetscReal :: v_darcy
+      PetscReal :: v_darcy(IMMIS_MAX_DOF)
       PetscReal :: area
       PetscReal :: dist(-1:3)
       type(immiscible_parameter_type) :: immiscible_parameter
@@ -65,7 +65,7 @@ module Immiscible_Common_module
       use Material_Aux_module
       implicit none
       type(option_type) :: option
-      PetscInt :: ibndtype(1)
+      PetscInt :: ibndtype(2)
       PetscInt :: auxvar_mapping(IMMIS_MAX_INDEX)
       PetscReal :: auxvars(:) ! from aux_real_var array
       type(immiscible_auxvar_type) :: immiscible_auxvar_up, immiscible_auxvar_dn
@@ -74,7 +74,7 @@ module Immiscible_Common_module
       PetscReal :: area
       PetscReal :: dist(-1:3)
       type(immiscible_parameter_type) :: immiscible_parameter
-      PetscReal :: v_darcy
+      PetscReal :: v_darcy(IMMIS_MAX_DOF)
       PetscReal :: Res(IMMIS_MAX_DOF)
       PetscReal :: Jdn(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
       PetscBool :: calculate_derivatives
@@ -175,7 +175,7 @@ subroutine ImmiscibleFluxHarmonicPermOnly(immiscible_auxvar_up,global_auxvar_up,
   type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
   type(material_auxvar_type) :: material_auxvar_up, material_auxvar_dn
   type(option_type) :: option
-  PetscReal :: v_darcy
+  PetscReal :: v_darcy(IMMIS_MAX_DOF)
   PetscReal :: area
   PetscReal :: dist(-1:3)
   type(immiscible_parameter_type) :: immiscible_parameter
@@ -247,9 +247,9 @@ subroutine ImmiscibleFluxHarmonicPermOnly(immiscible_auxvar_up,global_auxvar_up,
       if (mobility > floweps) then
         ! v_darcy[m/sec] = perm[m^2] / dist[m] * kr[-] / mu[Pa-sec]
         !                    dP[Pa]]
-        v_darcy = perm_ave_over_dist * mobility * delta_pressure
+        v_darcy(iphase) = perm_ave_over_dist * mobility * delta_pressure
         ! q[m^3 liquid/sec] = v_darcy[m/sec] * area[m^2]
-        q = v_darcy * area
+        q = v_darcy(iphase) * area
         ! Res[m^3 liquid/sec]
         Res(iphase) = Res(iphase) + q * density_ave
 
@@ -296,7 +296,7 @@ subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
   implicit none
 
   type(option_type) :: option
-  PetscInt :: ibndtype(1)
+  PetscInt :: ibndtype(2)
   PetscInt :: auxvar_mapping(IMMIS_MAX_INDEX)
   PetscReal :: auxvars(:) ! from aux_real_var array
   type(immiscible_auxvar_type) :: immiscible_auxvar_up, immiscible_auxvar_dn
@@ -305,7 +305,7 @@ subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
   PetscReal :: area
   PetscReal :: dist(-1:3)
   type(immiscible_parameter_type) :: immiscible_parameter
-  PetscReal :: v_darcy
+  PetscReal :: v_darcy(IMMIS_MAX_DOF)
   PetscReal :: Res(IMMIS_MAX_DOF)
   PetscReal :: Jdn(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
   PetscBool :: calculate_derivatives
@@ -325,9 +325,7 @@ subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
   PetscReal :: mobility
 !  PetscReal :: ddelta_pressure_dpdn
   PetscBool :: derivative_toggle
-  PetscReal :: dperm_dK
   PetscReal :: dq_dpdn
-  PetscReal :: dq_dKdn
 !  PetscReal :: tempreal
   PetscInt :: iphase
 
@@ -336,8 +334,6 @@ subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
   v_darcy = 0.d0
   q = 0.d0
   dq_dpdn = 0.d0
-  dq_dKdn = 0.d0
-  dperm_dK = 0.d0
   delta_pressure = 0.d0
 
   call PermeabilityTensorToScalar(material_auxvar_dn,dist,perm_dn)
@@ -348,7 +344,7 @@ subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
         immiscible_auxvar_dn%kr(iphase) > floweps) then
 
       kr = 0.d0
-      bc_type = ibndtype(auxvar_mapping(iphase))
+      bc_type = ibndtype(iphase)
       derivative_toggle = PETSC_TRUE
       select case(bc_type)
         ! figure out the direction of flow
@@ -362,11 +358,10 @@ subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
             dist_gravity = dist(0) * dot_product(option%gravity,dist(1:3))
 
             perm_ave_over_dist = perm_dn / dist(0)
-            dperm_dK = 1.d0 / (dist(0) * immis_viscosity)
 
             density_ave = 0.5d0*(immiscible_auxvar_up%den_kg(iphase) + &
                                 immiscible_auxvar_dn%den_kg(iphase))
-            gravity_term = immis_density_kg * dist_gravity
+            gravity_term = density_ave * dist_gravity
             boundary_pressure = immiscible_auxvar_up%pres(iphase)
             delta_pressure = boundary_pressure - &
                             immiscible_auxvar_dn%pres(iphase) + &
@@ -384,13 +379,18 @@ subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
 
             ! v_darcy[m/sec] = perm[m^2] / dist[m] * kr[-] / mu[Pa-sec]
             !                    dP[Pa]]
-            v_darcy = perm_ave_over_dist * mobility * delta_pressure
+            v_darcy(iphase) = perm_ave_over_dist * mobility * delta_pressure
           endif
 
         case(NEUMANN_BC)
           idof = auxvar_mapping(IMMIS_GAS_SATURATION_INDEX+iphase)
           if (dabs(auxvars(idof)) > floweps) then
-            v_darcy = auxvars(idof)
+            v_darcy(iphase) = auxvars(idof)
+          endif
+          if (v_darcy(iphase) > 0.d0) then
+            density_ave = immiscible_auxvar_up%den_kg(iphase)
+          else
+            density_ave = immiscible_auxvar_up%den_kg(iphase)
           endif
           derivative_toggle = PETSC_FALSE
         case default
@@ -399,9 +399,9 @@ subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
             ') not recognized in ImmiscibleBCFlux phase loop.'
           call PrintErrMsg(option)
       end select
-      if (dabs(v_darcy) > 0.d0 .or. mobility > 0.d0) then
+      if (dabs(v_darcy(iphase)) > 0.d0 .or. mobility > 0.d0) then
         ! q[m^3 liquid/sec] = v_darcy[m/sec] * area[m^2]
-        q = v_darcy * area
+        q = v_darcy(iphase) * area
         ! Res[m^3 liquid/sec]
         Res(iphase) = Res(iphase) + q * density_ave
         if (calculate_derivatives .and. derivative_toggle) then
@@ -422,11 +422,11 @@ end subroutine ImmiscibleBCFluxHarmonicPermOnly
 
 ! ************************************************************************** !
 
-subroutine ImmiscibleSrcSink(option,flow_aux_real_var,flow_src_sink_mapping, &
-                        flow_src_sink_type, &
-                        immiscible_auxvar,global_auxvar,material_auxvar, &
-                        ss_flow_vol_flux,Res,Jdn, &
-                        calculate_derivatives)
+subroutine ImmiscibleSrcSink(option,qsrc,flow_aux_real_var, &
+                             flow_src_sink_mapping,flow_src_sink_type, &
+                             immiscible_auxvar,global_auxvar,material_auxvar, &
+                             ss_flow_vol_flux,Res,Jdn, &
+                             calculate_derivatives)
   !
   ! Computes the source/sink terms for the residual
   !
@@ -441,49 +441,43 @@ subroutine ImmiscibleSrcSink(option,flow_aux_real_var,flow_src_sink_mapping, &
   implicit none
 
   type(option_type) :: option
+  PetscReal :: qsrc(:)
   PetscReal :: flow_aux_real_var(:)
   PetscInt :: flow_src_sink_mapping(:)
-  PetscInt :: flow_src_sink_type(:)
+  PetscInt :: flow_src_sink_type
   type(immiscible_auxvar_type) :: immiscible_auxvar
   type(global_auxvar_type) :: global_auxvar
   type(material_auxvar_type) :: material_auxvar
-  PetscReal :: ss_flow_vol_flux
+  PetscReal :: ss_flow_vol_flux(:)
   PetscReal :: Res(IMMIS_MAX_DOF)
   PetscReal :: Jdn(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
   PetscBool :: calculate_derivatives
 
-#if 0
-  PetscReal :: tempreal
-  PetscReal :: qsrc_m3, qsrc_L
-  PetscReal, parameter :: L_per_m3 = 1.d3
-  PetscInt :: dof_index, index_
+  PetscInt :: iphase
+  PetscReal :: qsrc_kg(IMMIS_MAX_DOF)
 
   Res = 0.d0
   Jdn = 0.d0
 
-  if (immis_liq_flow_eq > 0) then
-    dof_index = flow_src_sink_mapping(IMMIS_COND_WATER_INDEX)
-    qsrc_m3 = 0.d0
-    tempreal = flow_aux_real_var(dof_index)
-    select case(flow_src_sink_type(dof_index))
-      case(VOLUMETRIC_RATE_SS)
-        qsrc_m3 = tempreal
-      case(SCALED_VOLUMETRIC_RATE_SS)
-        index_ = flow_src_sink_mapping(IMMIS_COND_WATER_AUX_INDEX)
-        qsrc_m3 = tempreal*flow_aux_real_var(index_)
-      case default
-        option%io_buffer = 'src_sink_type not supported in ImmiscibleSrcSink'
-        call PrintErrMsg(option)
-    end select
-    ss_flow_vol_flux = qsrc_m3
-    ! Res[m^3 liquid/sec]
-    Res(immis_liq_flow_eq) = qsrc_m3 * immis_density_kmol
+  select case(flow_src_sink_type)
+    case(MASS_RATE_SS)
+      qsrc_kg = qsrc
+    case(SCALED_MASS_RATE_SS)
+      qsrc_kg = qsrc*flow_aux_real_var( &
+                       flow_src_sink_mapping(IMMIS_RATE_SCALE_INDEX))
+    case default
+      option%io_buffer = 'src_sink_type not supported in ImmiscibleSrcSink'
+      call PrintErrMsg(option)
+  end select
 
+  do iphase = 1, 2
+    ! Res[kg/sec]
+    Res(iphase) = qsrc_kg(iphase)
+    ss_flow_vol_flux(iphase) = qsrc_kg(iphase) / &
+                               immiscible_auxvar%den_kg(iphase)
     if (calculate_derivatives) then
     endif
-  endif
-
-#endif
+  enddo
 
 end subroutine ImmiscibleSrcSink
 
@@ -566,14 +560,14 @@ subroutine XXFluxDerivative(immiscible_auxvar_up,global_auxvar_up, &
   PetscReal :: area
   PetscReal :: dist(-1:3)
   type(immiscible_parameter_type) :: immiscible_parameter
-  PetscReal :: v_darcy
+  PetscReal :: v_darcy(IMMIS_MAX_DOF)
   PetscReal :: Res(IMMIS_MAX_DOF)
   PetscReal :: Jup(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
   PetscReal :: Jdn(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
   PetscBool :: debug_connection
 
   PetscReal :: res_pert(IMMIS_MAX_DOF)
-  PetscReal :: v_darcy_dum
+  PetscReal :: v_darcy_dum(IMMIS_MAX_DOF)
   PetscReal :: Jdum(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
   PetscInt :: idof, ieq
 
@@ -643,7 +637,7 @@ subroutine XXBCFluxDerivative(ibndtype,auxvar_mapping,auxvars, &
   implicit none
 
   type(option_type) :: option
-  PetscInt :: ibndtype(1:1)
+  PetscInt :: ibndtype(2)
   PetscInt :: auxvar_mapping(IMMIS_MAX_INDEX)
   PetscReal :: auxvars(:) ! from aux_real_var array
   type(immiscible_auxvar_type) :: immiscible_auxvar_up, immiscible_auxvar_dn(0:)
@@ -652,13 +646,13 @@ subroutine XXBCFluxDerivative(ibndtype,auxvar_mapping,auxvars, &
   PetscReal :: area
   PetscReal :: dist(-1:3)
   type(immiscible_parameter_type) :: immiscible_parameter
-  PetscReal :: v_darcy
+  PetscReal :: v_darcy(IMMIS_MAX_DOF)
   PetscReal :: Res(IMMIS_MAX_DOF)
   PetscReal :: Jdn(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
   PetscBool :: debug_connection
 
   PetscReal :: res_pert(IMMIS_MAX_DOF)
-  PetscReal :: v_darcy_dum
+  PetscReal :: v_darcy_dum(IMMIS_MAX_DOF)
   PetscReal :: Jdum(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
   PetscInt :: idof, ieq
 
@@ -692,7 +686,7 @@ end subroutine XXBCFluxDerivative
 
 ! ************************************************************************** !
 
-subroutine ImmiscibleSrcSinkDerivative(option,flow_aux_real_var, &
+subroutine ImmiscibleSrcSinkDerivative(option,qsrc,flow_aux_real_var, &
                                   flow_src_sink_mapping, &
                                   flow_src_sink_type, &
                                   immiscible_auxvar,global_auxvar, &
@@ -711,24 +705,26 @@ subroutine ImmiscibleSrcSinkDerivative(option,flow_aux_real_var, &
   implicit none
 
   type(option_type) :: option
+  PetscReal :: qsrc(:)
   PetscReal :: flow_aux_real_var(:)
   PetscInt :: flow_src_sink_mapping(:)
-  PetscInt :: flow_src_sink_type(:)
+  PetscInt :: flow_src_sink_type
   type(immiscible_auxvar_type) :: immiscible_auxvar(0:)
   type(global_auxvar_type) :: global_auxvar
   type(material_auxvar_type) :: material_auxvar
-  PetscReal :: ss_flow_vol_flux
+  PetscReal :: ss_flow_vol_flux(:)
   PetscReal :: Res(IMMIS_MAX_DOF)
   PetscReal :: Jac(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
 
   PetscReal :: res_pert(IMMIS_MAX_DOF)
-  PetscReal :: dummy_real
+  PetscReal :: dummy_real(IMMIS_MAX_DOF)
   PetscReal :: Jdum(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
   PetscInt :: idof, ieq
 
   Jac = 0.d0
   ! unperturbed immiscible_auxvars value
-  call ImmiscibleSrcSink(option,flow_aux_real_var,flow_src_sink_mapping, &
+  call ImmiscibleSrcSink(option,qsrc, &
+                    flow_aux_real_var,flow_src_sink_mapping, &
                     flow_src_sink_type, &
                     immiscible_auxvar(ZERO_INTEGER),global_auxvar, &
                     material_auxvar, &
@@ -738,7 +734,8 @@ subroutine ImmiscibleSrcSinkDerivative(option,flow_aux_real_var, &
   if (immis_numerical_derivatives) then
     ! perturbed immiscible_auxvars values
     do idof = 1, option%nflowdof
-      call ImmiscibleSrcSink(option,flow_aux_real_var,flow_src_sink_mapping, &
+      call ImmiscibleSrcSink(option,qsrc, &
+                        flow_aux_real_var,flow_src_sink_mapping, &
                         flow_src_sink_type, &
                         immiscible_auxvar(idof),global_auxvar, &
                         material_auxvar, &

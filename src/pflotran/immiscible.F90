@@ -445,7 +445,7 @@ subroutine ImmiscibleUpdateAuxVars(realization)
   PetscInt :: ghosted_start, ghosted_end, ghosted_offset
   PetscReal, pointer :: xx_loc_p(:)
   PetscReal :: xxbc(realization%option%nflowdof)
-  PetscInt :: gas_pressure_index
+  PetscInt :: gas_pressure_index, gas_saturation_index
   PetscErrorCode :: ierr
 
   option => realization%option
@@ -490,6 +490,8 @@ subroutine ImmiscibleUpdateAuxVars(realization)
     cur_connection_set => boundary_condition%connection_set
     gas_pressure_index = &
       boundary_condition%flow_aux_mapping(IMMIS_GAS_PRESSURE_INDEX)
+    gas_saturation_index = &
+      boundary_condition%flow_aux_mapping(IMMIS_GAS_SATURATION_INDEX)
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
       local_id = cur_connection_set%id_dn(iconn)
@@ -498,18 +500,14 @@ subroutine ImmiscibleUpdateAuxVars(realization)
       !geh: negate to indicate boundary connection, not actual cell
       natural_id = -grid%nG2A(ghosted_id)
       ghosted_offset = (ghosted_id-1)*option%nflowdof
-      select case(boundary_condition%flow_bc_type(IMMIS_LIQUID_EQUATION_INDEX))
-        case(DIRICHLET_BC,HYDROSTATIC_BC)
-          xxbc(IMMIS_GAS_PRESSURE_DOF) = &
+      if (gas_pressure_index > 0 .and. gas_saturation_index > 0) then
+        xxbc(IMMIS_GAS_PRESSURE_DOF) = &
             boundary_condition%flow_aux_real_var(gas_pressure_index,iconn)
-        case(NEUMANN_BC)
-          xxbc(IMMIS_GAS_PRESSURE_DOF) = &
-            xx_loc_p(ghosted_offset+IMMIS_GAS_PRESSURE_DOF)
-        case default
-          option%io_buffer = 'flow boundary itype not set up in &
-            &ImmiscibleUpdateAuxVars'
-          call PrintErrMsg(option)
-      end select
+        xxbc(IMMIS_GAS_SATURATION_DOF) = &
+            boundary_condition%flow_aux_real_var(gas_saturation_index,iconn)
+      else
+        xxbc(:) = xx_loc_p(ghosted_offset+1:ghosted_offset+2)
+      endif
       ! IMMIS_UPDATE_FOR_BOUNDARY indicates call from non-perturbation
       option%iflag = IMMIS_UPDATE_FOR_BOUNDARY
       call ImmiscibleAuxVarCompute(xxbc,immiscible_auxvars_bc(sum_connection), &
@@ -690,7 +688,7 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
 
   PetscInt :: iconn
   PetscReal :: scale
-  PetscReal :: ss_flow_vol_flux
+  PetscReal :: ss_flow_vol_flux(IMMIS_MAX_DOF)
   PetscInt :: sum_connection
   PetscInt :: local_id, ghosted_id
   PetscInt :: local_id_up, local_id_dn, ghosted_id_up, ghosted_id_dn
@@ -707,7 +705,8 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
   PetscReal :: Res(IMMIS_MAX_DOF)
   PetscReal :: Jup(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
   PetscReal :: Jdn(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
-  PetscReal :: v_darcy
+  PetscReal :: v_darcy(IMMIS_MAX_DOF)
+  PetscReal :: qsrc(IMMIS_MAX_DOF)
 
   PetscInt :: ndof
   PetscInt :: istart, iend
@@ -842,7 +841,7 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
                               Res,Jup,Jdn, &
                               (local_id_up == immis_debug_cell_id .or. &
                                local_id_dn == immis_debug_cell_id))
-        patch%internal_velocities(:,sum_connection) = v_darcy
+        patch%internal_velocities(:,sum_connection) = v_darcy(:)
         if (associated(patch%internal_flow_fluxes)) then
           patch%internal_flow_fluxes(:,sum_connection) = Res(:)
         endif
@@ -901,7 +900,7 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
                                 immiscible_parameter,option, &
                                 v_darcy,Res,Jdn, &
                                 local_id == immis_debug_cell_id)
-        patch%boundary_velocities(:,sum_connection) = v_darcy
+        patch%boundary_velocities(:,sum_connection) = v_darcy(:)
         if (associated(patch%boundary_flow_fluxes)) then
           patch%boundary_flow_fluxes(:,sum_connection) = Res(:)
         endif
@@ -932,11 +931,11 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
       local_id = cur_connection_set%id_dn(iconn)
       ghosted_id = grid%nL2G(local_id)
       if (patch%imat(ghosted_id) <= 0) cycle
-
-      call ImmiscibleSrcSinkDerivative(option, &
+      qsrc = source_sink%flow_condition%general%rate%dataset%rarray(:)
+      call ImmiscibleSrcSinkDerivative(option,qsrc, &
                                   source_sink%flow_aux_real_var(:,iconn), &
                                   source_sink%flow_aux_mapping, &
-                                  source_sink%flow_bc_type, &
+                                  source_sink%flow_bc_type(1), &
                                   immiscible_auxvars(:,ghosted_id), &
                                   global_auxvars(ghosted_id), &
                                   material_auxvars(ghosted_id), &

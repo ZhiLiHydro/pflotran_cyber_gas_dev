@@ -151,13 +151,12 @@ subroutine PMImmiscibleReadSimOptionsBlock(this,input)
   class(pm_immiscible_type) :: this
   type(input_type), pointer :: input
 
-#if 0
   character(len=MAXWORDLENGTH) :: keyword
   type(option_type), pointer :: option
   character(len=MAXSTRINGLENGTH) :: error_string
-  character(len=MAXSTRINGLENGTH) :: local_error_string
+!  character(len=MAXSTRINGLENGTH) :: local_error_string
   PetscBool :: found
-  PetscReal :: array(1)
+!  PetscReal :: array(1)
   PetscInt :: temp_int
 
   option => this%option
@@ -204,7 +203,6 @@ subroutine PMImmiscibleReadSimOptionsBlock(this,input)
     end select
   enddo
   call InputPopBlock(input,option)
-#endif
 
 end subroutine PMImmiscibleReadSimOptionsBlock
 
@@ -361,13 +359,12 @@ recursive subroutine PMImmiscibleInitializeRun(this)
 
   class(pm_immiscible_type) :: this
 
-#if 0
   PetscInt :: i
   PetscErrorCode :: ierr
   type(field_type), pointer :: field
   type(patch_type), pointer :: patch
   type(option_type), pointer :: option
-  PetscInt :: ivar
+!  PetscInt :: ivar
 
   patch => this%realization%patch
   field => this%realization%field
@@ -399,7 +396,6 @@ recursive subroutine PMImmiscibleInitializeRun(this)
       &may not be used with IMMISCIBLE.'
     call PrintErrMsg(option)
   endif
-#endif
 
 end subroutine PMImmiscibleInitializeRun
 

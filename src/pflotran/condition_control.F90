@@ -1292,8 +1292,8 @@ subroutine CondControlAssignFlowInitCond(realization)
             end select
           enddo
 
+          istate = 0
           if (associated(initial_condition%flow_aux_real_var)) then
-            istate = 0
             do iconn=1,initial_condition%connection_set%num_connections
               local_id = initial_condition%connection_set%id_dn(iconn)
               ghosted_id = grid%nL2G(local_id)
@@ -1319,9 +1319,50 @@ subroutine CondControlAssignFlowInitCond(realization)
               option%io_buffer = 'Flow condition is NULL in initial condition'
               call PrintErrMsg(option)
             endif
-            option%io_buffer = 'IMMISCIBLE block in CondControlAssignFlowInit&
-              &Cond must be expanded'
-            call PrintErrMsg(option)
+
+            general => initial_condition%flow_condition%general
+
+            string = 'in flow condition "' // &
+              trim(initial_condition%flow_condition%name) // &
+              '" within initial condition "' // &
+              trim(initial_condition%flow_condition%name) // &
+              '" must be of type Dirichlet or Hydrostatic'
+            ! error checking.  the data must match the state
+            if (.not. &
+                (general%gas_pressure%itype == DIRICHLET_BC .or. &
+                  general%gas_pressure%itype == HYDROSTATIC_BC)) then
+              option%io_buffer = 'Gas pressure ' // trim(string)
+              call PrintErrMsg(option)
+            endif
+            if (.not. &
+                (general%gas_saturation%itype == DIRICHLET_BC .or. &
+                  general%gas_saturation%itype == HYDROSTATIC_BC)) then
+              option%io_buffer = 'Gas saturation ' // trim(string)
+              call PrintErrMsg(option)
+            endif
+
+            do icell=1,initial_condition%region%num_cells
+              local_id = initial_condition%region%cell_ids(icell)
+              ghosted_id = grid%nL2G(local_id)
+              iend = local_id*option%nflowdof
+              ibegin = iend-option%nflowdof+1
+              if (patch%imat(ghosted_id) <= 0) then
+                xx_p(ibegin:iend) = 0.d0
+                patch%aux%Global%auxvars(ghosted_id)%istate = 0
+                cycle
+              endif
+              ! decrement ibegin to give a local offset of 0
+              ibegin = ibegin - 1
+              if (.not.dataset_flag(IMMIS_GAS_PRESSURE_DOF)) then
+                xx_p(ibegin+IMMIS_GAS_PRESSURE_DOF) = &
+                  general%gas_pressure%dataset%rarray(1)
+              endif
+              if (.not.dataset_flag(IMMIS_GAS_SATURATION_DOF)) then
+                xx_p(ibegin+IMMIS_GAS_SATURATION_DOF) = &
+                  general%gas_saturation%dataset%rarray(1)
+              endif
+              patch%aux%Global%auxvars(ghosted_id)%istate = istate
+            enddo
           endif
           initial_condition => initial_condition%next
         enddo

@@ -2376,8 +2376,7 @@ subroutine FlowConditionGeneralRead(condition,input,option)
       condition%iphase = ANY_STATE
     elseif (associated(general%liquid_flux) .and. &
             associated(general%gas_flux) .and. &
-            ((option%iflowmode == WF_MODE .or. &
-              option%iflowmode == IMMISCIBLE_MODE) .or. &
+            (option%iflowmode == WF_MODE .or. &
              associated(general%energy_flux) .or. &
              associated(general%temperature))) then
       condition%iphase = ANY_STATE
@@ -2481,17 +2480,36 @@ subroutine FlowConditionGeneralRead(condition,input,option)
         else
            condition%iphase = TWO_PHASE_STATE
         endif
-      else
+      else ! IMMISCIBLE_MODE
         condition%iphase = TWO_PHASE_STATE
-        if (.not.associated(general%gas_pressure)) then
-          option%io_buffer = 'Immiscible Mode non-rate condition must include &
-            &a gas pressure'
-          call PrintErrMsg(option)
-        endif
-        if (.not.associated(general%gas_saturation)) then
-          option%io_buffer = 'Immisible Mode non-rate condition must include &
-            &a gas saturation'
-          call PrintErrMsg(option)
+        if (associated(general%liquid_flux) .or. &
+            associated(general%gas_flux)) then
+          i = 0
+          if (associated(general%gas_pressure)) then
+            i = i+1
+            general%gas_pressure%itype = DIRICHLET_BC
+          endif
+          if (associated(general%gas_saturation)) then
+            i = i+1
+            general%gas_saturation%itype = DIRICHLET_BC
+          endif
+          if (i > 0 .and. i < 2) then
+            option%io_buffer = 'Immiscible mode flux conditions with &
+              &specified gas pressure or gas saturation must provide both &
+              &gas pressure and gas saturation.'
+            call PrintErrMsg(option)
+          endif
+        else
+          if (.not.associated(general%gas_pressure)) then
+            option%io_buffer = 'Immiscible mode non-flux/rate condition must &
+              &include a gas pressure'
+            call PrintErrMsg(option)
+          endif
+          if (.not.associated(general%gas_saturation)) then
+            option%io_buffer = 'Immisible mode non-flux/rate condition must &
+              &include a gas saturation'
+            call PrintErrMsg(option)
+          endif
         endif
       endif
     endif

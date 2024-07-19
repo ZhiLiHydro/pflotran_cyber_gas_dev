@@ -10,8 +10,6 @@ module Immiscible_Aux_module
 
   private
 
-  PetscReal, public :: immis_density_kg = 1000.d0
-  PetscReal, public :: immis_viscosity = 1.d-3
   PetscReal, public :: immis_fmw(2) = [FMWH2O,FMWAIR]
 
   PetscReal, public :: immis_rel_pert = 1.d-8
@@ -45,7 +43,8 @@ module Immiscible_Aux_module
   PetscInt, parameter, public :: IMMIS_GAS_SATURATION_INDEX = 2
   PetscInt, parameter, public :: IMMIS_LIQUID_FLUX_INDEX = 3
   PetscInt, parameter, public :: IMMIS_GAS_FLUX_INDEX = 4
-  PetscInt, parameter, public :: IMMIS_MAX_INDEX = 4
+  PetscInt, parameter, public :: IMMIS_RATE_SCALE_INDEX = 5
+  PetscInt, parameter, public :: IMMIS_MAX_INDEX = IMMIS_RATE_SCALE_INDEX
 
   PetscInt, parameter, public :: IMMIS_UPDATE_FOR_DERIVATIVE = -1
   PetscInt, parameter, public :: IMMIS_UPDATE_FOR_FIXED_ACCUM = 0
@@ -342,18 +341,20 @@ subroutine ImmisciblePrintAuxVars(immis_auxvar,global_auxvar,material_auxvar, &
   character(len=*) :: string
   type(option_type) :: option
 
-#if 0
   print *, '--------------------------------------------------------'
   print *, trim(string)
   print *, '                 cell id: ', natural_id
-  print *, '         liquid pressure: ', immis_auxvar%pres
-  print *, '      capillary pressure: ', immis_auxvar%pc
-  print *, '       liquid saturation: ', immis_auxvar%sat
-  print *, '      liquid sat (deriv): ', immis_auxvar%dsat_dp
-  print *, '         liquid rel perm: ', immis_auxvar%kr
-  print *, ' liquid rel perm (deriv): ', immis_auxvar%dkr_dp
+  print *, '         liquid pressure: ', immis_auxvar%pres(1)
+  print *, '            gas pressure: ', immis_auxvar%pres(2)
+  print *, '      capillary pressure: ', immis_auxvar%pres(3)
+  print *, '       liquid saturation: ', immis_auxvar%sat(1)
+  print *, '          gas saturation: ', immis_auxvar%sat(2)
+  print *, '        liquid viscosity: ', immis_auxvar%kr(1)
+  print *, '           gas viscosity: ', immis_auxvar%kr(2)
+  print *, ' liquid rel permeability: ', immis_auxvar%kr(1)
+  print *, '    gas rel permeability: ', immis_auxvar%kr(1)
   print *, '--------------------------------------------------------'
-#endif
+
 end subroutine ImmisciblePrintAuxVars
 
 ! ************************************************************************** !
@@ -390,21 +391,22 @@ subroutine ImmiscibleOutputAuxVars1(immis_auxvar,global_auxvar,material_auxvar, 
   else
     open(unit=IUNIT_TEMP,file=string2)
   endif
-#if 0
-  write(IUNIT_TEMP,*) '--------------------------------------------------------'
-  write(IUNIT_TEMP,*) trim(string)
-  write(IUNIT_TEMP,*) '             cell id: ', natural_id
-  write(IUNIT_TEMP,*) '                 cell id: ', natural_id
-  write(IUNIT_TEMP,*) '         liquid pressure: ', immis_auxvar%pres
-  write(IUNIT_TEMP,*) '      capillary pressure: ', immis_auxvar%pc
-  write(IUNIT_TEMP,*) '       liquid saturation: ', immis_auxvar%sat
-  write(IUNIT_TEMP,*) '      liquid sat (deriv): ', immis_auxvar%dsat_dp
-  write(IUNIT_TEMP,*) '         liquid rel perm: ', immis_auxvar%kr
-  write(IUNIT_TEMP,*) ' liquid rel perm (deriv): ', immis_auxvar%dkr_dp
-  write(IUNIT_TEMP,*) '--------------------------------------------------------'
 
+  write(IUNIT_TEMP,*) '-------------------------------------------------------'
+  write(IUNIT_TEMP,*) trim(string)
+  write(IUNIT_TEMP,*) '                 cell id: ', natural_id
+  write(IUNIT_TEMP,*) '         liquid pressure: ', immis_auxvar%pres(1)
+  write(IUNIT_TEMP,*) '            gas pressure: ', immis_auxvar%pres(2)
+  write(IUNIT_TEMP,*) '      capillary pressure: ', immis_auxvar%pres(3)
+  write(IUNIT_TEMP,*) '       liquid saturation: ', immis_auxvar%sat(1)
+  write(IUNIT_TEMP,*) '          gas saturation: ', immis_auxvar%sat(2)
+  write(IUNIT_TEMP,*) '        liquid viscosity: ', immis_auxvar%kr(1)
+  write(IUNIT_TEMP,*) '           gas viscosity: ', immis_auxvar%kr(2)
+  write(IUNIT_TEMP,*) ' liquid rel permeability: ', immis_auxvar%kr(1)
+  write(IUNIT_TEMP,*) '    gas rel permeability: ', immis_auxvar%kr(1)
+  write(IUNIT_TEMP,*) '-------------------------------------------------------'
   close(IUNIT_TEMP)
-#endif
+
 end subroutine ImmiscibleOutputAuxVars1
 
 ! ************************************************************************** !
