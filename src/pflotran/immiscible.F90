@@ -532,7 +532,7 @@ subroutine ImmiscibleUpdateAuxVars(realization)
       ghosted_id = grid%nL2G(local_id)
       if (patch%imat(ghosted_id) <= 0) cycle
       call ImmiscibleAuxVarCopy(immiscible_auxvars(ZERO_INTEGER,ghosted_id), &
-                           immiscible_auxvars_ss(sum_connection),option)
+                                immiscible_auxvars_ss(sum_connection),option)
       call GlobalAuxVarCopy(global_auxvars(ghosted_id), &
                             global_auxvars_ss(sum_connection),option)
     enddo
@@ -706,7 +706,6 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
   PetscReal :: Jup(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
   PetscReal :: Jdn(IMMIS_MAX_DOF,IMMIS_MAX_DOF)
   PetscReal :: v_darcy(IMMIS_MAX_DOF)
-  PetscReal :: qsrc(IMMIS_MAX_DOF)
 
   PetscInt :: ndof
   PetscInt :: istart, iend
@@ -931,15 +930,17 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
       local_id = cur_connection_set%id_dn(iconn)
       ghosted_id = grid%nL2G(local_id)
       if (patch%imat(ghosted_id) <= 0) cycle
-      qsrc = source_sink%flow_condition%general%rate%dataset%rarray(:)
-      call ImmiscibleSrcSinkDerivative(option,qsrc, &
-                                  source_sink%flow_aux_real_var(:,iconn), &
-                                  source_sink%flow_aux_mapping, &
-                                  source_sink%flow_bc_type(1), &
-                                  immiscible_auxvars(:,ghosted_id), &
-                                  global_auxvars(ghosted_id), &
-                                  material_auxvars(ghosted_id), &
-                                  ss_flow_vol_flux,Res,Jdn)
+      if (associated(source_sink%flow_aux_real_var)) then
+        scale = source_sink%flow_aux_real_var( &
+                  source_sink%flow_aux_mapping(IMMIS_RATE_SCALE_INDEX),iconn)
+      else
+        scale = 1.d0
+      endif
+      call ImmiscibleSrcSinkDerivative(option,source_sink,scale, &
+                                       immiscible_auxvars(:,ghosted_id), &
+                                       global_auxvars(ghosted_id), &
+                                       material_auxvars(ghosted_id), &
+                                       ss_flow_vol_flux,Res,Jdn)
       if (associated(patch%ss_flow_vol_fluxes)) then
         patch%ss_flow_vol_fluxes(:,sum_connection) = ss_flow_vol_flux
       endif

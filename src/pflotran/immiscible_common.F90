@@ -422,8 +422,7 @@ end subroutine ImmiscibleBCFluxHarmonicPermOnly
 
 ! ************************************************************************** !
 
-subroutine ImmiscibleSrcSink(option,qsrc,flow_aux_real_var, &
-                             flow_src_sink_mapping,flow_src_sink_type, &
+subroutine ImmiscibleSrcSink(option,source_sink,scaling_factor, &
                              immiscible_auxvar,global_auxvar,material_auxvar, &
                              ss_flow_vol_flux,Res,Jdn, &
                              calculate_derivatives)
@@ -437,14 +436,13 @@ subroutine ImmiscibleSrcSink(option,qsrc,flow_aux_real_var, &
   use Material_Aux_module
   use EOS_Water_module
   use EOS_Gas_module
+  use Coupler_module
 
   implicit none
 
   type(option_type) :: option
-  PetscReal :: qsrc(:)
-  PetscReal :: flow_aux_real_var(:)
-  PetscInt :: flow_src_sink_mapping(:)
-  PetscInt :: flow_src_sink_type
+  type(coupler_type) :: source_sink
+  PetscReal :: scaling_factor
   type(immiscible_auxvar_type) :: immiscible_auxvar
   type(global_auxvar_type) :: global_auxvar
   type(material_auxvar_type) :: material_auxvar
@@ -456,15 +454,15 @@ subroutine ImmiscibleSrcSink(option,qsrc,flow_aux_real_var, &
   PetscInt :: iphase
   PetscReal :: qsrc_kg(IMMIS_MAX_DOF)
 
+  qsrc_kg = source_sink%flow_condition%general%rate%dataset%rarray(:)
+
   Res = 0.d0
   Jdn = 0.d0
 
-  select case(flow_src_sink_type)
+  select case(source_sink%flow_condition%general%rate%itype)
     case(MASS_RATE_SS)
-      qsrc_kg = qsrc
     case(SCALED_MASS_RATE_SS)
-      qsrc_kg = qsrc*flow_aux_real_var( &
-                       flow_src_sink_mapping(IMMIS_RATE_SCALE_INDEX))
+      qsrc_kg = qsrc_kg*scaling_factor
     case default
       option%io_buffer = 'src_sink_type not supported in ImmiscibleSrcSink'
       call PrintErrMsg(option)
@@ -686,13 +684,10 @@ end subroutine XXBCFluxDerivative
 
 ! ************************************************************************** !
 
-subroutine ImmiscibleSrcSinkDerivative(option,qsrc,flow_aux_real_var, &
-                                  flow_src_sink_mapping, &
-                                  flow_src_sink_type, &
-                                  immiscible_auxvar,global_auxvar, &
-                                  material_auxvar, &
-                                  ss_flow_vol_flux, &
-                                  Res,Jac)
+subroutine ImmiscibleSrcSinkDerivative(option,source_sink,scaling_factor, &
+                                       immiscible_auxvar,global_auxvar, &
+                                       material_auxvar,ss_flow_vol_flux, &
+                                       Res,Jac)
   !
   ! Computes the source/sink terms for the residual
   !
@@ -701,14 +696,13 @@ subroutine ImmiscibleSrcSinkDerivative(option,qsrc,flow_aux_real_var, &
   !
   use Option_module
   use Material_Aux_module
+  use Coupler_module
 
   implicit none
 
   type(option_type) :: option
-  PetscReal :: qsrc(:)
-  PetscReal :: flow_aux_real_var(:)
-  PetscInt :: flow_src_sink_mapping(:)
-  PetscInt :: flow_src_sink_type
+  type(coupler_type) :: source_sink
+  PetscReal :: scaling_factor
   type(immiscible_auxvar_type) :: immiscible_auxvar(0:)
   type(global_auxvar_type) :: global_auxvar
   type(material_auxvar_type) :: material_auxvar
@@ -723,24 +717,19 @@ subroutine ImmiscibleSrcSinkDerivative(option,qsrc,flow_aux_real_var, &
 
   Jac = 0.d0
   ! unperturbed immiscible_auxvars value
-  call ImmiscibleSrcSink(option,qsrc, &
-                    flow_aux_real_var,flow_src_sink_mapping, &
-                    flow_src_sink_type, &
-                    immiscible_auxvar(ZERO_INTEGER),global_auxvar, &
-                    material_auxvar, &
-                    ss_flow_vol_flux, &
-                    Res,Jac,.not.immis_numerical_derivatives)
+  call ImmiscibleSrcSink(option,source_sink,scaling_factor, &
+                         immiscible_auxvar(ZERO_INTEGER),global_auxvar, &
+                         material_auxvar,ss_flow_vol_flux, &
+                         Res,Jac,.not.immis_numerical_derivatives)
 
   if (immis_numerical_derivatives) then
     ! perturbed immiscible_auxvars values
     do idof = 1, option%nflowdof
-      call ImmiscibleSrcSink(option,qsrc, &
-                        flow_aux_real_var,flow_src_sink_mapping, &
-                        flow_src_sink_type, &
-                        immiscible_auxvar(idof),global_auxvar, &
-                        material_auxvar, &
-                        dummy_real, &
-                        res_pert,Jdum,PETSC_FALSE)
+      call ImmiscibleSrcSink(option,source_sink,scaling_factor, &
+                             immiscible_auxvar(idof),global_auxvar, &
+                             material_auxvar, &
+                             dummy_real, &
+                             res_pert,Jdum,PETSC_FALSE)
       do ieq = 1, option%nflowdof
       Jac(ieq,idof) = (res_pert(ieq)-Res(ieq)) / &
                       immiscible_auxvar(idof)%pert
