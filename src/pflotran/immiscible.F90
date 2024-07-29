@@ -92,8 +92,6 @@ subroutine ImmiscibleSetup(realization)
 
   material_auxvars => patch%aux%Material%auxvars
   flag = 0
-  !TODO(geh): change to looping over ghosted ids once the legacy code is
-  !           history and the communicator can be passed down.
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
     if (patch%imat(ghosted_id) <= 0) cycle
@@ -166,8 +164,8 @@ subroutine ImmiscibleSetup(realization)
   list => realization%output_option%output_obs_variable_list
   call ImmiscibleSetPlotVariables(realization,list)
 
-  XXFlux => ImmiscibleFluxHarmonicPermOnly
-  XXBCFlux => ImmiscibleBCFluxHarmonicPermOnly
+  XXFlux => ImmiscibleFlux
+  XXBCFlux => ImmiscibleBCFlux
 
   if (Initialized(immis_debug_cell_id) .and. &
       option%comm%size > 1) then
@@ -728,20 +726,6 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
 
   call MatZeroEntries(A,ierr);CHKERRQ(ierr)
 
-#if 0
-  call VecGetArrayF90(r,r_p,ierr);CHKERRQ(ierr)
-  Jup = 0.d0
-  Jup(1,1) = 1.d0
-  Jup(2,2) = 1.d0
-  Res = 0.d0
-  do local_id = 1, grid%nlmax
-    ghosted_id = grid%nL2G(local_id)
-    call PetUtilVecSVBL(r_p,local_id,Res,ndof,PETSC_FALSE)
-    call PetUtilMatSVBL(A,ghosted_id,ghosted_id,Jup,ndof)
-  enddo
-  call VecRestoreArrayF90(r,r_p,ierr);CHKERRQ(ierr)
-#endif
-#if 1
   ! Communication -----------------------------------------
   ! must be called before ImmiscibleUpdateAuxVars()
   call DiscretizationGlobalToLocal(discretization,xx,field%flow_xx_loc,NFLOWDOF)
@@ -803,8 +787,7 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
   else
     r_p = 0.d0
   endif
-#endif
-#if 1
+
   if (immis_calc_flux) then
     ! Interior Flux Terms -----------------------------------
     connection_set_list => grid%internal_connection_set_list
@@ -966,7 +949,6 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
   endif
 
   call VecRestoreArrayF90(r,r_p,ierr);CHKERRQ(ierr)
-#endif
 
   if (immis_simultaneous_res_jac_calc) then
 
@@ -1092,6 +1074,8 @@ subroutine ImmiscibleMapBCAuxVarsToGlobal(realization)
       sum_connection = sum_connection + 1
       global_auxvars_bc(sum_connection)%sat = &
         immiscible_auxvars_bc(sum_connection)%sat
+      global_auxvars_bc(sum_connection)%den_kg = &
+        immiscible_auxvars_bc(sum_connection)%den_kg
     enddo
     boundary_condition => boundary_condition%next
   enddo

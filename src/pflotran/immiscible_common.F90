@@ -83,8 +83,8 @@ module Immiscible_Common_module
   end interface
 
   public :: ImmiscibleAccumulation, &
-            ImmiscibleFluxHarmonicPermOnly, &
-            ImmiscibleBCFluxHarmonicPermOnly, &
+            ImmiscibleFlux, &
+            ImmiscibleBCFlux, &
             ImmiscibleAccumDerivative, &
             XXFluxDerivative, &
             XXBCFluxDerivative, &
@@ -139,25 +139,19 @@ subroutine ImmiscibleAccumulation(immiscible_auxvar,global_auxvar, &
 
   if (calculate_derivatives) then
     stop 'Implement derivative in ImmiscibleAccumulation'
-    !Jac(immis_liq_flow_eq,immis_liq_flow_eq) = &
-    !  tempreal * (immiscible_auxvar%dsat_dp * porosity + &
-    !              saturation * immiscible_auxvar%dpor_dp)
   endif
 
 end subroutine ImmiscibleAccumulation
 
 ! ************************************************************************** !
 
-subroutine ImmiscibleFluxHarmonicPermOnly(immiscible_auxvar_up,global_auxvar_up, &
-                                     material_auxvar_up, &
-                                     immiscible_auxvar_dn,global_auxvar_dn, &
-                                     material_auxvar_dn, &
-                                     area, dist, &
-                                     immiscible_parameter, &
-                                     option,v_darcy,Res, &
-                                     Jup,Jdn, &
-                                     calculate_derivatives, &
-                                     debug_connection)
+subroutine ImmiscibleFlux(immiscible_auxvar_up,global_auxvar_up, &
+                          material_auxvar_up, &
+                          immiscible_auxvar_dn,global_auxvar_dn, &
+                          material_auxvar_dn, &
+                          area, dist,immiscible_parameter,option,v_darcy, &
+                          Res,Jup,Jdn,calculate_derivatives, &
+                          debug_connection)
   !
   ! Computes the internal flux terms for the residual based on harmonic
   ! intrinsic permeability
@@ -195,9 +189,6 @@ subroutine ImmiscibleFluxHarmonicPermOnly(immiscible_auxvar_up,global_auxvar_up,
   PetscReal :: gravity_term
   PetscReal :: density_ave
   PetscReal :: mobility, q
-!  PetscReal :: dkr_dpup, dkr_dpdn
-!  PetscReal :: tempreal
-!  PetscReal :: dperm_ave_dKup, dperm_ave_dKdn
   PetscReal :: dq_dpup, dq_dpdn
   PetscReal :: dq_dKup, dq_dKdn
   PetscInt :: iphase
@@ -232,16 +223,12 @@ subroutine ImmiscibleFluxHarmonicPermOnly(immiscible_auxvar_up,global_auxvar_up,
       delta_pressure = immiscible_auxvar_up%pres(iphase) - &
                        immiscible_auxvar_dn%pres(iphase) + &
                        gravity_term
-!      dkr_dpup = 0.d0
-!      dkr_dpdn = 0.d0
       if (delta_pressure >= 0.d0) then
         mobility = immiscible_auxvar_up%kr(iphase) / &
                    immiscible_auxvar_up%mu(iphase)
-!        dkr_dpup = immiscible_auxvar_up%dkr_dp
       else
         mobility = immiscible_auxvar_dn%kr(iphase) / &
                    immiscible_auxvar_dn%mu(iphase)
-!        dkr_dpdn = immiscible_auxvar_dn%dkr_dp
       endif
 
       if (mobility > floweps) then
@@ -254,13 +241,7 @@ subroutine ImmiscibleFluxHarmonicPermOnly(immiscible_auxvar_up,global_auxvar_up,
         Res(iphase) = Res(iphase) + q * density_ave
 
         if (calculate_derivatives) then
-!          tempreal = perm_ave_over_dist_visc * area
-!          dq_dpup = tempreal * (delta_pressure * dkr_dpup + kr)
-!          dq_dpdn = tempreal * (delta_pressure * dkr_dpdn - kr)
-!          Jup(immis_liq_flow_eq,immis_liq_flow_eq) = &
-!                                              dq_dpup * immis_density_kmol
-!          Jdn(immis_liq_flow_eq,immis_liq_flow_eq) = &
-!                                              dq_dpdn * immis_density_kmol
+          stop 'Implement derivative in ImmiscibleFlux'
         endif
       endif
     endif
@@ -270,19 +251,16 @@ subroutine ImmiscibleFluxHarmonicPermOnly(immiscible_auxvar_up,global_auxvar_up,
     endif
   enddo
 
-end subroutine ImmiscibleFluxHarmonicPermOnly
+end subroutine ImmiscibleFlux
 
 ! ************************************************************************** !
 
-subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
-                                       immiscible_auxvar_up,global_auxvar_up, &
-                                       immiscible_auxvar_dn,global_auxvar_dn, &
-                                       material_auxvar_dn, &
-                                       area,dist, &
-                                       immiscible_parameter, &
-                                       option,v_darcy,Res,Jdn, &
-                                       calculate_derivatives, &
-                                       debug_connection)
+subroutine ImmiscibleBCFlux(ibndtype,auxvar_mapping,auxvars, &
+                            immiscible_auxvar_up,global_auxvar_up, &
+                            immiscible_auxvar_dn,global_auxvar_dn, &
+                            material_auxvar_dn, &
+                            area,dist,immiscible_parameter,option,v_darcy, &
+                            Res,Jdn,calculate_derivatives,debug_connection)
   !
   ! Computes the boundary flux terms for the residual
   !
@@ -318,15 +296,12 @@ subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
   PetscReal :: delta_pressure
   PetscReal :: gravity_term
   PetscReal :: kr, q
-!  PetscReal :: dkr_dp
   PetscReal :: perm_dn
   PetscReal :: boundary_pressure
   PetscReal :: density_ave
   PetscReal :: mobility
-!  PetscReal :: ddelta_pressure_dpdn
   PetscBool :: derivative_toggle
   PetscReal :: dq_dpdn
-!  PetscReal :: tempreal
   PetscInt :: iphase
 
   Res = 0.d0
@@ -366,15 +341,12 @@ subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
             delta_pressure = boundary_pressure - &
                             immiscible_auxvar_dn%pres(iphase) + &
                             gravity_term
-  !          ddelta_pressure_dpdn = -1.d0
             if (delta_pressure >= 0.d0) then
               mobility = immiscible_auxvar_up%kr(iphase) / &
                         immiscible_auxvar_up%mu(iphase)
-  !            dkr_dp = 0.d0
             else
               mobility = immiscible_auxvar_dn%kr(iphase) / &
                         immiscible_auxvar_dn%mu(iphase)
-  !            dkr_dp = immiscible_auxvar_dn%dkr_dp
             endif
 
             ! v_darcy[m/sec] = perm[m^2] / dist[m] * kr[-] / mu[Pa-sec]
@@ -406,9 +378,7 @@ subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
         Res(iphase) = Res(iphase) + q * density_ave
         if (calculate_derivatives .and. derivative_toggle) then
           ! derivative toggle takes care of the NEUMANN side
-  !        dq_dpdn = area * perm_ave_over_dist_visc * &
-  !                  (dkr_dp * delta_pressure + ddelta_pressure_dpdn * kr)
-  !        Jdn(immis_liq_flow_eq,immis_liq_flow_eq) = dq_dpdn * immis_density_kmol
+          stop 'Implement derivative in ImmiscibleBCFlux'
         endif
       endif
       if (debug_connection) then
@@ -418,7 +388,7 @@ subroutine ImmiscibleBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
     endif
   enddo
 
-end subroutine ImmiscibleBCFluxHarmonicPermOnly
+end subroutine ImmiscibleBCFlux
 
 ! ************************************************************************** !
 
