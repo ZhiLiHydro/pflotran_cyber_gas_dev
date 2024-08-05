@@ -584,7 +584,7 @@ module PM_Waste_Form_class
     PetscReal :: f1            ! Volume multiplier
   end type becc_parameters_type
 
-! -----------------------------------------------------    
+! -----------------------------------------------------
 
   public :: PMWFCreate, &
             PMWFSetup, &
@@ -2063,7 +2063,6 @@ subroutine PMWFReadMechanism(this,input,option,keyword,error_string,found)
                       call InputErrorMsg(input,option,&
                                          'Molecular weight of canister material',&
                                          'BUFFER_EROSION, GENERAL')
-                    
                     case('MW_REACTANT')
                       call InputReadDouble(input,option,new_mechanism%becc_parameters%N_r)
                       call InputErrorMsg(input,option,&
@@ -2083,7 +2082,6 @@ subroutine PMWFReadMechanism(this,input,option,keyword,error_string,found)
                       option%io_buffer = "Keyword not recognized"
                   end select
                 enddo
-                !move to error messaging
                 new_mechanism%becc_parameters%critical_volume = new_mechanism%becc_parameters%f1 * &
                   ((PI**2 * 0.5 * new_mechanism%becc_parameters%bh_rad * &
                   (new_mechanism%becc_parameters%bh_rad - new_mechanism%becc_parameters%can_rad)**2) - &
@@ -3050,7 +3048,7 @@ subroutine PMWFSetup(this)
         cur_waste_form%canister_vitality_rate = &
           cur_waste_form%canister_vitality_rate * &
           (1.d0/DAYS_PER_YEAR/24.d0/3600.d0)
-      endif 
+      endif
     endif
    !----------------------------------------------------------
     if (associated(cur_waste_form%region)) then
@@ -3615,7 +3613,7 @@ subroutine PMWFInitializeTimestep(this)
             call CalculateBE(cur_waste_form,cwfm%becc_parameters, &
                              option)
           endif
-        endif 
+        endif
         if (Initialized(cur_waste_form%canister_vitality_rate)) then
           avg_temp_local = 0.d0
           do i = 1,cur_waste_form%region%num_cells
@@ -9376,7 +9374,7 @@ subroutine BELambertWSolve(x0_in, const, tol, max_iter, sol, status)
   !  Author: Heeho Park
   !  Date: 03/22/2023
   !
-  
+
   PetscReal, intent(in) :: x0_in, const, tol
   PetscInt, intent(in) :: max_iter
   PetscReal, intent(out) :: sol
@@ -9418,14 +9416,14 @@ subroutine CalculateBE(wf, becc_parameters, option)
   use Option_module
   use PFLOTRAN_Constants_module
   use Global_Aux_module
-   
+
   implicit none
 
   class(waste_form_base_type), pointer :: wf
   type(becc_parameters_type) :: becc_parameters
   PetscReal :: density
   type(option_type) :: option
-  
+
   PetscReal :: spy, t_yr, dt_yr                  ! simulation time in years
   PetscReal :: Fexp, ratio, sedLamWx
   PetscReal :: Dr, G, y, expo
@@ -9442,7 +9440,7 @@ subroutine CalculateBE(wf, becc_parameters, option)
   !Intrusion Rate
   intr_rate =  wf%becc(2) * (becc_parameters%y0 + &
                2.0d0* becc_parameters%y1*t_yr + 3.0d0* becc_parameters%y2*t_yr**2.0d0)
-    
+
   !Seeping Erosion
   ! calculate diffusion coefficient at the rim
   if (wf%becc(4) > becc_parameters%ci_ub) then
@@ -9498,7 +9496,7 @@ subroutine CalculateBE(wf, becc_parameters, option)
                        " Buffer Erosion by Sedimentation"
     call PrintErrMsg(option)
   end if
-  
+
   rRSS = Fexp/sedLamWx
   NexpSed = becc_parameters%c_sed * wf%becc(2) * 2.d0 * PI * &
             rRSS * sin(wf%becc(1))**2.0d0
@@ -9511,20 +9509,19 @@ subroutine CalculateBE(wf, becc_parameters, option)
   if (wf%becc(4) < becc_parameters%ci_ub) then
     loss_rate = max(eros_rate+sed_rate,intr_rate)
   else
-    loss_rate = intr_rate 
+    loss_rate = intr_rate
   end if
- 
+
   buffer_volume_eroded = ((loss_rate * dt_yr) &
                          / ((1 - becc_parameters%buffer_por) * becc_parameters%smec_den))
 
   wf%becc(5) = wf%becc(5) + buffer_volume_eroded
 
   if (wf%becc(5) >= becc_parameters%critical_volume) then
-     !interpolate time     
+     !interpolate time
      wf%becc(6) = (t_yr - dt_yr) + ((becc_parameters%critical_volume - (wf%becc(5) - buffer_volume_eroded)) &
                                    / buffer_volume_eroded) * dt_yr
      wf%becc(5) = becc_parameters%critical_volume
-     
   endif
 
 end subroutine CalculateBE
@@ -9535,7 +9532,7 @@ subroutine CalculateCC(wf, becc_parameters, option)
 
   use Option_module
   use PFLOTRAN_Constants_module
-   
+
   implicit none
 
   class(waste_form_base_type), pointer :: wf
@@ -9549,7 +9546,7 @@ subroutine CalculateCC(wf, becc_parameters, option)
   dt_yr = option%dt / (60.d0*60.d0*24.d0*365.d0)
 
   r_sub = becc_parameters%bh_rad - becc_parameters%can_rad
-  
+
   ! Fracture flow rate across twice the borehole diameter
   Qa = wf%becc(3) * wf%becc(2) * (2.d0 * 2.d0 * becc_parameters%bh_rad)
 
@@ -9557,7 +9554,7 @@ subroutine CalculateCC(wf, becc_parameters, option)
   V = becc_parameters%f1 * &
       (PI**2.d0 * 0.5d0 * becc_parameters%bh_rad * r_sub**2.d0 &
       - (2.d0/3.d0 * PI * r_sub**3.d0))
-  
+
   ! Equivalent rate with diffusion in borehole
   Qlim = (4.d0 * PI**(-1.d0) * V * becc_parameters%diff_coef_bh * spy) / r_sub**2.d0
 
@@ -9571,7 +9568,7 @@ subroutine CalculateCC(wf, becc_parameters, option)
     (becc_parameters%can_den * A)
 
   wf%becc(7) = wf%becc(7) + total_corroded
-  
+
   if (wf%becc(7) >= becc_parameters%can_wall) then
     wf%becc(8) = (option%time / (60.d0*60.d0*24.d0*365.d0) - dt_yr) + ((becc_parameters%can_wall &
                  - (wf%becc(7) - total_corroded)) &
@@ -9580,7 +9577,7 @@ subroutine CalculateCC(wf, becc_parameters, option)
     wf%eff_canister_vit_rate = 0.d0
     wf%becc(7) = becc_parameters%can_wall
   endif
-  
+
 end subroutine CalculateCC
 
 ! ************************************************************************** !
