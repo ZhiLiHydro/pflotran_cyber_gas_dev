@@ -1950,7 +1950,7 @@ subroutine PMWFReadMechanism(this,input,option,keyword,error_string,found)
                 allocate(new_mechanism%becc_parameters)
                 new_mechanism%becc_parameters => PMWFBufferCopperCorosionCreate()
                 call InputPushBlock(input,option)
-                do 
+                do
                   call InputReadPflotranString(input,option)
                   if (InputCheckExit(input,option)) exit
                   call InputReadCard(input,option,word)
@@ -9501,7 +9501,7 @@ subroutine CalculateBE(wf, becc_parameters, option)
   NexpSed = becc_parameters%c_sed * wf%becc(2) * 2.d0 * PI * &
             rRSS * sin(wf%becc(1))**2.0d0
   Nal = wf%becc(2)**3.d0 / (12 * (becc_parameters%af_vis/spy)) * &
-        (becc_parameters%af_den - density) * EARTH_GRAVITY * & 
+        (becc_parameters%af_den - density) * EARTH_GRAVITY * &
         becc_parameters%af_vol_den * becc_parameters%smec_den * (2.0d0 * rRSS)
   sed_rate = min(Nal,NexpSed)
 
