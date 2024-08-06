@@ -216,7 +216,7 @@ subroutine RealizationCreateDiscretization(realization)
   use Coupler_module
   use Discretization_module
   use Grid_Unstructured_Cell_module
-  use DM_Kludge_module
+  use DM_Custom_module
   use Communicator_Structured_class, only : StructuredCommunicatorCreate
   use Communicator_Unstructured_class, only : UnstructuredCommunicatorCreate
 
@@ -712,7 +712,7 @@ subroutine RealProcessMatPropAndSatFunc(realization)
     do i = 1, size(patch%char_curves_thermal_array)
       select type(tcf => patch%char_curves_thermal_array(i)%ptr% &
                   thermal_conductivity_function)
-      class is(kT_composite_type)
+      class is(kt_composite_type)
         call CompositeTCCList(patch%characteristic_curves_thermal, &
                               tcf,option)
       end select
@@ -782,7 +782,7 @@ subroutine RealProcessMatPropAndSatFunc(realization)
       do i = 1, size(patch%char_curves_thermal_array)
          select type(tcf => patch%char_curves_thermal_array(i)%ptr% &
                      thermal_conductivity_function)
-         class is(kT_composite_type)
+         class is(kt_composite_type)
            call CompositeTCCList(patch%characteristic_curves_thermal, &
                                  tcf,option)
          end select
@@ -1311,6 +1311,8 @@ subroutine RealizationPrintCoupler(coupler,reaction,option)
       string = 'Boundary Condition'
     case(SRC_SINK_COUPLER_TYPE)
       string = 'Source Sink'
+    case(WELL_COUPLER_TYPE)
+      string = 'Well Coupler'
   end select
   write(option%fid_out,'(/,2x,a,/)') trim(string)
 

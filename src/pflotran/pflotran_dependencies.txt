@@ -109,16 +109,16 @@ co2eos.o : \
   utility.o
 communicator_aux.o :
 communicator_base.o : \
-  dm_kludge.o \
+  dm_custom.o \
   pflotran_constants.o
 communicator_structured.o : \
   communicator_base.o \
-  dm_kludge.o \
+  dm_custom.o \
   grid_structured.o \
   pflotran_constants.o
 communicator_unstructured.o : \
   communicator_base.o \
-  dm_kludge.o \
+  dm_custom.o \
   grid_unstructured.o \
   grid_unstructured_aux.o \
   grid_unstructured_explicit.o \
@@ -237,7 +237,7 @@ dataset.o : \
   dataset_global_hdf5.o \
   dataset_gridded_hdf5.o \
   dataset_map_hdf5.o \
-  dm_kludge.o \
+  dm_custom.o \
   input_aux.o \
   option.o \
   pflotran_constants.o \
@@ -271,7 +271,7 @@ dataset_common_hdf5.o : \
 dataset_global_hdf5.o : \
   dataset_base.o \
   dataset_common_hdf5.o \
-  dm_kludge.o \
+  dm_custom.o \
   hdf5_aux.o \
   logging.o \
   option.o \
@@ -307,7 +307,7 @@ debug.o : \
   pflotran_constants.o \
   string.o
 discretization.o : \
-  dm_kludge.o \
+  dm_custom.o \
   grid.o \
   grid_structured.o \
   grid_unstructured.o \
@@ -319,7 +319,7 @@ discretization.o : \
   option.o \
   pflotran_constants.o \
   string.o
-dm_kludge.o : \
+dm_custom.o : \
   grid_unstructured_aux.o \
   pflotran_constants.o
 driver.o : \
@@ -481,9 +481,15 @@ factory_subsurface.o : \
   co2_span_wagner.o \
   dataset.o \
   discretization.o \
+  dm_custom.o \
   eos.o \
   factory_subsurface_linkage.o \
+  field.o \
   global.o \
+  grid.o \
+  grid_structured.o \
+  grid_unstructured.o \
+  grid_unstructured_aux.o \
   init_common.o \
   init_subsurface.o \
   init_subsurface_flow.o \
@@ -546,6 +552,7 @@ factory_subsurface_linkage.o : \
   pm_auxiliary.o \
   pm_base.o \
   pm_ert.o \
+  pm_hydrate.o \
   pm_inversion.o \
   pm_material_transform.o \
   pm_nwt.o \
@@ -963,7 +970,7 @@ global_aux.o : \
   utility.o
 grid.o : \
   connection.o \
-  dm_kludge.o \
+  dm_custom.o \
   geometry.o \
   grid_structured.o \
   grid_unstructured.o \
@@ -991,6 +998,7 @@ grid_unstructured.o : \
   hdf5_aux.o \
   input_aux.o \
   option.o \
+  petsc_utility.o \
   pflotran_constants.o \
   string.o \
   utility.o
@@ -1052,6 +1060,7 @@ hdf5_aux.o : \
   print.o \
   string.o
 hydrate.o : \
+  condition.o \
   connection.o \
   coupler.o \
   debug.o \
@@ -1070,6 +1079,7 @@ hydrate.o : \
   output_aux.o \
   patch.o \
   pflotran_constants.o \
+  pm_well.o \
   realization_subsurface.o \
   saturation_function.o \
   srcsink_sandbox.o \
@@ -1576,7 +1586,7 @@ output_common.o : \
   connection.o \
   coupler.o \
   discretization.o \
-  dm_kludge.o \
+  dm_custom.o \
   field.o \
   global_aux.o \
   grid.o \
@@ -1699,7 +1709,7 @@ output_tecplot.o : \
   connection.o \
   coupler.o \
   discretization.o \
-  dm_kludge.o \
+  dm_custom.o \
   field.o \
   grid.o \
   grid_structured.o \
@@ -1954,11 +1964,13 @@ pm_hydrate.o : \
   hydrate_aux.o \
   input_aux.o \
   material.o \
+  material_aux.o \
   option.o \
   patch.o \
   pflotran_constants.o \
   pm_base.o \
   pm_subsurface_flow.o \
+  pm_well.o \
   realization_base.o \
   realization_subsurface.o \
   saturation_function.o \
@@ -2363,6 +2375,7 @@ pm_well.o : \
   geometry.o \
   global_aux.o \
   grid.o \
+  hydrate_aux.o \
   input_aux.o \
   material_aux.o \
   nw_transport_aux.o \
@@ -3171,7 +3184,7 @@ realization_subsurface.o : \
   dataset_base.o \
   dataset_common_hdf5.o \
   discretization.o \
-  dm_kludge.o \
+  dm_custom.o \
   field.o \
   fluid.o \
   global_aux.o \
@@ -3291,6 +3304,7 @@ saturation_function.o : \
   string.o \
   utility.o
 sco2.o : \
+  condition.o \
   connection.o \
   coupler.o \
   debug.o \
@@ -3461,6 +3475,7 @@ simulation_subsurface.o : \
   patch.o \
   pflotran_constants.o \
   pm_base.o \
+  pm_well.o \
   pmc_base.o \
   pmc_geophysics.o \
   pmc_subsurface.o \
@@ -3772,6 +3787,7 @@ units.o : \
 upwind_direction.o : \
   option.o
 utility.o : \
+  geometry.o \
   input_aux.o \
   option.o \
   pflotran_constants.o \

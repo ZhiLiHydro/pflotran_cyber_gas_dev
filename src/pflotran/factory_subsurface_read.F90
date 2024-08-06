@@ -858,6 +858,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
   use PM_Well_class
   use PM_Hydrate_class
   use PM_SCO2_class
+  use PM_Well_class
   use PM_Base_class
   use Print_module
   use Timestepper_Base_class
@@ -934,6 +935,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
   type(waypoint_list_type), pointer :: waypoint_list_time_card
   type(input_type), pointer :: input
   type(survey_type), pointer :: survey
+  class(pm_well_type), pointer :: well, cur_well
   type(parameter_type), pointer :: parameter
 
   PetscReal :: dt_init
@@ -949,6 +951,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
   internal_units = 'not_assigned'
   nullify(default_time_storage)
   nullify(waypoint_list_time_card)
+  nullify(cur_well)
 
   realization => simulation%realization
   output_option => simulation%output_option
@@ -1216,6 +1219,15 @@ subroutine FactorySubsurfReadInput(simulation,input)
         coupler => CouplerCreate(SRC_SINK_COUPLER_TYPE)
         call InputReadWord(input,option,coupler%name,PETSC_TRUE)
         call InputDefaultMsg(input,option,'Source Sink name')
+        call CouplerRead(coupler,input,option)
+        call RealizationAddCoupler(realization%patch,coupler)
+        nullify(coupler)
+
+!....................
+      case ('WELL_COUPLER')
+        coupler => CouplerCreate(WELL_COUPLER_TYPE)
+        call InputReadWord(input,option,coupler%name,PETSC_TRUE)
+        call InputDefaultMsg(input,option,'Well name')
         call CouplerRead(coupler,input,option)
         call RealizationAddCoupler(realization%patch,coupler)
         nullify(coupler)
@@ -2419,7 +2431,29 @@ subroutine FactorySubsurfReadInput(simulation,input)
 
 !....................
       case ('WELLBORE_MODEL')
-        call PMWellReadPass2(input,option)
+        well => PMWellCreate()
+        call InputReadWord(input,option,well%name,PETSC_TRUE)
+        call PrintMsg(option,well%name)
+        well%option => option
+        call well%ReadPMBlock(input)
+        if (associated(cur_well)) then
+          cur_well%next_well => well
+          cur_well => cur_well%next_well
+        else
+          simulation%temp_well_process_model_list => well
+          cur_well => simulation%temp_well_process_model_list
+        endif
+        nullify(well)
+
+!....................
+      case ('WELL_MODEL_OUTPUT')
+        call InputPushBlock(input,option)
+        do
+          call InputReadPflotranString(input,option)
+          call InputReadStringErrorMsg(input,option,card)
+          if (InputCheckExit(input,option)) exit
+        enddo
+        call InputPopBlock(input,option)
 
 !....................
       case ('PARAMETER')
@@ -2484,6 +2518,8 @@ subroutine FactorySubsurfReadInput(simulation,input)
     call WaypointListMerge(simulation%waypoint_list_subsurface, &
                            master_pmc%timestepper%local_waypoint_list,option)
   endif
+
+  nullify(cur_well)
 
 end subroutine FactorySubsurfReadInput
 
