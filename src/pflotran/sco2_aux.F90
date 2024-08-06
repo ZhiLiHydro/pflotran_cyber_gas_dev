@@ -514,7 +514,7 @@ subroutine SCO2AuxVarPerturb(sco2_auxvar, global_auxvar, material_auxvar, &
 
   Pc_entry = 0.d0
   select type(sf => characteristic_curves%saturation_function)
-   class is (sat_func_VG_STOMP_type)
+   class is (sat_func_vg_stomp_type)
     !  Pc_entry = characteristic_curves% &
     !             saturation_function%GetAlpha_() * &
     !             LIQUID_REFERENCE_DENSITY * gravity
@@ -790,7 +790,7 @@ subroutine SCO2AuxVarUpdateState(x, sco2_auxvar, global_auxvar, &
   sg_min = 1.d-3
   Pc_entry = 0.d0
   select type(sf => characteristic_curves%saturation_function)
-   class is (sat_func_VG_STOMP_type)
+   class is (sat_func_vg_stomp_type)
     !  Pc_entry = characteristic_curves% &
     !                    saturation_function%GetAlpha_() * &
     !                    LIQUID_REFERENCE_DENSITY * gravity
@@ -850,7 +850,7 @@ subroutine SCO2AuxVarUpdateState(x, sco2_auxvar, global_auxvar, &
                                               option, sco2_auxvar%sat(tgid), &
                                               sco2_auxvar%sl_min)
           select type(sf => characteristic_curves%saturation_function)
-            class is (sat_func_VG_STOMP_type)
+            class is (sat_func_vg_stomp_type)
               ! Pc is the capillary head
               Pc = Pc * LIQUID_REFERENCE_DENSITY * gravity / beta_gl
           end select
@@ -897,7 +897,7 @@ subroutine SCO2AuxVarUpdateState(x, sco2_auxvar, global_auxvar, &
                                               option, sco2_auxvar%sat(tgid), &
                                               sco2_auxvar%sl_min)
         select type(sf => characteristic_curves%saturation_function)
-          class is (sat_func_VG_STOMP_type)
+          class is (sat_func_vg_stomp_type)
             ! Pc is the capillary head
             Pc = Pc * LIQUID_REFERENCE_DENSITY * gravity / beta_gl
         end select
@@ -944,7 +944,7 @@ subroutine SCO2AuxVarUpdateState(x, sco2_auxvar, global_auxvar, &
                                               sco2_auxvar%sat(tgid), &
                                               sco2_auxvar%sl_min)
         select type(sf => characteristic_curves%saturation_function)
-          class is (sat_func_VG_STOMP_type)
+          class is (sat_func_vg_stomp_type)
             ! Pc is the capillary head
             Pc = Pc * LIQUID_REFERENCE_DENSITY * gravity / beta_gl
         end select
@@ -962,7 +962,7 @@ subroutine SCO2AuxVarUpdateState(x, sco2_auxvar, global_auxvar, &
 
       ! Compute Saturation including Hysteresis
       select type(sf => characteristic_curves%saturation_function)
-        class is (sat_func_VG_STOMP_type)
+        class is (sat_func_vg_stomp_type)
           capillary_head = max(beta_gl * sco2_auxvar%pres(cpid) / &
                            (LIQUID_REFERENCE_DENSITY * gravity),1.d-14)
           call characteristic_curves%saturation_function% &
@@ -1230,7 +1230,7 @@ subroutine SCO2AuxVarCompute(x,sco2_auxvar,global_auxvar,material_auxvar, &
   sg_min = 1.d-3
   Pc_entry = 0.d0
   select type(sf => characteristic_curves%saturation_function)
-   class is (sat_func_VG_STOMP_type)
+   class is (sat_func_vg_stomp_type)
     !  Pc_entry = characteristic_curves% &
     !                    saturation_function%GetAlpha_() * &
     !                    LIQUID_REFERENCE_DENSITY * gravity
@@ -1363,7 +1363,7 @@ subroutine SCO2AuxVarCompute(x,sco2_auxvar,global_auxvar,material_auxvar, &
                                               sco2_auxvar%sat(tgid), &
                                               sco2_auxvar%sl_min)
       select type(sf => characteristic_curves%saturation_function)
-        class is (sat_func_VG_STOMP_type)
+        class is (sat_func_vg_stomp_type)
           ! Pc is the capillary head
         sco2_auxvar%pres(cpid) = sco2_auxvar%pres(cpid) * &
                                  LIQUID_REFERENCE_DENSITY * gravity / beta_gl
@@ -1633,7 +1633,7 @@ subroutine SCO2AuxVarCompute(x,sco2_auxvar,global_auxvar,material_auxvar, &
 
   if (global_auxvar%istate /= SCO2_GAS_STATE) then
     select type(sf => characteristic_curves%saturation_function)
-      class is (sat_func_VG_STOMP_type)
+      class is (sat_func_vg_stomp_type)
         capillary_head = max(beta_gl * sco2_auxvar%pres(cpid) / &
                          (LIQUID_REFERENCE_DENSITY * gravity),1.d-14)
         call characteristic_curves%saturation_function% &

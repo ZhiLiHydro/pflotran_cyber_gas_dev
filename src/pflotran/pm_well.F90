@@ -566,8 +566,8 @@ subroutine PMWellTranCreate(pm_well)
   pm_well%tran_soln%cut_timestep = PETSC_FALSE
   pm_well%tran_soln%max_iter = 8
   pm_well%tran_soln%max_ts_cut = 20
-  pm_well%tran_soln%ts_cut_factor = 2.0d0
-  pm_well%tran_soln%ts_ramp_factor = 1.1d0
+  pm_well%tran_soln%ts_cut_factor = 2.0d0  ! these are not used in transport
+  pm_well%tran_soln%ts_ramp_factor = 1.1d0 ! these are not used in transport
   pm_well%tran_soln%itol_abs_res = 1.0d-8
   pm_well%tran_soln%itol_scaled_res = 1.0d-4
   pm_well%tran_soln%n_steps = 0
@@ -3572,14 +3572,16 @@ subroutine PMWellReadTranSolver(pm_well,input,option,keyword,error_string, &
                                error_string)
         !-----------------------------
           case('TIMESTEP_CUT_FACTOR')
-            call InputReadDouble(input,option,pm_well%tran_soln%ts_cut_factor)
-            call InputErrorMsg(input,option,'TIMESTEP_CUT_FACTOR', &
-                               error_string)
+            option%io_buffer = 'WELL_TRANSPORT_SOLVER, TIMESTEP_CUT_FACTOR &
+              &has been depreciated for the wellbore model. All time step &
+              &cuts are controlled by the transport mode for the reservoir.'
+            call PrintErrMsg(option)
         !-----------------------------
           case('TIMESTEP_RAMP_FACTOR')
-            call InputReadDouble(input,option,pm_well%tran_soln%ts_ramp_factor)
-            call InputErrorMsg(input,option,'TIMESTEP_RAMP_FACTOR', &
-                               error_string)
+            option%io_buffer = 'WELL_TRANSPORT_SOLVER, TIMESTEP_RAMP_FACTOR &
+              &has been depreciated for the wellbore model. All time step &
+              &cuts are controlled by the transport mode for the reservoir.'
+            call PrintErrMsg(option)
         !-----------------------------
           case('ITOL_ABSOLUTE_RESIDUAL')
             call InputReadDouble(input,option,pm_well%tran_soln%itol_abs_res)
@@ -9689,7 +9691,7 @@ subroutine PMWellBCFlux(pm_well,well,Res,save_flux)
 
         ! Capillary Pressure
         select type(sat_func => saturation_function)
-          class is (sat_func_KRP3_type)
+          class is (sat_func_krp3_type)
             if (.not. option%flow%pct_updated) then
               sat_func%pct = sat_func%pct_a * well% permeability(1) ** &
                              sat_func%pct_exp
@@ -9700,7 +9702,7 @@ subroutine PMWellBCFlux(pm_well,well,Res,save_flux)
               call sat_func% &
                    CapillaryPressure(1.d0-well%bh_sg,Pc,dpc_dsatl,option)
             endif
-          class is (sat_func_KRP4_type)
+          class is (sat_func_krp4_type)
             if (.not. option%flow%pct_updated) then
               sat_func%pct = sat_func%pct_a * well%permeability(1) ** &
                              sat_func%pct_exp
@@ -9711,7 +9713,7 @@ subroutine PMWellBCFlux(pm_well,well,Res,save_flux)
               call sat_func% &
                    CapillaryPressure(1.d0-well%bh_sg,Pc,dpc_dsatl,option)
             endif
-          class is (sat_func_KRP5_type)
+          class is (sat_func_krp5_type)
             if (.not. option%flow%pct_updated) then
               sat_func%pct = sat_func%pct_a * well%permeability(1) ** &
                              sat_func%pct_exp
@@ -9852,7 +9854,7 @@ subroutine PMWellBCFlux(pm_well,well,Res,save_flux)
 
         ! Capillary Pressure
         select type(sat_func => saturation_function)
-          class is (sat_func_KRP3_type)
+          class is (sat_func_krp3_type)
             if (.not. option%flow%pct_updated) then
               sat_func%pct = sat_func%pct_a * well%permeability(1) ** &
                              sat_func%pct_exp
@@ -9863,7 +9865,7 @@ subroutine PMWellBCFlux(pm_well,well,Res,save_flux)
               call sat_func% &
                    CapillaryPressure(1.d0-well%th_sg,Pc,dpc_dsatl,option)
             endif
-          class is (sat_func_KRP4_type)
+          class is (sat_func_krp4_type)
             if (.not. option%flow%pct_updated) then
               sat_func%pct = sat_func%pct_a * well%permeability(1) ** &
                              sat_func%pct_exp
@@ -9874,7 +9876,7 @@ subroutine PMWellBCFlux(pm_well,well,Res,save_flux)
               call sat_func% &
                    CapillaryPressure(1.d0-well%th_sg,Pc,dpc_dsatl,option)
             endif
-          class is (sat_func_KRP5_type)
+          class is (sat_func_krp5_type)
             if (.not. option%flow%pct_updated) then
               sat_func%pct = sat_func%pct_a * well%permeability(1) ** &
                              sat_func%pct_exp
@@ -10142,7 +10144,7 @@ subroutine PMWellUpdatePropertiesWIPPFlow(pm_well,well, &
     characteristic_curves => characteristic_curves_array(well%ccid(i))%ptr
     saturation_function => characteristic_curves%saturation_function
     select type(sat_func => saturation_function)
-      class is (sat_func_KRP3_type)
+      class is (sat_func_krp3_type)
         if (.not. option%flow%pct_updated) then
           sat_func%pct = sat_func%pct_a * well%permeability(1) ** &
                              sat_func%pct_exp
@@ -10153,7 +10155,7 @@ subroutine PMWellUpdatePropertiesWIPPFlow(pm_well,well, &
           call sat_func% &
                    CapillaryPressure(well%liq%s(i),Pc,dpc_dsatl,option)
         endif
-      class is (sat_func_KRP4_type)
+      class is (sat_func_krp4_type)
         if (.not. option%flow%pct_updated) then
           sat_func%pct = sat_func%pct_a * well%permeability(1) ** &
                              sat_func%pct_exp
@@ -10164,7 +10166,7 @@ subroutine PMWellUpdatePropertiesWIPPFlow(pm_well,well, &
           call sat_func% &
                CapillaryPressure(well%liq%s(i),Pc,dpc_dsatl,option)
         endif
-      class is (sat_func_KRP5_type)
+      class is (sat_func_krp5_type)
             if (.not. option%flow%pct_updated) then
               sat_func%pct = sat_func%pct_a * well%permeability(1) ** &
                              sat_func%pct_exp

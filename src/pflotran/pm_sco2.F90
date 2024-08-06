@@ -1166,7 +1166,7 @@ subroutine PMSCO2CheckUpdatePre(this,snes,X,dX,changed,ierr)
         case(SCO2_LIQUID_GAS_STATE)
           Pc_entry = 0.d0
           select type(sf => characteristic_curves%saturation_function)
-            class is (sat_func_VG_STOMP_type)
+            class is (sat_func_vg_stomp_type)
               ! Pc_entry = characteristic_curves% &
               !          saturation_function%GetAlpha_() * &
               !          LIQUID_REFERENCE_DENSITY * gravity
@@ -1195,7 +1195,7 @@ subroutine PMSCO2CheckUpdatePre(this,snes,X,dX,changed,ierr)
           if ((X_p(gas_pressure_index) + dX_p(gas_pressure_index)) > &
              5.d8) dX_p(gas_pressure_index) = 5.d8 - X_p(gas_pressure_index)
           select type(sf => characteristic_curves%saturation_function)
-            class is (sat_func_VG_STOMP_type)
+            class is (sat_func_vg_stomp_type)
               Pc_max = characteristic_curves%saturation_function%Pcmax * &
                          LIQUID_REFERENCE_DENSITY * gravity
             class default
