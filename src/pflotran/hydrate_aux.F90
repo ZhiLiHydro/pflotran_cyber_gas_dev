@@ -3311,7 +3311,7 @@ subroutine HydrateAuxVarPerturb(hyd_auxvar,global_auxvar, &
       dxs = max(1.d-12,1.d-6*hyd_auxvar(ZERO_INTEGER)%m_salt(1))
       if (hyd_auxvar(ZERO_INTEGER)%pres(lid) > PE_hyd) then
         dxs = dxs
-      elseif (hyd_auxvar(ZERO_INTEGER)%m_salt(1) > 0.d0) then
+      elseif (hyd_auxvar(ZERO_INTEGER)%m_salt(1) > dxs) then
         dxs = -dxs
       endif
 
