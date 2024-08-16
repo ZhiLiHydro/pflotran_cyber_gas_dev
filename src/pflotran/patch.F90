@@ -5133,7 +5133,20 @@ subroutine PatchUpdateCouplerAuxVarsSCO2(patch,coupler,option)
           endif
       ! ---------------------------------------------------------------------- !
         case(SCO2_ANY_STATE)
-            ! MAN: need to decide what goes here
+          ! With energy
+            ! temperature; 4th dof ------------------------- !
+          if (sco2_thermal) then
+            select case(sco2%temperature%itype)
+              case(DIRICHLET_BC)
+                call PatchGetCouplerValueFromDataset(coupler,option, &
+                     patch%grid,sco2%temperature%dataset,iconn,temperature)
+                coupler%flow_aux_real_var(SCO2_TEMPERATURE_DOF, &
+                     iconn) = temperature
+                dof4 = PETSC_TRUE
+                coupler%flow_bc_type(SCO2_ENERGY_EQUATION_INDEX) = &
+                                                                DIRICHLET_BC
+            end select
+          endif
       ! ---------------------------------------------------------------------- !
       end select
 
