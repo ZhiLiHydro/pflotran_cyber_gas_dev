@@ -2165,7 +2165,8 @@ subroutine PMWellSetup(this)
 
   this%flow_soln%ndof = this%nphase
 
-  if (option%itranmode /= NULL_MODE) then
+  if (option%itranmode /= NULL_MODE .and. &
+      option%iflowmode /=SCO2_MODE) then
     this%transport = PETSC_TRUE
     if (option%itranmode /= NWT_MODE) then
       option%io_buffer ='The only transport mode allowed with the &
