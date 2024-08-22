@@ -106,8 +106,7 @@ subroutine FactorySubsurfaceInitPostPetsc(simulation)
                                        pm_ufd_biosphere,pm_geop, &
                                        pm_auxiliary,pm_well_list, &
                                        pm_material_transform, &
-                                       pm_fracture, &
-                                       pm_parameter_list)
+                                       pm_parameter_list,pm_fracture)
 
   call FactorySubsurfaceSetFlowMode(pm_flow,pm_well_list,option)
   call FactorySubsurfaceSetGeopMode(pm_geop,option)
