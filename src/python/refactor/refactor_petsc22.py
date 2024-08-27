@@ -1,19 +1,32 @@
-import sys
-import shutil
 import os
+import sys
+try:
+    pflotran_dir = os.environ['PFLOTRAN_DIR']
+except KeyError:
+    print('PFLOTRAN_DIR must point to PFLOTRAN installation directory and be defined in system environment variables.')
+    sys.exit(1)
+sys.path.append(pflotran_dir + '/src/python/refactor')
+from pflotran_source_files import *
+
+import shutil
 import fnmatch
 import re
-
 
 myflags = re.I
 
 routine_list = []
-routine_list.append(['MatSetValuesLocal','PetUtilMatSVBL'])
+routine_list.append(['MatSetValuesLocal','PetUtilMatSVBL',list(i for i in range(6)),False])
+routine_list.append(['MatSetValuesBlockedLocal','PetUtilMatSVBL',list(i for i in range(6)),False])
 
 def compile_regex(list_):
     new_list = []
     for entry in list_:
-        new_list.append([re.compile(r'\s*call\s*'+str(entry[0])+r'\s*\('),entry[0],entry[1]])
+        new_entry = []
+        new_entry.append(re.compile(r'\s*call\s*'+str(entry[0])+r'\s*\('))
+        for i in range(len(entry)):
+            new_entry.append(entry[i])
+#        new_list.append([re.compile(r'\s*call\s*'+str(entry[0])+r'\s*\('),entry[0],entry[1]])
+        new_list.append(new_entry)
     return new_list
 
 #regex_matsetval = re.compile(r'(?P<pre>\s*call\s*)MatSetValuesLocal\s*\(\s*(?P<arg>[^(&]+)(?P<ending>[\)\&])\s*\w*',flags=myflags)
@@ -52,13 +65,21 @@ def refactor_routine(routine_info,line,fin,fout):
     new_pre = m.group('pre').rstrip()+' '+new_name+'('
     indentation = ' '*len(new_pre)
     line_out = new_pre
-    num_args = len(arguments)
-    for iarg in range(num_args):
+    arg_map = routine_info[3]
+    append_chkerr_with_last_entry = routine_info[4]
+    if len(arg_map) == 0:
+        arg_map = range(len(arguments))
+    num_args = len(arg_map)
+    for iarg_map in range(num_args):
+        iarg = arg_map[iarg_map]
         entry = arguments[iarg]
-        if (iarg < num_args-1):
+        if iarg < num_args-1:
             new_segment = entry+','
         else:
-            new_segment = entry+');CHKERR('+entry+')'
+            if append_chkerr_with_last_entry:
+                new_segment = entry+');CHKERR('+entry+')'
+            else:
+                new_segment = entry+')'
         if len(line_out+new_segment) > 80:
             fout.write(line_out+' &\n')
             line_out = indentation+new_segment
@@ -122,14 +143,16 @@ def refactor(filename,regex_list):
 
 
 def main():
+    test = True
     print('\nRefactoring MatSetValues calls\n')
     regex_list = compile_regex(routine_list)
-    suffix = '*.F90'
-    for root, dirnames, filenames in os.walk('.'):
-        for filename in fnmatch.filter(filenames,suffix):
-            filename = os.path.join(root,filename)
-#            print(filename)
-            refactor(filename,regex_list)
+    if test:
+        filename_list = ['./test/test.F90']
+    else:
+        filename_list = create_source_file_list('./test',test=True)
+    print(filename_list)
+    for filename in filename_list:
+        refactor(filename,regex_list)
 
 
 if __name__ == "__main__":
