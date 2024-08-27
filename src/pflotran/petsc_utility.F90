@@ -12,6 +12,15 @@ module Petsc_Utility_module
 
   private
 
+  interface PetUtilMatSVL
+    module procedure PetUtilMatSVL1
+  end interface
+
+  interface PetUtilMatSVBL
+    module procedure PetUtilMatSVBL1
+    module procedure PetUtilMatSVBL2
+  end interface
+
   interface PetUtilLoadVec
     module procedure PetUtilLoadVecInt
     module procedure PetUtilLoadVecReal
@@ -22,7 +31,8 @@ module Petsc_Utility_module
     module procedure PetUtilUnloadVecReal
   end interface
 
-  public :: PetUtilMatSVBL, &
+  public :: PetUtilMatSVL, &
+            PetUtilMatSVBL, &
             PetUtilVecSVBL, &
             PetUtilLoadVec, &
             PetUtilUnloadVec, &
@@ -32,7 +42,33 @@ contains
 
 ! ************************************************************************** !
 
-subroutine PetUtilMatSVBL(A,irow,icol,matrix_block,ndof)
+subroutine PetUtilMatSVL1(A,nrow,irow,ncol,icol,matrix_block,insert_mode)
+  !
+  ! Maps values from 1x1 sized array into ncell*ndof blocked matrix
+  !
+  ! Author: Glenn Hammond
+  ! Date: 08/26/24
+  !
+  implicit none
+
+  Mat :: A
+  PetscInt :: nrow
+  PetscInt :: irow
+  PetscInt :: ncol
+  PetscInt :: icol
+  PetscReal :: matrix_block(:,:)
+  PetscInt :: insert_mode
+
+  PetscErrorCode :: ierr
+
+  call MatSetValuesLocal(A,1,irow-1,1,icol-1,matrix_block,insert_mode, &
+                         ierr);CHKERRQ(ierr)
+
+end subroutine PetUtilMatSVL1
+
+! ************************************************************************** !
+
+subroutine PetUtilMatSVBL1(A,irow,icol,matrix_block,ndof)
   !
   ! Maps values from ndof*ndof sized array into ncell*ndof blocked matrix
   !
@@ -55,7 +91,33 @@ subroutine PetUtilMatSVBL(A,irow,icol,matrix_block,ndof)
   call MatSetValuesBlockedLocal(A,1,irow-1,1,icol-1,ndof_mat,ADD_VALUES, &
                                 ierr);CHKERRQ(ierr)
 
-end subroutine PetUtilMatSVBL
+end subroutine PetUtilMatSVBL1
+
+! ************************************************************************** !
+
+subroutine PetUtilMatSVBL2(A,nrow,irow,ncol,icol,matrix_block,insert_mode)
+  !
+  ! Maps values from ndof*ndof sized array into ncell*ndof blocked matrix
+  !
+  ! Author: Glenn Hammond
+  ! Date: 08/26/24
+  !
+  implicit none
+
+  Mat :: A
+  PetscInt :: nrow
+  PetscInt :: irow
+  PetscInt :: ncol
+  PetscInt :: icol
+  PetscReal :: matrix_block(:,:)
+  PetscInt :: insert_mode
+
+  PetscErrorCode :: ierr
+
+  call MatSetValuesBlockedLocal(A,1,irow-1,1,icol-1,matrix_block, &
+                                insert_mode,ierr);CHKERRQ(ierr)
+
+end subroutine PetUtilMatSVBL2
 
 ! ************************************************************************** !
 
