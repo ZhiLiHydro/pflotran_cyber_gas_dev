@@ -36,19 +36,34 @@ program test
   values2 = 1.d0
   rows = 0
   cols = 0
+
+  ! doesn't like:
   call MatSetValue(A,id-1,id-1,value1,INSERT_VALUES,ierr);CHKERRQ(ierr)
 
+  ! doesn't like:             3.22
   call MatSetValues(A,1,id-1,1,id-1,value1,INSERT_VALUES,ierr);CHKERRQ(ierr)
-  ! doesn't like
+  ! doesn't like: 3.20, 3.21, 3.22
   call MatSetValues(A,1,id-1,1,id-1,values1,INSERT_VALUES,ierr);CHKERRQ(ierr)
-  ! doesn't like
+  ! doesn't like: 3.20, 3.21, 3.22
   call MatSetValues(A,1,id-1,1,id-1,values2,INSERT_VALUES,ierr);CHKERRQ(ierr)
 
+  ! doesn't like:
   call MatSetValues(A,1,rows,1,cols,values1,INSERT_VALUES,ierr);CHKERRQ(ierr)
+  ! doesn't like:
   call MatSetValues(A,1,rows,1,cols,values2,INSERT_VALUES,ierr);CHKERRQ(ierr)
 
+  ! doesn't like: 3.20, 3.21, 3.22
+  call MatSetValuesBlocked(A,1,id-1,1,id-1,value1,INSERT_VALUES,ierr);CHKERRQ(ierr)
+  ! doesn't like:             3.22
+  call MatSetValuesBlocked(A,1,id-1,1,id-1,values1,INSERT_VALUES,ierr);CHKERRQ(ierr)
+  ! doesn't like:             3.22
+  call MatSetValuesBlocked(A,1,id-1,1,id-1,values2,INSERT_VALUES,ierr);CHKERRQ(ierr)
+
+  ! doesn't like: 3.20, 3.21, 3.22
+  call MatSetValuesBlocked(A,1,rows,1,cols,value1,INSERT_VALUES,ierr);CHKERRQ(ierr)
+  ! doesn't like:
   call MatSetValuesBlocked(A,1,rows,1,cols,values1,INSERT_VALUES,ierr);CHKERRQ(ierr)
-  ! doesn't like
+  ! doesn't like: 3.20, 3.21, 
   call MatSetValuesBlocked(A,1,rows,1,cols,values2,INSERT_VALUES,ierr);CHKERRQ(ierr)
 
   call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
