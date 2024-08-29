@@ -39,7 +39,7 @@ function DataMediatorVecCreate()
   allocate(data_mediator)
   call DataMediatorBaseCreate(data_mediator)
   data_mediator%vec = PETSC_NULL_VEC
-  data_mediator%scatter_ctx = PETSC_NULL_VECSCATTER
+  data_mediator%scatter_ctx = PETSC_NULL_VEC_SCATTER
   DataMediatorVecCreate => data_mediator
 
 end function DataMediatorVecCreate
@@ -97,7 +97,7 @@ recursive subroutine DataMediatorVecStrip(this)
   ! Simply nullify the pointer as the dataset resides in a list to be
   ! destroyed separately.
   !nullify(data_mediator%dataset)
-  if (this%scatter_ctx /= PETSC_NULL_VECSCATTER) then
+  if (this%scatter_ctx /= PETSC_NULL_VEC_SCATTER) then
     call VecScatterDestroy(this%scatter_ctx,ierr);CHKERRQ(ierr)
   endif
   if (this%vec /= PETSC_NULL_VEC) then

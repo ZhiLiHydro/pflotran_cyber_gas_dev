@@ -127,18 +127,18 @@ function GMDMCreate()
   gmdm%is_ghosts_local = PETSC_NULL_IS
   gmdm%is_ghosts_petsc = PETSC_NULL_IS
   gmdm%is_local_natural = PETSC_NULL_IS
-  gmdm%scatter_ltog = PETSC_NULL_VECSCATTER
-  gmdm%scatter_gtol = PETSC_NULL_VECSCATTER
-  gmdm%scatter_ltol  = PETSC_NULL_VECSCATTER
-  gmdm%scatter_gton = PETSC_NULL_VECSCATTER
-  gmdm%scatter_gton_elem = PETSC_NULL_VECSCATTER
+  gmdm%scatter_ltog = PETSC_NULL_VEC_SCATTER
+  gmdm%scatter_gtol = PETSC_NULL_VEC_SCATTER
+  gmdm%scatter_ltol  = PETSC_NULL_VEC_SCATTER
+  gmdm%scatter_gton = PETSC_NULL_VEC_SCATTER
+  gmdm%scatter_gton_elem = PETSC_NULL_VEC_SCATTER
   gmdm%mapping_ltog = 0
   gmdm%mapping_ltog_elem = 0
   gmdm%global_vec = PETSC_NULL_VEC
   gmdm%local_vec = PETSC_NULL_VEC
   gmdm%global_vec_elem = PETSC_NULL_VEC
-  gmdm%scatter_subsurf_to_geomech_ndof = PETSC_NULL_VECSCATTER
-  gmdm%scatter_geomech_to_subsurf_ndof = PETSC_NULL_VECSCATTER
+  gmdm%scatter_subsurf_to_geomech_ndof = PETSC_NULL_VEC_SCATTER
+  gmdm%scatter_geomech_to_subsurf_ndof = PETSC_NULL_VEC_SCATTER
 
   GMDMCreate => gmdm
 
@@ -915,19 +915,19 @@ subroutine GMDMDestroy(gmdm)
   if (gmdm%is_local_natural /= PETSC_NULL_IS) then
     call ISDestroy(gmdm%is_local_natural,ierr);CHKERRQ(ierr)
   endif
-  if (gmdm%scatter_ltog /= PETSC_NULL_VECSCATTER) then
+  if (gmdm%scatter_ltog /= PETSC_NULL_VEC_SCATTER) then
     call VecScatterDestroy(gmdm%scatter_ltog,ierr);CHKERRQ(ierr)
   endif
-  if (gmdm%scatter_gtol /= PETSC_NULL_VECSCATTER) then
+  if (gmdm%scatter_gtol /= PETSC_NULL_VEC_SCATTER) then
     call VecScatterDestroy(gmdm%scatter_gtol,ierr);CHKERRQ(ierr)
   endif
-  if (gmdm%scatter_ltol /= PETSC_NULL_VECSCATTER) then
+  if (gmdm%scatter_ltol /= PETSC_NULL_VEC_SCATTER) then
     call VecScatterDestroy(gmdm%scatter_ltol,ierr);CHKERRQ(ierr)
   endif
-  if (gmdm%scatter_gton /= PETSC_NULL_VECSCATTER) then
+  if (gmdm%scatter_gton /= PETSC_NULL_VEC_SCATTER) then
     call VecScatterDestroy(gmdm%scatter_gton,ierr);CHKERRQ(ierr)
   endif
-  if (gmdm%scatter_gton_elem /= PETSC_NULL_VECSCATTER) then
+  if (gmdm%scatter_gton_elem /= PETSC_NULL_VEC_SCATTER) then
     call VecScatterDestroy(gmdm%scatter_gton_elem,ierr);CHKERRQ(ierr)
   endif
   call ISLocalToGlobalMappingDestroy(gmdm%mapping_ltog,ierr);CHKERRQ(ierr)
@@ -936,11 +936,11 @@ subroutine GMDMDestroy(gmdm)
   call VecDestroy(gmdm%global_vec,ierr);CHKERRQ(ierr)
   call VecDestroy(gmdm%local_vec,ierr);CHKERRQ(ierr)
   call VecDestroy(gmdm%global_vec_elem,ierr);CHKERRQ(ierr)
-  if (gmdm%scatter_subsurf_to_geomech_ndof /= PETSC_NULL_VECSCATTER) then
+  if (gmdm%scatter_subsurf_to_geomech_ndof /= PETSC_NULL_VEC_SCATTER) then
     call VecScatterDestroy(gmdm%scatter_subsurf_to_geomech_ndof, &
                            ierr);CHKERRQ(ierr)
   endif
-  if (gmdm%scatter_geomech_to_subsurf_ndof /= PETSC_NULL_VECSCATTER) then
+  if (gmdm%scatter_geomech_to_subsurf_ndof /= PETSC_NULL_VEC_SCATTER) then
     call VecScatterDestroy(gmdm%scatter_geomech_to_subsurf_ndof, &
                            ierr);CHKERRQ(ierr)
   endif

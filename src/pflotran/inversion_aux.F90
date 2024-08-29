@@ -126,9 +126,9 @@ function InversionAuxCreate(driver)
   aux%parameter_vec = PETSC_NULL_VEC
   aux%dist_parameter_vec = PETSC_NULL_VEC
   aux%del_parameter_vec = PETSC_NULL_VEC
-  aux%scatter_measure_to_dist_measure = PETSC_NULL_VECSCATTER
-  aux%scatter_param_to_dist_param = PETSC_NULL_VECSCATTER
-  aux%scatter_global_to_dist_param = PETSC_NULL_VECSCATTER
+  aux%scatter_measure_to_dist_measure = PETSC_NULL_VEC_SCATTER
+  aux%scatter_param_to_dist_param = PETSC_NULL_VEC_SCATTER
+  aux%scatter_global_to_dist_param = PETSC_NULL_VEC_SCATTER
   aux%JsensitivityT = PETSC_NULL_MAT
   nullify(aux%local_measurement_values_ptr)
   nullify(aux%local_dobs_dunknown_values_ptr)
@@ -873,15 +873,15 @@ subroutine InversionAuxDestroy(aux)
   if (aux%del_parameter_vec /= PETSC_NULL_VEC) then
     call VecDestroy(aux%del_parameter_vec,ierr);CHKERRQ(ierr)
   endif
-  if (aux%scatter_measure_to_dist_measure /= PETSC_NULL_VECSCATTER) then
+  if (aux%scatter_measure_to_dist_measure /= PETSC_NULL_VEC_SCATTER) then
     call VecScatterDestroy(aux%scatter_measure_to_dist_measure, &
                            ierr);CHKERRQ(ierr)
   endif
-  if (aux%scatter_param_to_dist_param /= PETSC_NULL_VECSCATTER) then
+  if (aux%scatter_param_to_dist_param /= PETSC_NULL_VEC_SCATTER) then
     call VecScatterDestroy(aux%scatter_measure_to_dist_measure, &
                            ierr);CHKERRQ(ierr)
   endif
-  if (aux%scatter_global_to_dist_param /= PETSC_NULL_VECSCATTER) then
+  if (aux%scatter_global_to_dist_param /= PETSC_NULL_VEC_SCATTER) then
     call VecScatterDestroy(aux%scatter_measure_to_dist_measure, &
                            ierr);CHKERRQ(ierr)
   endif

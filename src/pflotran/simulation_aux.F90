@@ -65,8 +65,8 @@ function SimAuxCreate()
   aux%subsurf_strain = PETSC_NULL_VEC
   aux%subsurf_stress = PETSC_NULL_VEC
 
-  aux%subsurf_to_geomechanics = PETSC_NULL_VECSCATTER
-  aux%geomechanics_to_subsurf = PETSC_NULL_VECSCATTER
+  aux%subsurf_to_geomechanics = PETSC_NULL_VEC_SCATTER
+  aux%geomechanics_to_subsurf = PETSC_NULL_VEC_SCATTER
 
   SimAuxCreate => aux
 
@@ -193,10 +193,10 @@ subroutine SimAuxDestroy(aux)
     call VecDestroy(aux%subsurf_strain,ierr);CHKERRQ(ierr)
   endif
 
-  if (aux%subsurf_to_geomechanics /= PETSC_NULL_VECSCATTER) then
+  if (aux%subsurf_to_geomechanics /= PETSC_NULL_VEC_SCATTER) then
     call VecScatterDestroy(aux%subsurf_to_geomechanics,ierr);CHKERRQ(ierr)
   endif
-  if (aux%geomechanics_to_subsurf /= PETSC_NULL_VECSCATTER) then
+  if (aux%geomechanics_to_subsurf /= PETSC_NULL_VEC_SCATTER) then
     call VecScatterDestroy(aux%geomechanics_to_subsurf,ierr);CHKERRQ(ierr)
   endif
 

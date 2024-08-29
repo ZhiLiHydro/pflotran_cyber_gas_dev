@@ -53,8 +53,8 @@ function RegressionCreate()
   nullify(regression%cells_per_process_natural_ids)
   regression%natural_cell_id_vec = PETSC_NULL_VEC
   regression%cells_per_process_vec =  PETSC_NULL_VEC
-  regression%scatter_natural_cell_id_gtos = PETSC_NULL_VECSCATTER
-  regression%scatter_cells_per_process_gtos = PETSC_NULL_VECSCATTER
+  regression%scatter_natural_cell_id_gtos = PETSC_NULL_VEC_SCATTER
+  regression%scatter_cells_per_process_gtos = PETSC_NULL_VEC_SCATTER
   nullify(regression%next)
   RegressionCreate => regression
 
@@ -909,11 +909,11 @@ subroutine RegressionDestroy(regression)
   if (regression%cells_per_process_vec /= PETSC_NULL_VEC) then
     call VecDestroy(regression%cells_per_process_vec,ierr);CHKERRQ(ierr)
   endif
-  if (regression%scatter_natural_cell_id_gtos /= PETSC_NULL_VECSCATTER) then
+  if (regression%scatter_natural_cell_id_gtos /= PETSC_NULL_VEC_SCATTER) then
     call VecScatterDestroy(regression%scatter_natural_cell_id_gtos, &
                            ierr);CHKERRQ(ierr)
   endif
-  if (regression%scatter_cells_per_process_gtos /= PETSC_NULL_VECSCATTER) then
+  if (regression%scatter_cells_per_process_gtos /= PETSC_NULL_VEC_SCATTER) then
     call VecScatterDestroy(regression%scatter_cells_per_process_gtos, &
                            ierr);CHKERRQ(ierr)
   endif
