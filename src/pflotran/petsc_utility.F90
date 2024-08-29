@@ -52,9 +52,9 @@ subroutine PetUtilMatSVL1(A,nrow,irow,ncol,icol,matrix_block,insert_mode)
 
   Mat :: A
   PetscInt :: nrow
-  PetscInt :: irow
+  PetscInt :: irow(:)
   PetscInt :: ncol
-  PetscInt :: icol
+  PetscInt :: icol(:)
   PetscReal :: matrix_block(:,:)
   PetscInt :: insert_mode
 
@@ -83,11 +83,15 @@ subroutine PetUtilMatSVBL1(A,irow,icol,matrix_block,ndof)
   PetscInt :: ndof
 
   PetscReal :: ndof_mat(ndof,ndof)
+  PetscInt :: irow_array(1)
+  PetscInt :: icol_array(1)
   PetscErrorCode :: ierr
 
   ndof_mat = matrix_block(1:ndof,1:ndof)
+  irow_array = irow-1
+  icol_array = icol-1
 
-  call MatSetValuesBlockedLocal(A,1,irow-1,1,icol-1,ndof_mat,ADD_VALUES, &
+  call MatSetValuesBlockedLocal(A,1,irow_array,1,icol_array,ndof_mat,ADD_VALUES, &
                                 ierr);CHKERRQ(ierr)
 
 end subroutine PetUtilMatSVBL1
@@ -111,9 +115,14 @@ subroutine PetUtilMatSVBL2(A,nrow,irow,ncol,icol,matrix_block,insert_mode)
   PetscReal :: matrix_block(:,:)
   PetscInt :: insert_mode
 
+  PetscInt :: irow_array(1)
+  PetscInt :: icol_array(1)
   PetscErrorCode :: ierr
 
-  call MatSetValuesBlockedLocal(A,1,irow-1,1,icol-1,matrix_block, &
+  irow_array = irow-1
+  icol_array = icol-1
+
+  call MatSetValuesBlockedLocal(A,1,irow_array,1,icol_array,matrix_block, &
                                 insert_mode,ierr);CHKERRQ(ierr)
 
 end subroutine PetUtilMatSVBL2
