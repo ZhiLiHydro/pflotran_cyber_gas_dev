@@ -110,7 +110,7 @@ function DiscretizationCreate()
   discretization%stencil_width = 1
   discretization%stencil_type = DMDA_STENCIL_STAR
 
-  discretization%tvd_ghost_scatter = PETSC_NULL_VECSCATTER
+  discretization%tvd_ghost_scatter = PETSC_NULL_VEC_SCATTER
 
   DiscretizationCreate => discretization
 
@@ -1543,7 +1543,7 @@ subroutine DiscretizationDestroy(discretization)
   nullify(discretization%dm_n_stress_strain_dof)
 
 
-  if (discretization%tvd_ghost_scatter /= PETSC_NULL_VECSCATTER) then
+  if (discretization%tvd_ghost_scatter /= PETSC_NULL_VEC_SCATTER) then
     call VecScatterDestroy(discretization%tvd_ghost_scatter, &
                            ierr);CHKERRQ(ierr)
   endif

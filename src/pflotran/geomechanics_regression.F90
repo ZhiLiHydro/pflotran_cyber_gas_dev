@@ -57,8 +57,8 @@ function GeomechanicsRegressionCreate()
   nullify(geomechanics_regression%vertices_per_process_natural_ids)
   geomechanics_regression%natural_vertex_id_vec = PETSC_NULL_VEC
   geomechanics_regression%vertices_per_process_vec = PETSC_NULL_VEC
-  geomechanics_regression%scatter_natural_vertex_id_gtos = PETSC_NULL_VECSCATTER
-  geomechanics_regression%scatter_vertices_per_process_gtos = PETSC_NULL_VECSCATTER
+  geomechanics_regression%scatter_natural_vertex_id_gtos = PETSC_NULL_VEC_SCATTER
+  geomechanics_regression%scatter_vertices_per_process_gtos = PETSC_NULL_VEC_SCATTER
   nullify(geomechanics_regression%next)
   GeomechanicsRegressionCreate => geomechanics_regression
 
@@ -752,12 +752,12 @@ subroutine GeomechanicsRegressionDestroy(geomechanics_regression)
     call VecDestroy(geomechanics_regression%vertices_per_process_vec, &
                     ierr);CHKERRQ(ierr)
   endif
-  if (geomechanics_regression%scatter_natural_vertex_id_gtos /= PETSC_NULL_VECSCATTER) then
+  if (geomechanics_regression%scatter_natural_vertex_id_gtos /= PETSC_NULL_VEC_SCATTER) then
     call VecScatterDestroy(geomechanics_regression% &
                              scatter_natural_vertex_id_gtos, &
                            ierr);CHKERRQ(ierr)
   endif
-  if (geomechanics_regression%scatter_vertices_per_process_gtos /= PETSC_NULL_VECSCATTER) then
+  if (geomechanics_regression%scatter_vertices_per_process_gtos /= PETSC_NULL_VEC_SCATTER) then
     call VecScatterDestroy(geomechanics_regression% &
                              scatter_vertices_per_process_gtos, &
                            ierr);CHKERRQ(ierr)
