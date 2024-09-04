@@ -1,7 +1,10 @@
 program test
-#include "petsc/finclude/petscvec.h"
+
   use petscvec
+
   implicit none
+
+#include "petsc/finclude/petscvec.h"
 
   PetscMPIInt :: size
   PetscMPIInt :: rank
@@ -18,12 +21,11 @@ program test
   if (rank == 0) print *, 'Beginning of Fortran90 test program'
 
   test_vec = PETSC_NULL_VEC 
-  if (test_vec == PETSC_NULL_VEC) print *, 'null vec'
-
   test_ao = PETSC_NULL_AO
-  if (test_ao == PETSC_NULL_AO) print *, 'null ao'
 
+  if (test_vec == PETSC_NULL_VEC) print *, 'null vec'
   if (test_vec == 0) print *, 'null vec'
+  if (test_ao == PETSC_NULL_AO) print *, 'null ao'
 
   if (rank == 0) print *, 'End of Fortran90 test program'
  
