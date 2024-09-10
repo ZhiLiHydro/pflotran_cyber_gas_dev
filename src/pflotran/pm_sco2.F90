@@ -283,7 +283,7 @@ subroutine PMSCO2ReadSimOptionsBlock(this,input)
 
   type(input_type), pointer :: input
 
-  character(len=MAXWORDLENGTH) :: keyword
+  character(len=MAXWORDLENGTH) :: keyword, word
   class(pm_sco2_type) :: this
   type(option_type), pointer :: option
   PetscReal :: tempreal
@@ -336,6 +336,26 @@ subroutine PMSCO2ReadSimOptionsBlock(this,input)
         sco2_isothermal_temperature = tempreal
       case('UPWIND_VISCOSITY')
         sco2_harmonic_viscosity = PETSC_FALSE
+      case('PHASE_PARTITIONING')
+        call InputReadWord(input,option,word,PETSC_TRUE)
+        select case(trim(word))
+          case('SPYCHER_SIMPLE')
+            sco2_spycher_simple = PETSC_TRUE
+        end select
+      case('CO2_DISPERSIVITY')
+        call InputReadDouble(input,option,tempreal)
+        call InputErrorMsg(input,option,keyword,error_string)
+        sco2_co2_dispersivity = tempreal
+      case('MIXTURE_DENSITY')
+        call InputReadWord(input,option,word,PETSC_TRUE)
+        select case(trim(word))
+          case('ALENDAL')
+            sco2_composite_density = DENSITY_ALENDAL
+          case('GARCIA')
+            sco2_composite_density = DENSITY_GARCIA
+        end select
+      case('GENERAL_FLUXES')
+        sco2_stomp_fluxes = PETSC_FALSE
       case default
         call InputKeywordUnrecognized(input,keyword,'SCO2 Mode',option)
     end select
@@ -577,6 +597,7 @@ subroutine PMSCO2Setup(this)
 
   use Material_module
   use SCO2_module
+  use co2_sw_module, only : init_span_wagner
 
   implicit none
 
@@ -587,6 +608,11 @@ subroutine PMSCO2Setup(this)
          this%realization%patch%aux%Material%material_parameter, &
          this%realization%patch%material_property_array, &
          this%realization%option)
+  ! MAN: This is in here to have the S-W EOS initialized for
+  ! transport. This should be done differently.
+  if (this%realization%option%ntrandof > 0) then
+    call init_span_wagner(this%realization%option)
+  endif
   call SCO2Setup(this%realization)
   call PMSubsurfaceFlowSetup(this)
 
