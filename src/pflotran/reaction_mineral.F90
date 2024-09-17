@@ -10,10 +10,10 @@ module Reaction_Mineral_module
   use PFLOTRAN_Constants_module
 
 !####################################################################################################
-  
-  use Option_module  
-  
-!##################################################################################################### 
+
+  use Option_module
+
+!#####################################################################################################
 
   implicit none
 
@@ -22,28 +22,28 @@ module Reaction_Mineral_module
   PetscReal, parameter :: perturbation_tolerance = 1.d-5
 
 ! ###########################################################################################################################
-!   ****************************************************     I am assuming maximum of 50 minerals in the model (input file) at a simulation run     *******************       
+!   ****************************************************     I am assuming maximum of 50 minerals in the model (input file) at a simulation run     *******************
           PetscReal :: temp_real = 0.d0
-          PetscInt :: temp_int = 0  
+          PetscInt :: temp_int = 0
           PetscInt :: min_position = 0
-          PetscInt :: mineral_position(50) = 0                
+          PetscInt :: mineral_position(50) = 0
           PetscReal :: mineral_kn_value(50) = 0.d0
           PetscReal :: mineral_lamda_value(50) = 0.d0
-          PetscReal :: nucleation(50) = 0.d0    
-          PetscReal :: bracket_value = 0.d0  
+          PetscReal :: nucleation(50) = 0.d0
+          PetscReal :: bracket_value = 0.d0
           PetscReal :: rate_mineral(50) = 0.d0
-          
+
           PetscReal :: total_moles(50)  = 0.d0
-          PetscReal :: crystal_area(50) = 0.d0         ! m^2 
+          PetscReal :: crystal_area(50) = 0.d0         ! m^2
           PetscReal :: speficic_surf_area(50) = 0.d0   ! m^2/g
           PetscReal :: min_molar_vol(50) = 0.d0        ! cm^3/mol
 	  PetscReal :: min_molar_mass(50) = 0.d0       ! g/mol
-          PetscInt :: secondary_min_begins = 0  
+          PetscInt :: secondary_min_begins = 0
           PetscInt :: primary_min_ends = 0                   ! sec
-          type(option_type), pointer :: option 
-          PetscInt :: nuclea_method(50) = 0 
+          type(option_type), pointer :: option
+          PetscInt :: nuclea_method(50) = 0
           PetscReal :: hetero_phi_value(50) = 0.d0
-          
+
           PetscReal :: surface_energy(50) = 0.d0
           PetscReal, parameter :: gas_constant = 8.3144
           PetscReal, parameter :: avogadros_constant = 6.022d23
@@ -51,11 +51,11 @@ module Reaction_Mineral_module
           PetscReal :: shape_factor = (16 * pi_value) / 3
           PetscReal :: top_value = 0.d0
           PetscReal :: bottom_value = 0.d0
-          PetscInt :: nuclea_driven_area(50) = 0	  
-	  PetscReal :: growth_rate(50)  = 0.d0        
-          PetscReal :: prep_rate(50) = 0.d0           
+          PetscInt :: nuclea_driven_area(50) = 0
+	  PetscReal :: growth_rate(50)  = 0.d0
+          PetscReal :: prep_rate(50) = 0.d0
 
-! ############################################################################################################################ 
+! ############################################################################################################################
 
   public :: ReactionMnrlRead, &
             ReactionMnrlReadKinetics, &
@@ -278,65 +278,65 @@ subroutine ReactionMnrlReadKinetics(mineral,input,option)
 
 ! ###########################################################################################################################
 
-           case('MINERAL_POSITION')      
+           case('MINERAL_POSITION')
            call InputReadInt(input,option,min_position)
            call InputErrorMsg(input,option,'mineral position value',error_string)
            if (min_position > 0) then
-           mineral_position(min_position) = min_position        
-           endif          
-       
+           mineral_position(min_position) = min_position
+           endif
+
             case('NUCLEATION_KN')
             call InputReadDouble(input,option,temp_real)
             call InputErrorMsg(input,option,'nucleation_kn value',error_string)
             mineral_kn_value(min_position) = temp_real
-                      
+
             case('NUCLEATION_LAMDA')
             call InputReadDouble(input,option,temp_real)
             call InputErrorMsg(input,option,'nucleation_lamda value',error_string)
             mineral_lamda_value(min_position) = temp_real
-            
+
             case('MOLAR_VOLUME')
             call InputReadDouble(input,option,temp_real)
             call InputErrorMsg(input,option,'mineral molar volume in cm3/mol',error_string)
             min_molar_vol(min_position) = temp_real
             min_molar_vol(min_position) = min_molar_vol(min_position) * 1.d-6     ! convert cm^3/mol to m^3/mol
-            
+
             case('SPECIFIC_AREA')
             call InputReadDouble(input,option,temp_real)            ! m^2/g
             call InputErrorMsg(input,option,'specific surface area value in m2/g',error_string)
             speficic_surf_area(min_position) = temp_real            ! m^2/g
-            
+
             case('SECONDARY_MIN_STARTS_FROM')
-            call InputReadInt(input,option,secondary_min_begins)            
+            call InputReadInt(input,option,secondary_min_begins)
             call InputErrorMsg(input,option,'secondary mineral starts from value',error_string)
             primary_min_ends = secondary_min_begins - 1
-            
+
             case('NUCLEATION_DRIVEN_GROWTH')                 ! If precipitation rate for this specific mineral involves nucleation, then a value of one (1) is required in the INPUT file for this mineral.
-            call InputReadInt(input,option,temp_int)                   
+            call InputReadInt(input,option,temp_int)
             call InputErrorMsg(input,option,'nucleation driven growth',error_string)
-            nuclea_driven_area(min_position) = temp_int 
-            
-            case('NUCLEATION_METHOD')                        ! Defines the nucleation equation to use in calculating the nucleation rate for this mineral.  
-            call InputReadInt(input,option,temp_int)         ! A value of one (1) uses the lumped parameter equation, while a value of two (2) uses the full equation.   
+            nuclea_driven_area(min_position) = temp_int
+
+            case('NUCLEATION_METHOD')                        ! Defines the nucleation equation to use in calculating the nucleation rate for this mineral.
+            call InputReadInt(input,option,temp_int)         ! A value of one (1) uses the lumped parameter equation, while a value of two (2) uses the full equation.
             call InputErrorMsg(input,option,'nucleation method value',error_string)
             nuclea_method(min_position) = temp_int
 
             case('HETERO_NUCLEI')
-            call InputReadDouble(input,option,temp_real)        
+            call InputReadDouble(input,option,temp_real)
             call InputErrorMsg(input,option,'hetero phi value',error_string)
             hetero_phi_value(min_position) = temp_real
-                       
+
             case('SURFACE_ENERGY')
-            call InputReadDouble(input,option,temp_real)     ! J/m^2          
+            call InputReadDouble(input,option,temp_real)     ! J/m^2
             call InputErrorMsg(input,option,'surface energy value in J/m2',error_string)
-            surface_energy(min_position) = temp_real         ! J/m^2  
-          		   
+            surface_energy(min_position) = temp_real         ! J/m^2
+
 		   case('MOLAR_MASS')
            call InputReadDouble(input,option,temp_real)         ! g/mol
-           call InputErrorMsg(input,option,'mineral molar mass in g/mol',error_string)   
+           call InputErrorMsg(input,option,'mineral molar mass in g/mol',error_string)
            min_molar_mass(min_position) = temp_real            ! g/mol
-                           
-! ############################################################################################################################## 
+
+! ##############################################################################################################################
 
             case('PREFACTOR')
               error_string = 'CHEMISTRY,MINERAL_KINETICS,PREFACTOR'
@@ -919,28 +919,28 @@ subroutine ReactionMnrlKineticRate(Res,Jac,compute_derivative,rt_auxvar, &
       endif
 
 ! #################################################################################################################################
-! Calculate the nucleation rate for the current timestep. This will be used for the surface area calculation in the next timestep 
+! Calculate the nucleation rate for the current timestep. This will be used for the surface area calculation in the next timestep
 ! Nucleation equations obtained from: Pham et al. (2011) [doi:10.1016/j.ijggc.2010.12.002]
-                         
- if (imnrl > primary_min_ends .and. imnrl == mineral_position(imnrl)) then  
-    if (nuclea_method(imnrl) == 1) then         ! Using the lumped parameter equation to compute nucleation rate (Eq.4) 
+
+ if (imnrl > primary_min_ends .and. imnrl == mineral_position(imnrl)) then
+    if (nuclea_method(imnrl) == 1) then         ! Using the lumped parameter equation to compute nucleation rate (Eq.4)
            bracket_value = ((global_auxvar%temp+273.15d0)**1.5) * lnQK
            bracket_value = (1/bracket_value)**2
            bracket_value =  mineral_lamda_value(imnrl) * bracket_value
            bracket_value = exp(-bracket_value)
-           nucleation(imnrl) =  mineral_kn_value(imnrl) * bracket_value       ! nucleation rate, mol/sec 
-		   
-    elseif (nuclea_method(imnrl) == 2) then     ! Using the full equation to compute nucleation rate (Eq.3)         
+           nucleation(imnrl) =  mineral_kn_value(imnrl) * bracket_value       ! nucleation rate, mol/sec
+
+    elseif (nuclea_method(imnrl) == 2) then     ! Using the full equation to compute nucleation rate (Eq.3)
            bottom_value = (global_auxvar%temp+273.15d0)**3 * (gas_constant**3) * lnQK**2
            top_value = shape_factor * (min_molar_vol(imnrl)**2) * &
                 (surface_energy(imnrl)**3) * avogadros_constant * hetero_phi_value(imnrl)
            bracket_value = top_value/bottom_value
            bracket_value = exp(-bracket_value)
-           nucleation(imnrl) = mineral_kn_value(imnrl) * bracket_value        ! nucleation rate, mol/sec         
+           nucleation(imnrl) = mineral_kn_value(imnrl) * bracket_value        ! nucleation rate, mol/sec
     endif
- endif   
- 
-! ################################################################################################################################## 
+ endif
+
+! ##################################################################################################################################
 
 !     check for rate limiter for precipitation
       if (mineral%kinmnrl_rate_limiter(imnrl) > 0.d0) then
@@ -1025,27 +1025,27 @@ subroutine ReactionMnrlKineticRate(Res,Jac,compute_derivative,rt_auxvar, &
 
 ! #############################################################################################################################
 !********************************************       compute mineral growth rate        ****************************************
-            
+
   if (nuclea_driven_area(imnrl) == 1) then         ! verify if this mineral precipitation raection is using nucleation
-   if (imnrl > primary_min_ends .and. imnrl == mineral_position(imnrl)) then                                             
+   if (imnrl > primary_min_ends .and. imnrl == mineral_position(imnrl)) then
         if (associated(mineral%kinmnrl_affinity_power)) then
          growth_rate(imnrl) = -crystal_area(imnrl) * sign_* abs(affinity_factor)**mineral%kinmnrl_affinity_power(imnrl)* &
              sum_prefactor_rate                                            ! Growth rate in mol/sec
          prep_rate(imnrl) = growth_rate(imnrl) + nucleation(imnrl)         ! Total precipitating rate in mol/sec
 	 Im = prep_rate(imnrl) * (1/material_auxvar%volume)                ! Total precipitating rate in mol/sec/m3 bulk
-         rt_auxvar%mnrl_rate(imnrl) = Im 
+         rt_auxvar%mnrl_rate(imnrl) = Im
         else
          growth_rate(imnrl) = -crystal_area(imnrl) * sign_* abs(affinity_factor) * sum_prefactor_rate  ! Growth rate in mol/sec
          prep_rate(imnrl) = growth_rate(imnrl) + nucleation(imnrl)                                     ! Total precipitating rate in mol/sec
 	 Im = prep_rate(imnrl) * (1/material_auxvar%volume)                                            ! Total precipitating rate in mol/sec/m3 bulk
-         rt_auxvar%mnrl_rate(imnrl) = Im 
-        endif         
-        total_moles(imnrl) = total_moles(imnrl) + (prep_rate(imnrl) * option%tran_dt)		
-        if (total_moles(imnrl) < 0) total_moles(imnrl) = 0.d0  ! For redissolution of the precipitating mineral, and if dissoluion amount exceeds the current available mineral amount    
-   endif 
-  endif                     
-   
-!############################################################################################################################### 
+         rt_auxvar%mnrl_rate(imnrl) = Im
+        endif
+        total_moles(imnrl) = total_moles(imnrl) + (prep_rate(imnrl) * option%tran_dt)
+        if (total_moles(imnrl) < 0) total_moles(imnrl) = 0.d0  ! For redissolution of the precipitating mineral, and if dissoluion amount exceeds the current available mineral amount
+   endif
+  endif
+
+!###############################################################################################################################
 
     else ! rate is already zero by default; move on to next mineral
       cycle
@@ -1591,10 +1591,10 @@ subroutine ReactionMnrlUpdateSpecSurfArea(reaction,rt_auxvar, &
      rt_auxvar%mnrl_area(imnrl) = crystal_area(imnrl) * (1/material_auxvar%volume)                ! convert area to m2/m3 of bulk
      if (rt_auxvar%mnrl_area(imnrl) < 0.d0) then
          rt_auxvar%mnrl_area(imnrl) = 0.d0
-      endif        
-  endif  
-  
-! ##################################################################################################################################### 
+      endif
+  endif
+
+! #####################################################################################################################################
 
     if (reaction%update_armor_mineral_surface .and. &
         mineral%kinmnrl_armor_crit_vol_frac(imnrl) > 0.d0) then
