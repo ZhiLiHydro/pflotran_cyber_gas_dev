@@ -47,7 +47,7 @@ module Reaction_Mineral_module
           PetscReal :: surface_energy(50) = 0.d0
           PetscReal, parameter :: gas_constant = 8.3144
           PetscReal, parameter :: avogadros_constant = 6.022d23
-          PetscReal, parameter :: pi_value = 22/7
+          PetscReal, parameter :: pi_value = 22.d0/7.d0
           PetscReal :: shape_factor = (16 * pi_value) / 3
           PetscReal :: top_value = 0.d0
           PetscReal :: bottom_value = 0.d0
