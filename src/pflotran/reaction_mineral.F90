@@ -37,7 +37,7 @@ module Reaction_Mineral_module
           PetscReal :: crystal_area(50) = 0.d0         ! m^2
           PetscReal :: speficic_surf_area(50) = 0.d0   ! m^2/g
           PetscReal :: min_molar_vol(50) = 0.d0        ! cm^3/mol
-	  PetscReal :: min_molar_mass(50) = 0.d0       ! g/mol
+    PetscReal :: min_molar_mass(50) = 0.d0       ! g/mol
           PetscInt :: secondary_min_begins = 0
           PetscInt :: primary_min_ends = 0                   ! sec
           type(option_type), pointer :: option
@@ -52,7 +52,7 @@ module Reaction_Mineral_module
           PetscReal :: top_value = 0.d0
           PetscReal :: bottom_value = 0.d0
           PetscInt :: nuclea_driven_area(50) = 0
-	  PetscReal :: growth_rate(50)  = 0.d0
+    PetscReal :: growth_rate(50)  = 0.d0
           PetscReal :: prep_rate(50) = 0.d0
 
 ! ############################################################################################################################
@@ -331,7 +331,7 @@ subroutine ReactionMnrlReadKinetics(mineral,input,option)
             call InputErrorMsg(input,option,'surface energy value in J/m2',error_string)
             surface_energy(min_position) = temp_real         ! J/m^2
 
-		   case('MOLAR_MASS')
+       case('MOLAR_MASS')
            call InputReadDouble(input,option,temp_real)         ! g/mol
            call InputErrorMsg(input,option,'mineral molar mass in g/mol',error_string)
            min_molar_mass(min_position) = temp_real            ! g/mol
@@ -1032,12 +1032,12 @@ subroutine ReactionMnrlKineticRate(Res,Jac,compute_derivative,rt_auxvar, &
          growth_rate(imnrl) = -crystal_area(imnrl) * sign_* abs(affinity_factor)**mineral%kinmnrl_affinity_power(imnrl)* &
              sum_prefactor_rate                                            ! Growth rate in mol/sec
          prep_rate(imnrl) = growth_rate(imnrl) + nucleation(imnrl)         ! Total precipitating rate in mol/sec
-	 Im = prep_rate(imnrl) * (1/material_auxvar%volume)                ! Total precipitating rate in mol/sec/m3 bulk
+   Im = prep_rate(imnrl) * (1/material_auxvar%volume)                ! Total precipitating rate in mol/sec/m3 bulk
          rt_auxvar%mnrl_rate(imnrl) = Im
         else
          growth_rate(imnrl) = -crystal_area(imnrl) * sign_* abs(affinity_factor) * sum_prefactor_rate  ! Growth rate in mol/sec
          prep_rate(imnrl) = growth_rate(imnrl) + nucleation(imnrl)                                     ! Total precipitating rate in mol/sec
-	 Im = prep_rate(imnrl) * (1/material_auxvar%volume)                                            ! Total precipitating rate in mol/sec/m3 bulk
+   Im = prep_rate(imnrl) * (1/material_auxvar%volume)                                            ! Total precipitating rate in mol/sec/m3 bulk
          rt_auxvar%mnrl_rate(imnrl) = Im
         endif
         total_moles(imnrl) = total_moles(imnrl) + (prep_rate(imnrl) * option%tran_dt)
