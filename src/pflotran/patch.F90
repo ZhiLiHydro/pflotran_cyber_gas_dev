@@ -2339,6 +2339,23 @@ subroutine PatchUpdateCouplerAuxVarsG(patch,coupler,option)
 
       ! ---------------------------------------------------------------------- !
         case(ANY_STATE)
+          ! gas pressure; 1st dof ------------------------ !
+          if (associated(general%gas_pressure)) then
+            select case(general%gas_pressure%itype)
+              case(DIRICHLET_BC)
+                 call PatchGetCouplerValueFromDataset(coupler,option, &
+                      patch%grid,general%gas_pressure%dataset,iconn,gas_pressure)
+                 coupler%flow_aux_real_var(THREE_INTEGER,iconn) = gas_pressure
+                 dof3 = PETSC_TRUE
+                 coupler%flow_bc_type(GENERAL_GAS_EQUATION_INDEX) = DIRICHLET_BC
+              case default
+                 string = GetSubConditionType(general%gas_pressure%itype)
+                 option%io_buffer = &
+                      FlowConditionUnknownItype(coupler%flow_condition, &
+                      'GENERAL_MODE two phase state gas pressure ',string)
+                 call PrintErrMsg(option)
+            end select
+          endif
           ! temperature; 2nd dof ------------------------- !
           if (associated(general%temperature)) then
             select case(general%temperature%itype)
@@ -2554,6 +2571,7 @@ subroutine PatchUpdateCouplerAuxVarsG(patch,coupler,option)
       if (coupler%itype .ne. SRC_SINK_COUPLER_TYPE) then
           option%io_buffer = 'Error with GENERAL_MODE phase boundary condition: &
                               &Missing dof.'
+
           call PrintErrMsg(option)
       endif
     endif
