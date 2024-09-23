@@ -2343,7 +2343,7 @@ subroutine PatchUpdateCouplerAuxVarsG(patch,coupler,option)
 
       ! ---------------------------------------------------------------------- !
         case(ANY_STATE)
-          ! gas pressure; 1st dof ------------------------ !
+          ! gas pressure: 3rd dof when used with liquid flux ------------------------ !
           if (associated(general%gas_pressure)) then
             select case(general%gas_pressure%itype)
               case(DIRICHLET_BC)
