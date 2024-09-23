@@ -1721,7 +1721,7 @@ subroutine RealizationAddWaypointsToList(realization,waypoint_list)
   PetscInt :: itime, isub_condition
   PetscReal :: final_time
   PetscReal, pointer :: times(:)
-  PetscBool :: sync_time 
+  PetscBool :: sync_time
 
   option => realization%option
   nullify(times)
@@ -1757,7 +1757,7 @@ subroutine RealizationAddWaypointsToList(realization,waypoint_list)
     if (cur_flow_condition%do_not_sync_time_with_update) then
       ! this will stop the time sync even for rate or flux BCs
       sync_time = PETSC_FALSE
-    endif 
+    endif
     if (sync_time) then
       do isub_condition = 1, cur_flow_condition%num_sub_conditions
         sub_condition => cur_flow_condition%sub_condition_ptr(isub_condition)%ptr

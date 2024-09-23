@@ -882,7 +882,7 @@ subroutine GeneralUpdateAuxVars(realization,update_state,update_state_bc)
                       real_index = boundary_condition%flow_aux_mapping(variable)
                       ! check if liquid flux is specified. if so, we need to remap the locations
                       ! liquid flux is stored in the 1 index of flow_bc_type
-                      if (boundary_condition%flow_bc_type(ONE_INTEGER) == NEUMANN_BC) then 
+                      if (boundary_condition%flow_bc_type(ONE_INTEGER) == NEUMANN_BC) then
                         ! the gas pressure is stored in the 3 index when liquid flux is also specified.
                         gas_pressure = boundary_condition%flow_aux_real_var(THREE_INTEGER,iconn)
                       else
