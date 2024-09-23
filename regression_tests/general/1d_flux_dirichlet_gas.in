@@ -115,10 +115,10 @@ CHARACTERISTIC_CURVES cc1
 /
 
 #=========================== output options ===================================
+skip
 OUTPUT
   PERIODIC TIME 0.1 y
   PERIODIC_OBSERVATION TIMESTEP 1
-#  FORMAT TECPLOT POINT
   FORMAT HDF5
   VELOCITY_AT_CENTER
   MASS_BALANCE
@@ -131,7 +131,7 @@ OUTPUT
      GAS_MOBILITY
   /
 /
-
+noskip
 #=========================== times ============================================
 TIME
   FINAL_TIME 2. y
