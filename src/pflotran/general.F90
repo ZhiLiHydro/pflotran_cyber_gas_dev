@@ -866,14 +866,6 @@ subroutine GeneralUpdateAuxVars(realization,update_state,update_state_bc)
                     real_index = boundary_condition%flow_aux_mapping(dof_to_primary_variable(idof,istate))
                     xxbc(idof) = boundary_condition%flow_aux_real_var(real_index,iconn)
                   endif
-                case(NEUMANN_BC)
-                  ! if flow_bc_type(GENERAL_GAS_EQUATION_INDEX) = DIRICHLET (gas pressure)
-                  !   set xxbc(1) = gas pressure
-                  !   all others are the same.
-                  ! endif
-                  if (boundary_condition%flow_bc_type(GENERAL_GAS_EQUATION_INDEX) == DIRICHLET_BC) then
-                    !xxbc(ONE_INTEGER) = boundary_condition%flow_aux_real_var(THREE_INTEGER,iconn)
-                  endif
               end select
             enddo
           case(TWO_PHASE_STATE,LGP_STATE)
@@ -963,10 +955,6 @@ subroutine GeneralUpdateAuxVars(realization,update_state,update_state_bc)
                     xxbc(idof) = boundary_condition%flow_aux_real_var(real_index,iconn)
                   endif
                 case(NEUMANN_BC)
-                  ! if flow_bc_type(GENERAL_GAS_EQUATION_INDEX) = DIRICHLET (gas pressure)
-                  !   set xxbc(1) = gas pressure
-                  !   all others are the same.
-                  ! endif
                   if (boundary_condition%flow_bc_type(GENERAL_GAS_EQUATION_INDEX) == DIRICHLET_BC) then
                     xxbc(ONE_INTEGER) = boundary_condition%flow_aux_real_var(THREE_INTEGER,iconn)
                   endif
