@@ -25,6 +25,7 @@ module Condition_module
     PetscInt :: id                          ! id from which condition can be referenced
     PetscBool :: is_transient
     PetscBool :: sync_time_with_update
+    PetscBool :: do_not_sync_time_with_update
     character(len=MAXWORDLENGTH) :: name    ! name of condition (e.g. initial, recharge)
     PetscInt :: num_sub_conditions
     PetscInt :: iphase
@@ -245,6 +246,7 @@ function FlowConditionCreate(option)
   nullify(condition%default_time_storage)
   condition%is_transient = PETSC_FALSE
   condition%sync_time_with_update = PETSC_FALSE
+  condition%do_not_sync_time_with_update = PETSC_FALSE
   condition%time_units = ''
   condition%length_units = ''
   condition%id = 0
@@ -1139,6 +1141,8 @@ subroutine FlowConditionRead(condition,input,option)
         default_time_storage%is_cyclic = PETSC_TRUE
       case('SYNC_TIMESTEP_WITH_UPDATE')
         condition%sync_time_with_update = PETSC_TRUE
+      case('DO_NOT_SYNC_TIMESTEP_WITH_UPDATE')
+        condition%do_not_sync_time_with_update = PETSC_TRUE
       case('INTERPOLATION')
         call InputReadCard(input,option,word)
         call InputErrorMsg(input,option,'INTERPOLATION','CONDITION')
@@ -2026,6 +2030,8 @@ subroutine FlowConditionGeneralRead(condition,input,option)
         default_time_storage%is_cyclic = PETSC_TRUE
       case('SYNC_TIMESTEP_WITH_UPDATE')
         condition%sync_time_with_update = PETSC_TRUE
+      case('DO_NOT_SYNC_TIMESTEP_WITH_UPDATE')
+        condition%do_not_sync_time_with_update = PETSC_TRUE
       case('INTERPOLATION')
         call InputReadCard(input,option,word)
         call InputErrorMsg(input,option,'INTERPOLATION','CONDITION')
@@ -2640,6 +2646,8 @@ subroutine FlowConditionSCO2Read(condition,input,option)
         default_time_storage%is_cyclic = PETSC_TRUE
       case('SYNC_TIMESTEP_WITH_UPDATE')
         condition%sync_time_with_update = PETSC_TRUE
+      case('DO_NOT_SYNC_TIMESTEP_WITH_UPDATE')
+        condition%do_not_sync_time_with_update = PETSC_TRUE
       case('INTERPOLATION')
         call InputReadCard(input,option,word)
         call InputErrorMsg(input,option,'INTERPOLATION','CONDITION')
@@ -3163,6 +3171,8 @@ subroutine FlowConditionHydrateRead(condition,input,option)
         default_time_storage%is_cyclic = PETSC_TRUE
       case('SYNC_TIMESTEP_WITH_UPDATE')
         condition%sync_time_with_update = PETSC_TRUE
+      case('DO_NOT_SYNC_TIMESTEP_WITH_UPDATE')
+        condition%do_not_sync_time_with_update = PETSC_TRUE
       case('INTERPOLATION')
         call InputReadCard(input,option,word)
         call InputErrorMsg(input,option,'INTERPOLATION','CONDITION')
@@ -3732,6 +3742,10 @@ subroutine FlowConditionCommonRead(condition,input,word,default_time_storage, &
     case('SYNC_TIMESTEP_WITH_UPDATE')
       card_found = PETSC_TRUE
       condition%sync_time_with_update = PETSC_TRUE
+
+    case('DO_NOT_SYNC_TIMESTEP_WITH_UPDATE')
+      card_found = PETSC_TRUE
+      condition%do_not_sync_time_with_update = PETSC_TRUE
 
     case('INTERPOLATION')
       card_found = PETSC_TRUE

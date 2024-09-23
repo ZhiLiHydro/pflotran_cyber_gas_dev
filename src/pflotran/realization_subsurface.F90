@@ -1721,9 +1721,11 @@ subroutine RealizationAddWaypointsToList(realization,waypoint_list)
   PetscInt :: itime, isub_condition
   PetscReal :: final_time
   PetscReal, pointer :: times(:)
+  PetscBool :: sync_time 
 
   option => realization%option
   nullify(times)
+  sync_time = PETSC_FALSE
 
   ! set flag for final output
   cur_waypoint => waypoint_list%first
@@ -1750,6 +1752,13 @@ subroutine RealizationAddWaypointsToList(realization,waypoint_list)
     if (.not.associated(cur_flow_condition)) exit
     if (FlowConditionHasRateOrFlux(cur_flow_condition) .or. &
         cur_flow_condition%sync_time_with_update) then
+      sync_time = PETSC_TRUE
+    endif
+    if (cur_flow_condition%do_not_sync_time_with_update) then
+      ! this will stop the time sync even for rate or flux BCs
+      sync_time = PETSC_FALSE
+    endif 
+    if (sync_time) then
       do isub_condition = 1, cur_flow_condition%num_sub_conditions
         sub_condition => cur_flow_condition%sub_condition_ptr(isub_condition)%ptr
         !TODO(geh): check if this updated more than simply the flow_dataset (i.e. datum and gradient)
@@ -1757,7 +1766,7 @@ subroutine RealizationAddWaypointsToList(realization,waypoint_list)
         call TimeStorageGetTimes(sub_condition%dataset%time_storage, option, &
                                 final_time, times)
         if (associated(times)) then
-          if (size(times) > 20000) then
+          if (size(times) > 20000000) then
             option%io_buffer = 'For flow condition "' // &
               trim(cur_flow_condition%name) // &
               '" dataset "' // trim(sub_condition%name) // &
