@@ -1732,14 +1732,7 @@ subroutine GeneralAuxVarCompute4(x,gen_auxvar,global_auxvar,material_auxvar, &
     endif
   endif
 #endif
-  if (any(x /= x)) then
-    print *, 'nan in solution vector'
-    print *, 'x: ', x(:)
-  endif
-  if ((x(3) < 0.d0) .or. (x(3) > 400.d0)) then
-    print *, 'bad temperature.'
-    print *, 'x: ', x(:)
-  endif
+
   select case(global_auxvar%istate)
     case(LIQUID_STATE)
       gen_auxvar%pres(lid) = x(GENERAL_LIQUID_PRESSURE_DOF)
@@ -2460,7 +2453,7 @@ subroutine GeneralAuxVarCompute4(x,gen_auxvar,global_auxvar,material_auxvar, &
       dden_water_vapor_dT = dden_water_vapor_dT + dden_water_vapor_dpv * gen_auxvar%d%pv_T
       dh_water_vapor_dT = dh_water_vapor_dT + dh_water_vapor_dpv * gen_auxvar%d%pv_T
       !geh: the numerical derivatives with respect to water vapor calculated
-      !     through the chain rule can be very sensitive to the perturbation.
+      !     through the chain rule can be very sensitive to the p(erturbation.
       !     Try decreasing the perturbation to see the effect.
       du_water_vapor_dpv = dh_water_vapor_dpv - &
         (1.d0/den_water_vapor- &
@@ -4613,14 +4606,17 @@ subroutine GeneralAuxVarPerturb4(gen_auxvar,global_auxvar, &
                         x(GENERAL_GAS_SATURATION_DOF)+min_perturbation
       endif
       if (x(GENERAL_PRECIPITATE_SAT_DOF) > 0.5d0) then
-         pert(GENERAL_PRECIPITATE_SAT_DOF) = -1.d0 * perturbation_tolerance
-      else
          pert(GENERAL_PRECIPITATE_SAT_DOF) = perturbation_tolerance
+      else
+         pert(GENERAL_PRECIPITATE_SAT_DOF) = -1.d0 * perturbation_tolerance
       endif
       pert(GENERAL_GAS_PRESSURE_DOF) = max(1.d-7 * x(GENERAL_GAS_PRESSURE_DOF),1.d-7)
       pert(GENERAL_GAS_SATURATION_DOF) = max(1.d-7 * x(GENERAL_GAS_SATURATION_DOF),1.d-7)
       pert(GENERAL_ENERGY_DOF) = max(1.d-7 * x(GENERAL_ENERGY_DOF),1.d-7)
       pert(GENERAL_POROSITY_DOF) = max(1.d-7 * x(GENERAL_POROSITY_DOF),1.d-7)
+      if (x(GENERAL_POROSITY_DOF) > 0.5d0) then
+        pert(GENERAL_POROSITY_DOF) = -1.d0 * pert(GENERAL_POROSITY_DOF)
+      endif
   end select
 
 

@@ -1145,6 +1145,7 @@ subroutine PMGeneralCheckUpdatePre(this,snes,X,dX,changed,ierr)
           endif
         case(LGP_STATE)
           pgas_index = offset + GENERAL_GAS_PRESSURE_DOF
+          saturation_index = offset + GENERAL_GAS_SATURATION_DOF
           porosity_index = offset + GENERAL_POROSITY_DOF
           if (X_p(pgas_index) - dX_p(pgas_index) < &
                gen_auxvars(ZERO_INTEGER,ghosted_id)% &
@@ -1154,6 +1155,10 @@ subroutine PMGeneralCheckUpdatePre(this,snes,X,dX,changed,ierr)
                   pres(option%saturation_pressure_id)
              changed = PETSC_TRUE
           endif
+          if (X_p(saturation_index) + dX_p(saturation_index) > 1.d0) &
+             dX_p(saturation_index) = (1.d0 - ALMOST_ZERO) - X_p(saturation_index)
+          if (X_p(saturation_index) + dX_p(saturation_index) < 0.d0) &
+             dX_p(saturation_index) = ALMOST_ZERO - X_p(saturation_index)
           if (X_p(porosity_index) - dX_p(porosity_index) < ALMOST_ZERO) then
             dX_p(porosity_index) = X_p(porosity_index) - ALMOST_ZERO
             changed = PETSC_TRUE
