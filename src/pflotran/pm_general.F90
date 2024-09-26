@@ -1060,7 +1060,7 @@ subroutine PMGeneralCheckUpdatePre(this,snes,X,dX,changed,ierr)
 
   type(field_type), pointer :: field
   PetscInt :: liquid_pressure_index, gas_pressure_index, air_pressure_index
-  PetscInt :: temperature_index
+  PetscInt :: temperature_index, porosity_index
   PetscInt :: apid, spid
   PetscReal :: liquid_pressure0, liquid_pressure1, del_liquid_pressure
   PetscReal :: gas_pressure0, gas_pressure1, del_gas_pressure
@@ -1145,6 +1145,7 @@ subroutine PMGeneralCheckUpdatePre(this,snes,X,dX,changed,ierr)
           endif
         case(LGP_STATE)
           pgas_index = offset + GENERAL_GAS_PRESSURE_DOF
+          porosity_index = offset + GENERAL_POROSITY_DOF
           if (X_p(pgas_index) - dX_p(pgas_index) < &
                gen_auxvars(ZERO_INTEGER,ghosted_id)% &
                pres(option%saturation_pressure_id)) then
@@ -1153,9 +1154,17 @@ subroutine PMGeneralCheckUpdatePre(this,snes,X,dX,changed,ierr)
                   pres(option%saturation_pressure_id)
              changed = PETSC_TRUE
           endif
+          if (X_p(porosity_index) - dX_p(porosity_index) < ALMOST_ZERO) then
+            dX_p(porosity_index) = X_p(porosity_index) - ALMOST_ZERO
+            changed = PETSC_TRUE
+          elseif (X_p(porosity_index) - dX_p(porosity_index) > ALMOST_ONE) then
+            dX_p(porosity_index) = X_p(porosity_index) - ALMOST_ONE
+            changed = PETSC_TRUE
+          endif
         case(LP_STATE)
           xmol_index = offset + GENERAL_LIQUID_STATE_X_MOLE_DOF
           pw_index = offset + GENERAL_LIQUID_PRESSURE_DOF
+          porosity_index = offset + GENERAL_POROSITY_DOF
           if (X_p(xmol_index) - dX_p(xmol_index) < 0.d0) then
             dX_p(xmol_index) = X_p(xmol_index)
             changed = PETSC_TRUE
@@ -1164,10 +1173,25 @@ subroutine PMGeneralCheckUpdatePre(this,snes,X,dX,changed,ierr)
            dX_p(pw_index) = X_p(pw_index) - ALMOST_ZERO
            changed = PETSC_TRUE
           endif
+          if (X_p(porosity_index) - dX_p(porosity_index) < ALMOST_ZERO) then
+            dX_p(porosity_index) = X_p(porosity_index) - ALMOST_ZERO
+            changed = PETSC_TRUE
+          elseif (X_p(porosity_index) - dX_p(porosity_index) > ALMOST_ONE) then
+            dX_p(porosity_index) = X_p(porosity_index) - ALMOST_ONE
+            changed = PETSC_TRUE
+          endif
         case(GP_STATE)
           pgas_index = offset + GENERAL_GAS_PRESSURE_DOF
+          porosity_index = offset + GENERAL_POROSITY_DOF
           if (X_p(pgas_index)- dX_p(pgas_index) <= 0.d0) then
             dX_p(pgas_index) = X_p(pgas_index) - ALMOST_ZERO
+            changed = PETSC_TRUE
+          endif
+          if (X_p(porosity_index) - dX_p(porosity_index) < ALMOST_ZERO) then
+            dX_p(porosity_index) = X_p(porosity_index) - ALMOST_ZERO
+            changed = PETSC_TRUE
+          elseif (X_p(porosity_index) - dX_p(porosity_index) > ALMOST_ONE) then
+            dX_p(porosity_index) = X_p(porosity_index) - ALMOST_ONE
             changed = PETSC_TRUE
           endif
       end select

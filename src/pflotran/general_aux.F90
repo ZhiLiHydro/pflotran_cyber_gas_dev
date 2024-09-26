@@ -1732,7 +1732,14 @@ subroutine GeneralAuxVarCompute4(x,gen_auxvar,global_auxvar,material_auxvar, &
     endif
   endif
 #endif
-
+  if (any(x /= x)) then
+    print *, 'nan in solution vector'
+    print *, 'x: ', x(:)
+  endif
+  if ((x(3) < 0.d0) .or. (x(3) > 400.d0)) then
+    print *, 'bad temperature.'
+    print *, 'x: ', x(:)
+  endif
   select case(global_auxvar%istate)
     case(LIQUID_STATE)
       gen_auxvar%pres(lid) = x(GENERAL_LIQUID_PRESSURE_DOF)

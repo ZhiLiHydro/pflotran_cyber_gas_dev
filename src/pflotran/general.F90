@@ -1529,6 +1529,9 @@ subroutine GeneralResidual(snes,xx,r,realization,ierr)
         local_start = local_end - option%nflowdof + 1
         r_p(local_start:local_end) = r_p(local_start:local_end) - Res(:)
       endif
+      if (any(Res /= Res)) then
+        print *, 'nan'
+      endif
     enddo
 
     cur_connection_set => cur_connection_set%next
@@ -1596,7 +1599,9 @@ subroutine GeneralResidual(snes,xx,r,realization,ierr)
       local_end = local_id * option%nflowdof
       local_start = local_end - option%nflowdof + 1
       r_p(local_start:local_end)= r_p(local_start:local_end) - Res(:)
-
+      if (any(Res /= Res)) then
+        print *, 'nan'
+      endif
     enddo
     boundary_condition => boundary_condition%next
   enddo
@@ -1667,7 +1672,9 @@ subroutine GeneralResidual(snes,xx,r,realization,ierr)
             Res(1:2)
         endif
       endif
-
+      if (any(Res /= Res)) then
+        print *, 'nan'
+      endif
     enddo
     source_sink => source_sink%next
   enddo
