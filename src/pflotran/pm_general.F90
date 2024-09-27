@@ -1155,10 +1155,10 @@ subroutine PMGeneralCheckUpdatePre(this,snes,X,dX,changed,ierr)
                   pres(option%saturation_pressure_id)
              changed = PETSC_TRUE
           endif
-          if (X_p(saturation_index) + dX_p(saturation_index) > 1.d0) &
-             dX_p(saturation_index) = (1.d0 - ALMOST_ZERO) - X_p(saturation_index)
-          if (X_p(saturation_index) + dX_p(saturation_index) < 0.d0) &
-             dX_p(saturation_index) = ALMOST_ZERO - X_p(saturation_index)
+         ! if (X_p(saturation_index) + dX_p(saturation_index) > 1.d0) &
+         !    dX_p(saturation_index) = (1.d0 - ALMOST_ZERO) - X_p(saturation_index)
+         ! if (X_p(saturation_index) + dX_p(saturation_index) < 0.d0) &
+         !    dX_p(saturation_index) = ALMOST_ZERO - X_p(saturation_index)
           if (X_p(porosity_index) - dX_p(porosity_index) < ALMOST_ZERO) then
             dX_p(porosity_index) = X_p(porosity_index) - ALMOST_ZERO
             changed = PETSC_TRUE

@@ -3485,14 +3485,14 @@ subroutine GeneralAuxVarUpdateState4(x,gen_auxvar,global_auxvar, &
                                    natural_id,'Before Update',option)
 #endif
           if (option%iflag == GENERAL_UPDATE_FOR_ACCUM) then
-            write(state_change_string,'(''LGP -> LP at Cell '',i8)') &
+            write(state_change_string,'(''LGP -> LP (soluble) at Cell '',i8)') &
               natural_id
           else if (option%iflag == GENERAL_UPDATE_FOR_DERIVATIVE) then
             write(state_change_string, &
               '(''LGP -> LP at Cell (due to perturbation) '',i8)') &
               natural_id
           else
-            write(state_change_string,'(''LGP -> LP at Boundary Face '', &
+            write(state_change_string,'(''LGP -> LP (soluble)at Boundary Face '', &
                                       & i8)') natural_id
           endif
 
@@ -3510,14 +3510,14 @@ subroutine GeneralAuxVarUpdateState4(x,gen_auxvar,global_auxvar, &
                                    natural_id,'Before Update',option)
 #endif
           if (option%iflag == GENERAL_UPDATE_FOR_ACCUM) then
-            write(state_change_string,'(''LGP -> GP at Cell '',i8)') &
+            write(state_change_string,'(''LGP -> GP (soluble)at Cell '',i8)') &
               natural_id
           else if (option%iflag == GENERAL_UPDATE_FOR_DERIVATIVE) then
             write(state_change_string, &
-              '(''LGP -> GP at Cell (due to perturbation) '',i8)') &
+              '(''LGP -> GP (soluble) at Cell (due to perturbation) '',i8)') &
               natural_id
           else
-            write(state_change_string,'(''LGP -> GP at Boundary Face '', &
+            write(state_change_string,'(''LGP -> GP (soluble) at Boundary Face '', &
                                       & i8)') natural_id
           endif
         endif
@@ -3638,12 +3638,12 @@ subroutine GeneralAuxVarUpdateState4(x,gen_auxvar,global_auxvar, &
           x(GENERAL_PRECIPITATE_SAT_DOF) = 1.d0
         endif
       case(LP_STATE)
-        x(GENERAL_LIQUID_PRESSURE_DOF) = gen_auxvar%pres(lid) * (1.d0 - epsilon)
-        x(GENERAL_LIQUID_STATE_X_MOLE_DOF) = max(0.d0,gen_auxvar%xmol(acid,lid))&
-                                             * (1.d0 + epsilon)
-        x(GENERAL_ENERGY_DOF) = gen_auxvar%temp * (1.d0 - epsilon)
+        x(GENERAL_LIQUID_PRESSURE_DOF) = gen_auxvar%pres(lid) !* (1.d0 - epsilon)
+        x(GENERAL_LIQUID_STATE_X_MOLE_DOF) = max(0.d0,gen_auxvar%xmol(acid,lid))!&
+            !                                 * (1.d0 + epsilon)
+        x(GENERAL_ENERGY_DOF) = gen_auxvar%temp !* (1.d0 - epsilon)
         if (soluble_matrix) then
-          x(GENERAL_POROSITY_DOF) = gen_auxvar%effective_porosity - gas_epsilon
+          x(GENERAL_POROSITY_DOF) = gen_auxvar%effective_porosity! - gas_epsilon
         else
           x(GENERAL_PRECIPITATE_SAT_DOF) = gen_auxvar%sat(pid) - gas_epsilon
         endif
