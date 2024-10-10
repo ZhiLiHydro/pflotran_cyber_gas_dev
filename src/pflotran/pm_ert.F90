@@ -853,10 +853,6 @@ subroutine PMERTPreSolve(this)
   grid => patch%grid
   reaction => patch%reaction
 
-  if (associated(patch%prescribed_condition_list%first)) then
-    option%io_buffer = 'PRESCRIBED_CONDITIONs have yet to be set up for ERT.'
-    call PrintErrMsg(option)
-  endif
   if (option%iflowmode == NULL_MODE .and. option%itranmode == NULL_MODE) return
 
   option%io_buffer = ' Calculating bulk electrical conductivity'

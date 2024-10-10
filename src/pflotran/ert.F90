@@ -204,10 +204,119 @@ subroutine ERTSetup(realization)
   patch%aux%ERT%num_aux = grid%ngmax
 
   dof_is_active = PETSC_TRUE
-  call PatchCreateZeroArray(patch,dof_is_active, &
-                            patch%aux%ERT%matrix_zeroing,option)
+  !
+  call ERTCreateZeroArray(patch,option)
 
 end subroutine ERTSetup
+
+! ************************************************************************** !
+
+subroutine ERTCreateZeroArray(patch,option)
+  !
+  ! Computes the zeroed rows for inactive grid cells and prescribed conditions
+  !
+  ! Author: Glenn Hammond
+  ! Date: 10/10/24
+
+  use Patch_module
+  use Grid_module
+  use Option_module
+  use String_module
+  use Matrix_Zeroing_module
+  use Coupler_module, only : coupler_type
+  use Connection_module, only : connection_set_type
+
+  implicit none
+
+  type(patch_type) :: patch
+  type(option_type) :: option
+
+  PetscInt :: ncount
+  PetscInt :: iconn
+  PetscInt :: local_id, ghosted_id
+  PetscInt :: n_zero_rows
+  PetscInt :: max_zero_rows
+
+  type(matrix_zeroing_type), pointer :: matrix_zeroing
+  type(grid_type), pointer :: grid
+  type(coupler_type), pointer :: cur_coupler
+  type(connection_set_type), pointer :: cur_connection_set
+  PetscErrorCode :: ierr
+
+  matrix_zeroing => patch%aux%ERT%matrix_zeroing
+
+  n_zero_rows = 0
+
+  do local_id = 1, grid%nlmax
+    ghosted_id = grid%nL2G(local_id)
+    if (patch%imat(ghosted_id) <= 0) then
+      n_zero_rows = n_zero_rows + 1
+    endif
+  enddo
+
+  cur_coupler => patch%prescribed_condition_list%first
+  do
+    if (.not.associated(cur_coupler)) exit
+    ! skip all but the Dirichlet condition
+    if (cur_coupler%geop_condition%itype /= DIRICHLET_BC) cycle
+    cur_connection_set => cur_coupler%connection_set
+    do iconn = 1, cur_connection_set%num_connections
+      local_id = cur_connection_set%id_dn(iconn)
+      ghosted_id = grid%nL2G(local_id)
+      ! no need on inactive grid cells
+      if (patch%imat(ghosted_id) <= 0) cycle
+      n_zero_rows = n_zero_rows
+    enddo
+    cur_coupler => cur_coupler%next
+  enddo
+
+  call MatrixZeroingAllocateArray(matrix_zeroing,n_zero_rows)
+
+  ncount = 0
+
+  do local_id = 1, grid%nlmax
+    ghosted_id = grid%nL2G(local_id)
+    if (patch%imat(ghosted_id) <= 0) then
+      ncount = ncount + 1
+      ! 1-based indexing
+      matrix_zeroing%zero_rows_local(ncount) = local_id
+      ! 0-based indexing
+      matrix_zeroing%zero_rows_local_ghosted(ncount) = ghosted_id-1
+    endif
+  enddo
+
+  cur_coupler => patch%prescribed_condition_list%first
+  do
+    if (.not.associated(cur_coupler)) exit
+    ! skip all but the Dirichlet condition
+    if (cur_coupler%geop_condition%itype /= DIRICHLET_BC) cycle
+    cur_connection_set => cur_coupler%connection_set
+    do iconn = 1, cur_connection_set%num_connections
+      local_id = cur_connection_set%id_dn(iconn)
+      ghosted_id = grid%nL2G(local_id)
+      if (patch%imat(ghosted_id) <= 0) cycle
+      ncount = ncount + 1
+      matrix_zeroing%zero_rows_local(ncount) = local_id
+        ! 0-based indexing
+      matrix_zeroing%zero_rows_local_ghosted(ncount) = ghosted_id-1
+    enddo
+    cur_coupler => cur_coupler%next
+  enddo
+
+  max_zero_rows = 0
+  call MPI_Allreduce(n_zero_rows,max_zero_rows,ONE_INTEGER_MPI,MPIU_INTEGER, &
+                     MPI_MAX,option%mycomm,ierr);CHKERRQ(ierr)
+  if (max_zero_rows > 0) then
+    matrix_zeroing%zero_rows_exist = PETSC_TRUE
+  endif
+
+  if (ncount /= n_zero_rows) then
+    option%io_buffer = 'Error:  Mismatch in non-zero row count! ' // &
+      StringWrite(ncount) // ' ' // trim(StringWrite(n_zero_rows))
+    call PrintErrMsgByRank(option)
+  endif
+
+end subroutine ERTCreateZeroArray
 
 ! ************************************************************************** !
 
