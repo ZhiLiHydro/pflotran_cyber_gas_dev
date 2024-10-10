@@ -243,6 +243,7 @@ subroutine ERTCreateZeroArray(patch,option)
   type(connection_set_type), pointer :: cur_connection_set
   PetscErrorCode :: ierr
 
+  grid => patch%grid
   matrix_zeroing => patch%aux%ERT%matrix_zeroing
 
   n_zero_rows = 0
