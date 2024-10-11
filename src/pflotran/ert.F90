@@ -58,7 +58,6 @@ subroutine ERTSetup(realization)
   PetscBool :: require_electrical_conductivity
   PetscBool :: archies_parameters_defined
   PetscBool :: error_found
-  PetscBool :: dof_is_active(1)
   PetscErrorCode :: ierr
 
   option => realization%option
@@ -203,15 +202,13 @@ subroutine ERTSetup(realization)
   patch%aux%ERT%auxvars => ert_auxvars
   patch%aux%ERT%num_aux = grid%ngmax
 
-  dof_is_active = PETSC_TRUE
-  !
-  call ERTCreateZeroArray(patch,option)
+  call ERTCreateZeroArray(patch,patch%aux%ERT%matrix_zeroing,option)
 
 end subroutine ERTSetup
 
 ! ************************************************************************** !
 
-subroutine ERTCreateZeroArray(patch,option)
+subroutine ERTCreateZeroArray(patch,matrix_zeroing,option)
   !
   ! Computes the zeroed rows for inactive grid cells and prescribed conditions
   !
@@ -229,6 +226,7 @@ subroutine ERTCreateZeroArray(patch,option)
   implicit none
 
   type(patch_type) :: patch
+  type(matrix_zeroing_type), pointer :: matrix_zeroing
   type(option_type) :: option
 
   PetscInt :: ncount
@@ -237,14 +235,12 @@ subroutine ERTCreateZeroArray(patch,option)
   PetscInt :: n_zero_rows
   PetscInt :: max_zero_rows
 
-  type(matrix_zeroing_type), pointer :: matrix_zeroing
   type(grid_type), pointer :: grid
   type(coupler_type), pointer :: cur_coupler
   type(connection_set_type), pointer :: cur_connection_set
   PetscErrorCode :: ierr
 
   grid => patch%grid
-  matrix_zeroing => patch%aux%ERT%matrix_zeroing
 
   n_zero_rows = 0
 
