@@ -120,6 +120,8 @@ module Option_module
     PetscReal :: dt
     PetscBool :: match_waypoint
 
+    PetscBool :: store_cell_coordinate
+
     PetscReal :: gravity(3)
 
     PetscReal :: scale
@@ -472,6 +474,7 @@ subroutine OptionInitRealization(option)
   option%use_isothermal = PETSC_FALSE
   option%use_matrix_free = PETSC_FALSE
   option%use_sc = PETSC_FALSE
+  option%store_cell_coordinate = PETSC_FALSE
 
   option%flowmode = ""
   option%iflowmode = NULL_MODE

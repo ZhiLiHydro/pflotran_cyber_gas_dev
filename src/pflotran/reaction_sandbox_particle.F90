@@ -16,6 +16,7 @@ module Reaction_Sandbox_Particle_class
     ! Implementation of 6 particle and emulation transport models listed 
     !   in table5.2 of 'Emulsion-based delivery of alkalinity for subsurface
     !   pH control' by Katherine Muller 2016
+    ! M6 was not included currently.
 
     ! Model index
     PetscInt :: n_model ! M-1~6 six models in Table5.2
@@ -37,13 +38,20 @@ module Reaction_Sandbox_Particle_class
     PetscReal :: alpha_efficiency
 
     !Attachment/Detachment rates (Constant)
-    PetscReal :: attachment_rate  ! 1/s
-    PetscReal :: detachment_rate  ! 1/s
+    PetscReal :: attachment_rate  ! 1/s  (or deposition rate) 
+    PetscReal :: detachment_rate  ! 1/s  (or remobilization rate)
 
     PetscReal :: max_solid_conc  ! Smax [mol/m^3 bulk]
                                  ! was [mol/kg bulk] in the literature
     PetscReal :: beta            ! depth-dependent exponent [-]
-    
+    PetscReal :: lambda_si       ! clean-bed average filter coefficient [1/m] (Soo & Radke 1986 CES)
+    PetscReal :: alpha_s         ! flow redistribution parameter [-] (Soo & Radke 1986 CES) 
+    PetscReal :: d50             ! median grain size [m]
+    PetscReal :: starting_x      
+    PetscReal :: starting_y
+    PetscReal :: starting_z
+    PetscReal :: rho_dp          ! dispersed phase density [kg/m^3]
+
   contains
     procedure, public :: ReadInput => ParticleRead
     procedure, public :: Setup => ParticleSetup
@@ -77,6 +85,13 @@ function ParticleCreate()
   ParticleCreate%species_im_id = 0
   ParticleCreate%max_solid_conc = 0.d0
   ParticleCreate%beta = 0.d0
+  ParticleCreate%lambda_si = 0.d0
+  ParticleCreate%alpha_s = 0.d0
+  ParticleCreate%d50 = 0.d0
+  ParticleCreate%starting_x = 0.d0
+  ParticleCreate%starting_y = 0.d0
+  ParticleCreate%starting_z = 0.d0
+  ParticleCreate%rho_dp = 0.d0
 
   !Filtration Model
   ParticleCreate%diam_collector = 0.d0
@@ -158,7 +173,7 @@ subroutine ParticleRead(this,input,option)
               call ReadAttachmentRate(this,input,word,option)              
             case('MAX_SOLID_CONCENTRATION')
             ! Read Smax in Eqn 5.13 in mol/m^3 bulk
-              call ReadMaxSolidConc(this,input,word,option)
+               call ReadRealValue(this%max_solid_conc,input,word,option)
             case default
               call InputKeywordUnrecognized(input,word, &
                      'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT,&
@@ -167,16 +182,126 @@ subroutine ParticleRead(this,input,option)
         enddo
         call InputPopBlock(input,option)
               
-!      case('DEPTH_DEPENDENT_RETENTION')
-!         this%n_model = 2
-!         do
-!            select case(trim(word))
-!      case('DEPTH_DEPENDENT_RETENTION_LANGMUIRIAN_BLOCKING')
-!         this%n_model = 3
-!      case('DEPOSTION_LANGMUIRIAN_BLOCKING_DEPTH_DEPENDENT_RETENTION')
-!         this%n_model = 4 
-!      case('DEPOSTION_WITHOUT_DISPERSION')
-!         this%n_model = 5
+      case('DEPTH_DEPENDENT_RETENTION')
+        this%n_model = 2
+        call InputPushBlock(input,option)
+        do
+          call InputReadPflotranString(input,option)
+          if (InputError(input)) exit
+          if (InputCheckExit(input,option)) exit
+          call InputReadCard(input,option,word)
+          call InputErrorMsg(input,option,word, &
+                 'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT')
+          call StringToUpper(word)
+          select case(trim(word))
+            case('DETACHMENT_RATE')
+            ! read kr in Eqn 5.14
+              call ReadDetachmentRate(this,input,word,option)
+            case('DEPTH_DEPENDENT_FUNCTION')
+            ! read beta, d50 and reference point coordinates 
+            !  needed in Eqn 5.8 
+              call ReadDepthDepFunction(this,input,word,option)
+            case default
+              call InputKeywordUnrecognized(input,word, &
+                     'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT,&
+                     &DEPTH_DEPENDENT_RETENTION',option)
+          end select
+        enddo
+        call InputPopBlock(input,option)
+
+      case('DEPTH_DEPENDENT_BLOCKING')
+        this%n_model = 3
+        call InputPushBlock(input,option)
+        do
+          call InputReadPflotranString(input,option)
+          if (InputError(input)) exit
+          if (InputCheckExit(input,option)) exit
+          call InputReadCard(input,option,word)
+          call InputErrorMsg(input,option,word, &
+                 'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT')
+          call StringToUpper(word)
+          select case(trim(word))
+            case('ATTACHMENT_RATE')
+            ! read kd in Eqn 5.15  
+              call ReadAttachmentRate(this,input,word,option)    
+            case('MAX_SOLID_CONCENTRATION')
+            ! read Smax (in psi_b) Eqn 5.15
+              call ReadRealValue(this%max_solid_conc,input,word,option)
+            case('DEPTH_DEPENDENT_FUNCTION')
+             ! read beta, d50 and reference point coordinates 
+             !  needed in Eqn 5.8 
+              call ReadDepthDepFunction(this,input,word,option)
+            case default
+              call InputKeywordUnrecognized(input,word, &
+                     'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT,&
+                     &DEPTH_DEPENDENT_BLOCKING',option)
+          end select
+        enddo
+        call InputPopBlock(input,option)
+
+      case('DEPOSTION_BLOCKING_DEPTH')
+        this%n_model = 4 
+        call InputPushBlock(input,option)
+        do
+          call InputReadPflotranString(input,option)
+          if (InputError(input)) exit
+          if (InputCheckExit(input,option)) exit
+          call InputReadCard(input,option,word)
+          call InputErrorMsg(input,option,word, &
+                 'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT')
+          call StringToUpper(word)
+          select case(trim(word))
+            case('ATTACHMENT_RATE')
+            ! read kd in Eqn 5.16
+              call ReadAttachmentRate(this,input,word,option)
+            case('DETACHMENT_RATE')
+            ! read kr in Eqn 5.16
+              call ReadDetachmentRate(this,input,word,option)  
+            case('MAX_SOLID_CONCENTRATION')
+            ! read Smax (in psi_b) Eqn 5.16
+              call ReadRealValue(this%max_solid_conc,input,word,option)
+            case('DEPTH_DEPENDENT_FUNCTION')
+            ! read beta, d50 and reference point coordinates 
+            !  needed in Eqn 5.8 
+              call ReadDepthDepFunction(this,input,word,option)
+            case default
+              call InputKeywordUnrecognized(input,word, &
+                     'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT,&
+                     &DEPOSTION_BLOCKING_DEPTH',option)
+          end select
+        enddo
+        call InputPopBlock(input,option)
+
+      case('DEPOSITION_WITHOUT_DISPERSION')
+        this%n_model = 5
+        call InputPushBlock(input,option)
+        do
+          call InputReadPflotranString(input,option)
+          if (InputError(input)) exit
+          if (InputCheckExit(input,option)) exit
+          call InputReadCard(input,option,word)
+          call InputErrorMsg(input,option,word, &
+                 'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT')
+          call StringToUpper(word)
+          select case(trim(word))
+            case('AVERAGE_FILTER_COEFFICIENT')
+            ! read lambda_si in Eqn.5.17
+              call ReadRealValue(this%lambda_si,input,word,option)
+            case('FLOW_REDISTRIBUTION_PARAMETER')
+            ! read alpha_star in Eqn. 5.17
+              call ReadRealValue(this%alpha_s,input,word,option)
+            case('DISPERSED_PHASE_DENSITY')
+            ! read Rho_dp in Eqn. 5.17
+              call ReadRealValue(this%rho_dp,input,word,option)
+            case default
+              call InputKeywordUnrecognized(input,word, &
+                     'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT,&
+                     &DEPOSITION_WITHOUT_DISPERSION',option)
+          end select
+        enddo
+        call InputPopBlock(input,option) 
+
+
 !      case('DEPOSTION_WITH_SURFACE_CAPACITY')    
 !         this%n_model = 6
 
@@ -230,6 +355,7 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
   use Option_module
   use Reaction_Aux_module
   use Material_Aux_module
+  use Global_Aux_module
 
   implicit none
 
@@ -266,7 +392,9 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
   PetscReal :: stoich_aq,stoich_im
   PetscReal :: exchange ! mol/(m^3_pore s) 
   PetscInt :: aq_id,im_id
-  PetscReal :: tempreal
+  PetscReal :: tempreal,tempreal_aq,tempreal_im
+  PetscReal :: dx,xc,yc,zc 
+  PetscReal :: q_darcy
 
   ! Global stuff (Check global_aux.F90)
   volume = material_auxvar%volume
@@ -291,24 +419,86 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
   stoich_aq = -1.d0
   stoich_im = 1.d0
 
+!-------------------------------------------------------------------------
+! Compute the exchange rate (dS/dt)
+!-------------------------------------------------------------------------
   if (this%n_model==1) then
-  ! M-1 in table 5.2
+! M-1 in table 5.2
     k_d = AttachmentRate(this,global_auxvar,iphase,temperature,viscosity, &
                         porosity,rho_f)
     smax = this%max_solid_conc
     call BlockingFunction(im_conc,smax,psi_b,dpsi_b_dc)
-    ! eqn 5.13
+! eqn 5.13
     exchange = &    ![mol/(kg_bulk s)]
              liquid_saturation * k_d * psi_b * aq_conc * rho_f &
 ! unit     [m^3_water/m^3_pore] [1/s]  [-] [mol/kg_water] [kg_water/m^3_water]
              * porosity / bulk_density        
 ! unit   [m^3_pore/m^3_bulk] [kg_bulk/m^3_bulk]            
 
-!    print *, 'exchange rate:',exchange 
-!  elseif (this%n_model==2) then
-!  elseif (this%n_model==3) then
-!  elseif (this%n_model==4) then
-!  elseif (this%n_model==5) then
+  elseif (this%n_model==2) then
+! M-2 in table 5.2
+    k_r = this%detachment_rate
+    xc = global_auxvar%xc_coordinate(iphase)
+    yc = global_auxvar%yc_coordinate(iphase)
+    zc = global_auxvar%zc_coordinate(iphase)
+    dx = sqrt((xc-this%starting_x)**2 + (yc-this%starting_y)**2 +&
+                                      (zc-this%starting_z)**2)
+    call DepthDepRetenFunction(this%d50,dx,this%beta,psi_d)    
+! eqn 5.14
+    exchange = &    ![mol/(kg_bulk s)]
+             liquid_saturation * k_r * psi_d * aq_conc * rho_f &
+! unit     [m^3_water/m^3_pore] [1/s]  [-] [mol/kg_water] [kg_water/m^3_water]
+             * porosity / bulk_density
+! unit   [m^3_pore/m^3_bulk] [kg_bulk/m^3_bulk] 
+
+  elseif (this%n_model==3) then
+! M-3 in table 5.2
+    k_d = AttachmentRate(this,global_auxvar,iphase,temperature,viscosity, &
+                        porosity,rho_f)
+    smax = this%max_solid_conc
+    xc = global_auxvar%xc_coordinate(iphase)
+    yc = global_auxvar%yc_coordinate(iphase)
+    zc = global_auxvar%zc_coordinate(iphase)
+    dx = sqrt((xc-this%starting_x)**2 + (yc-this%starting_y)**2 +&
+                                      (zc-this%starting_z)**2)
+    call DepthDepRetenFunction(this%d50,dx,this%beta,psi_d)
+    call BlockingFunction(im_conc,smax,psi_b,dpsi_b_dc)    
+! eqn 5.15
+    exchange = &    ![mol/(kg_bulk s)]
+             liquid_saturation * k_d * psi_b * psi_d * aq_conc &
+!         [m^3_water/m^3_pore]  [1/s]   [-]      [-]   [mol/kg_water]
+             * rho_f * porosity / bulk_density
+!     [kg_water/m^3_water] [m^3_pore/m^3_bulk] [kg_bulk/m^3_bulk]
+
+  elseif (this%n_model==4) then
+! M-4 in table 5.2
+    k_d = AttachmentRate(this,global_auxvar,iphase,temperature,viscosity, &
+                        porosity,rho_f)
+    k_r = this%detachment_rate
+    smax = this%max_solid_conc
+    xc = global_auxvar%xc_coordinate(iphase)
+    yc = global_auxvar%yc_coordinate(iphase)
+    zc = global_auxvar%zc_coordinate(iphase)
+    dx = sqrt((xc-this%starting_x)**2 + (yc-this%starting_y)**2 +&
+                                      (zc-this%starting_z)**2)
+    call DepthDepRetenFunction(this%d50,dx,this%beta,psi_d)
+    call BlockingFunction(im_conc,smax,psi_b,dpsi_b_dc)    
+! eqn 5.16
+    exchange = &    ![mol/(kg_bulk s)]
+             liquid_saturation * (k_r * psi_d + k_d * psi_b) * aq_conc &
+!         [m^3_water/m^3_pore]   [1/s]   [-]    [1/s]  [-]   [mol/kg_water]
+             * rho_f * porosity / bulk_density
+!     [kg_water/m^3_water] [m^3_pore/m^3_bulk] [kg_bulk/m^3_bulk]
+
+  elseif (this%n_model==5) then
+! M-5 in table 5.2   
+    option%flow%store_darcy_vel = PETSC_TRUE    
+    q_darcy = MAX(global_auxvar%darcy_vel(iphase),1.0d-20)
+! eqn 5.17
+    tempreal = (this%alpha_s/(porosity*liquid_saturation) * (bulk_density/this%rho_dp)*im_conc)  
+    exchange = &    ![mol/(kg_bulk s)]
+             this%lambda_si * q_darcy * (1.d0- this%alpha_s*bulk_density ) * aq_conc
+
 !  elseif (this%n_model==6) then
   
   end if  
@@ -326,23 +516,65 @@ subroutine ParticleEvaluate(this,Residual,Jacobian,compute_derivative, &
   Residual(im_id) = Residual(im_id) - det_rate   
 
 ! Jacobian
-  if (compute_derivative) then    
-    tempreal = & ! [kg_water/s]
+  if (compute_derivative) then
+    if (this%n_model==1) then    
+      tempreal_aq = & ! [kg_water/s]
              liquid_saturation * k_d * psi_b * &
 !unit      [m^3_water/m^3_pore] [1/s]   [-]                 
              rho_f * volume * porosity 
 !unit  [kg_water/m^3_water] [m^3_bulk] [m^3_pore/m^3_bulk]
 
-    Jacobian(aq_id,aq_id) = Jacobian(aq_id,aq_id) - stoich_aq * tempreal
-    Jacobian(im_id,aq_id) = Jacobian(im_id,aq_id) - stoich_im * tempreal   
-
-    tempreal = & ! [m^3_bulk/s]
-             liquid_saturation * k_d * dpsi_b_dc * & !bulk_density * & 
-!unit      [m^3_water/m^3_pore] [1/s] [m^3_bulk/mol] [kg_bulk/m^3_bulk]
+      tempreal_im = & ! [m^3_bulk/s]
+             liquid_saturation * k_d * dpsi_b_dc * &  
+!unit      [m^3_water/m^3_pore] [1/s] [m^3_bulk/mol] 
              aq_conc * rho_f * volume * porosity
-!unit       [mol/L] [L/m^3_water] [m^3_bulk] [m^3_pore/m^3_bulk]
-    Jacobian(aq_id,im_id) = Jacobian(aq_id,im_id) - stoich_aq * tempreal
-    Jacobian(im_id,im_id) = Jacobian(im_id,im_id) - stoich_im * tempreal
+!unit  [mol/kg_water] [kg_water/m^3_water] [m^3_bulk] [m^3_pore/m^3_bulk]
+
+    elseif (this%n_model==2) then
+      tempreal_aq = & ! [kg_water/s]
+             liquid_saturation * k_r * psi_d * &
+!unit      [m^3_water/m^3_pore] [1/s]   [-]                 
+             rho_f * volume * porosity 
+!unit  [kg_water/m^3_water] [m^3_bulk] [m^3_pore/m^3_bulk]
+
+      tempreal_im = 0.d0 
+!unit [m^3_bulk/s] [1/s]  [m^3_bulk]
+
+    elseif (this%n_model==3) then
+      tempreal_aq = & ! [kg_water/s]
+             liquid_saturation * k_d * psi_b * psi_d *&
+!unit      [m^3_water/m^3_pore] [1/s]   [-]     [-]            
+             rho_f * volume * porosity 
+!unit  [kg_water/m^3_water] [m^3_bulk] [m^3_pore/m^3_bulk]
+
+      tempreal_im = & ! [m^3_bulk/s]
+             liquid_saturation * k_d * dpsi_b_dc * &  
+!unit      [m^3_water/m^3_pore] [1/s] [m^3_bulk/mol] 
+             aq_conc * rho_f * volume * porosity
+!unit  [mol/kg_water] [kg_water/m^3_water] [m^3_bulk] [m^3_pore/m^3_bulk]
+
+    elseif (this%n_model==4) then
+      tempreal_aq = & ! [kg_water/s]
+             liquid_saturation * (k_d * psi_b + k_r * psi_d)* &
+!unit      [m^3_water/m^3_pore] [1/s]   [-]     [1/s]  [-]           
+             rho_f * volume * porosity 
+!unit  [kg_water/m^3_water] [m^3_bulk] [m^3_pore/m^3_bulk]
+
+      tempreal_im = & ! [m^3_bulk/s]
+             liquid_saturation * k_d * dpsi_b_dc * &  
+!unit      [m^3_water/m^3_pore] [1/s] [m^3_bulk/mol] 
+             aq_conc * rho_f * volume * porosity 
+!unit  [mol/kg_water] [kg_water/m^3_water] [m^3_bulk] [m^3_pore/m^3_bulk]
+ 
+!    elseif (this%n_model==5) then
+
+!    elseif (this%n_model==6) then
+
+    endif
+    Jacobian(aq_id,aq_id) = Jacobian(aq_id,aq_id) - stoich_aq * tempreal_aq
+    Jacobian(im_id,aq_id) = Jacobian(im_id,aq_id) - stoich_im * tempreal_aq   
+    Jacobian(aq_id,im_id) = Jacobian(aq_id,im_id) - stoich_aq * tempreal_im
+    Jacobian(im_id,im_id) = Jacobian(im_id,im_id) - stoich_im * tempreal_im
 
   end if    
 
@@ -511,35 +743,30 @@ subroutine ReadAttachmentRateModel(this,input,word,option)
         call InputErrorMsg(input,option,'DIAMETER_COLLECTOR', &
                'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT, &
                &FILTRATION_MODEL')
-
       case('DIAMETER_PARTICLE')
       ! Diameter of the particle [m]
         call InputReadDouble(input,option,this%diam_particle)
         call InputErrorMsg(input,option,'DIAMETER_PARTICLE', &
                'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT, &
                &FILTRATION_MODEL')
-
       case('HAMAKER_CONSTANT')
       ! Hamaker constant particle-soil pair [Joules]
         call InputReadDouble(input,option,this%hamaker_constant)
         call InputErrorMsg(input,option,'HAMAKER_CONSTANT', &
                'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT, &
                &FILTRATION_MODEL')
-
       case('DENSITY_PARTICLE')
       ! Density of the particles [kg/m3]
         call InputReadDouble(input,option,this%density_particle)
         call InputErrorMsg(input,option,'DENSITY_PARTICLE', &
                'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT, &
                &FILTRATION_MODEL')
-
       case('ALPHA_EFFICIENCY')
       ! Collision/attachment efficiency [-]
         call InputReadDouble(input,option,this%alpha_efficiency)
         call InputErrorMsg(input,option,'ALPHA_EFFICIENCY', &
                'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT, &
                &FILTRATION_MODEL')
-
       ! Something else
       case default
         call InputKeywordUnrecognized(input,word, &
@@ -551,11 +778,145 @@ subroutine ReadAttachmentRateModel(this,input,word,option)
 
 end subroutine ReadAttachmentRateModel
 
-subroutine ReadMaxSolidConc(this,input,word,option)
+subroutine ReadDetachmentRate(this,input,word,option)
   !
-  ! Read max solid concentration from input file
+  ! Read detachment rate from input file
+  !   as a constant value
   ! Author: Bryan He
-  ! Date: 06/08/2024
+  ! Date: 06/21/2024
+  !
+  use Option_module
+  use String_module
+  use Input_Aux_module
+  use Utility_module
+  use Units_module, only : UnitsConvertToInternal
+
+  implicit none
+
+  class(reaction_sandbox_particle_type) :: this
+  type(input_type), pointer :: input
+  type(option_type) :: option
+
+  character(len=MAXWORDLENGTH) :: word, internal_units
+
+  call InputReadWord(input,option,word,PETSC_TRUE)
+  call InputErrorMsg(input,option,word, &
+         'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT')
+  select case(trim(word))
+    case('CONSTANT')
+      call InputPushBlock(input,option)
+      do
+        call InputReadPflotranString(input,option)
+        if (InputError(input)) exit
+        if (InputCheckExit(input,option)) exit
+
+        call InputReadCard(input,option,word)
+        call InputErrorMsg(input,option,'CONSTANT', &
+               'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT&
+               &,DETACHMENT_RATE')
+        call StringToUpper(word)
+
+        select case(trim(word))
+          case('VALUE')
+          ! Read the double precision rate constant
+            call InputReadDouble(input,option,this%detachment_rate)
+            call InputErrorMsg(input,option,'VALUE', &
+                   'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT&
+                   &,DETACHMENT_RATE,CONSTANT')
+          ! Read the units
+            call InputReadWord(input,option,word,PETSC_TRUE)
+            if (InputError(input)) then
+            ! If units do not exist, assume default units
+            !  of 1/s which are the standard internal PFLOTRAN 
+            !  units for this rate constant.
+              input%err_buf = 'RATE CONSTANT UNITS assumed as 1/s'
+              call InputDefaultMsg(input,option)
+            else
+            ! If units exist, convert to internal units of 1/s
+              internal_units = 'unitless/sec'
+              this%detachment_rate = this%detachment_rate * &
+              UnitsConvertToInternal(word,internal_units, &
+                'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT&
+                &,DETACHMENT_RATE,CONSTANT',option)
+            endif
+          case default
+            call InputKeywordUnrecognized(input,word, &
+                   'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT,&
+                   &DETACHMENT_RATE',option)
+        end select
+      end do
+      call InputPopBlock(input,option)
+    case default
+      call InputKeywordUnrecognized(input,word, &
+             'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT,&
+             &DETACHMENT_RATE',option)
+  end select
+  
+end subroutine ReadDetachmentRate
+
+subroutine ReadDepthDepFunction(this,input,word,option)
+  !
+  ! Read depth dependent function related parameters 
+  !     from input file
+  ! Author: Bryan He
+  ! Date: 10/09/2024
+  !
+  use Option_module
+  use String_module
+  use Input_Aux_module
+  use Utility_module
+  use Units_module, only : UnitsConvertToInternal
+
+  implicit none
+
+  class(reaction_sandbox_particle_type) :: this
+  type(input_type), pointer :: input
+  type(option_type) :: option
+
+  character(len=MAXWORDLENGTH) :: word, internal_units
+
+  call InputPushBlock(input,option)
+  ! Turn on the option to have cell center coordinates
+  ! accessiable 
+  option%store_cell_coordinate=PETSC_TRUE
+  do
+    call InputReadPflotranString(input,option)
+    if (InputError(input)) exit
+    if (InputCheckExit(input,option)) exit
+
+    call InputReadCard(input,option,word)
+    call InputErrorMsg(input,option,'DEPTH_DEPENDENT_FUNCTION', &
+           'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT')
+    call StringToUpper(word)
+
+    select case(trim(word))
+      case('DEPTH_DEPENDENT_EXPONENT')
+      ! depth dependent exponent (beta in Eqn 5.8)
+        call ReadRealValue(this%beta,input,word,option)
+      case('MEDIAN_GRAIN_SIZE')
+      ! d50 [m] in Eqn 5.8
+        call ReadRealValue(this%d50,input,word,option)
+      case('STARTING_POINT')
+      ! Provide reference point coordinates to compute 
+      ! depth (x in Eqn 5.8)
+        call ReadRealValue(this%starting_x,input,word,option)
+        call ReadRealValue(this%starting_y,input,word,option)
+        call ReadRealValue(this%starting_z,input,word,option)
+      case default
+      call InputKeywordUnrecognized(input,word, &
+              'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT,&
+              &ATTACHMENT_RATE,DEPTH_DEPENDENT_FUNCTION',option)
+    end select
+  end do
+  call InputPopBlock(input,option)
+  
+end subroutine ReadDepthDepFunction
+
+subroutine ReadRealValue(realvalue,input,word,option)
+  !
+  ! Read one specified real number from input file
+  ! Author: Bryan He
+  ! Date: 10/09/2024
   !
   use Option_module
   use String_module
@@ -564,19 +925,17 @@ subroutine ReadMaxSolidConc(this,input,word,option)
 
   implicit none
 
-  class(reaction_sandbox_particle_type) :: this
+!  class(reaction_sandbox_particle_type) :: this
   type(input_type), pointer :: input
   type(option_type) :: option
 
   character(len=MAXWORDLENGTH) :: word
+  PetscReal :: realvalue
 
-! Read Smax in Eqn 5.13 in mol/m^3 bulk
-  call InputReadDouble(input,option,this%max_solid_conc)
+  call InputReadDouble(input,option,realvalue)
   call InputErrorMsg(input,option,word, &
-         'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT,&
-         &MAX_SOLID_CONCENTRATION')
-
-end subroutine ReadMaxSolidConc
+         'CHEMISTRY,REACTION_SANDBOX,PARTICLE_TRANSPORT')
+endsubroutine ReadRealValue 
 
 function AttachmentRate(this,global_auxvar,iphase,temperature,viscosity, &
                        porosity,rho_f)
@@ -617,7 +976,6 @@ function AttachmentRate(this,global_auxvar,iphase,temperature,viscosity, &
     Hamaker = this%hamaker_constant
 
     qMag = MAX(global_auxvar%darcy_vel(iphase),1.0d-20)
-
     diffusionCoeff = this%BOLTZMANN_CONSTANT*(temperature+T273K) / &
                    (3.0 * PI * viscosity * dp)
 
@@ -639,7 +997,6 @@ function AttachmentRate(this,global_auxvar,iphase,temperature,viscosity, &
     !! Gravitational number
     NGr = PI/12.0 * (dp*dp*dp*dp) * (rho_p - rho_f) * g /&
           (kB*(temperature + T273K))
-!    print *, 'Happel,NR,NPe,NvdW,NGr,temperature:',Happel,NR,NPe,NvdW,NGr,temperature
     ! Collector efficiencies
     ! ( see Tufenkji & Elimelech 2014
     !   DOI : 10.1021/es034049r )
@@ -666,7 +1023,6 @@ function AttachmentRate(this,global_auxvar,iphase,temperature,viscosity, &
 
     !! Single collector efficiency
     Eta_0 = Eta_D + Eta_I + Eta_G
-!    print *, 'Eta_D,Eta_I,Eta_G:',Eta_D,Eta_I,Eta_G
     ! Rate of attachment according to CFT
     AttachmentRate = 1.5 * (1 - porosity) * qMag * alpha * Eta_0 &
            / (dc * porosity)    
@@ -719,7 +1075,7 @@ subroutine BlockingFunction(im_conc,im_max_conc,psi_b,dpsi_b_dc)
 
 end subroutine BlockingFunction
 
-function DepthDepRetenFunction(d50,dx,beta)
+subroutine DepthDepRetenFunction(d50,dx,beta,psi_d)
   !
   ! Compute depth dependent retention function
   ! Eqn 5.8 in Muller 2015 
@@ -730,11 +1086,11 @@ function DepthDepRetenFunction(d50,dx,beta)
 
   implicit none
 
-  PetscReal :: DepthDepRetenFunction
   PetscReal :: d50,dx,beta
+  PetscReal :: psi_d
 
-  DepthDepRetenFunction = ((d50+dx)/d50)**(-beta)
+  psi_d = ((d50+dx)/d50)**(-beta)
 
-end function
+end subroutine
 
 end module Reaction_Sandbox_Particle_class

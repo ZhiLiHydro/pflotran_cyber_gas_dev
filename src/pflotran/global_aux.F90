@@ -32,7 +32,9 @@ module Global_Aux_module
 !geh    PetscReal :: scco2_eq_logK ! SC CO2
     PetscReal, pointer :: darcy_vel(:)
     PetscReal, pointer :: parameters(:)
-
+    PetscReal, pointer :: xc_coordinate(:)
+    PetscReal, pointer :: yc_coordinate(:)
+    PetscReal, pointer :: zc_coordinate(:)
   end type global_auxvar_type
 
   type, public :: global_type
@@ -129,7 +131,9 @@ subroutine GlobalAuxVarInit(auxvar,option)
   nullify(auxvar%dphi)
   nullify(auxvar%darcy_vel)
   nullify(auxvar%parameters)
-
+  nullify(auxvar%xc_coordinate)
+  nullify(auxvar%yc_coordinate)
+  nullify(auxvar%zc_coordinate)
   nphase = max(option%nphase,option%transport%nphase)
 
   if (option%nflowdof > 0) then
@@ -145,6 +149,14 @@ subroutine GlobalAuxVarInit(auxvar,option)
   if (option%flow%store_darcy_vel) then
     allocate(auxvar%darcy_vel(option%nphase))
     auxvar%darcy_vel = 0.d0
+  endif
+  if (option%store_cell_coordinate) then
+    allocate(auxvar%xc_coordinate(nphase))
+    auxvar%xc_coordinate = 0.d0
+    allocate(auxvar%yc_coordinate(nphase))
+    auxvar%yc_coordinate = 0.d0
+    allocate(auxvar%zc_coordinate(nphase))
+    auxvar%zc_coordinate = 0.d0
   endif
 
   ! need these for reactive transport only if flow is computed
@@ -270,6 +282,15 @@ subroutine GlobalAuxVarCopy(auxvar,auxvar2,option)
   if (associated(auxvar2%darcy_vel)) then
     auxvar2%darcy_vel = auxvar%darcy_vel
   endif
+  if (associated(auxvar2%xc_coordinate)) then
+    auxvar2%xc_coordinate = auxvar%xc_coordinate
+  endif
+  if (associated(auxvar2%yc_coordinate)) then
+    auxvar2%yc_coordinate = auxvar%yc_coordinate
+  endif
+  if (associated(auxvar2%zc_coordinate)) then
+    auxvar2%zc_coordinate = auxvar%zc_coordinate
+  endif
   if (associated(auxvar2%reaction_rate)) then
     auxvar2%reaction_rate = auxvar%reaction_rate
   endif
@@ -389,6 +410,9 @@ subroutine GlobalAuxVarStrip(auxvar)
   call DeallocateArray(auxvar%reaction_rate)
   call DeallocateArray(auxvar%dphi)
   call DeallocateArray(auxvar%darcy_vel)
+  call DeallocateArray(auxvar%xc_coordinate)
+  call DeallocateArray(auxvar%yc_coordinate)
+  call DeallocateArray(auxvar%zc_coordinate)
 
   call DeallocateArray(auxvar%pres_store)
   call DeallocateArray(auxvar%temp_store)

@@ -206,4 +206,7 @@ module Variables_module
   PetscInt, parameter, public :: THERMAL_CONDUCTIVITY = 165
   PetscInt, parameter, public :: MATERIAL_ELECTRICAL_CONDUCTIVITY = 166
 
+  PetscInt, parameter, public :: XC_COORDINATE          = 167
+  PetscInt, parameter, public :: YC_COORDINATE          = 168
+  PetscInt, parameter, public :: ZC_COORDINATE          = 169
 end module Variables_module

@@ -250,7 +250,8 @@ subroutine GlobalSetAuxVarVecLoc(realization,vec_loc,ivar,time_level)
                                LIQUID_DENSITY, GAS_PRESSURE, &
                                GAS_DENSITY, GAS_SATURATION, &
                                TEMPERATURE, SC_FUGA_COEFF, GAS_DENSITY_MOL, &
-                               STATE, DARCY_VELOCITY
+                               STATE, DARCY_VELOCITY,XC_COORDINATE,&
+                               YC_COORDINATE, ZC_COORDINATE
 
   implicit none
 
@@ -445,7 +446,18 @@ subroutine GlobalSetAuxVarVecLoc(realization,vec_loc,ivar,time_level)
       do ghosted_id=1, grid%ngmax
         patch%aux%Global%auxvars(ghosted_id)%darcy_vel(option%liquid_phase) = vec_loc_p(ghosted_id)
       enddo
-      !end select
+    case(XC_COORDINATE)
+      do ghosted_id=1, grid%ngmax
+        auxvars(ghosted_id)%xc_coordinate = vec_loc_p(ghosted_id)
+      enddo
+    case(YC_COORDINATE)
+      do ghosted_id=1, grid%ngmax
+        auxvars(ghosted_id)%yc_coordinate = vec_loc_p(ghosted_id)
+      enddo
+    case(ZC_COORDINATE)
+      do ghosted_id=1, grid%ngmax
+        auxvars(ghosted_id)%zc_coordinate = vec_loc_p(ghosted_id)
+      enddo
     case default
       print *, 'Case(', ivar, ') not supported in GlobalSetAuxVarVecLoc'
       stop
@@ -753,13 +765,17 @@ subroutine GlobalUpdateAuxVars(realization,time_level,time)
   use Realization_Base_class, only : RealizationGetVariable
   use Field_module
   use Option_module
+  use Patch_module
+  use Grid_module
   use Communicator_Base_class
   use Material_module, only : MaterialUpdateAuxVars
   use Variables_module, only : LIQUID_PRESSURE, LIQUID_SATURATION, &
                                LIQUID_DENSITY, GAS_PRESSURE, &
                                GAS_DENSITY, GAS_SATURATION, &
                                TEMPERATURE, SC_FUGA_COEFF, GAS_DENSITY_MOL, &
-                               DARCY_VELOCITY
+                               DARCY_VELOCITY,X_COORDINATE,Y_COORDINATE, &
+                               Z_COORDINATE,XC_COORDINATE,YC_COORDINATE, &
+                               ZC_COORDINATE
   use ZFlow_Aux_module, only : zflow_density_kg
 
 #include "petsc/finclude/petscvec.h"
@@ -768,11 +784,16 @@ subroutine GlobalUpdateAuxVars(realization,time_level,time)
   use Output_Common_module
 
   class(realization_subsurface_type) :: realization
+  type(patch_type),pointer :: patch
+  type(grid_type), pointer :: grid
+  
   PetscReal :: time
   PetscInt  :: time_level
 
   PetscInt :: local_id, local_id_max
   Vec :: vec_x,vec_y,vec_z,global_vec
+  Vec :: vec_xc,vec_yc,vec_zc
+  PetscReal, pointer :: vec_xc_ptr(:),vec_yc_ptr(:),vec_zc_ptr(:)
   PetscReal, pointer :: vec_x_ptr(:),vec_y_ptr(:),vec_z_ptr(:), vec_calc_ptr(:)
   Vec :: vec_calc
   PetscBool :: flag
@@ -784,6 +805,7 @@ subroutine GlobalUpdateAuxVars(realization,time_level,time)
 
   option => realization%option
   field => realization%field
+  grid => patch%grid
 
   select case(time_level)
     case(TIME_T)
@@ -905,6 +927,28 @@ subroutine GlobalUpdateAuxVars(realization,time_level,time)
 
   end if
   ! darcy velocity (end)
+
+  ! cell coordinate (start)
+  if (option%store_cell_coordinate) then
+
+    call RealizationGetVariable(realization,field%work,X_COORDINATE,ZERO_INTEGER)
+    call realization%comm1%GlobalToLocal(field%work,field%work_loc)
+    call GlobalSetAuxVarVecLoc(realization,field%work_loc,XC_COORDINATE, &
+                              time_level)
+ 
+    call RealizationGetVariable(realization,field%work,Y_COORDINATE,ZERO_INTEGER)
+    call realization%comm1%GlobalToLocal(field%work,field%work_loc)
+    call GlobalSetAuxVarVecLoc(realization,field%work_loc,YC_COORDINATE, &
+                              time_level)
+ 
+    call RealizationGetVariable(realization,field%work,Z_COORDINATE,ZERO_INTEGER)
+    call realization%comm1%GlobalToLocal(field%work,field%work_loc)
+    call GlobalSetAuxVarVecLoc(realization,field%work_loc,ZC_COORDINATE, &
+                              time_level)    
+
+  end if
+  ! cell coordinate (end)
+
 
 end subroutine GlobalUpdateAuxVars
 
