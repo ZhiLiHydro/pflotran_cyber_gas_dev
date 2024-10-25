@@ -72,4 +72,4 @@ for ifile in range(len(filenames)):
 
 plt.legend(bbox_to_anchor=(1.05, 1),title='Time [d]')
 
-plt.savefig('PFLOTRAN '+name+'.png')
+plt.savefig(name+'.png')

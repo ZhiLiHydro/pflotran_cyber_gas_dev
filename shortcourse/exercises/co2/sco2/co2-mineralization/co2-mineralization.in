@@ -24,7 +24,7 @@ END
 
 SUBSURFACE
 
-CO2_DATABASE ../co2_sw.dat
+CO2_DATABASE ../../../../../database/co2_sw.dat
 
 NUMERICAL_METHODS flow
 
@@ -285,7 +285,7 @@ EOS WATER
 END
 
 EOS GAS
-  CO2_DATABASE ../co2_sw.dat
+  CO2_DATABASE ../../../../../database/co2_sw.dat
   HENRYS_CONSTANT DEFAULT
 END
 
