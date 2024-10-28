@@ -70,7 +70,7 @@ WELL_MODEL_OUTPUT
 
 #=========================== discretization ===================================
 GRID
-  # 20 x 1 x 25
+  # nx=20 x ny=1 x nz=25
   TYPE UNSTRUCTURED mesh.ugi
 END
 

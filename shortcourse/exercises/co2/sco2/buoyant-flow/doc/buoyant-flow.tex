@@ -486,6 +486,23 @@ END
   \redcomment{SALT_MASS 0.d0}
   \redcomment{TEMPERATURE 54.d0}
 \redcomment{END}
+
+\newpage
+\redcomment{OUTPUT}
+  \redcomment{SNAPSHOT_FILE}
+    \redcomment{TIMES y 1.d-3 1.d-2 1.d-1 5.d-1}
+    \redcomment{FORMAT TECPLOT POINT}
+  \redcomment{/}
+  \redcomment{UNFILTER_NON_STATE_VARIABLES}
+
+  \redcomment{VARIABLES}
+   \redcomment{GAS_PRESSURE}
+   \redcomment{GAS_SATURATION}
+   \redcomment{LIQUID_MASS_FRACTIONS}
+   \redcomment{GAS_MASS_FRACTIONS}
+   \redcomment{TEMPERATURE}
+  \redcomment{/}
+\redcomment{END}
 \end{semiverbatim}
 
 \end{frame}

@@ -222,8 +222,6 @@ TIME
   MAXIMUM_TIMESTEP_SIZE 1.d0 y at 1.0001d0 y
   MAXIMUM_TIMESTEP_SIZE 1.d-2 y at 3.d0 y
   MAXIMUM_TIMESTEP_SIZE 1.d0 y at 3.01d0 y
-  MAXIMUM_TIMESTEP_SIZE 3.d-2 y at 21.d0 y
-  MAXIMUM_TIMESTEP_SIZE 1.d0 y at 21.01d0 y
 END
 
 
@@ -240,11 +238,6 @@ REGION caprock
     0.d0 0.d0 1.8d2
     1.d20 1.d20 2.d2
   /
-END
-
-REGION top
-  FACE TOP
-  FILE mesh_ugi_top.ss
 END
 
 REGION north
