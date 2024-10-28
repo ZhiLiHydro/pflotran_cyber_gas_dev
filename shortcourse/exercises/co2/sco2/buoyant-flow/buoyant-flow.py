@@ -16,7 +16,7 @@ path = []
 path.append('.')
 
 name = 'buoyant-flow'
-num_files = 3
+num_files = 5
 
 files = pft.get_tec_filenames(name,range(num_files))
 filenames = pft.get_full_paths(path,files)
@@ -39,11 +39,11 @@ plt.subplot(2,2,2)
 
 f.suptitle(name,fontsize=16)
 plt.ylabel('z (m)')
-plt.xlabel('CO2 Gas Mass Fraction')
+plt.xlabel('Temperature')
 
 #i = 0
 for ifile in range(len(filenames)):
-    data = pft.Dataset(filenames[ifile],3,9)
+    data = pft.Dataset(filenames[ifile],3,11)
     plt.plot(data.get_array('y'),data.get_array('x'),label=data.title)
 
 plt.subplot(2,2,3)

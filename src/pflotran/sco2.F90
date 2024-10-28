@@ -881,10 +881,17 @@ subroutine SCO2UpdateAuxVars(realization,pm_well,update_state,update_state_bc)
                   xxbc(idof) = boundary_condition% &
                         flow_aux_real_var(real_index,iconn)
                 case(DIRICHLET_BC)
+                  if (idof == SCO2_SALT_MASS_FRAC_DOF) then
+                    real_index = boundary_condition% &
+                      flow_aux_mapping(dof_to_primary_variable(idof,istate))
+                    xxbc(idof) = boundary_condition% &
+                      flow_aux_real_var(real_index,iconn)
+                  else
                     option%io_buffer = 'Mixed FLOW_CONDITION "' // &
                           trim(boundary_condition%flow_condition%name) // &
                           '" not fully supported yet for SCO2 Mode.'
                     call PrintErrMsg(option)
+                  endif
                 case(NEUMANN_BC)
                 case default
                   option%io_buffer = 'Unknown BC type in SCO2UpdateAuxVars().'

@@ -3821,7 +3821,7 @@ subroutine PatchUpdateCouplerAuxVarsH(patch,coupler,option)
                   call PrintErrMsg(option)
               end select
           endif
-          ! temperature; 2nd dof ------------------------- !
+          ! temperature; 3rd dof ------------------------- !
           if (associated(hydrate%temperature)) then
             select case(hydrate%temperature%itype)
               case(DIRICHLET_BC)
@@ -5075,21 +5075,23 @@ subroutine PatchUpdateCouplerAuxVarsSCO2(patch,coupler,option)
           ! With energy
           ! temperature; 4th dof ------------------------- !
           if (sco2_thermal) then
-            select case(sco2%temperature%itype)
-              case(DIRICHLET_BC)
-                call PatchGetCouplerValueFromDataset(coupler,option, &
-                     patch%grid,sco2%temperature%dataset,iconn,temperature)
-                coupler%flow_aux_real_var(SCO2_TEMPERATURE_DOF, &
-                     iconn) = temperature
-                dof4 = PETSC_TRUE
-                coupler%flow_bc_type(SCO2_ENERGY_EQUATION_INDEX) = DIRICHLET_BC
-              case default
-                string = GetSubConditionType(sco2%temperature%itype)
-                option%io_buffer = &
-                  FlowConditionUnknownItype(coupler%flow_condition, &
-                    'SCO2_MODE two phase state temperature ',string)
-                call PrintErrMsg(option)
-            end select
+            if (associated(sco2%temperature)) then
+              select case(sco2%temperature%itype)
+                case(DIRICHLET_BC)
+                  call PatchGetCouplerValueFromDataset(coupler,option, &
+                      patch%grid,sco2%temperature%dataset,iconn,temperature)
+                  coupler%flow_aux_real_var(SCO2_TEMPERATURE_DOF, &
+                      iconn) = temperature
+                  dof4 = PETSC_TRUE
+                  coupler%flow_bc_type(SCO2_ENERGY_EQUATION_INDEX) = DIRICHLET_BC
+                case default
+                  string = GetSubConditionType(sco2%temperature%itype)
+                  option%io_buffer = &
+                    FlowConditionUnknownItype(coupler%flow_condition, &
+                      'SCO2_MODE two phase state temperature ',string)
+                  call PrintErrMsg(option)
+              end select
+            endif
           endif
 
       ! ---------------------------------------------------------------------- !
@@ -5212,17 +5214,109 @@ subroutine PatchUpdateCouplerAuxVarsSCO2(patch,coupler,option)
         case(SCO2_ANY_STATE)
           ! With energy
           ! temperature; 4th dof ------------------------- !
-          if (sco2_thermal) then
-            select case(sco2%temperature%itype)
+          if (associated(sco2%liquid_pressure)) then
+            if (sco2%liquid_pressure%itype == HYDROSTATIC_BC) then
+              if (sco2%co2_mass_fraction%itype /= DIRICHLET_BC) then
+                option%io_buffer = 'Hydrostatic liquid state pressure BC for &
+                  &flow condition "' // trim(flow_condition%name) // &
+                  '" requires a CO2 mass fraction BC of type DIRICHLET.'
+                call PrintErrMsg(option)
+              endif
+              if (sco2_thermal) then
+                if (associated(sco2%temperature)) then
+                  if (sco2%temperature%itype /= DIRICHLET_BC) then
+                    option%io_buffer = 'Hydrostatic liquid state pressure BC for &
+                      &flow condition "' // trim(flow_condition%name) // &
+                      '" requires a temperature BC of type DIRICHLET.'
+                    call PrintErrMsg(option)
+                  else
+                    coupler%flow_bc_type(SCO2_ENERGY_EQUATION_INDEX) = DIRICHLET_BC
+                  endif
+                elseif (associated(sco2%energy_flux)) then
+                  if (sco2%energy_flux%itype == NEUMANN_BC) then
+                    coupler%flow_bc_type(SCO2_ENERGY_EQUATION_INDEX) = DIRICHLET_BC
+                  endif
+                endif
+              endif
+              dof1 = PETSC_TRUE
+              coupler%flow_bc_type(SCO2_WATER_EQUATION_INDEX) = HYDROSTATIC_BC
+              coupler%flow_bc_type(SCO2_CO2_EQUATION_INDEX) = DIRICHLET_BC
+            else
+              ! liquid pressure; 1st dof --------------------- !
+              select case(sco2%liquid_pressure%itype)
+                case(DIRICHLET_BC,DIRICHLET_SEEPAGE_BC)
+                  call PatchGetCouplerValueFromDataset(coupler,option, &
+                    patch%grid,sco2%liquid_pressure%dataset,iconn,liquid_pressure)
+                  coupler%flow_aux_real_var(ONE_INTEGER,iconn) = liquid_pressure
+                  dof1 = PETSC_TRUE
+                  coupler%flow_bc_type(SCO2_WATER_EQUATION_INDEX) = &
+                                                                      DIRICHLET_BC
+                case default
+                  string = GetSubConditionType(sco2%liquid_pressure%itype)
+                  option%io_buffer = &
+                    FlowConditionUnknownItype(coupler%flow_condition, &
+                    'SCO2 MODE liquid state liquid pressure ',string)
+                  call PrintErrMsg(option)
+              end select
+            endif
+          endif
+          ! CO2 mass fraction; 2nd dof ----------------------- !
+          if (associated(sco2%co2_mass_fraction)) then
+            select case(sco2%co2_mass_fraction%itype)
               case(DIRICHLET_BC)
                 call PatchGetCouplerValueFromDataset(coupler,option, &
-                     patch%grid,sco2%temperature%dataset,iconn,temperature)
-                coupler%flow_aux_real_var(SCO2_TEMPERATURE_DOF, &
-                     iconn) = temperature
-                dof4 = PETSC_TRUE
-                coupler%flow_bc_type(SCO2_ENERGY_EQUATION_INDEX) = &
-                                                                DIRICHLET_BC
+                        patch%grid,sco2%co2_mass_fraction%dataset,iconn,x_co2)
+                coupler%flow_aux_real_var(SCO2_CO2_MASS_FRAC_DOF,iconn) = x_co2
+                dof2 = PETSC_TRUE
+                coupler%flow_bc_type(SCO2_CO2_EQUATION_INDEX) = DIRICHLET_BC
+              case default
+                string = GetSubConditionType(sco2%co2_mass_fraction%itype)
+                option%io_buffer = &
+                  FlowConditionUnknownItype(coupler%flow_condition, &
+                  'SCO2_MODE liquid state CO2 mass fraction ',string)
+                call PrintErrMsg(option)
             end select
+          endif
+
+          ! salt mass fraction; 3rd dof ----------------------- !
+          if (associated(sco2%salt_mass)) then
+            select case(sco2%salt_mass%itype)
+              case(DIRICHLET_BC)
+                call PatchGetCouplerValueFromDataset(coupler,option, &
+                      patch%grid,sco2%salt_mass%dataset,iconn,x_salt)
+                  coupler%flow_aux_real_var(SCO2_SALT_MASS_FRAC_DOF,iconn) = &
+                      x_salt
+                  dof3 = PETSC_TRUE
+                  coupler%flow_bc_type(SCO2_SALT_EQUATION_INDEX) = DIRICHLET_BC
+              case default
+                  string = GetSubConditionType(sco2%salt_mass%itype)
+                  option%io_buffer = &
+                      FlowConditionUnknownItype(coupler%flow_condition, &
+                      'SCO2_MODE liquid state salt mass fraction ',string)
+                call PrintErrMsg(option)
+            end select
+          endif
+
+          ! With energy
+          ! temperature; 4th dof ------------------------- !
+          if (sco2_thermal) then
+            if (associated(sco2%temperature)) then
+              select case(sco2%temperature%itype)
+                case(DIRICHLET_BC)
+                  call PatchGetCouplerValueFromDataset(coupler,option, &
+                         patch%grid,sco2%temperature%dataset,iconn,temperature)
+                  coupler%flow_aux_real_var(THREE_INTEGER,iconn) = temperature
+                  dof4 = PETSC_TRUE
+                  coupler%flow_bc_type(SCO2_ENERGY_EQUATION_INDEX) = &
+                                                                      DIRICHLET_BC
+                case default
+                  string = GetSubConditionType(sco2%temperature%itype)
+                  option%io_buffer = &
+                    FlowConditionUnknownItype(coupler%flow_condition, &
+                    'SCO2 MODE gas state temperature ',string)
+                  call PrintErrMsg(option)
+              end select
+            endif
           endif
       ! ---------------------------------------------------------------------- !
       end select
