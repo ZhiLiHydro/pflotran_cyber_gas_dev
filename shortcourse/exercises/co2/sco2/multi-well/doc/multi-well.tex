@@ -21,26 +21,26 @@
 \newcommand\magentacomment[1]{{{\color{magenta} #1}}}
 
 \begin{document}
-\title{Injection Well\ldots}
+\title{Multi-Well\ldots}
 \author{Michael Nole}
 \date{\today}
 
 %\frame{\titlepage}
 
 %-----------------------------------------------------------------------------
-\section{Description of Injection Well Scenario}
+\section{Description of Multi-Well Scenario}
 
-\subsection{Injection Well Conceptual Model}
+\subsection{Multi-Well Conceptual Model}
 
-\frame{\frametitle{Description of Injection Well Scenario}
+\frame{\frametitle{Description of Multi-Well Scenario}
 
-The ``Injection Well Scenario'' simulates 2D migration of CO2 injected into a heterogeneous reservoir using the fully coupled well model, using Webb extensions, and considering gas trapping hysteresis in \bluecomment{SCO2 MODE}.
+The ``Multi-Well Scenario'' simulates an injection well and an extraction well in 3D in \bluecomment{SCO2 MODE}. The injection well alternately injects CO2 and water at a prescribed schedule. The extraction well follows a different schedule. Both wells are prescribed flow rates subject to fracture pressure and minimum pressure limitations.
 
 This demonstration covers the following:
 
 \begin{itemize}
   \small
-  \item Set up a 2D heterogeneous model with a fully coupled hydrostatic well in SCO2 mode.
+  \item Set up a 3D model with two fully coupled hydrostatic wells in SCO2 mode.
   \item Run the simulation.
   \item Visualize results in Paraview.
 \end{itemize}
@@ -54,28 +54,23 @@ This demonstration covers the following:
 
 \begin{frame}[fragile,allowframebreaks]\frametitle{DESCRIPTION}
 
-\includegraphics[height=3in]{injection-well-fig.pdf}
+\includegraphics[height=3in]{multi-well-fig.pdf}
 
 \newpage
 \begin{itemize}
-  \item 1. Initialize to hydrostatic conditions, isothermal temperature.
-  \item 2. Well model occupies the left edge of the domain, is cased (unperforated) through the caprock and is perforated through the reservoir units.
-  \item 3. Inject CO2 at 1 MMT/yr for 2 years.
+  \item 1. Initialize to hydrostatic conditions. Optional: turn on \bluecomment{ISOTHERMAL\_GRADIENT}
+  \item 2. Injection schedule: 0.5 MMT/yr CO2 for 3 years, 0.1 MMT/yr H2O for 7 years.
+  \item 3. Fracture pressure threshold: 15 MPa
+  \item 4. Extraction schedule: At 1 year, extract at 0.1 MMT/yr for 19 years.
+  \item 5. Minimum pressure threshold: 2 MPa
 \end{itemize}
 
 \end{frame}
 
 %-----------------------------------------------------------------------------
-\subsection{SIMULATION\_INJECTION\_WELL}
+\subsection{SIMULATION\_MULTI-WELL}
 
-\begin{frame}[fragile,allowframebreaks]\frametitle{SIMULATION: Injection Well}
-
-\begin{itemize}
-\item Specify SCO2 flow mode
-\item Add checkpointing
-\end{itemize}
-
-
+\begin{frame}[fragile,allowframebreaks]\frametitle{SIMULATION: Multi-Well}
 \begin{semiverbatim}
 SIMULATION
   SIMULATION_TYPE SUBSURFACE
@@ -83,18 +78,19 @@ SIMULATION
     SUBSURFACE_FLOW flow
       MODE SCO2
       OPTIONS
-        ISOTHERMAL_TEMPERATURE 25.d0
         NO_STATE_TRANSITION_OUTPUT
+        \bluecomment{#ISOTHERMAL_GRADIENT}
       /
     /
 \newpage
-    WELL_MODEL well1
+    WELL_MODEL well
       OPTIONS
         FLOW_COUPLING FULLY_IMPLICIT
         TYPE HYDROSTATIC
       END
     END
   /
+
 END
 
 SUBSURFACE
@@ -107,26 +103,20 @@ SUBSURFACE
 %-----------------------------------------------------------------------------
 \subsection{NUMERICAL METHODS}
 \begin{frame}[fragile]\frametitle{NUMERICAL METHODS}
-
-\begin{itemize}
-  \item Numerical Methods within subsurface block
-  \item Newton Solver and Linear Solver sub-blocks
-\end{itemize}
-
 \begin{semiverbatim}
 NUMERICAL_METHODS flow
+
   NEWTON_SOLVER
     USE_INFINITY_NORM_CONVERGENCE
     NUMERICAL_JACOBIAN
     MINIMUM_NEWTON_ITERATIONS 2
-    CENTRAL_DIFFERENCE_JACOBIAN
     CONVERGE_ON_WELL_RESIDUAL
-    RESIDUAL_SCALED_INF_TOL 1.d-4
   END
 
   TIMESTEPPER FLOW
     TIMESTEP_MAXIMUM_GROWTH_FACTOR 1.25
   END
+
 END
 
 \end{semiverbatim}
@@ -135,18 +125,15 @@ END
 %-----------------------------------------------------------------------------
 \subsection{WELL MODEL}
 \begin{frame}[fragile,allowframebreaks]\frametitle{WELL MODEL}
-
-\begin{itemize}
-  \item Set up well grid and well properties
-\end{itemize}
-
 \begin{semiverbatim}
-WELLBORE_MODEL well1
+WELLBORE_MODEL injector
+  PRINT_WELL_FILE
   WELL_GRID
     WELL_TRAJECTORY
-      SURFACE_ORIGIN 2.5d0 5.d0 -965.d0
-      SEGMENT_DXYZ CASED 0.d0 0.d0 -15.04d0
-      SEGMENT_DXYZ UNCASED 0.d0 0.d0 -176.9838d0
+      SURFACE_ORIGIN 775.d0 775.d0 2.d2
+      SEGMENT_LIST FILE injector_well-segments.dat
+      \bluecomment{#SEGMENT_DXYZ CASED 0.d0 0.d0 -100.d0}
+      \bluecomment{#SEGMENT_DXYZ UNCASED 0.d0 0.d0 -80.d0}
     /
   /
 
@@ -157,6 +144,32 @@ WELLBORE_MODEL well1
     WELL_INDEX_MODEL PEACEMAN_3D
     SKIN_FACTOR 0.d0
   /
+
+  FRACTURE_PRESSURE 1.5d7
+
+  USE_WELL_COUPLER
+
+END
+\newpage
+WELLBORE_MODEL producer
+  PRINT_WELL_FILE
+  WELL_GRID
+    WELL_TRAJECTORY
+      SURFACE_ORIGIN 1225.d0 1225.d0 2.d2
+      SEGMENT_LIST FILE producer_well-segments.dat
+      \bluecomment{#SEGMENT_DXYZ CASED 0.d0 0.d0 -100.d0}
+      \bluecomment{#SEGMENT_DXYZ UNCASED 0.d0 0.d0 -80.d0}
+    /
+  /
+\newpage
+  WELL
+    DIAMETER 0.3d0
+    FRICTION_COEFFICIENT 1.d0
+    WELL_INDEX_MODEL PEACEMAN_3D
+    SKIN_FACTOR 0.d0
+  /
+
+  MINIMUM_PRESSURE 2.d6
 
   USE_WELL_COUPLER
 
@@ -181,8 +194,8 @@ WELL_MODEL_OUTPUT
 
 \begin{semiverbatim}
 GRID
-  # nx=20 x ny=1 x nz=25
-  TYPE UNSTRUCTURED mesh.ugi
+ #40(50m) x 40(50m) x 20(10m)   
+  TYPE UNSTRUCTURED  mesh.ugi
 END
 \end{semiverbatim}
 
@@ -236,41 +249,44 @@ END
 \begin{semiverbatim}
 MATERIAL_PROPERTY caprock
   ID 1
-  CHARACTERISTIC_CURVES caprock
-  POROSITY 0.07
+  CHARACTERISTIC_CURVES reservoir
+  POROSITY 0.1
   TORTUOSITY 1.d0
   ROCK_DENSITY 2650.d0
   THERMAL_CONDUCTIVITY_DRY 2.d0
   THERMAL_CONDUCTIVITY_WET 2.18d0
   HEAT_CAPACITY 1000 J/kg-C
+\newpage
   PERMEABILITY
-    PERM_ISO 5.6254628e-20
+    PERM_X 1.0e-18
+    PERM_Y 1.0e-18
+    PERM_Z 1.0e-19
   /
   SOIL_COMPRESSIBILITY_FUNCTION LINEAR
-  POROSITY_COMPRESSIBILITY 1.07618e-13
-  SOIL_REFERENCE_PRESSURE 1.2d7
-END \newpage
-MATERIAL_PROPERTY Reservoir24
+  POROSITY_COMPRESSIBILITY 1.0e-10
+  SOIL_REFERENCE_PRESSURE 5.d6
+END 
+\newpage
+MATERIAL_PROPERTY reservoir
   ID 2
-  CHARACTERISTIC_CURVES Reservoir24
-  POROSITY 0.13
+  CHARACTERISTIC_CURVES reservoir
+  POROSITY 0.1
   TORTUOSITY 1.d0
   ROCK_DENSITY 2650.d0
   THERMAL_CONDUCTIVITY_DRY 2.d0
   THERMAL_CONDUCTIVITY_WET 2.18d0
   HEAT_CAPACITY 1000 J/kg-C
+\newpage
   PERMEABILITY
-    PERM_ISO 1.9146312e-14
+    PERM_X 1.0e-14
+    PERM_Y 1.0e-14
+    PERM_Z 1.0e-15
   /
   SOIL_COMPRESSIBILITY_FUNCTION LINEAR
-  POROSITY_COMPRESSIBILITY 5.3809001e-14
-  SOIL_REFERENCE_PRESSURE 1.2d7
+  POROSITY_COMPRESSIBILITY 1.0e-10
+  SOIL_REFERENCE_PRESSURE 5.d6
 END
 \end{semiverbatim}
-\newpage
-\begin{itemize}
-  \item +23 more reservoir units
-\end{itemize}
 
 \end{frame}
 
@@ -278,70 +294,28 @@ END
 \subsection{CHARACTERISTIC\_CURVES}
 
 \begin{frame}[fragile,containsverbatim, allowframebreaks]\frametitle{CHARACTERISTIC\_CURVES}
-
-\begin{itemize}
-\item Set Brooks-Corey parameters
-\end{itemize}
-
 \begin{semiverbatim}
-CHARACTERISTIC_CURVES caprock
+CHARACTERISTIC_CURVES reservoir
   SATURATION_FUNCTION BROOKS_COREY
-    \greencomment{MAX_TRAPPED_GAS_SAT 0.2}
-    \greencomment{UNSATURATED_EXTENSION}
-    ALPHA 0.00001020408
-    LAMBDA 0.8311
-    LIQUID_RESIDUAL_SATURATION 0.0597
-    MAX_CAPILLARY_PRESSURE 1.d9
-  / 
-\newpage
-\begin{itemize}
-\item BURDINE-BC relative permeability
-\end{itemize}
-  PERMEABILITY_FUNCTION BURDINE_BC_LIQ
-    PHASE LIQUID
-    LAMBDA 0.8311
-    LIQUID_RESIDUAL_SATURATION 0.0597
-  /
-  PERMEABILITY_FUNCTION BURDINE_BC_GAS
-    PHASE GAS
-    LAMBDA 0.8311
-    LIQUID_RESIDUAL_SATURATION 0.0597
-    GAS_RESIDUAL_SATURATION 0.0597
-  /
-END
-\end{semiverbatim}
-
-\newpage
-
-\begin{semiverbatim}
-CHARACTERISTIC_CURVES Reservoir24
-  SATURATION_FUNCTION BROOKS_COREY
-    \greencomment{MAX_TRAPPED_GAS_SAT 0.2}
-    \greencomment{UNSATURATED_EXTENSION}
-    ALPHA 0.00008503401
-    LAMBDA 0.8311
-    LIQUID_RESIDUAL_SATURATION 0.0597
+    UNSATURATED_EXTENSION
+    ALPHA 1.d-3
+    LAMBDA 2
+    LIQUID_RESIDUAL_SATURATION 0.1
     MAX_CAPILLARY_PRESSURE 1.d9
   /
 \newpage
   PERMEABILITY_FUNCTION BURDINE_BC_LIQ
     PHASE LIQUID
-    LAMBDA 0.8311
-    LIQUID_RESIDUAL_SATURATION 0.0597
+    LAMBDA 2
+    LIQUID_RESIDUAL_SATURATION 0.1
   /
-  PERMEABILITY_FUNCTION BURDINE_BC_GAS
+  PERMEABILITY_FUNCTION MODIFIED_COREY_GAS
     PHASE GAS
-    LAMBDA 0.8311
-    LIQUID_RESIDUAL_SATURATION 0.0597
-    GAS_RESIDUAL_SATURATION 0.0597
+    LIQUID_RESIDUAL_SATURATION 0.1
+    GAS_RESIDUAL_SATURATION 0.2
   /
 END
 \end{semiverbatim}
-
-\newpage
-\begin{itemize}
-  \item +23 more reservoir units
-\end{itemize}
 
 \end{frame}
 
@@ -354,19 +328,20 @@ END
 
 OUTPUT
   SNAPSHOT_FILE
+    TIMES d 14.d0
     TIMES y 1.d-2 1.d-1 1.d0
     PERIODIC TIME 1.d0 y
     FORMAT HDF5
   /
   UNFILTER_NON_STATE_VARIABLES
-\newpage  VARIABLES
+\newpage
+   VARIABLES
    TEMPERATURE
    LIQUID_PRESSURE
    GAS_PRESSURE
    LIQUID_SATURATION
    GAS_SATURATION
    PRECIPITATE_SATURATION
-   TRAPPED_GAS_SATURATION
    LIQUID_MASS_FRACTIONS
    GAS_MASS_FRACTIONS
    LIQUID_DENSITY
@@ -392,9 +367,13 @@ END
 \begin{semiverbatim}
 
 TIME
-  FINAL_TIME 1.d1 y
-  INITIAL_TIMESTEP_SIZE 1.d-5 y
-  MAXIMUM_TIMESTEP_SIZE 5.d-1 y
+  FINAL_TIME 3.d1 y
+  INITIAL_TIMESTEP_SIZE 1.d0 s
+  MAXIMUM_TIMESTEP_SIZE 1.d0 y
+  MAXIMUM_TIMESTEP_SIZE 9.d-5 y at 1.d0 y
+  MAXIMUM_TIMESTEP_SIZE 1.d0 y at 1.0001d0 y
+  MAXIMUM_TIMESTEP_SIZE 1.d-2 y at 3.d0 y
+  MAXIMUM_TIMESTEP_SIZE 1.d0 y at 3.01d0 y
 END
 
 \end{semiverbatim}
@@ -409,44 +388,50 @@ END
 \begin{itemize}
   \item Delineate regions in the 2D domain for:
   \begin{itemize}
-    \item east face
     \item caprock
-    \item reservoir units
+    \item north, south, east, west boundaries
+    \item entire domain
   \end{itemize}
 \end{itemize}
 
 \begin{semiverbatim}
 REGION all
   COORDINATES
-    0.d0    0.d0 -1157.024d0
-    3048.d0 1.d3 -965.d0
+    0.d0    0.d0    0.d0
+    1.d20   1.d20   1.d20
   /
 END
 \newpage
 
-REGION edge
+REGION caprock
+  COORDINATES
+    0.d0 0.d0 1.8d2
+    1.d20 1.d20 2.d2
+  /
+END
+
+\newpage
+
+REGION north
+  FACE NORTH
+  FILE mesh_ugi_north.ss
+END
+
+REGION south
+  FACE SOUTH
+  FILE mesh_ugi_south.ss
+END
+
+\newpage
+REGION east
   FACE EAST
   FILE mesh_ugi_east.ss
 END
 
-\newpage
-REGION caprock
-  COORDINATES
-    0.d0    0.d0 -980.24
-    3048.d0 1.d3 -965.9112d0
-  /
+REGION west
+  FACE WEST
+  FILE mesh_ugi_west.ss
 END
-
-REGION Reservoir24
-  COORDINATES
-    0.d0    0.d0 -983.288
-    3048.d0 1.d3 -980.24
-  /
-END
-
-\begin{itemize}
-  \item + 23 reservoir units
-\end{itemize}
 
 \end{semiverbatim}
 
@@ -458,8 +443,8 @@ END
 \begin{frame}[fragile,allowframebreaks]\frametitle{FLOW\_CONDITION}
 
 \begin{itemize}
-\item Initialize with hydrostatic pressure and a guess at the geothermal gradient.
-\item Apply a constant heat flux on bottom boundary.
+\item Initialize with hydrostatic pressure, geothermal gradient, constant salinity.
+\item Specify injection and production schedules.
 \end{itemize}
 
 \newpage
@@ -469,25 +454,47 @@ FLOW_CONDITION initial
     LIQUID_PRESSURE HYDROSTATIC
     CO2_MASS_FRACTION DIRICHLET
     SALT_MASS_FRACTION DIRICHLET
+    TEMPERATURE DIRICHLET
   /
-  DATUM 0.d0 0.d0 -1040.892d0
-  LIQUID_PRESSURE 1.234333924d7
-  CO2_MASS_FRACTION 0.d0
-  SALT_MASS_FRACTION 4.75d-2
-END
-
+  DATUM 0.d0 0.d0 1.d2
+  GRADIENT
+    TEMPERATURE 0.d0 0.d0 -2.d-2
+  /
+  LIQUID_PRESSURE 5.0d6
+  CO2_MASS_FRACTION 1.d-4
+  SALT_MASS_FRACTION 1.d-2
+  TEMPERATURE 45.d0
+END 
+\newpage FLOW_CONDITION injection
+  SYNC_TIMESTEP_WITH_UPDATE
+  TYPE
+    RATE MASS_RATE
+    TEMPERATURE DIRICHLET
+  /
+  TEMPERATURE 30.d0
+  # 0.5 MMT/yr CO2 for 3 yr
+  # 0.1 MMT/yr H2O for 7 yr
+  RATE LIST
+    TIME_UNITS y
+    DATA_UNITS kg/y kg/y kg/y MW
+    0.d0  0.d0 5.d8 0.d0 0.d0
+    3.d0 1.d8 0.d0 0.d0 0.d0
+    10.d0 0.d0 0.d0 0.d0 0.d0
+  /
+END 
 \newpage
-FLOW_CONDITION injection
+FLOW_CONDITION production
   SYNC_TIMESTEP_WITH_UPDATE
   TYPE
     RATE MASS_RATE
   /
-  # 1.0 MMT/yr for 2 years
+  # 0.1 MMT/yr total mass (CO2 + H2O) produced for 19 yr
   RATE LIST
     TIME_UNITS y
-    DATA_UNITS kg/y kg/y kg/y
-    0.d0 0.d0 1.d9 0.d0
-    2.d0 0.d0 0.d0 0.d0
+    DATA_UNITS kg/y kg/y kg/y MW
+    0.d0   0.d0 0.d0 0.d0 0.d0
+    1.d0  -1.d8 0.d0 0.d0 0.d0
+    20.d0  0.d0 0.d0 0.d0 0.d0
   /
 END
 \end{semiverbatim}
@@ -512,21 +519,41 @@ END
 %-----------------------------------------------------------------------------
 \subsection{BOUNDARY\_CONDITION}
 
-\begin{frame}[fragile]\frametitle{BOUNDARY\_CONDITION}
+\begin{frame}[fragile,allowframebreaks]\frametitle{BOUNDARY\_CONDITION}
 
 \begin{itemize}
-\item Couple the \greencomment{injection} source sink with well model \greencomment{well1} and \greencomment{east} boundary condition with its corresponding region.
+\item Couple the \greencomment{injection} flow condition with well model \greencomment{injector}, \greencomment{production} flow condition with well model \greencomment{producer}, and all boundary conditions with their corresponding faces.
 \end{itemize}
 
 \begin{semiverbatim}
 WELL_COUPLER injection
   FLOW_CONDITION injection
-  WELL well1
+  WELL injector
 END
 
-BOUNDARY_CONDITION edge
+WELL_COUPLER producer
+  FLOW_CONDITION production
+  WELL producer
+END
+\newpage
+BOUNDARY_CONDITION north
   FLOW_CONDITION initial
-  REGION edge
+  REGION north
+END
+
+BOUNDARY_CONDITION south
+  FLOW_CONDITION initial
+  REGION south
+END
+\newpage
+BOUNDARY_CONDITION west
+  FLOW_CONDITION initial
+  REGION west
+END
+
+BOUNDARY_CONDITION east
+  FLOW_CONDITION initial
+  REGION east
 END
 \end{semiverbatim}
 
@@ -541,16 +568,14 @@ END
 \begin{semiverbatim}
 
 STRATA
-  REGION caprock
-  MATERIAL caprock
+  REGION all
+  MATERIAL reservoir
 END
 
 STRATA
-  REGION Reservoir24
-  MATERIAL Reservoir24
+  REGION caprock
+  MATERIAL caprock
 END
-
-...
 
 END_SUBSURFACE
 \end{semiverbatim}
@@ -565,11 +590,10 @@ END_SUBSURFACE
 \begin{semiverbatim}
 
 > cd \$PFLOTRAN_DIR
-> cd shortcourse/exercises/co2/sco2/injection-well
+> cd shortcourse/exercises/co2/sco2/multi-well
 > ./build_grid.sh
-> pflotran -input_prefix injection-well
+> mpirun -n 4 pflotran -input_prefix multi-well
 > python plot_wells.py
-> open multi-well.png
 > paraview \&
 
 \end{semiverbatim}
