@@ -176,8 +176,7 @@ subroutine ImmiscibleSetup(realization)
   allocate(dof_is_active(option%nflowdof))
   dof_is_active = PETSC_TRUE
   call PatchCreateZeroArray(patch,dof_is_active, &
-                            patch%aux%Immiscible%matrix_zeroing, &
-                            patch%aux%Immiscible%inactive_cells_exist,option)
+                            patch%aux%Immiscible%matrix_zeroing,option)
   deallocate(dof_is_active)
 
   immis_ts_count = 0
@@ -655,6 +654,7 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
   use Material_Aux_module
   use Upwind_Direction_module
   use Petsc_Utility_module
+  use Matrix_Zeroing_module
 
   implicit none
 
@@ -690,7 +690,7 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
   PetscInt :: sum_connection
   PetscInt :: local_id, ghosted_id
   PetscInt :: local_id_up, local_id_dn, ghosted_id_up, ghosted_id_dn
-  PetscInt :: i, imat, imat_up, imat_dn
+  PetscInt :: imat, imat_up, imat_dn
 
   PetscReal, pointer :: r_p(:)
   PetscReal, pointer :: accum_p(:), accum_p2(:)
@@ -942,13 +942,10 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
     source_sink => source_sink%next
   enddo
 
-  if (patch%aux%Immiscible%inactive_cells_exist) then
-    do i=1,patch%aux%Immiscible%matrix_zeroing%n_inactive_rows
-      r_p(patch%aux%Immiscible%matrix_zeroing%inactive_rows_local(i)) = 0.d0
-    enddo
-  endif
-
   call VecRestoreArrayF90(r,r_p,ierr);CHKERRQ(ierr)
+
+  call MatrixZeroingZeroVecEntries(realization%patch%aux%Immiscible% &
+                                     matrix_zeroing,r)
 
   if (immis_simultaneous_res_jac_calc) then
 
@@ -956,14 +953,8 @@ subroutine ImmiscibleResidual(snes,xx,r,A,realization,ierr)
     call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
       ! zero out inactive cells
 
-    if (patch%aux%Immiscible%inactive_cells_exist) then
-      scale = 1.d0 ! solely a temporary variable in this conditional
-      call MatZeroRowsLocal(A,patch%aux%Immiscible%matrix_zeroing%n_inactive_rows, &
-                            patch%aux%Immiscible%matrix_zeroing% &
-                              inactive_rows_local_ghosted, &
-                            scale,PETSC_NULL_VEC,PETSC_NULL_VEC, &
-                            ierr);CHKERRQ(ierr)
-    endif
+    call MatrixZeroingZeroMatEntries(realization%patch%aux%Immiscible% &
+                                       matrix_zeroing,A)
   endif
 
   ! Mass Transfer
