@@ -234,7 +234,8 @@ recursive subroutine PMCGeomechanicsRunToTime(this,sync_time,stop_flag)
   local_stop_flag = 0
 
   call SetOutputFlags(this)
-  sync_flag = PETSC_FALSE
+  !sync_flag = PETSC_FALSE ! jaa
+  sync_flag = PETSC_TRUE
   snapshot_plot_flag = PETSC_FALSE
   observation_plot_flag = PETSC_FALSE
   massbal_plot_flag = PETSC_FALSE

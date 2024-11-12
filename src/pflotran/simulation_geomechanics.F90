@@ -190,10 +190,14 @@ subroutine GeomechanicsSimulationExecuteRun(this)
       call PrintErrMsg(this%option)
     else
       do
-        if (time + this%geomech_realization%dt_coupling > final_time) then
+        !if (time + this%geomech_realization%dt_coupling > final_time) then
+        if (time + this%simulation_subsurface_type%flow_process_model_coupler% &
+             timestepper%dt > final_time) then
           dt = final_time-time
         else
-          dt = this%geomech_realization%dt_coupling
+          !dt = this%geomech_realization%dt_coupling
+          dt = this%simulation_subsurface_type%flow_process_model_coupler% &
+                      timestepper%dt
         endif
 
         time = time + dt
