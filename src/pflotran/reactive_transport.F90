@@ -10,6 +10,7 @@ module Reactive_Transport_module
   use Reaction_Aux_module
   use Global_Aux_module
   use Material_Aux_module
+  use Reaction_Gas_module
 
   use PFLOTRAN_Constants_module
   use Utility_module, only : Equal
@@ -1135,6 +1136,13 @@ subroutine RTUpdateFixedAccumulation(realization)
                              global_auxvars(ghosted_id), &
                              material_auxvars(ghosted_id), &
                              reaction,option,accum_p(istart:iendall))
+    endif
+
+    if (reaction%gas%neqsorb > 0) then
+      call ReactionGasAccumulationSorbGas(rt_auxvars(ghosted_id), &
+                                global_auxvars(ghosted_id), &
+                                material_auxvars(ghosted_id), &
+                                reaction,option,accum_p(istart:iendall))
     endif
 
     if (option%use_sc) then
@@ -2515,6 +2523,12 @@ subroutine RTResidualNonFlux(snes,xx,r,realization,ierr)
                                material_auxvars(ghosted_id), &
                                reaction,option,Res)
       endif
+      if (reaction%gas%neqsorb > 0) then
+        call ReactionGasAccumulationSorbGas(rt_auxvars(ghosted_id), &
+                               global_auxvars(ghosted_id), &
+                               material_auxvars(ghosted_id), &
+                               reaction,option,Res)
+      endif
       Res = Res / option%tran_dt
 
       if (option%use_sc) then
@@ -3251,6 +3265,13 @@ subroutine RTJacobianNonFlux(snes,xx,A,B,realization,ierr)
                                          global_auxvars(ghosted_id), &
                                          material_auxvars(ghosted_id), &
                                          reaction,option,Jup)
+      endif
+
+      if (reaction%gas%neqsorb > 0) then
+        call ReactionGasAccumulationSorbGasDerivative(rt_auxvars(ghosted_id), &
+                                            global_auxvars(ghosted_id), &
+                                            material_auxvars(ghosted_id), &
+                                            reaction,option,Jup)
       endif
 
       if (option%use_sc) then

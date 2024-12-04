@@ -739,6 +739,9 @@ subroutine ReactionSetupKinetics(reaction,option)
           sec_cont_cur_isotherm_rxn%Langmuir_b
         reaction%isotherm%multicontinuum_isotherm_rxn%eqisothermfreundlichn(irxn) = &
           sec_cont_cur_isotherm_rxn%Freundlich_n
+        reaction%isotherm%multicontinuum_isotherm_rxn% &
+          eqisothermretentionfactor(irxn) = sec_cont_cur_isotherm_rxn% &
+                                            retention_factor
         sec_cont_cur_isotherm_rxn => sec_cont_cur_isotherm_rxn%next
       endif
 
@@ -1221,6 +1224,11 @@ subroutine ReactionSetupSpeciesSummary(reaction,option)
            write(86,'("freundlich ; ",es13.5)',advance='no') &
              reaction%isotherm%isotherm_rxn%eqisothermcoeff(irxn)
            write(86,'(es13.5)') reaction%isotherm%isotherm_rxn%eqisothermfreundlichn(irxn)
+        case(SORPTION_RETENTION_FACTOR)
+           write(86,'("retention factor ; ",es13.5)',advance='no') &
+                reaction%isotherm%isotherm_rxn%eqisothermcoeff(irxn)
+           write(86,'(es13.5)') reaction%isotherm%isotherm_rxn% &
+                                eqisothermretentionfactor(irxn)
       end select
     enddo
 

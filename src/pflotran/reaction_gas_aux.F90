@@ -4,8 +4,8 @@ module Reaction_Gas_Aux_module
   use petscsys
 
   use Reaction_Database_Aux_module
-
   use PFLOTRAN_Constants_module
+  use Reaction_Isotherm_Aux_module
 
   implicit none
 
@@ -32,6 +32,9 @@ module Reaction_Gas_Aux_module
     PetscInt :: ngas
     PetscInt :: nactive_gas
     PetscInt :: npassive_gas
+
+    PetscInt :: nsorb
+    PetscInt :: neqsorb
 
     type(gas_species_type), pointer :: list
 
@@ -60,6 +63,8 @@ module Reaction_Gas_Aux_module
     PetscReal, pointer :: paseqh2ostoich(:)  ! stoichiometry of water, if present
     PetscReal, pointer :: paseqlogK(:)
     PetscReal, pointer :: paseqlogKcoef(:,:)
+
+    type(isotherm_type), pointer :: isotherm
 
   end type gas_type
 
@@ -95,6 +100,8 @@ function ReactionGasCreateAux()
   gas%ngas = 0
   gas%nactive_gas = 0
   gas%npassive_gas = 0
+  gas%nsorb = 0
+  gas%neqsorb = 0
   gas%print_all = PETSC_FALSE
   gas%print_concentration = PETSC_FALSE
   gas%print_partial_pressure = PETSC_FALSE
@@ -120,6 +127,8 @@ function ReactionGasCreateAux()
   nullify(gas%paseqh2ostoich)
   nullify(gas%paseqlogK)
   nullify(gas%paseqlogKcoef)
+
+  gas%isotherm => ReactionIsothermCreateAux()
 
   ReactionGasCreateAux => gas
 

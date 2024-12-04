@@ -101,6 +101,8 @@ subroutine ReactionIsothermReadIsotherm(isotherm,input,option)
               isotherm_rxn%itype = SORPTION_LANGMUIR
             case('FREUNDLICH')
               isotherm_rxn%itype = SORPTION_FREUNDLICH
+            case('RETENTION_FACTOR')
+              isotherm_rxn%itype = SORPTION_RETENTION_FACTOR
             case default
               call InputKeywordUnrecognized(input,word, &
                                       trim(error_string)//',TYPE',option)
@@ -136,6 +138,15 @@ subroutine ReactionIsothermReadIsotherm(isotherm,input,option)
           call InputReadDouble(input,option,isotherm_rxn%Freundlich_N)
           call InputErrorMsg(input,option,word,error_string)
           isotherm_rxn%itype = SORPTION_FREUNDLICH
+        case('RETENTION_FACTOR')
+          call InputReadDouble(input,option,&
+                               isotherm_rxn%retention_factor)
+          call InputErrorMsg(input,option, &
+               'RETENTION_FACTOR', &
+               'CHEMISTRY,ISOTHERM_REACTIONS')
+          call InputReadWord(input,option,word,PETSC_TRUE)
+          if (input%ierr == 0) kd_units = trim(word)
+          isotherm_rxn%itype = SORPTION_RETENTION_FACTOR
         case('KD_MINERAL_NAME')
           call InputReadWord(input,option,word,PETSC_TRUE)
           call InputErrorMsg(input,option,word,error_string)
@@ -297,6 +308,7 @@ subroutine ReactionIsothermTotalSorbKD(rt_auxvar,global_auxvar, &
   PetscReal :: one_over_n
   PetscReal :: molality_one_over_n
   PetscReal :: kd_kgw_m3b
+  PetscReal :: rf
 
   PetscInt, parameter :: iphase = 1
 
@@ -340,6 +352,18 @@ subroutine ReactionIsothermTotalSorbKD(rt_auxvar,global_auxvar, &
         molality_one_over_n = molality**one_over_n
         res = kd_kgw_m3b*molality**one_over_n
         dres_dc = res/molality*one_over_n
+      case(SORPTION_RETENTION_FACTOR)
+        ! Retention factor: moles sorbed/moles gas
+        ! (1/(1+1/rf)) = moles sorbed / (moles sorbed + moles in gas phase)
+        ! units = mole solute/L gas * L gas * sorbed/total / m^3 bulk
+        !       = mole solute sorbed / m^3 bulk
+        rf = isotherm_rxn%eqisothermretentionfactor(irxn)
+        if (rf < 1.d-20) then
+           res = 0.d0
+        else
+           res = molality *(1.d0/(1.d0+1.d0/rf))
+        endif
+        dres_dc = (1.d0/(1.d0+1.d0/rf))
       case default
         res = 0.d0
         dres_dc = 0.d0
