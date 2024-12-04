@@ -3061,11 +3061,8 @@ subroutine ReactionDBSetupGases(reaction,num_logKs,option,h2o_id, &
   PetscReal, pointer :: eqlogKcoef(:,:)
   PetscReal, pointer :: molar_weight(:)
 
-  type(aq_species_type), pointer :: cur_aq_spec
-  type(mineral_rxn_type), pointer :: cur_mineral
   type(isotherm_link_type), pointer :: cur_isotherm_rxn, &
                                        sec_cont_cur_isotherm_rxn
-  type(ion_exchange_rxn_type), pointer :: cur_ionx_rxn
   type(gas_species_type), pointer :: cur_gas_spec
   PetscInt :: max_aq_species
   PetscInt :: igas_spec
@@ -3234,9 +3231,10 @@ subroutine ReactionDBSetupGases(reaction,num_logKs,option,h2o_id, &
             ReactionMnrlGetKinMnrlIDFromName(cur_isotherm_rxn%kd_mineral_name, &
                                         reaction%mineral,option)
           if (gas%isotherm%eqkdmineral(irxn) < 0) then
-            option%io_buffer = 'Mineral ' // trim(cur_ionx_rxn%mineral_name) //&
+            option%io_buffer = 'Mineral ' // trim(cur_isotherm_rxn% &
+                               kd_mineral_name) // &
                                ' listed in gas kd (linear sorption) &
-                               &reaction not found in mineral list'
+                               &reaction not found in mineral list.'
             call PrintErrMsg(option)
           endif
         endif

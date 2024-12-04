@@ -382,15 +382,12 @@ subroutine ReactionGasTotalSorbGasKD(rt_auxvar,global_auxvar,material_auxvar,gas
   type(isotherm_rxn_type) :: isotherm_rxn
   type(option_type) :: option
   type(isotherm_type), pointer :: isotherm
-  PetscInt :: irxn,i
-  PetscInt :: icomp
+  PetscInt :: irxn
   PetscReal :: res
   PetscReal :: dres_dc
-  PetscReal :: molality
   PetscReal :: tempreal
   PetscReal :: one_over_n
-  PetscReal :: molality_one_over_n
-  PetscReal :: kd_kgw_m3b, kd_sorb_gas, rf
+  PetscReal :: kd_kgw_m3b, rf
   PetscReal :: gas_concentration,pp_one_over_n
   PetscReal :: RT
   PetscReal :: L_pore, L_gas
@@ -520,7 +517,6 @@ subroutine ReactionGasAccumulationSorbGasDerivative(rt_auxvar,global_auxvar, &
   type(option_type) :: option
   class(reaction_rt_type) :: reaction
   PetscReal :: J(reaction%ncomp,reaction%ncomp)
-  PetscInt :: icomp
   PetscReal :: v_t
 
   ! units = (kg water/m^3 bulk)*(m^3 bulk)/(sec) = kg water/sec
