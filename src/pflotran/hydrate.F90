@@ -1049,6 +1049,8 @@ subroutine HydrateUpdateAuxVars(realization,pm_well,update_state)
         endif
         if (associated(well_flow_condition%hydrate%rate)) then
           if (any(well_flow_condition%hydrate%rate%dataset%rarray(:) < 0.d0)) then
+            ! Extraction well
+            cur_well%flow_direction = WELL_DIRECTION_EXTRACTION
             cur_well%well%total_rate = sum(well_flow_condition%hydrate%rate%dataset% &
                                       rarray(:))
             if (cur_well%well%total_rate > 0.d0) then
@@ -1058,6 +1060,8 @@ subroutine HydrateUpdateAuxVars(realization,pm_well,update_state)
             cur_well%well%th_ql = 0.d0
             cur_well%well%th_qg = 0.d0
           else
+            ! Injection well
+            cur_well%flow_direction = WELL_DIRECTION_INJECTION
             cur_well%well%th_ql = well_flow_condition%hydrate%rate%dataset% &
                                   rarray(1)
             cur_well%well%th_qg = well_flow_condition%hydrate%rate%dataset% &

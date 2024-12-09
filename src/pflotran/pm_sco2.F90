@@ -1309,8 +1309,8 @@ subroutine PMSCO2CheckUpdatePre(this,snes,X,dX,changed,ierr)
               !   endif
               ! endif
 
-              ! MAN: this is a hack to get the well to initialize properly
               if (cur_well%well%total_rate < 0.d0) then
+                ! Extraction well
                 if (Equal(X_p(well_index),sco2_auxvar%pres(option%liquid_phase))) then
                   dX_p(well_index) = dX_p(well_index) + &
                                      (sco2_auxvar%well%bh_p - &
@@ -1320,6 +1320,7 @@ subroutine PMSCO2CheckUpdatePre(this,snes,X,dX,changed,ierr)
                                     (cur_well%well%bh_p - X_p(well_index))
                 endif
               elseif (dabs(cur_well%well%th_qg) > epsilon) then
+                ! Gas injection
                 if (X_p(well_index) == sco2_auxvar%pres(option%gas_phase)) then
                   dX_p(well_index) = dX_p(well_index) + &
                                      (sco2_auxvar%well%bh_p - &
@@ -1328,7 +1329,8 @@ subroutine PMSCO2CheckUpdatePre(this,snes,X,dX,changed,ierr)
                   dX_p(well_index) = dX_p(well_index) + &
                                     (cur_well%well%bh_p - X_p(well_index))
                 endif
-              else
+              elseif (dabs(cur_well%well%th_ql) > epsilon) then
+                ! Water injection
                 if (X_p(well_index) == sco2_auxvar% &
                                        pres(option%liquid_phase)) then
                   dX_p(well_index) = dX_p(well_index) + &
@@ -1339,6 +1341,11 @@ subroutine PMSCO2CheckUpdatePre(this,snes,X,dX,changed,ierr)
                   dX_p(well_index) = dX_p(well_index) + &
                                     (cur_well%well%bh_p - X_p(well_index))
                 endif
+              else
+                ! Well is off: update the solution vector with bh_p value,
+                ! updated with reservoir pressure.
+                call PMWellEquilibrateWell(cur_well)
+                dX_p(well_index) = cur_well%well%bh_p - X_p(well_index)
               endif
 
               ! Check whether the well should be pressure- or rate-controlled

@@ -1210,6 +1210,8 @@ subroutine SCO2UpdateAuxVars(realization,pm_well,update_state,update_state_bc)
         endif
         if (associated(well_flow_condition%sco2%rate)) then
           if (any(well_flow_condition%sco2%rate%dataset%rarray(:) < 0.d0)) then
+            ! Extraction well
+            cur_well%flow_direction = WELL_DIRECTION_EXTRACTION
             cur_well%well%total_rate = sum(well_flow_condition%sco2%rate%dataset% &
                                       rarray(:))
             if (cur_well%well%total_rate > 0.d0) then
@@ -1219,6 +1221,8 @@ subroutine SCO2UpdateAuxVars(realization,pm_well,update_state,update_state_bc)
             cur_well%well%th_ql = 0.d0
             cur_well%well%th_qg = 0.d0
           else
+            ! Injection well
+            cur_well%flow_direction = WELL_DIRECTION_INJECTION
             cur_well%well%th_ql = 0.d0
             cur_well%well%th_qg = 0.d0
             if (associated(well_flow_condition%sco2%co2_mass_fraction)) then

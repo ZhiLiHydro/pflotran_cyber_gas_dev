@@ -68,6 +68,10 @@ module PM_Well_class
   PetscInt, parameter, public :: QUASI_IMPLICIT_WELL = TWO_INTEGER
   PetscInt, parameter, public :: SEQUENTIAL_WELL = THREE_INTEGER
 
+  ! Well flow direction
+  PetscInt, parameter, public :: WELL_DIRECTION_INJECTION = ZERO_INTEGER
+  PetscInt, parameter, public :: WELL_DIRECTION_EXTRACTION = ONE_INTEGER
+
 
   type :: well_reservoir_type
     ! reservoir liquid pressure [Pa]
@@ -375,6 +379,7 @@ module PM_Well_class
     PetscInt :: well_force_ts_cut
     PetscBool :: update_for_wippflo_qi_coupling
     PetscInt :: flow_coupling
+    PetscInt :: flow_direction
     PetscBool :: print_well
     PetscBool :: print_output
     PetscBool :: use_well_coupler
@@ -413,7 +418,8 @@ module PM_Well_class
             PMWellUpdateReservoirSrcSinkFlow, &
             PMWellModifyDummyFlowJacobian, &
             PMWellCopyWell, &
-            PMWellReadWellOutput
+            PMWellReadWellOutput, &
+            PMWellEquilibrateWell
 
   contains
 
@@ -480,6 +486,7 @@ function PMWellCreate()
   this%well_force_ts_cut = 0
   this%update_for_wippflo_qi_coupling = PETSC_FALSE
   this%flow_coupling = UNINITIALIZED_INTEGER
+  this%flow_direction = UNINITIALIZED_INTEGER
   this%print_well = PETSC_FALSE
   this%print_output = PETSC_FALSE
   this%use_well_coupler = PETSC_FALSE
@@ -11010,6 +11017,58 @@ subroutine PMWellUpdatePropertiesTran(pm_well)
 end subroutine PMWellUpdatePropertiesTran
 
 ! ************************************************************************** !
+
+subroutine PMWellEquilibrateWell(pm_well)
+  !
+  ! Sets bottom hole pressure of the well equal to reservoir pressure at
+  ! a well node center.
+  !
+  ! Author: Michael Nole
+  ! Date: 12/09/2024
+  !
+
+  implicit none
+
+  type(pm_well_type) :: pm_well
+
+  type(well_reservoir_type), pointer :: reservoir
+  PetscReal :: res_z, delta_z, gravity
+  PetscReal :: res_pl, res_pg
+  PetscInt :: iloc
+
+  PetscReal, parameter :: epsilon = 1.d-20
+
+  if (Uninitialized(pm_well%flow_direction)) return
+
+  reservoir => pm_well%well%reservoir
+  gravity = pm_well%option%gravity(Z_DIRECTION)
+
+  if (pm_well%flow_direction == WELL_DIRECTION_INJECTION) then
+    ! Injection well. Equilibrate with bottom reservoir cell
+    iloc = ONE_INTEGER
+  else
+    ! Extraction well. Equilibrate with top reservoir cell
+    iloc = pm_well%well_grid%nsegments
+  endif
+
+  res_z = pm_well%well_grid%res_z(iloc)
+  delta_z = res_z - pm_well%well_grid%h(iloc)%z
+  if (reservoir%s_g(iloc) > epsilon) then
+    ! Use gas pressure
+    res_pg = reservoir%p_g(iloc) + reservoir%den_g(iloc) * gravity * &
+              delta_z
+    pm_well%well%bh_p = res_pg
+  else
+    ! Use liquid pressure
+    res_pl = reservoir%p_l(iloc) + reservoir%den_l(iloc) * gravity * &
+              delta_z
+    pm_well%well%bh_p = res_pl
+  endif
+
+end subroutine PMWellEquilibrateWell
+
+! ************************************************************************** !
+
 subroutine PMWellCopyWell(well,well_copy,transport)
   !
   ! Copies well object properties from one to another.
