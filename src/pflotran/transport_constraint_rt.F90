@@ -320,6 +320,7 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
                 endif
                 aq_species_constraint%constraint_type(icomp) = &
                   CONSTRAINT_TOTAL_AQ_PLUS_SORB
+                constraint%equilibrate_at_each_cell = PETSC_TRUE
               case('S')
                 option%io_buffer = '"S" constraint type no longer &
                   &supported as of March 4, 2013.'
