@@ -125,22 +125,6 @@ contains
 
 ! ************************************************************************** !
 
-function rnd()
-
-  implicit none
-
-  integer*8, save :: iseed = 1
-  PetscReal :: rnd
-
-  iseed = iseed*125
-  iseed = iseed - (iseed/2796203) * 2796203
-  rnd   = dble(iseed)/2796203.0
-  return
-
-end function rnd
-
-! ************************************************************************** !
-
 function ran1(idum)
 
   implicit none
@@ -262,38 +246,31 @@ subroutine GetRndNumFromNormalDist(mean,st_dev,number,seed)
   !
   ! Author: Jenn Frederick
   ! Date: 2/12/2016
+  !
+  ! Updated 1/6/2025 by Rosie Leone to specify seed by waste package
 
   implicit none
 
   PetscReal :: mean, st_dev, number
-  PetscInt :: seed, f
+  PetscInt :: seed, iseed(8)
 
-  PetscBool, save :: switch
-  PetscReal, save :: z0, z1
+  PetscReal :: z0
   PetscReal :: u1, u2
   PetscReal :: TWO_PI
 
-  switch = .not.switch
   TWO_PI = 2*3.14159265358979323846264338327950288419716939937510582
 
-  if (.not.switch) then
-
-    ! Generate two random numbers between (0,1)
-    do f=1,seed
-      u1 = rnd()
-      u2 = rnd()
-    enddo
-
-    z0 = sqrt(-2.0*log(u1)) * cos(TWO_PI*u2)
-    z1 = sqrt(-2.0*log(u1)) * sin(TWO_PI*u2)
-
-    number = z0*st_dev + mean
-
-  else
-
-    number = z1*st_dev + mean
-
+  if (seed /= 0) then
+     iseed = seed * 2796203
+     call random_seed(put=iseed)
   endif
+
+  call random_number(u1)
+  call random_number(u2)
+
+  z0 = sqrt(-2.0*log(u1)) * cos(TWO_PI*u2)
+
+  number = z0*st_dev + mean
 
 end subroutine GetRndNumFromNormalDist
 ! ************************************************************************** !

@@ -77,8 +77,6 @@ module PM_Waste_Form_class
 ! ---------------------------------------------------------------------------
 ! rad_species_list(:): pointer to a linked list of radionuclide objects
 ! num_species: [-] number of radionuclides in the waste form inventory
-! seed: [-] integer that provides a seed for the random number
-!    generator for normal distribution
 ! canister_degradation_model: Boolean which indicates if the waste package
 !    degradation model is on or off
 ! vitality_rate_mean: [log10/yr] mean waste package degradation rate, used
@@ -100,7 +98,6 @@ module PM_Waste_Form_class
     type(rad_species_type), pointer :: rad_species_list(:)
     type(becc_parameters_type), pointer :: becc_parameters
     PetscInt :: num_species
-    PetscInt :: seed
     PetscBool :: canister_degradation_model
     PetscReal :: vitality_rate_mean
     PetscReal :: vitality_rate_stdev
@@ -381,6 +378,9 @@ module PM_Waste_Form_class
 ! breached: Boolean indicating if waste package has breached
 ! decay_start_time: [sec] time in simuation when radionuclides in the waste
 !    form should start decaying, default time is 0.d0 sec
+! becc(8): Buffer erosion/copper corrosion parameters
+! seed: [-] integer that provides a seed for the random number
+!    generator for normal distribution
 ! mech_name: name string for the waste form mechanism object
 ! mechanism: pointer to waste form's mechanism object
 ! crit: pointer to the criticality object
@@ -414,6 +414,7 @@ module PM_Waste_Form_class
     PetscBool :: breached
     PetscReal :: decay_start_time
     PetscReal :: becc(8)
+    PetscInt :: seed
     character(len=MAXWORDLENGTH) :: mech_name
     character(len=MAXWORDLENGTH) :: spacer_mech_name
     character(len=MAXWORDLENGTH) :: criticality_mech_name
@@ -643,7 +644,6 @@ subroutine PMWFMechanismInit(this)
   nullify(this%next)
   nullify(this%rad_species_list)
   this%num_species = 0
-  this%seed = 1
   this%matrix_density = UNINITIALIZED_DOUBLE
   this%specific_surface_area = UNINITIALIZED_DOUBLE
   this%name = ''
@@ -1070,6 +1070,7 @@ function PMWFWasteFormCreate()
   wf%criticality_mech_name = ''
   wf%decay_start_time = 0.d0          ! sec (default value)
   wf%becc = 0.d0
+  wf%seed = 0.d0
   nullify(wf%instantaneous_mass_rate) ! mol-rad/sec
   nullify(wf%cumulative_mass)         ! mol-rad
   nullify(wf%rad_mass_fraction)       ! g-rad/g-matrix
@@ -1473,7 +1474,6 @@ subroutine PMWFReadMechanism(this,input,option,keyword,error_string,found)
   class(wf_mechanism_base_type), pointer :: new_mechanism, cur_mechanism
   PetscInt :: k, j
   PetscReal :: double
-  PetscInt :: integer
   PetscErrorCode :: ierr
   PetscLogDouble :: log_start_time, log_end_time
 ! ----------------------------------------------------------------------
@@ -1602,12 +1602,8 @@ subroutine PMWFReadMechanism(this,input,option,keyword,error_string,found)
             end select
         !--------------------------
           case('SEED')
-            call InputReadInt(input,option,integer)
-            call InputErrorMsg(input,option,'seed',error_string)
-            select type(new_mechanism)
-              class default
-                new_mechanism%seed = integer
-            end select
+            option%io_buffer = "SEED in waste form mechanism has been moved to &
+                                &the WASTE_FORM block"
         !--------------------------
           case('FRACTIONAL_DISSOLUTION_RATE_VI')
             call InputReadDouble(input,option,double)
@@ -2421,7 +2417,7 @@ subroutine PMWFReadWasteForm(this,input,option,keyword,error_string,found)
   select case(trim(keyword))
   !-------------------------------------
     case('WASTE_FORM')
-      new_waste_form => PMWFWasteFormCreate()
+       new_waste_form => PMWFWasteFormCreate()
       call InputPushBlock(input,option)
       do
         call InputReadPflotranString(input,option)
@@ -2476,6 +2472,10 @@ subroutine PMWFReadWasteForm(this,input,option,keyword,error_string,found)
             call InputReadAndConvertUnits(input,new_waste_form%breach_time, &
                            'sec',trim(error_string)//',CANISTER_BREACH_TIME', &
                            option)
+        !--------------------------
+          case('SEED')
+            call InputReadInt(input,option,new_waste_form%seed)
+            call InputErrorMsg(input,option,'seed',error_string)
         !-----------------------------
           case('DECAY_START_TIME')
             call InputReadDouble(input,option, &
@@ -2499,6 +2499,7 @@ subroutine PMWFReadWasteForm(this,input,option,keyword,error_string,found)
             call StringToUpper(word)
             new_waste_form%spacer_mech_name = trim(word)
             new_waste_form%spacer_degradation_flag = PETSC_TRUE
+        !-----------------------------
           case('FRACTURE_ANGLE') !steady state for now
             call InputReadDouble(input,option,new_waste_form%becc(1))
             call InputErrorMsg(input,option,'fracture angle',error_string)
@@ -3106,7 +3107,7 @@ subroutine PMWFSetup(this)
              cur_waste_form%mechanism%vitality_rate_mean, &
              cur_waste_form%mechanism%vitality_rate_stdev, &
              cur_waste_form%canister_vitality_rate, &
-             cur_waste_form%mechanism%seed)
+             cur_waste_form%seed)
         if (cur_waste_form%canister_vitality_rate > &
             cur_waste_form%mechanism%vitality_rate_trunc) then
           cur_waste_form%canister_vitality_rate = &
@@ -6399,12 +6400,6 @@ subroutine MechanismInputRecord(this)
     if (Initialized(cur_mech%matrix_density)) then
       write(id,'(a29)',advance='no') 'matrix density: '
       write(word,'(es12.5)') cur_mech%matrix_density
-      write(id,'(a)') trim(adjustl(word)) // ' kg/m^3'
-    endif
-
-    if (.not. cur_mech%seed == 1) then
-      write(id,'(a29)',advance='no') 'random seed: '
-      write(word,'(I12)') cur_mech%seed
       write(id,'(a)') trim(adjustl(word)) // ' kg/m^3'
     endif
 
