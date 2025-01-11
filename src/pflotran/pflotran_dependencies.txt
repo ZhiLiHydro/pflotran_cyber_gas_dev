@@ -361,6 +361,7 @@ debug.o : \
 discretization.o : \
   dm_custom.o \
   grid.o \
+  grid_grdecl.o \
   grid_structured.o \
   grid_unstructured.o \
   grid_unstructured_aux.o \
@@ -937,7 +938,6 @@ geomechanics_patch.o : \
 geomechanics_realization.o : \
   dataset.o \
   dataset_base.o \
-  geomech_grid.o \
   geomech_grid_aux.o \
   geomechanics_condition.o \
   geomechanics_coupler.o \
@@ -952,6 +952,7 @@ geomechanics_realization.o : \
   input_aux.o \
   option.o \
   output_aux.o \
+  petsc_utility.o \
   pflotran_constants.o \
   realization_base.o \
   realization_subsurface.o \
@@ -1037,6 +1038,20 @@ grid.o : \
   option.o \
   pflotran_constants.o \
   region.o \
+  string.o \
+  utility.o
+grid_grdecl.o : \
+  grid_grdecl_util.o \
+  grid_unstructured_aux.o \
+  input_aux.o \
+  option.o \
+  pflotran_constants.o \
+  string.o \
+  utility.o
+grid_grdecl_util.o : \
+  characteristic_curves.o \
+  option.o \
+  pflotran_constants.o \
   string.o \
   utility.o
 grid_structured.o : \
@@ -1222,6 +1237,7 @@ init_subsurface.o : \
   field.o \
   geomechanics_subsurface_properties.o \
   grid.o \
+  grid_grdecl.o \
   hdf5.o \
   input_aux.o \
   logging.o \
@@ -1230,6 +1246,7 @@ init_subsurface.o : \
   option.o \
   output_aux.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   realization_subsurface.o \
   region.o \
@@ -3288,6 +3305,7 @@ realization_subsurface.o : \
   output_aux.o \
   parameter.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   reaction.o \
   reaction_aux.o \

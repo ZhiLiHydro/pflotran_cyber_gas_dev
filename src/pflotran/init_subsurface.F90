@@ -307,6 +307,7 @@ subroutine InitSubsurfAssignMatProperties(realization)
                                TORTUOSITY_Y,TORTUOSITY_Z
 
   use HDF5_module
+  use Grid_Grdecl_module
   use Utility_module, only : DeallocateArray
 
   implicit none
@@ -336,6 +337,9 @@ subroutine InitSubsurfAssignMatProperties(realization)
   type(patch_type), pointer :: patch
   type(material_auxvar_type), pointer :: material_auxvars(:)
   PetscInt :: local_id, ghosted_id, material_id, i
+  PetscInt :: natural_id, rprnc
+  PetscReal :: poro, permx, permy, permz
+  PetscInt ,pointer,dimension(:) :: inatsend
   Vec :: tort_yy
   Vec :: tort_zz
   PetscErrorCode :: ierr
@@ -487,7 +491,42 @@ subroutine InitSubsurfAssignMatProperties(realization)
       call MaterialAssignPropertyToAux(material_auxvars(ghosted_id), &
                                        material_property,option)
     endif
+
+    if (StringCompareIgnoreCase(discretization%csubtype, 'GRDECL')) then
+
+      natural_id = grid%nG2A(ghosted_id)
+
+      if (option%myrank == option%comm%io_rank) then
+  !  Simply set up the values on the I/O proc
+        call GetPoroPermValues(natural_id,poro,permx,permy,permz)
+        por0_p(local_id)    = poro
+        perm_xx_p(local_id) = permx
+        perm_yy_p(local_id) = permy
+        perm_zz_p(local_id) = permz
+      else
+  !  Add to the request list on other procs
+        inatsend(local_id)=natural_id
+      endif
+
+    endif
+
   enddo
+
+  if (StringCompareIgnoreCase(discretization%csubtype, 'GRDECL')) then
+
+    call PermPoroExchangeAndSet(por0_p,perm_xx_p,perm_yy_p,perm_zz_p, &
+                                inatsend,grid%nlmax,option)
+
+    rprnc = GetProcnumFlag()
+    if( rprnc>0 ) then
+      call ProcnumExchangeAndSet(inatsend, grid%nlmax, option)
+    endif
+    if (option%myrank /= option%comm%io_rank) then
+      call DeallocateArray(inatsend)
+    endif
+
+    call DeallocatePoroPermArrays(PETSC_FALSE,option)
+  endif
 
   call MaterialPropertyDestroy(null_material_property)
 

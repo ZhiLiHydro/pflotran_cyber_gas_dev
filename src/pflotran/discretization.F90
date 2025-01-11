@@ -22,6 +22,7 @@ module Discretization_module
     !geh: note that differentiating between implicit and explicit unstructured
     !     grids is handled within the grid%itype variable, not discritization%itype
     character(len=MAXWORDLENGTH) :: ctype
+    character(len=MAXWORDLENGTH) :: csubtype
     PetscReal :: origin_global(3) ! origin of global domain
     type(grid_type), pointer :: grid  ! pointer to a grid object
     character(len=MAXSTRINGLENGTH) :: filename
@@ -85,6 +86,7 @@ function DiscretizationCreate()
 
   allocate(discretization)
   discretization%ctype = ''
+  discretization%csubtype = ''
   discretization%itype = 0
   discretization%origin_global = 0.d0
   discretization%filename = ''
@@ -130,6 +132,7 @@ subroutine DiscretizationReadRequiredCards(discretization,input,option)
   use Input_Aux_module
   use String_module
   use Material_Aux_module
+  use Grid_Grdecl_module, only : UGrdEclExplicitRead
 
   implicit none
 
@@ -171,6 +174,10 @@ subroutine DiscretizationReadRequiredCards(discretization,input,option)
         call InputReadCard(input,option,discretization%ctype)
         call InputErrorMsg(input,option,'type','GRID')
         call StringToUpper(discretization%ctype)
+        if (discretization%ctype == 'GRDECL') then
+          discretization%ctype = 'UNSTRUCTURED_EXPLICIT'
+          discretization%csubtype = 'GRDECL'
+        endif
         select case(trim(discretization%ctype))
           case('STRUCTURED')
             discretization%itype = STRUCTURED_GRID
@@ -267,7 +274,10 @@ subroutine DiscretizationReadRequiredCards(discretization,input,option)
           grid%unstructured_grid => un_str_grid
         case(EXPLICIT_UNSTRUCTURED_GRID)
           un_str_grid%explicit_grid => UGridExplicitCreate()
-          if (index(discretization%filename,'.h5') > 0) then
+          if (StringCompareIgnoreCase(discretization%csubtype, 'GRDECL')) then
+            call UGrdEclExplicitRead(un_str_grid, &
+                                     discretization%filename,option)
+          elseif (index(discretization%filename,'.h5') > 0) then
             call UGridExplicitReadHDF5(un_str_grid, &
                                        discretization%filename,option)
           else
