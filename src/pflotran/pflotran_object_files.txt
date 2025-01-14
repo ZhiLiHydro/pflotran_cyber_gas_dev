@@ -162,6 +162,7 @@ chem_obj = \
 	${common_src}reaction_sandbox_pnnl_cyber.o \
 	${common_src}reaction_sandbox_pnnl_lambda.o \
 	${common_src}reaction_sandbox_radon.o \
+        ${common_src}reaction_sandbox_oregonator.o \
 	${common_src}reaction_sandbox_simple.o \
 	${common_src}reaction_sandbox_ufd_wp.o \
 	${common_src}reaction_setup.o \

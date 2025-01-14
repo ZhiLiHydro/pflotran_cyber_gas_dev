@@ -2945,6 +2945,7 @@ reaction_sandbox.o : \
   reaction_sandbox_example.o \
   reaction_sandbox_flexbiohill.o \
   reaction_sandbox_gas.o \
+  reaction_sandbox_oregonator.o \
   reaction_sandbox_pnnl_cyber.o \
   reaction_sandbox_pnnl_lambda.o \
   reaction_sandbox_radon.o \
@@ -3062,6 +3063,16 @@ reaction_sandbox_gas.o : \
   reaction_aux.o \
   reaction_gas_aux.o \
   reaction_immobile_aux.o \
+  reaction_sandbox_base.o \
+  reactive_transport_aux.o \
+  string.o
+reaction_sandbox_oregonator.o : \
+  global_aux.o \
+  input_aux.o \
+  material_aux.o \
+  option.o \
+  pflotran_constants.o \
+  reaction_aux.o \
   reaction_sandbox_base.o \
   reactive_transport_aux.o \
   string.o

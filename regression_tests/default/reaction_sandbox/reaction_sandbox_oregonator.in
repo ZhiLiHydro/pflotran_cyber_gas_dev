@@ -1,0 +1,237 @@
+#Description: 1D Regression Test for reaction_sandbox_oregonator.F90
+#
+
+#==============================================================================
+# DO NOT MODIFY
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_TRANSPORT transport
+      MODE GIRT
+    /
+  /
+END
+# END DO NOT MODIFY
+#==============================================================================
+
+SUBSURFACE
+
+#=========================== numerical methods ================================
+NUMERICAL_METHODS TRANSPORT
+
+  NEWTON_SOLVER
+    NUMERICAL_JACOBIAN
+  /
+
+  LINEAR_SOLVER
+    SOLVER DIRECT
+  /
+
+END
+
+#=========================== regression =======================================
+# REGRESSION
+#   CELL_IDS
+#     1
+#     2
+#     3
+#     4
+#     5
+#     6
+#     7
+#     8
+#     9
+#     10
+#   /
+# END
+
+#=========================== constraints ======================================
+# modify these initial concentration
+CONSTRAINT initial
+  CONCENTRATIONS # [mol/L]
+    X(aq) 1.d-3 T
+    Y(aq) 1.d-3 T
+    Z(aq) 1.d-3 T
+    A(aq) 1.d-3 T
+    B(aq) 1.d-3 T
+    P(aq) 1.d-3 T
+  /
+END
+
+# modify these inlet concentrations
+CONSTRAINT inlet
+  CONCENTRATIONS # [mol/L]
+    X(aq) 1.d-3 T
+    Y(aq) 1.d-3 T
+    Z(aq) 1.d-3 T
+    A(aq) 1.d-3 T
+    B(aq) 1.d-3 T
+    P(aq) 1.d-3 T
+  /
+END
+
+#=========================== uniform flow =====================================
+SPECIFIED_VELOCITY
+  UNIFORM? YES
+  DATASET 1.d0 0.d0 0.d0 m/yr
+END
+REFERENCE_LIQUID_DENSITY 1000.d0
+
+#=========================== chemistry ========================================
+CHEMISTRY
+  PRIMARY_SPECIES
+    X(aq) # HBrO2    
+    Y(aq) # Br-        
+    Z(aq) # Ce++++     
+    A(aq) # BrO3-      
+    B(aq) # CH2(COOH)2 
+    P(aq) # HOBr       
+  /
+  MINERALS
+    A(s)
+    B(s)
+  /
+  REACTION_SANDBOX
+    OREGONATOR
+      SPECIES_A A(aq)
+      SPECIES_B B(aq)
+      SPECIES_X X(aq)
+      SPECIES_Y Y(aq)
+      SPECIES_Z Z(aq)
+      SPECIES_P P(aq)
+      K_I   110
+      K_II  2.d-5
+      K_III 3.2
+      K_IV  1.d-8
+      K_V   2.2d3
+    /
+  /
+  MINERAL_KINETICS
+    A(s)
+      RATE_CONSTANT 5.0D-3
+    END
+    B(s)
+      RATE_CONSTANT 5.0D-3
+    END
+  END
+  LOG_FORMULATION
+  ACTIVITY_COEFFICIENTS OFF
+  DATABASE ./hanford2.dat
+  OUTPUT
+    TOTAL
+    ALL
+  /
+END
+
+#=========================== solver options ===================================
+
+#=========================== discretization ===================================
+GRID
+  TYPE STRUCTURED
+#  NXYZ 100 1 1
+  NXYZ 10 1 1
+  BOUNDS
+    0.d0 0.d0 0.d0
+    100.d0 1.d0 1.d0
+  /
+END
+
+#=========================== fluid properties =================================
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.d-9
+END
+
+#=========================== material properties ==============================
+MATERIAL_PROPERTY soil1
+  ID 1
+  POROSITY 0.25d0
+  TORTUOSITY 1.d0
+END
+
+#=========================== output options ===================================
+OUTPUT
+  PERIODIC TIMESTEP 5
+  TIMES y 6.25d0 12.5d0 18.75d0
+  PERIODIC_OBSERVATION TIMESTEP 1
+  FORMAT HDF5
+END
+
+#=========================== times ============================================
+TIME
+  FINAL_TIME 25.d0 y
+  INITIAL_TIMESTEP_SIZE 1.d0 h
+  MAXIMUM_TIMESTEP_SIZE 2.5d-1 y
+END
+
+#=========================== regions ==========================================
+REGION all
+  COORDINATES
+    0.d0 0.d0 0.d0
+    100.d0 1.d0 1.d0
+  /
+END
+
+REGION west
+  FACE WEST
+  COORDINATES
+    0.d0 0.d0 0.d0
+    0.d0 1.d0 1.d0
+  /
+END
+
+REGION east
+  FACE EAST
+  COORDINATES
+    100.d0 0.d0 0.d0
+    100.d0 1.d0 1.d0
+  /
+END
+
+REGION middle
+  COORDINATE 50.d0 0.5d0 0.5d0
+END
+
+#=========================== observation points ===============================
+OBSERVATION
+  REGION middle
+END
+
+#=========================== transport conditions =============================
+TRANSPORT_CONDITION initial
+  TYPE ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 initial
+  /
+END
+
+TRANSPORT_CONDITION inlet
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 inlet
+  /
+END
+
+#=========================== condition couplers ===============================
+# initial condition
+INITIAL_CONDITION
+  TRANSPORT_CONDITION initial
+  REGION all
+END
+
+# BOUNDARY_CONDITION outlet
+#   TRANSPORT_CONDITION initial
+#   REGION east
+# END
+
+# BOUNDARY_CONDITION inlet
+#   TRANSPORT_CONDITION inlet
+#   REGION west
+# END
+
+#=========================== stratigraphy couplers ============================
+STRATA
+  REGION all
+  MATERIAL soil1
+END
+
+END_SUBSURFACE
