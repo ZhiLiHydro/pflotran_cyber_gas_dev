@@ -10,7 +10,7 @@ module Grid_Grdecl_Util_module
 
   public :: GetCorners, GetOtherDirections, GetIntersection
   public :: GetMDtoM2Conv,GetETtoTrConv, GetTriangleArea
-  public :: GetM2toMDConv,GetTrtoETConv, qarea, GetCentre, GetQuadSegment
+  public :: GetM2toMDConv,GetTrtoETConv, QArea, GetCentre, GetQuadSegment
   public :: SetMapAxes, GetMapAxes, SetMapAxesUnits, GetMapAxesUnits, &
             SetGDORIENT, GetGDORIENT
   public :: BroadcastInt, BroadcastIntN ,BroadcastRealN, BroadcastCharN
@@ -61,10 +61,10 @@ module Grid_Grdecl_Util_module
 
 ! *************************************************************************** !
 
-subroutine GetCorners( ix, iy, iz, &
+subroutine GetCorners(ix, iy, iz, &
                        x000, x100, x010, x110, &
                        x001, x101, x011, x111, &
-                       coord, zcorn, nx, ny )
+                       coord, zcorn, nx, ny)
   !
   ! Return the vertices of a hexahederal grid cell with location (ix,iy,iz)
   !
@@ -128,15 +128,15 @@ subroutine GetCorners( ix, iy, iz, &
       !  Fill in the cell corner locations
 
        if (ixo == 1) then
-         if (iyo == 1) call fillGeoCorner(x000, x001, d0, d1, xl, yl, zl, &
+         if (iyo == 1) call FillGeoCorner(x000, x001, d0, d1, xl, yl, zl, &
                                                               xu, yu, zu)
-         if (iyo == 2) call fillGeoCorner(x010, x011, d0, d1, xl, yl, zl, &
+         if (iyo == 2) call FillGeoCorner(x010, x011, d0, d1, xl, yl, zl, &
                                                               xu, yu, zu)
        endif
        if (ixo == 2) then
-         if (iyo == 1) call fillGeoCorner(x100, x101, d0, d1, xl, yl, zl, &
+         if (iyo == 1) call FillGeoCorner(x100, x101, d0, d1, xl, yl, zl, &
                                                               xu, yu, zu)
-         if (iyo == 2) call fillGeoCorner(x110, x111, d0, d1, xl, yl, zl, &
+         if (iyo == 2) call FillGeoCorner(x110, x111, d0, d1, xl, yl, zl, &
                                                               xu, yu, zu)
        endif
 
@@ -147,7 +147,7 @@ end subroutine GetCorners
 
 ! *************************************************************************** !
 
-subroutine fillGeoCorner(x0, x1, d0, d1, xl, yl, zl, xu , yu, zu)
+subroutine FillGeoCorner(x0, x1, d0, d1, xl, yl, zl, xu , yu, zu)
   !
   ! For coordinate line from xl,yl,zl to xu,yu,zu,
   ! find xyz locations at depths d0 and d1
@@ -158,7 +158,7 @@ subroutine fillGeoCorner(x0, x1, d0, d1, xl, yl, zl, xu , yu, zu)
   implicit none
 
   PetscReal, intent(out) :: x0(3), x1(3)
-  PetscReal, intent(in ) :: d0, d1, xl, yl, zl, xu, yu, zu
+  PetscReal, intent(in) :: d0, d1, xl, yl, zl, xu, yu, zu
 
   PetscReal :: f0, f1
 
@@ -183,7 +183,7 @@ subroutine fillGeoCorner(x0, x1, d0, d1, xl, yl, zl, xu , yu, zu)
   x0(3) = d0
   x1(3) = d1
 
-end subroutine fillGeoCorner
+end subroutine FillGeoCorner
 
 ! *************************************************************************** !
 
@@ -321,12 +321,12 @@ subroutine GetIntersection(alx, aly, aux, auy, &
 
     !  Parameter values
 
-    t = ( (aly-bly)*bpx - (alx-blx)*bpy )/den
-    p = ( (blx-alx)*apy - (bly-aly)*apx )/den
+    t = ((aly-bly)*bpx - (alx-blx)*bpy)/den
+    p = ((blx-alx)*apy - (bly-aly)*apx)/den
 
     !  Check for intersection within (0,1)
 
-    if (      (t >= -eps) .and. (t <= 1.0+eps) &
+    if ((t >= -eps) .and. (t <= 1.0+eps) &
         .and. (p >= -eps) .and. (p <= 1.0+eps)) qinter = PETSC_TRUE
 
     !  Find intersection (two methods)
@@ -392,7 +392,7 @@ end subroutine GetOtherDirections
 
 ! *************************************************************************** !
 
-function qarea(f, idir)
+function QArea(f, idir)
 
   !
   ! Routine to get component id of the vector area of the quadrilateral f
@@ -402,7 +402,7 @@ function qarea(f, idir)
 
   implicit none
 
-  PetscReal qarea
+  PetscReal QArea
   PetscReal, intent(in) :: f(0:1, 0:1, 3)
   PetscInt , intent(in) :: idir
   PetscReal :: x00, x01, x10, x11
@@ -417,10 +417,14 @@ function qarea(f, idir)
 
   !  Get projection into the 2-plane orthogonal to e(idir)
 
-  x00 = f(0, 0, jdir);y00 = f(0, 0, kdir)
-  x10 = f(1, 0, jdir);y10 = f(1, 0, kdir)
-  x01 = f(0, 1, jdir);y01 = f(0, 1, kdir)
-  x11 = f(1, 1, jdir);y11 = f(1, 1, kdir)
+  x00 = f(0, 0, jdir)
+  y00 = f(0, 0, kdir)
+  x10 = f(1, 0, jdir)
+  y10 = f(1, 0, kdir)
+  x01 = f(0, 1, jdir)
+  y01 = f(0, 1, kdir)
+  x11 = f(1, 1, jdir)
+  y11 = f(1, 1, kdir)
 
   !  Obtain the area as two triangles
 
@@ -429,9 +433,9 @@ function qarea(f, idir)
 
   !  Sum to get result
 
-  qarea = at1+at2
+  QArea = at1+at2
 
-end function qarea
+end function QArea
 
 ! *************************************************************************** !
 
@@ -459,34 +463,42 @@ subroutine GetQuadSegment(iseg, idir, f, alx, aly, aux, auy)
 
   if (iseg == 1) then
     ! Segment 1 is (0,0) to (1,0)
-    alx = f(0, 0, jdir);aly = f(0, 0 , kdir)
-    aux = f(1, 0, jdir);auy = f(1, 0 , kdir)
+    alx = f(0, 0, jdir)
+    aly = f(0, 0 , kdir)
+    aux = f(1, 0, jdir)
+    auy = f(1, 0 , kdir)
   endif
 
   if (iseg == 2) then
     ! Segment 2 is (1,0) to (1,1)
-    alx = f(1, 0, jdir);aly = f(1, 0, kdir)
-    aux = f(1, 1, jdir);auy = f(1, 1, kdir)
+    alx = f(1, 0, jdir)
+    aly = f(1, 0, kdir)
+    aux = f(1, 1, jdir)
+    auy = f(1, 1, kdir)
   endif
 
   if (iseg == 3) then
     ! Segment 3 is (1,1) to (0,1)
-    alx = f(1, 1, jdir);aly = f(1, 1, kdir)
-    aux = f(0, 1, jdir);auy = f(0, 1, kdir)
+    alx = f(1, 1, jdir)
+    aly = f(1, 1, kdir)
+    aux = f(0, 1, jdir)
+    auy = f(0, 1, kdir)
   endif
 
   if (iseg == 4) then
     ! Segment 1 is (0,1) to (0,0)
-    alx = f(0, 1, jdir);aly = f(0, 1, kdir)
-    aux = f(0, 0, jdir);auy = f(0, 0, kdir)
+    alx = f(0, 1, jdir)
+    aly = f(0, 1, kdir)
+    aux = f(0, 0, jdir)
+    auy = f(0, 0, kdir)
   endif
 
 end subroutine GetQuadSegment
 
 ! *************************************************************************** !
 
-subroutine getCentre( x000, x100, x010, x110, &
-                      x001, x101, x011, x111, centre )
+subroutine GetCentre(x000, x100, x010, x110, &
+                      x001, x101, x011, x111, centre)
   !
   ! Obtain the centre of a hexahederal grid cell
   !  with corners x000,..,x111
@@ -503,11 +515,11 @@ subroutine getCentre( x000, x100, x010, x110, &
   PetscInt :: id
 
   do id = 1, 3
-    centre(id) = 0.125*( x000(id) + x100(id) + x010(id) + x110(id) + &
-                         x001(id) + x101(id) + x011(id) + x111(id) )
+    centre(id) = 0.125*(x000(id) + x100(id) + x010(id) + x110(id) + &
+                         x001(id) + x101(id) + x011(id) + x111(id))
   enddo
 
-end subroutine getCentre
+end subroutine GetCentre
 
 ! *************************************************************************** !
 
@@ -574,7 +586,7 @@ subroutine SetGDORIENT(zbuf,qerr,zmess)
 
 !  Check that buffer is large enough
 
-  if( nzbuf>=5 ) then
+  if(nzbuf>=5) then
 
     !  Extract and check values
 
@@ -582,13 +594,13 @@ subroutine SetGDORIENT(zbuf,qerr,zmess)
     is_inc_j = StringCompareIgnoreCase(zbuf(2), 'inc')
     is_inc_k = StringCompareIgnoreCase(zbuf(3), 'inc')
 
-    if (.not. (is_inc_i .and. is_inc_j .and. is_inc_k ) ) then
+    if (.not. (is_inc_i .and. is_inc_j .and. is_inc_k)) then
       zmess = 'All three GDORIENT orders must be INC'
       qerr  = PETSC_TRUE
     endif
 
     is_down = StringCompareIgnoreCase(zbuf(4), 'down')
-    if (.not.is_down ) then
+    if (.not.is_down) then
       zmess = 'GDORIENT depth convention must be DOWN'
       qerr  = PETSC_TRUE
     endif
@@ -707,8 +719,8 @@ subroutine BroadcastRealN(rval, option)
   n    = size(rval)
   nmpi = n
 
-  call MPI_Bcast( rval, nmpi, MPI_DOUBLE_PRECISION, &
-                  option%comm%io_rank, option%mycomm, ierr )
+  call MPI_Bcast(rval, nmpi, MPI_DOUBLE_PRECISION, &
+                  option%comm%io_rank, option%mycomm, ierr)
 
 end subroutine BroadcastRealN
 
@@ -766,7 +778,7 @@ subroutine ParallelSendToIO(rval, option)
   irank = option%comm%io_rank
   temp_real_array(1) = rval
 
-  call MPI_Send( temp_real_array, nmpi, MPI_DOUBLE_PRECISION, &
+  call MPI_Send(temp_real_array, nmpi, MPI_DOUBLE_PRECISION, &
                  irank, tag_mpi, option%mycomm, ierr)
 
 end subroutine ParallelSendToIO
@@ -799,7 +811,7 @@ function ParallelRecvFromProc(iproc, option)
   ierr = 0
   nmpi = 1
 
-  call MPI_Recv( rval1, nmpi, MPI_DOUBLE_PRECISION, iproc, &
+  call MPI_Recv(rval1, nmpi, MPI_DOUBLE_PRECISION, iproc, &
                  MPI_ANY_TAG, option%mycomm, status_mpi, ierr)
 
   ParallelRecvFromProc = rval1(1)
@@ -880,7 +892,7 @@ subroutine SetDefaultLocalsPerGlobal(nl,ng,nlpg,qisz)
 
   do irem=1,nrem
     j = irem
-    if( qisz ) j = nrem - irem + 1
+    if(qisz) j = nrem - irem + 1
     nlpg(j) = nlpg(j) + 1
   enddo
 
@@ -892,7 +904,7 @@ subroutine MakeLocalBasePointers(nlpg,blpg,ndl,ndg,qerr,ndlis)
 
   implicit none
 
-  PetscInt,intent (in ) :: nlpg(:)
+  PetscInt,intent (in) :: nlpg(:)
   PetscInt,intent (out) :: blpg(:)
   PetscInt,intent (in)  :: ndl,ndg
   PetscBool,intent(out) :: qerr
@@ -912,7 +924,7 @@ subroutine MakeLocalBasePointers(nlpg,blpg,ndl,ndg,qerr,ndlis)
     ndlis = ndlis + nlpg(idg)
   enddo
 
-  if( ndlis /= ndl ) qerr = PETSC_TRUE
+  if(ndlis /= ndl) qerr = PETSC_TRUE
 
 end subroutine MakeLocalBasePointers
 
@@ -937,7 +949,7 @@ subroutine SetLGRName(ilgr,zlgr)
   PetscInt,        intent(in) :: ilgr
   character(len=*),intent(in) :: zlgr
 
-  if( ilgr>0 .and. ilgr<=gu_nlgr ) then
+  if(ilgr>0 .and. ilgr<=gu_nlgr) then
     gu_zlgr(ilgr) = zlgr
   endif
 
@@ -952,7 +964,7 @@ subroutine SetLGRDimensions(ilgr,nx,ny,nz)
   PetscInt,intent(in) :: ilgr
   PetscInt,intent(in) :: nx,ny,nz
 
-  if( ilgr>0 .and. ilgr<=gu_nlgr ) then
+  if(ilgr>0 .and. ilgr<=gu_nlgr) then
     gu_lgrd(1,ilgr) = nx
     gu_lgrd(2,ilgr) = ny
     gu_lgrd(3,ilgr) = nz
@@ -975,7 +987,7 @@ function GetLGRLocation(zlgr)
   ilgr = g_ifld
 
   do jlgr=1,gu_nlgr
-    if ( StringCompareIgnoreCase(zlgr,gu_zlgr(jlgr)) ) then
+    if (StringCompareIgnoreCase(zlgr,gu_zlgr(jlgr))) then
       ilgr = jlgr
       exit
     endif
@@ -994,7 +1006,7 @@ function GetIsLGR()
   PetscBool :: GetIsLGR
 
   GetisLGR = PETSC_FALSE
-  if( gu_nlgr > 1 ) GetIsLGR=PETSC_TRUE
+  if(gu_nlgr > 1) GetIsLGR=PETSC_TRUE
 
 end function GetIsLGR
 
@@ -1023,7 +1035,7 @@ function GetLGRName8(ilgr)
   character(len=MAXWORDLENGTH) :: zlgr
 
   GetLGRName8 = ':+:+:+:+'
-  if( ilgr>0 .and. ilgr<=gu_nlgr ) then
+  if(ilgr>0 .and. ilgr<=gu_nlgr) then
     zlgr = gu_zlgr(ilgr)
     call CopyString(GetLGRName8,zlgr)
   endif
@@ -1036,14 +1048,14 @@ subroutine GetLGRDimensions(ilgr,nx,ny,nz)
 
   implicit none
 
-  PetscInt,intent(in ) :: ilgr
+  PetscInt,intent(in) :: ilgr
   PetscInt,intent(out) :: nx,ny,nz
 
   nx = 1
   ny = 1
   nz = 1
 
-  if( ilgr>0 .and. ilgr<=gu_nlgr ) then
+  if(ilgr>0 .and. ilgr<=gu_nlgr) then
     nx = gu_lgrd(1,ilgr)
     ny = gu_lgrd(2,ilgr)
     nz = gu_lgrd(3,ilgr)
@@ -1070,13 +1082,13 @@ function GetDRPSubindex(zkey)
 
   GetDRPSubindex = 0
 
-  if( StringCompareIgnoreCase(zkey,'KRNUMX' ) ) GetDRPSubindex = idrpa_krx
-  if( StringCompareIgnoreCase(zkey,'KRNUMY' ) ) GetDRPSubindex = idrpa_kry
-  if( StringCompareIgnoreCase(zkey,'KRNUMZ' ) ) GetDRPSubindex = idrpa_krz
+  if(StringCompareIgnoreCase(zkey,'KRNUMX')) GetDRPSubindex = idrpa_krx
+  if(StringCompareIgnoreCase(zkey,'KRNUMY')) GetDRPSubindex = idrpa_kry
+  if(StringCompareIgnoreCase(zkey,'KRNUMZ')) GetDRPSubindex = idrpa_krz
 
-  if( StringCompareIgnoreCase(zkey,'IMBNUMX') ) GetDRPSubindex = idrpa_imx
-  if( StringCompareIgnoreCase(zkey,'IMBNUMY') ) GetDRPSubindex = idrpa_imy
-  if( StringCompareIgnoreCase(zkey,'IMBNUMZ') ) GetDRPSubindex = idrpa_imz
+  if(StringCompareIgnoreCase(zkey,'IMBNUMX')) GetDRPSubindex = idrpa_imx
+  if(StringCompareIgnoreCase(zkey,'IMBNUMY')) GetDRPSubindex = idrpa_imy
+  if(StringCompareIgnoreCase(zkey,'IMBNUMZ')) GetDRPSubindex = idrpa_imz
 
 end function GetDRPSubindex
 
@@ -1098,13 +1110,13 @@ function GetDRPSubindexName(idrpa)
 
   GetDRPSubindexName = ' '
 
-  if( idrpa == idrpa_krx ) GetDRPSubindexName = 'KRNUMX '
-  if( idrpa == idrpa_kry ) GetDRPSubindexName = 'KRNUMY '
-  if( idrpa == idrpa_krz ) GetDRPSubindexName = 'KRNUMZ '
+  if(idrpa == idrpa_krx) GetDRPSubindexName = 'KRNUMX '
+  if(idrpa == idrpa_kry) GetDRPSubindexName = 'KRNUMY '
+  if(idrpa == idrpa_krz) GetDRPSubindexName = 'KRNUMZ '
 
-  if( idrpa == idrpa_imx ) GetDRPSubindexName = 'IMBNUMX'
-  if( idrpa == idrpa_imy ) GetDRPSubindexName = 'IMBNUMY'
-  if( idrpa == idrpa_imz ) GetDRPSubindexName = 'IMBNUMZ'
+  if(idrpa == idrpa_imx) GetDRPSubindexName = 'IMBNUMX'
+  if(idrpa == idrpa_imy) GetDRPSubindexName = 'IMBNUMY'
+  if(idrpa == idrpa_imz) GetDRPSubindexName = 'IMBNUMZ'
 
 end function GetDRPSubindexName
 
@@ -1135,12 +1147,12 @@ subroutine SplitRptreg(irepreg,ifipa,ifipv)
   ifipa = 0 ! For whole field - deemed fip region 0
   ifipv = 1
 
-  if( irepreg > 1 ) then
+  if(irepreg > 1) then
     ifipreg=irepreg-1
     do jfipa=1,mfipa
       ib = g_b_fipreg(jfipa) ! Note this is a zero-based pointer
       nv = g_n_fipreg(jfipa)
-      if( ifipreg>=ib+1 .and. ifipreg<=(ib+nv) ) then
+      if(ifipreg>=ib+1 .and. ifipreg<=(ib+nv)) then
         ifipa = jfipa
         ifipv = ifipreg - ib
       endif
@@ -1159,7 +1171,7 @@ function GetBaseFip(ifipa)
   PetscInt :: ib,GetBaseFip
 
   ib = 0
-  if( ifipa>0 .and. ifipa<mfipa ) then
+  if(ifipa>0 .and. ifipa<mfipa) then
     ib = g_b_fipreg(ifipa)
   endif
 
@@ -1177,7 +1189,7 @@ function GetNinFip(ifipa)
   PetscInt :: n,GetNinFip
 
   n = 0
-  if( ifipa>0 .and. ifipa<mfipa ) then
+  if(ifipa>0 .and. ifipa<mfipa) then
     n = g_n_fipreg(ifipa)
   endif
 
@@ -1195,7 +1207,7 @@ subroutine GetFipaName(ifipa,fipaname)
   character(len=MAXWORDLENGTH),intent(out) :: fipaname
 
   fipaname = 'Field'
-  if( ifipa>0 .and. ifipa<=mfipa ) then
+  if(ifipa>0 .and. ifipa<=mfipa) then
     fipaname = g_fipname(ifipa)
   endif
 
@@ -1212,22 +1224,22 @@ subroutine AllocArgs(argi,argr,argz,nargi,nargr,nargz)
   character(len=MAXSTRINGLENGTH),intent(inout) ,allocatable :: argz(:)
   PetscInt, intent(in) :: nargi, nargr, nargz
 
-  if( nargi>0 ) then
+  if(nargi>0) then
     allocate(argi(nargi))
   else
-    if( allocated(argi) ) deallocate(argi)
+    if(allocated(argi)) deallocate(argi)
   endif
 
-  if( nargr>0 ) then
+  if(nargr>0) then
     allocate(argr(nargr))
   else
-    if( allocated(argr) ) deallocate(argr)
+    if(allocated(argr)) deallocate(argr)
   endif
 
-  if( nargz>0 ) then
+  if(nargz>0) then
     allocate(argz(nargz))
   else
-    if( allocated(argz) ) deallocate(argz)
+    if(allocated(argz)) deallocate(argz)
   endif
 
 end subroutine AllocArgs
@@ -1242,9 +1254,9 @@ subroutine DeallocArgs(argi,argr,argz)
   PetscReal                     ,intent(inout) ,allocatable :: argr(:)
   character(len=MAXSTRINGLENGTH),intent(inout) ,allocatable :: argz(:)
 
-  if( allocated(argi) ) deallocate(argi)
-  if( allocated(argr) ) deallocate(argr)
-  if( allocated(argz) ) deallocate(argz)
+  if(allocated(argi)) deallocate(argi)
+  if(allocated(argr)) deallocate(argr)
+  if(allocated(argz)) deallocate(argz)
 
 end subroutine DeallocArgs
 
@@ -1350,9 +1362,9 @@ subroutine ReleaseCGL
 
   implicit none
 
-  if( allocated(g_cg) ) deallocate(g_cg)
-  if( allocated(g_cl) ) deallocate(g_cl)
-  if( allocated(g_io) ) deallocate(g_io)
+  if(allocated(g_cg)) deallocate(g_cg)
+  if(allocated(g_cl)) deallocate(g_cl)
+  if(allocated(g_io)) deallocate(g_io)
 
 end subroutine ReleaseCGL
 

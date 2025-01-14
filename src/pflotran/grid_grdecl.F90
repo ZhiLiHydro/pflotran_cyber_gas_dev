@@ -83,7 +83,7 @@ module Grid_Grdecl_module
 
   PetscInt :: g_nlgr = 1
 
-  !--Integer pointer-container---------------------------------------------------
+  !--Integer pointer-container-------------------------------------------------
 
   type, public :: int_ptr_type
     PetscInt, pointer :: p(:) => null()
@@ -282,7 +282,7 @@ module Grid_Grdecl_module
   PetscReal, pointer :: g_tran   (:) => null()   ! Transmisibility
   PetscReal, pointer :: g_tran_th(:) => null()   ! Thermal transmisibility
 
-  ! Direction ( g_xdir, g_ydir, g_zdir for upper connection (lower to upper)
+  ! Direction (g_xdir, g_ydir, g_zdir for upper connection (lower to upper)
   !            -g_xdir,-g_ydir,-g_zdir for lower connection (upper to lower)
   !            0 if not known
   PetscInt , pointer :: g_idir   (:) => null()
@@ -421,10 +421,10 @@ end subroutine UGrdEclExplicitRead
 
 ! *************************************************************************** !
 
-subroutine ACEMOp( zto, zfr, ixl, ixu, &
+subroutine ACEMOp(zto, zfr, ixl, ixu, &
                    iyl, iyu, &
                    izl, izu, isadd, iscpy, iseql, ismlt, &
-                   zk, qerr, convdist, convtran, ilgr, option )
+                   zk, qerr, convdist, convtran, ilgr, option)
 
   !
   ! Do a add/copy/equals/multiply operation
@@ -489,12 +489,14 @@ subroutine ACEMOp( zto, zfr, ixl, ixu, &
 
 !  Get the required arrays
 
-  call GetGridArrayPointer( zto, isint, isreal, ai, ar, qerr, iseql, &
-                            is_mult_only, is_depth, is_perm, is_dist, is_tran, ilgr, option )
+  call GetGridArrayPointer(zto, isint, isreal, ai, ar, qerr, iseql, &
+                            is_mult_only, is_depth, is_perm, is_dist, &
+                            is_tran, ilgr, option)
   if (iscpy) then
-    call GetGridArrayPointer( zfr, isintb, isrealb, bi, br, qerr, iseql, &
+    call GetGridArrayPointer(zfr, isintb, isrealb, bi, br, qerr, iseql, &
                               is_mult_dummy, is_depth_dummy, &
-                              is_perm_dummy, is_dist_dummy, is_tran_dummy, ilgr, option )
+                              is_perm_dummy, is_dist_dummy, is_tran_dummy, &
+                              ilgr, option)
   else
     call ProcessArgToReal(v, zfr, zk, qerr)
   endif
@@ -547,7 +549,7 @@ subroutine ACEMOp( zto, zfr, ixl, ixu, &
               iv = nint(v,kind(g_petsc_int))
               if (isadd) ai(ig) = ai(ig) + iv
               if (iscpy) then
-                if (isintb ) bi(ig) =      ai(ig)
+                if (isintb) bi(ig) =      ai(ig)
                 if (isrealb) bi(ig) = nint(ar(ig),kind(g_petsc_int))
               endif
               if (iseql) ai(ig) = iv
@@ -558,7 +560,7 @@ subroutine ACEMOp( zto, zfr, ixl, ixu, &
             if (isreal) then
               if (isadd) ar(ig) = ar(ig) + v
               if (iscpy) then
-                if (isintb ) br(ig) = real(ai(ig),kind(g_petsc_real))
+                if (isintb) br(ig) = real(ai(ig),kind(g_petsc_real))
                 if (isrealb) br(ig) =      ar(ig)
               endif
               if (iseql) ar(ig) = v
@@ -678,7 +680,7 @@ subroutine AllocateGridArrays(nx,ny,nz,ilgr)
 
   ! LGR defaults (to be filled in later)
 
-  if( ilgr>1 ) then
+  if(ilgr>1) then
     def_pp = UNINITIALIZED_DOUBLE
     def_mn = UNINITIALIZED_DOUBLE
     def_an = -1
@@ -695,79 +697,117 @@ subroutine AllocateGridArrays(nx,ny,nz,ilgr)
     allocate(g_g(ilgr)%ibpgy(nyg))
     allocate(g_g(ilgr)%ibpgz(nzg))
 
-    allocate(g_g(ilgr)%hrefx(nx ));g_g(ilgr)%hrefx=1.0D0
-    allocate(g_g(ilgr)%hrefy(ny ));g_g(ilgr)%hrefy=1.0D0
-    allocate(g_g(ilgr)%hrefz(nz ));g_g(ilgr)%hrefz=1.0D0
+    allocate(g_g(ilgr)%hrefx(nx))
+    allocate(g_g(ilgr)%hrefy(ny))
+    allocate(g_g(ilgr)%hrefz(nz))
+
+    g_g(ilgr)%hrefx=1.0d0
+    g_g(ilgr)%hrefy=1.0d0
+    g_g(ilgr)%hrefz=1.0d0
 
     ! Set up default local cells/global cell
 
     call SetDefaultLocalsPerGlobal(nx,nxg,g_g(ilgr)%nlpgx,qisz_false)
     call SetDefaultLocalsPerGlobal(ny,nyg,g_g(ilgr)%nlpgy,qisz_false)
-    call SetDefaultLocalsPerGlobal(nz,nzg,g_g(ilgr)%nlpgz,qisz_true )
+    call SetDefaultLocalsPerGlobal(nz,nzg,g_g(ilgr)%nlpgz,qisz_true)
 
    ! Make base pointers from local cells/global cell
 
-    call MakeLocalBasePointers(g_g(ilgr)%nlpgx,g_g(ilgr)%ibpgx,nx,nxg,qerr,ndlis)
-    call MakeLocalBasePointers(g_g(ilgr)%nlpgy,g_g(ilgr)%ibpgy,ny,nyg,qerr,ndlis)
-    call MakeLocalBasePointers(g_g(ilgr)%nlpgz,g_g(ilgr)%ibpgz,nz,nzg,qerr,ndlis)
+    call MakeLocalBasePointers(g_g(ilgr)%nlpgx,g_g(ilgr)%ibpgx,nx,nxg,qerr, &
+                               ndlis)
+    call MakeLocalBasePointers(g_g(ilgr)%nlpgy,g_g(ilgr)%ibpgy,ny,nyg,qerr, &
+                               ndlis)
+    call MakeLocalBasePointers(g_g(ilgr)%nlpgz,g_g(ilgr)%ibpgz,nz,nzg,qerr, &
+                               ndlis)
 
   endif
 
   ! Allocate and set
 
-  allocate(g_g(ilgr)%dx (nxyz  ));g_g(ilgr)%dx  =  0.0
-  allocate(g_g(ilgr)%dy (nxyz  ));g_g(ilgr)%dy  =  0.0
-  allocate(g_g(ilgr)%dz (nxyz  ));g_g(ilgr)%dz  =  0.0
+  allocate(g_g(ilgr)%dx(nxyz))
+  allocate(g_g(ilgr)%dy(nxyz))
+  allocate(g_g(ilgr)%dz(nxyz))
 
-  allocate(g_g(ilgr)%kx (nxyz  ));g_g(ilgr)%kx  =  def_pp
-  allocate(g_g(ilgr)%ky (nxyz  ));g_g(ilgr)%ky  =  def_pp
-  allocate(g_g(ilgr)%kz (nxyz  ));g_g(ilgr)%kz  =  def_pp
+  allocate(g_g(ilgr)%kx(nxyz))
+  allocate(g_g(ilgr)%ky(nxyz))
+  allocate(g_g(ilgr)%kz(nxyz))
 
-  allocate(g_g(ilgr)%mv (nxyz  ));g_g(ilgr)%mv  =  def_mn
+  allocate(g_g(ilgr)%mv(nxyz))
 
-  allocate(g_g(ilgr)%mx (nxyz  ));g_g(ilgr)%mx  =  def_mn
-  allocate(g_g(ilgr)%my (nxyz  ));g_g(ilgr)%my  =  def_mn
-  allocate(g_g(ilgr)%mz (nxyz  ));g_g(ilgr)%mz  =  def_mn
+  allocate(g_g(ilgr)%mx(nxyz))
+  allocate(g_g(ilgr)%my(nxyz))
+  allocate(g_g(ilgr)%mz(nxyz))
 
-  allocate(g_g(ilgr)%mxn(nxyz  ));g_g(ilgr)%mxn =  def_mn
-  allocate(g_g(ilgr)%myn(nxyz  ));g_g(ilgr)%myn =  def_mn
-  allocate(g_g(ilgr)%mzn(nxyz  ));g_g(ilgr)%mzn =  def_mn
+  allocate(g_g(ilgr)%mxn(nxyz))
+  allocate(g_g(ilgr)%myn(nxyz))
+  allocate(g_g(ilgr)%mzn(nxyz))
 
-  allocate(g_g(ilgr)%tx(nxyz   ));g_g(ilgr)%tx  = -1.0
-  allocate(g_g(ilgr)%ty(nxyz   ));g_g(ilgr)%ty  = -1.0
-  allocate(g_g(ilgr)%tz(nxyz   ));g_g(ilgr)%tz  = -1.0
+  allocate(g_g(ilgr)%tx(nxyz))
+  allocate(g_g(ilgr)%ty(nxyz))
+  allocate(g_g(ilgr)%tz(nxyz))
 
-  allocate(g_g(ilgr)%tops(nxyz));g_g(ilgr)%tops =  UNINITIALIZED_DOUBLE ! To trap unset layers
-  allocate(g_g(ilgr)%poro(nxyz));g_g(ilgr)%poro =  def_pp
-  allocate(g_g(ilgr)%ntg (nxyz));g_g(ilgr)%ntg  =  def_mn ! Net to gross ratio (default to 1)
+  allocate(g_g(ilgr)%tops(nxyz))
+  allocate(g_g(ilgr)%poro(nxyz))
+  allocate(g_g(ilgr)%ntg (nxyz))
 
-  allocate(g_g(ilgr)%xloc(nxyz));g_g(ilgr)%xloc = 0.0
-  allocate(g_g(ilgr)%yloc(nxyz));g_g(ilgr)%yloc = 0.0
-  allocate(g_g(ilgr)%zloc(nxyz));g_g(ilgr)%zloc = 0.0
+  allocate(g_g(ilgr)%xloc(nxyz))
+  allocate(g_g(ilgr)%yloc(nxyz))
+  allocate(g_g(ilgr)%zloc(nxyz))
 
   ! Int arrays set to del_an=1 for global, -1 for locals,
   ! so that later can copy over global values to unset locals
 
-  allocate(g_g(ilgr)%actn(nxyz));g_g(ilgr)%actn = def_an ! Actnum (used to set cells inactive)
-  allocate(g_g(ilgr)%satn(nxyz));g_g(ilgr)%satn = def_an ! Saturation table numbers
-  allocate(g_g(ilgr)%imbn(nxyz));g_g(ilgr)%imbn = def_an ! Imbibition table numbers
-  allocate(g_g(ilgr)%eqln(nxyz));g_g(ilgr)%eqln = def_an ! Equilibration table numbers
-  allocate(g_g(ilgr)%mltn(nxyz));g_g(ilgr)%mltn = def_an ! Multnum numbers
+  allocate(g_g(ilgr)%actn(nxyz))
+  allocate(g_g(ilgr)%satn(nxyz))
+  allocate(g_g(ilgr)%imbn(nxyz))
+  allocate(g_g(ilgr)%eqln(nxyz))
+  allocate(g_g(ilgr)%mltn(nxyz))
 
-  if( g_rprcn==1 ) then
-    allocate(g_g(ilgr)%prcn(nxyz));g_g(ilgr)%prcn = 0    ! Processor numbers
+  if(g_rprcn==1) then
+    allocate(g_g(ilgr)%prcn(nxyz))
+    g_g(ilgr)%prcn = 0    ! Processor numbers
   endif
 
-  if( ilgr>1 ) then
-    allocate(g_g(ilgr)%ihost(nxyz));g_g(ilgr)%ihost =  0
+  if(ilgr>1) then
+    allocate(g_g(ilgr)%ihost(nxyz))
+    g_g(ilgr)%ihost =  0
   endif
 
-  allocate(g_g(ilgr)%gtoa(nxyz));g_g(ilgr)%gtoa = -1
+  allocate(g_g(ilgr)%gtoa(nxyz))
+
+
+  g_g(ilgr)%dx  =  0.d0
+  g_g(ilgr)%dy  =  0.d0
+  g_g(ilgr)%dz  =  0.d0
+  g_g(ilgr)%kx  =  def_pp
+  g_g(ilgr)%ky  =  def_pp
+  g_g(ilgr)%kz  =  def_pp
+  g_g(ilgr)%mv  =  def_mn
+  g_g(ilgr)%mx  =  def_mn
+  g_g(ilgr)%my  =  def_mn
+  g_g(ilgr)%mz  =  def_mn
+  g_g(ilgr)%mxn =  def_mn
+  g_g(ilgr)%myn =  def_mn
+  g_g(ilgr)%mzn =  def_mn
+  g_g(ilgr)%tx  = -1.d0
+  g_g(ilgr)%ty  = -1.d0
+  g_g(ilgr)%tz  = -1.d0
+  g_g(ilgr)%tops =  UNINITIALIZED_DOUBLE ! To trap unset layers
+  g_g(ilgr)%poro =  def_pp
+  g_g(ilgr)%ntg  =  def_mn ! Net to gross ratio (default to 1)
+  g_g(ilgr)%xloc = 0.d0
+  g_g(ilgr)%yloc = 0.d0
+  g_g(ilgr)%zloc = 0.d0
+  g_g(ilgr)%actn = def_an ! Actnum (used to set cells inactive)
+  g_g(ilgr)%satn = def_an ! Saturation table numbers
+  g_g(ilgr)%imbn = def_an ! Imbibition table numbers
+  g_g(ilgr)%eqln = def_an ! Equilibration table numbers
+  g_g(ilgr)%mltn = def_an ! Multnum numbers
+  g_g(ilgr)%gtoa = -1
 
 end subroutine AllocateGridArrays
 
 ! *************************************************************************** !
-
 
 subroutine AllocateActiveArrays()
   !
@@ -779,23 +819,37 @@ subroutine AllocateActiveArrays()
 
   implicit none
 
-  allocate(g_bvol(g_na));g_bvol   = 0.0
+  allocate(g_bvol(g_na))
 
-  allocate(g_x   (g_na));g_x      = 0.0
-  allocate(g_y   (g_na));g_y      = 0.0
-  allocate(g_z   (g_na));g_z      = 0.0
+  allocate(g_x(g_na))
+  allocate(g_y(g_na))
+  allocate(g_z(g_na))
 
-  allocate(g_cia (g_mc));g_cia    = -1
-  allocate(g_cja (g_mc));g_cja    = -1
+  allocate(g_cia(g_mc))
+  allocate(g_cja(g_mc))
 
-  allocate(g_ccx  (g_mc));g_ccx   = 0.0
-  allocate(g_ccy  (g_mc));g_ccy   = 0.0
-  allocate(g_ccz  (g_mc));g_ccz   = 0.0
-  allocate(g_carea(g_mc));g_carea = 0.0
+  allocate(g_ccx(g_mc))
+  allocate(g_ccy(g_mc))
+  allocate(g_ccz(g_mc))
+  allocate(g_carea(g_mc))
 
-  allocate(g_tran   (g_mc));g_tran    = 0.0
-  allocate(g_tran_th(g_mc));g_tran_th = 0.0
-  allocate(g_idir   (g_mc));g_idir    = 0.0
+  allocate(g_tran(g_mc))
+  allocate(g_tran_th(g_mc))
+  allocate(g_idir(g_mc))
+
+  g_bvol = 0.d0
+  g_x = 0.d0
+  g_y = 0.d0
+  g_z = 0.d0
+  g_cia = -1
+  g_cja = -1
+  g_ccx = 0.d0
+  g_ccy = 0.d0
+  g_ccz = 0.d0
+  g_carea = 0.d0
+  g_tran = 0.d0
+  g_tran_th = 0.d0
+  g_idir = 0.d0
 
 end subroutine AllocateActiveArrays
 
@@ -814,9 +868,12 @@ subroutine CheckAllocCPGA(ilgr)
   PetscInt, intent(in) :: ilgr
 
   if (.not.g_g(ilgr)%cpgallocated) then
-    allocate(g_g(ilgr)%coord(6*g_g(ilgr)%nxpnyp)); g_g(ilgr)%coord = 0.0
-    allocate(g_g(ilgr)%zcorn(8*g_g(ilgr)%nxyz  )); g_g(ilgr)%zcorn = 0.0
-    allocate(g_g(ilgr)%iglob(  g_g(ilgr)%nxyz  )); g_g(ilgr)%iglob = 0
+    allocate(g_g(ilgr)%coord(6*g_g(ilgr)%nxpnyp))
+    allocate(g_g(ilgr)%zcorn(8*g_g(ilgr)%nxyz))
+    allocate(g_g(ilgr)%iglob(g_g(ilgr)%nxyz))
+    g_g(ilgr)%coord = 0.d0
+    g_g(ilgr)%zcorn = 0.d0
+    g_g(ilgr)%iglob = 0
     g_g(ilgr)%cpgallocated = PETSC_TRUE
   endif
 
@@ -895,7 +952,7 @@ subroutine CheckLGRLocation(ixl, ixu, iyl, iyu, izle, izue, zilgr, qerr)
 
     ! Check if name already used
 
-    if( StringCompareIgnoreCase(zilgr,zjlgr) ) then
+    if(StringCompareIgnoreCase(zilgr,zjlgr)) then
       call SetError('Duplicate LGR names: '//trim(zilgr)// &
                     ' and '//trim(zjlgr),qerr)
       return
@@ -908,7 +965,7 @@ subroutine CheckLGRLocation(ixl, ixu, iyl, iyu, izle, izue, zilgr, qerr)
         do ize = izle, izue
           qerr = GetInOrAdjBox(ix,iy,ize, &
                                jxl,jxu, jyl,jyu, jzle,jzue, zilgr,zjlgr)
-          if( qerr ) return
+          if(qerr) return
         enddo
       enddo
     enddo
@@ -957,7 +1014,7 @@ subroutine CheckForDimensionErr(zdirn,nd,ndfile,zmess,qerr)
 
   character(len = MAXWORDLENGTH) :: zdfile, zd
 
-  if( ndfile/=nd ) then
+  if(ndfile/=nd) then
     write(zd    ,'(I6)') nd
     write(zdfile,'(I6)') ndfile
     qerr  = PETSC_TRUE
@@ -981,7 +1038,7 @@ subroutine CheckValidOperateArray(zname,qerr)
 
   implicit none
 
-  character(len = *), intent(in ) :: zname
+  character(len = *), intent(in) :: zname
   PetscBool         , intent(out) :: qerr
 
   PetscBool :: qok
@@ -991,24 +1048,24 @@ subroutine CheckValidOperateArray(zname,qerr)
   qok  = PETSC_FALSE
   qerr = PETSC_FALSE
 
-  if (StringCompareIgnoreCase(zname,'permx'  )) qok=PETSC_TRUE
-  if (StringCompareIgnoreCase(zname,'permy'  )) qok=PETSC_TRUE
-  if (StringCompareIgnoreCase(zname,'permz'  )) qok=PETSC_TRUE
-  if (StringCompareIgnoreCase(zname,'poro'   )) qok=PETSC_TRUE
+  if (StringCompareIgnoreCase(zname,'permx')) qok=PETSC_TRUE
+  if (StringCompareIgnoreCase(zname,'permy')) qok=PETSC_TRUE
+  if (StringCompareIgnoreCase(zname,'permz')) qok=PETSC_TRUE
+  if (StringCompareIgnoreCase(zname,'poro')) qok=PETSC_TRUE
 
-  if (StringCompareIgnoreCase(zname,'multx'  )) qok=PETSC_TRUE
-  if (StringCompareIgnoreCase(zname,'multy'  )) qok=PETSC_TRUE
-  if (StringCompareIgnoreCase(zname,'multz'  )) qok=PETSC_TRUE
-  if (StringCompareIgnoreCase(zname,'multv'  )) qok=PETSC_TRUE
+  if (StringCompareIgnoreCase(zname,'multx')) qok=PETSC_TRUE
+  if (StringCompareIgnoreCase(zname,'multy')) qok=PETSC_TRUE
+  if (StringCompareIgnoreCase(zname,'multz')) qok=PETSC_TRUE
+  if (StringCompareIgnoreCase(zname,'multv')) qok=PETSC_TRUE
 
-  if (StringCompareIgnoreCase(zname,'multx-' )) qok=PETSC_TRUE
-  if (StringCompareIgnoreCase(zname,'multy-' )) qok=PETSC_TRUE
-  if (StringCompareIgnoreCase(zname,'multz-' )) qok=PETSC_TRUE
+  if (StringCompareIgnoreCase(zname,'multx-')) qok=PETSC_TRUE
+  if (StringCompareIgnoreCase(zname,'multy-')) qok=PETSC_TRUE
+  if (StringCompareIgnoreCase(zname,'multz-')) qok=PETSC_TRUE
 
-  if (StringCompareIgnoreCase(zname,'actnum' )) qok=PETSC_TRUE
-  if (StringCompareIgnoreCase(zname,'satnum' )) qok=PETSC_TRUE
-  if (StringCompareIgnoreCase(zname,'imbnum' )) qok=PETSC_TRUE
-  if (StringCompareIgnoreCase(zname,'eqlnum' )) qok=PETSC_TRUE
+  if (StringCompareIgnoreCase(zname,'actnum')) qok=PETSC_TRUE
+  if (StringCompareIgnoreCase(zname,'satnum')) qok=PETSC_TRUE
+  if (StringCompareIgnoreCase(zname,'imbnum')) qok=PETSC_TRUE
+  if (StringCompareIgnoreCase(zname,'eqlnum')) qok=PETSC_TRUE
   if (StringCompareIgnoreCase(zname,'multnum')) qok=PETSC_TRUE
 
   if (.not.qok) then
@@ -1105,7 +1162,7 @@ subroutine CopyFromBufferB(a, ibuf, il, iu)
   PetscInt :: i
 
   do i = il, iu
-   if ( ibuf(i-il+1) == 1 ) then
+   if (ibuf(i-il+1) == 1) then
      a(i)=PETSC_TRUE
    else
      a(i)=PETSC_FALSE
@@ -1164,10 +1221,10 @@ subroutine CreateElements(unstructured_grid, explicit_grid)
 
     ! Get the corners
 
-    call GetCorners( ix, iy, iz, &
+    call GetCorners(ix, iy, iz, &
                      x000, x100, x010, x110, &
                      x001, x101, x011, x111, &
-                     g_g(ilgr)%coord, g_g(ilgr)%zcorn, g_g(ilgr)%nx, g_g(ilgr)%ny )
+                     g_g(ilgr)%coord, g_g(ilgr)%zcorn, g_g(ilgr)%nx, g_g(ilgr)%ny)
 
     explicit_grid%cell_vertices(0, ia) = nVertPerCell
 
@@ -1238,7 +1295,7 @@ subroutine CreateTransT(ix,iy,iz,ig,ia,idir,treq,kdir,ilgr,option)
 
   ! If in grid, check if active
 
-  if ( ingrid ) then
+  if (ingrid) then
 
     jg   = GetNaturalIndex(jx, jy, jz, ilgr)
     jlgr = ilgr
@@ -1246,7 +1303,7 @@ subroutine CreateTransT(ix,iy,iz,ig,ia,idir,treq,kdir,ilgr,option)
     ! Check for active neighbour
 
     ja = g_g(ilgr)%gtoa(jg)
-    if ( ja > 0 ) then
+    if (ja > 0) then
 
       ! Find cell dimensions
 
@@ -1285,18 +1342,18 @@ subroutine CreateTransT(ix,iy,iz,ig,ia,idir,treq,kdir,ilgr,option)
       di = DistVec3(xi,xa)
       dj = DistVec3(xj,xa)
 
-      if ( (di>0.0) .and. (dj>0.0) ) then
+      if ((di>0.0) .and. (dj>0.0)) then
 
         ti = kdir(ig)*area/di
         tj = kdir(jg)*area/dj
 
         tcur = 0.0
-        if ( (ti>0.0) .and. (tj>0.0) ) then
+        if ((ti>0.0) .and. (tj>0.0)) then
           tcur = 1.0/(1.0/ti+1.0/tj)
         endif
 
         ! If tcur exists (really if perms>0) multiply area to match required and store
-        if ( tcur>0.0 ) then
+        if (tcur>0.0) then
           area_th = area
           area    = area*treq/tcur
           call AddConnection(ia,ja,idir,g_ipon_u,xf,yf,zf,area,ilgr,jlgr,treq,area_th)
@@ -1354,7 +1411,7 @@ subroutine DistributeCells(explicit_grid, option)
     do irank = 0, option%comm%size-1
 
       narank = nals
-      if (irank < rem ) narank = narank + 1
+      if (irank < rem) narank = narank + 1
 
       if (irank == option%comm%io_rank) then
 
@@ -1396,7 +1453,7 @@ subroutine DistributeCells(explicit_grid, option)
                   MPI_ANY_TAG, option%mycomm, status_mpi, ierr)
     do ia = 1, nal
       explicit_grid%cell_ids      (ia)   = nint(temp_real_array(1, ia), &
-                                                kind(g_petsc_int)     )
+                                                kind(g_petsc_int))
       explicit_grid%cell_centroids(ia)%x =      temp_real_array(2, ia)
       explicit_grid%cell_centroids(ia)%y =      temp_real_array(3, ia)
       explicit_grid%cell_centroids(ia)%z =      temp_real_array(4, ia)
@@ -1458,10 +1515,10 @@ subroutine DistributeConnections(explicit_grid, option)
           ic = icl + icbase
           explicit_grid%connections   (1, icl)   = g_cia  (ic)
           explicit_grid%connections   (2, icl)   = g_cja  (ic)
-          explicit_grid%face_centroids(   icl)%x = g_ccx  (ic)
-          explicit_grid%face_centroids(   icl)%y = g_ccy  (ic)
-          explicit_grid%face_centroids(   icl)%z = g_ccz  (ic)
-          explicit_grid%face_areas    (   icl)   = g_carea(ic)
+          explicit_grid%face_centroids(icl)%x = g_ccx  (ic)
+          explicit_grid%face_centroids(icl)%y = g_ccy  (ic)
+          explicit_grid%face_centroids(icl)%z = g_ccz  (ic)
+          explicit_grid%face_areas    (icl)   = g_carea(ic)
         enddo
       else
         ! otherwise communicate to other ranks
@@ -1495,10 +1552,10 @@ subroutine DistributeConnections(explicit_grid, option)
                                                     kind(g_petsc_int))
       explicit_grid%connections   (2, icl)   = nint(temp_real_array(2, icl), &
                                                     kind(g_petsc_int))
-      explicit_grid%face_centroids(   icl)%x =      temp_real_array(3, icl)
-      explicit_grid%face_centroids(   icl)%y =      temp_real_array(4, icl)
-      explicit_grid%face_centroids(   icl)%z =      temp_real_array(5, icl)
-      explicit_grid%face_areas    (   icl)   =      temp_real_array(6, icl)
+      explicit_grid%face_centroids(icl)%x =      temp_real_array(3, icl)
+      explicit_grid%face_centroids(icl)%y =      temp_real_array(4, icl)
+      explicit_grid%face_centroids(icl)%z =      temp_real_array(5, icl)
+      explicit_grid%face_areas    (icl)   =      temp_real_array(6, icl)
     enddo
 
   endif
@@ -1542,7 +1599,7 @@ subroutine DistributeCounts(option)
   call BroadcastInt (g_maxeqln , option)
   call BroadcastInt (g_rprcn   , option)
 
-  call BroadcastInt( g_nlgr    , option)
+  call BroadcastInt(g_nlgr    , option)
 
   do ilgr = 1, g_nlgr
     call BroadcastInt(g_g(ilgr)%nx   , option)
@@ -1578,7 +1635,7 @@ function DistVec3(va,vb)
   dy = va(g_ydir) - vb(g_ydir)
   dz = va(g_zdir) - vb(g_zdir)
 
-  DistVec3 = sqrt( dx*dx + dy*dy + dz*dz )
+  DistVec3 = sqrt(dx*dx + dy*dy + dz*dz)
 
 end function DistVec3
 
@@ -1586,9 +1643,9 @@ end function DistVec3
 
 ! *************************************************************************** !
 
-subroutine DoOperate( ztarg, ixl, ixu, iyl, iyu, izl, izu, &
+subroutine DoOperate(ztarg, ixl, ixu, iyl, iyu, izl, izu, &
                       rarg1, qarg1, rarg2, qarg2, &
-                      z_op_type, z_op_arg, qerr, ilgr,option )
+                      z_op_type, z_op_arg, qerr, ilgr,option)
 
   !
   ! Do an OPERATE operation
@@ -1649,51 +1706,51 @@ subroutine DoOperate( ztarg, ixl, ixu, iyl, iyu, izl, izu, &
 !--Check that these are valid arrays for OPERATE-------------------------------
 
   call CheckValidOperateArray(ztarg   ,qerr)
-  if( g_error_flag>0 ) return
+  if(g_error_flag>0) return
 
   call CheckValidOperateArray(z_op_arg,qerr)
-  if( g_error_flag>0 ) return
+  if(g_error_flag>0) return
 
 !--Get the target array--------------------------------------------------------
 
-  call GetGridArrayPointer( ztarg, isintt, isrealt, targi, targr, qerr, iseql, &
-                            is_mult_only, is_depth, is_permt, is_dist, is_tran, ilgr, option )
-  if( g_error_flag>0 ) then
+  call GetGridArrayPointer(ztarg, isintt, isrealt, targi, targr, qerr, iseql, &
+                            is_mult_only, is_depth, is_permt, is_dist, is_tran, ilgr, option)
+  if(g_error_flag>0) then
     qerr = PETSC_TRUE
     return
   endif
 
 !--Get the argument array------------------------------------------------------
 
-  call GetGridArrayPointer( z_op_arg, isinta, isreala, operi, operr, qerr, iseql, &
-                            is_mult_only, is_depth, is_perma, is_dist, is_tran, ilgr, option )
-  if( g_error_flag>0 ) then
+  call GetGridArrayPointer(z_op_arg, isinta, isreala, operi, operr, qerr, iseql, &
+                            is_mult_only, is_depth, is_perma, is_dist, is_tran, ilgr, option)
+  if(g_error_flag>0) then
     qerr = PETSC_TRUE
     return
   endif
 
 !--Sort out the required operation---------------------------------------------
 
-  ismulta    = StringCompareIgnoreCase(z_op_type, 'multa'   )
-  iscopy     = StringCompareIgnoreCase(z_op_type, 'copy'    )
+  ismulta    = StringCompareIgnoreCase(z_op_type, 'multa')
+  iscopy     = StringCompareIgnoreCase(z_op_type, 'copy')
   ismultiply = StringCompareIgnoreCase(z_op_type, 'multiply')
-  isminlim   = StringCompareIgnoreCase(z_op_type, 'minlim'  )
-  ismaxlim   = StringCompareIgnoreCase(z_op_type, 'maxlim'  )
-  islog10    = StringCompareIgnoreCase(z_op_type, 'log10'   )
-  isloge     = StringCompareIgnoreCase(z_op_type, 'loge'    )
-  isabs      = StringCompareIgnoreCase(z_op_type, 'abs'     )
-  isinv      = StringCompareIgnoreCase(z_op_type, 'inv'     )
-  ismultx    = StringCompareIgnoreCase(z_op_type, 'multx'   )
-  isaddx     = StringCompareIgnoreCase(z_op_type, 'addx'    )
-  ismultp    = StringCompareIgnoreCase(z_op_type, 'multp'   )
-  ispoly     = StringCompareIgnoreCase(z_op_type, 'poly'    )
-  isslog     = StringCompareIgnoreCase(z_op_type, 'slog'    )
+  isminlim   = StringCompareIgnoreCase(z_op_type, 'minlim')
+  ismaxlim   = StringCompareIgnoreCase(z_op_type, 'maxlim')
+  islog10    = StringCompareIgnoreCase(z_op_type, 'log10')
+  isloge     = StringCompareIgnoreCase(z_op_type, 'loge')
+  isabs      = StringCompareIgnoreCase(z_op_type, 'abs')
+  isinv      = StringCompareIgnoreCase(z_op_type, 'inv')
+  ismultx    = StringCompareIgnoreCase(z_op_type, 'multx')
+  isaddx     = StringCompareIgnoreCase(z_op_type, 'addx')
+  ismultp    = StringCompareIgnoreCase(z_op_type, 'multp')
+  ispoly     = StringCompareIgnoreCase(z_op_type, 'poly')
+  isslog     = StringCompareIgnoreCase(z_op_type, 'slog')
 
 !--Check for cases in which argument cannot be dimensionful-------------------
 
   arg_not_perm = isabs .or. islog10 .or. isloge .or. &
                  isinv .or. ismultp .or. ispoly .or. isslog
-  if( arg_not_perm .and. is_perma ) then
+  if(arg_not_perm .and. is_perma) then
     zmess = 'OPERATE arg. '      //trim(z_op_arg) // &
             ' not possible with '//trim(z_op_arg) // &
             ' as permeability has dimension'
@@ -1703,22 +1760,22 @@ subroutine DoOperate( ztarg, ixl, ixu, iyl, iyu, izl, izu, &
 !--Check for cases in which arguments expected---------------------------------
 
   arg1_required = ismulta .or. ismultx .or. isaddx .or. ismultp .or. ispoly .or. isslog
-  if( arg1_required .and. (.not. qarg1) ) then
+  if(arg1_required .and. (.not. qarg1)) then
     zmess = 'OPERATE arg. '// trim(z_op_arg) // ' requires first scalar value set'
     call SetError(zmess, qerr)
   endif
 
   arg2_required = ismulta .or. ismultp .or. ispoly .or. isslog
-  if( arg2_required .and. (.not. qarg2) ) then
+  if(arg2_required .and. (.not. qarg2)) then
     zmess = 'OPERATE arg. '// trim(z_op_arg) // ' requires second scalar value set'
     call SetError(zmess, qerr)
   endif
 
 !--Carry out operation if recognised------------------------------------------
 
-  if( ismulta  .or. iscopy  .or. ismultiply .or. isminlim .or. &
+  if(ismulta  .or. iscopy  .or. ismultiply .or. isminlim .or. &
       ismaxlim .or. islog10 .or. isloge     .or. isabs    .or. &
-      isinv    .or. ismultx .or. isaddx     .or. ismultp       ) then
+      isinv    .or. ismultx .or. isaddx     .or. ismultp) then
 
 !--Loop over the specified box of cells----------------------------------------
 
@@ -1731,8 +1788,8 @@ subroutine DoOperate( ztarg, ixl, ixu, iyl, iyu, izl, izu, &
           ! Get current targ value
           ! For perms, convert to md
 
-          if( isrealt ) then
-            if( is_permt ) then
+          if(isrealt) then
+            if(is_permt) then
               vt = m2tomd*targr(ig)
             else
               vt =        targr(ig)
@@ -1744,8 +1801,8 @@ subroutine DoOperate( ztarg, ixl, ixu, iyl, iyu, izl, izu, &
           ! Get current arg value
           ! For perms, convert to md
 
-          if( isreala ) then
-            if( is_perma ) then
+          if(isreala) then
+            if(is_perma) then
               va = m2tomd*operr(ig)
             else
               va =        operr(ig)
@@ -1760,34 +1817,34 @@ subroutine DoOperate( ztarg, ixl, ixu, iyl, iyu, izl, izu, &
 
           ! Perform operation if recognised
 
-          if( ismulta    ) vr = rarg1*va + rarg2
-          if( ismultiply ) vr = vt*va
-          if( isminlim   ) vr = min(rarg1,va)
-          if( ismaxlim   ) vr = max(rarg1,va)
-          if( iscopy     ) vr =       va
-          if( isabs      ) vr = abs  (va)
-          if( islog10    ) vr = log10(va)
-          if( isloge     ) vr = log  (va)
-          if( isinv      ) then
-            if( abs(va)>0.0D0 ) vr = 1.0/va
+          if(ismulta) vr = rarg1*va + rarg2
+          if(ismultiply) vr = vt*va
+          if(isminlim) vr = min(rarg1,va)
+          if(ismaxlim) vr = max(rarg1,va)
+          if(iscopy) vr =       va
+          if(isabs) vr = abs  (va)
+          if(islog10) vr = log10(va)
+          if(isloge) vr = log  (va)
+          if(isinv) then
+            if(abs(va)>0.0D0) vr = 1.0/va
           endif
-          if( ismultx   ) vr = rarg1*va
-          if( isaddx    ) vr = va + rarg1
-          if( ismultp   ) vr =      rarg1*va**rarg2
-          if( ispoly    ) vr = vr + rarg1*va**rarg2
-          if( isslog    ) vr = 10.0**(rarg1+va*rarg2)
+          if(ismultx) vr = rarg1*va
+          if(isaddx) vr = va + rarg1
+          if(ismultp) vr =      rarg1*va**rarg2
+          if(ispoly) vr = vr + rarg1*va**rarg2
+          if(isslog) vr = 10.0**(rarg1+va*rarg2)
 
         ! Store result back in target array
         ! For perms, convert back to m2
 
-          if( isrealt ) then
-            if( vr<0.0 ) then
+          if(isrealt) then
+            if(vr<0.0) then
               call PrintTidy8(vr,zv)
               zmess = 'OPERATE yields neg. value ' // zv
               call SetError(zmess, qerr)
               return
             endif
-            if( is_permt ) then
+            if(is_permt) then
               targr(ig) = mdtom2*vr
             else
               targr(ig) =        vr
@@ -1834,16 +1891,16 @@ subroutine ExtractCellDimensionsAndLocationsFromCPG(ilgr)
 
         ! Get the corners
 
-        call GetCorners( ix, iy, iz, x000, x100, x010, x110, &
+        call GetCorners(ix, iy, iz, x000, x100, x010, x110, &
                          x001, x101, x011, x111, &
-                         g_g(ilgr)%coord, g_g(ilgr)%zcorn, g_g(ilgr)%nx, g_g(ilgr)%ny )
+                         g_g(ilgr)%coord, g_g(ilgr)%zcorn, g_g(ilgr)%nx, g_g(ilgr)%ny)
 
         ! Given the cell corner locations,
         ! find the cell dimensions and locations
 
-        call GetHexDims( x000, x100, x010, x110, &
+        call GetHexDims(x000, x100, x010, x110, &
                          x001, x101, x011, x111, &
-                         vdx, vdy, vdz, vpx, vpy, vpz )
+                         vdx, vdy, vdz, vpx, vpy, vpz)
 
         ! Find cell index and store locations
 
@@ -2058,9 +2115,13 @@ subroutine GenerateGridConnections(bvg,option)
 
   ! Allocate and set the temporary store for generated transmissilities
 
-    allocate(g_ttx(g_g(ilgr)%nxyz));g_ttx = 0.0
-    allocate(g_tty(g_g(ilgr)%nxyz));g_tty = 0.0
-    allocate(g_ttz(g_g(ilgr)%nxyz));g_ttz = 0.0
+    allocate(g_ttx(g_g(ilgr)%nxyz))
+    allocate(g_tty(g_g(ilgr)%nxyz))
+    allocate(g_ttz(g_g(ilgr)%nxyz))
+
+    g_ttx = 0.d0
+    g_tty = 0.d0
+    g_ttz = 0.d0
 
     g_tt_allocated = PETSC_TRUE
 
@@ -2109,12 +2170,12 @@ subroutine GenerateGridConnections(bvg,option)
               jz = iz
               ! Find tranx
               if (g_isnewtran) then
-                call GetArea1( ia, ig, ix, iy, iz, ilgr, &
+                call GetArea1(ia, ig, ix, iy, iz, ilgr, &
                                        jx, jy, jz, ilgr, g_xdir, &
-                                       g_ipon_u, mxi, myi, mzi, ntgi,option )
+                                       g_ipon_u, mxi, myi, mzi, ntgi,option)
               else
-                call GetArea0( ia, ig, ix, iy, iz, g_xdir, &
-                               dx, dy, dz, mxi, myi, mzi, ntgi, ilgr,option )
+                call GetArea0(ia, ig, ix, iy, iz, g_xdir, &
+                               dx, dy, dz, mxi, myi, mzi, ntgi, ilgr,option)
               endif
             endif
 
@@ -2126,12 +2187,12 @@ subroutine GenerateGridConnections(bvg,option)
               jz = iz
               ! Find trany
               if (g_isnewtran) then
-                call GetArea1( ia, ig, ix, iy, iz, ilgr, &
+                call GetArea1(ia, ig, ix, iy, iz, ilgr, &
                                        jx, jy, jz, ilgr, g_ydir, &
-                                       g_ipon_u, mxi, myi, mzi, ntgi,option )
+                                       g_ipon_u, mxi, myi, mzi, ntgi,option)
               else
-                call GetArea0( ia, ig, ix, iy, iz, g_ydir, &
-                               dx, dy, dz, mxi, myi, mzi, ntgi, ilgr,option )
+                call GetArea0(ia, ig, ix, iy, iz, g_ydir, &
+                               dx, dy, dz, mxi, myi, mzi, ntgi, ilgr,option)
               endif
             endif
 
@@ -2143,12 +2204,12 @@ subroutine GenerateGridConnections(bvg,option)
               jz = iz + 1
               ! Find tranz
               if (g_isnewtran) then
-                call GetArea1( ia, ig, ix, iy, iz, ilgr, &
+                call GetArea1(ia, ig, ix, iy, iz, ilgr, &
                                        jx, jy, jz, ilgr, g_zdir, &
-                                       g_ipon_u, mxi, myi, mzi, ntgi,option )
+                                       g_ipon_u, mxi, myi, mzi, ntgi,option)
               else
-                call GetArea0( ia, ig, ix, iy, iz, g_zdir, &
-                               dx, dy, dz, mxi, myi, mzi, ntgi, ilgr,option )
+                call GetArea0(ia, ig, ix, iy, iz, g_zdir, &
+                               dx, dy, dz, mxi, myi, mzi, ntgi, ilgr,option)
               endif
             endif
 
@@ -2161,9 +2222,9 @@ subroutine GenerateGridConnections(bvg,option)
   ! Overwrite any unset trans with the temporary generated ones
 
     do ig = 1, g_g(ilgr)%nxyz
-      if ( g_g(ilgr)%tx(ig)<0.0 ) g_g(ilgr)%tx(ig)=g_ttx(ig)
-      if ( g_g(ilgr)%ty(ig)<0.0 ) g_g(ilgr)%ty(ig)=g_tty(ig)
-      if ( g_g(ilgr)%tz(ig)<0.0 ) g_g(ilgr)%tz(ig)=g_ttz(ig)
+      if (g_g(ilgr)%tx(ig)<0.0) g_g(ilgr)%tx(ig)=g_ttx(ig)
+      if (g_g(ilgr)%ty(ig)<0.0) g_g(ilgr)%ty(ig)=g_tty(ig)
+      if (g_g(ilgr)%tz(ig)<0.0) g_g(ilgr)%tz(ig)=g_ttz(ig)
     enddo
 
   ! Deallocate the temporary transmissibilities
@@ -2205,9 +2266,13 @@ subroutine GenerateLGRConnections(option)
 
   do ilgr = 2,g_nlgr
 
-    allocate(g_ttx(g_g(ilgr)%nxyz));g_ttx = 0.0
-    allocate(g_tty(g_g(ilgr)%nxyz));g_tty = 0.0
-    allocate(g_ttz(g_g(ilgr)%nxyz));g_ttz = 0.0
+    allocate(g_ttx(g_g(ilgr)%nxyz))
+    allocate(g_tty(g_g(ilgr)%nxyz))
+    allocate(g_ttz(g_g(ilgr)%nxyz))
+
+    g_ttx = 0.d0
+    g_tty = 0.d0
+    g_ttz = 0.d0
 
     g_tt_allocated = PETSC_TRUE
 
@@ -2237,53 +2302,62 @@ subroutine GenerateLGRConnections(option)
 
         ! Box of global cells to be considered
 
-        ibxl = igxl;ibxu = igxu
-        ibyl = igyl;ibyu = igyu
-        ibzl = igzl;ibzu = igzu
+        ibxl = igxl
+        ibxu = igxu
+        ibyl = igyl
+        ibyu = igyu
+        ibzl = igzl
+        ibzu = igzu
 
-        if( idir == g_xdir ) then
-          if( ipon == g_ipon_l ) then
-            if (igxl == 1 ) exists = PETSC_FALSE
-            ibxl = igxl;ibxu = ibxl
+        if(idir == g_xdir) then
+          if(ipon == g_ipon_l) then
+            if (igxl == 1) exists = PETSC_FALSE
+            ibxl = igxl
+            ibxu = ibxl
           endif
-          if( ipon == g_ipon_u ) then
-            if (igxu == g_g(g_ifld)%nx ) exists = PETSC_FALSE
-            ibxu = igxu;ibxl = ibxu
+          if(ipon == g_ipon_u) then
+            if (igxu == g_g(g_ifld)%nx) exists = PETSC_FALSE
+            ibxu = igxu
+            ibxl = ibxu
           endif
         endif
 
-        if( idir == g_ydir ) then
-          if( ipon == g_ipon_l ) then
-            if (igyl == 1 ) exists = PETSC_FALSE
-            ibyl = igyl;ibyu = ibyl
+        if(idir == g_ydir) then
+          if(ipon == g_ipon_l) then
+            if (igyl == 1) exists = PETSC_FALSE
+            ibyl = igyl
+            ibyu = ibyl
           endif
-          if( ipon == g_ipon_u ) then
-            if (igyu == g_g(g_ifld)%ny ) exists = PETSC_FALSE
-            ibyu = igyu;ibyl = ibyu
+          if(ipon == g_ipon_u) then
+            if (igyu == g_g(g_ifld)%ny) exists = PETSC_FALSE
+            ibyu = igyu
+            ibyl = ibyu
           endif
         endif
 
-        if( idir == g_zdir ) then
-          if( ipon == g_ipon_l ) then
-            if (igzl == 1 ) exists = PETSC_FALSE
-            ibzl = igzl;ibzu = ibzl
+        if(idir == g_zdir) then
+          if(ipon == g_ipon_l) then
+            if (igzl == 1) exists = PETSC_FALSE
+            ibzl = igzl
+            ibzu = ibzl
           endif
-          if( ipon == g_ipon_u ) then
-            if (igzu == g_g(g_ifld)%nz ) exists = PETSC_FALSE
-            ibzu = igzu;ibzl = ibzu
+          if(ipon == g_ipon_u) then
+            if (igzu == g_g(g_ifld)%nz) exists = PETSC_FALSE
+            ibzu = igzu
+            ibzl = ibzu
           endif
         endif
 
 !--If it exists, loop over the global cells in the refinement edge-------------
 
-        if( exists ) then
+        if(exists) then
 
           do igx=ibxl, ibxu
             do igy=ibyl, ibyu
               do igz=ibzl, ibzu
                 call GenerateLGRConnections1(idir , ipon , ilgr , &
                                              igx  , igy  , igz  , &
-                                             igxl , igyl , igzl , option )
+                                             igxl , igyl , igzl , option)
               enddo
             enddo
           enddo
@@ -2307,7 +2381,7 @@ end subroutine GenerateLGRConnections
 
 subroutine GenerateLGRConnections1(idir, ipon  , ilgr, &
                                    igx  , igy  , igz , &
-                                   igxl , igyl , igzl, option  )
+                                   igxl , igyl , igzl, option)
   !
   ! Given an edge cell in the current refinement (g_ilgr), find connections to
   ! global grid cells in the direction idir and the orientation ipon = g_ipon_l/u
@@ -2364,32 +2438,32 @@ subroutine GenerateLGRConnections1(idir, ipon  , ilgr, &
 
 !--Set to cells in the required face of the refinement---------------------------
 
-  if( (idir == g_xdir) .and. ( ipon==g_ipon_l ) ) then
+  if((idir == g_xdir) .and. (ipon==g_ipon_l)) then
     irxu = 1            ! Move upper to the lower to get lower only
     jgx  = igx - 1
   endif
 
-  if( (idir == g_xdir) .and. ( ipon==g_ipon_u ) ) then
+  if((idir == g_xdir) .and. (ipon==g_ipon_u)) then
     irxl = g_g(ilgr)%nx ! Move lower to the upper to get upper only
     jgx  = igx + 1
   endif
 
-  if( (idir == g_ydir) .and. ( ipon==g_ipon_l ) ) then
+  if((idir == g_ydir) .and. (ipon==g_ipon_l)) then
     iryu = 1            ! Move upper to the lower to get lower only
     jgy  = igy - 1
   endif
 
-  if( (idir == g_ydir) .and. ( ipon==g_ipon_u ) ) then
+  if((idir == g_ydir) .and. (ipon==g_ipon_u)) then
     iryl = g_g(ilgr)%ny ! Move lower to the upper to get upper only
     jgy  = igy + 1
   endif
 
-  if( (idir == g_zdir) .and. ( ipon==g_ipon_l ) ) then
+  if((idir == g_zdir) .and. (ipon==g_ipon_l)) then
     irzu = 1            ! Move upper to the lower to get lower only
     jgz  = igz - 1
   endif
 
-  if( (idir == g_zdir) .and. ( ipon==g_ipon_u ) ) then
+  if((idir == g_zdir) .and. (ipon==g_ipon_u)) then
     irzl = g_g(ilgr)%nz ! Move lower to the upper to get upper only
     jgz  = igz + 1
   endif
@@ -2413,7 +2487,7 @@ subroutine GenerateLGRConnections1(idir, ipon  , ilgr, &
           mzi  = g_g(ilgr)%mzn(irg)
           ntgi = g_g(ilgr)%ntg(irg)
 
-          call GetArea1( ia, irg, irx, iry, irz, ilgr, jgx, jgy, jgz, g_ifld, idir, ipon, mxi, myi, mzi, ntgi, option )
+          call GetArea1(ia, irg, irx, iry, irz, ilgr, jgx, jgy, jgz, g_ifld, idir, ipon, mxi, myi, mzi, ntgi, option)
 
         endif
       enddo
@@ -2536,7 +2610,7 @@ subroutine GetArea0(ia, ig, ix, iy, iz, idir, &
 
     ! Add in the connection
 
-    if ( a>0.0 ) then
+    if (a>0.0) then
       call   AddConnection(ia,ja,idir,g_ipon_u,xf,yf,zf,a,ilgr,jlgr,tran,a)
     endif
 
@@ -2583,8 +2657,8 @@ subroutine GetArea1(ia, ig, ix, iy, iz, ilgr, jx, jy, jz, jlgr, idir, ipon, mxi,
   !  Find average ntg and set ntg factor
 
   fntg = 1.0
-  if (     (idir == g_xdir) &
-      .or. (idir == g_ydir) ) then
+  if ((idir == g_xdir) &
+      .or. (idir == g_ydir)) then
     fntg  = 0.5*(ntgi+g_g(jlgr)%ntg(jg))
   endif
 
@@ -2618,7 +2692,7 @@ subroutine GetArea1(ia, ig, ix, iy, iz, ilgr, jx, jy, jz, jlgr, idir, ipon, mxi,
 
   ! Not a perfect match - look for other connections
 
-  if (.not.matchingNeighbourFound ) then
+  if (.not.matchingNeighbourFound) then
 
     ! In x- and y-dir, look for displacement faults to the jx,jy column
 
@@ -2649,7 +2723,7 @@ subroutine GetArea1(ia, ig, ix, iy, iz, ilgr, jx, jy, jz, jlgr, idir, ipon, mxi,
 
     !  In z-dir, look for pinch-outs from iz to cells above jz in ix,iy column
 
-    if (idir == g_zdir .and. iz<=(g_g(ilgr)%nz-2) .and. (ilgr==jlgr) ) then
+    if (idir == g_zdir .and. iz<=(g_g(ilgr)%nz-2) .and. (ilgr==jlgr)) then
 
       ! Search up column from cell above z-neighbour
 
@@ -2707,7 +2781,7 @@ subroutine GetCellCoordinates(ig, ix, iy, iz, ilgr)
 
   implicit none
 
-  PetscInt, intent(in ) :: ig, ilgr
+  PetscInt, intent(in) :: ig, ilgr
   PetscInt, intent(out) :: ix, iy, iz
 
   PetscInt :: ir
@@ -2778,43 +2852,43 @@ subroutine GetGridArrayPointer(za, isint, isreal, ai, ar, qerr, iseql, &
 
 ! Cell dimensions
 
-  if (StringCompareIgnoreCase(za, 'dx'    )) then
+  if (StringCompareIgnoreCase(za, 'dx')) then
     ar => g_g(ilgr)%dx
     is_dist = PETSC_TRUE
   endif
-  if (StringCompareIgnoreCase(za, 'dy'    )) then
+  if (StringCompareIgnoreCase(za, 'dy')) then
     ar => g_g(ilgr)%dy
     is_dist = PETSC_TRUE
   endif
-  if (StringCompareIgnoreCase(za, 'dz'    )) then
+  if (StringCompareIgnoreCase(za, 'dz')) then
     ar => g_g(ilgr)%dz
     is_dist = PETSC_TRUE
   endif
 
 !  Permeabilities
 
-  if (StringCompareIgnoreCase(za, 'permx' )) then
+  if (StringCompareIgnoreCase(za, 'permx')) then
     ar => g_g(ilgr)%kx
     is_perm = PETSC_TRUE
   endif
 
-  if (StringCompareIgnoreCase(za, 'permy' )) then
+  if (StringCompareIgnoreCase(za, 'permy')) then
     ar => g_g(ilgr)%ky
     is_perm = PETSC_TRUE
   endif
 
-  if (StringCompareIgnoreCase(za, 'permz' )) then
+  if (StringCompareIgnoreCase(za, 'permz')) then
     ar => g_g(ilgr)%kz
     is_perm = PETSC_TRUE
   endif
 
 ! Multipliers
 
-  if (StringCompareIgnoreCase(za, 'multv' )) ar => g_g(ilgr)%mv
+  if (StringCompareIgnoreCase(za, 'multv')) ar => g_g(ilgr)%mv
 
-  if (StringCompareIgnoreCase(za, 'multx' )) ar => g_g(ilgr)%mx
-  if (StringCompareIgnoreCase(za, 'multy' )) ar => g_g(ilgr)%my
-  if (StringCompareIgnoreCase(za, 'multz' )) ar => g_g(ilgr)%mz
+  if (StringCompareIgnoreCase(za, 'multx')) ar => g_g(ilgr)%mx
+  if (StringCompareIgnoreCase(za, 'multy')) ar => g_g(ilgr)%my
+  if (StringCompareIgnoreCase(za, 'multz')) ar => g_g(ilgr)%mz
 
   if (StringCompareIgnoreCase(za, 'multx-')) ar => g_g(ilgr)%mxn
   if (StringCompareIgnoreCase(za, 'multy-')) ar => g_g(ilgr)%myn
@@ -2822,11 +2896,11 @@ subroutine GetGridArrayPointer(za, isint, isreal, ai, ar, qerr, iseql, &
 
 ! Porosity
 
-  if (StringCompareIgnoreCase(za, 'poro'  )) ar => g_g(ilgr)%poro
+  if (StringCompareIgnoreCase(za, 'poro')) ar => g_g(ilgr)%poro
 
 ! Tops (note this is a depth, so mark as such)
 
-  if (StringCompareIgnoreCase(za, 'tops'  )) then
+  if (StringCompareIgnoreCase(za, 'tops')) then
     ar => g_g(ilgr)%tops
     is_depth = PETSC_TRUE
     is_dist  = PETSC_TRUE
@@ -2871,8 +2945,8 @@ function GetInOrAdjBox(ix,iy,ize,ixl,ixu,iyl,iyu,izle,izue,zilgr,zjlgr)
 
   ! In each range
 
-  in_x_range = (ix >=ixl ) .and. (ix <=ixu )
-  in_y_range = (iy >=iyl ) .and. (iy <=iyu )
+  in_x_range = (ix >=ixl) .and. (ix <=ixu)
+  in_y_range = (iy >=iyl) .and. (iy <=iyu)
   in_z_range = (ize>=izle) .and. (ize<=izue)
 
   ! Adjacent to each range
@@ -2891,25 +2965,25 @@ function GetInOrAdjBox(ix,iy,ize,ixl,ixu,iyl,iyu,izle,izue,zilgr,zjlgr)
 
   ! In all three ranges - cell is in LGR
 
-  if( over_error ) then
+  if(over_error) then
     call SetError('LGR overlap: '//trim(zilgr)//' and '//trim(zjlgr),qerr)
   endif
 
   ! Check if adjacent in x
 
-  if( (.not.qerr) .and. ad_x_error ) then
+  if((.not.qerr) .and. ad_x_error) then
     call SetError('LGRs adjoin in x: '//trim(zilgr)//' and '//trim(zjlgr),qerr)
   endif
 
   ! Check if adjacent in y
 
-  if( (.not.qerr) .and. ad_y_error ) then
+  if((.not.qerr) .and. ad_y_error) then
     call SetError('LGRs adjoin in y: '//trim(zilgr)//' and '//trim(zjlgr),qerr)
   endif
 
   ! Check if adjacent in z
 
-  if( (.not.qerr) .and. ad_z_error ) then
+  if((.not.qerr) .and. ad_z_error) then
     call SetError('LGRs adjoin in z: '//trim(zilgr)//' and '//trim(zjlgr),qerr)
   endif
 
@@ -2928,7 +3002,7 @@ subroutine GetLocalCount(ng, nl, nls, rem, option)
 
   implicit none
 
-  PetscInt, intent(in ) :: ng
+  PetscInt, intent(in) :: ng
   PetscInt, intent(out) :: nl
   PetscInt, intent(out) :: nls
   PetscInt, intent(out) :: rem
@@ -2944,7 +3018,7 @@ end subroutine GetLocalCount
 
 ! *************************************************************************** !
 
-subroutine GetLRForGC( ig, igl, ibpgv, nlpgv, ibpgc, nlpgc )
+subroutine GetLRForGC(ig, igl, ibpgv, nlpgv, ibpgc, nlpgc)
 
   ! For a global cell (igx,igy,igz) in refinement based at (igxl,igyl,igzl),
   ! find the 0-base pointer and the number of local cells
@@ -2955,8 +3029,8 @@ subroutine GetLRForGC( ig, igl, ibpgv, nlpgv, ibpgc, nlpgc )
 
   implicit none
 
-  PetscInt,intent(in ) :: ig
-  PetscInt,intent(in ) :: igl
+  PetscInt,intent(in) :: ig
+  PetscInt,intent(in) :: igl
   PetscInt,intent(in)  :: ibpgv(:)
   PetscInt,intent(in)  :: nlpgv(:)
   PetscInt,intent(out) :: ibpgc
@@ -3018,14 +3092,14 @@ function GetMultregtMultiplier(ia,ja,ilgr,jlgr)
     ! If both regions are positive and the same, special same-region treatment
 
     sameregion = PETSC_FALSE
-    if( (ir1==ir2) .and. (ir1>0) ) sameregion=PETSC_TRUE
+    if((ir1==ir2) .and. (ir1>0)) sameregion=PETSC_TRUE
 
-    if( sameregion ) then
+    if(sameregion) then
 
       ! If same-region, set the multiplier if either cell is in this region
       ! So treats connection in this region, and from this region to others
 
-      if( (ira == ir1) .or. (jra == ir1) ) then
+      if((ira == ir1) .or. (jra == ir1)) then
         mult = g_multregt_mult(i_multregt)
       endif
 
@@ -3033,7 +3107,7 @@ function GetMultregtMultiplier(ia,ja,ilgr,jlgr)
 
       ! If not same-region, only continue for cells in different regions
 
-      if( ira /= jra ) then
+      if(ira /= jra) then
 
         ! Set up flags for cells matching regions, as positive values or wildcards
 
@@ -3045,8 +3119,8 @@ function GetMultregtMultiplier(ia,ja,ilgr,jlgr)
         ! If cell i matches region 1 and cell j matches region 2
         ! or cell i matches region 2 and cell j matches region 1, apply muliplier
 
-        if ( ( matchi1 .and. matchj2 ) .or. &
-             ( matchi2 .and. matchj1 )      ) then
+        if ((matchi1 .and. matchj2) .or. &
+             (matchi2 .and. matchj1)) then
           mult = g_multregt_mult(i_multregt)
         endif
 
@@ -3122,7 +3196,7 @@ subroutine FindYLimitsAtThisX(fl, fu, idir, x, yll, yuu, dy, qoverlap)
 
   qoverlap = qfound(1) .and. qfound(2)
 
-  if( qoverlap ) then
+  if(qoverlap) then
     ymin = max(ylumin(1), ylumin(2))
     ymax = min(ylumax(1), ylumax(2))
 
@@ -3133,8 +3207,8 @@ end subroutine FindYLimitsAtThisX
 
 ! *************************************************************************** !
 
-function FindVolume( x000, x100, x010, x110, &
-                     x001, x101, x011, x111 )
+function FindVolume(x000, x100, x010, x110, &
+                     x001, x101, x011, x111)
 
   !
   ! Obtain the volume of a hexahederal grid cell
@@ -3200,7 +3274,7 @@ function FindVolume( x000, x100, x010, x110, &
 
   !  Sum with appropriate signs into the final pore volume
 
-  vp = vp0 - vp1 - ( vp2 - vp3 ) + vp4 - vp5
+  vp = vp0 - vp1 - (vp2 - vp3) + vp4 - vp5
 
   ! Take absolute value to get pore volume
 
@@ -3241,8 +3315,8 @@ function FindVolume1(id0, id1, id2, c)
           do je = 0, 1
             do jf = 0, 1
 
-              den = real( (jc + je + 1) * (ja + jf + 1) * (jb + jd + 1), &
-                          kind(g_petsc_real) )
+              den = real((jc + je + 1) * (ja + jf + 1) * (jb + jd + 1), &
+                          kind(g_petsc_real))
               FindVolume1 = FindVolume1             &
                            + c(1 , ja, jb, id0)     &
                            * c(jc, 1 , jd, id1)     &
@@ -3259,9 +3333,9 @@ end function  FindVolume1
 
 ! *************************************************************************** !
 
-subroutine GetHexDims( x000, x100, x010, x110, &
+subroutine GetHexDims(x000, x100, x010, x110, &
                        x001, x101, x011, x111, &
-                       vdx, vdy, vdz, vpx, vpy, vpz )
+                       vdx, vdy, vdz, vpx, vpy, vpz)
   !
   ! Given cell corner locations, extract cell dimensions and locations
   !
@@ -3270,7 +3344,7 @@ subroutine GetHexDims( x000, x100, x010, x110, &
 
   implicit none
 
-  PetscReal, intent(in ) :: x000(3), x100(3), x010(3), x110(3), &
+  PetscReal, intent(in) :: x000(3), x100(3), x010(3), x110(3), &
                             x001(3), x101(3), x011(3), x111(3)
   PetscReal, intent(out) :: vdx, vdy, vdz, vpx, vpy, vpz
 
@@ -3279,36 +3353,36 @@ subroutine GetHexDims( x000, x100, x010, x110, &
 
   ! Cell centre is just the average
 
-  vpx = 0.125*( x000(g_xdir)+x100(g_xdir)+x010(g_xdir)+x110(g_xdir) &
-               +x001(g_xdir)+x101(g_xdir)+x011(g_xdir)+x111(g_xdir) )
+  vpx = 0.125*(x000(g_xdir)+x100(g_xdir)+x010(g_xdir)+x110(g_xdir) &
+               +x001(g_xdir)+x101(g_xdir)+x011(g_xdir)+x111(g_xdir))
 
-  vpy = 0.125*( x000(g_ydir)+x100(g_ydir)+x010(g_ydir)+x110(g_ydir) &
-               +x001(g_ydir)+x101(g_ydir)+x011(g_ydir)+x111(g_ydir) )
+  vpy = 0.125*(x000(g_ydir)+x100(g_ydir)+x010(g_ydir)+x110(g_ydir) &
+               +x001(g_ydir)+x101(g_ydir)+x011(g_ydir)+x111(g_ydir))
 
-  vpz = 0.125*( x000(g_zdir)+x100(g_zdir)+x010(g_zdir)+x110(g_zdir) &
-               +x001(g_zdir)+x101(g_zdir)+x011(g_zdir)+x111(g_zdir) )
+  vpz = 0.125*(x000(g_zdir)+x100(g_zdir)+x010(g_zdir)+x110(g_zdir) &
+               +x001(g_zdir)+x101(g_zdir)+x011(g_zdir)+x111(g_zdir))
 
   ! Cell dimensions are distances between faces: form x,y and z intervals
 
   do idir = 1, g_ndir
 
                      ! 1**        0**
-    dx(idir) = 0.25*( x100(idir)-x000(idir) &
+    dx(idir) = 0.25*(x100(idir)-x000(idir) &
                      +x110(idir)-x010(idir) &
                      +x101(idir)-x001(idir) &
-                     +x111(idir)-x011(idir) )
+                     +x111(idir)-x011(idir))
 
                      ! *1*        *0*
-    dy(idir) = 0.25*( x010(idir)-x000(idir) &
+    dy(idir) = 0.25*(x010(idir)-x000(idir) &
                      +x110(idir)-x100(idir) &
                      +x011(idir)-x001(idir) &
-                     +x111(idir)-x101(idir) )
+                     +x111(idir)-x101(idir))
 
                      ! **1        **0
-    dz(idir) = 0.25*( x001(idir)-x000(idir) &
+    dz(idir) = 0.25*(x001(idir)-x000(idir) &
                      +x101(idir)-x100(idir) &
                      +x011(idir)-x010(idir) &
-                     +x111(idir)-x110(idir) )
+                     +x111(idir)-x110(idir))
 
   enddo
 
@@ -3366,7 +3440,7 @@ subroutine GetMif(ix, iy, iz, ilgr, jx, jy, jz, jlgr, idir, ipon, a, xf, yf, zf,
 
   PetscReal :: diff
 
-  if( ipon ==  g_ipon_u ) then
+  if(ipon ==  g_ipon_u) then
     positivei = positive_yes
     positivej = positive_no
   else
@@ -3385,23 +3459,23 @@ subroutine GetMif(ix, iy, iz, ilgr, jx, jy, jz, jlgr, idir, ipon, a, xf, yf, zf,
 
   ! Get the lower and upper cell centres and faces
 
-  call GetCorners( ix, iy, iz, &
+  call GetCorners(ix, iy, iz, &
                    x000, x100, x010, x110, &
                    x001, x101, x011, x111, &
-                   g_g(ilgr)%coord, g_g(ilgr)%zcorn, g_g(ilgr)%nx, g_g(ilgr)%ny )
+                   g_g(ilgr)%coord, g_g(ilgr)%zcorn, g_g(ilgr)%nx, g_g(ilgr)%ny)
 
-  call GetFace( idir, positivei, &
+  call GetFace(idir, positivei, &
                 x000, x100, x010, x110, &
-                x001, x101, x011, x111, fl )
+                x001, x101, x011, x111, fl)
 
-  call GetCorners( jx, jy, jz, &
+  call GetCorners(jx, jy, jz, &
                    x000, x100, x010, x110, &
                    x001, x101, x011, x111, &
-                   g_g(jlgr)%coord, g_g(jlgr)%zcorn, g_g(jlgr)%nx, g_g(jlgr)%ny )
+                   g_g(jlgr)%coord, g_g(jlgr)%zcorn, g_g(jlgr)%nx, g_g(jlgr)%ny)
 
-  call GetFace( idir, positivej, &
+  call GetFace(idir, positivej, &
                 x000, x100, x010, x110, &
-                x001, x101, x011, x111, fu )
+                x001, x101, x011, x111, fu)
 
   nrxi = g_g(ilgr)%nx
   nryi = g_g(ilgr)%ny
@@ -3427,7 +3501,7 @@ subroutine GetMif(ix, iy, iz, ilgr, jx, jy, jz, jlgr, idir, ipon, a, xf, yf, zf,
 
   missed = PETSC_FALSE
 
-  if ( idir /= g_zdir ) then
+  if (idir /= g_zdir) then
 
     ! Get first value from elevation of the (0,0) quad element
 
@@ -3458,14 +3532,14 @@ subroutine GetMif(ix, iy, iz, ilgr, jx, jy, jz, jlgr, idir, ipon, a, xf, yf, zf,
     ! If the bottom of fl is above the top    of fu, missed
     ! If the top    of fl is below top bottom of fu, missed
 
-    if (     (botl >= (topu-micro)) &
-        .or. (topl <= (botu+micro)) ) missed=PETSC_TRUE
+    if ((botl >= (topu-micro)) &
+        .or. (topl <= (botu+micro))) missed=PETSC_TRUE
 
   endif
 
   ! If not a depth miss, calculate area
 
-  if ( missed ) then
+  if (missed) then
     match=PETSC_FALSE
   else
 
@@ -3526,23 +3600,23 @@ subroutine GetMif(ix, iy, iz, ilgr, jx, jy, jz, jlgr, idir, ipon, a, xf, yf, zf,
       signy = 1.0
       signz = 1.0
 
-      if ( ax<0.0 ) signx = -1.0
-      if ( ay<0.0 ) signy = -1.0
-      if ( az<0.0 ) signz = -1.0
+      if (ax<0.0) signx = -1.0
+      if (ay<0.0) signy = -1.0
+      if (az<0.0) signz = -1.0
 
       !  Only do mutual calc if fl area non-zero (mutual cannot be larger)
 
-      if ( abs(ax)>0.0 ) then
+      if (abs(ax)>0.0) then
         au = MArea(fl, fu, g_xdir)
         ax = signx*abs(au)
       endif
 
-      if ( abs(ay)>0.0 ) then
+      if (abs(ay)>0.0) then
         au = MArea(fl, fu, g_ydir)
         ay = signy*abs(au)
       endif
 
-      if ( abs(az)>0.0 ) then
+      if (abs(az)>0.0) then
         au = MArea(fl, fu, g_zdir)
         az = signz*abs(au)
       endif
@@ -3635,23 +3709,23 @@ subroutine GetPod(ix, iy, iz, jz, ilgr, pod)
 
   ! Get the lower and upper cell centres and faces
 
-  call GetCorners( ix, iy, iz, &
+  call GetCorners(ix, iy, iz, &
                    x000, x100, x010, x110, &
                    x001, x101, x011, x111, &
-                   g_g(ilgr)%coord, g_g(ilgr)%zcorn, g_g(ilgr)%nx, g_g(ilgr)%ny )
+                   g_g(ilgr)%coord, g_g(ilgr)%zcorn, g_g(ilgr)%nx, g_g(ilgr)%ny)
 
-  call GetFace( g_zdir, positive_yes, &
+  call GetFace(g_zdir, positive_yes, &
                 x000, x100, x010, x110, &
-                x001, x101, x011, x111, fl )
+                x001, x101, x011, x111, fl)
 
-  call GetCorners( ix, iy, jz, &
+  call GetCorners(ix, iy, jz, &
                    x000, x100, x010, x110, &
                    x001, x101, x011, x111, &
-                   g_g(ilgr)%coord, g_g(ilgr)%zcorn, g_g(ilgr)%nx, g_g(ilgr)%ny )
+                   g_g(ilgr)%coord, g_g(ilgr)%zcorn, g_g(ilgr)%nx, g_g(ilgr)%ny)
 
-  call GetFace( g_zdir, positive_no, &
+  call GetFace(g_zdir, positive_no, &
                 x000, x100, x010, x110, &
-                x001, x101, x011, x111, fu )
+                x001, x101, x011, x111, fu)
 
   pod = 0.0
   do i = 0, 1
@@ -3689,7 +3763,7 @@ function GetPosNeighbour(ix, iy, iz, idir, jx, jy, jz, ilgr)
   if (idir == g_ydir) jy = iy + 1
   if (idir == g_zdir) jz = iz + 1
 
-  if ( (jx>g_g(ilgr)%nx) .or. (jy>g_g(ilgr)%ny) .or. (jz>g_g(ilgr)%nz) ) ingrid = PETSC_FALSE
+  if ((jx>g_g(ilgr)%nx) .or. (jy>g_g(ilgr)%ny) .or. (jz>g_g(ilgr)%nz)) ingrid = PETSC_FALSE
 
   GetPosNeighbour = ingrid
 
@@ -3698,7 +3772,7 @@ end function GetPosNeighbour
 ! *************************************************************************** !
 
 subroutine AddConnection(ia, ja, idir, ipon, xf, yf, zf, a, ilgr, jlgr, &
-                         tran, tran_th )
+                         tran, tran_th)
 
   !
   !  Store connection between cells ia and ja, face location (xf,yf,zf), area a
@@ -3737,13 +3811,13 @@ subroutine AddConnection(ia, ja, idir, ipon, xf, yf, zf, a, ilgr, jlgr, &
 
   g_tran   (g_nc) = tran
   g_tran_th(g_nc) = tran_th
-  if( ipon == g_ipon_u ) then
+  if(ipon == g_ipon_u) then
     g_idir(g_nc) =  idir
   else
     g_idir(g_nc) = -idir
   endif
 
-  if ( g_rmltn == 1 ) then
+  if (g_rmltn == 1) then
     mult=GetMultregtMultiplier(ia,ja,ilgr,jlgr)
     g_tran (g_nc) = mult*g_tran (g_nc)
     g_carea(g_nc) = mult*g_carea(g_nc)
@@ -3767,11 +3841,11 @@ subroutine AddConnection(ia, ja, idir, ipon, xf, yf, zf, a, ilgr, jlgr, &
     distz = abs(zb-za)
 
     iloc = g_xdir
-    if( disty>distx                   ) iloc=g_ydir
-    if( distz>distx .and. distz>disty ) iloc=g_zdir
+    if(disty>distx) iloc=g_ydir
+    if(distz>distx .and. distz>disty) iloc=g_zdir
 
     f= 0.5
-    if ( iloc==g_xdir ) then
+    if (iloc==g_xdir) then
       f = (xf-xa)/(xb-xa)
     else if (iloc==g_ydir) then
       f = (yf-ya)/(yb-ya)
@@ -3799,9 +3873,9 @@ end subroutine AddConnection
 
 ! *************************************************************************** !
 
-subroutine getFace( idir, positive, &
+subroutine getFace(idir, positive, &
                     x000, x100, x010, x110, &
-                    x001, x101, x011, x111, face )
+                    x001, x101, x011, x111, face)
 
   !
   ! Obtain the volume of a hexahederal grid cell
@@ -3941,7 +4015,8 @@ subroutine GrdeclReader(input, option)
   ! Keyword found
 
     call InputReadCard(input, option, word)
-    call CheckError(input, 'ECLGRD subkeyword', qerr);if ( qerr ) exit
+    call CheckError(input, 'ECLGRD subkeyword', qerr)
+    if (qerr) exit
     call StringToUpper(word)
 
     if (word(1:1) /= '/') print *, 'Pflotran card:: ', word
@@ -3982,13 +4057,13 @@ subroutine GrdeclReader(input, option)
         call IsCPG(g_ifld)
         g_isnewtran = PETSC_TRUE
         call CheckDimensRead(qerr)
-        if( .not.qerr ) then
+        if(.not.qerr) then
           call ReadEstrings(word, zbuf, 1, input, option, qerr)
-          if( .not.qerr ) then
+          if(.not.qerr) then
             efile_name=zbuf(1)
             call ReadEclipseEgridFile(efile_name,g_g(g_ifld)%coord,g_g(g_ifld)%zcorn,g_g(g_ifld)%actn, &
                                       g_g(g_ifld)%nx,g_g(g_ifld)%ny,g_g(g_ifld)%nz,qerr,zmess)
-            if( qerr ) then
+            if(qerr) then
               call SetError(zmess, qerr)
             endif
           endif
@@ -4112,12 +4187,12 @@ subroutine GrdeclReader(input, option)
       case('GRIDUNIT')
         call ReadEstrings(word, zbuf, 2, input, option, qerr)
         gridunit_is_metric = StringCompareIgnoreCase(zbuf(1), 'metres')
-        gridunit_is_feet   = StringCompareIgnoreCase(zbuf(1), 'feet'  )
-        if (.not. (gridunit_is_metric .or. gridunit_is_feet) ) then
+        gridunit_is_feet   = StringCompareIgnoreCase(zbuf(1), 'feet')
+        if (.not. (gridunit_is_metric .or. gridunit_is_feet)) then
           call SetError('GRIDUNIT units must be metres or feet', qerr)
-        else if ( gridunit_is_feet  ) then
+        else if (gridunit_is_feet) then
           convdist = 0.3048D0                  ! Convert from ft to m
-        else if ( gridunit_is_metric ) then
+        else if (gridunit_is_metric) then
           convdist = 1.0
         endif
       case('GDORIENT')
@@ -4128,7 +4203,7 @@ subroutine GrdeclReader(input, option)
         zbuf(5) = 'RIGHT'
         call ReadEstrings(word, zbuf, 5, input, option, qerr)
         call SetGDORIENT(zbuf,qerr,zmess)
-        if( qerr ) then
+        if(qerr) then
           call SetError(zmess,qerr)
         endif
       case('GRIDFILE')
@@ -4137,8 +4212,8 @@ subroutine GrdeclReader(input, option)
         call ReadEstrings(word, zbuf, 2, input, option, qerr)
         wordlong = zbuf(1)
         read(wordlong,*, iostat=ierr) gridfileoption
-        if ( (gridfileoption < 0) .or. &
-              (gridfileoption > 2) .or. (ierr /= 0) ) then
+        if ((gridfileoption < 0) .or. &
+              (gridfileoption > 2) .or. (ierr /= 0)) then
           call SetError('GRIDFILE arg 1 must be 0,1 or 2 ', qerr)
         else
           g_gridfileoption = gridfileoption
@@ -4196,28 +4271,28 @@ subroutine GrdeclReader(input, option)
 
   ! Set up maximum satnum, imbnum and eqlnum values
 
-  if ( g_rsatn == 1 ) then
+  if (g_rsatn == 1) then
     g_maxsatn = 1
     do jlgr=1,g_nlgr
       g_maxsatn = max(g_maxsatn,maxval(g_g(jlgr)%satn))
     enddo
   endif
 
-  if ( g_rimbn == 1 ) then
+  if (g_rimbn == 1) then
     g_maximbn = 1
     do jlgr=1,g_nlgr
       g_maximbn = max(g_maximbn,maxval(g_g(jlgr)%imbn))
     enddo
   endif
 
-  if ( g_reqln == 1 ) then
+  if (g_reqln == 1) then
     g_maxeqln = 1
     do jlgr=1,g_nlgr
       g_maxeqln = max(g_maxeqln,maxval(g_g(jlgr)%eqln))
     enddo
   endif
 
-  if ( g_rmltn == 1 ) then
+  if (g_rmltn == 1) then
     g_maxmltn = 1
     do jlgr=1,g_nlgr
       g_maxmltn = max(g_maxmltn,maxval(g_g(jlgr)%mltn))
@@ -4237,7 +4312,7 @@ subroutine GrdeclReader(input, option)
 
   !  Check for errors and process data
 
-  if ( .not.qerr ) then
+  if (.not.qerr) then
 
     ! Process the grid data read
 
@@ -4271,7 +4346,7 @@ subroutine GetNextWord(word, exitTime, input, option)
 
   implicit none
 
-  character(len = *), intent(out  ) :: word
+  character(len = *), intent(out) :: word
   PetscBool, intent(out) :: exitTime
   type(input_type), pointer :: input
   type(option_type) :: option
@@ -4311,14 +4386,14 @@ subroutine GetNextWord(word, exitTime, input, option)
       iws = IsWhiteSpace(c)
       ic = ichar(c)
       quote=IsQuote(c)
-      if ( quote ) inquotes = .not.inquotes
+      if (quote) inquotes = .not.inquotes
       ! If not started, any non-whitespace character causes start
       if ((.not.started) .and. (.not.iws)) then
         started = PETSC_TRUE
-        if( inquotes ) started_in_quotes=PETSC_TRUE
+        if(inquotes) started_in_quotes=PETSC_TRUE
       endif
       ! If started, stop if any whitespace not in quotes or end of line
-      if (started .and. ( (iws.and. (.not.inquotes)) .or. (i == l) )) exit
+      if (started .and. ((iws.and. (.not.inquotes)) .or. (i == l))) exit
       if (started) then
         if (.not.quote) then
           j = j + 1
@@ -4363,7 +4438,7 @@ subroutine GetNextWord(word, exitTime, input, option)
   ! Check for / terminator
 
     c = word(1:1)
-    if (c == '/' .and. (.not.started_in_quotes) ) then
+    if (c == '/' .and. (.not.started_in_quotes)) then
       exitTime = PETSC_TRUE
     endif
 
@@ -4389,26 +4464,26 @@ function GetNumArrSet(maxnum,id_num_arr)
 
   GetNumArrSet = PETSC_FALSE
 
-  if ( (id_num_arr == g_id_satnum_arr) .and. &
-       (g_rsatn    == 1              )       ) then
+  if ((id_num_arr == g_id_satnum_arr) .and. &
+       (g_rsatn    == 1)) then
     GetNumArrSet = PETSC_TRUE
     maxnum       = g_maxsatn
   endif
 
-  if ( (id_num_arr == g_id_imbnum_arr) .and. &
-       (g_rimbn    == 1              )       ) then
+  if ((id_num_arr == g_id_imbnum_arr) .and. &
+       (g_rimbn    == 1)) then
     GetNumArrSet = PETSC_TRUE
     maxnum       = g_maximbn
   endif
 
-  if ( (id_num_arr == g_id_eqlnum_arr) .and. &
-       (g_reqln    == 1              )       ) then
+  if ((id_num_arr == g_id_eqlnum_arr) .and. &
+       (g_reqln    == 1)) then
     GetNumArrSet = PETSC_TRUE
     maxnum       = g_maxeqln
   endif
 
-  if ( (id_num_arr == g_id_mltnum_arr) .and. &
-       (g_rmltn    == 1              )       ) then
+  if ((id_num_arr == g_id_mltnum_arr) .and. &
+       (g_rmltn    == 1)) then
     GetNumArrSet = PETSC_TRUE
     maxnum       = g_maxmltn
   endif
@@ -4469,7 +4544,7 @@ subroutine GetRecordDetails(iRec, n, mInRec, il, iu, nInRec)
 
   implicit none
 
-  PetscInt, intent(in ) :: iRec, n, mInRec
+  PetscInt, intent(in) :: iRec, n, mInRec
   PetscInt, intent(out) :: il, iu, nInRec
 
   PetscInt :: iumax
@@ -4499,10 +4574,10 @@ function IsWhiteSpace(c)
   IsWhiteSpace = PETSC_FALSE
 
   ic = ichar(c)
-  if (( c == ' '    ) .or. &
+  if ((c == ' ') .or. &
       (ic == g_ictab) .or. &
-      (ic == g_iccr ) .or. &
-      (ic == g_iclf )      ) isWhiteSpace = PETSC_TRUE
+      (ic == g_iccr) .or. &
+      (ic == g_iclf)) isWhiteSpace = PETSC_TRUE
 
 end function IsWhiteSpace
 
@@ -4524,7 +4599,7 @@ function IsQuote(c)
 
   ic = ichar(c)
   if ((ic == g_squote) .or. &
-      (ic == g_dquote) ) isQuote = PETSC_TRUE
+      (ic == g_dquote)) isQuote = PETSC_TRUE
 
 end function IsQuote
 
@@ -4586,27 +4661,27 @@ function HandleCarfin(zkey, input, option, qerr)
 
   call ReadEstrings(zkey, za, ma, input, option, qerr)
 
-  if( .not.qerr ) then
+  if(.not.qerr) then
 
     ! Note check location in field grid - no nesting
 
-                    call ProcessArgToInt(ixl , za( 2), zkey, 1   , nxf, qerr)
-    if( .not.qerr ) call ProcessArgToInt(ixu , za( 3), zkey, ixl , nxf, qerr)
+                    call ProcessArgToInt(ixl , za(2), zkey, 1   , nxf, qerr)
+    if(.not.qerr) call ProcessArgToInt(ixu , za(3), zkey, ixl , nxf, qerr)
 
-    if( .not.qerr ) call ProcessArgToInt(iyl , za( 4), zkey, 1   , nyf, qerr)
-    if( .not.qerr ) call ProcessArgToInt(iyu , za( 5), zkey, iyl , nyf, qerr)
+    if(.not.qerr) call ProcessArgToInt(iyl , za(4), zkey, 1   , nyf, qerr)
+    if(.not.qerr) call ProcessArgToInt(iyu , za(5), zkey, iyl , nyf, qerr)
 
-    if( .not.qerr ) call ProcessArgToInt(izle, za( 6), zkey, 1   , nzf, qerr)
-    if( .not.qerr ) call ProcessArgToInt(izue, za( 7), zkey, izle, nzf, qerr)
+    if(.not.qerr) call ProcessArgToInt(izle, za(6), zkey, 1   , nzf, qerr)
+    if(.not.qerr) call ProcessArgToInt(izue, za(7), zkey, izle, nzf, qerr)
 
-    if( .not.qerr ) call ProcessArgToInt(nxref, za( 8), zkey, 1   , ibig, qerr)
-    if( .not.qerr ) call ProcessArgToInt(nyref, za( 9), zkey, 1   , ibig, qerr)
-    if( .not.qerr ) call ProcessArgToInt(nzref, za(10), zkey, 1   , ibig, qerr)
+    if(.not.qerr) call ProcessArgToInt(nxref, za(8), zkey, 1   , ibig, qerr)
+    if(.not.qerr) call ProcessArgToInt(nyref, za(9), zkey, 1   , ibig, qerr)
+    if(.not.qerr) call ProcessArgToInt(nzref, za(10), zkey, 1   , ibig, qerr)
 
-    if( .not.qerr ) call CheckLGRLocation(ixl, ixu, iyl, iyu, izle, izue, &
+    if(.not.qerr) call CheckLGRLocation(ixl, ixu, iyl, iyu, izle, izue, &
                                           za(1), qerr)
 
-    if( .not.qerr ) then
+    if(.not.qerr) then
 
 !   Convert to Pflotran layer convention
 !   Note lower E-conv. layer becomes the upper P-conv. layer and v.v.
@@ -4674,27 +4749,28 @@ subroutine HandleHdfin(zkey, ilgr, idir, input, option, qerr)
   qerr = PETSC_FALSE
 
   ndl = 1
-  if ( idir == g_xdir ) ndl = g_g(ilgr)%nx
-  if ( idir == g_ydir ) ndl = g_g(ilgr)%ny
-  if ( idir == g_zdir ) ndl = g_g(ilgr)%nz
+  if (idir == g_xdir) ndl = g_g(ilgr)%nx
+  if (idir == g_ydir) ndl = g_g(ilgr)%ny
+  if (idir == g_zdir) ndl = g_g(ilgr)%nz
 
   allocate(za(ndl))
-  allocate(ra(ndl));ra=1.0D0
+  allocate(ra(ndl))
+  ra = 1.0d0
 
   call ReadEstrings(zkey, za, ndl, input, option, qerr)
 
-  if( .not.qerr ) then
+  if(.not.qerr) then
 
     do idl=1, ndl
       call ProcessArgToReal(ra(idl), za(idl), zkey, qerr)
-      if( qerr ) exit
+      if(qerr) exit
     enddo
 
   endif
 
-  if ( idir == g_xdir ) g_g(ilgr)%hrefx = ra
-  if ( idir == g_ydir ) g_g(ilgr)%hrefy = ra
-  if ( idir == g_zdir ) then
+  if (idir == g_xdir) g_g(ilgr)%hrefx = ra
+  if (idir == g_ydir) g_g(ilgr)%hrefy = ra
+  if (idir == g_zdir) then
     do idl=1,ndl
       g_g(ilgr)%hrefz(idl) = ra(ndl-idl+1)
     enddo
@@ -4738,27 +4814,28 @@ subroutine HandleNdfin(zkey, ilgr, idir, input, option, qerr)
 
   qerr = PETSC_FALSE
 
-  if ( idir == g_xdir ) then
+  if (idir == g_xdir) then
     ndl = g_g(ilgr)%nx
     ndg = g_g(ilgr)%nxg
   endif
 
-  if ( idir == g_ydir ) then
+  if (idir == g_ydir) then
     ndl = g_g(ilgr)%ny
     ndg = g_g(ilgr)%nyg
   endif
 
-  if ( idir == g_zdir ) then
+  if (idir == g_zdir) then
     ndl = g_g(ilgr)%nz
     ndg = g_g(ilgr)%nzg
   endif
 
   allocate(za(ndg))
-  allocate(ia(ndg));ia=0
+  allocate(ia(ndg))
+  ia=0
 
   call ReadEstrings(zkey, za, ndg, input, option, qerr)
 
-  if( .not.qerr ) then
+  if(.not.qerr) then
 
     do idg=1, ndg
       call ProcessArgToInt(ia(idg), za(idg), zkey, 1, ndl, qerr)
@@ -4766,29 +4843,29 @@ subroutine HandleNdfin(zkey, ilgr, idir, input, option, qerr)
 
   endif
 
-  if ( idir == g_xdir ) then
+  if (idir == g_xdir) then
     g_g(ilgr)%nlpgx = ia
     call MakeLocalBasePointers(g_g(ilgr)%nlpgx,g_g(ilgr)%ibpgx,ndl,ndg,qerr,ndlis)
   endif
 
-  if ( idir == g_ydir ) then
+  if (idir == g_ydir) then
     g_g(ilgr)%nlpgy = ia
     call MakeLocalBasePointers(g_g(ilgr)%nlpgy,g_g(ilgr)%ibpgy,ndl,ndg,qerr,ndlis)
   endif
 
-  if ( idir == g_zdir ) then
+  if (idir == g_zdir) then
     do idg=1,ndg
       g_g(ilgr)%nlpgz(idg) = ia(ndg-idg+1)
     enddo
     call MakeLocalBasePointers(g_g(ilgr)%nlpgz,g_g(ilgr)%ibpgz,ndl,ndg,qerr,ndlis)
   endif
 
-  if( qerr ) then
+  if(qerr) then
     write(zndlis,'(I8)') ndlis
     write(zndl  ,'(I8)') ndl
-    call SetError('Local cell total in '     // trim(adjustl(zkey  )) // &
+    call SetError('Local cell total in '     // trim(adjustl(zkey)) // &
                                   ' is '     // trim(adjustl(zndlis)) // &
-                                  ', expect '// trim(adjustl(zndl  )) , qerr)
+                                  ', expect '// trim(adjustl(zndl)) , qerr)
    endif
 
   deallocate(za)
@@ -4826,9 +4903,9 @@ subroutine HandleACEMKeyword(zkey, input, option, convdist, convtran, qerr, ilgr
 
   qerr = PETSC_FALSE
 
-  isadd = StringCompareIgnoreCase(zkey, 'add'     )
-  iscpy = StringCompareIgnoreCase(zkey, 'copy'    )
-  iseql = StringCompareIgnoreCase(zkey, 'equals'  )
+  isadd = StringCompareIgnoreCase(zkey, 'add')
+  iscpy = StringCompareIgnoreCase(zkey, 'copy')
+  iseql = StringCompareIgnoreCase(zkey, 'equals')
   ismlt = StringCompareIgnoreCase(zkey, 'multiply')
 
 !  Initialise values (note read in Eclipse iz convention)
@@ -4851,14 +4928,20 @@ subroutine HandleACEMKeyword(zkey, input, option, convdist, convtran, qerr, ilgr
 
     if (StringCompareIgnoreCase(za(1), '/')) exit
 
-    call ProcessArgToInt(ixl , za(3), zkey, 1   , g_g(ilgr)%nx, qerr); if (qerr) exit
-    call ProcessArgToInt(ixu , za(4), zkey, ixl , g_g(ilgr)%nx, qerr); if (qerr) exit
+    call ProcessArgToInt(ixl , za(3), zkey, 1   , g_g(ilgr)%nx, qerr)
+    if (qerr) exit
+    call ProcessArgToInt(ixu , za(4), zkey, ixl , g_g(ilgr)%nx, qerr)
+    if (qerr) exit
 
-    call ProcessArgToInt(iyl , za(5), zkey, 1   , g_g(ilgr)%ny, qerr); if (qerr) exit
-    call ProcessArgToInt(iyu , za(6), zkey, iyl , g_g(ilgr)%ny, qerr); if (qerr) exit
+    call ProcessArgToInt(iyl , za(5), zkey, 1   , g_g(ilgr)%ny, qerr)
+    if (qerr) exit
+    call ProcessArgToInt(iyu , za(6), zkey, iyl , g_g(ilgr)%ny, qerr)
+    if (qerr) exit
 
-    call ProcessArgToInt(izle, za(7), zkey, 1   , g_g(ilgr)%nz, qerr); if (qerr) exit
-    call ProcessArgToInt(izue, za(8), zkey, izle, g_g(ilgr)%nz, qerr); if (qerr) exit
+    call ProcessArgToInt(izle, za(7), zkey, 1   , g_g(ilgr)%nz, qerr)
+    if (qerr) exit
+    call ProcessArgToInt(izue, za(8), zkey, izle, g_g(ilgr)%nz, qerr)
+    if (qerr) exit
 
 !   Convert to Pflotran layer convention
 !   Note lower E-conv. layer becomes the upper P-conv. layer and v.v.
@@ -4866,9 +4949,9 @@ subroutine HandleACEMKeyword(zkey, input, option, convdist, convtran, qerr, ilgr
     izl = g_g(ilgr)%nz-izue+1
     izu = g_g(ilgr)%nz-izle+1
 
-    call ACEMOp( za(1), za(2), ixl, ixu, iyl, iyu, izl, izu, &
+    call ACEMOp(za(1), za(2), ixl, ixu, iyl, iyu, izl, izu, &
                  isadd, iscpy, iseql, ismlt, zkey, qerr, &
-                 convdist, convtran ,ilgr,option )
+                 convdist, convtran ,ilgr,option)
     if (qerr) exit
 
   enddo
@@ -4926,29 +5009,37 @@ subroutine HandleOperateKeyword(zkey, input, option, qerr, ilgr)
 
     if (StringCompareIgnoreCase(za(1), '/')) exit
 
-    call ProcessArgToInt(ixl , za(2), zkey, 1   , g_g(ilgr)%nx, qerr); if (qerr) exit
-    call ProcessArgToInt(ixu , za(3), zkey, ixl , g_g(ilgr)%nx, qerr); if (qerr) exit
+    call ProcessArgToInt(ixl , za(2), zkey, 1   , g_g(ilgr)%nx, qerr)
+    if (qerr) exit
+    call ProcessArgToInt(ixu , za(3), zkey, ixl , g_g(ilgr)%nx, qerr)
+    if (qerr) exit
 
-    call ProcessArgToInt(iyl , za(4), zkey, 1   , g_g(ilgr)%ny, qerr); if (qerr) exit
-    call ProcessArgToInt(iyu , za(5), zkey, iyl , g_g(ilgr)%ny, qerr); if (qerr) exit
+    call ProcessArgToInt(iyl , za(4), zkey, 1   , g_g(ilgr)%ny, qerr)
+    if (qerr) exit
+    call ProcessArgToInt(iyu , za(5), zkey, iyl , g_g(ilgr)%ny, qerr)
+    if (qerr) exit
 
-    call ProcessArgToInt(izle, za(6), zkey, 1   , g_g(ilgr)%nz, qerr); if (qerr) exit
-    call ProcessArgToInt(izue, za(7), zkey, izle, g_g(ilgr)%nz, qerr); if (qerr) exit
+    call ProcessArgToInt(izle, za(6), zkey, 1   , g_g(ilgr)%nz, qerr)
+    if (qerr) exit
+    call ProcessArgToInt(izue, za(7), zkey, izle, g_g(ilgr)%nz, qerr)
+    if (qerr) exit
 
     z_op_type = za(8)
     z_op_arg  = za(9)
 
     qarg1 = PETSC_FALSE
     rarg1 = 0.0
-    if( za(10) /= ' ' ) then
-      call ProcessArgToReal(rarg1, za(10), zkey, qerr); if (qerr) exit
+    if(za(10) /= ' ') then
+      call ProcessArgToReal(rarg1, za(10), zkey, qerr)
+      if (qerr) exit
       qarg1 = PETSC_TRUE
     endif
 
     rarg2 = 0.0
     qarg2 = PETSC_FALSE
-    if( za(11) /= ' ' ) then
-      call ProcessArgToReal(rarg2, za(11), zkey, qerr); if (qerr) exit
+    if(za(11) /= ' ') then
+      call ProcessArgToReal(rarg2, za(11), zkey, qerr)
+      if (qerr) exit
       qarg2 = PETSC_TRUE
     endif
 
@@ -4958,9 +5049,9 @@ subroutine HandleOperateKeyword(zkey, input, option, qerr, ilgr)
     izl = g_g(ilgr)%nz-izue+1
     izu = g_g(ilgr)%nz-izle+1
 
-    call DoOperate( za(1), ixl, ixu, iyl, iyu, izl, izu, &
+    call DoOperate(za(1), ixl, ixu, iyl, iyu, izl, izu, &
                     rarg1, qarg1, rarg2, qarg2, &
-                    z_op_type, z_op_arg, qerr, ilgr, option )
+                    z_op_type, z_op_arg, qerr, ilgr, option)
     if (qerr) exit
 
   enddo
@@ -5129,7 +5220,7 @@ function MArea(fl, fu, idir)
 
     do i = 1, nxvd-1
 
-      x1 = xvdd(i  )
+      x1 = xvdd(i)
       x2 = xvdd(i+1)
 
       call FindYLimitsAtThisX(fl, fu, idir, x1, yll, yuu, dy1, qoverlap1)
@@ -5180,24 +5271,24 @@ subroutine OpenEgridFileToRead(root, ios)
   filenameu = root
   call StringToUpper(filenameu)
   isuf_f = index(filenameu,'.FEGRID')
-  isuf_u = index(filenameu,'.EGRID' )
+  isuf_u = index(filenameu,'.EGRID')
   isuf  = isuf_f + isuf_u
-  nosuffix = ( isuf==0 )
+  nosuffix = (isuf==0)
 
   ! Attempt to open specified files
 
-  if ( isuf_f>0 ) then
+  if (isuf_f>0) then
     ! As .FGRID suffix found, open formatted with full name
     open(unit =  UNIT_EGRID_READ, status = 'old', form = 'formatted', &
          file = filename, iostat = ios)
     e_formatted_r = PETSC_TRUE
   else
     ! Is unformatted - add suffix if not found
-    if ( nosuffix ) filename = trim(root) // '.EGRID'
+    if (nosuffix) filename = trim(root) // '.EGRID'
     open(unit =  UNIT_EGRID_READ, status = 'old', form = 'unformatted', &
          file = filename, convert = 'big_endian', iostat = ios)
     ! Might be suffix case issue, try lower case
-    if ( nosuffix .and. (ios /= 0) ) then
+    if (nosuffix .and. (ios /= 0)) then
       filename = trim(root) // '.egrid'
       open(unit =  UNIT_EGRID_READ, status = 'old', form = 'unformatted', &
            file = filename, convert = 'big_endian', iostat = ios)
@@ -5268,7 +5359,7 @@ subroutine PermPoroExchangeAndSet(poro_p, permx_p, permy_p, permz_p, &
 
         ! Allocate buffers to hold response poro and perm values from ioproc
 
-        allocate(wporo(  nlmax))
+        allocate(wporo(nlmax))
         allocate(wperm(3*nlmax))
 
         ! Receive poro and perm values from ioproc
@@ -5284,7 +5375,7 @@ subroutine PermPoroExchangeAndSet(poro_p, permx_p, permy_p, permz_p, &
 
         do ilt = 1, nlmax
           ibp = 3*(ilt-1)
-          poro_p (ilt) = wporo(ilt  )
+          poro_p (ilt) = wporo(ilt)
           permx_p(ilt) = wperm(ibp+1)
           permy_p(ilt) = wperm(ibp+2)
           permz_p(ilt) = wperm(ibp+3)
@@ -5308,8 +5399,8 @@ subroutine PermPoroExchangeAndSet(poro_p, permx_p, permy_p, permz_p, &
 
         ! Allocate work array to hold the received natural addresses
 
-        allocate(winat(  nlo))
-        allocate(wporo(  nlo))
+        allocate(winat(nlo))
+        allocate(wporo(nlo))
         allocate(wperm(3*nlo))
 
         ! Receive the natural address array from irank
@@ -5324,7 +5415,7 @@ subroutine PermPoroExchangeAndSet(poro_p, permx_p, permy_p, permz_p, &
           ino = winat(ilo)
           call GetPoroPermValues(ino, poro, permx, permy, permz)
           ibp = 3*(ilo-1)
-          wporo(ilo  ) = poro
+          wporo(ilo) = poro
           wperm(ibp+1) = permx
           wperm(ibp+2) = permy
           wperm(ibp+3) = permz
@@ -5391,7 +5482,7 @@ subroutine ProcessArgToInt(iv, za, zk, il, iu, qerr)
 !  Check for errors
 
   if (ierr /= 0) then
-    call SetError(trim(zk)//' (error in reading integer value: '//trim(za)//' )', qerr)
+    call SetError(trim(zk)//' (error in reading integer value: '//trim(za)//')', qerr)
   else if (iv < il) then
     call SetError(trim(zk)//' (value '//trim(za)//' below lower bound)', qerr)
   else if (iv > iu) then
@@ -5527,7 +5618,7 @@ subroutine ProcessArgToReal(rv, za, zk, qerr)
 !  Check for errors
 
   if (ierr /= 0) then
-    call SetError( trim(zk)//' (error in reading real value: '//trim(za)//' )',qerr)
+    call SetError(trim(zk)//' (error in reading real value: '//trim(za)//')',qerr)
   endif
 
 end subroutine ProcessArgToReal
@@ -5558,7 +5649,7 @@ subroutine ProcessGridData(qerr,option)
 
 ! Set up any unset optional grid arrays
 
-  if( g_nlgr>1 ) then
+  if(g_nlgr>1) then
     call SetupOptionalGridArrays()
   endif
 
@@ -5644,7 +5735,8 @@ subroutine ProcessGridData(qerr,option)
     g_nxyzt = g_nxyzt + nx*ny*nz
   enddo
 
-  allocate(bvg(g_nxyzt));bvg =  0.0
+  allocate(bvg(g_nxyzt))
+  bvg =  0.d0
 
 !--Do calculations over active grids------------------------------------------------
 
@@ -5663,12 +5755,12 @@ subroutine ProcessGridData(qerr,option)
           porv = 0.0
 
           if (g_iscpg) then
-            call GetCorners( ix, iy, iz, &
+            call GetCorners(ix, iy, iz, &
                              x000, x100, x010, x110, &
                              x001, x101, x011, x111, &
-                             g_g(ilgr)%coord, g_g(ilgr)%zcorn, g_g(ilgr)%nx, g_g(ilgr)%ny )
-            bvg(igt) = FindVolume( x000, x100, x010, x110, &
-                                   x001, x101, x011, x111 )
+                             g_g(ilgr)%coord, g_g(ilgr)%zcorn, g_g(ilgr)%nx, g_g(ilgr)%ny)
+            bvg(igt) = FindVolume(x000, x100, x010, x110, &
+                                   x001, x101, x011, x111)
           else
             bvg(igt) = g_g(ilgr)%dx(ig)* &
                        g_g(ilgr)%dy(ig)* &
@@ -5700,16 +5792,16 @@ subroutine ProcessGridData(qerr,option)
              g_g(ilgr)%poro(ig) = 1.0
              porv              = bvol
           endif
-          if( iact == 4 ) then
+          if(iact == 4) then
             bvol = 1.0D0
             porv = g_g(ilgr)%poro(ig)*bvol
           endif
 
-          if (                        (porv > g_minpv(1))  &
-              .or. ((iact == 2) .and. (bvol > eps       )) ) then
+          if ((porv > g_minpv(1))  &
+              .or. ((iact == 2) .and. (bvol > eps))) then
             g_na = g_na+1
             g_g(ilgr)%gtoa(ig) = g_na
-            if( porv<g_pvfloor(1) ) bvg(igt)=bvg(igt)*g_pvfloor(1)/porv
+            if(porv<g_pvfloor(1)) bvg(igt)=bvg(igt)*g_pvfloor(1)/porv
           endif
 
         enddo
@@ -5725,13 +5817,20 @@ subroutine ProcessGridData(qerr,option)
 
   if (g_na>0) then
 
-    allocate(g_atog(g_na));g_atog = -1
-    allocate(g_atol(g_na));g_atol = -1
-    allocate(g_atoc(g_na));g_atoc = -1
+    allocate(g_atog(g_na))
+    allocate(g_atol(g_na))
+    allocate(g_atoc(g_na))
 
-    allocate(g_atox(g_na));g_atox = -1
-    allocate(g_atoy(g_na));g_atoy = -1
-    allocate(g_atoz(g_na));g_atoz = -1
+    allocate(g_atox(g_na))
+    allocate(g_atoy(g_na))
+    allocate(g_atoz(g_na))
+
+    g_atog = -1
+    g_atol = -1
+    g_atoc = -1
+    g_atox = -1
+    g_atoy = -1
+    g_atoz = -1
 
     ! Set up a to g
 
@@ -5777,9 +5876,9 @@ subroutine ProcessGridData(qerr,option)
               ic = ic+1
               g_atoc(ia) = ic
             else
-              if( g_nlgr>1 ) then
-                if( ilgr == g_ifld ) then
-                  if( g_g(ilgr)%iglob(ig)>1 ) then
+              if(g_nlgr>1) then
+                if(ilgr == g_ifld) then
+                  if(g_g(ilgr)%iglob(ig)>1) then
                     ic = ic + 1
                   endif
                 endif
@@ -5900,7 +5999,7 @@ subroutine ReadEclipseEgridFile(efilename, coord, zcorn, actn, nx, ny, nz, &
   call StringToUpper(efilenameu)
   isuf_g = index(efilenameu,'.GRID')
 
-  if( isuf_g > 0 ) then
+  if(isuf_g > 0) then
 
     zmess = 'GDFILE only supports egrid files, not grid files '//trim(efilename)
     qerr  = PETSC_TRUE
@@ -5910,14 +6009,14 @@ subroutine ReadEclipseEgridFile(efilename, coord, zcorn, actn, nx, ny, nz, &
     !  Open files on the io proc
 
     call OpenEgridFileToRead(efilename, ios)
-    if( ios/=0 ) then
+    if(ios/=0) then
       zmess = 'Unable to read egrid file '//trim(efilename)
       qerr  = PETSC_TRUE
     endif
 
   endif
 
-  if( .not. qerr ) then
+  if(.not. qerr) then
 
     ! Initialise and set up useful scalars
 
@@ -5933,23 +6032,23 @@ subroutine ReadEclipseEgridFile(efilename, coord, zcorn, actn, nx, ny, nz, &
     do while(.not.eof)
 
       call ReadHeader(itype,zmnem8, n, eof)
-      if ( eof ) zmnem8 = 'END'
+      if (eof) zmnem8 = 'END'
       call StringToUpper(zmnem8)
 
       ! Exit if end of file
 
-      if ( trim(zmnem8) == 'END' .or. qerr ) exit
+      if (trim(zmnem8) == 'END' .or. qerr) exit
 
       block_read=PETSC_FALSE
 
       ! File header
 
-      if ( trim(zmnem8) == 'FILEHEAD' ) then
+      if (trim(zmnem8) == 'FILEHEAD') then
         allocate(vfilehead(n))
         call ReadBlockI(vfilehead,n)
-        if( n>=5 ) then
+        if(n>=5) then
           efile_type = vfilehead(5)
-          if( efile_type>0 ) then
+          if(efile_type>0) then
             qerr  = PETSC_TRUE
             zmess = 'Cannot read unstructured type egrid files'
           endif
@@ -5960,7 +6059,7 @@ subroutine ReadEclipseEgridFile(efilename, coord, zcorn, actn, nx, ny, nz, &
 
       ! Map units
 
-      if ( trim(zmnem8) == 'MAPUNITS' ) then
+      if (trim(zmnem8) == 'MAPUNITS') then
         allocate(vmapaxesunit(n))
         call ReadBlockC(vmapaxesunit,n)
         deallocate(vmapaxesunit)
@@ -5969,23 +6068,23 @@ subroutine ReadEclipseEgridFile(efilename, coord, zcorn, actn, nx, ny, nz, &
 
       ! Map axes
 
-      if ( trim(zmnem8) == 'MAPAXES' ) then
+      if (trim(zmnem8) == 'MAPAXES') then
         allocate(vmapaxes(n))
         call ReadBlockS(vmapaxes,n)
-        if( n>=6 ) call SetMapAxes(vmapaxes)
+        if(n>=6) call SetMapAxes(vmapaxes)
         deallocate(vmapaxes)
         block_read=PETSC_TRUE
       endif
 
       ! Grid header
 
-      if ( trim(zmnem8) == 'GRIDHEAD' ) then
+      if (trim(zmnem8) == 'GRIDHEAD') then
         allocate(vgridhead(n))
         call ReadBlockI(vgridhead,n)
-        if( n>=4 ) then
+        if(n>=4) then
 
           efile_type = vgridhead(1)
-          if( efile_type/=1 ) then
+          if(efile_type/=1) then
             qerr  = PETSC_TRUE
             zmess = 'Cannot read unstructured type egrid files'
           endif
@@ -6005,14 +6104,14 @@ subroutine ReadEclipseEgridFile(efilename, coord, zcorn, actn, nx, ny, nz, &
 
       ! Grid units
 
-      if ( trim(zmnem8) == 'GRIDUNIT' ) then
+      if (trim(zmnem8) == 'GRIDUNIT') then
         allocate(vgridunit(n))
         call ReadBlockC(vgridunit,n)
         units = vgridunit(1)
-        if( StringCompareIgnoreCase(units,'feet') ) then
+        if(StringCompareIgnoreCase(units,'feet')) then
           conv=0.3048D0
         else
-          if( .not. StringCompareIgnoreCase(units,'metres') ) then
+          if(.not. StringCompareIgnoreCase(units,'metres')) then
             zmess = 'GRIDUNIT units must be metres or feet'
             qerr  = PETSC_TRUE
           endif
@@ -6023,7 +6122,7 @@ subroutine ReadEclipseEgridFile(efilename, coord, zcorn, actn, nx, ny, nz, &
 
     ! Grid orientation
 
-      if ( trim(zmnem8) == 'GDORIENT' ) then
+      if (trim(zmnem8) == 'GDORIENT') then
         allocate(vgdorient    (n))
         allocate(vgdorientword(n))
         call ReadBlockC(vgdorient,n)
@@ -6038,14 +6137,14 @@ subroutine ReadEclipseEgridFile(efilename, coord, zcorn, actn, nx, ny, nz, &
 
      ! COORD values
 
-      if ( trim(zmnem8) == 'COORD' ) then
+      if (trim(zmnem8) == 'COORD') then
 
-        if( n/=ncoord ) then
+        if(n/=ncoord) then
           zmess = 'COORD array not of expected size'
           qerr  = PETSC_TRUE
         endif
 
-        if( .not.qerr ) then
+        if(.not.qerr) then
 
           allocate(vcoord(ncoord))
 
@@ -6077,14 +6176,14 @@ subroutine ReadEclipseEgridFile(efilename, coord, zcorn, actn, nx, ny, nz, &
 
     ! ZCORN values
 
-     if ( trim(zmnem8) == 'ZCORN' ) then
+     if (trim(zmnem8) == 'ZCORN') then
 
-       if( n/=nzcorn ) then
+       if(n/=nzcorn) then
          zmess = 'ZCORN array not of expected size'
          qerr  = PETSC_TRUE
        endif
 
-       if( .not.qerr ) then
+       if(.not.qerr) then
 
          allocate(vzcorn(nzcorn))
 
@@ -6114,14 +6213,14 @@ subroutine ReadEclipseEgridFile(efilename, coord, zcorn, actn, nx, ny, nz, &
 
      ! Active cell indicator
 
-     if ( trim(zmnem8) == 'ACTNUM' ) then
+     if (trim(zmnem8) == 'ACTNUM') then
 
-       if( n/=nxyz ) then
+       if(n/=nxyz) then
          zmess = 'ACTNUM array not of expected size'
          qerr  = PETSC_TRUE
        endif
 
-       if( .not.qerr ) then
+       if(.not.qerr) then
 
          allocate(vactn(nxyz))
 
@@ -6152,12 +6251,12 @@ subroutine ReadEclipseEgridFile(efilename, coord, zcorn, actn, nx, ny, nz, &
 
       !  Read dummy values if block not required
 
-      if( .not.block_read) then
-        if ( itype == e_typeI ) call readDummyI(n)
-        if ( itype == e_typeS ) call readDummyS(n)
-        if ( itype == e_typeD ) call readDummyD(n)
-        if ( itype == e_typeB ) call readDummyB(n)
-        if ( itype == e_typeC ) call readDummyC(n)
+      if(.not.block_read) then
+        if (itype == e_typeI) call readDummyI(n)
+        if (itype == e_typeS) call readDummyS(n)
+        if (itype == e_typeD) call readDummyD(n)
+        if (itype == e_typeB) call readDummyB(n)
+        if (itype == e_typeC) call readDummyC(n)
       endif
 
     enddo
@@ -6688,15 +6787,15 @@ subroutine ReadHeader(itype, zmnem8, n, eof)
     n = n4
   endif
 
-  if ( ios == 0 ) then
+  if (ios == 0) then
 
   !  Set up output values
 
-    if ( ztype4 == 'INTE' ) itype = e_typeI
-    if ( ztype4 == 'REAL' ) itype = e_typeS
-    if ( ztype4 == 'DOUB' ) itype = e_typeD
-    if ( ztype4 == 'LOGI' ) itype = e_typeB
-    if ( ztype4 == 'CHAR' ) itype = e_typeC
+    if (ztype4 == 'INTE') itype = e_typeI
+    if (ztype4 == 'REAL') itype = e_typeS
+    if (ztype4 == 'DOUB') itype = e_typeD
+    if (ztype4 == 'LOGI') itype = e_typeB
+    if (ztype4 == 'CHAR') itype = e_typeC
 
   else
     eof = PETSC_TRUE
@@ -6920,7 +7019,7 @@ subroutine ReadEstrings(zkey, a, n, input, option, qerr)
 
   implicit none
 
-  character(len = MAXWORDLENGTH  ), intent(in)    :: zkey
+  character(len = MAXWORDLENGTH), intent(in)    :: zkey
   character(len = MAXSTRINGLENGTH), intent(inout) :: a(:)
   PetscInt , intent(in)    :: n
   type(input_type), pointer :: input
@@ -6995,7 +7094,7 @@ subroutine ReadEstrings(zkey, a, n, input, option, qerr)
 
   endif
 
-  if (ierr == 1 ) then
+  if (ierr == 1) then
     zmess = 'Unable to read ' // trim(zkey)
     call SetError(zmess, qerr)
   endif
@@ -7100,7 +7199,7 @@ subroutine ReadEvalues(a, n, keyword, section, input, option, &
 
   endif
 
-  if (ierr == 1 ) then
+  if (ierr == 1) then
     zmess = 'Unable to read ' // trim(keyword)
     call SetError(zmess, qerr)
   endif
@@ -7124,17 +7223,26 @@ subroutine ReallocateConnectionArrays()
 
   ! Note keep resetting mc as Reallocate keeps increasing it
 
-  mc = g_mc;call ReallocateArray(g_cia  , mc)
-  mc = g_mc;call ReallocateArray(g_cja  , mc)
+  mc = g_mc
+  call ReallocateArray(g_cia  , mc)
+  mc = g_mc
+  call ReallocateArray(g_cja  , mc)
 
-  mc = g_mc;call ReallocateArray(g_ccx  , mc)
-  mc = g_mc;call ReallocateArray(g_ccy  , mc)
-  mc = g_mc;call ReallocateArray(g_ccz  , mc)
-  mc = g_mc;call ReallocateArray(g_carea, mc)
+  mc = g_mc
+  call ReallocateArray(g_ccx  , mc)
+  mc = g_mc
+  call ReallocateArray(g_ccy  , mc)
+  mc = g_mc
+  call ReallocateArray(g_ccz  , mc)
+  mc = g_mc
+  call ReallocateArray(g_carea, mc)
 
-  mc = g_mc;call ReallocateArray(g_tran   , mc)
-  mc = g_mc;call ReallocateArray(g_tran_th, mc)
-  mc = g_mc;call ReallocateArray(g_idir   , mc)
+  mc = g_mc
+  call ReallocateArray(g_tran   , mc)
+  mc = g_mc
+  call ReallocateArray(g_tran_th, mc)
+  mc = g_mc
+  call ReallocateArray(g_idir   , mc)
 
   g_mc = mc
 
@@ -7236,7 +7344,7 @@ subroutine SetProcnumValue(ia,irank)
 
   ! Set value
 
-  if ( g_rprcn == 1 ) then
+  if (g_rprcn == 1) then
     g_g(ilgr)%prcn(ig) = irank
   endif
 
@@ -7330,13 +7438,13 @@ subroutine DeallocateGridArrays()
 
   do ilgr=1,g_nlgr
 
-    if ( g_g(ilgr)%cpgallocated ) then
+    if (g_g(ilgr)%cpgallocated) then
       call DeallocateArray(g_g(ilgr)%coord)
       call DeallocateArray(g_g(ilgr)%zcorn)
       g_g(ilgr)%cpgallocated = PETSC_FALSE
     endif
 
-    if( ilgr>1 ) then
+    if(ilgr>1) then
 
       call DeallocateArray(g_g(ilgr)%nlpgx)
       call DeallocateArray(g_g(ilgr)%nlpgy)
@@ -7352,51 +7460,79 @@ subroutine DeallocateGridArrays()
 
     endif
 
-    call DeallocateArray(g_g(ilgr)%dx   );g_g(ilgr)%dx =>null()
-    call DeallocateArray(g_g(ilgr)%dy   );g_g(ilgr)%dy =>null()
-    call DeallocateArray(g_g(ilgr)%dz   );g_g(ilgr)%dz =>null()
+    call DeallocateArray(g_g(ilgr)%dx)
+    call DeallocateArray(g_g(ilgr)%dy)
+    call DeallocateArray(g_g(ilgr)%dz)
 
-    call DeallocateArray(g_g(ilgr)%mv   );g_g(ilgr)%mv =>null()
+    call DeallocateArray(g_g(ilgr)%mv)
 
-    call DeallocateArray(g_g(ilgr)%mx   );g_g(ilgr)%mx =>null()
-    call DeallocateArray(g_g(ilgr)%my   );g_g(ilgr)%my =>null()
-    call DeallocateArray(g_g(ilgr)%mz   );g_g(ilgr)%mz =>null()
+    call DeallocateArray(g_g(ilgr)%mx)
+    call DeallocateArray(g_g(ilgr)%my)
+    call DeallocateArray(g_g(ilgr)%mz)
 
-    call DeallocateArray(g_g(ilgr)%mxn );g_g(ilgr)%mxn =>null()
-    call DeallocateArray(g_g(ilgr)%myn );g_g(ilgr)%myn =>null()
-    call DeallocateArray(g_g(ilgr)%mzn );g_g(ilgr)%mzn =>null()
+    call DeallocateArray(g_g(ilgr)%mxn)
+    call DeallocateArray(g_g(ilgr)%myn)
+    call DeallocateArray(g_g(ilgr)%mzn)
 
-    call DeallocateArray(g_g(ilgr)%tx  );g_g(ilgr)%tx  =>null()
-    call DeallocateArray(g_g(ilgr)%ty  );g_g(ilgr)%ty  =>null()
-    call DeallocateArray(g_g(ilgr)%tz  );g_g(ilgr)%tz  =>null()
+    call DeallocateArray(g_g(ilgr)%tx)
+    call DeallocateArray(g_g(ilgr)%ty)
+    call DeallocateArray(g_g(ilgr)%tz)
 
-    call DeallocateArray(g_g(ilgr)%tops);g_g(ilgr)%tops=>null()
-    call DeallocateArray(g_g(ilgr)%ntg );g_g(ilgr)%ntg =>null()
+    call DeallocateArray(g_g(ilgr)%tops)
+    call DeallocateArray(g_g(ilgr)%ntg)
 
-    call DeallocateArray(g_g(ilgr)%xloc);g_g(ilgr)%xloc=>null()
-    call DeallocateArray(g_g(ilgr)%yloc);g_g(ilgr)%yloc=>null()
-    call DeallocateArray(g_g(ilgr)%zloc);g_g(ilgr)%zloc=>null()
+    call DeallocateArray(g_g(ilgr)%xloc)
+    call DeallocateArray(g_g(ilgr)%yloc)
+    call DeallocateArray(g_g(ilgr)%zloc)
 
-    call DeallocateArray(g_g(ilgr)%actn);g_g(ilgr)%actn=>null()
-    call DeallocateArray(g_g(ilgr)%satn);g_g(ilgr)%satn=>null()
-    call DeallocateArray(g_g(ilgr)%imbn);g_g(ilgr)%imbn=>null()
-    call DeallocateArray(g_g(ilgr)%eqln);g_g(ilgr)%eqln=>null()
-    call DeallocateArray(g_g(ilgr)%mltn);g_g(ilgr)%mltn=>null()
-    call DeallocateArray(g_g(ilgr)%tbcn);g_g(ilgr)%tbcn=>null()
-    call DeallocateArray(g_g(ilgr)%prcn);g_g(ilgr)%prcn=>null()
+    call DeallocateArray(g_g(ilgr)%actn)
+    call DeallocateArray(g_g(ilgr)%satn)
+    call DeallocateArray(g_g(ilgr)%imbn)
+    call DeallocateArray(g_g(ilgr)%eqln)
+    call DeallocateArray(g_g(ilgr)%mltn)
+    call DeallocateArray(g_g(ilgr)%tbcn)
+    call DeallocateArray(g_g(ilgr)%prcn)
 
-    call DeallocateArray(g_g(ilgr)%gtoa);g_g(ilgr)%gtoa=>null()
+    call DeallocateArray(g_g(ilgr)%gtoa)
 
-    if( ilgr>1 ) then
-      call DeallocateArray(g_g(ilgr)%ihost);g_g(ilgr)%ihost => null()
+    g_g(ilgr)%dx =>null()
+    g_g(ilgr)%dy =>null()
+    g_g(ilgr)%dz =>null()
+    g_g(ilgr)%mv =>null()
+    g_g(ilgr)%mx =>null()
+    g_g(ilgr)%my =>null()
+    g_g(ilgr)%mz =>null()
+    g_g(ilgr)%mxn =>null()
+    g_g(ilgr)%myn =>null()
+    g_g(ilgr)%mzn =>null()
+    g_g(ilgr)%tx  =>null()
+    g_g(ilgr)%ty  =>null()
+    g_g(ilgr)%tz  =>null()
+    g_g(ilgr)%tops=>null()
+    g_g(ilgr)%ntg =>null()
+    g_g(ilgr)%xloc=>null()
+    g_g(ilgr)%yloc=>null()
+    g_g(ilgr)%zloc=>null()
+    g_g(ilgr)%actn=>null()
+    g_g(ilgr)%satn=>null()
+    g_g(ilgr)%imbn=>null()
+    g_g(ilgr)%eqln=>null()
+    g_g(ilgr)%mltn=>null()
+    g_g(ilgr)%tbcn=>null()
+    g_g(ilgr)%prcn=>null()
+    g_g(ilgr)%gtoa=>null()
+
+    if(ilgr>1) then
+      call DeallocateArray(g_g(ilgr)%ihost)
+      g_g(ilgr)%ihost => null()
     endif
 
   enddo
 
-  if( m_multregt > 0 ) then
-    if( allocated(g_multregt_ir1 ) ) deallocate(g_multregt_ir1 )
-    if( allocated(g_multregt_ir2 ) ) deallocate(g_multregt_ir2 )
-    if( allocated(g_multregt_mult) ) deallocate(g_multregt_mult)
+  if(m_multregt > 0) then
+    if(allocated(g_multregt_ir1)) deallocate(g_multregt_ir1)
+    if(allocated(g_multregt_ir2)) deallocate(g_multregt_ir2)
+    if(allocated(g_multregt_mult)) deallocate(g_multregt_mult)
     m_multregt = 0
   endif
 
@@ -7417,22 +7553,22 @@ subroutine DeallocateActiveArrays
 
   call DeallocateArray(g_bvol)
 
-  call DeallocateArray(g_x   )
-  call DeallocateArray(g_y   )
-  call DeallocateArray(g_z   )
+  call DeallocateArray(g_x)
+  call DeallocateArray(g_y)
+  call DeallocateArray(g_z)
 
-  call DeallocateArray(g_cia  )
-  call DeallocateArray(g_cja  )
-  call DeallocateArray(g_ccx  )
-  call DeallocateArray(g_ccy  )
-  call DeallocateArray(g_ccz  )
+  call DeallocateArray(g_cia)
+  call DeallocateArray(g_cja)
+  call DeallocateArray(g_ccx)
+  call DeallocateArray(g_ccy)
+  call DeallocateArray(g_ccz)
   call DeallocateArray(g_carea)
 
-  call DeallocateArray(g_tran   )
+  call DeallocateArray(g_tran)
   call DeallocateArray(g_tran_th)
-  call DeallocateArray(g_idir   )
+  call DeallocateArray(g_idir)
 
-  call DeallocateArray(g_atoc )
+  call DeallocateArray(g_atoc)
 
 end subroutine DeallocateActiveArrays
 
@@ -7456,7 +7592,7 @@ subroutine DeallocatePoroPermArrays(solution_monitor,option)
 
   if (option%myrank == option%comm%io_rank) then
 
-    if ( .not.solution_monitor ) then
+    if (.not.solution_monitor) then
       call DeallocateArray(g_atog)
       call DeallocateArray(g_atol)
       g_atog_held = PETSC_FALSE
@@ -7469,9 +7605,9 @@ subroutine DeallocatePoroPermArrays(solution_monitor,option)
     call DeallocateArray(g_atoz)
 
     do ilgr=1,g_nlgr
-      call DeallocateArray(g_g(ilgr)%kx  )
-      call DeallocateArray(g_g(ilgr)%ky  )
-      call DeallocateArray(g_g(ilgr)%kz  )
+      call DeallocateArray(g_g(ilgr)%kx)
+      call DeallocateArray(g_g(ilgr)%ky)
+      call DeallocateArray(g_g(ilgr)%kz)
       call DeallocateArray(g_g(ilgr)%poro)
     enddo
 
