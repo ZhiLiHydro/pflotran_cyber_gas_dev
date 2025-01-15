@@ -6204,6 +6204,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
   PetscInt :: tempint, tempint2, icct
   PetscInt :: irate, irxn
   PetscInt :: ivar_temp
+  PetscInt :: petscint_size
   PetscErrorCode :: ierr
 
 
@@ -7920,23 +7921,23 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
           patch%aux%ERT%auxvars(grid%nL2G(local_id))%bulk_conductivity
       enddo
     case(ELECTRICAL_POTENTIAL)
-      call ERTAuxCheckElectrodeBounds(size(patch%aux%ERT%auxvars(1)% &
-                                      potential),isubvar,isubvar2,option)
+      petscint_size = size(patch%aux%ERT%auxvars(1)%potential)
+      call ERTAuxCheckElectrodeBounds(petscint_size,isubvar,isubvar2,option)
       do local_id=1,grid%nlmax
         vec_ptr(local_id) = &
           patch%aux%ERT%auxvars(grid%nL2G(local_id))%potential(isubvar)
       enddo
     case(ELECTRICAL_POTENTIAL_DIPOLE)
-      call ERTAuxCheckElectrodeBounds(size(patch%aux%ERT%auxvars(1)% &
-                                      potential),isubvar,isubvar2,option)
+      petscint_size = size(patch%aux%ERT%auxvars(1)%potential)
+      call ERTAuxCheckElectrodeBounds(petscint_size,isubvar,isubvar2,option)
       do local_id=1,grid%nlmax
         vec_ptr(local_id) = &
           patch%aux%ERT%auxvars(grid%nL2G(local_id))%potential(isubvar) - &
           patch%aux%ERT%auxvars(grid%nL2G(local_id))%potential(isubvar2)
       enddo
     case(ELECTRICAL_JACOBIAN)
-      call ERTAuxCheckElectrodeBounds(size(patch%aux%ERT%auxvars(1)% &
-                                      jacobian),isubvar,isubvar2,option)
+      petscint_size = size(patch%aux%ERT%auxvars(1)%jacobian)
+      call ERTAuxCheckElectrodeBounds(petscint_size,isubvar,isubvar2,option)
       do local_id=1,grid%nlmax
         vec_ptr(local_id) = &
           patch%aux%ERT%auxvars(grid%nL2G(local_id))%jacobian(isubvar)
@@ -8207,6 +8208,7 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
   PetscInt :: ghosted_id
   PetscInt :: local_id, icct
   PetscInt :: ivar_temp
+  PetscInt :: petscint_size
 
   PetscReal :: value, xmass, lnQKgas, eh0, pe0, ph0
   PetscInt :: irate, irxn
@@ -9236,17 +9238,17 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
     case(COMPUTED_ELECTRICAL_CONDUCTIVITY)
       value = patch%aux%ERT%auxvars(ghosted_id)%bulk_conductivity
     case(ELECTRICAL_POTENTIAL_DIPOLE)
-      call ERTAuxCheckElectrodeBounds(size(patch%aux%ERT%auxvars(1)% &
-                                      potential),isubvar,isubvar2,option)
+      petscint_size = size(patch%aux%ERT%auxvars(1)%potential)
+      call ERTAuxCheckElectrodeBounds(petscint_size,isubvar,isubvar2,option)
       value = patch%aux%ERT%auxvars(ghosted_id)%potential(isubvar) - &
               patch%aux%ERT%auxvars(ghosted_id)%potential(isubvar2)
     case(ELECTRICAL_POTENTIAL)
-      call ERTAuxCheckElectrodeBounds(size(patch%aux%ERT%auxvars(1)% &
-                                      potential),isubvar,isubvar2,option)
+      petscint_size = size(patch%aux%ERT%auxvars(1)%potential)
+      call ERTAuxCheckElectrodeBounds(petscint_size,isubvar,isubvar2,option)
       value = patch%aux%ERT%auxvars(ghosted_id)%potential(isubvar)
     case(ELECTRICAL_JACOBIAN)
-      call ERTAuxCheckElectrodeBounds(size(patch%aux%ERT%auxvars(1)% &
-                                      jacobian),isubvar,isubvar2,option)
+      petscint_size = size(patch%aux%ERT%auxvars(1)%jacobian)
+      call ERTAuxCheckElectrodeBounds(petscint_size,isubvar,isubvar2,option)
       value = patch%aux%ERT%auxvars(ghosted_id)%jacobian(isubvar)
     case(PROCESS_ID)
       value = option%myrank

@@ -411,7 +411,8 @@ subroutine IJacobianAccumulation(J,shift,realization,ierr)
             rich_auxvars(ghosted_id)%dpres_dtime)* &
             material_auxvars(ghosted_id)%volume
 
-    call MatSetValuesLocal(J,1,row,1,col,val,ADD_VALUES,ierr);CHKERRQ(ierr)
+    call MatSetValuesLocal(J,ONE_INTEGER,row,ONE_INTEGER, &
+                           col,val,ADD_VALUES,ierr);CHKERRQ(ierr)
 
   enddo
 

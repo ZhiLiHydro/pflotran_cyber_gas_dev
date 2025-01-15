@@ -196,6 +196,7 @@ subroutine RegressionCreateMapping(regression,realization)
   PetscInt, allocatable :: int_array(:)
   PetscInt :: i, count, temp_int
   PetscInt :: local_id
+  PetscInt :: petscint_size
   PetscReal, pointer :: vec_ptr(:)
   character(len=MAXWORDLENGTH) :: word
   Vec :: temp_vec
@@ -254,8 +255,9 @@ subroutine RegressionCreateMapping(regression,realization)
     call VecCreate(PETSC_COMM_SELF,regression%natural_cell_id_vec, &
                    ierr);CHKERRQ(ierr)
     if (OptionIsIORank(option)) then
+      petscint_size = size(regression%natural_cell_ids)
       call VecSetSizes(regression%natural_cell_id_vec, &
-                       size(regression%natural_cell_ids),PETSC_DECIDE, &
+                       petscint_size,PETSC_DECIDE, &
                        ierr);CHKERRQ(ierr)
     else
       call VecSetSizes(regression%natural_cell_id_vec,0,PETSC_DECIDE, &

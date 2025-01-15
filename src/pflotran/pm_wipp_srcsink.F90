@@ -4530,7 +4530,8 @@ subroutine PMWSSCalcJacobianValues(this,A,ierr)
     call WIPPFloConvertUnitsToBRAGFlo(J_block,material_auxvars(ghosted_id), &
                                       this%option)
 
-    call MatSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,J_block, &
+    call MatSetValuesBlockedLocal(A,ONE_INTEGER,ghosted_id-1,ONE_INTEGER, &
+                                  ghosted_id-1,J_block, &
                                   ADD_VALUES,ierr);CHKERRQ(ierr)
 
   enddo

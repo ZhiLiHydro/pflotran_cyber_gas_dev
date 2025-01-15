@@ -962,7 +962,8 @@ subroutine MatGetSubABFImmiscible(A, App, Ass, factors1Vec,  &
   PetscInt :: block_size, rows, cols, num_blocks, num_blocks_local, &
               first_row, cur_col_index, num_col_blocks, &
               diag_row_index, loop_index, i, j, num_cols
-  PetscMPIInt :: rank, row_start, row_end
+  PetscMPIInt :: rank
+  PetscInt :: row_start, row_end
 
 
   ctx%vals = 0.d0
@@ -1090,13 +1091,13 @@ subroutine MatGetSubABFImmiscible(A, App, Ass, factors1Vec,  &
     end do
 
     ! e) set values
-    call MatSetValues(App,1,insert_rows,num_col_blocks, &
+    call MatSetValues(App,ONE_INTEGER,insert_rows,num_col_blocks, &
                       ctx%insert_colIdx(0:num_col_blocks-1), &
                       ctx%insert_vals(0:num_col_blocks-1),INSERT_VALUES, &
                       ierr);CHKERRQ(ierr)
 
     if (ctx%CPR_type == "ADDITIVE") then
-      call MatSetValues(Ass,1,insert_rows,num_col_blocks, &
+      call MatSetValues(Ass,ONE_INTEGER,insert_rows,num_col_blocks, &
                         ctx%insert_colIdx(0:num_col_blocks-1), &
                         ctx%insert_vals2(0:num_col_blocks-1),INSERT_VALUES, &
                         ierr);CHKERRQ(ierr)
@@ -1153,7 +1154,8 @@ subroutine MatGetSubQIMPESImmiscible(A, App, Ass, factors1Vec, &
   PetscInt :: block_size, rows, cols, num_blocks, num_blocks_local, &
               first_row, cur_col_index, num_col_blocks, &
               diag_row_index, loop_index, i, j, num_cols
-  PetscMPIInt :: rank, row_start, row_end
+  PetscMPIInt :: rank
+  PetscInt :: row_start, row_end
 
 
   ctx%vals = 0.d0
@@ -1275,12 +1277,12 @@ subroutine MatGetSubQIMPESImmiscible(A, App, Ass, factors1Vec, &
     end do
 
     ! e) set values
-    call MatSetValues(App,1,insert_rows,num_col_blocks, &
+    call MatSetValues(App,ONE_INTEGER,insert_rows,num_col_blocks, &
                       ctx%insert_colIdx(0:num_col_blocks-1), &
                       ctx%insert_vals(0:num_col_blocks-1),INSERT_VALUES, &
                       ierr);CHKERRQ(ierr)
     if (ctx%CPR_type == "ADDITIVE") then
-      call MatSetValues(Ass,1,insert_rows,num_col_blocks, &
+      call MatSetValues(Ass,ONE_INTEGER,insert_rows,num_col_blocks, &
                         ctx%insert_colIdx(0:num_col_blocks-1), &
                         ctx%insert_vals2(0:num_col_blocks-1),INSERT_VALUES, &
                         ierr);CHKERRQ(ierr)
@@ -1331,7 +1333,8 @@ subroutine MatGetSubABFMiscible(a, ap, factors1Vec,  ierr, ctx)
   PetscReal :: det, fac0, fac1, fac2, sm
   PetscInt :: b, rws, cls, nblks, nblks_l, firstRow, cur_coldex, ncolblks, &
               firstrowdex, loopdex, i, j, numcols, numcols_keep
-  PetscMPIInt :: rnk, r_st, r_nd
+  PetscMPIInt :: rnk
+  PetscInt :: r_st, r_nd
 
 
 
@@ -1441,7 +1444,7 @@ subroutine MatGetSubABFMiscible(a, ap, factors1Vec,  ierr, ctx)
     end do
 
     ! h) set values
-    call MatSetValues(ap,1,insert_rows,ncolblks, &
+    call MatSetValues(ap,ONE_INTEGER,insert_rows,ncolblks, &
                       ctx%insert_colIdx(0:ncolblks-1), &
                       ctx%insert_vals(0:ncolblks-1),INSERT_VALUES, &
                       ierr);CHKERRQ(ierr)
@@ -1481,7 +1484,8 @@ subroutine MatGetSubABFGeneric(a, ap, factors1Vec,  ierr, &
   PetscInt, dimension(0:0) :: insert_rows
   PetscReal, dimension(0:b-1,0:b-1) :: diag_block
   PetscReal, dimension(0:b-1) :: local_factors
-  PetscMPIInt :: rnk, r_st, r_nd
+  PetscMPIInt :: rnk
+  PetscInt :: r_st, r_nd
   PetscInt :: rws, cls, nblks, nblks_l, firstRow, cur_coldex, ncolblks, &
               firstrowdex, loopdex, i, j, k, numcols, numcols_keep
   PetscReal :: sm, offdiagsum, diagpart
@@ -1610,7 +1614,7 @@ subroutine MatGetSubABFGeneric(a, ap, factors1Vec,  ierr, &
 
 
     ! set values
-    call MatSetValues(ap,1,insert_rows,ncolblks, &
+    call MatSetValues(ap,ONE_INTEGER,insert_rows,ncolblks, &
                       ctx%insert_colIdx(0:ncolblks-1), &
                       ctx%insert_vals(0:ncolblks-1),INSERT_VALUES, &
                       ierr);CHKERRQ(ierr)

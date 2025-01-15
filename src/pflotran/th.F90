@@ -4557,11 +4557,13 @@ subroutine THJacobianInternalConn(A,realization,ierr)
 !  scale by the volume of the cell
 
       if (local_id_up > 0) then
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_up-1, &
+        call MatSetValuesBlockedLocal(A,ONE_INTEGER,ghosted_id_up-1, &
+                                      ONE_INTEGER,ghosted_id_up-1, &
                                       Jup/material_auxvars(ghosted_id_up)% &
                                         volume, &
                                       ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_dn-1, &
+        call MatSetValuesBlockedLocal(A,ONE_INTEGER,ghosted_id_up-1, &
+                                      ONE_INTEGER,ghosted_id_dn-1, &
                                       Jdn/material_auxvars(ghosted_id_up)% &
                                         volume, &
                                       ADD_VALUES,ierr);CHKERRQ(ierr)
@@ -4570,11 +4572,13 @@ subroutine THJacobianInternalConn(A,realization,ierr)
         Jup = -Jup
         Jdn = -Jdn
 
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_dn-1, &
+        call MatSetValuesBlockedLocal(A,ONE_INTEGER,ghosted_id_dn-1, &
+                                      ONE_INTEGER,ghosted_id_dn-1, &
                                       Jdn/material_auxvars(ghosted_id_dn)% &
                                         volume, &
                                       ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_up-1, &
+        call MatSetValuesBlockedLocal(A,ONE_INTEGER,ghosted_id_dn-1, &
+                                      ONE_INTEGER,ghosted_id_up-1, &
                                       Jup/material_auxvars(ghosted_id_dn)% &
                                         volume, &
                                       ADD_VALUES,ierr);CHKERRQ(ierr)
@@ -4735,7 +4739,8 @@ subroutine THJacobianBoundaryConn(A,realization,ierr)
       !  scale by the volume of the cell
       Jdn = Jdn/material_auxvars(ghosted_id)%volume
 
-      call MatSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jdn, &
+      call MatSetValuesBlockedLocal(A,ONE_INTEGER,ghosted_id-1, &
+                                    ONE_INTEGER,ghosted_id-1,Jdn, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
 
     enddo
@@ -4884,7 +4889,8 @@ subroutine THJacobianAccumulation(A,realization,ierr)
     ! scale by the volume of the cell
     Jup = Jup/material_auxvars(ghosted_id)%volume
 
-    call MatSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jup, &
+    call MatSetValuesBlockedLocal(A,ONE_INTEGER,ghosted_id-1,ONE_INTEGER, &
+                                  ghosted_id-1,Jup, &
                                   ADD_VALUES,ierr);CHKERRQ(ierr)
   enddo
 
@@ -5031,7 +5037,8 @@ subroutine THJacobianSourceSink(A,realization,ierr)
       ! scale by the volume of the cell
       Jsrc = Jsrc/material_auxvars(ghosted_id)%volume
 
-      call MatSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jsrc, &
+      call MatSetValuesBlockedLocal(A,ONE_INTEGER,ghosted_id-1,ONE_INTEGER, &
+                                    ghosted_id-1,Jsrc, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
 
 
@@ -5072,7 +5079,8 @@ subroutine THJacobianSourceSink(A,realization,ierr)
     else
       ip2 = ip1
     endif
-    call MatSetValuesLocal(A,1,ip1,1,ip2,1.d0,INSERT_VALUES, &
+    call MatSetValuesLocal(A,ONE_INTEGER,ip1,ONE_INTEGER, &
+                           ip2,1.d0,INSERT_VALUES, &
                            ierr);CHKERRQ(ierr)
   enddo
 

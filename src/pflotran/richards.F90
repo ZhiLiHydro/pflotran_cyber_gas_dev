@@ -2267,9 +2267,11 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
           istart_up = (ghosted_id_up-1)*option%nflowdof + 1
           istart_dn = (ghosted_id_dn-1)*option%nflowdof + 1
 
-          call MatSetValuesLocal(A,1,istart_up-1,1,istart_up-1,Jup,ADD_VALUES, &
+          call MatSetValuesLocal(A,ONE_INTEGER,istart_up-1,ONE_INTEGER, &
+                                 istart_up-1,Jup,ADD_VALUES, &
                                  ierr);CHKERRQ(ierr)
-          call MatSetValuesLocal(A,1,istart_up-1,1,istart_dn-1,Jdn,ADD_VALUES, &
+          call MatSetValuesLocal(A,ONE_INTEGER,istart_up-1,ONE_INTEGER, &
+                                 istart_dn-1,Jdn,ADD_VALUES, &
                                  ierr);CHKERRQ(ierr)
 #ifdef BUFFER_MATRIX
         endif
@@ -2290,9 +2292,11 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
           istart_up = (ghosted_id_up-1)*option%nflowdof + 1
           istart_dn = (ghosted_id_dn-1)*option%nflowdof + 1
 
-          call MatSetValuesLocal(A,1,istart_dn-1,1,istart_dn-1,Jdn,ADD_VALUES, &
+          call MatSetValuesLocal(A,ONE_INTEGER,istart_dn-1,ONE_INTEGER, &
+                                 istart_dn-1,Jdn,ADD_VALUES, &
                                  ierr);CHKERRQ(ierr)
-          call MatSetValuesLocal(A,1,istart_dn-1,1,istart_up-1,Jup,ADD_VALUES, &
+          call MatSetValuesLocal(A,ONE_INTEGER,istart_dn-1,ONE_INTEGER, &
+                                 istart_up-1,Jup,ADD_VALUES, &
                                  ierr);CHKERRQ(ierr)
 #ifdef BUFFER_MATRIX
         endif
@@ -2338,18 +2342,22 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
       if (local_id_up>0) then
         istart_up = (ghosted_id_up-1)*option%nflowdof + 1
         istart_dn = (ghosted_id_dn-1)*option%nflowdof + 1
-        call MatSetValuesLocal(A,1,istart_up-1,1,istart_up-1,Jup,ADD_VALUES, &
+        call MatSetValuesLocal(A,ONE_INTEGER,istart_up-1,ONE_INTEGER, &
+                               istart_up-1,Jup,ADD_VALUES, &
                                ierr);CHKERRQ(ierr)
-        call MatSetValuesLocal(A,1,istart_up-1,1,istart_dn-1,Jdn,ADD_VALUES, &
+        call MatSetValuesLocal(A,ONE_INTEGER,istart_up-1,ONE_INTEGER, &
+                               istart_dn-1,Jdn,ADD_VALUES, &
                                ierr);CHKERRQ(ierr)
       endif
 
       if (local_id_dn>0) then
         istart_up = (ghosted_id_up-1)*option%nflowdof + 1
         istart_dn = (ghosted_id_dn-1)*option%nflowdof + 1
-        call MatSetValuesLocal(A,1,istart_dn-1,1,istart_dn-1,-Jdn,ADD_VALUES, &
+        call MatSetValuesLocal(A,ONE_INTEGER,istart_dn-1,ONE_INTEGER, &
+                               istart_dn-1,-Jdn,ADD_VALUES, &
                                ierr);CHKERRQ(ierr)
-        call MatSetValuesLocal(A,1,istart_dn-1,1,istart_up-1,-Jup,ADD_VALUES, &
+        call MatSetValuesLocal(A,ONE_INTEGER,istart_dn-1,ONE_INTEGER, &
+                               istart_up-1,-Jup,ADD_VALUES, &
                                ierr);CHKERRQ(ierr)
       endif
     enddo
@@ -2479,7 +2487,8 @@ subroutine RichardsJacobianBoundaryConn(A,realization,ierr)
 #endif
         istart = (ghosted_id-1)*option%nflowdof + 1
 
-        call MatSetValuesLocal(A,1,istart-1,1,istart-1,Jdn,ADD_VALUES, &
+        call MatSetValuesLocal(A,ONE_INTEGER,istart-1,ONE_INTEGER, &
+                               istart-1,Jdn,ADD_VALUES, &
                                ierr);CHKERRQ(ierr)
 #ifdef BUFFER_MATRIX
       endif
@@ -2528,7 +2537,8 @@ subroutine RichardsJacobianBoundaryConn(A,realization,ierr)
           Jdn = -Jdn
 
           istart = (ghosted_id-1)*option%nflowdof + 1
-          call MatSetValuesLocal(A,1,istart-1,1,istart-1,Jdn,ADD_VALUES, &
+          call MatSetValuesLocal(A,ONE_INTEGER,istart-1,ONE_INTEGER, &
+                                 istart-1,Jdn,ADD_VALUES, &
                                  ierr);CHKERRQ(ierr)
 
         enddo
@@ -2630,7 +2640,8 @@ subroutine RichardsJacobianAccumulation(A,realization,ierr)
 #endif
         istart = (ghosted_id-1)*option%nflowdof + 1
 
-        call MatSetValuesLocal(A,1,istart-1,1,istart-1,Jup,ADD_VALUES, &
+        call MatSetValuesLocal(A,ONE_INTEGER,istart-1,ONE_INTEGER, &
+                               istart-1,Jup,ADD_VALUES, &
                                ierr);CHKERRQ(ierr)
 #ifdef BUFFER_MATRIX
       endif
@@ -2645,7 +2656,8 @@ subroutine RichardsJacobianAccumulation(A,realization,ierr)
         call InlineSurfaceAccumulationJac(inlinesurface_auxvars(region_id), &
              material_auxvars(ghosted_id),option,Jup)
         istart = (ghosted_id-1)*option%nflowdof + 1
-        call MatSetValuesLocal(A,1,istart-1,1,istart-1,Jup,ADD_VALUES, &
+        call MatSetValuesLocal(A,ONE_INTEGER,istart-1,ONE_INTEGER, &
+                               istart-1,Jup,ADD_VALUES, &
                                ierr);CHKERRQ(ierr)
       enddo
     endif
@@ -2802,7 +2814,8 @@ subroutine RichardsJacobianSourceSink(A,realization,ierr)
 #endif
         istart = (ghosted_id-1)*option%nflowdof + 1
 
-        call MatSetValuesLocal(A,1,istart-1,1,istart-1,Jup,ADD_VALUES, &
+        call MatSetValuesLocal(A,ONE_INTEGER,istart-1,ONE_INTEGER, &
+                               istart-1,Jup,ADD_VALUES, &
                                ierr);CHKERRQ(ierr)
 #ifdef BUFFER_MATRIX
       endif
@@ -3042,7 +3055,8 @@ subroutine RichardsSSSandbox(residual,Jacobian,compute_derivative, &
         print *, 'Jac_num:', Jac(1,1)
   !      stop
 #endif
-        call MatSetValuesBlockedLocal(Jacobian,1,ghosted_id-1,1,ghosted_id-1, &
+        call MatSetValuesBlockedLocal(Jacobian,ONE_INTEGER,ghosted_id-1, &
+                                      ONE_INTEGER,ghosted_id-1, &
                                       Jac,ADD_VALUES,ierr);CHKERRQ(ierr)
 
       else

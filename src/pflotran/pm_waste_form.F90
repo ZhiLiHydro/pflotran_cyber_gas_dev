@@ -8924,7 +8924,7 @@ subroutine ANNGetH5DatasetInfo(group_id,option,h5_name,dataset_name,dataset_id,&
 
   integer(HSIZE_T), allocatable :: dims_h5(:), max_dims_h5(:)
 
-  PetscInt :: ndims_h5
+  PetscMPIInt :: ndims_h5
 
   character(len=MAXSTRINGLENGTH) :: dataset_name
   character(len=MAXSTRINGLENGTH) :: h5_name
@@ -9050,7 +9050,7 @@ subroutine KnnrReadH5File(this, option)
 
   integer(HSIZE_T), allocatable :: dims_h5(:), max_dims_h5(:)
 
-  PetscInt :: ndims_h5
+  PetscMPIInt :: ndims_h5
 
   PetscMPIInt :: hdf5_err
 

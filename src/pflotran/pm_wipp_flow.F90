@@ -1400,7 +1400,8 @@ subroutine PMWIPPFloJacobian(this,snes,xx,A,B,ierr)
     do i = 1, size(this%dirichlet_dofs_ghosted)
       irow = this%dirichlet_dofs_ghosted(i)
       array(1,1) = diagonal_values(i)
-      call MatSetValuesLocal(A,1,irow,1,irow,array,INSERT_VALUES, &
+      call MatSetValuesLocal(A,ONE_INTEGER,irow,ONE_INTEGER,irow,array, &
+                             INSERT_VALUES, &
                              ierr);CHKERRQ(ierr)
     enddo
     call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)

@@ -684,7 +684,8 @@ subroutine IJacobianAccumulation(J,shift,realization,ierr)
                    d2energy_dPdt*TH_auxvars(ghosted_id)%dpres_dtime)* &
                    material_auxvars(ghosted_id)%volume
 
-    call MatSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1,Jlocal, &
+    call MatSetValuesBlockedLocal(J,ONE_INTEGER,ghosted_id-1,ONE_INTEGER, &
+                                  ghosted_id-1,Jlocal, &
                                   ADD_VALUES,ierr);CHKERRQ(ierr)
 
 

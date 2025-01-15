@@ -521,6 +521,7 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
   PetscInt :: ghosted_id
   PetscInt :: eletype, idof
   PetscInt :: petsc_id, local_id
+  PetscInt :: petscint_size
   PetscReal, pointer :: imech_loc_p(:)
   PetscInt :: size_elenodes
 
@@ -602,7 +603,8 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
        density_vec,beta_vec,alpha_vec,eletype, &
        grid%gauss_node(ielem)%dim,grid%gauss_node(ielem)%r, &
        grid%gauss_node(ielem)%w,res_vec,option)
-    call VecSetValues(r,size(ids),ids,res_vec,ADD_VALUES,ierr);CHKERRQ(ierr)
+    petscint_size = size(ids)
+    call VecSetValues(r,petscint_size,ids,res_vec,ADD_VALUES,ierr);CHKERRQ(ierr)
 #if 0
     call GeomechForceLocalElemError(size_elenodes,local_coordinates, &
                                     local_disp, &
@@ -1477,7 +1479,8 @@ subroutine GeomechForceJacobianLinearPart(A,geomech_realization)
                    option%ngeomechdof*(id2-1)+GEOMECH_DISP_X_DOF: &
                    option%ngeomechdof*(id2-1)+GEOMECH_DISP_Z_DOF)
 
-        call MatSetValuesBlocked(A,1,petsc_id1-1,1,petsc_id2-1,Jac_sub_mat, &
+        call MatSetValuesBlocked(A,ONE_INTEGER,petsc_id1-1,ONE_INTEGER, &
+                                 petsc_id2-1,Jac_sub_mat, &
                                  ADD_VALUES,ierr);CHKERRQ(ierr)
       enddo
     enddo

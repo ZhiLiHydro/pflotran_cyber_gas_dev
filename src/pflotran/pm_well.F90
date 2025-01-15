@@ -6036,7 +6036,8 @@ subroutine PMWellModifyFlowJacobian(this,Jac,ierr)
         call WIPPFloConvertUnitsToBRAGFlo(J_block,this%realization%patch%aux% &
                                       Material%auxvars(ghosted_id),this%option)
 
-        call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1, &
+        call MatSetValuesBlockedLocal(Jac,ONE_INTEGER,ghosted_id-1, &
+                                      ONE_INTEGER,ghosted_id-1, &
                                       J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
       enddo
     case(SCO2_MODE)
@@ -6104,7 +6105,8 @@ subroutine PMWellModifyFlowJacobian(this,Jac,ierr)
               local_col_index = (ghosted_id-1)*option%nflowdof + idof - 1
               J_well = -(res_pert)/pert
               if (dabs(J_well) > 0.d0) then
-                call MatSetValuesLocal(Jac,1,local_row_index,1, &
+                call MatSetValuesLocal(Jac,ONE_INTEGER,local_row_index, &
+                                        ONE_INTEGER, &
                                         local_col_index,J_well, &
                                         ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
@@ -6130,7 +6132,8 @@ subroutine PMWellModifyFlowJacobian(this,Jac,ierr)
             endif
           enddo
           if (any(dabs(J_block) > 0.d0)) then
-            call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1,&
+            call MatSetValuesBlockedLocal(Jac,ONE_INTEGER,ghosted_id-1, &
+                                        ONE_INTEGER,ghosted_id-1,&
                                         J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
           endif
 
@@ -6183,7 +6186,8 @@ subroutine PMWellModifyFlowJacobian(this,Jac,ierr)
             local_col_index = this%well_grid%h_ghosted_id(1)*option%nflowdof-1
             J_well = (res_pert - res)/pert
             if (dabs(J_well) > 0.d0) then
-              call MatSetValuesLocal(Jac,1,local_row_index,1,local_col_index, &
+              call MatSetValuesLocal(Jac,ONE_INTEGER,local_row_index, &
+                                      ONE_INTEGER,local_col_index, &
                                       J_well,ADD_VALUES,ierr);CHKERRQ(ierr)
             endif
           enddo
@@ -6202,13 +6206,15 @@ subroutine PMWellModifyFlowJacobian(this,Jac,ierr)
                               option%nflowdof-1
             J_well = (res_pert - res)/pert
             if (dabs(J_well) > 0.d0) then
-              call MatSetValuesLocal(Jac,1,local_row_index,1,local_col_index, &
+              call MatSetValuesLocal(Jac,ONE_INTEGER,local_row_index, &
+                                      ONE_INTEGER,local_col_index, &
                                       J_well,ADD_VALUES,ierr);CHKERRQ(ierr)
             endif
           endif
 
           if (any(dabs(J_block) > 0.d0)) then
-            call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1, &
+            call MatSetValuesBlockedLocal(Jac,ONE_INTEGER,ghosted_id-1, &
+                                        ONE_INTEGER,ghosted_id-1, &
                                         J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
           endif
         enddo
@@ -6273,7 +6279,8 @@ subroutine PMWellModifyFlowJacobian(this,Jac,ierr)
               local_col_index = (ghosted_id-1)*option%nflowdof + idof - 1
               J_well = -(res_pert)/pert
               if (dabs(J_well) > 0.d0) then
-                call MatSetValuesLocal(Jac,1,local_row_index,1, &
+                call MatSetValuesLocal(Jac,ONE_INTEGER,local_row_index, &
+                                        ONE_INTEGER, &
                                         local_col_index,J_well, &
                                         ADD_VALUES,ierr);CHKERRQ(ierr)
               endif
@@ -6305,7 +6312,8 @@ subroutine PMWellModifyFlowJacobian(this,Jac,ierr)
             endif
           enddo
           if (any(dabs(J_block) > 0.d0)) then
-            call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1,&
+            call MatSetValuesBlockedLocal(Jac,ONE_INTEGER,ghosted_id-1, &
+                                        ONE_INTEGER,ghosted_id-1,&
                                         J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
           endif
 
@@ -6366,7 +6374,8 @@ subroutine PMWellModifyFlowJacobian(this,Jac,ierr)
                               option%nflowdof-1
             J_well = (res_pert - res)/pert
             if (dabs(J_well) > 0.d0) then
-              call MatSetValuesLocal(Jac,1,local_row_index,1,local_col_index, &
+              call MatSetValuesLocal(Jac,ONE_INTEGER,local_row_index, &
+                                      ONE_INTEGER,local_col_index, &
                                       J_well,ADD_VALUES,ierr);CHKERRQ(ierr)
             endif
           enddo
@@ -6384,12 +6393,14 @@ subroutine PMWellModifyFlowJacobian(this,Jac,ierr)
                             option%nflowdof-1
           J_well = (res_pert - res)/pert
           if (dabs(J_well) > 0.d0) then
-            call MatSetValuesLocal(Jac,1,local_row_index,1,local_col_index, &
+            call MatSetValuesLocal(Jac,ONE_INTEGER,local_row_index, &
+                                    ONE_INTEGER,local_col_index, &
                                     J_well,ADD_VALUES,ierr);CHKERRQ(ierr)
           endif
 
           if (any(dabs(J_block) > 0.d0)) then
-            call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1, &
+            call MatSetValuesBlockedLocal(Jac,ONE_INTEGER,ghosted_id-1, &
+                                        ONE_INTEGER,ghosted_id-1, &
                                         J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
           endif
         enddo
@@ -6447,7 +6458,8 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
             local_col_index = (ghosted_id-1)*option%nflowdof + idof - 1
             J_well = UNINITIALIZED_DOUBLE
             if (dabs(J_well) > 0.d0) then
-              call MatSetValuesLocal(Jac,1,local_row_index,1, &
+              call MatSetValuesLocal(Jac,ONE_INTEGER,local_row_index, &
+                                      ONE_INTEGER, &
                                       local_col_index,J_well, &
                                       ADD_VALUES,ierr);CHKERRQ(ierr)
             endif
@@ -6460,7 +6472,8 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
           endif
         enddo
         if (any(dabs(J_block) > 0.d0)) then
-          call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1,&
+          call MatSetValuesBlockedLocal(Jac,ONE_INTEGER,ghosted_id-1, &
+                                      ONE_INTEGER,ghosted_id-1, &
                                       J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
         endif
 
@@ -6484,7 +6497,8 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
           local_col_index = this%well_grid%h_ghosted_id(1)*option%nflowdof-1
           J_well = UNINITIALIZED_DOUBLE
           if (dabs(J_well) > 0.d0) then
-            call MatSetValuesLocal(Jac,1,local_row_index,1,local_col_index, &
+            call MatSetValuesLocal(Jac,ONE_INTEGER,local_row_index, &
+                                    ONE_INTEGER,local_col_index, &
                                     J_well,ADD_VALUES,ierr);CHKERRQ(ierr)
           endif
         enddo
@@ -6495,13 +6509,15 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
                               option%nflowdof-1
           J_well = UNINITIALIZED_DOUBLE
             if (dabs(J_well) > 0.d0) then
-              call MatSetValuesLocal(Jac,1,local_row_index,1,local_col_index, &
+              call MatSetValuesLocal(Jac,ONE_INTEGER,local_row_index, &
+                                      ONE_INTEGER,local_col_index, &
                                       J_well,ADD_VALUES,ierr);CHKERRQ(ierr)
             endif
         endif
 
         if (any(dabs(J_block) > 0.d0)) then
-          call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1, &
+          call MatSetValuesBlockedLocal(Jac,ONE_INTEGER,ghosted_id-1, &
+                                      ONE_INTEGER,ghosted_id-1, &
                                       J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
         endif
       enddo
@@ -6519,7 +6535,8 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
                               option%nflowdof-1
             local_col_index = (ghosted_id-1)*option%nflowdof + idof - 1
             J_well = UNINITIALIZED_DOUBLE
-            call MatSetValuesLocal(Jac,1,local_row_index,1, &
+            call MatSetValuesLocal(Jac,ONE_INTEGER,local_row_index, &
+                                    ONE_INTEGER, &
                                     local_col_index,J_well, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
           endif
@@ -6529,7 +6546,8 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
           enddo
         enddo
         if (any(dabs(J_block) > 0.d0)) then
-          call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1,&
+          call MatSetValuesBlockedLocal(Jac,ONE_INTEGER,ghosted_id-1, &
+                                      ONE_INTEGER,ghosted_id-1,&
                                       J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
         endif
         !Perturbed rates wrt well perturbation.
@@ -6546,11 +6564,13 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
           local_row_index = (ghosted_id-1)*option%nflowdof + j
           local_col_index = this%well_grid%h_ghosted_id(1)*option%nflowdof-1
           J_well = UNINITIALIZED_DOUBLE
-          call MatSetValuesLocal(Jac,1,local_row_index,1,local_col_index, &
+          call MatSetValuesLocal(Jac,ONE_INTEGER,local_row_index,ONE_INTEGER, &
+                                  local_col_index, &
                                   J_well,ADD_VALUES,ierr);CHKERRQ(ierr)
         enddo
         if (any(dabs(J_block) > 0.d0)) then
-          call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1, &
+          call MatSetValuesBlockedLocal(Jac,ONE_INTEGER,ghosted_id-1, &
+                                        ONE_INTEGER,ghosted_id-1, &
                                         J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
         endif
       enddo

@@ -1435,6 +1435,7 @@ subroutine OutputGetExplicitIDsFlowrates(realization_base,count,vec_proc, &
   PetscInt :: local_id_up, local_id_dn
   PetscReal :: proc_up, proc_dn, conn_proc
   PetscInt :: sum_connection, count
+  PetscInt :: connection_size
   Vec :: global_vec
   Vec :: local_vec
   Vec :: vec_proc
@@ -1445,8 +1446,9 @@ subroutine OutputGetExplicitIDsFlowrates(realization_base,count,vec_proc, &
   option => realization_base%option
   field => realization_base%field
 
+  connection_size = size(grid%unstructured_grid%explicit_grid%connections,2)
   call VecCreateMPI(option%mycomm, &
-                    size(grid%unstructured_grid%explicit_grid%connections,2), &
+                    connection_size, &
                     PETSC_DETERMINE,vec_proc,ierr);CHKERRQ(ierr)
   call VecSet(vec_proc,0.d0,ierr);CHKERRQ(ierr)
 

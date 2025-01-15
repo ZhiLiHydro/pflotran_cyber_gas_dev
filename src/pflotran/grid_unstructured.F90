@@ -2647,7 +2647,8 @@ subroutine UGridMapSideSet(unstructured_grid,face_vertices,n_ss_faces, &
           int_array4_0(ivertex) = &
             unstructured_grid%vertex_ids_natural(vertex_id_local)-1
         enddo
-        call MatSetValues(Mat_vert_to_face,1,boundary_face_count-1+offset, &
+        call MatSetValues(Mat_vert_to_face,ONE_INTEGER, &
+                          boundary_face_count-1+offset, &
                           nvertices,int_array4_0,real_array4,INSERT_VALUES, &
                           ierr);CHKERRQ(ierr)
       endif
@@ -2967,7 +2968,8 @@ subroutine UGridMapSideSet2(unstructured_grid,face_vertices,n_ss_faces, &
           int_array4_0(ivertex) = &
             unstructured_grid%vertex_ids_natural(vertex_id_local)-1
         enddo
-        call MatSetValues(Mat_vert_to_face,1,boundary_face_count-1+offset, &
+        call MatSetValues(Mat_vert_to_face,ONE_INTEGER, &
+                          boundary_face_count-1+offset, &
                           nvertices,int_array4_0,real_array4,INSERT_VALUES, &
                           ierr);CHKERRQ(ierr)
       endif

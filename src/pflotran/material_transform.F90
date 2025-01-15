@@ -1152,7 +1152,7 @@ subroutine BatsTransformRead(this, input, option)
     select case(trim(keyword))
       !------------------------------------------
       case('B_COEFFICIENTS')
-        call InputReadNDoubles(input,option,this%b,3)
+        call InputReadNDoubles(input,option,this%b,THREE_INTEGER)
         call InputErrorMsg(input,option, &
              'Bats Function B coefficients',error_string)
       !------------------------------------------

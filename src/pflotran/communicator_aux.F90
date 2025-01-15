@@ -24,6 +24,9 @@ module Communicator_Aux_module
   interface CommIsIORank
     module procedure :: CommIsIORank1
     module procedure :: CommIsIORank2
+#if defined(PETSC_USE_64BIT_INDICES)
+    module procedure :: CommIsIORank3
+#endif
   end interface
 
   public :: CommCreate, &
@@ -147,6 +150,23 @@ function CommIsIORank2(comm,rank)
   CommIsIORank2 = (rank == comm%io_rank)
 
 end function CommIsIORank2
+
+! ************************************************************************** !
+
+#if defined(PETSC_USE_64BIT_INDICES)
+function CommIsIORank3(comm,rank)
+
+  implicit none
+
+  type(comm_type) comm
+  PetscInt :: rank
+
+  PetscBool :: CommIsIORank3
+
+  CommIsIORank3 = (rank == comm%io_rank)
+
+end function CommIsIORank3
+#endif
 
 ! ************************************************************************** !
 

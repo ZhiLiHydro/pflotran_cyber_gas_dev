@@ -2093,7 +2093,7 @@ subroutine TCFRead(thermal_conductivity_function,input,option)
         call InputReadAndConvertUnits(input,tcf%ref_temp, &
              'C','CHARACTERISTIC_CURVES_THERMAL,reference temperature',option)
       case('CUBIC_POLYNOMIAL_COEFFICIENTS')
-        call InputReadNDoubles(input,option,tcf%beta,3)
+        call InputReadNDoubles(input,option,tcf%beta,THREE_INTEGER)
         call InputErrorMsg(input,option, &
              'thermal conductivity polynomial coefficients',error_string)
       case default
@@ -2209,7 +2209,7 @@ subroutine TCFRead(thermal_conductivity_function,input,option)
         call InputReadAndConvertUnits(input,tcf%ref_temp, &
              'C','CHARACTERISTIC_CURVES_THERMAL,reference temperature',option)
       case('LINEAR_RESISTIVITY_COEFFICIENTS')
-        call InputReadNDoubles(input,option,tcf%a,2)
+        call InputReadNDoubles(input,option,tcf%a,TWO_INTEGER)
         call InputErrorMsg(input,option, &
              'linear thermal resistivity coefficients',error_string)
       case('REFERENCE_POROSITY')
@@ -2221,7 +2221,7 @@ subroutine TCFRead(thermal_conductivity_function,input,option)
         call InputErrorMsg(input,option, 'porosity exponent', &
              error_string)
       case('INITIAL_LINEAR_COEFFICIENTS')
-        call InputReadNDoubles(input,option,tcf%b,2)
+        call InputReadNDoubles(input,option,tcf%b,TWO_INTEGER)
         call InputErrorMsg(input,option, 'initial thermal conductivity linear coefficients', &
              error_string)
       case default

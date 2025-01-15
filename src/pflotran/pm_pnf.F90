@@ -372,7 +372,8 @@ subroutine PMPNFSetupLinearSystem(this,A,solution,right_hand_side,ierr)
     ghosted_id = grid%nL2G(local_id)
     tempreal = pnf_density_kg * material_auxvars(ghosted_id)%volume / &
                option%flow_dt
-    call MatSetValuesLocal(A,1,ghosted_id-1,1,ghosted_id-1,tempreal, &
+    call MatSetValuesLocal(A,ONE_INTEGER,ghosted_id-1,ONE_INTEGER, &
+                           ghosted_id-1,tempreal, &
                            ADD_VALUES,ierr);CHKERRQ(ierr)
     rhs_ptr(local_id) = tempreal(1,1)
   enddo
@@ -400,15 +401,19 @@ subroutine PMPNFSetupLinearSystem(this,A,solution,right_hand_side,ierr)
                   cur_connection_set%dist(0,iconn)
       endif
       if (local_id_up > 0) then
-        call MatSetValuesLocal(A,1,ghosted_id_up-1,1,ghosted_id_up-1,tempreal, &
+        call MatSetValuesLocal(A,ONE_INTEGER,ghosted_id_up-1,ONE_INTEGER, &
+                               ghosted_id_up-1,tempreal, &
                                ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesLocal(A,1,ghosted_id_up-1,1,ghosted_id_dn-1, &
+        call MatSetValuesLocal(A,ONE_INTEGER,ghosted_id_up-1,ONE_INTEGER, &
+                               ghosted_id_dn-1, &
                                -tempreal,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
       if (local_id_dn > 0) then
-        call MatSetValuesLocal(A,1,ghosted_id_dn-1,1,ghosted_id_dn-1,tempreal, &
+        call MatSetValuesLocal(A,ONE_INTEGER,ghosted_id_dn-1,ONE_INTEGER, &
+                               ghosted_id_dn-1,tempreal, &
                                ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesLocal(A,1,ghosted_id_dn-1,1,ghosted_id_up-1, &
+        call MatSetValuesLocal(A,ONE_INTEGER,ghosted_id_dn-1,ONE_INTEGER, &
+                               ghosted_id_up-1, &
                                -tempreal,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
     enddo
@@ -439,7 +444,8 @@ subroutine PMPNFSetupLinearSystem(this,A,solution,right_hand_side,ierr)
             tempreal = g_sup_h_constant * area**2 / &  ! w^3*b
                       cur_connection_set%dist(0,iconn)
           endif
-          call MatSetValuesLocal(A,1,ghosted_id-1,1,ghosted_id-1,tempreal, &
+          call MatSetValuesLocal(A,ONE_INTEGER,ghosted_id-1,ONE_INTEGER, &
+                                 ghosted_id-1,tempreal, &
                                  ADD_VALUES,ierr);CHKERRQ(ierr)
           tempreal = tempreal * rvalue
         case(NEUMANN_BC)

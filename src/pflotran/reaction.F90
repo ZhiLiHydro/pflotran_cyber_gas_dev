@@ -3207,7 +3207,7 @@ subroutine ReactionReadOutput(reaction,input,option)
         enddo
       case('PRINT_CELLS')
         string = 'CHEMISTRY,OUTPUT,PRINT_CELLS,array'
-        call UtilityReadArray(reaction%print_cells,0,string,input,option)
+        call UtilityReadArray(reaction%print_cells,ZERO_INTEGER,string,input,option)
       case default
         found = PETSC_FALSE
         ! primary aqueous species
