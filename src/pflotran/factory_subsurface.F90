@@ -704,12 +704,12 @@ subroutine FactorySubsurfaceInsertWellCells(simulation)
   field => realization%field
   option => simulation%option
 
-  ! skip everything but the unstructured implicit format
+  ! skip everything but the unstructured format
   select case(realization%discretization%itype)
     case(STRUCTURED_GRID)
       if (realization%option%comm%size > 1) then
         option%io_buffer=  'Currently, the well model can only be run in &
-          &parallel using an implicit unstructured grid. Please convert your &
+          &parallel using an unstructured grid. Please convert your &
           &STRUCTURED_GRID to UNSTRUCTURED_IMPLICIT using the provided Python &
           &utilities.'
         call PrintErrMsg(option)
@@ -720,13 +720,13 @@ subroutine FactorySubsurfaceInsertWellCells(simulation)
       select case(realization%discretization%grid%itype)
         case(IMPLICIT_UNSTRUCTURED_GRID)
         case default
-          if (realization%option%comm%size > 1) then
-            option%io_buffer=  'Currently, the well model can only be run in &
-              &parallel using an implicit unstructured grid.'
-            call PrintErrMsg(option)
-          else
-            return
-          endif
+          ! if (realization%option%comm%size > 1) then
+          !   option%io_buffer=  'Currently, the well model can only be run in &
+          !     &parallel using an implicit unstructured grid.'
+          !   call PrintErrMsg(option)
+          ! else
+          !   return
+          ! endif
       end select
   end select
 
@@ -808,6 +808,7 @@ subroutine FactorySubsurfaceInsertWellCells(simulation)
       end select
       cur_pm => cur_pm%next
     enddo
+
     nullify(well_cells)
     do
       if (.not. associated(pm_well)) exit

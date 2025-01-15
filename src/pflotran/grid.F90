@@ -2468,11 +2468,36 @@ subroutine GridExpandGhostCells(grid,option)
       enddo
       call DeallocateArray(grid%unstructured_grid%cell_ids_natural)
       grid%unstructured_grid%cell_ids_natural => int_array_ptr
-      call UGridExpandGhostCells(grid%unstructured_grid,scatter_gtol, &
+      call UGridImplicitExpandGhostCells(grid%unstructured_grid,scatter_gtol, &
                                  global_vec,local_vec,option)
     case(EXPLICIT_UNSTRUCTURED_GRID)
-      call PrintErrMsg(option,'Need to implement GridExpandGhostCells &
-                       &for ' // grid%ctype)
+      ! calculate natural ids for modified arrays
+      allocate(int_array_ptr(grid%ngmax))
+      do local_id = 1, grid%nlmax
+        int_array_ptr(local_id) = grid%global_offset+local_id
+      enddo
+      do icell = 1, num_ghost_cells
+        ghosted_id = icell + grid%nlmax
+        int_array_ptr(ghosted_id) = &
+          grid%unstructured_grid%ghost_cell_ids_petsc(icell)
+      enddo
+      int_array_ptr = int_array_ptr-1
+      call AOPetscToApplication(grid%unstructured_grid%ao_natural_to_petsc, &
+                                grid%ngmax,int_array_ptr,ierr);CHKERRQ(ierr)
+      int_array_ptr = int_array_ptr+1
+      ! ensure that natural ids of original ghost cells are not altered
+      do i = 1, size(grid%unstructured_grid%cell_ids_natural)
+        if (int_array_ptr(i) /= &
+            grid%unstructured_grid%cell_ids_natural(i)) then
+          option%io_buffer = 'Mismatch in cell id natural numbering due to &
+            &introduction of well cells (GridExpandGhostCells)'
+          call PrintErrMsgByRank(option)
+        endif
+      enddo
+      call DeallocateArray(grid%unstructured_grid%cell_ids_natural)
+      grid%unstructured_grid%cell_ids_natural => int_array_ptr
+      call UGridExplicitExpandGhostCells(grid%unstructured_grid,scatter_gtol, &
+                                 global_vec,local_vec,option)
     case(POLYHEDRA_UNSTRUCTURED_GRID)
       call PrintErrMsg(option,'Need to implement GridExpandGhostCells &
                        &for ' // grid%ctype)

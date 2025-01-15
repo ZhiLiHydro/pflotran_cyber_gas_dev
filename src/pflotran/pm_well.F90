@@ -854,7 +854,7 @@ subroutine PMWellSetupGrid(well_grid,res_grid,option)
   PetscReal, allocatable :: well_trajectory(:,:), temp_trajectory(:,:)
   PetscBool, allocatable :: well_casing(:), temp_casing(:)
   PetscReal :: cur_location(3)
-  PetscReal :: delta_segment
+  PetscReal :: delta_segment, zmin, zmax
   PetscInt :: temp_segments, total_segments, dims, index
   PetscReal :: proj, r, angle, angle_to_horiz
   PetscReal, allocatable :: temp_dx(:), temp_dy(:), temp_dz(:)
@@ -1162,7 +1162,6 @@ subroutine PMWellSetupGrid(well_grid,res_grid,option)
                             'if coarsening resolution is not an option.')
           endif
           temp_id_list(k) = local_id
-          cur_id = local_id
           dh_x = well_trajectory(j,1) - dh_x
           dh_y = well_trajectory(j,2) - dh_y
           dh_z = well_trajectory(j,3) - dh_z
@@ -1178,7 +1177,11 @@ subroutine PMWellSetupGrid(well_grid,res_grid,option)
           temp_casing(k) = well_casing(j)
           ! Don't count off-process cell ID's, but still compute
           ! where the change from on- to off- process occurs.
-          if (Uninitialized(local_id)) k = k - 1
+          if (Uninitialized(cur_id)) then
+            k = k - 1
+            temp_id_list(k) = temp_id_list(k+1)
+          endif
+          cur_id = local_id
         endif
 
         if (j == nsegments .and. Initialized(local_id)) then
@@ -1224,6 +1227,11 @@ subroutine PMWellSetupGrid(well_grid,res_grid,option)
       enddo
 
     endif
+
+    k = 0
+    do j = 1, nsegments
+      if (temp_z(j) > -1.d19) k = k+1
+    enddo
 
     well_grid%nsegments = k
 
@@ -1297,9 +1305,9 @@ subroutine PMWellSetupGrid(well_grid,res_grid,option)
 
     well_grid%casing(:) = UNINITIALIZED_DOUBLE
     well_grid%dh(:) = UNINITIALIZED_DOUBLE
-    well_grid%h(:)%x = UNINITIALIZED_DOUBLE
-    well_grid%h(:)%y = UNINITIALIZED_DOUBLE
-    well_grid%h(:)%z = UNINITIALIZED_DOUBLE
+    well_grid%h(:)%x = -1.d20
+    well_grid%h(:)%y = -1.d20
+    well_grid%h(:)%z = -1.d20
     well_grid%h_local_id(:) = UNINITIALIZED_INTEGER
     well_grid%h_ghosted_id(:) = UNINITIALIZED_INTEGER
     well_grid%h_global_id(:) = UNINITIALIZED_INTEGER
@@ -1308,7 +1316,7 @@ subroutine PMWellSetupGrid(well_grid,res_grid,option)
     well_grid%dx(:) = UNINITIALIZED_DOUBLE
     well_grid%dy(:) = UNINITIALIZED_DOUBLE
     well_grid%dz(:) = UNINITIALIZED_DOUBLE
-    well_grid%res_z(:) = UNINITIALIZED_DOUBLE
+    well_grid%res_z(:) = -1.d20
     well_grid%res_dz(:) = UNINITIALIZED_DOUBLE
 
     do k = 1,well_grid%nsegments
@@ -1347,7 +1355,7 @@ subroutine PMWellSetupGrid(well_grid,res_grid,option)
             elseif (StringCompare(res_grid%ctype,'IMPLICIT UNSTRUCTURED')) then
               if (associated(res_grid%unstructured_grid%face_centroid)) then
                 allocate(face_centroids(size(res_grid%unstructured_grid% &
-                       cell_to_face_ghosted(:,ghosted_id))))
+                        cell_to_face_ghosted(:,ghosted_id))))
                 do j = 1,size(face_centroids)
                   face_centroids(j) = res_grid%unstructured_grid% &
                                       face_centroid(res_grid% &
@@ -1357,17 +1365,25 @@ subroutine PMWellSetupGrid(well_grid,res_grid,option)
                 dim = 'z'
                 call UtilitySortArray(face_centroids,dim)
                 well_grid%res_dz(index) = dabs(face_centroids(size( &
-                                               face_centroids))%z - &
-                                               face_centroids(1)%z)
+                                                face_centroids))%z - &
+                                                face_centroids(1)%z)
                 deallocate(face_centroids)
               endif
             else
-              option%io_buffer = 'WELL_TRAJECTORY does not support the &
-                                  &specified grid type. Use either STRUCTURED &
-                                  &or IMPLICIT UNSTRUCTURED.'
-              call PrintErrMsg(option)
+              zmin = 1.d20
+              zmax = -1.d20
+              do j = 1,size(res_grid%unstructured_grid%explicit_grid% &
+                            face_centroids)
+                if (any(res_grid%unstructured_grid%explicit_grid% &
+                       connections(:,j) ==  ghosted_id)) then
+                  zmin = min(zmin,res_grid%unstructured_grid%explicit_grid% &
+                             face_centroids(j)%z)
+                  zmax = max(zmax,res_grid%unstructured_grid%explicit_grid% &
+                             face_centroids(j)%z)
+                endif
+              enddo
+              well_grid%res_dz(index) = dabs(zmax - zmin)
             endif
-
             exit
           endif
         enddo
@@ -1515,15 +1531,15 @@ subroutine PMWellSetupGrid(well_grid,res_grid,option)
 
     well_grid%dh(:) = UNINITIALIZED_DOUBLE
     well_grid%res_dz(:) = UNINITIALIZED_DOUBLE
-    well_grid%h(:)%x = UNINITIALIZED_DOUBLE
-    well_grid%h(:)%y = UNINITIALIZED_DOUBLE
-    well_grid%h(:)%z = UNINITIALIZED_DOUBLE
+    well_grid%h(:)%x = -1.d20
+    well_grid%h(:)%y = -1.d20
+    well_grid%h(:)%z = -1.d20
     well_grid%h_local_id(:) = UNINITIALIZED_INTEGER
     well_grid%h_ghosted_id(:) = UNINITIALIZED_INTEGER
     well_grid%h_global_id(:) = UNINITIALIZED_INTEGER
     well_grid%h_rank_id(:) = UNINITIALIZED_INTEGER
     well_grid%strata_id(:) = UNINITIALIZED_INTEGER
-    well_grid%res_z(:) = UNINITIALIZED_DOUBLE
+    well_grid%res_z(:) = -1.d20
 
     dh_x = diff_x/nsegments
     dh_y = diff_y/nsegments
@@ -1598,15 +1614,15 @@ subroutine PMWellSetupGrid(well_grid,res_grid,option)
 
     well_grid%dh(:) = UNINITIALIZED_DOUBLE
     well_grid%res_dz(:) = UNINITIALIZED_DOUBLE
-    well_grid%h(:)%x = UNINITIALIZED_DOUBLE
-    well_grid%h(:)%y = UNINITIALIZED_DOUBLE
-    well_grid%h(:)%z = UNINITIALIZED_DOUBLE
+    well_grid%h(:)%x = -1.d20
+    well_grid%h(:)%y = -1.d20
+    well_grid%h(:)%z = -1.d20
     well_grid%h_local_id(:) = UNINITIALIZED_INTEGER
     well_grid%h_ghosted_id(:) = UNINITIALIZED_INTEGER
     well_grid%h_global_id(:) = UNINITIALIZED_INTEGER
     well_grid%h_rank_id(:) = UNINITIALIZED_INTEGER
     well_grid%strata_id(:) = UNINITIALIZED_INTEGER
-    well_grid%res_z(:) = UNINITIALIZED_DOUBLE
+    well_grid%res_z(:) = -1.d20
 
     ! sort the z-list in ascending order, in case it was not provided that way
     allocate(temp_z_list(nsegments))
@@ -1691,15 +1707,15 @@ subroutine PMWellSetupGrid(well_grid,res_grid,option)
 
     well_grid%dh(:) = UNINITIALIZED_DOUBLE
     well_grid%res_dz(:) = UNINITIALIZED_DOUBLE
-    well_grid%h(:)%x = UNINITIALIZED_DOUBLE
-    well_grid%h(:)%y = UNINITIALIZED_DOUBLE
-    well_grid%h(:)%z = UNINITIALIZED_DOUBLE
+    well_grid%h(:)%x = -1.d20
+    well_grid%h(:)%y = -1.d20
+    well_grid%h(:)%z = -1.d20
     well_grid%h_local_id(:) = UNINITIALIZED_INTEGER
     well_grid%h_ghosted_id(:) = UNINITIALIZED_INTEGER
     well_grid%h_global_id(:) = UNINITIALIZED_INTEGER
     well_grid%h_rank_id(:) = UNINITIALIZED_INTEGER
     well_grid%strata_id(:) = UNINITIALIZED_INTEGER
-    well_grid%res_z(:) = UNINITIALIZED_DOUBLE
+    well_grid%res_z(:) = -1.d20
 
 
 
@@ -1805,15 +1821,15 @@ subroutine PMWellSetupGrid(well_grid,res_grid,option)
 
     well_grid%dh(:) = UNINITIALIZED_DOUBLE
     well_grid%res_dz(:) = UNINITIALIZED_DOUBLE
-    well_grid%h(:)%x = UNINITIALIZED_DOUBLE
-    well_grid%h(:)%y = UNINITIALIZED_DOUBLE
-    well_grid%h(:)%z = UNINITIALIZED_DOUBLE
+    well_grid%h(:)%x = -1.d20
+    well_grid%h(:)%y = -1.d20
+    well_grid%h(:)%z = -1.d20
     well_grid%h_local_id(:) = UNINITIALIZED_INTEGER
     well_grid%h_ghosted_id(:) = UNINITIALIZED_INTEGER
     well_grid%h_global_id(:) = UNINITIALIZED_INTEGER
     well_grid%h_rank_id(:) = UNINITIALIZED_INTEGER
     well_grid%strata_id(:) = UNINITIALIZED_INTEGER
-    well_grid%res_z(:) = UNINITIALIZED_DOUBLE
+    well_grid%res_z(:) = -1.d20
 
      well_grid%h_rank_id(:) = 0
      well_grid%res_dz(1:nsegments) = res_dz_list(1:nsegments)
