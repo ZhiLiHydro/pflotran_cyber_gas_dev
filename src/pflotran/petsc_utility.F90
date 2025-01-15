@@ -52,7 +52,8 @@ subroutine PetUtilMatSVBL(A,irow,icol,matrix_block,ndof)
 
   ndof_mat = matrix_block(1:ndof,1:ndof)
 
-  call MatSetValuesBlockedLocal(A,1,irow-1,1,icol-1,ndof_mat,ADD_VALUES, &
+  call MatSetValuesBlockedLocal(A,ONE_INTEGER,irow-1,ONE_INTEGER, &
+                                icol-1,ndof_mat,ADD_VALUES, &
                                 ierr);CHKERRQ(ierr)
 
 end subroutine PetUtilMatSVBL

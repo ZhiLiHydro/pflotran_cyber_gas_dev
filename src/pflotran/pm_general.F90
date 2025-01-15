@@ -15,7 +15,7 @@ module PM_General_class
   PetscInt, parameter :: REL_UPDATE_INDEX = 2
   PetscInt, parameter :: RESIDUAL_INDEX = 3
   PetscInt, parameter :: SCALED_RESIDUAL_INDEX = 4
-  PetscInt, parameter :: MAX_INDEX = SCALED_RESIDUAL_INDEX
+  PetscMPIInt, parameter :: MAX_INDEX = SCALED_RESIDUAL_INDEX
   PetscInt, pointer :: general_max_states
   PetscInt, pointer :: max_change_index
   PetscBool, public :: general_g_state_air_mass_dof = PETSC_FALSE
@@ -1482,6 +1482,7 @@ subroutine PMGeneralCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
   PetscReal, pointer :: accum2_p(:)
   PetscInt :: local_id, ghosted_id, natural_id
   PetscInt :: offset, ival, idof, itol
+  PetscInt :: temp_max_index
   PetscReal :: R, A, R_A
   PetscReal, parameter :: A_zero = 1.d-15
   PetscBool, allocatable :: converged_abs_residual_flag(:,:)
@@ -1640,8 +1641,9 @@ subroutine PMGeneralCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
     call MPI_Allreduce(MPI_IN_PLACE,flags,mpi_int, &
                        MPI_LOGICAL,MPI_LAND,option%mycomm,ierr);CHKERRQ(ierr)
 
-    this%converged_flag = reshape(flags(1:option%nflowdof*general_max_states*MAX_INDEX),&
-                            (/option%nflowdof,general_max_states,MAX_INDEX/))
+    temp_max_index = MAX_INDEX
+    this%converged_flag = reshape(flags(1:option%nflowdof*general_max_states*temp_max_index),&
+                            (/option%nflowdof,general_max_states,temp_max_index/))
     ! due to the 'and' operation, must invert the boolean using .not.
     general_high_temp_ts_cut = .not.flags(option%nflowdof*general_max_states*MAX_INDEX+1)
 

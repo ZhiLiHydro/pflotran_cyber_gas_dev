@@ -1621,7 +1621,8 @@ subroutine NWTJacobian(snes,xx,A,B,realization,ierr)
                             reaction_nw,option,Jac_accum)
 
       ! PETSc uses 0-based indexing so the position must be (ghosted_id-1)
-      call MatSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1,Jac_accum, &
+      call MatSetValuesBlockedLocal(J,ONE_INTEGER,ghosted_id-1, &
+                                    ONE_INTEGER,ghosted_id-1,Jac_accum, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
     enddo
   endif
@@ -1648,7 +1649,8 @@ subroutine NWTJacobian(snes,xx,A,B,realization,ierr)
       !WRITE(*,*)  '   JacSrcSink = ', Jac(:,:)
 
       ! PETSc uses 0-based indexing so the position must be (ghosted_id-1)
-      call MatSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1, &
+      call MatSetValuesBlockedLocal(J,ONE_INTEGER,ghosted_id-1,ONE_INTEGER, &
+                                    ghosted_id-1, &
                                     Jac_srcsink,ADD_VALUES, &
                                     ierr);CHKERRQ(ierr)
     enddo
@@ -1666,7 +1668,8 @@ subroutine NWTJacobian(snes,xx,A,B,realization,ierr)
                        reaction_nw,Jac_rxn)
 
     ! PETSc uses 0-based indexing so the position must be (ghosted_id-1)
-    call MatSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1,Jac_rxn, &
+    call MatSetValuesBlockedLocal(J,ONE_INTEGER,ghosted_id-1,ONE_INTEGER, &
+                                  ghosted_id-1,Jac_rxn, &
                                   ADD_VALUES,ierr);CHKERRQ(ierr)
   enddo
 
@@ -1710,9 +1713,11 @@ subroutine NWTJacobian(snes,xx,A,B,realization,ierr)
 
       if (local_id_up>0) then
         ! PETSc uses 0-based indexing so the position must be (ghosted_id-1)
-        call MatSetValuesBlockedLocal(J,1,ghosted_id_up-1,1,ghosted_id_up-1, &
+        call MatSetValuesBlockedLocal(J,ONE_INTEGER,ghosted_id_up-1, &
+                                      ONE_INTEGER,ghosted_id_up-1, &
                                       JacUp,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesBlockedLocal(J,1,ghosted_id_up-1,1,ghosted_id_dn-1, &
+        call MatSetValuesBlockedLocal(J,ONE_INTEGER,ghosted_id_up-1, &
+                                      ONE_INTEGER,ghosted_id_dn-1, &
                                       JacDn,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
 
@@ -1720,9 +1725,11 @@ subroutine NWTJacobian(snes,xx,A,B,realization,ierr)
         JacUp = -JacUp
         JacDn = -JacDn
         ! PETSc uses 0-based indexing so the position must be (ghosted_id-1)
-        call MatSetValuesBlockedLocal(J,1,ghosted_id_dn-1,1,ghosted_id_dn-1, &
+        call MatSetValuesBlockedLocal(J,ONE_INTEGER,ghosted_id_dn-1, &
+                                      ONE_INTEGER,ghosted_id_dn-1, &
                                       JacDn,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesBlockedLocal(J,1,ghosted_id_dn-1,1,ghosted_id_up-1, &
+        call MatSetValuesBlockedLocal(J,ONE_INTEGER,ghosted_id_dn-1, &
+                                      ONE_INTEGER,ghosted_id_up-1, &
                                       JacUp,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
 
@@ -1762,7 +1769,8 @@ subroutine NWTJacobian(snes,xx,A,B,realization,ierr)
 
       JacDn = -JacDn
       ! PETSc uses 0-based indexing so the position must be (ghosted_id-1)
-      call MatSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1,JacDn, &
+      call MatSetValuesBlockedLocal(J,ONE_INTEGER,ghosted_id-1,ONE_INTEGER, &
+                                    ghosted_id-1,JacDn, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
       ! note: Don't need to worry about JacUp because that is outside of
       ! the domain, and doesn't have a place in J.

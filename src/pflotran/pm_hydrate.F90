@@ -16,7 +16,7 @@ module PM_Hydrate_class
   PetscInt, parameter :: REL_UPDATE_INDEX = 2
   PetscInt, parameter :: RESIDUAL_INDEX = 3
   PetscInt, parameter :: SCALED_RESIDUAL_INDEX = 4
-  PetscInt, parameter :: MAX_INDEX = SCALED_RESIDUAL_INDEX
+  PetscMPIInt, parameter :: MAX_INDEX = SCALED_RESIDUAL_INDEX
 
   type, public, extends(pm_subsurface_flow_type) :: pm_hydrate_type
     PetscInt, pointer :: max_change_ivar(:)

@@ -72,6 +72,9 @@ module String_module
   interface StringWrite
     module procedure StringWriteI1
     module procedure StringWriteI2
+#if defined(PETSC_USE_64BIT_INDICES)
+    module procedure StringWriteI3
+#endif
     module procedure StringWriteES1
     module procedure StringWriteES2
     module procedure StringWriteString
@@ -1035,6 +1038,30 @@ function StringWriteI2(format_string,i)
   StringWriteI2 = trim(adjustl(string))
 
 end function StringWriteI2
+
+! ************************************************************************** !
+
+#if defined(PETSC_USE_64BIT_INDICES)
+function StringWriteI3(i)
+  !
+  ! Writes an integer to a string
+  !
+  ! Author: Glenn Hammond
+  ! Date: 08/06/18
+  !
+
+  implicit none
+
+  character(len=:), allocatable :: StringWriteI3
+
+  character(len=MAXSTRINGLENGTH) :: string
+  PetscMPIInt :: i
+
+  write(string,*) i
+  StringWriteI3 = trim(adjustl(string))
+
+end function StringWriteI3
+#endif
 
 ! ************************************************************************** !
 

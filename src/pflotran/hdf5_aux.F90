@@ -1322,14 +1322,17 @@ end subroutine HDF5ReadDbase
   character(len=*), intent(in) :: attr_name
   PetscReal, target, intent(out) :: buf
   type(option_type), intent(in)  :: option
+  PetscInt, dimension(:), allocatable :: petscint_shape
 
   type(print_handler_type), pointer :: print_handler
   type(c_ptr) :: ptr
 
   print_handler => OptionCreatePrintHandler(option)
   ptr = c_loc(buf)
+  allocate(petscint_shape(size(shape(buf))))
+  petscint_shape = transfer(shape(buf), petscint_shape)
   call HDF5AttributeReadBase(parent_id,attr_type,attr_name, &
-                             shape(buf),ptr,print_handler)
+                             petscint_shape,ptr,print_handler)
   call PrintDestroyHandler(print_handler)
 
 end subroutine HDF5AttributeReadDouble1
@@ -1350,14 +1353,17 @@ end subroutine HDF5AttributeReadDouble1
   character(len=*), intent(in) :: attr_name
   PetscReal, target, intent(out) :: buf
   class(driver_type), intent(in) :: driver
+  PetscInt, dimension(:), allocatable :: petscint_shape
 
   type(print_handler_type), pointer :: print_handler
   type(c_ptr) :: ptr
 
   print_handler => driver%CreatePrintHandler()
   ptr = c_loc(buf)
+  allocate(petscint_shape(size(shape(buf))))
+  petscint_shape = transfer(shape(buf), petscint_shape)
   call HDF5AttributeReadBase(parent_id,attr_type,attr_name, &
-                             shape(buf),ptr,print_handler)
+                             petscint_shape,ptr,print_handler)
   call PrintDestroyHandler(print_handler)
 
 end subroutine HDF5AttributeReadDouble2
@@ -1378,14 +1384,17 @@ subroutine HDF5AttributeReadInteger1(parent_id,attr_type,attr_name, &
   character(len=*), intent(in) :: attr_name
   PetscInt, target, intent(out) :: buf
   type(option_type), intent(in)  :: option
+  PetscInt, dimension(:), allocatable :: petscint_shape
 
   type(print_handler_type), pointer :: print_handler
   type(c_ptr) :: ptr
 
   print_handler => OptionCreatePrintHandler(option)
   ptr = c_loc(buf)
+  allocate(petscint_shape(size(shape(buf))))
+  petscint_shape = transfer(shape(buf), petscint_shape)
   call HDF5AttributeReadBase(parent_id,attr_type,attr_name, &
-                             shape(buf),ptr,print_handler)
+                             petscint_shape,ptr,print_handler)
   call PrintDestroyHandler(print_handler)
 
 end subroutine HDF5AttributeReadInteger1
@@ -1406,14 +1415,17 @@ subroutine HDF5AttributeReadInteger2(parent_id,attr_type,attr_name, &
   character(len=*), intent(in) :: attr_name
   PetscInt, target, intent(out) :: buf
   class(driver_type), intent(in) :: driver
+  PetscInt, dimension(:), allocatable :: petscint_shape
 
   type(print_handler_type), pointer :: print_handler
   type(c_ptr) :: ptr
 
   print_handler => driver%CreatePrintHandler()
   ptr = c_loc(buf)
+  allocate(petscint_shape(size(shape(buf))))
+  petscint_shape = transfer(shape(buf), petscint_shape)
   call HDF5AttributeReadBase(parent_id,attr_type,attr_name, &
-                             shape(buf),ptr,print_handler)
+                             petscint_shape,ptr,print_handler)
   call PrintDestroyHandler(print_handler)
 
 end subroutine HDF5AttributeReadInteger2
@@ -1434,14 +1446,17 @@ subroutine HDF5AttributeReadIntegerArray1D1(parent_id,attr_type,attr_name, &
   character(len=*), intent(in) :: attr_name
   PetscInt, target, intent(inout) :: buf(:)
   type(option_type), intent(in)  :: option
+  PetscInt, dimension(:), allocatable :: petscint_shape
 
   type(print_handler_type), pointer :: print_handler
   type(c_ptr) :: ptr
 
   print_handler => OptionCreatePrintHandler(option)
   ptr = c_loc(buf)
+  allocate(petscint_shape(size(shape(buf))))
+  petscint_shape = transfer(shape(buf), petscint_shape)
   call HDF5AttributeReadBase(parent_id,attr_type,attr_name, &
-                             shape(buf),ptr,print_handler)
+                             petscint_shape,ptr,print_handler)
   call PrintDestroyHandler(print_handler)
 
 end subroutine HDF5AttributeReadIntegerArray1D1
@@ -1462,14 +1477,17 @@ subroutine HDF5AttributeReadIntegerArray1D2(parent_id,attr_type,attr_name, &
   character(len=*), intent(in) :: attr_name
   PetscInt, target, intent(inout) :: buf(:)
   class(driver_type), intent(in) :: driver
+  PetscInt, dimension(:), allocatable :: petscint_shape
 
   type(print_handler_type), pointer :: print_handler
   type(c_ptr) :: ptr
 
   print_handler => driver%CreatePrintHandler()
   ptr = c_loc(buf)
+  allocate(petscint_shape(size(shape(buf))))
+  petscint_shape = transfer(shape(buf), petscint_shape)
   call HDF5AttributeReadBase(parent_id,attr_type,attr_name, &
-                             shape(buf),ptr,print_handler)
+                             petscint_shape,ptr,print_handler)
   call PrintDestroyHandler(print_handler)
 
 end subroutine HDF5AttributeReadIntegerArray1D2
@@ -1555,12 +1573,15 @@ subroutine HDF5AttributeWriteDouble1(parent_id,attr_type,attr_name, &
   character(len=*), intent(in) :: attr_name
   PetscReal, target, intent(in) :: buf
   type(option_type), intent(in)  :: option
+  PetscInt, dimension(:), allocatable :: petscint_shape
 
   type(print_handler_type), pointer :: print_handler
 
   print_handler => OptionCreatePrintHandler(option)
+  allocate(petscint_shape(size(shape(buf))))
+  petscint_shape = transfer(shape(buf), petscint_shape)
   call HDF5AttributeWrite(parent_id,attr_type,attr_name, &
-                          shape(buf),c_loc(buf),print_handler)
+                          petscint_shape,c_loc(buf),print_handler)
   call PrintDestroyHandler(print_handler)
 
 end subroutine HDF5AttributeWriteDouble1
@@ -1581,12 +1602,15 @@ subroutine HDF5AttributeWriteDouble2(parent_id,attr_type,attr_name, &
   character(len=*), intent(in) :: attr_name
   PetscReal, target, intent(in) :: buf
   class(driver_type), intent(in) :: driver
+  PetscInt, dimension(:), allocatable :: petscint_shape
 
   type(print_handler_type), pointer :: print_handler
 
   print_handler => driver%CreatePrintHandler()
+  allocate(petscint_shape(size(shape(buf))))
+  petscint_shape = transfer(shape(buf), petscint_shape)
   call HDF5AttributeWrite(parent_id,attr_type,attr_name, &
-                          shape(buf),c_loc(buf),print_handler)
+                          petscint_shape,c_loc(buf),print_handler)
   call PrintDestroyHandler(print_handler)
 
 end subroutine HDF5AttributeWriteDouble2
@@ -1607,12 +1631,15 @@ subroutine HDF5AttributeWriteInteger1(parent_id,attr_type,attr_name, &
   character(len=*), intent(in) :: attr_name
   PetscInt, target, intent(in) :: buf
   type(option_type), intent(in)  :: option
+  PetscInt, dimension(:), allocatable :: petscint_shape
 
   type(print_handler_type), pointer :: print_handler
 
   print_handler => OptionCreatePrintHandler(option)
+  allocate(petscint_shape(size(shape(buf))))
+  petscint_shape = transfer(shape(buf), petscint_shape)
   call HDF5AttributeWrite(parent_id,attr_type,attr_name, &
-                          shape(buf),c_loc(buf),print_handler)
+                          petscint_shape,c_loc(buf),print_handler)
   call PrintDestroyHandler(print_handler)
 
 end subroutine HDF5AttributeWriteInteger1
@@ -1633,12 +1660,15 @@ subroutine HDF5AttributeWriteInteger2(parent_id,attr_type,attr_name, &
   character(len=*), intent(in) :: attr_name
   PetscInt, target, intent(in) :: buf
   class(driver_type), intent(in) :: driver
+  PetscInt, dimension(:), allocatable :: petscint_shape
 
   type(print_handler_type), pointer :: print_handler
 
   print_handler => driver%CreatePrintHandler()
+  allocate(petscint_shape(size(shape(buf))))
+  petscint_shape = transfer(shape(buf), petscint_shape)
   call HDF5AttributeWrite(parent_id,attr_type,attr_name, &
-                          shape(buf),c_loc(buf),print_handler)
+                          petscint_shape,c_loc(buf),print_handler)
   call PrintDestroyHandler(print_handler)
 
 end subroutine HDF5AttributeWriteInteger2
@@ -1659,12 +1689,15 @@ subroutine HDF5AttributeWriteIntArray1D1(parent_id,attr_type,attr_name, &
   character(len=*), intent(in) :: attr_name
   PetscInt, target, intent(in) :: buf(:)
   type(option_type), intent(in)  :: option
+  PetscInt, dimension(:), allocatable :: petscint_shape
 
   type(print_handler_type), pointer :: print_handler
 
   print_handler => OptionCreatePrintHandler(option)
+  allocate(petscint_shape(size(shape(buf))))
+  petscint_shape = transfer(shape(buf), petscint_shape)
   call HDF5AttributeWrite(parent_id,attr_type,attr_name, &
-                          shape(buf),c_loc(buf),print_handler)
+                          petscint_shape,c_loc(buf),print_handler)
   call PrintDestroyHandler(print_handler)
 
 end subroutine HDF5AttributeWriteIntArray1D1
@@ -1685,12 +1718,15 @@ subroutine HDF5AttributeWriteIntArray1D2(parent_id,attr_type,attr_name, &
   character(len=*), intent(in) :: attr_name
   PetscInt, target, intent(in) :: buf(:)
   class(driver_type), intent(in) :: driver
+  PetscInt, dimension(:), allocatable :: petscint_shape
 
   type(print_handler_type), pointer :: print_handler
 
   print_handler => driver%CreatePrintHandler()
+  allocate(petscint_shape(size(shape(buf))))
+  petscint_shape = transfer(shape(buf), petscint_shape)
   call HDF5AttributeWrite(parent_id,attr_type,attr_name, &
-                          shape(buf),c_loc(buf),print_handler)
+                          petscint_shape,c_loc(buf),print_handler)
   call PrintDestroyHandler(print_handler)
 
 end subroutine HDF5AttributeWriteIntArray1D2

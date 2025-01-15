@@ -1643,7 +1643,8 @@ subroutine co2_span_wagner_db_write(temparray,filename,option)
   PetscReal :: tmp, tmp2, press, temp
   PetscReal, pointer :: co2_properties(:,:,:)
   PetscInt :: n_tab_press, n_tab_temp, n_sub_tab
-  PetscInt :: myrank, itable, iflag
+  PetscMPIInt :: myrank
+  PetscInt :: itable, iflag
   PetscInt :: i,j
   PetscInt :: status
 

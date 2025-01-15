@@ -230,6 +230,7 @@ subroutine RealizationCreateDiscretization(realization)
   type(option_type), pointer :: option
   PetscErrorCode :: ierr
   PetscInt :: ivar
+  PetscInt :: petscint_size
 
   option => realization%option
   field => realization%field
@@ -475,9 +476,9 @@ subroutine RealizationCreateDiscretization(realization)
   endif
 
   if (realization%output_option%print_explicit_flowrate) then
+    petscint_size = size(grid%unstructured_grid%explicit_grid%connections,2)
     call VecCreateMPI(option%mycomm, &
-                      size(grid%unstructured_grid%explicit_grid% &
-                        connections,2), &
+                      petscint_size, &
                       PETSC_DETERMINE,field%flowrate_inst,ierr);CHKERRQ(ierr)
     call VecSet(field%flowrate_inst,0.d0,ierr);CHKERRQ(ierr)
   endif
@@ -2792,6 +2793,7 @@ subroutine RealizationCheckConsistency(r1,r2)
   PetscBool :: error_found
   character(len=MAXSTRINGLENGTH) :: s
   PetscInt :: i
+  PetscInt :: petscint_size1, petscint_size2
   PetscErrorCode :: ierr
 
   o1 => r1%option
@@ -2823,14 +2825,16 @@ subroutine RealizationCheckConsistency(r1,r2)
     call PrintMsg(o1,s)
   endif
   s = 'Number of material properties'
-  if (IntegersDiffer(size(r1%patch%material_property_array), &
-                     size(r2%patch%material_property_array),s)) then
+  petscint_size1 = size(r1%patch%material_property_array)
+  petscint_size2 = size(r2%patch%material_property_array)
+  if (IntegersDiffer(petscint_size1,petscint_size2,s)) then
     error_found = PETSC_TRUE
     call PrintMsg(o1,s)
   endif
   s = 'Number of characteristic curves'
-  if (IntegersDiffer(size(r1%patch%characteristic_curves_array), &
-                     size(r2%patch%characteristic_curves_array),s)) then
+  petscint_size1 = size(r1%patch%characteristic_curves_array)
+  petscint_size2 = size(r2%patch%characteristic_curves_array)
+  if (IntegersDiffer(petscint_size1,petscint_size2,s)) then
     error_found = PETSC_TRUE
     call PrintMsg(o1,s)
   endif

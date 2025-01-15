@@ -871,7 +871,8 @@ subroutine UGridDMCreateMatrix(unstructured_grid,ugdm,mat_type,J,option)
 ! Go down the diagonal to ensure we have visited any unconnected cells
     do local_id = 1, unstructured_grid%nlmax
       ghosted_id = local_id
-      call MatSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1,values, &
+      call MatSetValuesBlockedLocal(J,ONE_INTEGER,ghosted_id-1,ONE_INTEGER, &
+                                    ghosted_id-1,values, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
     enddo
 
@@ -879,15 +880,19 @@ subroutine UGridDMCreateMatrix(unstructured_grid,ugdm,mat_type,J,option)
       id_up = unstructured_grid%explicit_grid%connections(1,iconn)
       id_dn = unstructured_grid%explicit_grid%connections(2,iconn)
       if (id_up <= unstructured_grid%nlmax) then ! local
-        call MatSetValuesBlockedLocal(J,1,id_up-1,1,id_up-1,values,ADD_VALUES, &
+        call MatSetValuesBlockedLocal(J,ONE_INTEGER,id_up-1,ONE_INTEGER, &
+                                      id_up-1,values,ADD_VALUES, &
                                       ierr);CHKERRQ(ierr)
-        call MatSetValuesBlockedLocal(J,1,id_up-1,1,id_dn-1,values,ADD_VALUES, &
+        call MatSetValuesBlockedLocal(J,ONE_INTEGER,id_up-1,ONE_INTEGER, &
+                                      id_dn-1,values,ADD_VALUES, &
                                       ierr);CHKERRQ(ierr)
       endif
       if (id_dn <= unstructured_grid%nlmax) then ! local
-        call MatSetValuesBlockedLocal(J,1,id_dn-1,1,id_dn-1,values,ADD_VALUES, &
+        call MatSetValuesBlockedLocal(J,ONE_INTEGER,id_dn-1,ONE_INTEGER, &
+                                      id_dn-1,values,ADD_VALUES, &
                                       ierr);CHKERRQ(ierr)
-        call MatSetValuesBlockedLocal(J,1,id_dn-1,1,id_up-1,values,ADD_VALUES, &
+        call MatSetValuesBlockedLocal(J,ONE_INTEGER,id_dn-1,ONE_INTEGER, &
+                                      id_up-1,values,ADD_VALUES, &
                                       ierr);CHKERRQ(ierr)
       endif
     enddo
@@ -896,13 +901,15 @@ subroutine UGridDMCreateMatrix(unstructured_grid,ugdm,mat_type,J,option)
       ! for unstructured grids, the first nlmax cells have identical local
       ! and global ids
       ghosted_id = local_id
-      call MatSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1,values, &
+      call MatSetValuesBlockedLocal(J,ONE_INTEGER,ghosted_id-1, &
+                                    ONE_INTEGER,ghosted_id-1,values, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
       do ineighbor = 1, unstructured_grid% &
                           cell_neighbors_local_ghosted(0,local_id)
         neighbor_id = abs(unstructured_grid% &
                             cell_neighbors_local_ghosted(ineighbor,local_id))
-        call MatSetValuesBlockedLocal(J,1,ghosted_id-1,1,neighbor_id-1,values, &
+        call MatSetValuesBlockedLocal(J,ONE_INTEGER,ghosted_id-1, &
+                                      ONE_INTEGER,neighbor_id-1,values, &
                                       ADD_VALUES,ierr);CHKERRQ(ierr)
       enddo
     enddo

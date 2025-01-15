@@ -605,6 +605,7 @@ subroutine InvSubsurfSetupForwardRunLinkage(this)
   PetscInt :: num_parameters
   PetscInt :: param_id
   PetscInt, allocatable :: int_array(:), int_array2(:)
+  PetscInt :: petscint_size
   PetscReal :: tempreal
   PetscReal, pointer :: vec_ptr(:)
   Vec :: v, v2
@@ -797,7 +798,8 @@ subroutine InvSubsurfSetupForwardRunLinkage(this)
         int_array = this%parameter_offset + int_array - 1
         call DiscretAOApplicationToPetsc(this%realization%discretization, &
                                          int_array)
-        call ISCreateGeneral(invcomm%communicator,size(int_array),int_array, &
+        petscint_size = size(int_array)
+        call ISCreateGeneral(invcomm%communicator,petscint_size,int_array, &
                              PETSC_COPY_VALUES,is_petsc,ierr);CHKERRQ(ierr)
         deallocate(int_array)
         call VecScatterCreate(this%realization%field%work,is_petsc, &
@@ -1173,6 +1175,7 @@ subroutine InvSubsurfConnectToForwardRun(this)
   PetscMPIInt :: mpi_int
   PetscBool :: iflag
   PetscInt :: iqoi(2)
+  PetscInt :: petscint_size
   PetscErrorCode :: ierr
 
   perturbation => this%inversion_aux%perturbation
@@ -1228,9 +1231,10 @@ subroutine InvSubsurfConnectToForwardRun(this)
           this%inversion_aux%sync_times(i)
       enddo
       ! allocate any full vector measurements
+      petscint_size = size(this%inversion_aux%parameters)
       call InvCoupledAllocateSolnVecs(this%inversion_aux%coupled_aux, &
                                       this%realization%field%work, &
-                                      size(this%inversion_aux%parameters))
+                                      petscint_size)
     endif
   endif
   real_array => this%inversion_aux%sync_times
@@ -1806,6 +1810,7 @@ subroutine InvSubsurfAdjAddSensitivities(this)
   PetscInt :: tempint
   PetscInt :: ndof
   PetscInt :: i, j, offset, local_id
+  PetscInt :: petscint_size
   Vec :: work  ! a 1 dof vec
   Vec :: onedof_vec
   Vec :: ndof_vec ! ndof_vec
@@ -1867,7 +1872,8 @@ subroutine InvSubsurfAdjAddSensitivities(this)
   call DiscretizationCreateVector(discretization,ONEDOF, &
                                   natural_vec,NATURAL,option)
 
-  call VecDuplicateVecsF90(ndof_vec,size(measurements),lambda, &
+  petscint_size = size(measurements)
+  call VecDuplicateVecsF90(ndof_vec,petscint_size,lambda, &
                            ierr);CHKERRQ(ierr)
   do i = 1, size(lambda)
     call VecZeroEntries(lambda(i),ierr);CHKERRQ(ierr)

@@ -1128,7 +1128,8 @@ subroutine GridCreateNaturalToGhostedHash(grid,option)
   type(option_type) :: option
 
   PetscInt :: local_ghosted_id, natural_id
-  PetscInt :: num_in_hash, num_ids_per_hash, hash_id, id, ierr, hash_id_2
+  PetscInt :: num_in_hash, num_ids_per_hash, hash_id, id, hash_id_2
+  PetscErrorCode :: ierr
   PetscInt :: max_num_ids_per_hash
   PetscInt, pointer :: hash(:,:,:), temp_hash(:,:,:)
 

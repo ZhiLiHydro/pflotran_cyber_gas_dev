@@ -1885,8 +1885,9 @@ subroutine GeneralJacobian(snes,xx,A,B,realization,ierr)
                               option, &
                               general_parameter%material_is_soluble(imat), &
                               Jup)
-    call MatSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jup, &
-                                  ADD_VALUES,ierr);CHKERRQ(ierr)
+    call MatSetValuesBlockedLocal(A,ONE_INTEGER,ghosted_id-1,ONE_INTEGER, &
+                                  ghosted_id-1,Jup,ADD_VALUES,ierr &
+                                  );CHKERRQ(ierr)
   enddo
 
   if (realization%debug%matview_Matrix_detailed) then
@@ -1936,17 +1937,21 @@ subroutine GeneralJacobian(snes,xx,A,B,realization,ierr)
                      general_parameter,option,&
                      Jup,Jdn)
       if (local_id_up > 0) then
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_up-1, &
+        call MatSetValuesBlockedLocal(A,ONE_INTEGER,ghosted_id_up-1, &
+                                      ONE_INTEGER,ghosted_id_up-1, &
                                       Jup,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_dn-1, &
+        call MatSetValuesBlockedLocal(A,ONE_INTEGER,ghosted_id_up-1, &
+                                      ONE_INTEGER,ghosted_id_dn-1, &
                                       Jdn,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
       if (local_id_dn > 0) then
         Jup = -Jup
         Jdn = -Jdn
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_dn-1, &
+        call MatSetValuesBlockedLocal(A,ONE_INTEGER,ghosted_id_dn-1, &
+                                      ONE_INTEGER,ghosted_id_dn-1, &
                                       Jdn,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_up-1, &
+        call MatSetValuesBlockedLocal(A,ONE_INTEGER,ghosted_id_dn-1, &
+                                      ONE_INTEGER,ghosted_id_up-1, &
                                       Jup,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
     enddo
@@ -2003,7 +2008,8 @@ subroutine GeneralJacobian(snes,xx,A,B,realization,ierr)
                       Jdn)
 
       Jdn = -Jdn
-      call MatSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jdn, &
+      call MatSetValuesBlockedLocal(A,ONE_INTEGER,ghosted_id-1, &
+                                    ONE_INTEGER,ghosted_id-1,Jdn, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
     enddo
     boundary_condition => boundary_condition%next
@@ -2057,7 +2063,8 @@ subroutine GeneralJacobian(snes,xx,A,B,realization,ierr)
                         material_parameter%soil_heat_capacity(imat), &
                         Jup)
 
-      call MatSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jup, &
+      call MatSetValuesBlockedLocal(A,ONE_INTEGER,ghosted_id-1,ONE_INTEGER, &
+                                    ghosted_id-1,Jup, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
 
     enddo
@@ -2517,7 +2524,8 @@ subroutine GeneralSSSandbox(residual,Jacobian,compute_derivative, &
           Jac(GENERAL_GAS_EQUATION_INDEX,:) = 0.d0
           Jac(:,GENERAL_GAS_EQUATION_INDEX) = 0.d0
         endif
-        call MatSetValuesBlockedLocal(Jacobian,1,ghosted_id-1,1,ghosted_id-1, &
+        call MatSetValuesBlockedLocal(Jacobian,ONE_INTEGER,ghosted_id-1, &
+                                      ONE_INTEGER,ghosted_id-1, &
                                       Jac,ADD_VALUES,ierr);CHKERRQ(ierr)
       else
         iend = local_id*option%nflowdof
