@@ -2365,6 +2365,7 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
                      patch%characteristic_curves_array(icc_up)%ptr, &
                      patch%characteristic_curves_array(icc_dn)%ptr, &
                      Jup,Jdn)
+print *, 'flux: ', local_id_up, local_id_dn, Jup, Jdn
 
       if (local_id_up > 0) then
 
@@ -2582,6 +2583,7 @@ subroutine RichardsJacobianBoundaryConn(A,realization,ierr)
                      patch%characteristic_curves_array(icc_dn)%ptr, &
                      Jdn)
       Jdn = -Jdn
+print *, 'bcflux: ',local_id, Jdn
 
 #ifdef BUFFER_MATRIX
       if (option%use_matrix_buffer) then
@@ -2733,6 +2735,7 @@ subroutine RichardsJacobianAccumulation(A,realization,ierr)
            patch%characteristic_curves_array( &
            patch%cc_id(ghosted_id))%ptr, &
            Jup)
+print *, 'acum: ',local_id, Jup
 
 #ifdef BUFFER_MATRIX
       if (option%use_matrix_buffer) then

@@ -1,0 +1,273 @@
+
+#Description: 3D test problem for testing chemical reactions
+#             based on chemistry from Hammond and Lichtner, WRR, 2010
+
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE RICHARDS
+    /
+    SUBSURFACE_TRANSPORT transport
+      MODE GIRT
+    /
+    AUXILIARY SALINITY
+      SPECIES Tracer 58.442469d0
+#      SPECIES Tracer 11.1
+#      SPECIES Tracer 0.d0
+    /
+  /
+END
+
+SUBSURFACE
+
+DEBUG
+PRINT_RESIDUAL
+PRINT_JACOBIAN
+APPEND_COUNTS_TO_FILENAMES
+END
+
+#=========================== numerical methods ================================
+NUMERICAL_METHODS FLOW
+
+  NEWTON_SOLVER
+    ITOL_UPDATE 1.d0
+#    NUMERICAL_JACOBIAN
+  /
+
+  LINEAR_SOLVER
+    SOLVER DIRECT
+  /
+
+END
+
+NUMERICAL_METHODS TRANSPORT
+
+  NEWTON_SOLVER
+#    NUMERICAL_JACOBIAN
+  /
+
+  LINEAR_SOLVER
+    SOLVER DIRECT
+  /
+
+END
+
+#=========================== regression =======================================
+#=========================== flow mode ========================================
+
+#=========================== chemistry ========================================
+CHEMISTRY
+  PRIMARY_SPECIES
+    Tracer
+  /
+  OUTPUT
+    ALL
+    TOTAL
+  /
+END
+
+#=========================== solver options ===================================
+
+
+
+
+
+#=========================== discretization ===================================
+#changed the grid 7/24/24
+GRID
+  TYPE STRUCTURED
+  ORIGIN 0.d0 0.d0 0.d0
+  NXYZ 3 1 1
+#  NXYZ 10 1 1
+  BOUNDS 
+    0.d0 0.d0 0.d0
+    100.d0 1.d0 10.d0
+  /
+END
+
+#=========================== fluid properties =================================
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.d-9
+END
+
+EOS WATER
+  DENSITY BATZLE_AND_WANG
+  VISCOSITY BATZLE_AND_WANG
+END
+
+#=========================== datasets =========================================
+
+#=========================== material properties ==============================
+MATERIAL_PROPERTY soil1
+  ID 1
+  POROSITY 0.25d0
+  TORTUOSITY 1.d0
+  CHARACTERISTIC_CURVES sf1
+  PERMEABILITY
+    PERM_X 1.d-12
+    PERM_Y 1.d-12
+    PERM_Z 1.d-12
+  /
+END
+
+#=========================== characteristic curves ============================
+CHARACTERISTIC_CURVES sf1
+  SATURATION_FUNCTION VAN_GENUCHTEN
+    M 0.5d0
+    ALPHA  1.d-4
+    LIQUID_RESIDUAL_SATURATION 0.1d0
+  /
+  PERMEABILITY_FUNCTION MUALEM_VG_LIQ
+    M 0.5d0
+    LIQUID_RESIDUAL_SATURATION 0.1d0
+  /
+END
+
+#=========================== output options ===================================
+OUTPUT
+#  TIMES d 0.001 0.01 0.1 1. 10. 100. 1000. 10000. 100000. 200000.
+#  PERIODIC TIME 1 d
+#  PERIODIC TIME 10.d0 d
+  PERIODIC TIMESTEP 1
+#  FORMAT TECPLOT BLOCK
+  FORMAT TECPLOT POINT
+#  FORMAT HDF5
+  VARIABLES
+    LIQUID_PRESSURE
+    LIQUID_DENSITY
+    SALINITY
+  /
+END
+
+#=========================== times ============================================
+#edited 7/24/24
+TIME
+#  FINAL_TIME 2.d6 d
+  FINAL_TIME 1.d-1 d
+#  FINAL_TIME 30. d
+#  INITIAL_TIMESTEP_SIZE 10.d0 d
+  INITIAL_TIMESTEP_SIZE 1.d-3 d
+  MAXIMUM_TIMESTEP_SIZE 10.d0 d
+END
+
+#=========================== regions ==========================================
+REGION all
+  COORDINATES
+    -1.d20 -1.d20 -1.d20
+    1.d20 1.d20 1.d20
+  /
+END
+
+REGION evaporation_zone
+  FACE TOP
+  COORDINATES
+    50.d0 0.d0 10.d0
+    90.d0 1.d0 10.d0
+  /
+END
+
+#changed to left side 7/24/24
+REGION inflow
+#saline
+FACE WEST
+  COORDINATES
+    0.d0 0.d0 8.d0
+    0.d0 1.d0 10.d0
+  /
+END
+
+#=========================== flow conditions ==================================
+FLOW_CONDITION initial
+  TYPE
+    LIQUID_PRESSURE DIRICHLET
+  /
+  LIQUID_PRESSURE 3.d5 ! Pa
+END
+
+FLOW_CONDITION inflow
+  TYPE
+    LIQUID_FLUX NEUMANN
+  /
+  LIQUID_FLUX 3.d0 m/y
+/
+
+FLOW_CONDITION seepage_face
+  TYPE
+    LIQUID_PRESSURE DIRICHLET
+#    LIQUID_PRESSURE DIRICHLET_SEEPAGE
+  /
+  LIQUID_PRESSURE 101324.d0
+END
+
+#=========================== transport conditions =============================
+TRANSPORT_CONDITION initial
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 initial
+  /
+END
+
+TRANSPORT_CONDITION inflow
+#saline
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 inflow
+#saline
+  /
+END
+
+TRANSPORT_CONDITION evaporation
+#  TYPE MEMBRANE_FILTER
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 initial
+  /
+END
+
+#=========================== transport constraints ============================
+#increasing concentration to .5 mol per m^3
+CONSTRAINT initial
+  CONCENTRATIONS
+    Tracer   6.d-1            T
+  /
+END
+
+CONSTRAINT inflow
+#saline
+  CONCENTRATIONS
+    Tracer   1.d-5            T
+  /
+END
+
+#=========================== condition couplers ===============================
+# initial condition
+INITIAL_CONDITION
+  FLOW_CONDITION initial
+  TRANSPORT_CONDITION initial
+  REGION all
+END
+
+BOUNDARY_CONDITION
+  FLOW_CONDITION inflow
+#saline
+  TRANSPORT_CONDITION inflow
+#saline
+  REGION inflow
+#saline
+END
+
+BOUNDARY_CONDITION evaporation
+  FLOW_CONDITION seepage_face
+  TRANSPORT_CONDITION evaporation
+  REGION evaporation_zone
+END
+
+#=========================== stratigraphy couplers ============================
+STRATA
+  MATERIAL soil1
+  REGION all
+END
+
+END_SUBSURFACE
+

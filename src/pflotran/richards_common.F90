@@ -75,6 +75,7 @@ subroutine RichardsAccumDerivative(rich_auxvar,global_auxvar, &
              rich_auxvar%dsat_dp*global_auxvar%den(1)) * &
             material_auxvar%porosity) * &
             vol_over_dt
+print *, 'accum_der:', rich_auxvar%dden_dp, rich_auxvar%dsat_dp
 
   if (option%flow%numerical_derivatives) then
     call GlobalAuxVarInit(global_auxvar_pert,option)

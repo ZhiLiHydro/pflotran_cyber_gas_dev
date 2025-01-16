@@ -452,6 +452,8 @@ subroutine PMAuxiliarySalinity(this,time,ierr)
       call EOSWaterDensity(global_auxvars(ghosted_id)%temp, &
                            global_auxvars(ghosted_id)%pres(1), &
                            mass_h2o,dw_mol,dw_dp,dw_dt,ierr)
+!mass_h2o = 1.d3
+!sum_mass_species = 0.
       xnacl = sum_mass_species / (sum_mass_species + mass_h2o)
       global_auxvars(ghosted_id)%m_nacl(iphase) = xnacl
     enddo

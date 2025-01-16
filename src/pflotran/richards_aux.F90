@@ -334,8 +334,10 @@ subroutine RichardsAuxVarCompute(x,auxvar,global_auxvar,material_auxvar, &
       ! the accumulation term
       aux(1) = global_auxvar%m_nacl(1)
     endif
+!aux(1) = 0.
     call EOSWaterDensityExt(global_auxvar%temp,pw,aux, &
                             dw_kg,dw_mol,dw_dp,dw_dt,ierr)
+print *, natural_id, global_auxvar%pres, dw_kg, global_auxvar%sat(1)
     if (ierr /= 0) then
       call PrintMsgByCell(option,natural_id, &
                           'Error in RichardsAuxVarCompute->EOSWaterDensityExt')
