@@ -3597,29 +3597,16 @@ subroutine UGridExplicitExpandGhostCells(ugrid,scatter_gtol,global_vec,local_vec
 
   PetscReal, allocatable :: real_array(:)
   PetscInt, allocatable :: int_array(:)
-  PetscInt, allocatable :: map_unsorted_to_sorted(:)
-  PetscInt, allocatable :: map_sorted_to_reduced(:)
 
-  PetscInt, allocatable :: cell_vertices_natural_new_1d(:)
-  PetscInt, allocatable :: cell_vertices_natural_new_1d_sorted(:)
-  PetscInt, allocatable :: cell_vertices_ghosted_1d(:)
-  PetscInt, pointer :: cell_vertices_ghosted_new(:,:)
-  PetscInt, pointer :: vertex_ids_natural_new(:)
-  type(point3d_type), pointer :: centroids_new(:)
   type(point3d_type), pointer :: cell_centroids_ghosted_new(:)
 
   PetscReal, pointer :: vec_loc_ptr(:)
 
-  PetscInt :: num_cells_ghosted_previous
-  PetscInt :: num_vert_full
-  PetscInt :: num_vert_unique
-
   PetscInt :: ghosted_id
   type(point3d_type) :: centroid_local
 
-  PetscInt :: ivertex
   PetscInt :: icell
-  PetscInt :: i, ii
+  PetscInt :: i
   PetscErrorCode :: ierr
 
   ! cell_ids

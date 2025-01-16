@@ -2147,149 +2147,153 @@ subroutine PMWellSetup(this)
     endif
   endif
 
-  ! Check that no reservoir grid cells were skipped.
-  ! Count how many of the h_global_id's are unique.
-  ! This sum must be = to the number of reservoir cells that the
-  !   well passes through.
-  option%io_buffer = 'WELLBORE_MODEL: Checking well grid resolution against &
-                     &reservoir grid.... '
-  call PrintMsg(option)
+  if (.not. StringCompare(res_grid%ctype,'EXPLICIT UNSTRUCTURED')) then
+    ! MAN: I think this check does not work for explicit unstructured grids.
 
-  allocate(h_global_id_unique(nsegments))
-  h_global_id_unique(:) = 0
+    ! Check that no reservoir grid cells were skipped.
+    ! Count how many of the h_global_id's are unique.
+    ! This sum must be = to the number of reservoir cells that the
+    !   well passes through.
+    option%io_buffer = 'WELLBORE_MODEL: Checking well grid resolution against &
+                      &reservoir grid.... '
+    call PrintMsg(option)
 
-  min_val = minval(h_all_global_id)-1
-  max_val = maxval(h_all_global_id)
-  k = 0
-  do while (min_val < max_val)
-    k = k + 1
-    min_val = minval(h_all_global_id, mask=h_all_global_id > min_val)
-    h_global_id_unique(k) = min_val
-  enddo
+    allocate(h_global_id_unique(nsegments))
+    h_global_id_unique(:) = 0
 
-  count1 = 0
-  do k = 1,nsegments
-    if (h_global_id_unique(k) > 0) then
-      count1 = count1 + 1
+    min_val = minval(h_all_global_id)-1
+    max_val = maxval(h_all_global_id)
+    k = 0
+    do while (min_val < max_val)
+      k = k + 1
+      min_val = minval(h_all_global_id, mask=h_all_global_id > min_val)
+      h_global_id_unique(k) = min_val
+    enddo
+
+    count1 = 0
+    do k = 1,nsegments
+      if (h_global_id_unique(k) > 0) then
+        count1 = count1 + 1
+      endif
+    enddo
+
+    deallocate(h_global_id_unique)
+    deallocate(h_rank_id_unique)
+    deallocate(h_all_rank_id)
+    deallocate(h_all_global_id)
+
+    ! Next, sum up how many grid cells the well passes thru.
+    ! Note: This count assumes that the well is vertical and the top and
+    !       bottom surfaces do not slope or undulate.
+    count2_local = 0
+    count2_global = 0
+    do k = 1,res_grid%ngmax
+      res_grid_cell_within_well_z = PETSC_FALSE
+      res_grid_cell_within_well_y = PETSC_FALSE
+      res_grid_cell_within_well_x = PETSC_FALSE
+      if ( (res_grid%z(k) >= well_grid%bottomhole(3)) .and. &
+          (res_grid%z(k) <= well_grid%tophole(3)) ) then
+        res_grid_cell_within_well_z = PETSC_TRUE
+      endif
+      if ( (res_grid%y(k) >= (well_grid%tophole(2)-xy_span)) .and. &
+          (res_grid%y(k) <= (well_grid%tophole(2)+xy_span)) ) then
+        res_grid_cell_within_well_y = PETSC_TRUE
+      endif
+      if ( (res_grid%x(k) >= (well_grid%tophole(1)-xy_span)) .and. &
+          (res_grid%x(k) <= (well_grid%tophole(1)+xy_span)) ) then
+        res_grid_cell_within_well_x = PETSC_TRUE
+      endif
+      if (res_grid_cell_within_well_z .and. res_grid_cell_within_well_y &
+          .and. res_grid_cell_within_well_x) then
+
+        ! What should the local_id of the reservoir cell at this z-level
+        ! along the well be?
+        dummy_h%z = res_grid%z(k)
+        dummy_h%y = well_grid%tophole(2)
+        dummy_h%x = well_grid%tophole(1)
+        call GridGetLocalIDFromCoordinate(res_grid,dummy_h,option,local_id)
+        local_id_well = local_id
+        ! What is the ghosted_id of the actual reservoir cell at this z-level?
+        dummy_h%z = res_grid%z(k)
+        dummy_h%y = res_grid%y(k)
+        dummy_h%x = res_grid%x(k)
+        call GridGetLocalIDFromCoordinate(res_grid,dummy_h,option,local_id)
+        local_id_res = local_id
+        ! Does the well occupy this grid cell? If a reservoir cell was skipped
+        ! by the well, then the count will never be incremented, and count2
+        ! will not equal count1. count2 will be larger than count1.
+        if ((local_id_res == local_id_well) .and. Initialized(local_id_res)) then
+          count2_local = count2_local + 1
+        endif
+
+      endif
+    enddo
+
+    ! All of the MPI processes need to sum up their counts and place the
+    ! total in count2_global.
+    if (this%well_comm%comm /= MPI_COMM_NULL) then
+      call MPI_Allreduce(count2_local,count2_global,ONE_INTEGER_MPI, &
+                        MPI_INTEGER, MPI_SUM,this%well_comm%comm,ierr); &
+                        CHKERRQ(ierr)
     endif
-  enddo
+    call MPI_Bcast(count2_global,ONE_INTEGER_MPI,MPI_INTEGER, &
+                  this%well_comm%petsc_rank_list(1),option%mycomm, &
+                  ierr);CHKERRQ(ierr)
 
-  deallocate(h_global_id_unique)
-  deallocate(h_rank_id_unique)
-  deallocate(h_all_rank_id)
-  deallocate(h_all_global_id)
+    ! The only way we can ensure that the well discretization did not skip a
+    ! reservoir cell, is if the number of unique global_id's that the well
+    ! is connected to (count1) matches the number of reservoir grid cells that
+    ! the well occupies (count2):
+    if (count1 == count2_global) then
+      well_grid_res_is_OK = PETSC_TRUE
+    elseif (associated(well_grid%deviated_well_segment_list)) then
+      !Basically bypass this check for now, since well grid was generated from
+      !res grid
+      well_grid_res_is_OK = PETSC_TRUE
+    endif
 
-  ! Next, sum up how many grid cells the well passes thru.
-  ! Note: This count assumes that the well is vertical and the top and
-  !       bottom surfaces do not slope or undulate.
-  count2_local = 0
-  count2_global = 0
-  do k = 1,res_grid%ngmax
-    res_grid_cell_within_well_z = PETSC_FALSE
-    res_grid_cell_within_well_y = PETSC_FALSE
-    res_grid_cell_within_well_x = PETSC_FALSE
-    if ( (res_grid%z(k) >= well_grid%bottomhole(3)) .and. &
-         (res_grid%z(k) <= well_grid%tophole(3)) ) then
-      res_grid_cell_within_well_z = PETSC_TRUE
-    endif
-    if ( (res_grid%y(k) >= (well_grid%tophole(2)-xy_span)) .and. &
-         (res_grid%y(k) <= (well_grid%tophole(2)+xy_span)) ) then
-      res_grid_cell_within_well_y = PETSC_TRUE
-    endif
-    if ( (res_grid%x(k) >= (well_grid%tophole(1)-xy_span)) .and. &
-         (res_grid%x(k) <= (well_grid%tophole(1)+xy_span)) ) then
-      res_grid_cell_within_well_x = PETSC_TRUE
-    endif
-    if (res_grid_cell_within_well_z .and. res_grid_cell_within_well_y &
-        .and. res_grid_cell_within_well_x) then
+    do k = 1,nsegments
+      if (Uninitialized(well_grid%h_local_id(k))) well_grid%h_local_id(k) = -1
+    enddo
 
-      ! What should the local_id of the reservoir cell at this z-level
-      ! along the well be?
-      dummy_h%z = res_grid%z(k)
-      dummy_h%y = well_grid%tophole(2)
-      dummy_h%x = well_grid%tophole(1)
-      call GridGetLocalIDFromCoordinate(res_grid,dummy_h,option,local_id)
-      local_id_well = local_id
-      ! What is the ghosted_id of the actual reservoir cell at this z-level?
-      dummy_h%z = res_grid%z(k)
-      dummy_h%y = res_grid%y(k)
-      dummy_h%x = res_grid%x(k)
-      call GridGetLocalIDFromCoordinate(res_grid,dummy_h,option,local_id)
-      local_id_res = local_id
-      ! Does the well occupy this grid cell? If a reservoir cell was skipped
-      ! by the well, then the count will never be incremented, and count2
-      ! will not equal count1. count2 will be larger than count1.
-      if ((local_id_res == local_id_well) .and. Initialized(local_id_res)) then
-        count2_local = count2_local + 1
+
+    if (.not.well_grid_res_is_OK) then
+      option%io_buffer = 'ERROR:  &
+        &The number of reservoir grid cells that are occupied by the well &
+        &(' // StringWrite(count2_global) // ') is larger than the number of &
+        &unique reservoir grid cells that have a connection to the well (' // &
+        StringWrite(count1) // '). Therefore, some of the reservoir grid cells &
+        &have been skipped and have no connection to the well. You must &
+        &increase the resolution of the WELLBORE_MODEL grid. '
+      call PrintMsg(option)
+      if (well_grid%match_reservoir) then
+        option%io_buffer = '(cont.) You should try &
+          &decreasing the value set for the dz step parameter &
+          &WELLBORE_MODEL,WELL_GRID,MINIMUM_DZ_STEP (default value = 1.0d-2 m).'
+        call PrintErrMsg(option)
+      else
+        option%io_buffer = '(see above) Alternatively, &
+          &if you are sure your well grid resolution is fine enough, try &
+          &increasing the value set for the x-y search parameter &
+          &WELLBORE_MODEL,WELL_GRID,XY_SEARCH_MULTIPLIER (default value = 10).'
+        call PrintErrMsg(option)
       endif
 
-    endif
-  enddo
-
-  ! All of the MPI processes need to sum up their counts and place the
-  ! total in count2_global.
-  if (this%well_comm%comm /= MPI_COMM_NULL) then
-    call MPI_Allreduce(count2_local,count2_global,ONE_INTEGER_MPI, &
-                       MPI_INTEGER, MPI_SUM,this%well_comm%comm,ierr); &
-                       CHKERRQ(ierr)
-  endif
-  call MPI_Bcast(count2_global,ONE_INTEGER_MPI,MPI_INTEGER, &
-                 this%well_comm%petsc_rank_list(1),option%mycomm, &
-                 ierr);CHKERRQ(ierr)
-
-  ! The only way we can ensure that the well discretization did not skip a
-  ! reservoir cell, is if the number of unique global_id's that the well
-  ! is connected to (count1) matches the number of reservoir grid cells that
-  ! the well occupies (count2):
-  if (count1 == count2_global) then
-    well_grid_res_is_OK = PETSC_TRUE
-  elseif (associated(well_grid%deviated_well_segment_list)) then
-    !Basically bypass this check for now, since well grid was generated from
-    !res grid
-    well_grid_res_is_OK = PETSC_TRUE
-  endif
-
-  do k = 1,nsegments
-    if (Uninitialized(well_grid%h_local_id(k))) well_grid%h_local_id(k) = -1
-  enddo
-
-
-  if (.not.well_grid_res_is_OK) then
-    option%io_buffer = 'ERROR:  &
-      &The number of reservoir grid cells that are occupied by the well &
-      &(' // StringWrite(count2_global) // ') is larger than the number of &
-      &unique reservoir grid cells that have a connection to the well (' // &
-      StringWrite(count1) // '). Therefore, some of the reservoir grid cells &
-      &have been skipped and have no connection to the well. You must &
-      &increase the resolution of the WELLBORE_MODEL grid. '
-    call PrintMsg(option)
-    if (well_grid%match_reservoir) then
-      option%io_buffer = '(cont.) You should try &
-        &decreasing the value set for the dz step parameter &
-        &WELLBORE_MODEL,WELL_GRID,MINIMUM_DZ_STEP (default value = 1.0d-2 m).'
-      call PrintErrMsg(option)
     else
-      option%io_buffer = '(see above) Alternatively, &
-        &if you are sure your well grid resolution is fine enough, try &
-        &increasing the value set for the x-y search parameter &
-        &WELLBORE_MODEL,WELL_GRID,XY_SEARCH_MULTIPLIER (default value = 10).'
-      call PrintErrMsg(option)
-    endif
-
-  else
-    option%io_buffer = 'WELLBORE_MODEL: &
-      &Well grid resolution is adequate. No reservoir grid cell &
-      &connections have been skipped.'
-    call PrintMsg(option)
-    if (well_grid%match_reservoir) then
       option%io_buffer = 'WELLBORE_MODEL: &
-        &For your convenience, the SEGMENT_CENTER_Z_VALUES (meters) are: '
+        &Well grid resolution is adequate. No reservoir grid cell &
+        &connections have been skipped.'
       call PrintMsg(option)
-      write(*,*) well_grid%h%z
-      option%io_buffer = 'WELLBORE_MODEL: &
-        &For your convenience, the SEGMENT_LENGTH_VALUES (meters) are: '
-      call PrintMsg(option)
-      write(*,*) well_grid%dh
+      if (well_grid%match_reservoir) then
+        option%io_buffer = 'WELLBORE_MODEL: &
+          &For your convenience, the SEGMENT_CENTER_Z_VALUES (meters) are: '
+        call PrintMsg(option)
+        write(*,*) well_grid%h%z
+        option%io_buffer = 'WELLBORE_MODEL: &
+          &For your convenience, the SEGMENT_LENGTH_VALUES (meters) are: '
+        call PrintMsg(option)
+        write(*,*) well_grid%dh
+      endif
     endif
   endif
 
