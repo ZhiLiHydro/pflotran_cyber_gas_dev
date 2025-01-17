@@ -35,7 +35,7 @@ END
 
 #=========================== discretization ===================================
 GRID
-  TYPE GRDECL mspe5.grdecl
+  TYPE ECLIPSE mspe5.grdecl
 END
 
 #=========================== fluid properties =================================
