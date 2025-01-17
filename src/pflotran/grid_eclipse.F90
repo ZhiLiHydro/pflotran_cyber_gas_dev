@@ -1,4 +1,4 @@
-module Grid_Grdecl_module
+module Grid_Eclipse_module
 
   !  Module to read a grid using industry-standard Eclipse keyword syntax
   !  and convert it to a Pflotran explicit unstructured grid
@@ -9,7 +9,7 @@ module Grid_Grdecl_module
   use Grid_Unstructured_Aux_module
   use Option_module
   use Input_Aux_module
-  use Grid_Grdecl_Util_module
+  use Grid_Eclipse_Util_module
 
   implicit none
 
@@ -319,13 +319,13 @@ module Grid_Grdecl_module
 
   PetscInt, parameter :: g_mina = 21
 
-  public  :: UGrdEclExplicitRead, &
-             GetNumArrSet, &
-             GetPoroPermValues, &
-             GetProcnumFlag, &
-             PermPoroExchangeAndSet, &
-             ProcnumExchangeAndSet, &
-             DeallocatePoroPermArrays
+  public  :: GridEclipseRead, &
+             GridEclipseGetNumArrSet, &
+             GridEclipseGetPorPerm, &
+             GridEcilpseGetProcnumFlag, &
+             GridEclipsePorPermExchangeAndSet, &
+             GridEclipseProcnumExchangeAndSet, &
+             GridEcipseDeallocatePorPermArrays
 
   private :: GrdeclReader
 
@@ -333,7 +333,7 @@ contains
 
 ! *************************************************************************** !
 
-subroutine UGrdEclExplicitRead(unstructured_grid, filename, option)
+subroutine GridEclipseRead(unstructured_grid, filename, option)
   !
   ! Reads an Eclgrid file, stores the data, finds connections
   ! and divides them across the ranks
@@ -417,7 +417,7 @@ subroutine UGrdEclExplicitRead(unstructured_grid, filename, option)
     call CreateElements(unstructured_grid, explicit_grid)
   endif
 
-end subroutine UGrdEclExplicitRead
+end subroutine GridEclipseRead
 
 ! *************************************************************************** !
 
@@ -1574,7 +1574,7 @@ subroutine DistributeCounts(option)
   ! Date: 12/11/18
   !
 
-  use Grid_Grdecl_Util_module, only : SetProbDims
+  use Grid_Eclipse_Util_module, only : SetProbDims
 
   implicit none
 
@@ -1655,7 +1655,6 @@ subroutine DoOperate(ztarg, ixl, ixu, iyl, iyu, izl, izu, &
   !
 
   use String_module ,only : StringCompareIgnoreCase
-  use Utility_module,only : PrintTidy8
 
   implicit none
 
@@ -2806,7 +2805,6 @@ subroutine GetGridArrayPointer(za, isint, isreal, ai, ar, qerr, iseql, &
   !
 
   use String_module
-  use Utility_module, only : PrintInt8
 
   implicit none
 
@@ -3952,7 +3950,6 @@ subroutine GrdeclReader(input, option)
   !
   use String_module
   use PFLOTRAN_Constants_module
-  use Utility_module, only : PrintInt8
 
   implicit none
 
@@ -4448,7 +4445,7 @@ end subroutine GetNextWord
 
 ! *************************************************************************** !
 
-function GetNumArrSet(maxnum,id_num_arr)
+function GridEclipseGetNumArrSet(maxnum,id_num_arr)
   !
   ! Get flag indicating that num array (eg satnum, imbnum, eqlnum, multnum) has been set
   !
@@ -4458,41 +4455,41 @@ function GetNumArrSet(maxnum,id_num_arr)
 
   implicit none
 
-  PetscBool :: GetNumArrSet
+  PetscBool :: GridEclipseGetNumArrSet
   PetscInt, intent(in)  :: id_num_arr
   PetscInt, intent(out) :: maxnum
 
-  GetNumArrSet = PETSC_FALSE
+  GridEclipseGetNumArrSet = PETSC_FALSE
 
   if ((id_num_arr == g_id_satnum_arr) .and. &
        (g_rsatn    == 1)) then
-    GetNumArrSet = PETSC_TRUE
+        GridEclipseGetNumArrSet = PETSC_TRUE
     maxnum       = g_maxsatn
   endif
 
   if ((id_num_arr == g_id_imbnum_arr) .and. &
        (g_rimbn    == 1)) then
-    GetNumArrSet = PETSC_TRUE
+    GridEclipseGetNumArrSet = PETSC_TRUE
     maxnum       = g_maximbn
   endif
 
   if ((id_num_arr == g_id_eqlnum_arr) .and. &
        (g_reqln    == 1)) then
-    GetNumArrSet = PETSC_TRUE
+    GridEclipseGetNumArrSet = PETSC_TRUE
     maxnum       = g_maxeqln
   endif
 
   if ((id_num_arr == g_id_mltnum_arr) .and. &
        (g_rmltn    == 1)) then
-    GetNumArrSet = PETSC_TRUE
+    GridEclipseGetNumArrSet = PETSC_TRUE
     maxnum       = g_maxmltn
   endif
 
-end function GetNumArrSet
+end function GridEclipseGetNumArrSet
 
 ! *************************************************************************** !
 
-subroutine GetPoroPermValues(ia, poro, permx, permy, permz)
+subroutine GridEclipseGetPorPerm(ia, poro, permx, permy, permz)
   !
   ! Get the perm and porosity values of a given active cell
   !
@@ -4514,11 +4511,11 @@ subroutine GetPoroPermValues(ia, poro, permx, permy, permz)
   permy = g_g(ilgr)%ky  (ig)
   permz = g_g(ilgr)%kz  (ig)
 
-end subroutine GetPoroPermValues
+end subroutine GridEclipseGetPorPerm
 
 ! *************************************************************************** !
 
-function GetProcnumFlag()
+function GridEcilpseGetProcnumFlag()
   !
   ! Get the procnum required flag
   !
@@ -4527,11 +4524,11 @@ function GetProcnumFlag()
 
   implicit none
 
-  PetscInt :: GetProcnumFlag
+  PetscInt :: GridEcilpseGetProcnumFlag
 
-  GetProcnumFlag = g_rprcn
+  GridEcilpseGetProcnumFlag = g_rprcn
 
-end function GetProcnumFlag
+end function GridEcilpseGetProcnumFlag
 
 ! *************************************************************************** !
 
@@ -5299,7 +5296,7 @@ end subroutine OpenEgridFileToRead
 
 ! *************************************************************************** !
 
-subroutine PermPoroExchangeAndSet(poro_p, permx_p, permy_p, permz_p, &
+subroutine GridEclipsePorPermExchangeAndSet(poro_p, permx_p, permy_p, permz_p,&
                                   inatsend, nlmax, option)
   !
   ! Perm and porosity values from the grdecl file are known on the IO rank
@@ -5413,7 +5410,7 @@ subroutine PermPoroExchangeAndSet(poro_p, permx_p, permy_p, permz_p, &
 
         do ilo = 1, nlo
           ino = winat(ilo)
-          call GetPoroPermValues(ino, poro, permx, permy, permz)
+          call GridEclipseGetPorPerm(ino, poro, permx, permy, permz)
           ibp = 3*(ilo-1)
           wporo(ilo) = poro
           wperm(ibp+1) = permx
@@ -5444,7 +5441,7 @@ subroutine PermPoroExchangeAndSet(poro_p, permx_p, permy_p, permz_p, &
     call MPI_Barrier(option%mycomm, ierr)
   enddo
 
-end subroutine PermPoroExchangeAndSet
+end subroutine GridEclipsePorPermExchangeAndSet
 
 ! *************************************************************************** !
 
@@ -5493,7 +5490,7 @@ end subroutine ProcessArgToInt
 
 ! *************************************************************************** !
 
-subroutine ProcnumExchangeAndSet(inatsend, nlmax, option)
+subroutine GridEclipseProcnumExchangeAndSet(inatsend, nlmax, option)
   !
   ! Set up procnum array by getting the inat cell indices from each proc
   !
@@ -5581,7 +5578,7 @@ subroutine ProcnumExchangeAndSet(inatsend, nlmax, option)
     call MPI_Barrier(option%mycomm, ierr)
   enddo
 
-end subroutine ProcnumExchangeAndSet
+end subroutine GridEclipseProcnumExchangeAndSet
 
 ! *************************************************************************** !
 
@@ -5633,7 +5630,7 @@ subroutine ProcessGridData(qerr,option)
   ! Date: 11/13/18
   !
 
-  use Grid_Grdecl_Util_module, only : SetLGRName, SetLGRDimensions
+  use Grid_Eclipse_Util_module, only : SetLGRName, SetLGRDimensions
 
   implicit none
 
@@ -5931,7 +5928,7 @@ subroutine ReadEclipseEgridFile(efilename, coord, zcorn, actn, nx, ny, nz, &
   ! Date: 08/11/21
 
   use String_module,only : StringCompareIgnoreCase, StringToUpper
-  use Grid_Grdecl_Util_module
+  use Grid_Eclipse_Util_module
 
   implicit none
 
@@ -7574,7 +7571,7 @@ end subroutine DeallocateActiveArrays
 
 ! *************************************************************************** !
 
-subroutine DeallocatePoroPermArrays(solution_monitor,option)
+subroutine GridEcipseDeallocatePorPermArrays(solution_monitor,option)
   !
   ! Deallocate the perma and porosity arrays
   !
@@ -7613,8 +7610,8 @@ subroutine DeallocatePoroPermArrays(solution_monitor,option)
 
   endif
 
-end subroutine DeallocatePoroPermArrays
+end subroutine GridEcipseDeallocatePorPermArrays
 
 ! *************************************************************************** !
 
-end module Grid_Grdecl_module
+end module Grid_Eclipse_module

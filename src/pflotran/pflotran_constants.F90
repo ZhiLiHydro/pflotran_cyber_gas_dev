@@ -262,43 +262,12 @@ module PFLOTRAN_Constants_module
   PetscInt, parameter, public :: IMPLICIT_UNSTRUCTURED_GRID = 3
   PetscInt, parameter, public :: EXPLICIT_UNSTRUCTURED_GRID = 4
   PetscInt, parameter, public :: POLYHEDRA_UNSTRUCTURED_GRID = 5
+  PetscInt, parameter, public :: ECLIPSE_UNSTRUCTURED_GRID = 6
   PetscInt, parameter, public :: ONE_DIM_GRID = 1
   PetscInt, parameter, public :: TWO_DIM_GRID = 2
   PetscInt, parameter, public :: THREE_DIM_GRID = 3
   PetscInt, parameter, public :: VERTEX_CENTERED_OUTPUT_MESH = 1
   PetscInt, parameter, public :: CELL_CENTERED_OUTPUT_MESH = 2
-
-  ! Index of the global grid and max number of lgrs
-  PetscInt, public, parameter :: g_ifld = 1
-  PetscInt, public, parameter :: g_mlgr = 10
-
-  ! Number of directional rel perm num arrays and pointers to contents
-
-  PetscInt, public , parameter :: idrpa_krx = 1
-  PetscInt, public , parameter :: idrpa_kry = 2
-  PetscInt, public , parameter :: idrpa_krz = 3
-  PetscInt, public , parameter :: idrpa_imx = 4
-  PetscInt, public , parameter :: idrpa_imy = 5
-  PetscInt, public , parameter :: idrpa_imz = 6
-  PetscInt, public , parameter :: mdrpa     = 6
-  PetscInt, public , parameter :: mfipa     = 6
-
-  ! Up and down orientations
-
-  PetscInt, public , parameter :: g_npon   = 2
-  PetscInt, public , parameter :: g_ipon_l = 1
-  PetscInt, public , parameter :: g_ipon_u = 2
-
-  ! Cartesian frame pointers
-
-  PetscInt, public , parameter :: g_xdir = 1
-  PetscInt, public , parameter :: g_ydir = 2
-  PetscInt, public , parameter :: g_zdir = 3
-
-  PetscInt, public , parameter :: g_ndir = 3
-
-  PetscInt, parameter, public :: UNIT_GRDECL_READ = 50
-  PetscInt, parameter, public :: UNIT_EGRID_READ  = 60
 
   ! Geomechanics
   PetscInt, parameter, public :: GEOMECH_DISP_X_DOF = 1

@@ -1,4 +1,4 @@
-module Grid_Grdecl_Util_module
+module Grid_Eclipse_Util_module
 
 ! A set of small utilities used by the grdecl and Output_Eclipse_module modules
 
@@ -22,6 +22,39 @@ module Grid_Grdecl_Util_module
             GetFipaName, GetBaseFip, GetNinFip
   public :: GetDRPSubindex, GetDRPSubindexName, AllocArgs, DeallocArgs
   public :: StoreCGL, GetNCGL ,FindCGL, ReleaseCGL
+  public :: CopyString, PrintTidy8, PrintInt8
+
+  ! Index of the global grid and max number of lgrs
+  PetscInt, public, parameter :: g_ifld = 1
+  PetscInt, public, parameter :: g_mlgr = 10
+
+  ! Number of directional rel perm num arrays and pointers to contents
+
+  PetscInt, public , parameter :: idrpa_krx = 1
+  PetscInt, public , parameter :: idrpa_kry = 2
+  PetscInt, public , parameter :: idrpa_krz = 3
+  PetscInt, public , parameter :: idrpa_imx = 4
+  PetscInt, public , parameter :: idrpa_imy = 5
+  PetscInt, public , parameter :: idrpa_imz = 6
+  PetscInt, public , parameter :: mdrpa     = 6
+  PetscInt, public , parameter :: mfipa     = 6
+
+  ! Up and down orientations
+
+  PetscInt, public , parameter :: g_npon   = 2
+  PetscInt, public , parameter :: g_ipon_l = 1
+  PetscInt, public , parameter :: g_ipon_u = 2
+
+  ! Cartesian frame pointers
+
+  PetscInt, public , parameter :: g_xdir = 1
+  PetscInt, public , parameter :: g_ydir = 2
+  PetscInt, public , parameter :: g_zdir = 3
+
+  PetscInt, public , parameter :: g_ndir = 3
+
+  PetscInt, parameter, public :: UNIT_GRDECL_READ = 50
+  PetscInt, parameter, public :: UNIT_EGRID_READ  = 60
 
   PetscReal, parameter :: e_atm = 1.01325
 
@@ -1026,8 +1059,6 @@ end function GetNLGR
 
 function GetLGRName8(ilgr)
 
-  use Utility_module, only : CopyString
-
   implicit none
 
   character(len=8) :: GetLGRName8
@@ -1368,4 +1399,145 @@ subroutine ReleaseCGL
 
 end subroutine ReleaseCGL
 
-end module Grid_Grdecl_Util_module
+! ************************************************************************** !
+
+subroutine CopyString(a,b)
+
+  !
+  ! Copy string and truncate result if required
+  ! Avoids compiler warnings with default Fortran version
+  !
+  ! Author: Dave Ponting
+  ! Date  : 10/05/21
+
+  character(len=*),intent(out) :: a
+  character(len=*),intent(in ) :: b
+
+  PetscInt :: la, lb, ia, ib
+  character(len=1) :: v
+
+  ! Initialise output value
+
+  a    = ''
+
+  la = len(a)
+  lb = len_trim(b)
+
+  ! Initialise output count
+
+  ia = 0
+
+  ! Add in characters of b
+
+  do ib = 1, lb
+    v = b(ib:ib)
+    if ( ia<la ) then
+      ia = ia + 1
+      a(ia:ia)=v
+    else
+      exit
+    endif
+  enddo
+
+end subroutine CopyString
+
+! ************************************************************************** !
+
+subroutine PrintTidy8(va, s)
+  !
+  ! Write out real number in neat 8-character format
+  !
+  ! Author: Dave Ponting
+  ! Date  : 03/08/19
+
+  implicit none
+  PetscReal, intent(in) :: va
+  character(len=8), intent(out) :: s
+  character(len=8) :: zn
+  PetscBool :: isNeg
+  PetscInt  :: exponent, ilog10
+  PetscReal :: v, vl, vu
+
+  v  = va
+  vu = 9999.99D0
+  vl = 1.0D-3
+  isNeg    = PETSC_FALSE
+  exponent = 0
+
+  s = '     0.0' ! Default
+
+  if (v<0.0) then
+    isNeg = PETSC_TRUE;v=-v
+  endif
+
+  if (v>1.0D-10) then
+
+    iLog10 = int(log10(1.0000001D0*v))
+    if ((v >= vu) .or. (v < vl)) then
+      exponent = iLog10
+      v = v/10.0**iLog10
+      if (isNeg) then
+        if( v>9.995D0 ) then
+          write(zn, '(F4.1)') v ! Will round up to 10.0
+        else
+          write(zn, '(F4.2)') v ! Write value as X.XX
+        endif
+      else
+        if( v>9.9995D0 ) then
+          write(zn, '(F5.2)') v ! Will round to 10.00
+        else
+          write(zn, '(F5.3)') v ! Write value as X.XXX
+        endif
+      endif
+      s = trim(adjustl(zn))//'E' ! Set to 4 or 5 chars+exp => 5 or 6 chars
+      write(zn, '(I2)') exponent
+      s = trim(adjustl(s))//trim(adjustl(zn)) ! Add two chars exponent
+    else
+      if (isNeg) then
+        if( v>9999.995D0 ) then
+          write(s, '(F7.1)') v ! Will round to 10000.0
+        else
+          write(s, '(F7.2)') v ! Allow space for -9999.99
+        endif
+      else
+        if( v>9999.9995D0 ) then
+          write(s, '(F8.2)') v ! Will round to 10000.00
+        else
+          write(s, '(F8.3)') v ! Use all the chars up to 9999.999
+        endif
+      endif
+    endif
+
+    if (isNeg) then
+     s = '-' // trim(adjustl(s))
+    endif
+
+    s = trim(adjustr(s))
+
+  else
+    s = '     0.0'
+  endif
+
+end subroutine PrintTidy8
+
+! ************************************************************************** !
+
+subroutine PrintInt8(ia, s)
+  !
+  ! Write out integer number in neat 8-character format
+  !
+  ! Author: Dave Ponting
+  ! Date  : 03/08/19
+
+  implicit none
+  PetscInt, intent(in) :: ia
+  character(len=8), intent(out) :: s
+  character(len=8) :: zn
+
+  zn = '       0' ! Default
+  write(zn,'(I8)') ia
+  s = adjustl(zn)
+
+end subroutine PrintInt8
+
+end module Grid_Eclipse_Util_module
