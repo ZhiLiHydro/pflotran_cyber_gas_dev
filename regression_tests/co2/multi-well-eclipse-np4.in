@@ -85,7 +85,7 @@ END
 
 #=========================== discretization ===================================
 GRID
-  TYPE GRDECL grid-3x3x6.grdecl
+  TYPE ECLIPSE grid-3x3x6.grdecl
 END
 
 #=========================== fluid properties =================================

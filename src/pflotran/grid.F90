@@ -2473,12 +2473,9 @@ subroutine GridExpandGhostCells(grid,option)
       grid%unstructured_grid%cell_ids_natural => int_array_ptr
       call UGridImplicitExpandGhostCells(grid%unstructured_grid,scatter_gtol, &
                                  global_vec,local_vec,option)
-    case(EXPLICIT_UNSTRUCTURED_GRID)
+    case(EXPLICIT_UNSTRUCTURED_GRID,ECLIPSE_UNSTRUCTURED_GRID)
       ! MAN: it appears nothing needs to change here.
     case(POLYHEDRA_UNSTRUCTURED_GRID)
-      call PrintErrMsg(option,'Need to implement GridExpandGhostCells &
-                       &for ' // grid%ctype)
-    case(ECLIPSE_UNSTRUCTURED_GRID)
       call PrintErrMsg(option,'Need to implement GridExpandGhostCells &
                        &for ' // grid%ctype)
   end select

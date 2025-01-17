@@ -2147,7 +2147,8 @@ subroutine PMWellSetup(this)
     endif
   endif
 
-  if (.not. StringCompare(res_grid%ctype,'EXPLICIT UNSTRUCTURED')) then
+  if (res_grid%itype /= EXPLICIT_UNSTRUCTURED_GRID .and. &
+      res_grid%itype /= ECLIPSE_UNSTRUCTURED_GRID) then
     ! MAN: I think this check does not work for explicit unstructured grids.
 
     ! Check that no reservoir grid cells were skipped.
