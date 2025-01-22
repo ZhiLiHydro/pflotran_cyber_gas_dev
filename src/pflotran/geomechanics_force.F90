@@ -1934,6 +1934,8 @@ subroutine GeomechForceStressStrain(geomech_realization)
   PetscInt, allocatable :: petsc_ids(:)
   PetscInt, allocatable :: ids(:)
   PetscReal, allocatable :: youngs_vec(:), poissons_vec(:)
+  PetscReal, allocatable :: alpha_vec(:)
+  PetscReal, allocatable :: local_temp(:)
   PetscReal, allocatable :: strain(:,:), stress(:,:)
   PetscInt :: ielem, ivertex
   PetscInt :: ghosted_id
@@ -1943,6 +1945,7 @@ subroutine GeomechForceStressStrain(geomech_realization)
   PetscReal, pointer :: imech_loc_p(:)
   PetscReal, pointer :: strain_loc_p(:)
   PetscReal, pointer :: stress_loc_p(:)
+  PetscReal, pointer :: temp_loc_p(:), temp_init_loc_p(:)
   PetscReal, pointer :: strain_p(:), stress_p(:)
   PetscReal, pointer :: no_elems_p(:)
 
@@ -1962,6 +1965,8 @@ subroutine GeomechForceStressStrain(geomech_realization)
   call VecGetArrayF90(field%imech_loc,imech_loc_p,ierr);CHKERRQ(ierr)
   call VecGetArrayF90(field%strain_loc,strain_loc_p,ierr);CHKERRQ(ierr)
   call VecGetArrayF90(field%stress_loc,stress_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayF90(field%temp_loc,temp_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayF90(field%temp_init_loc,temp_init_loc_p,ierr);CHKERRQ(ierr)
 
   strain_loc_p = 0.d0
   stress_loc_p = 0.d0
@@ -1972,9 +1977,11 @@ subroutine GeomechForceStressStrain(geomech_realization)
     allocate(local_coordinates(size(elenodes),THREE_INTEGER))
     allocate(local_disp(size(elenodes),option%ngeomechdof))
     allocate(petsc_ids(size(elenodes)))
+    allocate(local_temp(size(elenodes)))
     allocate(ids(size(elenodes)*option%ngeomechdof))
     allocate(youngs_vec(size(elenodes)))
     allocate(poissons_vec(size(elenodes)))
+    allocate(alpha_vec(size(elenodes)))
     allocate(strain(size(elenodes),SIX_INTEGER))
     allocate(stress(size(elenodes),SIX_INTEGER))
     elenodes = grid%elem_nodes(1:grid%elem_nodes(0,ielem),ielem)
@@ -1994,14 +2001,18 @@ subroutine GeomechForceStressStrain(geomech_realization)
         ids(idof + (ivertex-1)*option%ngeomechdof) = &
           (petsc_ids(ivertex)-1)*option%ngeomechdof + (idof-1)
       enddo
+      local_temp(ivertex) = &
+        temp_loc_p(ghosted_id) - temp_init_loc_p(ghosted_id)
       youngs_vec(ivertex) = &
         GeomechParam%youngs_modulus(nint(imech_loc_p(ghosted_id)))
       poissons_vec(ivertex) = &
         GeomechParam%poissons_ratio(nint(imech_loc_p(ghosted_id)))
+      alpha_vec(ivertex) = &
+        GeomechParam%thermal_exp_coef(int(imech_loc_p(ghosted_id)))
     enddo
     size_elenodes = size(elenodes)
     call GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
-       local_disp,youngs_vec,poissons_vec, &
+       local_disp,local_temp,youngs_vec,poissons_vec,alpha_vec, &
        eletype,grid%gauss_node(ielem)%dim,strain,stress,option)
 
     do ivertex = 1, grid%elem_nodes(0,ielem)
@@ -2019,10 +2030,12 @@ subroutine GeomechForceStressStrain(geomech_realization)
     deallocate(elenodes)
     deallocate(local_coordinates)
     deallocate(local_disp)
+    deallocate(local_temp)
     deallocate(petsc_ids)
     deallocate(ids)
     deallocate(youngs_vec)
     deallocate(poissons_vec)
+    deallocate(alpha_vec)
     deallocate(strain)
     deallocate(stress)
   enddo
@@ -2083,8 +2096,9 @@ end subroutine GeomechForceStressStrain
 ! ************************************************************************** !
 
 subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
-                                             local_disp, &
+                                             local_disp, local_temp, &
                                              local_youngs,local_poissons, &
+                                             local_alpha, &
                                              eletype,dim,strain,stress,option)
   !
   ! Computes the stress-strain for a local
@@ -2105,8 +2119,10 @@ subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
   PetscReal, allocatable :: local_coordinates(:,:)
   PetscReal, allocatable :: B(:,:)
   PetscReal, allocatable :: local_disp(:,:)
+  PetscReal, allocatable :: local_temp(:)
   PetscReal, allocatable :: local_youngs(:)
   PetscReal, allocatable :: local_poissons(:)
+  PetscReal, allocatable :: local_alpha(:)
   PetscReal, allocatable :: strain(:,:)
   PetscReal, allocatable :: stress(:,:)
   PetscReal :: strain_local(NINE_INTEGER,ONE_INTEGER)
@@ -2118,7 +2134,7 @@ subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
   PetscInt :: dim
   PetscInt :: i, j
   PetscReal :: lambda, mu
-  PetscReal :: youngs_mod, poissons_ratio
+  PetscReal :: youngs_mod, poissons_ratio, alpha
   PetscReal, allocatable :: kron_B_eye(:,:)
   PetscReal, allocatable :: kron_B_transpose_eye(:,:)
   PetscReal, allocatable :: Trans(:,:)
@@ -2128,6 +2144,7 @@ subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
   PetscReal :: J_map(THREE_INTEGER,THREE_INTEGER)
   PetscReal :: inv_J_map(THREE_INTEGER,THREE_INTEGER)
   PetscReal :: eye_vec(NINE_INTEGER,ONE_INTEGER)
+  PetscReal :: dT
 
   allocate(B(size_elenodes,dim))
 
@@ -2161,15 +2178,18 @@ subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
     B = matmul(shapefunction%DN,inv_J_map)
     youngs_mod = dot_product(shapefunction%N,local_youngs)
     poissons_ratio = dot_product(shapefunction%N,local_poissons)
+    alpha = dot_product(shapefunction%N,local_alpha)
     call GeomechGetLambdaMu(lambda,mu,youngs_mod,poissons_ratio)
     call Kron(B,identity,kron_B_eye)
     call Kron(transpose(B),identity,kron_B_transpose_eye)
     call Kron(identity,transpose(B),kron_eye_B_transpose)
     strain_local =  0.5*matmul((kron_B_transpose_eye + &
       matmul(kron_eye_B_transpose,Trans)),vec_local_disp)
+    dT = local_temp(ivertex)
     stress_local = lambda*(strain_local(1,1)+ &
                    strain_local(5,1)+strain_local(9,1))*eye_vec + &
-                   2*mu*strain_local
+                   2*mu*strain_local - &
+                   alpha * dT * eye_vec * (3*lambda +2*mu)
     call ShapeFunctionDestroy(shapefunction)
     deallocate(kron_B_eye)
     deallocate(kron_B_transpose_eye)
