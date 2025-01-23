@@ -419,6 +419,7 @@ subroutine PMAuxiliarySalinity(this,time,ierr)
   PetscInt :: ghosted_id, i, j, ispecies, num_auxvars
   PetscReal :: sum_mass_species, xnacl, mass_h2o
   PetscReal :: dw_mol, dw_dp, dw_dt
+  PetscReal :: aux(1)
   type(reactive_transport_auxvar_type), pointer :: rt_auxvars(:)
   type(global_auxvar_type), pointer :: global_auxvars(:)
   PetscInt, parameter :: iphase = 1
@@ -449,9 +450,15 @@ subroutine PMAuxiliarySalinity(this,time,ierr)
         global_auxvars(ghosted_id)%m_nacl(ONE_INTEGER)
 
       ! Compute NaCl for new timestep
+#if 0
       call EOSWaterDensity(global_auxvars(ghosted_id)%temp, &
                            global_auxvars(ghosted_id)%pres(1), &
                            mass_h2o,dw_mol,dw_dp,dw_dt,ierr)
+#endif
+      aux(1) = global_auxvars(ghosted_id)%m_nacl(ONE_INTEGER)
+      call EOSWaterDensityExt(global_auxvars(ghosted_id)%temp, &
+                              global_auxvars(ghosted_id)%pres(1),aux, &
+                              mass_h2o,dw_mol,dw_dp,dw_dt,ierr)
       xnacl = sum_mass_species / (sum_mass_species + mass_h2o)
       global_auxvars(ghosted_id)%m_nacl(iphase) = xnacl
     enddo
