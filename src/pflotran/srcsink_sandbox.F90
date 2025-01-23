@@ -9,6 +9,7 @@ module SrcSink_Sandbox_module
   use SrcSink_Sandbox_Downreg_class
   use SrcSink_Sandbox_Pressure_class
   use SrcSink_Sandbox_WIPP_Well_class
+  use SrcSink_Sandbox_Creep_Closure_class
   use PFLOTRAN_Constants_module
 
   implicit none
@@ -142,6 +143,8 @@ subroutine SSSandboxRead2(local_sandbox_list,input,option)
         new_sandbox => DownregCreate()
       case('PRESSURE')
         new_sandbox => PressureCreate()
+      case('CREEP_CLOSURE')
+        new_sandbox => CreepClosureCreate()
       case('MASS_BALANCE')
         print_mass_balance = PETSC_TRUE
       case default

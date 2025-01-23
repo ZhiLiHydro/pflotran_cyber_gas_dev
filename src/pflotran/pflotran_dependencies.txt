@@ -776,6 +776,7 @@ general.o : \
   srcsink_sandbox_base.o \
   srcsink_sandbox_wipp_gas.o \
   srcsink_sandbox_wipp_well.o \
+  srcsink_sandbox_creep_closure.o \
   upwind_direction.o \
   variables.o
 general_aux.o : \
@@ -3642,6 +3643,7 @@ srcsink_sandbox.o : \
   srcsink_sandbox_pressure.o \
   srcsink_sandbox_wipp_gas.o \
   srcsink_sandbox_wipp_well.o \
+  srcsink_sandbox_creep_closure.o \
   string.o \
   utility.o \
   wipp_flow_aux.o
@@ -3684,6 +3686,18 @@ srcsink_sandbox_mass_rate.o : \
   units.o \
   wipp_flow_aux.o
 srcsink_sandbox_pressure.o : \
+  grid.o \
+  input_aux.o \
+  material_aux.o \
+  option.o \
+  pflotran_constants.o \
+  reaction_aux.o \
+  region.o \
+  srcsink_sandbox_base.o \
+  string.o \
+  units.o \
+  utility.o
+srcsink_sandbox_creep_closure.o : \
   grid.o \
   input_aux.o \
   material_aux.o \

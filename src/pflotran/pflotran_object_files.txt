@@ -227,7 +227,8 @@ srcsink_obj = \
 	${common_src}srcsink_sandbox_mass_rate.o \
 	${common_src}srcsink_sandbox_pressure.o \
 	${common_src}srcsink_sandbox_wipp_gas.o \
-	${common_src}srcsink_sandbox_wipp_well.o
+	${common_src}srcsink_sandbox_wipp_well.o \
+        ${common_src}srcsink_sandbox_creep_closure.o
 
 io_obj = \
 	${common_src}hdf5.o \
