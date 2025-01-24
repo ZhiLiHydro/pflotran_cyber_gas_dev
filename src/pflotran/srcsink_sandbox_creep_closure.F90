@@ -181,6 +181,8 @@ subroutine CreepClosureRead(this,input,option)
       case('H1')
         call InputReadDouble(input,option,this%h1)
         call InputErrorMsg(input,option,word,'SOURCE_SINK_SANDBOX,PRESSURE,')
+        this%h2 = -(3d0+2d0*this%h1)
+        this%h3 = this%h1 + 2.d0
       case('G0')
         call InputReadDouble(input,option,this%h2)
         call InputErrorMsg(input,option,word,'SOURCE_SINK_SANDBOX,PRESSURE,')
@@ -296,8 +298,6 @@ subroutine CreepClosureSrcSink(this,Residual,Jacobian,compute_derivative, &
   cell_volume = material_auxvar%volume
   ! to get the total moles of salt per gridcell:
   ! cell_volume [m^3] * phi [-] * den_s [kmol/m^3] = [kmol]
-
-  !print *, 'pl/pg/sl/sg/phi/temp',p_l,p_g,s_l,s_g,phi,temp
 
   call calc_f_F(this,phi,f_F)
   !print *, 'f_F: ', f_F
