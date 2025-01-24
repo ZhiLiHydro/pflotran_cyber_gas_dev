@@ -10,10 +10,13 @@ module SrcSink_Sandbox_Creep_Closure_class
 
   private
 
-  PetscInt, parameter, public :: SS_PRES_LIQUID_PRESSURE_OFFSET = 1
-  PetscInt, parameter, public :: SS_PRES_GAS_PRESSURE_OFFSET = 2
-  PetscInt, parameter, public :: SS_PRES_LIQUID_DENSITY_OFFSET = 3
-  PetscInt, parameter, public :: SS_PRES_GAS_DENSITY_OFFSET = 4
+  PetscInt, parameter, public :: CC_LIQ_PRESSURE_INDEX   = 1
+  PetscInt, parameter, public :: CC_GAS_PRESSURE_INDEX   = 2
+  PetscInt, parameter, public :: CC_LIQ_SATURATION_INDEX = 3
+  PetscInt, parameter, public :: CC_GAS_SATURATION_INDEX = 4
+  PetscInt, parameter, public :: CC_POROSITY_INDEX       = 5
+  PetscInt, parameter, public :: CC_TEMPERATURE_INDEX    = 6
+  PetscInt, parameter, public :: CC_SALT_DEN_INDEX    = 6
 
   type, public, &
     extends(srcsink_sandbox_base_type) :: srcsink_sandbox_creep_closure_type
@@ -270,16 +273,60 @@ subroutine CreepClosureSrcSink(this,Residual,Jacobian,compute_derivative, &
   PetscBool :: compute_derivative
   PetscReal :: Residual(option%nflowdof)
   PetscReal :: Jacobian(option%nflowdof,option%nflowdof)
+  PetscReal :: p_l, p_g    ! [Pa]
+  PetscReal :: s_l, s_g    ! [-]
+  PetscReal :: phi         ! [-]
+  PetscReal :: temp        ! [C]
+  PetscReal :: cell_volume ! [m^3]
+  PetscReal :: den_s       ! [kmol/m^3]
   type(material_auxvar_type) :: material_auxvar
   PetscReal :: aux_real(:)
+  PetscReal :: f_F
 
-  print *, 'aux_real: ', aux_real(:)
 
+  ! here's some variables that may be useful to you.
+  p_l   = aux_real(CC_LIQ_PRESSURE_INDEX)
+  p_g   = aux_real(CC_GAS_PRESSURE_INDEX)
+  s_l   = aux_real(CC_LIQ_SATURATION_INDEX)
+  s_g   = aux_real(CC_GAS_SATURATION_INDEX)
+  phi   = aux_real(CC_POROSITY_INDEX)
+  temp  = aux_real(CC_TEMPERATURE_INDEX)
+  den_s = aux_real(CC_SALT_DEN_INDEX)
+
+  cell_volume = material_auxvar%volume
+  ! to get the total moles of salt per gridcell:
+  ! cell_volume [m^3] * phi [-] * den_s [kmol/m^3] = [kmol]
+
+  !print *, 'pl/pg/sl/sg/phi/temp',p_l,p_g,s_l,s_g,phi,temp
+
+  call calc_f_F(this,phi,f_F)
+  !print *, 'f_F: ', f_F
+
+  ! Residual(THREE_INTEGER) = ___amount of mass to add to residual_____ units: [kmol/s]
   if (compute_derivative) then
 !    Jacobian(this%iphase,this%iphase) =
   endif
 
 end subroutine CreepClosureSrcSink
+
+! ************************************************************************** !
+
+subroutine calc_f_F(this,phi,f_F)
+
+  ! Calculates f_F (Eq. 2-3)
+
+  implicit none
+  class(srcsink_sandbox_creep_closure_type) :: this
+  PetscReal, intent(in) :: phi
+  PetscReal, intent(out) :: f_F
+  PetscReal :: arg, h, g
+
+  arg = (phi - this%phi_g) / (this%phi_r - this%phi_g)
+  h   = this%h0 + this%h1 * arg + this%h2 * arg ** 2 + this%h3 * arg**3
+  g   = this%g0 + this%g1 * arg + this%g2 * arg**2
+  f_F = (1 + h / (((phi - this%phi_g) * g) **(1/this%m)))**(-this%m)
+
+end subroutine calc_f_F
 
 ! ************************************************************************** !
 

@@ -2542,6 +2542,7 @@ subroutine GeneralSSSandboxLoadAuxReal(srcsink,aux_real,gen_auxvar,option)
   use SrcSink_Sandbox_Base_class
   use SrcSink_Sandbox_WIPP_Gas_class
   use SrcSink_Sandbox_WIPP_Well_class
+  use SrcSink_Sandbox_Creep_Closure_class
 
   implicit none
 
@@ -2578,6 +2579,14 @@ subroutine GeneralSSSandboxLoadAuxReal(srcsink,aux_real,gen_auxvar,option)
         gen_auxvar%den(option%liquid_phase)
       aux_real(WIPP_WELL_GAS_DENSITY) = &
         gen_auxvar%den(option%gas_phase)
+    class is (srcsink_sandbox_creep_closure_type)
+      aux_real(CC_LIQ_PRESSURE_INDEX)   = gen_auxvar%pres(option%liquid_phase)
+      aux_real(CC_GAS_PRESSURE_INDEX)   = gen_auxvar%pres(option%gas_phase)
+      aux_real(CC_LIQ_SATURATION_INDEX) = gen_auxvar%sat(option%liquid_phase)
+      aux_real(CC_GAS_SATURATION_INDEX) = gen_auxvar%sat(option%gas_phase)
+      aux_real(CC_POROSITY_INDEX)       = gen_auxvar%effective_porosity
+      aux_real(CC_TEMPERATURE_INDEX)    = gen_auxvar%temp
+      aux_real(CC_SALT_DEN_INDEX)       = gen_auxvar%den(option%salt_id)
   end select
 
 end subroutine GeneralSSSandboxLoadAuxReal
