@@ -318,6 +318,7 @@ subroutine OregonatorEvaluate(this,Residual,Jacobian,compute_derivative, &
 
   if (Initialized(this%temp_slope) .and. Initialized(this%ref_temp)) then
     dT = (global_auxvar%temp - this%ref_temp)
+    print *, 'dT, ref, slope', dT, this%ref_temp, this%temp_slope
     this%k_i   = this%k_i   + (dT * this%temp_slope)
     this%k_ii  = this%k_ii  + (dT * this%temp_slope)
     this%k_iii = this%k_iii + (dT * this%temp_slope)
@@ -330,12 +331,9 @@ subroutine OregonatorEvaluate(this,Residual,Jacobian,compute_derivative, &
   RateY = -1d0*this%k_i * A * Y   - this%k_ii * X * Y + &
           0.5d0*this%k_v * B * Z
   RateZ =  2d0*this%k_iii * A * X - this%k_v * B * Z
-  RateA = this%k_i * A * Y + this%k_iii * A * X - this%k_iv * X ** 2
-  RateB = this%k_v * B * Z
-  RateP = -this%k_i * A * Y - this%k_ii * X * Y - this%k_iv * X ** 2
-
-  ! print *, 'rate constant i-v', this%k_i,this%k_ii,this%k_iii,this%k_iv,this%k_v
-  ! print *, 'rate A,B,P,X,Y,Z', RateA, RateB, RateP, RateX, RateY, RateZ
+  RateA = -this%k_i * A * Y - this%k_iii * A * X + this%k_iv * X ** 2
+  RateB = -this%k_v * B * Z
+  RateP = this%k_i * A * Y + this%k_ii * X * Y + this%k_iv * X ** 2
 
   Residual(this%i_A) = Residual(this%i_A) - RateA * L_water
   Residual(this%i_B) = Residual(this%i_B) - RateB * L_water
@@ -344,8 +342,6 @@ subroutine OregonatorEvaluate(this,Residual,Jacobian,compute_derivative, &
   Residual(this%i_Y) = Residual(this%i_Y) - RateY * L_water
   Residual(this%i_Z) = Residual(this%i_Z) - RateZ * L_water
 
-
-  
   ! Description of subroutine arguments:
 
   ! Residual - 1D array storing Residual entries in units mol/sec
