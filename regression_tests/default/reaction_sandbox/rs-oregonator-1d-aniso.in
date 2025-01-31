@@ -1,0 +1,400 @@
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW FLOW
+      MODE TH
+    END
+    SUBSURFACE_TRANSPORT TRANSPORT
+      MODE GIRT
+      OPTIONS
+
+      END
+    END
+  END
+END
+SUBSURFACE
+
+CHEMISTRY
+  PRIMARY_SPECIES
+    X(aq) # HBrO2    
+    Y(aq) # Br-        
+    Z(aq) # Ce++++     
+    A(aq) # BrO3-      
+    B(aq) # CH2(COOH)2 
+    P(aq) # HOBr       
+  END
+  MINERALS
+    A(s)
+    B(s)
+  END
+  # rxn (a)
+  # GENERAL_REACTION
+  #   REACTION A(aq) + Y(aq) <-> X(aq) + P(aq)
+  #   FORWARD_RATE 1.28D+0   # k_{R3} (2) * H**2
+  #   BACKWARD_RATE 0.0D+0 
+  # END
+  # # rxn (b)
+  # GENERAL_REACTION
+  #   REACTION X(aq) + Y(aq) <-> 2.0D+0 P(aq)
+  #   FORWARD_RATE 2.4D+6 # k_{R2} (3E+6) * H  
+  #   BACKWARD_RATE 0.0D+0 
+  # END
+  # # rxn (c)
+  # GENERAL_REACTION
+  #   REACTION A(aq) + X(aq) <-> 2.0D+0 X(aq) + 2.0D+0 Z(aq)
+  #   FORWARD_RATE 3.36D+1 # k_{R5} (42) * H
+  #   BACKWARD_RATE 0.0D+0 
+  # END
+  # # rxn (d)
+  # GENERAL_REACTION
+  #   REACTION 2.0D+0 X(aq) <-> A(aq) + P(aq)
+  #   FORWARD_RATE 2.4D+3  # k_{R4} (3E+3) * H
+  #   BACKWARD_RATE 0.0D+0 
+  # END
+  # # rxn (e) [assume f=1]
+  # GENERAL_REACTION
+  #   REACTION B(aq) + Z(aq) <-> 5.0D-1 Y(aq)
+  #   FORWARD_RATE 1.0D+0  # k_c (1) 
+  #   BACKWARD_RATE 0.0D+0 
+  # END
+  REACTION_SANDBOX
+    OREGONATOR
+      SPECIES_A A(aq)
+      SPECIES_B B(aq)
+      SPECIES_X X(aq)
+      SPECIES_Y Y(aq)
+      SPECIES_Z Z(aq)
+      SPECIES_P P(aq)
+      K_I   1.28d0
+      K_II  2.40d6
+      K_III 3.36d1
+      K_IV  2.40d3
+      K_V   1.00d0
+      REFERENCE_TEMP 25.d0
+      LINEAR_TEMPERATURE_DEPENDENCE 1.d0
+    /
+  /
+  MINERAL_KINETICS
+    A(s)
+      RATE_CONSTANT 5.0D-3
+    END
+    B(s)
+      RATE_CONSTANT 5.0D-3
+    END
+  END
+  LOG_FORMULATION
+  DATABASE ./hanford2.dat
+  OUTPUT
+    TOTAL
+    MINERALS
+    A(aq)
+    B(aq)
+    X(aq)
+    Y(aq)
+    Z(aq)
+    P(aq)
+  END
+END
+
+NUMERICAL_METHODS TRANSPORT
+ TIMESTEPPER
+   CFL_GOVERNOR 1.d0
+ END
+
+ NEWTON_SOLVER
+  NUMERICAL_JACOBIAN
+  RTOL 1.D-10
+  STOL 1.D-10
+ END
+
+ LINEAR_SOLVER
+   SOLVER DIRECT MUMPS
+ END
+END
+
+TIME
+  FINAL_TIME 60.0 min
+  INITIAL_TIMESTEP_SIZE 1.d0 sec
+  MAXIMUM_TIMESTEP_SIZE 10.0 sec
+END
+
+GRID
+  TYPE STRUCTURED 
+  NXYZ 200 15 1
+  DXYZ
+    1.0D-1
+    1.0D-1
+    1.0D-1
+  END
+END
+
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.0D-6
+END
+
+OUTPUT
+  SNAPSHOT_FILE
+    FORMAT HDF5
+    PERIODIC TIME 60.0 sec
+    VARIABLES
+      TEMPERATURE
+      POROSITY
+      PERMEABILITY
+      LIQUID_PRESSURE
+      MATERIAL_ID
+      VOLUME
+    END
+  END
+  VELOCITY_AT_CENTER
+  OBSERVATION_FILE
+    PERIODIC TIMESTEP 1
+  END
+  MASS_BALANCE_FILE
+    PERIODIC TIMESTEP 1
+  END
+END
+
+MATERIAL_PROPERTY fracture
+  ID 2
+  SATURATION_FUNCTION sf1
+  POROSITY  1.0D-2
+  TORTUOSITY 1.0D+0
+  ROCK_DENSITY 7.72D+3  #kg/m^3
+  HEAT_CAPACITY 1.15D+2  #J/(kg-K)
+  THERMAL_CONDUCTIVITY_WET 5.0D+1   #W/(m-K)
+  THERMAL_CONDUCTIVITY_DRY 5.0D+1  #W/(m-K)
+  PERMEABILITY
+    PERM_ISO 1.0D-9 #m^2
+  END
+END
+
+# inactived matrtix (id = 0)
+### matrix should have no flow or diffusion
+##MATERIAL_PROPERTY matrix
+##  ID 1
+##  SATURATION_FUNCTION sf1
+##  POROSITY  4.0D-1
+##  TORTUOSITY 1.0D-150
+##  ROCK_DENSITY 7.72D+3  #kg/m^3
+##  HEAT_CAPACITY 1.15D+2  #J/(kg-K)
+##  THERMAL_CONDUCTIVITY_WET 5.0D+1   #W/(m-K)
+##  THERMAL_CONDUCTIVITY_DRY 5.0D+1  #W/(m-K)
+##  PERMEABILITY
+##    PERM_ISO 1.0D-150 #m^2
+##  END
+##END
+
+CHARACTERISTIC_CURVES sf1
+  SATURATION_FUNCTION VAN_GENUCHTEN
+    M 9.0D-1
+    ALPHA  1.0D+3 #1/Pa
+    LIQUID_RESIDUAL_SATURATION 1.0D-2
+  END
+  PERMEABILITY_FUNCTION MUALEM_VG_LIQ
+    M 9.0D-1
+    LIQUID_RESIDUAL_SATURATION 1.0D-2
+  END
+  PERMEABILITY_FUNCTION MUALEM_VG_GAS
+    M 9.0D-1
+    GAS_RESIDUAL_SATURATION 0.0
+    LIQUID_RESIDUAL_SATURATION 1.0D-2
+  END
+END
+
+REGION all
+  COORDINATES
+   -1.0D+20 -1.0D+20 -1.0D+20
+    1.0D+20  1.0D+20  1.0D+20
+  END
+END
+
+REGION up_obs
+  BLOCK 1 1  10 10  1 1
+END
+REGION mid_primary_obs
+  BLOCK 100 100  5 5  1 1  # in a primary fracture
+END
+REGION mid_deadend_obs
+  BLOCK 95 95  12 12  1 1  # in a dead-end fracture
+END
+REGION down_obs
+  BLOCK 200 200  11 11  1 1  
+END
+
+REGION upstream_bc_reg
+  FACE WEST
+  BLOCK 1 1  1 15  1 1
+END
+REGION upstream_src1_bc_reg
+  FACE WEST
+  BLOCK 1 1  5 5  1 1
+END
+REGION upstream_src2_bc_reg
+  FACE WEST
+  BLOCK 1 1  10 10  1 1
+END
+
+REGION upstream_fracture_reg
+  BLOCK 1 1  1 15  1 1
+END
+REGION downstream_fracture_reg
+  BLOCK 200 200  1 15  1 1
+END
+
+
+REGION downstream_bc_reg
+  FACE EAST
+  BLOCK 200 200  1 15  1 1
+END
+
+CONSTRAINT initial_con
+  CONCENTRATIONS
+    A(aq) 6.0D-2 T
+    B(aq) 2.0D-2 T
+    X(aq) 4.2D-8 T    # activator species (4.24E-4)
+    Y(aq) 8.4D-7 T    
+    Z(aq) 8.4672D-2 T # inhibitor species
+    P(aq) 1.0D+0 T    # only a product
+  END
+  MINERALS
+    B(s) 0.5 1.0 cm^2/cm^3
+    A(s) 0.5 1.0 cm^2/cm^3
+  END
+END
+CONSTRAINT upstream1_con
+  CONCENTRATIONS
+    A(aq) 6.0D-2 T
+    B(aq) 2.0D-2 T
+    X(aq) 4.2D-4 T    
+    Y(aq) 8.4D-7 T    
+    Z(aq) 8.4672D-2 T  # inhibitor species
+    P(aq) 1.0D+0 T  
+  END
+  MINERALS
+    B(s) 0.5 1.0 cm^2/cm^3
+    A(s) 0.5 1.0 cm^2/cm^3
+  END  
+END
+CONSTRAINT upstream2_con
+  CONCENTRATIONS
+    A(aq) 6.0D-2 T
+    B(aq) 2.0D-2 T
+    X(aq) 4.2D-4 T    
+    Y(aq) 8.4D-7 T    
+    Z(aq) 8.4672D-2 T  # inhibitor species
+    P(aq) 1.0D+0 T  
+  END
+  MINERALS
+    B(s) 0.5 1.0 cm^2/cm^3
+    A(s) 0.5 1.0 cm^2/cm^3
+  END  
+END
+
+
+TRANSPORT_CONDITION initial_tc
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.0D+0 initial_con
+  END
+END
+FLOW_CONDITION initial_fc
+ TYPE
+   LIQUID_PRESSURE HYDROSTATIC
+   TEMPERATURE DIRICHLET
+ END
+ DATUM 0.0 0.0 1.0
+ LIQUID_PRESSURE 1.1325D+5 Pa
+ TEMPERATURE 25.D0
+END
+
+FLOW_CONDITION hot_fc
+ TYPE
+   LIQUID_PRESSURE HYDROSTATIC
+   TEMPERATURE DIRICHLET
+ END
+ DATUM 0.0 0.0 1.0
+ LIQUID_PRESSURE 1.1325D+5 Pa
+ TEMPERATURE 55.D0
+END
+
+FLOW_CONDITION downstream_fc
+ TYPE
+   LIQUID_PRESSURE HYDROSTATIC
+   TEMPERATURE DIRICHLET
+ END
+ DATUM 0.0 0.0 1.0
+ LIQUID_PRESSURE 1.1025D+5 Pa
+ TEMPERATURE 25.D0
+END
+
+
+TRANSPORT_CONDITION upstream_tc
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.0D+0 initial_con
+  END
+END
+TRANSPORT_CONDITION upstream1_tc
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.0D+0 upstream1_con
+  END
+END
+TRANSPORT_CONDITION upstream2_tc
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.0D+0 upstream2_con
+  END
+END
+
+INITIAL_CONDITION initial_ic
+  TRANSPORT_CONDITION initial_tc
+  FLOW_CONDITION initial_fc
+  REGION all
+END
+
+BOUNDARY_CONDITION upstream_bc
+  TRANSPORT_CONDITION initial_tc
+  FLOW_CONDITION hot_fc
+  REGION upstream_bc_reg
+END
+BOUNDARY_CONDITION upstream_src1_bc
+  TRANSPORT_CONDITION upstream1_tc
+  FLOW_CONDITION hot_fc
+  REGION upstream_src1_bc_reg
+END
+BOUNDARY_CONDITION upstream_src2_bc
+  TRANSPORT_CONDITION upstream2_tc
+  FLOW_CONDITION hot_fc
+  REGION upstream_src2_bc_reg
+END
+
+BOUNDARY_CONDITION downstream_bc
+  TRANSPORT_CONDITION initial_tc
+  FLOW_CONDITION downstream_fc
+  REGION downstream_bc_reg
+END
+
+OBSERVATION upstream_obs
+  REGION up_obs
+END
+OBSERVATION middle_primary_obs
+  REGION mid_primary_obs
+END
+OBSERVATION middle_deadend_obs
+  REGION mid_deadend_obs
+END
+OBSERVATION downstream_obs
+  REGION down_obs
+END
+
+# STRATA
+#   FILE ./oregonator-inactive-materials.h5
+# END
+STRATA
+  REGION all
+  MATERIAL fracture
+END
+
+
+END_SUBSURFACE
