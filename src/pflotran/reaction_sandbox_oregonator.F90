@@ -302,6 +302,7 @@ subroutine OregonatorEvaluate(this,Residual,Jacobian,compute_derivative, &
   PetscReal :: A, B, P, X, Y, Z
   PetscReal :: RateA, RateB, RateP, RateX, RateY, RateZ
   PetscReal :: molality_to_molarity
+  PetscReal :: k_i, k_ii, k_iii, k_iv, k_v
 
   PetscReal :: dT
 
@@ -318,22 +319,27 @@ subroutine OregonatorEvaluate(this,Residual,Jacobian,compute_derivative, &
 
   if (Initialized(this%temp_slope) .and. Initialized(this%ref_temp)) then
     dT = (global_auxvar%temp - this%ref_temp)
-    print *, 'dT, ref, slope', dT, this%ref_temp, this%temp_slope
-    this%k_i   = this%k_i   + (dT * this%temp_slope)
-    this%k_ii  = this%k_ii  + (dT * this%temp_slope)
-    this%k_iii = this%k_iii + (dT * this%temp_slope)
-    this%k_iv  = this%k_iv  + (dT * this%temp_slope)
-    this%k_v   = this%k_v   + (dT * this%temp_slope)
+    k_i   = this%k_i   + (dT * this%temp_slope) / this%k_i
+    k_ii  = this%k_ii  + (dT * this%temp_slope) / this%k_ii
+    k_iii = this%k_iii + (dT * this%temp_slope) / this%k_iii
+    k_iv  = this%k_iv  + (dT * this%temp_slope) / this%k_iv
+    k_v   = this%k_v   + (dT * this%temp_slope) / this%k_v
+  else
+    k_i   = this%k_i
+    k_ii  = this%k_ii 
+    k_iii = this%k_iii
+    k_iv  = this%k_iv
+    k_v   = this%k_v
   endif
 
-  RateX = this%k_i   * A * Y      -   this%k_ii * X * Y + &
-          this%k_iii * A * X      - 2*this%k_iv * X ** 2
-  RateY = -1d0*this%k_i * A * Y   - this%k_ii * X * Y + &
-          0.5d0*this%k_v * B * Z
-  RateZ =  2d0*this%k_iii * A * X - this%k_v * B * Z
-  RateA = -this%k_i * A * Y - this%k_iii * A * X + this%k_iv * X ** 2
-  RateB = -this%k_v * B * Z
-  RateP = this%k_i * A * Y + this%k_ii * X * Y + this%k_iv * X ** 2
+  RateX = k_i   * A * Y      -   k_ii * X * Y + &
+          k_iii * A * X      - 2*k_iv * X ** 2
+  RateY = -k_i * A * Y   - k_ii * X * Y + &
+          0.5d0*k_v * B * Z
+  RateZ =  2d0*k_iii * A * X - k_v * B * Z
+  RateA = -k_i * A * Y - k_iii * A * X + 2*k_iv * X ** 2
+  RateB = -k_v * B * Z
+  RateP =  k_i * A * Y + k_ii * X * Y + 2*k_iv * X ** 2
 
   Residual(this%i_A) = Residual(this%i_A) - RateA * L_water
   Residual(this%i_B) = Residual(this%i_B) - RateB * L_water
