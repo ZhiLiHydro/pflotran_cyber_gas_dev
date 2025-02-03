@@ -664,13 +664,15 @@ subroutine WIPPFloScalePerm(wippflo_auxvar,material_auxvar,perm,ivar)
 
   type(wippflo_auxvar_type) :: wippflo_auxvar
   type(material_auxvar_type) :: material_auxvar
-  PetscReal :: perm
+  PetscReal :: perm, perm_orig
   PetscInt :: ivar
 
   if (associated(material_auxvar%fracture)) then
     if (material_auxvar%fracture%fracture_is_on) then
+      perm_orig = perm
       perm = perm * wippflo_auxvar%fracture_perm_scaling_factor
       perm = min(material_auxvar%fracture%properties(5),perm)
+      perm = max(perm_orig,perm)
     endif
   endif
   select case(ivar)
