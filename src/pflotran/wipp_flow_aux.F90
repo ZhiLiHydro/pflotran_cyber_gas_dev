@@ -670,6 +670,7 @@ subroutine WIPPFloScalePerm(wippflo_auxvar,material_auxvar,perm,ivar)
   if (associated(material_auxvar%fracture)) then
     if (material_auxvar%fracture%fracture_is_on) then
       perm = perm * wippflo_auxvar%fracture_perm_scaling_factor
+      perm = min(material_auxvar%fracture%properties(5),perm)
     endif
   endif
   select case(ivar)

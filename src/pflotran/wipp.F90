@@ -13,6 +13,7 @@ module Fracture_module
   PetscInt, parameter, public :: frac_alt_pres_index = 2
   PetscInt, parameter, public :: frac_max_poro_index = 3
   PetscInt, parameter, public :: frac_poro_exp_index = 4
+  PetscInt, parameter, public :: frac_max_perm_index = 5
   PetscInt, parameter, public :: frac_change_perm_x_index = 1
   PetscInt, parameter, public :: frac_change_perm_y_index = 2
   PetscInt, parameter, public :: frac_change_perm_z_index = 3
@@ -21,6 +22,7 @@ module Fracture_module
     PetscReal :: init_pressure
     PetscReal :: altered_pressure
     PetscReal :: maximum_porosity
+    PetscReal :: maximum_perm
     PetscReal :: porosity_exponent
     PetscReal :: change_perm_x
     PetscReal :: change_perm_y
@@ -77,6 +79,7 @@ subroutine FractureInit(this)
   this%init_pressure = UNINITIALIZED_DOUBLE
   this%altered_pressure = UNINITIALIZED_DOUBLE
   this%maximum_porosity = UNINITIALIZED_DOUBLE
+  this%maximum_perm = 1.d-9
   this%porosity_exponent = UNINITIALIZED_DOUBLE
   this%change_perm_x = 0.d0
   this%change_perm_y = 0.d0
@@ -130,6 +133,8 @@ subroutine FracturePropertytoAux(fracture_auxvar,fracture_property)
         fracture_property%altered_pressure
       fracture_auxvar%properties(frac_max_poro_index) = &
         fracture_property%maximum_porosity
+      fracture_auxvar%properties(frac_max_perm_index) = &
+        fracture_property%maximum_perm
       fracture_auxvar%properties(frac_poro_exp_index) = &
         fracture_property%porosity_exponent
       fracture_auxvar%vector(frac_change_perm_x_index) = &
@@ -196,6 +201,12 @@ subroutine FractureRead(this,input,option)
                                 this%maximum_porosity)
           call InputErrorMsg(input,option, &
                               'maximum fracture porosity', &
+                              'MATERIAL_PROPERTY,WIPP-FRACTURE')
+        case('MAXIMUM_FRACTURE_PERM')
+          call InputReadDouble(input,option, &
+                                this%maximum_perm)
+          call InputErrorMsg(input,option, &
+                              'maximum fracture perm', &
                               'MATERIAL_PROPERTY,WIPP-FRACTURE')
         case('FRACTURE_EXPONENT')
           call InputReadDouble(input,option, &
