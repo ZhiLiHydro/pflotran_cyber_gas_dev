@@ -435,7 +435,7 @@ subroutine WIPPFloAuxVarCompute(x,wippflo_auxvar,global_auxvar, &
 
   wippflo_auxvar%fracture_perm_scaling_factor = 1.d0
   if (associated(material_auxvar%fracture) .and. &
-      wippflo_use_fracture) then
+      wippflo_use_fracture .and. wippflo_ni_count == 0) then
     call FracturePermScale(material_auxvar,cell_pressure, &
                            wippflo_auxvar%effective_porosity, &
                            wippflo_auxvar%fracture_perm_scaling_factor)
