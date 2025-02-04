@@ -1721,8 +1721,6 @@ subroutine RTCalculateTransportMatrix(realization,T)
                        0.5d0, & ! fraction upwind (0.d0 upwind, 0.5 central)
                        coef_up,coef_dn)
 
- !     coef_dn = coef_dn*global_auxvars(ghosted_id)%den_kg*1.d-3
-
       !Jup not needed
       coef_dn = -coef_dn
       call MatSetValuesLocal(T,1,ghosted_id-1,1,ghosted_id-1,coef_dn, &
@@ -1739,7 +1737,6 @@ subroutine RTCalculateTransportMatrix(realization,T)
     if (patch%imat(ghosted_id) <= 0) cycle
     coef = material_auxvars(ghosted_id)%porosity* &
            global_auxvars(ghosted_id)%sat(iphase)* &
-!geh           global_auxvars(ghosted_id)%den_kg(iphase)* &
            1000.d0* &
            material_auxvars(ghosted_id)%volume/option%tran_dt
     call MatSetValuesLocal(T,1,ghosted_id-1,1,ghosted_id-1,coef,ADD_VALUES, &
@@ -3714,6 +3711,9 @@ subroutine RTUpdateAuxVars(realization,update_cells,update_bcs, &
         istartaq = offset + istartaq_loc
         iendaq = offset + iendaq_loc
 
+        global_auxvars_bc(sum_connection)%solvent_den_kgL = &
+          global_auxvars_bc(sum_connection)%den_kg(LIQUID_PHASE)*1.d-3
+
 #ifdef XINGYUAN_BC
   if (idof_aq_dataset > 0) then
     call DatasetInterpolateReal(dataset, &
@@ -3745,8 +3745,7 @@ subroutine RTUpdateAuxVars(realization,update_cells,update_bcs, &
                 ! by dividing by density of water (mol/L -> mol/kg)
               xxbc(istartaq_loc:iendaq_loc) = &
                 basis_molarity_p(1:reaction%naqcomp) / &
-                global_auxvars_bc(sum_connection)%den_kg(iphase) * &
-                1000.d0
+                global_auxvars_bc(sum_connection)%solvent_den_kgL
             case(DIRICHLET_ZERO_GRADIENT_BC,ZERO_GRADIENT_BC,MEMBRANE_BC)
               if (patch%boundary_velocities(iphase,sum_connection) < 0.d0) then
                 ! with outflow, these boundary concentrations are ignored,
@@ -3759,8 +3758,7 @@ subroutine RTUpdateAuxVars(realization,update_cells,update_bcs, &
               ! any doubt, set xxbc = 1.d-9 for vdarcy < 0 to check
               xxbc(istartaq_loc:iendaq_loc) = &
                 basis_molarity_p(1:reaction%naqcomp) / &
-                global_auxvars_bc(sum_connection)%den_kg(iphase) * &
-                1000.d0
+                global_auxvars_bc(sum_connection)%solvent_den_kgL
           end select
           ! no need to update boundary fluid density since it is already set
           rt_auxvars_bc(sum_connection)%pri_molal = &

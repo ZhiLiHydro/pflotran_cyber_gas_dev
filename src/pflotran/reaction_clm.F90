@@ -4000,7 +4000,7 @@ subroutine ReactionCLMNitrReact(this,Residual,Jacobian,compute_derivative, &
   porosity = material_auxvar%porosity
   volume = material_auxvar%volume
   kg_water = material_auxvar%porosity*global_auxvar%sat(iphase)* &
-            material_auxvar%volume*global_auxvar%den_kg(iphase)
+             material_auxvar%volume*global_auxvar%solvent_den_kgL*1.d3
 
   unitconv = 1.0d0
   M_2_ug_per_g = 1.0d0
@@ -4644,7 +4644,7 @@ subroutine ReactionCLMDeniReact(this,Residual,Jacobian,compute_derivative, &
   volume = material_auxvar%volume
 
   kg_water = material_auxvar%porosity*global_auxvar%sat(iphase)* &
-            material_auxvar%volume*global_auxvar%den_kg(iphase)
+            material_auxvar%volume*global_auxvar%solvent_den_kgL*1.d3
 
   ! indices for C and N species
   ires_no3 = this%ispec_no3
@@ -5177,7 +5177,7 @@ subroutine ReactionCLMRxn(Residual,Jacobian,compute_derivative,rt_auxvar, &
 
   if (is_nh4_aqueous) then
     kg_water_or_volume = material_auxvar%porosity*global_auxvar%sat(iphase)* &
-               material_auxvar%volume*global_auxvar%den_kg(iphase)
+               material_auxvar%volume*global_auxvar%solvent_den_kgL*1.d3
   else
     kg_water_or_volume = material_auxvar%volume
   endif

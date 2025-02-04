@@ -290,7 +290,7 @@ subroutine ReactionMicrobRate(Res,Jac,compute_derivative,rt_auxvar, &
     case(MICROBIAL_ACTIVITY)
       dconcentration_dmolal = rt_auxvar%pri_act_coef
     case(MICROBIAL_MOLARITY)
-      dconcentration_dmolal = global_auxvar%den_kg(iphase)*1.d-3
+      dconcentration_dmolal = global_auxvar%solvent_den_kgL
   end select
   concentration = rt_auxvar%pri_molal*dconcentration_dmolal
 

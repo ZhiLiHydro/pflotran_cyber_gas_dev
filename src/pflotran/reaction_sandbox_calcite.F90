@@ -224,7 +224,7 @@ subroutine CalciteEvaluate(this,Residual,Jacobian,compute_derivative, &
   mineral => reaction%mineral
   iauxiliary = this%auxiliary_offset + 1
 
-  volume = material_auxvar%volume        ! den_kg [kg fluid / m^3 fluid]
+  volume = material_auxvar%volume
 
   ! Reaction path #1
   ! the code in this block is very similar to the default mineral

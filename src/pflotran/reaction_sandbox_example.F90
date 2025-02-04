@@ -240,7 +240,7 @@ subroutine ExampleEvaluate(this,Residual,Jacobian,compute_derivative, &
   !
   !   Useful variables:
   !     global_auxvar%den(iphase) - liquid density [mol/m^3]
-  !     global_auxvar%den_kg(iphase) - liquid density [kg/m^3]
+  !     global_auxvar%solvent_den_kgl - liquid density [kg/L]
   !     global_auxvar%sat(iphase) - liquid saturation [m^3 water/m^3 pore]
   !     global_auxvar%temp - temperature [C]
   !

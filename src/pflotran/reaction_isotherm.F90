@@ -306,7 +306,7 @@ subroutine ReactionIsothermTotalSorbKD(rt_auxvar,global_auxvar, &
     if (isotherm%ikd_units == KD_UNIT_MLW_GSOIL) then
                    !KD units [mL water/g soil]
       kd_kgw_m3b = isotherm_rxn%eqisothermcoeff(irxn) * &
-                   global_auxvar%den_kg(iphase) * &
+                   global_auxvar%solvent_den_kgL*1.d3 * &
                    (1.d0-material_auxvar%porosity) * &
                    material_auxvar%soil_particle_density * &
                    1.d-3 ! convert mL water/g soil to m^3 water/kg soil

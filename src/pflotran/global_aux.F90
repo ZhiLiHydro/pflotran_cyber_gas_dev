@@ -11,6 +11,7 @@ module Global_Aux_module
   type, public :: global_auxvar_type
     PetscInt :: istate
     PetscReal :: temp
+    PetscReal :: solvent_den_kgL
     PetscReal, pointer :: pres(:)
     PetscReal, pointer :: pres_store(:,:)
     PetscReal, pointer :: temp_store(:)
@@ -29,10 +30,8 @@ module Global_Aux_module
     PetscReal, pointer :: reaction_rate(:)
     PetscReal, pointer :: reaction_rate_store(:)
     PetscReal, pointer :: dphi(:,:) !geh: why here?
-!geh    PetscReal :: scco2_eq_logK ! SC CO2
     PetscReal, pointer :: darcy_vel(:)
     PetscReal, pointer :: parameters(:)
-
   end type global_auxvar_type
 
   type, public :: global_type
@@ -107,6 +106,7 @@ subroutine GlobalAuxVarInit(auxvar,option)
 
   auxvar%istate = 0
   auxvar%temp = 0.d0
+  auxvar%solvent_den_kgL = 0.d0
 
   ! nullify everthing to begin with and allocate later
   nullify(auxvar%pres)
@@ -282,7 +282,7 @@ subroutine GlobalAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%temp = auxvar%temp
   auxvar2%sat = auxvar%sat
   auxvar2%den_kg = auxvar%den_kg
-!  auxvar2%dphi = auxvar%dphi
+  auxvar2%solvent_den_kgL = auxvar%solvent_den_kgL
 
   if (associated(auxvar2%den)) then
     auxvar2%den = auxvar%den
