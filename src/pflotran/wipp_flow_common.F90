@@ -248,13 +248,21 @@ subroutine WIPPFloFluxHarmonicPermOnly(wippflo_auxvar_up,global_auxvar_up, &
   if (associated(material_auxvar_up%fracture) .and. &
       wippflo_use_fracture) then
     if (material_auxvar_up%fracture%vector(iabs_upwind_direction1) > 0.d0) then
+!      perm_up = perm_up * wippflo_auxvar_up%fracture_perm_scaling_factor
+      temp_perm_up = perm_up
       perm_up = perm_up * wippflo_auxvar_up%fracture_perm_scaling_factor
+      perm_up = min(material_auxvar_up%fracture%properties(5),perm_up)
+      perm_up = max(temp_perm_up,perm_up)
     endif
   endif
   if (associated(material_auxvar_dn%fracture) .and. &
       wippflo_use_fracture) then
     if (material_auxvar_dn%fracture%vector(iabs_upwind_direction1) > 0.d0) then
-      perm_dn = perm_dn * wippflo_auxvar_dn%fracture_perm_scaling_factor
+!      perm_dn = perm_dn * wippflo_auxvar_dn%fracture_perm_scaling_factor
+     temp_perm_dn = perm_dn
+     perm_dn = perm_dn * wippflo_auxvar_dn%fracture_perm_scaling_factor
+     perm_dn = min(material_auxvar_dn%fracture%properties(5),perm_dn)
+     perm_dn = max(temp_perm_dn,perm_dn)
     endif
   endif
 
@@ -429,6 +437,7 @@ subroutine WIPPFloFluxLumpedHarmonic(wippflo_auxvar_up,global_auxvar_up, &
   PetscReal :: perm_rho_mu_area_ave_over_dist(2)
   PetscReal :: area_up, area_dn, area_ave
   PetscReal :: perm_up, perm_dn
+  PetscReal :: temp_perm_up, temp_perm_dn
   PetscReal :: delta_pressure
   PetscReal :: gravity_term
   PetscReal :: rel_perm
@@ -477,16 +486,24 @@ subroutine WIPPFloFluxLumpedHarmonic(wippflo_auxvar_up,global_auxvar_up, &
   if (associated(material_auxvar_up%fracture) .and. &
       wippflo_use_fracture) then
     if (material_auxvar_up%fracture%vector(iabs_upwind_direction1) > 0.d0) then
+!      perm_up = perm_up * wippflo_auxvar_up%fracture_perm_scaling_factor
+      temp_perm_up = perm_up
       perm_up = perm_up * wippflo_auxvar_up%fracture_perm_scaling_factor
+      perm_up = min(material_auxvar_up%fracture%properties(5),perm_up)
+      perm_up = max(temp_perm_up,perm_up)
     endif
   endif
   if (associated(material_auxvar_dn%fracture) .and. &
       wippflo_use_fracture) then
     if (material_auxvar_dn%fracture%vector(iabs_upwind_direction1) > 0.d0) then
-      perm_dn = perm_dn * wippflo_auxvar_dn%fracture_perm_scaling_factor
+!      perm_dn = perm_dn * wippflo_auxvar_dn%fracture_perm_scaling_factor
+     temp_perm_dn = perm_dn
+     perm_dn = perm_dn * wippflo_auxvar_dn%fracture_perm_scaling_factor
+     perm_dn = min(material_auxvar_dn%fracture%properties(5),perm_dn)
+     perm_dn = max(temp_perm_dn,perm_dn)
     endif
   endif
-
+  
   ! this scale by area
   area_up = wippflo_auxvar_up%alpha * area
   area_dn = wippflo_auxvar_dn%alpha * area
@@ -668,6 +685,7 @@ subroutine WIPPFloBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
   PetscReal :: mobility, q
   PetscReal :: tot_mole_flux
   PetscReal :: perm_dn
+  PetscReal :: temp_perm_dn
   PetscReal :: boundary_pressure
   PetscReal :: wat_mole_flux, air_mole_flux
   PetscBool :: upwind
@@ -700,7 +718,11 @@ subroutine WIPPFloBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
   if (associated(material_auxvar_dn%fracture) .and. &
       wippflo_use_fracture) then
     if (material_auxvar_dn%fracture%vector(iabs_upwind_direction1) > 0.d0) then
-      perm_dn = perm_dn * wippflo_auxvar_dn%fracture_perm_scaling_factor
+!      perm_dn = perm_dn * wippflo_auxvar_dn%fracture_perm_scaling_factor
+     temp_perm_dn = perm_dn
+     perm_dn = perm_dn * wippflo_auxvar_dn%fracture_perm_scaling_factor
+     perm_dn = min(material_auxvar_dn%fracture%properties(5),perm_dn)
+     perm_dn = max(temp_perm_dn,perm_dn)
     endif
   endif
 
@@ -983,6 +1005,7 @@ subroutine WIPPFloBCFluxLumpedHarmonic(ibndtype,auxvar_mapping,auxvars, &
   PetscReal :: rel_perm, viscosity, q
   PetscReal :: tot_mole_flux
   PetscReal :: perm_dn
+  PetscReal :: temp_perm_dn
   PetscReal :: boundary_pressure
   PetscReal :: wat_mole_flux, air_mole_flux
   PetscBool :: upwind
@@ -1020,7 +1043,11 @@ subroutine WIPPFloBCFluxLumpedHarmonic(ibndtype,auxvar_mapping,auxvars, &
   if (associated(material_auxvar_dn%fracture) .and. &
       wippflo_use_fracture) then
     if (material_auxvar_dn%fracture%vector(iabs_upwind_direction1) > 0.d0) then
-      perm_dn = perm_dn * wippflo_auxvar_dn%fracture_perm_scaling_factor
+!      perm_dn = perm_dn * wippflo_auxvar_dn%fracture_perm_scaling_factor
+     temp_perm_dn = perm_dn
+     perm_dn = perm_dn * wippflo_auxvar_dn%fracture_perm_scaling_factor
+     perm_dn = min(material_auxvar_dn%fracture%properties(5),perm_dn)
+     perm_dn = max(temp_perm_dn,perm_dn)
     endif
   endif
 

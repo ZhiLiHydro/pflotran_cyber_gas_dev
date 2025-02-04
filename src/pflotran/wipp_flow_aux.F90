@@ -652,6 +652,12 @@ end subroutine WIPPFloAuxVarPerturb
 subroutine WIPPFloScalePerm(wippflo_auxvar,material_auxvar,perm,ivar)
   !
   ! Scales the permeability by fracture and Klinkenbert (gas only)
+  ! This routine is only used for outputs
+  ! The permeability calculation is in subroutines:
+  ! WIPPFloFluxHarmonicPermOnly
+  ! WIPPFloFluxLumpedHarmonic
+  ! WIPPFloBCFluxHarmonicPermOnly
+  ! WIPPFloBCFluxLumpedHarmonic
   !
   ! Author: Glenn Hammond
   ! Date: 08/29/17
