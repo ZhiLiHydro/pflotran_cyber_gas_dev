@@ -140,7 +140,6 @@ module Reactive_Transport_Aux_module
             RTAuxVarPerturb, &
             RTAuxVarCopyInitialGuess, &
             RTSumMoles, &
-            RTAuxSetFluidDensity, &
             RTAuxVarDestroy, &
             RTAuxVarStrip, &
             RTAuxDestroy
@@ -561,30 +560,6 @@ subroutine RTAuxVarCopyInitialGuess(auxvar,auxvar2,option)
 #endif
 
 end subroutine RTAuxVarCopyInitialGuess
-
-! ************************************************************************** !
-
-subroutine RTAuxSetFluidDensity(auxvar,den_kg,copy_gas)
-  !
-  ! Sets the liquid and gas densities for reactive transport calculations
-  !
-  ! Author: Glenn Hammond
-  ! Date: 02/05/25
-  !
-  use Option_module
-
-  implicit none
-
-  type(reactive_transport_auxvar_type) :: auxvar
-  PetscReal :: den_kg(:)
-  PetscBool :: copy_gas
-
-  auxvar%den_kg(LIQUID_PHASE) = den_kg(LIQUID_PHASE)
-  if (copy_gas) then
-    auxvar%den_kg(GAS_PHASE) = den_kg(GAS_PHASE)
-  endif
-
-end subroutine RTAuxSetFluidDensity
 
 ! ************************************************************************** !
 

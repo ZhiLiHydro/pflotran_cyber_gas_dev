@@ -175,6 +175,7 @@ subroutine PMRTReadSimOptionsBlock(this,input)
   use Input_Aux_module
   use String_module
   use Option_module
+  use Option_Transport_module
   use Reactive_Transport_Aux_module
 
   implicit none
@@ -184,6 +185,7 @@ subroutine PMRTReadSimOptionsBlock(this,input)
 
   character(len=MAXWORDLENGTH) :: keyword
   character(len=MAXSTRINGLENGTH) :: error_string
+  character(len=MAXWORDLENGTH) :: word
   type(option_type), pointer :: option
   PetscBool :: found
 
@@ -242,6 +244,23 @@ subroutine PMRTReadSimOptionsBlock(this,input)
       case('REFACTORED_CONVERGENCE')
         this%refactored_convergence = PETSC_TRUE
         this%check_post_convergence = PETSC_TRUE
+      case('FLUID_DENSITY_TRANSFER')
+        call InputReadWord(input,option,word,PETSC_TRUE)
+        call InputErrorMsg(input,option,keyword,word)
+        call StringToUpper(word)
+        select case(word)
+          case('DEFAULT')
+            option%transport%fluid_density_update_method = RT_DENSITY_DEFAULT
+          case('PURE_WATER')
+            option%transport%fluid_density_update_method = &
+              RT_DENSITY_PURE_WATER
+          case('UNITY')
+            option%transport%fluid_density_update_method = &
+              RT_DENSITY_UNITY
+          case default
+            keyword = trim(keyword)//','//word
+            call InputKeywordUnrecognized(input,keyword,error_string,option)
+        end select
       case default
         call InputKeywordUnrecognized(input,keyword,error_string,option)
     end select
@@ -686,8 +705,9 @@ contains
 subroutine SetDensity(global_auxvars,rt_auxvars,option)
 
   use Global_Aux_module
-  use Option_module
+  use Reaction_module
   use Reactive_Transport_Aux_module
+  use Option_module
 
   implicit none
 
@@ -696,13 +716,11 @@ subroutine SetDensity(global_auxvars,rt_auxvars,option)
   type(option_type) :: option
 
   PetscInt :: i
-  PetscBool :: copy_gas
 
   if (.not.associated(rt_auxvars)) return
 
-  copy_gas = (option%transport%nphase > 1)
   do i = 1, size(rt_auxvars)
-    call RTAuxSetFluidDensity(rt_auxvars(i),global_auxvars(i)%den_kg,copy_gas)
+    call RCalcFluidDensity(rt_auxvars(i),global_auxvars(i),option)
   enddo
 
 end subroutine SetDensity
