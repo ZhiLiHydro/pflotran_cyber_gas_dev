@@ -57,7 +57,8 @@ module Reaction_module
             RTSetPlotVariables, &
             RUpdateKineticState, &
             RUpdateTempDependentCoefs, &
-            RTotalSorb
+            RTotalSorb, &
+            RCalcFluidDensity
 
 contains
 
@@ -1455,8 +1456,7 @@ subroutine ReactionEquilibrateConstraint(rt_auxvar,global_auxvar, &
 
   if (.not.associated(constraint%aqueous_species)) return
 
-  call RTAuxSetFluidDensity(rt_auxvar,global_auxvar%den_kg, &
-                            option%transport%nphase > 1)
+  call RCalcFluidDensity(rt_auxvar,global_auxvar,option)
 
   surface_complexation => reaction%surface_complexation
   mineral_reaction => reaction%mineral
@@ -5875,6 +5875,51 @@ subroutine RTPrintAuxVar(file_unit,rt_auxvar,global_auxvar,material_auxvar,&
   write(file_unit,*) '--------------------------------------------------------'
 
 end subroutine RTPrintAuxVar
+
+! ************************************************************************** !
+
+subroutine RCalcFluidDensity(rt_auxvar,global_auxvar,option)
+
+  ! Update the fluid density for reactive transport based on flow densities
+  ! locally-calculated override
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/06/25
+
+  use Global_Aux_module
+  use Option_module
+  use Option_Transport_module
+  use EOS_Water_module
+
+  implicit none
+
+  type(reactive_transport_auxvar_type) :: rt_auxvar
+  type(global_auxvar_type) :: global_auxvar
+  type(option_type) :: option
+  PetscReal :: dw_mol
+  PetscReal :: den_kg
+  PetscReal :: liquid_pressure
+  PetscBool :: include_gas_phase
+  PetscErrorCode :: ierr
+
+  include_gas_phase = (option%transport%nphase > 1)
+  select case(option%transport%fluid_density_update_method)
+    case(RT_DENSITY_UNITY)
+      rt_auxvar%den_kg(LIQUID_PHASE) = 1.d3
+    case(RT_DENSITY_PURE_WATER)
+      liquid_pressure = max(global_auxvar%pres(LIQUID_PHASE), &
+                            option%flow%reference_pressure)
+      call EOSWaterDensity(global_auxvar%temp,liquid_pressure, &
+                           den_kg,dw_mol,ierr)
+      rt_auxvar%den_kg(LIQUID_PHASE) = den_kg
+    case default
+      rt_auxvar%den_kg(LIQUID_PHASE) = global_auxvar%den_kg(LIQUID_PHASE)
+  end select
+  if (include_gas_phase) then
+    rt_auxvar%den_kg(GAS_PHASE) = global_auxvar%den_kg(GAS_PHASE)
+  endif
+
+end subroutine RCalcFluidDensity
 
 ! ************************************************************************** !
 

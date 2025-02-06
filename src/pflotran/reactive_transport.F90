@@ -832,9 +832,8 @@ subroutine RTApplyPrescribedConditions(realization)
       call RTAuxVarCopy(constraint_coupler%rt_auxvar, &
                         rt_auxvars(ghosted_id),option)
       ! need to overwrite fluid densities in constraint
-      call RTAuxSetFluidDensity(rt_auxvars(ghosted_id), &
-                                global_auxvars(ghosted_id)%den_kg, &
-                                (reaction%nphase > 1))
+      call RCalcFluidDensity(rt_auxvars(ghosted_id), &
+                             global_auxvars(ghosted_id),option)
       global_offset = (local_id-1)*option%ntrandof
       offset = global_offset
       do idof = 1, reaction%naqcomp

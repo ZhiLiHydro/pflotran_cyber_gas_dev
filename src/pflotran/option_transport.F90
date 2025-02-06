@@ -10,6 +10,10 @@ module Option_Transport_module
 
   private
 
+  PetscInt, parameter, public :: RT_DENSITY_DEFAULT = 1
+  PetscInt, parameter, public :: RT_DENSITY_PURE_WATER = 2
+  PetscInt, parameter, public :: RT_DENSITY_UNITY = 3
+
   type, public :: transport_option_type
 
     PetscInt :: rt_idof
@@ -38,6 +42,7 @@ module Option_Transport_module
     PetscBool :: couple_co2_salinity
 
     PetscInt :: nphase
+    PetscInt :: fluid_density_update_method
 
   end type transport_option_type
 
@@ -145,6 +150,7 @@ subroutine OptionTransportInitRealization(option)
   option%inf_scaled_res_tol = UNINITIALIZED_DOUBLE
 
   option%nphase = 1
+  option%fluid_density_update_method = RT_DENSITY_DEFAULT
 
 end subroutine OptionTransportInitRealization
 
