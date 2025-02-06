@@ -656,9 +656,8 @@ subroutine BioTH_React(this,Residual,Jacobian,compute_derivative, &
   ! Ns/m2 (This should be a field but not found in global_auxvar)
 
   temperature = global_auxvar%temp
-  rho_f = global_auxvar%solvent_den_kgL*1.d3
+  rho_f = rt_auxvar%denw_kgm3
   g = EARTH_GRAVITY
-
 
 ! Assign concentrations of Vaq and Vim
   Vaq = rt_auxvar%total(this%species_Vaq_id,iphase)

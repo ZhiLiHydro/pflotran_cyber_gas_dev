@@ -521,6 +521,7 @@ recursive subroutine PMRTInitializeRun(this)
 
   ! check for uninitialized flow variables
   call RealizUnInitializedVarsTran(this%realization)
+  call PMRTSetFluidDensity(this,PETSC_TRUE)
 
   if (this%transient_porosity) then
     call RealizationCalcMineralPorosity(this%realization)
@@ -650,6 +651,7 @@ subroutine PMRTWeightFlowParameters(this,time_level)
     endif
     ! set densities and saturations to t
     call GlobalWeightAuxVars(this%realization,tran_weight)
+    call PMRTSetFluidDensity(this,(time_level /= TIME_T))
   else if (this%transient_porosity) then
     call MaterialWeightAuxVars(this%realization%patch%aux%Material, &
                                tran_weight, &
@@ -657,6 +659,55 @@ subroutine PMRTWeightFlowParameters(this,time_level)
   endif
 
 end subroutine PMRTWeightFlowParameters
+
+! ************************************************************************** !
+
+subroutine PMRTSetFluidDensity(this,include_conditions)
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/05/25
+  !
+  implicit none
+
+  class(pm_rt_type) :: this
+  PetscBool :: include_conditions
+
+  call SetDensity(this%realization%patch%aux%Global%auxvars, &
+                  this%realization%patch%aux%RT%auxvars,this%option)
+  if (include_conditions) then
+    call SetDensity(this%realization%patch%aux%Global%auxvars_bc, &
+                    this%realization%patch%aux%RT%auxvars_bc,this%option)
+    call SetDensity(this%realization%patch%aux%Global%auxvars_ss, &
+                    this%realization%patch%aux%RT%auxvars_ss,this%option)
+  endif
+
+contains
+
+subroutine SetDensity(global_auxvars,rt_auxvars,option)
+
+  use Global_Aux_module
+  use Option_module
+  use Reactive_Transport_Aux_module
+
+  implicit none
+
+  type(global_auxvar_type) :: global_auxvars(:)
+  type(reactive_transport_auxvar_type), pointer :: rt_auxvars(:)
+  type(option_type) :: option
+
+  PetscInt :: i
+  PetscBool :: copy_gas
+
+  if (.not.associated(rt_auxvars)) return
+
+  copy_gas = (option%transport%nphase > 1)
+  do i = 1, size(rt_auxvars)
+    call RTSetFluidDensity(rt_auxvars(i),global_auxvars(i)%den_kg,copy_gas)
+  enddo
+
+end subroutine SetDensity
+
+end subroutine PMRTSetFluidDensity
 
 ! ************************************************************************** !
 

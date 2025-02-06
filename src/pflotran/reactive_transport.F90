@@ -3711,9 +3711,6 @@ subroutine RTUpdateAuxVars(realization,update_cells,update_bcs, &
         istartaq = offset + istartaq_loc
         iendaq = offset + iendaq_loc
 
-        global_auxvars_bc(sum_connection)%solvent_den_kgL = &
-          global_auxvars_bc(sum_connection)%den_kg(LIQUID_PHASE)*1.d-3
-
 #ifdef XINGYUAN_BC
   if (idof_aq_dataset > 0) then
     call DatasetInterpolateReal(dataset, &
@@ -3745,7 +3742,7 @@ subroutine RTUpdateAuxVars(realization,update_cells,update_bcs, &
                 ! by dividing by density of water (mol/L -> mol/kg)
               xxbc(istartaq_loc:iendaq_loc) = &
                 basis_molarity_p(1:reaction%naqcomp) / &
-                global_auxvars_bc(sum_connection)%solvent_den_kgL
+                rt_auxvars_bc(sum_connection)%denw_kgL
             case(DIRICHLET_ZERO_GRADIENT_BC,ZERO_GRADIENT_BC,MEMBRANE_BC)
               if (patch%boundary_velocities(iphase,sum_connection) < 0.d0) then
                 ! with outflow, these boundary concentrations are ignored,
@@ -3758,7 +3755,7 @@ subroutine RTUpdateAuxVars(realization,update_cells,update_bcs, &
               ! any doubt, set xxbc = 1.d-9 for vdarcy < 0 to check
               xxbc(istartaq_loc:iendaq_loc) = &
                 basis_molarity_p(1:reaction%naqcomp) / &
-                global_auxvars_bc(sum_connection)%solvent_den_kgL
+                rt_auxvars_bc(sum_connection)%denw_kgL
           end select
           ! no need to update boundary fluid density since it is already set
           rt_auxvars_bc(sum_connection)%pri_molal = &

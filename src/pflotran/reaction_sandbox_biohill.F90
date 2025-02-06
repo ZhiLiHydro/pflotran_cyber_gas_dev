@@ -125,7 +125,7 @@ subroutine BioHillEvaluate(this,Residual,Jacobian,compute_derivative, &
   PetscReal :: RateA, RateB, RateC, RateD, RateX  ! [mole / sec]
 
   volume = material_auxvar%volume
-  molality_to_molarity = global_auxvar%solvent_den_kgL
+  molality_to_molarity = rt_auxvar%denw_kgL
 
   Aaq = rt_auxvar%pri_molal(this%species_Aaq_id)*molality_to_molarity
   Baq = rt_auxvar%pri_molal(this%species_Baq_id)*molality_to_molarity

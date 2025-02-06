@@ -179,11 +179,9 @@ subroutine GlobalSetAuxVarScalar(realization,value,ivar)
       iphase = option%liquid_phase
       do i=1, num_aux
         auxvars(i)%den_kg(iphase) = value
-        auxvars(i)%solvent_den_kgL = value * 1.d-3
       enddo
       do i=1, num_aux_bc
         auxvars_bc(i)%den_kg(iphase) = value
-        auxvars_bc(i)%solvent_den_kgL = value * 1.d-3
       enddo
     case(LIQUID_DENSITY_MOL)
       iphase = option%liquid_phase
@@ -348,7 +346,6 @@ subroutine GlobalSetAuxVarVecLoc(realization,vec_loc,ivar,time_level)
           do ghosted_id=1, grid%ngmax
             auxvars(ghosted_id)%den_kg(iphase) = vec_loc_p(ghosted_id)
             auxvars(ghosted_id)%den(iphase) = vec_loc_p(ghosted_id)/FMWH2O
-            auxvars(ghosted_id)%solvent_den_kgL = vec_loc_p(ghosted_id)*1.d-3
           enddo
       end select
     case(GAS_SATURATION)
@@ -674,8 +671,6 @@ subroutine GlobalWeightAuxVars(realization,weight)
         auxvars(ghosted_id)%den_kg(:) = &
           (weight*auxvars(ghosted_id)%den_kg_store(:,TIME_TpDT)+ &
            (1.d0-weight)*auxvars(ghosted_id)%den_kg_store(:,TIME_T))
-        auxvars(ghosted_id)%solvent_den_kgL = &
-          auxvars(ghosted_id)%den_kg(LIQUID_PHASE) * 1.d-3
       enddo
   end select
 

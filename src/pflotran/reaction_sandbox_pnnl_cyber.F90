@@ -668,7 +668,7 @@ subroutine CyberReact(this,Residual,Jacobian,compute_derivative, &
   L_water = material_auxvar%porosity*global_auxvar%sat(iphase)* &
             volume*1.d3 ! m^3 -> L
 
-  molality_to_molarity = global_auxvar%solvent_den_kgL
+  molality_to_molarity = rt_auxvar%denw_kgL
 
   if (reaction%act_coef_update_frequency /= ACT_COEF_FREQUENCY_OFF) then
     option%io_buffer = 'Activity coefficients not currently supported in &
