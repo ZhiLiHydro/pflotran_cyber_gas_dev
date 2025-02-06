@@ -231,7 +231,7 @@ subroutine FlexBioHillEvaluate(this,Residual,Jacobian,compute_derivative, &
   Xim_offset = this%species_Xim_id + reaction%offset_immobile
   volume = material_auxvar%volume
   if (this%molarity_units) then
-    molality_to_molarity = global_auxvar%den_kg(iphase)*1.d-3
+    molality_to_molarity = rt_auxvar%den_kg(iphase)*1.d-3
   else
     molality_to_molarity = 1.d0
   endif

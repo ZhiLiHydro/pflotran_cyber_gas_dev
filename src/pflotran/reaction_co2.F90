@@ -255,7 +255,7 @@ subroutine RCO2TotalCO2(rt_auxvar,global_auxvar,reaction,option)
   rt_auxvar%aqueous%dtotal(:,:,iphase) = 0.D0
 
   if (associated(global_auxvar%xmass)) xmass = global_auxvar%xmass(iphase)
-  den_kg_per_L = global_auxvar%den_kg(iphase)*xmass*1.d-3
+  den_kg_per_L = rt_auxvar%den_kg(iphase)*xmass*1.d-3
 
   if (global_auxvar%sat(iphase) > 1.D-20) then
     do iactgas = 1, reaction%gas%nactive_gas ! all gas phase species are secondary

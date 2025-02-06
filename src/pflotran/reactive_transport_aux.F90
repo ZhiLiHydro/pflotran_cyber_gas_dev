@@ -69,6 +69,9 @@ module Reactive_Transport_Aux_module
     ! immobile species such as biomass
     PetscReal, pointer :: immobile(:) ! mol/m^3 bulk
 
+    ! fluid density
+    PetscReal, pointer :: den_kg(:)
+
     ! auxiliary array to store miscellaneous data (e.g. reaction rates,
     ! cumulative mass, etc.
     PetscReal, pointer :: auxiliary_data(:)
@@ -132,6 +135,7 @@ module Reactive_Transport_Aux_module
             RTAuxVarPerturb, &
             RTAuxVarCopyInitialGuess, &
             RTSumMoles, &
+            RTAuxSetFluidDensity, &
             RTAuxVarDestroy, &
             RTAuxVarStrip, &
             RTAuxDestroy
@@ -358,6 +362,9 @@ recursive subroutine RTAuxVarInit(auxvar,reaction, &
     nullify(auxvar%immobile)
   endif
 
+  allocate(auxvar%den_kg(reaction%nphase))
+  auxvar%den_kg(:) = 0.d0
+
   if (reaction%nauxiliary > 0) then
     allocate(auxvar%auxiliary_data(reaction%nauxiliary))
     auxvar%auxiliary_data = 0.d0
@@ -460,6 +467,8 @@ subroutine RTAuxVarCopy(auxvar,auxvar2,option)
     auxvar2%immobile = auxvar%immobile
   endif
 
+  auxvar2%den_kg = auxvar%den_kg
+
   if (associated(auxvar%auxiliary_data)) then
     auxvar2%auxiliary_data = auxvar%auxiliary_data
   endif
@@ -547,6 +556,30 @@ subroutine RTAuxVarCopyInitialGuess(auxvar,auxvar2,option)
 #endif
 
 end subroutine RTAuxVarCopyInitialGuess
+
+! ************************************************************************** !
+
+subroutine RTAuxSetFluidDensity(auxvar,den_kg,copy_gas)
+  !
+  ! Sets the liquid and gas densities for reactive transport calculations
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/05/25
+  !
+  use Option_module
+
+  implicit none
+
+  type(reactive_transport_auxvar_type) :: auxvar
+  PetscReal :: den_kg(:)
+  PetscBool :: copy_gas
+
+  auxvar%den_kg(LIQUID_PHASE) = den_kg(LIQUID_PHASE)
+  if (copy_gas) then
+    auxvar%den_kg(GAS_PHASE) = den_kg(GAS_PHASE)
+  endif
+
+end subroutine RTAuxSetFluidDensity
 
 ! ************************************************************************** !
 
