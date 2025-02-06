@@ -656,7 +656,7 @@ subroutine BioTH_React(this,Residual,Jacobian,compute_derivative, &
   ! Ns/m2 (This should be a field but not found in global_auxvar)
 
   temperature = global_auxvar%temp
-  rho_f = global_auxvar%den_kg(iphase)
+  rho_f = rt_auxvar%den_kg(iphase)
   g = EARTH_GRAVITY
 
 

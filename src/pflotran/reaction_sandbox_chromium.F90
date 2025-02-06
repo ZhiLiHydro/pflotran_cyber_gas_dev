@@ -416,7 +416,7 @@ subroutine ChromiumReact(this,Residual,Jacobian,compute_derivative, &
   !
   !   Useful variables:
   !     global_auxvar%den(iphase) - fluid density [mol/m^3]
-  !     global_auxvar%den_kg(iphase) - fluid density [kg/m^3]
+  !     rt_auxvar%den_kg(iphase) - fluid density [kg/m^3]
   !     global_auxvar%sat(iphase) - saturation
   !     global_auxvar%temp - temperature [C]
   !

@@ -803,6 +803,7 @@ subroutine RTApplyPrescribedConditions(realization)
   class(tran_constraint_rt_type), pointer :: constraint
   class(reaction_rt_type), pointer :: reaction
   type(reactive_transport_auxvar_type), pointer :: rt_auxvars(:)
+  type(global_auxvar_type), pointer :: global_auxvars(:)
 
   PetscInt :: local_id, ghosted_id
   PetscInt :: idof
@@ -815,6 +816,7 @@ subroutine RTApplyPrescribedConditions(realization)
   grid => patch%grid
   option => realization%option
   rt_auxvars => patch%aux%RT%auxvars
+  global_auxvars => patch%aux%Global%auxvars
   reaction => realization%reaction
 
   if (.not.associated(patch%prescribed_condition_list%first)) return
@@ -835,6 +837,10 @@ subroutine RTApplyPrescribedConditions(realization)
       ghosted_id = grid%nL2g(local_id)
       call RTAuxVarCopy(constraint_coupler%rt_auxvar, &
                         rt_auxvars(ghosted_id),option)
+      ! need to overwrite fluid densities in constraint
+      call RTAuxSetFluidDensity(rt_auxvars(ghosted_id), &
+                                global_auxvars(ghosted_id)%den_kg, &
+                                (reaction%nphase > 1))
       global_offset = (local_id-1)*option%ntrandof
       offset = global_offset
       do idof = 1, reaction%naqcomp
@@ -1727,8 +1733,6 @@ subroutine RTCalculateTransportMatrix(realization,T)
                        0.5d0, & ! fraction upwind (0.d0 upwind, 0.5 central)
                        coef_up,coef_dn)
 
- !     coef_dn = coef_dn*global_auxvars(ghosted_id)%den_kg*1.d-3
-
       !Jup not needed
       coef_dn = -coef_dn
       call MatSetValuesLocal(T,1,ghosted_id-1,1,ghosted_id-1,coef_dn, &
@@ -1745,7 +1749,6 @@ subroutine RTCalculateTransportMatrix(realization,T)
     if (patch%imat(ghosted_id) <= 0) cycle
     coef = material_auxvars(ghosted_id)%porosity* &
            global_auxvars(ghosted_id)%sat(iphase)* &
-!geh           global_auxvars(ghosted_id)%den_kg(iphase)* &
            1000.d0* &
            material_auxvars(ghosted_id)%volume/option%tran_dt
     call MatSetValuesLocal(T,1,ghosted_id-1,1,ghosted_id-1,coef,ADD_VALUES, &
@@ -3758,7 +3761,7 @@ subroutine RTUpdateAuxVars(realization,update_cells,update_bcs, &
                 ! by dividing by density of water (mol/L -> mol/kg)
               xxbc(istartaq_loc:iendaq_loc) = &
                 basis_molarity_p(1:reaction%naqcomp) / &
-                global_auxvars_bc(sum_connection)%den_kg(iphase) * &
+                rt_auxvars_bc(sum_connection)%den_kg(iphase) * &
                 1000.d0
             case(DIRICHLET_ZERO_GRADIENT_BC,ZERO_GRADIENT_BC,MEMBRANE_BC)
               if (patch%boundary_velocities(iphase,sum_connection) < 0.d0) then
@@ -3772,7 +3775,7 @@ subroutine RTUpdateAuxVars(realization,update_cells,update_bcs, &
               ! any doubt, set xxbc = 1.d-9 for vdarcy < 0 to check
               xxbc(istartaq_loc:iendaq_loc) = &
                 basis_molarity_p(1:reaction%naqcomp) / &
-                global_auxvars_bc(sum_connection)%den_kg(iphase) * &
+                rt_auxvars_bc(sum_connection)%den_kg(iphase) * &
                 1000.d0
           end select
           ! no need to update boundary fluid density since it is already set

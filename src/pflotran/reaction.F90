@@ -1455,6 +1455,9 @@ subroutine ReactionEquilibrateConstraint(rt_auxvar,global_auxvar, &
 
   if (.not.associated(constraint%aqueous_species)) return
 
+  call RTAuxSetFluidDensity(rt_auxvar,global_auxvar%den_kg, &
+                            option%transport%nphase > 1)
+
   surface_complexation => reaction%surface_complexation
   mineral_reaction => reaction%mineral
 
@@ -1478,11 +1481,11 @@ subroutine ReactionEquilibrateConstraint(rt_auxvar,global_auxvar, &
   if (associated(global_auxvar%xmass)) xmass = global_auxvar%xmass(iphase)
 
   if (reaction%initialize_with_molality) then
-    convert_molal_to_molar = global_auxvar%den_kg(iphase)*xmass/1000.d0
+    convert_molal_to_molar = rt_auxvar%den_kg(iphase)*xmass/1000.d0
     convert_molar_to_molal = 1.d0
   else
     convert_molal_to_molar = 1.d0
-    convert_molar_to_molal = 1000.d0/global_auxvar%den_kg(iphase)/xmass
+    convert_molar_to_molal = 1000.d0/rt_auxvar%den_kg(iphase)/xmass
   endif
 
   !geh: We do need this setting of mineral volume fractions.  If not specified
@@ -2097,7 +2100,7 @@ subroutine ReactionEquilibrateConstraint(rt_auxvar,global_auxvar, &
 
   ! do not scale by molal_to_molar since it could be 1.d0 if MOLAL flag set
   aq_species_constraint%basis_molarity = rt_auxvar%pri_molal* &
-                                 global_auxvar%den_kg(option%liquid_phase)/ &
+                                 rt_auxvar%den_kg(option%liquid_phase)/ &
                                  1000.d0
 
 #if 0
@@ -2184,7 +2187,7 @@ subroutine ReactionPrintConstraint(global_auxvar,rt_auxvar, &
   select case(option%iflowmode)
     case(MPH_MODE)
     case(NULL_MODE)
-      global_auxvar%den_kg(iphase) = &
+      rt_auxvar%den_kg(iphase) = &
         option%flow%reference_density(option%liquid_phase)
       global_auxvar%temp = option%flow%reference_temperature
       global_auxvar%sat(iphase) = option%flow%reference_saturation
@@ -2225,7 +2228,7 @@ subroutine ReactionPrintConstraint(global_auxvar,rt_auxvar, &
     mass_fraction_h2o = 1.d0/(1.d0 + sum_mass*1.d-3)
   endif
 
-  molal_to_molar = global_auxvar%den_kg(iphase)/1000.d0
+  molal_to_molar = rt_auxvar%den_kg(iphase)/1000.d0
   molar_to_molal = 1.d0/molal_to_molar
 
   if (.not.reaction%read_reaction_database) then
@@ -2315,7 +2318,7 @@ subroutine ReactionPrintConstraint(global_auxvar,rt_auxvar, &
     write(option%fid_out,'(a20,f8.2,a4)') '     temperature: ', &
       global_auxvar%temp,' [C]'
     write(option%fid_out,'(a20,f8.2,a9)') '     density H2O: ', &
-      global_auxvar%den_kg(1),' [kg/m^3]'
+      rt_auxvar%den_kg(1),' [kg/m^3]'
     write(option%fid_out,'(a20,1p2e12.4,a9)') 'ln / activity H2O: ', &
       rt_auxvar%ln_act_h2o,exp(rt_auxvar%ln_act_h2o),' [---]'
     write(option%fid_out,'(a20,1pe12.4,a9)') 'mole fraction H2O: ', &
@@ -2325,9 +2328,9 @@ subroutine ReactionPrintConstraint(global_auxvar,rt_auxvar, &
 
     ! CO2-specific
     if (option%transport%couple_co2) then
-      if (global_auxvar%den_kg(2) > 0.d0) then
+      if (rt_auxvar%den_kg(2) > 0.d0) then
         write(option%fid_out,'(a20,f8.2,a9)') '     density CO2: ', &
-          global_auxvar%den_kg(2),' [kg/m^3]'
+          rt_auxvar%den_kg(2),' [kg/m^3]'
         write(option%fid_out,'(a20,es12.4,a9)') '            xphi: ', &
           global_auxvar%fugacoeff(1)
 
@@ -3485,7 +3488,7 @@ subroutine RReactInputStats(print_rank,guess,rt_auxvar,global_auxvar, &
   print *, '          temperature: ', StringWrite(global_auxvar%temp)
   print *, '             pressure: ', StringWrite(global_auxvar%pres)
   print *, '    liquid saturation: ', StringWrite(global_auxvar%sat(1))
-  print *, '       liquid density: ', StringWrite(global_auxvar%den_kg(1))
+  print *, '       liquid density: ', StringWrite(rt_auxvar%den_kg(1))
   ! material_auxvar
   print *, '               volume: ', StringWrite(material_auxvar%volume)
   print *, '             porosity: ', StringWrite(material_auxvar%porosity)
@@ -3616,7 +3619,7 @@ subroutine RReactConvergenceStats(print_rank,istep,header,guess, &
   print *, '           volume: ' // StringWrite(material_auxvar%volume)
   print *, '         porosity: ' // StringWrite(material_auxvar%porosity)
   print *, '  liq saturation : ' // StringWrite(global_auxvar%sat(1))
-  print *, '   liquid density: ' // StringWrite(global_auxvar%den_kg(1))
+  print *, '   liquid density: ' // StringWrite(rt_auxvar%den_kg(1))
   print *, '    current guess: ' // StringWrite(guess)
   print *, '    initial total: ' // StringWrite(initial_total)
   print *, '    current total: ' // StringWrite(current_total)
@@ -3688,7 +3691,7 @@ subroutine RStep(guess,rt_auxvar,global_auxvar,material_auxvar, &
   ! skip chemistry if species nonreacting
   if (option%transport%conservative_transport_only) then
     rt_auxvar%pri_molal(:) = rt_auxvar%total(:,1) / &
-                             global_auxvar%den_kg(1)*1.d3
+                             rt_auxvar%den_kg(1)*1.d3
     return
   endif
 
@@ -3716,7 +3719,7 @@ subroutine RStep(guess,rt_auxvar,global_auxvar,material_auxvar, &
   enddo
   if (reaction%use_total_as_guess) then
     guess(1:reaction%naqcomp) = rt_auxvar%total(:,1) / &
-                                global_auxvar%den_kg(1)*1.d3
+                                rt_auxvar%den_kg(1)*1.d3
   endif
 
   ! Print the important inputs if needed
@@ -4574,7 +4577,7 @@ subroutine RTotalAqueous(rt_auxvar,global_auxvar,reaction,option)
 
   xmass = 1.d0
   if (associated(global_auxvar%xmass)) xmass = global_auxvar%xmass(iphase)
-  den_kg_per_L = global_auxvar%den_kg(iphase)*xmass*1.d-3
+  den_kg_per_L = rt_auxvar%den_kg(iphase)*xmass*1.d-3
 
   ln_conc = log(rt_auxvar%pri_molal)
   ln_act = ln_conc+log(rt_auxvar%pri_act_coef)
@@ -5198,7 +5201,7 @@ subroutine RGeneral(Res,Jac,compute_derivative,rt_auxvar,global_auxvar, &
 
     ! Qkf/Qkr units are now mol/kg(water)-sec
 
-    por_den_sat_vol = material_auxvar%porosity*global_auxvar%den_kg(iphase)* &
+    por_den_sat_vol = material_auxvar%porosity*rt_auxvar%den_kg(iphase)* &
                       global_auxvar%sat(iphase)* &
                       material_auxvar%volume
 
@@ -5585,7 +5588,7 @@ subroutine RTAccumulationDerivative(rt_auxvar,global_auxvar, &
         rt_auxvar%aqueous%dtotal(:,:,iphase)*psvd_t
     else
       psvd_t = material_auxvar%porosity*global_auxvar%sat(iphase)* &
-              global_auxvar%den_kg(iphase)*material_auxvar%volume/ &
+              rt_auxvar%den_kg(iphase)*material_auxvar%volume/ &
               option%tran_dt ! units of den = kg water/m^3 water
       do icomp=istart,iendaq
         J(icomp,icomp) = psvd_t
@@ -5878,7 +5881,7 @@ subroutine RTPrintAuxVar(file_unit,rt_auxvar,global_auxvar,material_auxvar,&
   if (len_trim(header_string) > 0) write(file_unit,*) trim(header_string)
   write(file_unit,*) '                  cell id: ', natural_id
   write(file_unit,*) '          liquid pressure: ', global_auxvar%pres(1)
-  write(file_unit,*) '      liquid_density [kg]: ', global_auxvar%den_kg(1)
+  write(file_unit,*) '      liquid_density [kg]: ', rt_auxvar%den_kg(1)
   write(file_unit,*) '          temperature [C]: ', global_auxvar%temp
   write(file_unit,*) '                porosity : ', material_auxvar%porosity
   write(file_unit,*) '             volume [m^3]: ', material_auxvar%volume
