@@ -163,7 +163,7 @@ subroutine PMImmiscibleReadSimOptionsBlock(this,input)
 
   error_string = 'Immiscible Options'
 
-  input%ierr = 0
+  input%ierr = INPUT_ERROR_NONE
   call InputPushBlock(input,option)
   do
 
@@ -184,7 +184,7 @@ subroutine PMImmiscibleReadSimOptionsBlock(this,input)
       case('VERBOSE_CONVERGENCE')
         this%convergence_verbosity = 1
         call InputReadInt(input,option,temp_int)
-        if (input%ierr == 0) then
+        if (.not.InputError(input)) then
           this%convergence_verbosity = temp_int
         else
           call InputDefaultMsg(input,option,keyword)
