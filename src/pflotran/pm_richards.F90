@@ -31,7 +31,7 @@ module PM_Richards_class
     procedure, public :: ReadNewtonBlock => PMRichardsReadNewtonSelectCase
     procedure, public :: InitializeTimestep => PMRichardsInitializeTimestep
     procedure, public :: Setup => PMRichardsSetup
-    procedure, public :: InitializeRun => PMZRichardsInitializeRun
+    procedure, public :: InitializeRun => PMRichardsInitializeRun
     procedure, public :: Residual => PMRichardsResidual
     procedure, public :: Jacobian => PMRichardsJacobian
     procedure, public :: UpdateTimestep => PMRichardsUpdateTimestep
@@ -270,7 +270,7 @@ end subroutine PMRichardsSetup
 
 ! ************************************************************************** !
 
-subroutine PMZRichardsInitializeRun(this)
+subroutine PMRichardsInitializeRun(this)
 
   use Richards_module
 
@@ -283,7 +283,7 @@ subroutine PMZRichardsInitializeRun(this)
 
   ! jaa add density init here
 
-end subroutine PMZRichardsInitializeRun
+end subroutine PMRichardsInitializeRun
 
 ! ************************************************************************** !
 
