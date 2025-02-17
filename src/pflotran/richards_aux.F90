@@ -32,6 +32,7 @@ module Richards_Aux_module
     PetscReal :: kvr
     PetscReal :: kr
     PetscReal :: dkvr_dp
+    PetscReal :: den_0 ! jaa reference density
     PetscReal :: dsat_dp
     PetscReal :: dden_dp
 #if defined(CLM_PFLOTRAN) || defined(CLM_OFFLINE)
@@ -127,6 +128,8 @@ subroutine RichardsAuxVarInit(auxvar,option)
   auxvar%kvr = 0.d0
   auxvar%kr = 0.d0
   auxvar%dkvr_dp = 0.d0
+
+  auxvar%den_0 = 0.d0
 
   auxvar%dsat_dp = 0.d0
   auxvar%dden_dp = 0.d0

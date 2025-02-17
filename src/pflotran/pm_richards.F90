@@ -273,15 +273,31 @@ end subroutine PMRichardsSetup
 subroutine PMRichardsInitializeRun(this)
 
   use Richards_module
+  use Richards_Aux_module
+  use Global_Aux_module
+  use Grid_module
 
   implicit none
 
   class(pm_richards_type) :: this
 
+  type(richards_auxvar_type), pointer :: rich_auxvars(:)
+  type(global_auxvar_type), pointer :: global_auxvars(:)
+  PetscReal, pointer :: pres(:)
+  type(grid_type), pointer :: grid
+  PetscInt :: local_id, ghosted_id
+
   ! call parent implementation
   call PMSubsurfaceFlowInitializeRun(this)
 
-  ! jaa add density init here
+  ! jaa - test init density for geomech accumulation
+  rich_auxvars => this%realization%patch%aux%Richards%auxvars
+  global_auxvars => this%realization%patch%aux%Global%auxvars
+  grid => this%realization%patch%grid
+  do local_id = 1, grid%nlmax
+    ghosted_id = grid%nL2G(local_id)
+    rich_auxvars(ghosted_id)%den_0 = global_auxvars(ghosted_id)%den(1)
+  enddo
 
 end subroutine PMRichardsInitializeRun
 
