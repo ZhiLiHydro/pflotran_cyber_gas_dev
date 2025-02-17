@@ -285,7 +285,6 @@ subroutine PMRichardsInitializeRun(this)
 
   type(richards_auxvar_type), pointer :: rich_auxvars(:)
   type(global_auxvar_type), pointer :: global_auxvars(:)
-  PetscReal, pointer :: pres(:)
   type(grid_type), pointer :: grid
   PetscInt :: local_id, ghosted_id
 
