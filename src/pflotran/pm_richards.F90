@@ -31,6 +31,7 @@ module PM_Richards_class
     procedure, public :: ReadNewtonBlock => PMRichardsReadNewtonSelectCase
     procedure, public :: InitializeTimestep => PMRichardsInitializeTimestep
     procedure, public :: Setup => PMRichardsSetup
+    procedure, public :: InitializeRun => PMZRichardsInitializeRun
     procedure, public :: Residual => PMRichardsResidual
     procedure, public :: Jacobian => PMRichardsJacobian
     procedure, public :: UpdateTimestep => PMRichardsUpdateTimestep
@@ -266,6 +267,23 @@ subroutine PMRichardsSetup(this)
   call PMSubsurfaceFlowSetup(this)
 
 end subroutine PMRichardsSetup
+
+! ************************************************************************** !
+
+subroutine PMZRichardsInitializeRun(this)
+
+  use Richards_module
+
+  implicit none
+
+  class(pm_richards_type) :: this
+
+  ! call parent implementation
+  call PMSubsurfaceFlowInitializeRun(this)
+
+  ! jaa add density init here
+
+end subroutine PMZRichardsInitializeRun
 
 ! ************************************************************************** !
 

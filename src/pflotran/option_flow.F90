@@ -140,7 +140,7 @@ subroutine OptionFlowInitRealization(option)
 
   option%reference_pressure = 101325.d0
   option%reference_temperature = 25.d0
-  option%reference_density = 0.d0
+  option%reference_density = UNINITIALIZED_DOUBLE
   option%reference_porosity = 0.25d0
   option%reference_saturation = 1.d0
 
