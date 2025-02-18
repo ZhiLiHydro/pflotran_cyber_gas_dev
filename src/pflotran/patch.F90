@@ -7619,7 +7619,8 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
          KIN_SURFACE_CMPLX,KIN_SURFACE_CMPLX_FREE, PRIMARY_ACTIVITY_COEF, &
          SECONDARY_ACTIVITY_COEF,PRIMARY_KD,TOTAL_SORBED,TOTAL_SORBED_MOBILE, &
          AGE,TOTAL_BULK,IMMOBILE_SPECIES, &
-         GAS_CONCENTRATION,GAS_PARTIAL_PRESSURE,REACTION_AUXILIARY)
+         GAS_CONCENTRATION,GAS_PARTIAL_PRESSURE,REACTION_AUXILIARY, &
+         RT_LIQUID_DENSITY,RT_GAS_DENSITY)
 
       select case(ivar)
         case(PH)
@@ -7669,7 +7670,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
             endif
             vec_ptr(local_id) = &
               patch%aux%RT%auxvars(ghosted_id)%pri_molal(isubvar) * xmass * &
-              (patch%aux%Global%auxvars(ghosted_id)%den_kg(iphase)/1000.d0)
+              (patch%aux%RT%auxvars(ghosted_id)%den_kg(iphase)/1000.d0)
           enddo
         case(SECONDARY_MOLALITY)
           do local_id=1,grid%nlmax
@@ -7687,7 +7688,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
             endif
             vec_ptr(local_id) = &
               patch%aux%RT%auxvars(ghosted_id)%sec_molal(isubvar) * xmass * &
-              (patch%aux%Global%auxvars(ghosted_id)%den_kg(iphase)/1000.d0)
+              (patch%aux%RT%auxvars(ghosted_id)%den_kg(iphase)/1000.d0)
           enddo
         case(TOTAL_MOLALITY)
           do local_id=1,grid%nlmax
@@ -7697,11 +7698,11 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
             else
               xmass = 1.d0
             endif
-            if (patch%aux%Global%auxvars(ghosted_id)%den_kg(iphase) > 0.d0) then
+            if (patch%aux%RT%auxvars(ghosted_id)%den_kg(iphase) > 0.d0) then
               vec_ptr(local_id) = &
                 patch%aux%RT%auxvars(ghosted_id)%total(isubvar,iphase) / &
                 xmass / &
-                (patch%aux%Global%auxvars(ghosted_id)%den_kg(iphase)/1000.d0)
+                (patch%aux%RT%auxvars(ghosted_id)%den_kg(iphase)/1000.d0)
             else
               vec_ptr(local_id) = 0.d0
             endif
@@ -7900,6 +7901,16 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
           do local_id=1,grid%nlmax
             vec_ptr(local_id) = &
               patch%aux%RT%auxvars(grid%nL2G(local_id))%auxiliary_data(isubvar)
+          enddo
+        case(RT_LIQUID_DENSITY)
+          do local_id=1,grid%nlmax
+            vec_ptr(local_id) = &
+              patch%aux%RT%auxvars(grid%nL2G(local_id))%den_kg(LIQUID_PHASE)
+          enddo
+        case(RT_GAS_DENSITY)
+          do local_id=1,grid%nlmax
+            vec_ptr(local_id) = &
+              patch%aux%RT%auxvars(grid%nL2G(local_id))%den_kg(GAS_PHASE)
           enddo
         case default
           call PatchUnsupportedVariable('REACTIVE_TRANSPORT',ivar,option)
@@ -9144,7 +9155,7 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
          SECONDARY_ACTIVITY_COEF,PRIMARY_KD, TOTAL_SORBED, &
          TOTAL_SORBED_MOBILE,AGE,TOTAL_BULK, &
          IMMOBILE_SPECIES,GAS_CONCENTRATION,GAS_PARTIAL_PRESSURE, &
-         REACTION_AUXILIARY)
+         REACTION_AUXILIARY,RT_LIQUID_DENSITY,RT_GAS_DENSITY)
 
       select case(ivar)
         case(PH)
@@ -9171,16 +9182,16 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
           value = patch%aux%RT%auxvars(ghosted_id)%pri_molal(isubvar)
         case(PRIMARY_MOLARITY)
           value = patch%aux%RT%auxvars(ghosted_id)%pri_molal(isubvar)*xmass * &
-                  patch%aux%Global%auxvars(ghosted_id)%den_kg(iphase) / 1000.d0
+                  patch%aux%RT%auxvars(ghosted_id)%den_kg(iphase) / 1000.d0
         case(SECONDARY_MOLALITY)
           value = patch%aux%RT%auxvars(ghosted_id)%sec_molal(isubvar)
         case(SECONDARY_MOLARITY)
           value = patch%aux%RT%auxvars(ghosted_id)%sec_molal(isubvar)*xmass * &
-                  patch%aux%Global%auxvars(ghosted_id)%den_kg(iphase) / 1000.d0
+                  patch%aux%RT%auxvars(ghosted_id)%den_kg(iphase) / 1000.d0
         case(TOTAL_MOLALITY)
           value = patch%aux%RT%auxvars(ghosted_id)%total(isubvar,iphase) / &
                   xmass / &
-                  patch%aux%Global%auxvars(ghosted_id)%den_kg(iphase)*1000.d0
+                  patch%aux%RT%auxvars(ghosted_id)%den_kg(iphase)*1000.d0
         case(TOTAL_MOLARITY)
           value = patch%aux%RT%auxvars(ghosted_id)%total(isubvar,iphase)
         case(TOTAL_BULK) ! mol/m^3 bulk
@@ -9299,6 +9310,10 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
           endif
         case(REACTION_AUXILIARY)
           value = patch%aux%RT%auxvars(ghosted_id)%auxiliary_data(isubvar)
+        case(RT_LIQUID_DENSITY)
+          value = patch%aux%RT%auxvars(ghosted_id)%den_kg(LIQUID_PHASE)
+        case(RT_GAS_DENSITY)
+          value = patch%aux%RT%auxvars(ghosted_id)%den_kg(GAS_PHASE)
         case default
           call PatchUnsupportedVariable('REACTIVE_TRANSPORT',ivar,option)
       end select

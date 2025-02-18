@@ -1707,7 +1707,7 @@ subroutine CondControlAssignRTTranInitCond(realization)
         do idof = 1, reaction%naqcomp
           xx_p(offset+idof) = &
             constraint%aqueous_species%basis_molarity(idof) / &
-            global_auxvars(ghosted_id)%den_kg(iphase)*1000.d0 ! convert molarity -> molality
+            rt_auxvars(ghosted_id)%den_kg(iphase)*1000.d0 ! convert molarity -> molality
         enddo
         ! mineral volume fractions
         if (associated(constraint%minerals)) then
@@ -1787,7 +1787,7 @@ subroutine CondControlAssignRTTranInitCond(realization)
               ! solely molarity (independent of fluid density)
               rt_sec_transport_vars(ghosted_id)% &
                       sec_rt_auxvar(cell)%pri_molal = &
-                global_auxvars(ghosted_id)%den_kg(1) * 1.d-3 * &
+                rt_auxvars(ghosted_id)%den_kg(1) * 1.d-3 * &
                 rt_sec_transport_vars(ghosted_id)%sec_rt_auxvar(cell)%pri_molal
             endif
             rt_sec_transport_vars(ghosted_id)%updated_conc(:,cell) =  &

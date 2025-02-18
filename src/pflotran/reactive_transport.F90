@@ -1919,9 +1919,7 @@ subroutine RTComputeBCMassBalanceOS(realization)
       ! TFlux accomplishes the same as what TBCFlux would
       call TFlux(rt_parameter, &
                  rt_auxvars_bc(sum_connection), &
-                 global_auxvars_bc(sum_connection), &
                  rt_auxvars(ghosted_id), &
-                 global_auxvars(ghosted_id), &
                  coef_up,coef_dn,option,Flux,Res)
 
     ! contribution to boundary
@@ -2294,9 +2292,7 @@ subroutine RTResidualFlux(snes,xx,r,realization,ierr)
 
       call TFlux(rt_parameter, &
                   rt_auxvars(ghosted_id_up), &
-                  global_auxvars(ghosted_id_up), &
                   rt_auxvars(ghosted_id_dn), &
-                  global_auxvars(ghosted_id_dn), &
                   coef_up,coef_dn,option,Flux,Res)
 
       if (option%transport%use_np) then
@@ -2365,9 +2361,7 @@ subroutine RTResidualFlux(snes,xx,r,realization,ierr)
                        coef_up,coef_dn)
       call TFlux(rt_parameter, &
                   rt_auxvars_bc(sum_connection), &
-                  global_auxvars_bc(sum_connection), &
                   rt_auxvars(ghosted_id), &
-                  global_auxvars(ghosted_id), &
                   coef_up,coef_dn,option,Flux,Res)
 
       if (option%transport%use_np) then
@@ -3064,9 +3058,7 @@ subroutine RTJacobianFlux(snes,xx,A,B,realization,ierr)
                 coef_up,coef_dn)
       call RTFluxDerivative(rt_parameter,PETSC_FALSE, &
                             rt_auxvars(ghosted_id_up), &
-                            global_auxvars(ghosted_id_up), &
                             rt_auxvars(ghosted_id_dn), &
-                            global_auxvars(ghosted_id_dn), &
                             coef_up,coef_dn,option,Jup,Jdn)
       if (option%transport%use_np) then
         call TNPFluxDerivative(reaction, &
@@ -3135,9 +3127,7 @@ subroutine RTJacobianFlux(snes,xx,A,B,realization,ierr)
                        coef_up,coef_dn)
       call RTFluxDerivative(rt_parameter,PETSC_TRUE, &
                             rt_auxvars_bc(sum_connection), &
-                            global_auxvars_bc(sum_connection), &
                             rt_auxvars(ghosted_id), &
-                            global_auxvars(ghosted_id), &
                             coef_up,coef_dn,option,Jup,Jdn)
 
       !Jup not needed
@@ -4575,8 +4565,7 @@ end subroutine RTExplicitAdvection
 ! ************************************************************************** !
 
 subroutine RTFluxDerivative(rt_parameter,boundary_condition, &
-                            rt_auxvar_up,global_auxvar_up, &
-                            rt_auxvar_dn,global_auxvar_dn, &
+                            rt_auxvar_up,rt_auxvar_dn, &
                             coef_up,coef_dn,option,Jup,Jdn)
   !
   ! Calculates the derivative of the flux wrt primary dependent variable
@@ -4591,7 +4580,6 @@ subroutine RTFluxDerivative(rt_parameter,boundary_condition, &
   type(reactive_transport_param_type) :: rt_parameter
   PetscBool :: boundary_condition
   type(reactive_transport_auxvar_type) :: rt_auxvar_up, rt_auxvar_dn
-  type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
   PetscReal :: coef_up(:,:), coef_dn(:,:)
   type(option_type) :: option
   PetscReal :: Jup(:,:), Jdn(:,:)
@@ -4604,16 +4592,14 @@ subroutine RTFluxDerivative(rt_parameter,boundary_condition, &
   if (option%transport%numerical_derivatives) then
     Jup = 0.d0
     Jdn = 0.d0
-    call TFlux(rt_parameter, &
-               rt_auxvar_up,global_auxvar_up, &
-               rt_auxvar_dn,global_auxvar_dn, &
+    call TFlux(rt_parameter,rt_auxvar_up,rt_auxvar_dn, &
                coef_up,coef_dn,option,Flux,Res)
     ! skip upwind derivative if a boundary condition
     if (.not.boundary_condition) then
       do idof = 1, option%ntrandof
         call TFlux(rt_parameter, &
-                  rt_auxvar_up%auxvar_pert(idof),global_auxvar_up, &
-                  rt_auxvar_dn,global_auxvar_dn, &
+                   rt_auxvar_up%auxvar_pert(idof), &
+                   rt_auxvar_dn,&
                   coef_up,coef_dn,option,Flux,Res_pert)
         do ieq = 1, option%ntrandof
           Jup(ieq,idof) = Jup(ieq,idof) + &
@@ -4624,8 +4610,8 @@ subroutine RTFluxDerivative(rt_parameter,boundary_condition, &
     endif
     do idof = 1, option%ntrandof
       call TFlux(rt_parameter, &
-                 rt_auxvar_up,global_auxvar_up, &
-                 rt_auxvar_dn%auxvar_pert(idof),global_auxvar_dn, &
+                 rt_auxvar_up, &
+                 rt_auxvar_dn%auxvar_pert(idof), &
                  coef_up,coef_dn,option,Flux,Res_pert)
       do ieq = 1, option%ntrandof
         Jdn(ieq,idof) = Jdn(ieq,idof) + &
@@ -4635,8 +4621,7 @@ subroutine RTFluxDerivative(rt_parameter,boundary_condition, &
     enddo
   else
     call TFluxDerivative(rt_parameter, &
-                         rt_auxvar_up,global_auxvar_up, &
-                         rt_auxvar_dn,global_auxvar_dn, &
+                         rt_auxvar_up,rt_auxvar_dn, &
                          coef_up,coef_dn,option,Jup,Jdn)
   endif
 

@@ -484,6 +484,7 @@ subroutine PMRTSetup(this)
   this%converged_cell = 0
   this%converged_real = 0.d0
 
+  call PMRTSetFluidDensity(this,PETSC_FALSE)
   call CondControlAssignRTTranInitCond(this%realization)
 
 end subroutine PMRTSetup

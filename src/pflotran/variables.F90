@@ -213,5 +213,7 @@ module Variables_module
 
   PetscInt, parameter, public :: WELL_BHP = 171
   PetscInt, parameter, public :: TOTAL_LIQUID_HEAD             = 172
+  PetscInt, parameter, public :: RT_LIQUID_DENSITY             = 173
+  PetscInt, parameter, public :: RT_GAS_DENSITY                = 174
 
 end module Variables_module

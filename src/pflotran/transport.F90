@@ -401,9 +401,7 @@ end subroutine TDispersionBC
 
 ! ************************************************************************** !
 
-subroutine TFlux(rt_parameter, &
-                 rt_auxvar_up,global_auxvar_up, &
-                 rt_auxvar_dn,global_auxvar_dn, &
+subroutine TFlux(rt_parameter,rt_auxvar_up,rt_auxvar_dn, &
                  coef_up,coef_dn,option,Flux,Res)
   !
   ! Computes flux term in residual function
@@ -418,7 +416,6 @@ subroutine TFlux(rt_parameter, &
 
   type(reactive_transport_param_type) :: rt_parameter
   type(reactive_transport_auxvar_type) :: rt_auxvar_up, rt_auxvar_dn
-  type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
   type(option_type) :: option
   PetscReal :: coef_up(rt_parameter%naqcomp,rt_parameter%nphase)
   PetscReal :: coef_dn(rt_parameter%naqcomp,rt_parameter%nphase)
@@ -454,8 +451,7 @@ end subroutine TFlux
 ! ************************************************************************** !
 
 subroutine TFluxDerivative(rt_parameter, &
-                           rt_auxvar_up,global_auxvar_up, &
-                           rt_auxvar_dn,global_auxvar_dn, &
+                           rt_auxvar_up,rt_auxvar_dn, &
                            coef_up,coef_dn,option,J_up,J_dn)
   !
   ! Computes derivatives of flux term in residual function
@@ -471,7 +467,6 @@ subroutine TFluxDerivative(rt_parameter, &
   type(reactive_transport_param_type) :: rt_parameter
   type(option_type) :: option
   type(reactive_transport_auxvar_type) :: rt_auxvar_up, rt_auxvar_dn
-  type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
   PetscReal :: coef_up(rt_parameter%naqcomp,rt_parameter%nphase)
   PetscReal :: coef_dn(rt_parameter%naqcomp,rt_parameter%nphase)
   PetscReal :: J_up(rt_parameter%ncomp,rt_parameter%ncomp), &
@@ -507,9 +502,9 @@ subroutine TFluxDerivative(rt_parameter, &
     else
       do icomp = istart, iendaq
         J_up(icomp,icomp) = J_up(icomp,icomp) + coef_up(icomp,iphase)* &
-                            global_auxvar_up%den_kg(iphase)*1.d-3
+                            rt_auxvar_up%den_kg(iphase)*1.d-3
         J_dn(icomp,icomp) = J_dn(icomp,icomp) + coef_dn(icomp,iphase)* &
-                            global_auxvar_dn%den_kg(iphase)*1.d-3
+                            rt_auxvar_dn%den_kg(iphase)*1.d-3
       enddo
     endif
   enddo

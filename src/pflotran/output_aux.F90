@@ -794,6 +794,13 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
           '" not supported when not running a flow mode.')
     end select
   endif
+  if (option%itranmode /= RT_MODE) then
+    select case(word)
+      case('TRANSPORT_LIQUID_DENSITY','TRANSPORT_GAS_DENSITY')
+        call PrintErrMsg(option,'Output variable "' // trim(word) // &
+          '" not supported when not running reactive transport mode.')
+    end select
+  endif
   if (option%igeopmode == NULL_MODE) then
     select case(word)
       case('ELECTRICAL_CONDUCTIVITY','ELECTRICAL_POTENTIAL', &
@@ -1302,6 +1309,16 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       name = 'Parameter'
       category = OUTPUT_GENERIC
       id = NAMED_PARAMETER
+    case ('TRANSPORT_LIQUID_DENSITY')
+      name = 'Transport Liquid Density'
+      units = 'kg/m^3'
+      category = OUTPUT_GENERIC
+      id = RT_LIQUID_DENSITY
+    case ('TRANSPORT_GAS_DENSITY')
+      name = 'Transport Gas Density'
+      units = 'kg/m^3'
+      category = OUTPUT_GENERIC
+      id = RT_GAS_DENSITY
     case default
       option%io_buffer = 'Unknown keyword "' // trim(word) // &
         '" in OutputVariableToID.'
