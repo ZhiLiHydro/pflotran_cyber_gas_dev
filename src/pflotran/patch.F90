@@ -4599,8 +4599,7 @@ subroutine PatchUpdateCouplerAuxVarsImmis(patch,coupler,option)
         call HydrostaticUpdateCoupler(coupler,option,patch%grid)
         dof1 = PETSC_TRUE
       case default
-        string = &
-          GetSubConditionType(general%gas_pressure%itype)
+        string = FlowSubConditionGetType(general%gas_pressure%itype)
         option%io_buffer = &
           FlowConditionUnknownItype(coupler%flow_condition, &
             'immiscible gas pressure',string)
@@ -4633,7 +4632,7 @@ subroutine PatchUpdateCouplerAuxVarsImmis(patch,coupler,option)
         call PrintErrMsg(option,'HYDROSTATIC flow conditions not supported &
                &for GAS_SATURATION in '//routine_name)
       case default
-        string = GetSubConditionType(general%gas_saturation%itype)
+        string = FlowSubConditionGetType(general%gas_saturation%itype)
         option%io_buffer = &
           FlowConditionUnknownItype(coupler%flow_condition, &
             'immiscible gas saturation',string)
