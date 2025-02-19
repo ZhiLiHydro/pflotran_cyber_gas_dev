@@ -257,7 +257,8 @@ subroutine WaypointInsertInList(new_waypoint,waypoint_list)
     else
       ! find its location in the list
       do
-        if (Equal(new_waypoint%time,waypoint%time)) then
+        if (abs(new_waypoint%time - waypoint%time) < &
+            FLOATING_POINT_TOLERANCE) then
           call WaypointMerge(waypoint,new_waypoint)
           return ! do not increment num_waypoints at bottom
         else if (associated(waypoint%next)) then

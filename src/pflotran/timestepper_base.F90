@@ -581,7 +581,8 @@ subroutine TimestepperBaseSetTargetTime(this,sync_time,option,stop_flag, &
     equal_to_or_exceeds_waypoint = target_time + tolerance*dt >= &
                                    cur_waypoint%time
     equal_to_or_exceeds_sync_time = target_time + tolerance*dt >= sync_time
-    if (equal_to_or_exceeds_sync_time .and. sync_time < cur_waypoint%time) then
+    if (equal_to_or_exceeds_sync_time .and. &
+        sync_time < cur_waypoint%time - FLOATING_POINT_TOLERANCE) then
       ! flip back if the sync time arrives before the waypoint time.
       equal_to_or_exceeds_waypoint = PETSC_FALSE
     endif
@@ -629,7 +630,7 @@ subroutine TimestepperBaseSetTargetTime(this,sync_time,option,stop_flag, &
             revert_due_to_sync_time = PETSC_TRUE
           endif
         endif
-        if (max_time >= cur_waypoint%time) then
+        if (max_time >= cur_waypoint%time - FLOATING_POINT_TOLERANCE) then
           cur_waypoint => cur_waypoint%next
         endif
       endif
