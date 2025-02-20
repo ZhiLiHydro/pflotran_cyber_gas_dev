@@ -27,6 +27,7 @@ module SrcSink_Sandbox_Creep_Closure_class
     PetscReal :: p_atm !atmospheric pressure [Pa]
     PetscReal :: pgzr !lithostatic rock pressure at reference (repository level) [Pa]
     PetscReal :: pgz  !lithostatic pressure at z (assumed to be equal to pgzr)
+    PetscReal :: p_hyd !hydrostatic pressure at z [Pa]
     PetscReal :: n    !stress exponent for convergence
     PetscReal :: x_F  !parameter for moisture-enhanced creep
     PetscReal :: phi_0 !initial porosity
@@ -84,6 +85,7 @@ function CreepClosureCreate()
     CreepClosureCreate%p_atm  = 1.01d5 !1 atm in Pa
     CreepClosureCreate%pgzr   = 18.3d6 !Pa
     CreepClosureCreate%pgz    = 18.3d6 !Pa
+    CreepClosureCreate%p_hyd  = 8.3d6 !Pa
     CreepClosureCreate%n      = 5.d0   ![-]
     CreepClosureCreate%x_F    = 4.d0   ![-]
     CreepClosureCreate%phi_0  = 0.1d0  ![-]
@@ -169,6 +171,10 @@ subroutine CreepClosureRead(this,input,option)
                            'SOURCE_SINK_SANDBOX,PRESSURE,'//trim(word))
       case('PGZ')
         call InputReadDouble(input,option,this%pgz)
+        call InputErrorMsg(input,option,word, &
+                           'SOURCE_SINK_SANDBOX,PRESSURE,'//trim(word))
+      case('P_HYD')
+        call InputReadDouble(input,option,this%p_hyd)
         call InputErrorMsg(input,option,word, &
                            'SOURCE_SINK_SANDBOX,PRESSURE,'//trim(word))
       case('N')
@@ -363,7 +369,7 @@ subroutine CreepClosureSrcSink(this,Residual,Jacobian,compute_derivative, &
   
   call calc_Kt(this,f_R,f_P,f_F,f_T,f_Z,Kt)
 
-  call calc_dphi(this,phi,Kt,dphi)
+  call calc_dphi(this,phi,Kt,p_avg,dphi)
 
   !print *, 'f_R', f_R
   !print *, 'f_P', f_P
@@ -516,7 +522,7 @@ subroutine calc_Kt(this,f_R,f_P,f_F,f_T,f_Z,Kt)
 end subroutine calc_Kt
 
 ! ************************************************************************** !
-subroutine calc_dphi(this,phi,Kt,dphi)
+subroutine calc_dphi(this,phi,Kt,p_avg,dphi)
 
   ! Calculates K(t) (Eq. 2-3)
 
@@ -524,9 +530,12 @@ subroutine calc_dphi(this,phi,Kt,dphi)
   class(srcsink_sandbox_creep_closure_type) :: this
   PetscReal, intent(in) :: Kt
   PetscReal, intent(in) :: phi
+  PetscReal, intent(in) :: p_avg
   PetscReal, intent(out) :: dphi
 
-  if (phi > this%phi_g) then
+  !limits creep closure to acting when porosity is greater than intact salt
+  ! and pressure is less than hydrostatic
+  if ((phi > this%phi_g) .AND. (p_avg < this%p_hyd)) then
      dphi = -Kt
   else
      dphi = 0.0

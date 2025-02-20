@@ -1,0 +1,255 @@
+# Test problem for porosity reduction
+# 3 mass balance equations: water, air, solid
+# 1 energy balance equation
+# 1 gridblock problem, salt source term reduces porosity
+
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE GENERAL
+        OPTIONS
+          # this allows the porosity to change due to dissolution and precipitation of salt too (solved for implicitly)
+          SOLUBLE_MATERIALS halite
+          SOLUTE SALT
+        / 
+      /
+    /
+  /
+END
+
+SUBSURFACE
+#=========================== regression =======================================
+REGRESSION
+  CELL_IDS
+    1
+  /
+END
+#=========================== numerical methods ================================
+NUMERICAL_METHODS FLOW
+
+  NEWTON_SOLVER
+    USE_EUCLIDEAN_NORM_CONVERGENCE
+  /
+
+END
+#=========================== fluid properties =================================
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.d-10
+  SALT_DIFFUSION_COEFFICIENT 1.D-10 
+END
+#=========================== equation of state ================================
+EOS WATER
+  DENSITY BATZLE_AND_WANG
+  VISCOSITY BATZLE_AND_WANG
+END
+
+EOS GAS
+  DENSITY IDEAL
+  VISCOSITY DEFAULT
+END
+
+#=========================== discretization ===================================
+
+GRID
+  TYPE STRUCTURED 
+  NXYZ 1 1 1
+  BOUNDS
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 1.d0 
+  /
+END
+
+#=========================== regions ==========================================
+REGION all
+  COORDINATES
+    0.d0 0.d0 0.d0
+    10.d0 1.d0 1.d0
+  /
+END
+
+REGION inner
+  COORDINATES
+    5.D-1 5.D-1 5.D-1
+  /
+/
+
+REGION left_boundary
+  FACE WEST
+  COORDINATES
+    0.D0 0.D0 0.D0
+    0.D0 1.D0 1.D0
+  /
+/
+
+
+OBSERVATION
+  REGION inner
+  AT_COORDINATE
+END 
+
+
+#=========================== material properties ==============================
+MATERIAL_PROPERTY halite
+  ID 1
+  CHARACTERISTIC_CURVES sf1
+  SOIL_COMPRESSIBILITY 0.0 
+  POROSITY_COMPRESSIBILITY 0.0 
+  POROSITY  0.10d0 #must be consistent as source/sink phi_0
+  TORTUOSITY 0.1d0
+  ROCK_DENSITY 2200.0 kg/m^3 #must be the same as source/sink salt density
+  THERMAL_CONDUCTIVITY_DRY 0.5d-6 MW/m-C
+  THERMAL_CONDUCTIVITY_WET 2.d-6 MW/m-C
+  HEAT_CAPACITY 830.d-6 MJ/kg-C
+  PERMEABILITY
+    PERM_ISO 1.d-12
+  /
+END
+
+#=========================== characteristic curves ============================
+CHARACTERISTIC_CURVES sf1
+  SATURATION_FUNCTION VAN_GENUCHTEN
+    LIQUID_RESIDUAL_SATURATION 0.0D0
+    ALPHA 1.D-4
+    M 0.5D0
+    MAX_CAPILLARY_PRESSURE 1.D9
+  /
+  PERMEABILITY_FUNCTION MUALEM
+    PHASE LIQUID
+    LIQUID_RESIDUAL_SATURATION 0.0D0
+    M 0.5D0
+  /
+  PERMEABILITY_FUNCTION MUALEM_VG_GAS
+    PHASE GAS
+    LIQUID_RESIDUAL_SATURATION 0.0D0
+    GAS_RESIDUAL_SATURATION 0.0D0
+    M 0.5D0
+  /
+END
+
+#=========================== output options ===================================
+OUTPUT
+  PERIODIC_OBSERVATION TIME 1.d1 y
+  OBSERVATION_FILE
+    PERIODIC TIME 0.001 y between 0. y and 0.01 y
+    PERIODIC TIME 0.01 y between 0. y and 0.1 y
+    PERIODIC TIME 0.1 y between 0. y and 10 y
+    PERIODIC TIME 1 y between 10 y and 50 y
+    PERIODIC TIME 10 y between 50 y and 1000 y
+    VARIABLES
+      #PERMEABILITY X
+      POROSITY
+      #LIQUID_PRESSURE
+      #LIQUID_SATURATION
+      GAS_SATURATION
+      GAS_PRESSURE
+      #PRECIPITATE_SATURATION
+      #LIQUID_DENSITY
+      #LIQUID_MOLE_FRACTIONS
+      #TEMPERATURE
+      #THERMODYNAMIC_STATE
+     /
+  /
+  SNAPSHOT_FILE
+    PERIODIC TIME 0.1 y between 0. y and 1 y
+    PERIODIC TIME 1 y between 1 y and 20 y
+    PERIODIC TIME 10 y between 20 y and 100 y
+    PERIODIC TIME 100 y between 100 y and 1000 y
+    #FORMAT TECPLOT POINT
+    FORMAT hdf5
+    VARIABLES
+      PERMEABILITY X
+      POROSITY
+      LIQUID_PRESSURE
+      LIQUID_SATURATION
+      GAS_SATURATION
+      GAS_PRESSURE
+      PRECIPITATE_SATURATION
+      POROSITY
+      LIQUID_DENSITY
+      LIQUID_MOLE_FRACTIONS
+      TEMPERATURE
+      THERMODYNAMIC_STATE
+    /
+  /
+END
+
+#=========================== times ============================================
+TIME
+  FINAL_TIME 1000.d0 y
+  INITIAL_TIMESTEP_SIZE 1.d-4 d
+  MAXIMUM_TIMESTEP_SIZE 1.d0 y 
+END
+
+#=========================== flow conditions ==================================
+FLOW_CONDITION initial
+  TYPE
+    GAS_PRESSURE DIRICHLET
+    GAS_SATURATION DIRICHLET
+    TEMPERATURE DIRICHLET
+    SALT_MOLE_FRACTION AT_SOLUBILITY
+  /
+  GAS_PRESSURE 101325.D0
+  GAS_SATURATION 10.D-1
+  TEMPERATURE 25.D0
+  SALT_MOLE_FRACTION 123.D0
+/
+
+#=========================== condition couplers ===============================
+INITIAL_CONDITION aquifer_ic
+  FLOW_CONDITION initial
+  TRANSPORT_CONDITION aquifer_initial
+  REGION all
+/
+
+SOURCE_SINK_SANDBOX
+  CREEP_CLOSURE
+    p_0    1.0d6  # 1 MPa initialize to values in python script
+    p_atm  1.01d5 # 1 atm in Pa
+    pgzr   18.3d6 # Pa
+    pgz    18.3d6 # Pa
+    p_hyd  1d8  # Pa
+    n      5.d0   # [-]
+    x_F    4.d0   # [-]
+    phi_0  0.1d0  # [-]
+    phi_r  0.3d0  # [-]
+    phi_g  4.d-6  # [-]
+    h0     1.d0   # [-]
+    h1     -2.d0  # [-]
+    #h2 and h3 are calculated internally from h1
+    g0     1.d0   # [-]
+    g1     -1.d0  # [-]
+    #make wet and dry the same to avoid saturation weighting
+    g2_wet 100.d0 # [-]
+    g2_dry 100.d0 # [-]
+    m      5.d0   # [-]
+    L      0.2d0 #  lambda [-]
+    Ls     0.2d0 #  L salt [-]
+    K_ref  3.169d-16 # 1.d-8/yr in 1/sec
+    K_0    3.169d-9  # 0.1d0 /yr in 1/sec
+    a      0.d0 # 0 will use only Q1
+    # Q1 and Q2 are from Le Comte, Paul. "Creep in rock salt."
+    #The Journal of Geology 73.3 (1965): 469-484.  
+    #Q_1   5.2335d2 # kJ/mol at 29C 
+    #Q_2   1.2560d2 # same source, but kJ/mol at 300C
+    Q_1    0.d0 # set to zero to make fT = 1
+    Q_2    0.d0 # set to zero to make fT = 1
+    z_ref  8.5d1 # repository depth is 850
+    T_ref  2.5d1 # was in old input deck
+    delT   2.5d-2 # 25c/km is usual
+    #R  assigned internally in kJ/mol K
+
+
+    REGION all
+  /
+/
+
+#=========================== stratigraphy couplers ============================
+STRATA
+  MATERIAL halite
+  REGION all
+END
+
+END_SUBSURFACE
+
+
