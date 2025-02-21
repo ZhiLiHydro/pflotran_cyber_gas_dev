@@ -122,6 +122,7 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
 
   use Option_module
   use Material_Aux_module, only : material_auxvar_type
+  use Parameter_module
 
   implicit none
 
@@ -132,12 +133,17 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
   PetscReal :: Res(1:option%nflowdof)
 
   PetscReal :: vol_over_dt
+  PetscInt :: parameter_index
 
   vol_over_dt = material_auxvar%volume/option%flow_dt
 
   ! accumulation term units = kmol/s
   Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
            material_auxvar%porosity * vol_over_dt
+
+  parameter_index = ParameterGetIDFromName('geomech_volumetric_strain', &
+                                           option)
+  !print *, 'vol_strain: ', global_auxvar%parameters(parameter_index)
 
 end subroutine RichardsAccumulation
 

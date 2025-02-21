@@ -572,6 +572,15 @@ subroutine PMCGeomechanicsSetAuxData(this)
                   perm0_p(local_id),local_stress,local_strain,local_pressure, &
                   perm_new,this%option)
             perm_p(local_id) = perm_new
+
+            ! Store updated vol strain in global_aux%parameters
+            parameter_index = ParameterGetIDFromName( &
+                               'geomech_volumetric_strain', &
+                               pmc%subsurf_realization%option)
+            ghosted_id = grid%nL2G(local_id)
+            pmc%subsurf_realization%patch%aux% &
+              Global%auxvars(ghosted_id)%parameters(parameter_index) = &
+                local_strain(1) + local_strain(2) + local_strain(3)
           enddo
 
           call VecRestoreArrayF90(pmc%sim_aux%subsurf_por0,por0_p, &

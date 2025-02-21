@@ -371,6 +371,9 @@ subroutine FactorySubsurfaceInitSimulation(simulation)
     case(GEOMECH_ERT_COUPLING)
       call RealizationRegisterParameter(realization,'geomechanics_stress')
       call RealizationRegisterParameter(realization,'geomechanics_strain')
+    case(GEOMECH_TWO_WAY_COUPLED)
+      call RealizationRegisterParameter(realization, &
+                                        'geomech_volumetric_strain')
   end select
   call FactorySubsurfSetupRealization(simulation)
 
