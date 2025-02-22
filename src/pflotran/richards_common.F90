@@ -141,9 +141,13 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
   Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
            material_auxvar%porosity * vol_over_dt
 
-  parameter_index = ParameterGetIDFromName('geomech_volumetric_strain', &
-                                           option)
-  !print *, 'vol_strain: ', global_auxvar%parameters(parameter_index)
+  ! jaa: test alt term
+  if (option%geomechanics%split_scheme == &
+                                   GEOMECH_FIXED_STRAIN_SPLIT) then
+    parameter_index = ParameterGetIDFromName('geomech_volumetric_strain', &
+                                   option)
+    print *, 'vol_strain: ', global_auxvar%parameters(parameter_index)
+  endif
 
 end subroutine RichardsAccumulation
 
