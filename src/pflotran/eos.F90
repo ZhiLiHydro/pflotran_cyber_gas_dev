@@ -140,6 +140,16 @@ subroutine EOSRead(input,option)
                 call InputReadDouble(input,option,temparray(3))
                 call InputErrorMsg(input,option,'WATER_COMPRESSIBILITY', &
                                    'EOS,WATER,DENSITY,LINEAR')
+              case('LINEAR_SALINITY')
+                call InputReadDouble(input,option,temparray(1))
+                call InputErrorMsg(input,option,'REFERENCE_DENSITY', &
+                                   'EOS,WATER,DENSITY,LINEAR_SALINITY')
+                call InputReadDouble(input,option,temparray(2))
+                call InputErrorMsg(input,option,'REFERENCE_SALINITY', &
+                                   'EOS,WATER,DENSITY,LINEAR_SALINITY')
+                call InputReadDouble(input,option,temparray(3))
+                call InputErrorMsg(input,option,'SALINITY_FACTOR', &
+                                   'EOS,WATER,DENSITY,LINEAR_SALINITY')
               case('QUADRATIC')
                 call InputPushBlock(input,option)
                 do

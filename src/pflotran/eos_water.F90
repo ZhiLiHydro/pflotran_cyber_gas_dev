@@ -46,7 +46,11 @@ module EOS_Water_module
   ! linear
   PetscReal :: linear_reference_density
   PetscReal :: linear_reference_pressure
+  PetscReal :: linear_reference_salinity
   PetscReal :: linear_water_compressibility
+  PetscReal :: linear_salinity_factor
+
+  PetscReal :: eos_nan
 
   ! halite saturated brine
   PetscBool :: halite_saturated_brine
@@ -297,6 +301,8 @@ module EOS_Water_module
 
 subroutine EOSWaterInit()
 
+  use Utility_module, only : InitToNan
+
   implicit none
 
   constant_density = UNINITIALIZED_DOUBLE
@@ -318,6 +324,7 @@ subroutine EOSWaterInit()
   quadratic_reference_pressure = UNINITIALIZED_DOUBLE
   quadratic_wat_compressibility = UNINITIALIZED_DOUBLE
   halite_saturated_brine = PETSC_FALSE
+  eos_nan = InitToNan()
 
   ! standard versions
   EOSWaterDensityPtr => EOSWaterDensityIFC67
@@ -398,6 +405,15 @@ subroutine EOSWaterVerify(ierr,error_string)
      ierr = 1
   endif
 
+  if (associated(EOSWaterDensityExtPtr,EOSWaterDensityLinearSalinity) .and. &
+      (Uninitialized(linear_reference_density) .or. &
+       Uninitialized(linear_reference_salinity) .or. &
+       Uninitialized(linear_salinity_factor))) then
+    error_string = trim(error_string) // &
+      ' Linear salinity parameters incorrect.'
+     ierr = 1
+  endif
+
   if (associated(EOSWaterDensityPtr,EOSWaterDensityBRAGFLO) .and. &
       (Uninitialized(exp_p_reference_density) .or. &
        Uninitialized(exp_p_reference_pressure) .or. &
@@ -468,6 +484,14 @@ subroutine EOSWaterSetDensity(keyword,aux)
       linear_reference_pressure = aux(2)
       linear_water_compressibility = aux(3)
       EOSWaterDensityPtr => EOSWaterDensityLinear
+    case('LINEAR_SALINITY')
+      linear_reference_density = aux(1)
+      linear_reference_salinity = aux(2)
+      linear_salinity_factor = aux(3)
+      EOSWaterDensityExtPtr => EOSWaterDensityLinearSalinity
+      constant_density = aux(1)
+      EOSWaterDensityPtr => EOSWaterDensityConstant
+
     case('BRAGFLO')
       exp_p_reference_density = aux(1)
       exp_p_reference_pressure = aux(2)
@@ -3245,11 +3269,11 @@ subroutine EOSWaterEnthalpyIF97Region3(T,P,calculate_derivatives,hw,hwp,hwt)
        2,2,2,3,3, 3,3,3,4,4, 4,4,5,5,5, 6,6,6,7,8, 9,9,10,10,11]
   PetscInt, parameter :: J_i(40) = [0,0,1,2,7, 10,12,23,2,6, 15,17,0,2,6, &
        7,22,26,0,2, 4,16,26,0,2, 4,26,1,3,26, 0,2,26,2,26, 2,26,0,1,26]
-  PetscReal :: tau,  phi_tau, phi_delta, T_temp, delta, dw, dumb
+  PetscReal :: tau,  phi_tau, phi_delta, T_temp, delta, dw, dumb, dumb1, dumb2
 
   T_temp = T+Tf
   ! P only used to compute density
-  call EOSWaterDensityIF97Region3(T,P,.false.,dw,dumb,dumb,dumb)
+  call EOSWaterDensityIF97Region3(T,P,.false.,dw,dumb,dumb1,dumb2)
   delta = dw/rho_c
   tau = T_c/T_temp
 
@@ -3767,6 +3791,43 @@ subroutine EOSWaterDensityTrangenstein(t,p,calculate_derivatives, &
   endif
 
 end subroutine EOSWaterDensityTrangenstein
+
+! ************************************************************************** !
+
+subroutine EOSWaterDensityLinearSalinity(t,p,aux,calculate_derivatives, &
+                                         dw,dwmol,dwp,dwt,ierr)
+  !
+  ! Water density linear model with respect to solute concetnration
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/21/25
+
+  implicit none
+
+  PetscReal, intent(in) :: t   ! Temperature in centigrade
+  PetscReal, intent(in) :: p   ! Pressure in Pascals
+  PetscReal, intent(in) :: aux(*)
+  PetscBool, intent(in) :: calculate_derivatives
+  PetscReal, intent(out) :: dw,dwmol,dwp,dwt
+  PetscErrorCode, intent(inout) :: ierr
+
+  PetscReal :: s ! salinity [kg salt/kg water+salt]
+
+  ! kg/m^3
+  s = aux(1)
+  dw = linear_reference_density*(1.d0 + &
+       linear_salinity_factor*(s-linear_reference_salinity))
+
+  dwmol = eos_nan
+
+  if (calculate_derivatives) then
+    dwp = 0.d0
+  else
+    dwp = UNINITIALIZED_DOUBLE
+  endif
+  dwt = 0.d0
+
+end subroutine EOSWaterDensityLinearSalinity
 
 ! ************************************************************************** !
 
