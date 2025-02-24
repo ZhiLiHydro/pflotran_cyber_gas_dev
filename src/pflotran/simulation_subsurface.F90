@@ -399,6 +399,9 @@ subroutine SimSubsurfJumpStart(this)
   use Output_Aux_module
   use String_module
   use Timestepper_Base_class
+  use PM_Subsurface_Flow_class
+  use PM_RT_class
+  use Reactive_Transport_module
 
   implicit none
 
@@ -431,6 +434,21 @@ subroutine SimSubsurfJumpStart(this)
 
   option => this%option
   output_option => this%output_option
+
+  if (option%flow%density_depends_on_salinity) then
+    select type(pm=>this%flow_process_model_coupler%pm_list)
+      class is(pm_subsurface_flow_type)
+        call pm%UpdateAuxVars()
+        call pm%UpdateSolution()
+    end select
+    if (option%itranmode == RT_MODE) then
+      select type(pm=>this%tran_process_model_coupler%pm_list)
+        class is(pm_rt_type)
+          call RTUpdateAuxVars(pm%realization,PETSC_TRUE,PETSC_TRUE,PETSC_FALSE)
+!          call PMRTUpdateSolution2(pm,PETSC_FALSE)
+      end select
+    endif
+  endif
 
   ! first time stepper is master
   master_timestepper => this%process_model_coupler_list%timestepper
