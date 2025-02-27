@@ -12,6 +12,7 @@ module PM_Well_class
   use NW_Transport_Aux_module
   use Well_Grid_module
   use Condition_module
+  use String_module
 
   implicit none
 
@@ -834,7 +835,6 @@ subroutine PMWellSetupGrid(well_grid,res_grid,option)
   use Dataset_Ascii_class
   use Transport_Constraint_NWT_module
   use NW_Transport_Aux_module
-  use String_module
 
   implicit none
 
@@ -1905,7 +1905,6 @@ subroutine PMWellSetup(this)
 
   use Grid_module
   use Utility_module
-  use String_module
   use Coupler_module
   use Connection_module
   use Condition_module
@@ -2648,7 +2647,6 @@ subroutine PMWellReadSimOptionsBlock(this,input)
   !
 
   use Input_Aux_module
-  use String_module
   use Option_module
 
   implicit none
@@ -2733,7 +2731,6 @@ subroutine PMWellReadPMBlock(this,input)
   ! Date: 08/04/2021
 
   use Input_Aux_module
-  use String_module
   use Utility_module
 
   implicit none
@@ -2904,7 +2901,6 @@ subroutine PMWellReadGrid(well_grid,input,option,keyword,error_string,found)
   ! Date: 11/03/2021
   !
   use Input_Aux_module
-  use String_module
   use Utility_module
 
   implicit none
@@ -3454,7 +3450,6 @@ subroutine PMWellReadWell(pm_well,input,option,keyword,error_string,found)
   ! Date: 11/03/2021
   !
   use Input_Aux_module
-  use String_module
 
   implicit none
 
@@ -3617,7 +3612,6 @@ subroutine PMWellReadWellBCs(pm_well,input,option,keyword,error_string,found)
   ! Date: 12/01/2021
   !
   use Input_Aux_module
-  use String_module
 
   implicit none
 
@@ -3849,7 +3843,6 @@ subroutine PMWellReadFlowSolver(pm_well,input,option,keyword,error_string, &
   ! Date: 02/03/2022
   !
   use Input_Aux_module
-  use String_module
 
   implicit none
 
@@ -3976,7 +3969,6 @@ subroutine PMWellReadTranSolver(pm_well,input,option,keyword,error_string, &
   ! Date: 02/17/2022
   !
   use Input_Aux_module
-  use String_module
 
   implicit none
 
@@ -4089,7 +4081,6 @@ subroutine PMWellReadWellModelType(pm_well,input,option,keyword,error_string, &
   ! Date: 12/22/2021
   !
   use Input_Aux_module
-  use String_module
 
   implicit none
 
@@ -4153,7 +4144,6 @@ subroutine PMWellReadWellConstraintType(pm_well,input,option,keyword, &
   ! Date: 12/22/2021
   !
   use Input_Aux_module
-  use String_module
 
   implicit none
 
@@ -4217,7 +4207,6 @@ subroutine PMWellReadWellOutput(pm_well,input,option,keyword,error_string, &
   ! Date: 09/29/2022
   !
   use Input_Aux_module
-  use String_module
 
   implicit none
 
@@ -4296,7 +4285,6 @@ subroutine PMWellReadPass2(input,option)
   ! Date: 11/03/2021
 
   use Input_Aux_module
-  use String_module
 
   implicit none
 
@@ -5935,7 +5923,6 @@ subroutine PMWellUpdateReservoirSrcSinkFlow(pm_well)
   use NW_Transport_Aux_module
   use Transport_Constraint_NWT_module
   use Option_module
-  use String_module
   use Hydrate_Aux_module, only: hydrate_well_coupling, &
                              HYDRATE_FULLY_IMPLICIT_WELL
 
@@ -6121,7 +6108,6 @@ subroutine PMWellUpdateReservoirSrcSinkTran(pm_well)
   use NW_Transport_Aux_module
   use Transport_Constraint_NWT_module
   use Option_module
-  use String_module
 
   implicit none
 
@@ -8128,8 +8114,9 @@ subroutine PMWellPreSolveTran(pm_well,master_dt)
                    1pe12.5," ",a4)') &
                    (pm_well%tran_soln%n_steps+1),cur_time_converted, &
                    dt_converted,pm_well%output_option%tunit
-
-  call PrintMsg(pm_well%option,out_string)
+  if (MINVAL(pm_well%well_comm%petsc_rank_list) == pm_well%option%myrank) then
+    write(STDOUT_UNIT,'(a)') trim(out_string)
+  endif
 
 end subroutine PMWellPreSolveTran
 
@@ -8564,7 +8551,10 @@ subroutine PMWellSolveFlow(pm_well,perturbation_index,ierr)
         if (pm_well%print_output) then
           out_string = ' Maximum number of FLOW Newton iterations reached. &
                         &Cutting timestep!'
-          call PrintMsg(pm_well%option,out_string)
+          if (MINVAL(pm_well%well_comm%petsc_rank_list) == &
+              pm_well%option%myrank) then
+            write(STDOUT_UNIT,'(a)') trim(out_string)
+          endif
         endif
         call PMWellCutTimestepFlow(pm_well)
         n_iter = 0
@@ -8588,6 +8578,10 @@ subroutine PMWellSolveFlow(pm_well,perturbation_index,ierr)
            &converged. Exiting.'
         if (pm_well%print_well) then
           call PMWellOutput(pm_well)
+        endif
+        if (MINVAL(pm_well%well_comm%petsc_rank_list) == &
+            pm_well%option%myrank) then
+          write(STDOUT_UNIT,'(a)') trim(pm_well%realization%option%io_buffer)
         endif
         call PrintErrMsg(pm_well%realization%option)
       endif
@@ -8706,7 +8700,6 @@ subroutine PMWellSolveTran(pm_well,ierr)
   if (pm_well%well_comm%comm == MPI_COMM_NULL) return
 
   soln => pm_well%tran_soln
-
   ierr = 0
   call PetscTime(log_start_time,ierr);CHKERRQ(ierr)
 
@@ -8730,7 +8723,10 @@ subroutine PMWellSolveTran(pm_well,ierr)
         soln%cut_ts_flag = PETSC_TRUE
         out_string = ' Maximum number of TRAN Newton iterations reached. &
                       &Cutting timestep!'
-        call PrintMsg(pm_well%option,out_string)
+        if (MINVAL(pm_well%well_comm%petsc_rank_list) == &
+            pm_well%option%myrank) then
+          write(STDOUT_UNIT,'(a)') trim(out_string)
+        endif
         call PMWellCutTimestepTran(pm_well)
         return
       endif
@@ -8740,6 +8736,10 @@ subroutine PMWellSolveTran(pm_well,ierr)
            &converged. Exiting.'
         if (pm_well%print_well) then
           call PMWellOutput(pm_well)
+        endif
+        if (MINVAL(pm_well%well_comm%petsc_rank_list) == &
+            pm_well%option%myrank) then
+          write(STDOUT_UNIT,'(a)') trim(pm_well%realization%option%io_buffer)
         endif
         call PrintErrMsg(pm_well%realization%option)
       endif
@@ -9073,7 +9073,9 @@ subroutine PMWellPostSolveFlow(pm_well)
                     &",a4,"Total Newton Its =",i8)') &
                     cur_time_converted,pm_well%output_option%tunit, &
                     pm_well%flow_soln%n_newton
-  call PrintMsg(pm_well%option,out_string)
+  if (MINVAL(pm_well%well_comm%petsc_rank_list) == pm_well%option%myrank) then
+    write(STDOUT_UNIT,'(a)') trim(out_string)
+  endif
 
 end subroutine PMWellPostSolveFlow
 
@@ -9317,7 +9319,10 @@ subroutine PMWellCheckConvergenceFlow(pm_well,n_iter,fixed_accum)
     call PrintMsg(pm_well%option,out_string)
     if (flow_soln%converged) then
       out_string = ' WELL FLOW Solution converged!  ---> ' // trim(rsn_string)
-      call PrintMsg(pm_well%option,out_string)
+      if (MINVAL(pm_well%well_comm%petsc_rank_list) == &
+          pm_well%option%myrank) then
+        write(STDOUT_UNIT,'(a)') trim(out_string)
+      endif
     endif
   endif
 
@@ -9491,7 +9496,9 @@ subroutine PMWellCheckConvergenceTran(pm_well,n_iter,fixed_accum)
   write(out_string,'(i4,"    aR:",es10.3,"    sR:",es10.3,"    rU:", es10.3)')&
         n_iter,max_absolute_residual,max_scaled_residual, &
         max_update
-  call PrintMsg(pm_well%option,out_string)
+  if (MINVAL(pm_well%well_comm%petsc_rank_list) == pm_well%option%myrank) then
+    write(STDOUT_UNIT,'(a)') trim(out_string)
+  endif
 
   if (pm_well%well_comm%commsize > 1) then
     tag = 0
@@ -9516,7 +9523,9 @@ subroutine PMWellCheckConvergenceTran(pm_well,n_iter,fixed_accum)
     soln%converged = PETSC_TRUE
     soln%not_converged = PETSC_FALSE
     out_string = ' WELL TRAN Solution converged!  ---> ' // trim(rsn_string)
-    call PrintMsg(pm_well%option,out_string)
+    if (MINVAL(pm_well%well_comm%petsc_rank_list) == pm_well%option%myrank) then
+      write(STDOUT_UNIT,'(a)') trim(out_string)
+    endif
     pm_well%cumulative_dt_tran = pm_well%cumulative_dt_tran + pm_well%dt_tran
   else
     soln%converged = PETSC_FALSE
