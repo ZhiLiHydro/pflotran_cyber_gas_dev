@@ -7878,7 +7878,7 @@ subroutine PMWellJacTranSrcSink(pm_well,Jblock,isegment)
     if (well%liq%s(isegment) < 1.d-40) then
       pm_well%option%io_buffer = 'HINT: The liquid saturation is zero. &
         &Division by zero will occur in PMWellJacTranSrcSink().'
-      call PrintMsg(pm_well%option)
+      call PrintMsgByRank(pm_well%option)
     endif
   else ! Q into well
     Qin = 0.d0  !well%liq%Q(isegment)*FMWH2O/den_avg
@@ -7886,7 +7886,7 @@ subroutine PMWellJacTranSrcSink(pm_well,Jblock,isegment)
     if (resr%s_l(isegment) < 1.d-40) then
       pm_well%option%io_buffer = 'HINT: The liquid saturation is zero. &
         &Division by zero will occur in PMWellJacTranSrcSink().'
-      call PrintMsg(pm_well%option)
+      call PrintMsgByRank(pm_well%option)
     endif
   endif
 
@@ -8093,7 +8093,7 @@ subroutine PMWellPreSolveFlow(pm_well)
                        1pe12.5," ",a4)') &
                      (pm_well%flow_soln%n_steps+1),cur_time_converted, &
                      dt_converted,pm_well%output_option%tunit
-    call PrintMsg(pm_well%option,out_string)
+    call PrintMsgByRank(pm_well%option,out_string)
   endif
 
 end subroutine PMWellPreSolveFlow
@@ -8129,7 +8129,7 @@ subroutine PMWellPreSolveTran(pm_well,master_dt)
                    (pm_well%tran_soln%n_steps+1),cur_time_converted, &
                    dt_converted,pm_well%output_option%tunit
 
-  call PrintMsg(pm_well%option,out_string)
+  call PrintMsgByRank(pm_well%option,out_string)
 
 end subroutine PMWellPreSolveTran
 
@@ -8162,7 +8162,7 @@ subroutine PMWellSolve(this,time,ierr)
       (curr_time < this%intrusion_time_start)) then
     write(out_string,'(" Inactive.    Time =",1pe12.5," ",a4)') &
           curr_time_converted,this%output_option%tunit
-    call PrintMsg(this%option,out_string)
+    call PrintMsgByRank(this%option,out_string)
     return
   endif
 
@@ -8564,7 +8564,7 @@ subroutine PMWellSolveFlow(pm_well,perturbation_index,ierr)
         if (pm_well%print_output) then
           out_string = ' Maximum number of FLOW Newton iterations reached. &
                         &Cutting timestep!'
-          call PrintMsg(pm_well%option,out_string)
+          call PrintMsgByRank(pm_well%option,out_string)
         endif
         call PMWellCutTimestepFlow(pm_well)
         n_iter = 0
@@ -8576,7 +8576,7 @@ subroutine PMWellSolveFlow(pm_well,perturbation_index,ierr)
           pm_well%cumulative_dt_flow = pm_well%realization%option%flow_dt
           WRITE(out_string,'(" PM Well FLOW convergence declared due to &
             &automatic time step control criterion. ")')
-          call PrintMsg(pm_well%option,out_string)
+          call PrintMsgByRank(pm_well%option,out_string)
         endif
 
 
@@ -8730,7 +8730,7 @@ subroutine PMWellSolveTran(pm_well,ierr)
         soln%cut_ts_flag = PETSC_TRUE
         out_string = ' Maximum number of TRAN Newton iterations reached. &
                       &Cutting timestep!'
-        call PrintMsg(pm_well%option,out_string)
+        call PrintMsgByRank(pm_well%option,out_string)
         call PMWellCutTimestepTran(pm_well)
         return
       endif
@@ -9073,7 +9073,7 @@ subroutine PMWellPostSolveFlow(pm_well)
                     &",a4,"Total Newton Its =",i8)') &
                     cur_time_converted,pm_well%output_option%tunit, &
                     pm_well%flow_soln%n_newton
-  call PrintMsg(pm_well%option,out_string)
+  call PrintMsgByRank(pm_well%option,out_string)
 
 end subroutine PMWellPostSolveFlow
 
@@ -9314,10 +9314,10 @@ subroutine PMWellCheckConvergenceFlow(pm_well,n_iter,fixed_accum)
           n_iter,max_absolute_residual,max_scaled_residual, &
           max_absolute_update_p,max_absolute_update_s, &
           max_relative_update_p,max_relative_update_s
-    call PrintMsg(pm_well%option,out_string)
+    call PrintMsgByRank(pm_well%option,out_string)
     if (flow_soln%converged) then
       out_string = ' WELL FLOW Solution converged!  ---> ' // trim(rsn_string)
-      call PrintMsg(pm_well%option,out_string)
+      call PrintMsgByRank(pm_well%option,out_string)
     endif
   endif
 
@@ -9491,7 +9491,7 @@ subroutine PMWellCheckConvergenceTran(pm_well,n_iter,fixed_accum)
   write(out_string,'(i4,"    aR:",es10.3,"    sR:",es10.3,"    rU:", es10.3)')&
         n_iter,max_absolute_residual,max_scaled_residual, &
         max_update
-  call PrintMsg(pm_well%option,out_string)
+  call PrintMsgByRank(pm_well%option,out_string)
 
   if (pm_well%well_comm%commsize > 1) then
     tag = 0
@@ -9516,7 +9516,7 @@ subroutine PMWellCheckConvergenceTran(pm_well,n_iter,fixed_accum)
     soln%converged = PETSC_TRUE
     soln%not_converged = PETSC_FALSE
     out_string = ' WELL TRAN Solution converged!  ---> ' // trim(rsn_string)
-    call PrintMsg(pm_well%option,out_string)
+    call PrintMsgByRank(pm_well%option,out_string)
     pm_well%cumulative_dt_tran = pm_well%cumulative_dt_tran + pm_well%dt_tran
   else
     soln%converged = PETSC_FALSE
