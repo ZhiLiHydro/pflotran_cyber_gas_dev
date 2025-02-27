@@ -680,7 +680,7 @@ subroutine NWTResidual(snes,xx,r,realization,pmwell_ptr,ierr)
   PetscReal :: Res_dn(realization%reaction_nw%params%nspecies)
   PetscReal :: area
   PetscViewer :: viewer
-  character(len=MAXSTRINGLENGTH) :: tran_time
+  !character(len=MAXSTRINGLENGTH) :: tran_time
 
   character(len=MAXSTRINGLENGTH) :: string
 
