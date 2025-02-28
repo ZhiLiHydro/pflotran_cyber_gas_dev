@@ -481,7 +481,7 @@ subroutine RTSetup(realization)
   if (option%use_sc .and. reaction%immobile%nimmobile > 0) then
     option%io_buffer = 'Immobile species are not currently supported when &
       &using multi-continuum.'
-    call PrintErrMsg(option)
+!    call PrintErrMsg(option)
   endif
 
   rt_ts_count = 0
