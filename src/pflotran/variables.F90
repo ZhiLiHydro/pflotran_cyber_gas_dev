@@ -210,8 +210,9 @@ module Variables_module
   PetscInt, parameter, public :: GHOSTED_CELL_ID = 169
 
   PetscInt, parameter, public :: GEOMECH_VOLUMETRIC_STRAIN = 170
+  PetscInt, parameter, public :: GEOMECH_VOLUMETRIC_STRESS = 171
 
-  PetscInt, parameter, public :: WELL_BHP = 171
-  PetscInt, parameter, public :: TOTAL_LIQUID_HEAD             = 172
+  PetscInt, parameter, public :: WELL_BHP = 172
+  PetscInt, parameter, public :: TOTAL_LIQUID_HEAD             = 173
 
 end module Variables_module
