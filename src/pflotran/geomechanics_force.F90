@@ -192,6 +192,11 @@ subroutine GeomechForceSetPlotVariables(list)
   call OutputVariableAddToList(list,name,OUTPUT_STRAIN,units, &
                                STRAIN_ZX)
 
+  name = 'volumetric (mean) stress'
+  units = 'Pa'
+  call OutputVariableAddToList(list,name,OUTPUT_STRESS,units, &
+                               GEOMECH_VOLUMETRIC_STRESS)
+
   name = 'stress_xx'
   units = 'Pa'
   call OutputVariableAddToList(list,name,OUTPUT_STRESS,units, &

@@ -638,6 +638,14 @@ subroutine GeomechPatchGetDataset(patch,geomech_field,option,output_option, &
         vec_ptr(local_id) = &
           geom_gl_auxvars(grid%nL2G(local_id))%strain(6)
       enddo
+    case(GEOMECH_VOLUMETRIC_STRESS)
+      do local_id=1,grid%nlmax_node
+        ghosted_id = grid%nL2G(local_id)
+        vec_ptr(local_id) = &
+          (geom_gl_auxvars(ghosted_id)%stress(1) + &
+          geom_gl_auxvars(ghosted_id)%stress(2) + &
+          geom_gl_auxvars(ghosted_id)%stress(3))/3.d0
+      enddo
     case(STRESS_XX)
       do local_id=1,grid%nlmax_node
         vec_ptr(local_id) = &

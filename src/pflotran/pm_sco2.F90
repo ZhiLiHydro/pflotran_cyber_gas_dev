@@ -334,7 +334,7 @@ subroutine PMSCO2ReadSimOptionsBlock(this,input)
         call InputErrorMsg(input,option,keyword,error_string)
         sco2_thermal = PETSC_FALSE
         sco2_isothermal_temperature = tempreal
-        option%use_isothermal = PETSC_TRUE
+        option%flow%isothermal = PETSC_TRUE
         option%flow%reference_temperature = tempreal
       case('ISOTHERMAL_GRADIENT')
         sco2_isothermal_gradient = PETSC_TRUE
@@ -729,7 +729,6 @@ subroutine PMSCO2InitializeTimestep(this)
       if (any(pm_well%well_grid%h_rank_id == pm_well%option%myrank)) then
         call pm_well%UpdateFlowRates(ZERO_INTEGER,ZERO_INTEGER, &
                                      UNINITIALIZED_INTEGER,this%option%ierror)
-        pm_well%flow_soln%soln_save%pl = pm_well%well%pl
       endif
       call PMWellUpdateReservoirSrcSinkFlow(pm_well)
       pm_well => pm_well%next_well

@@ -290,7 +290,7 @@ subroutine PMHydrateSetFlowMode(pm_well,option)
 
   option%nflowdof = 4
   option%nflowspec = 3
-  option%use_isothermal = PETSC_FALSE
+  option%flow%isothermal = PETSC_FALSE
 
   if (associated(pm_well)) then
     if (pm_well%flow_coupling == FULLY_IMPLICIT_WELL) then
@@ -1035,7 +1035,6 @@ subroutine PMHydrateInitializeTimestep(this)
       if (any(pm_well%well_grid%h_rank_id == pm_well%option%myrank)) then
         call pm_well%UpdateFlowRates(ZERO_INTEGER,ZERO_INTEGER, &
                                      UNINITIALIZED_INTEGER,this%option%ierror)
-        pm_well%flow_soln%soln_save%pl = pm_well%well%pl
       endif
       call PMWellUpdateReservoirSrcSinkFlow(pm_well)
       pm_well => pm_well%next_well
