@@ -442,9 +442,11 @@ subroutine SimSubsurfJumpStart(this)
   endif
 
   ! jaa: want to set the geomech dt equal to flow dt
-  if (this%option%geomechanics%split_scheme == &
-                                GEOMECH_FIXED_STRAIN_SPLIT) then
-     this%geomech%process_model_coupler%timestepper%dt = &
+  if ( this%option%geomechanics%split_scheme == &
+                     GEOMECH_DRAINED_SPLIT .or. &
+       this%option%geomechanics%split_scheme == &
+                 GEOMECH_FIXED_STRAIN_SPLIT) then
+    this%geomech%process_model_coupler%timestepper%dt = &
          this%process_model_coupler_list%timestepper%dt
   endif
 

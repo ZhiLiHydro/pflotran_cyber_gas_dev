@@ -224,7 +224,8 @@ recursive subroutine PMCGeomechanicsRunToTime(this,sync_time,stop_flag)
   if (stop_flag == TS_STOP_FAILURE) return
 
   ! jaa:  want to sync geomech dt with flow_dt (master)
-  this%timestepper%dt = this%option%flow_dt
+  if (this%option%geomechanics%split_scheme == GEOMECH_FIXED_STRAIN_SPLIT)&
+    this%timestepper%dt = this%option%flow_dt
 
   call this%PrintHeader()
   this%option%io_buffer = trim(this%name) // ':' // trim(this%pm_list%name)

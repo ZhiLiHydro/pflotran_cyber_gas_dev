@@ -251,6 +251,8 @@ subroutine InitSubsurfGeomechReadInput(geomech,geomech_solver, &
                                             geomech_realization%dt_coupling, &
                                             internal_units,'GEOMECHANICS_TIME,&
                                             &COUPLING_TIMESTEP_SIZE',option)
+            case('SYNC_FLOW_TIMESTEP_SIZE') ! jaa: added for sync drained split
+              option%geomechanics%sync_flow_dt = PETSC_TRUE
             case default
               call InputKeywordUnrecognized(input,word, &
                                             'GEOMECHANICS_TIME',option)
