@@ -197,7 +197,7 @@ subroutine GeomechanicsSimulationExecuteRun(this)
 
         if (this%stop_flag /= TS_CONTINUE) exit ! end simulation
 
-        if (time >= final_time - FLOATING_POINT_TOLERANCE) exit
+        if (time >= final_time) exit
       enddo
     endif
   endif

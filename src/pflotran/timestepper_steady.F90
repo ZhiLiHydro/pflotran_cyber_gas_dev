@@ -161,10 +161,8 @@ subroutine TimestepperSteadySetTargetTime(this,sync_time,option,stop_flag, &
   this%target_time = sync_time
   do
     if (.not.associated(this%cur_waypoint)) exit
-    if (sync_time >= this%cur_waypoint%time - &
-        FLOATING_POINT_TOLERANCE) then
-      if (abs(sync_time - this%cur_waypoint%time) < &
-          FLOATING_POINT_TOLERANCE) then
+    if (sync_time >= this%cur_waypoint%time) then
+      if (Equal(sync_time,this%cur_waypoint%time)) then
         if (this%cur_waypoint%print_snap_output) &
           sync_flag = PETSC_TRUE
         if (this%cur_waypoint%print_snap_output) &

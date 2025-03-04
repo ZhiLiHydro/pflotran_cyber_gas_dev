@@ -30,9 +30,6 @@ module PFLOTRAN_Constants_module
   ! MODIFIED TO PREVENT COMPATIBILITY ISSUES - geh.
   PetscInt, parameter, public :: CHECKPOINT_REVISION_NUMBER = 1
 
-  ! The tolerance used when comparing floating point numbers
-  PetscReal, parameter, public :: FLOATING_POINT_TOLERANCE = 1e-14
-
   PetscInt, parameter, public :: MAXSTRINGLENGTH = 512
   PetscInt, parameter, public :: MAXWORDLENGTH = 32
 
