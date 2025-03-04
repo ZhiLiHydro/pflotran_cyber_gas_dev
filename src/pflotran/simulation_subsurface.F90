@@ -447,7 +447,7 @@ subroutine SimSubsurfJumpStart(this)
         class is(pm_rt_type)
           call RTUpdateAuxVars(pm%realization,PETSC_TRUE,PETSC_TRUE,PETSC_FALSE)
           call CondControlAssignRTTranInitCond(pm%realization)
-!          call PMRTUpdateSolution2(pm,PETSC_FALSE)
+          call PMRTUpdateSolution(pm,PETSC_FALSE)
       end select
     endif
   endif

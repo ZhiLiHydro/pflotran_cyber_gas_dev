@@ -92,9 +92,15 @@ module PM_RT_class
     PetscInt :: checkpoint_activity_coefs
   end type pm_rt_header_type
 
+  interface PMRTUpdateSolution
+    module procedure PMRTUpdateSolution1
+    module procedure PMRTUpdateSolution2
+  end interface
+
   public :: PMRTCreate, &
             PMRTInit, &
             PMRTInitializeRun, &
+            PMRTUpdateSolution, &
             PMRTWeightFlowParameters, &
             PMRTStrip
 
