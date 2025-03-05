@@ -680,7 +680,7 @@ subroutine NWTResidual(snes,xx,r,realization,pmwell_ptr,ierr)
   PetscReal :: Res_dn(realization%reaction_nw%params%nspecies)
   PetscReal :: area
   PetscViewer :: viewer
-  !character(len=MAXSTRINGLENGTH) :: tran_time
+  character(len=MAXSTRINGLENGTH) :: tran_time
 
   character(len=MAXSTRINGLENGTH) :: string
 
@@ -774,21 +774,21 @@ subroutine NWTResidual(snes,xx,r,realization,pmwell_ptr,ierr)
         call PMWellQISolveTran(pmwell_ptr)
         call MPI_Barrier(option%comm%communicator,ierr);CHKERRQ(ierr)
 
-        ! DEBUGGING:
-        ! if (pmwell_ptr%tran_soln%cut_ts_flag) then
-        !   call PrintMsgByRank(option,'Before MPIBarrier & MPI_Bcast(), &
-        !     &pmwell_ptr%tran_soln%cut_ts_flag = TRUE')
-        !   write(tran_time,'(es10.2)') pmwell_ptr%tran_soln%tran_time
-        !   call PrintMsgByRank(option,'Before MPIBarrier & MPI_Bcast(), &
-        !     &pmwell_ptr%tran_soln%tran_time = ' // trim(tran_time))
-        !   return
-        ! else
-        !   call PrintMsgByRank(option,'Before MPIBarrier & MPI_Bcast(), &
-        !     &pmwell_ptr%tran_soln%cut_ts_flag = FALSE')
-        !   write(tran_time,'(es10.2)') pmwell_ptr%tran_soln%tran_time
-        !   call PrintMsgByRank(option,'Before MPIBarrier & MPI_Bcast(), &
-        !     &pmwell_ptr%tran_soln%tran_time = ' // trim(tran_time))
-        ! endif
+        !DEBUGGING:
+        if (pmwell_ptr%tran_soln%cut_ts_flag) then
+          call PrintMsgByRank(option,'Before MPIBarrier & MPI_Bcast(), &
+            &pmwell_ptr%tran_soln%cut_ts_flag = TRUE')
+          write(tran_time,'(es10.2)') pmwell_ptr%tran_soln%tran_time
+          call PrintMsgByRank(option,'Before MPIBarrier & MPI_Bcast(), &
+            &pmwell_ptr%tran_soln%tran_time = ' // trim(tran_time))
+          return
+        else
+          call PrintMsgByRank(option,'Before MPIBarrier & MPI_Bcast(), &
+            &pmwell_ptr%tran_soln%cut_ts_flag = FALSE')
+          write(tran_time,'(es10.2)') pmwell_ptr%tran_soln%tran_time
+          call PrintMsgByRank(option,'Before MPIBarrier & MPI_Bcast(), &
+            &pmwell_ptr%tran_soln%tran_time = ' // trim(tran_time))
+        endif
 
         call MPI_Allreduce(MPI_IN_PLACE,pmwell_ptr%tran_soln%tran_time, &
           ONE_INTEGER_MPI,MPI_DOUBLE_PRECISION,MPI_MAX, &
@@ -797,21 +797,21 @@ subroutine NWTResidual(snes,xx,r,realization,pmwell_ptr,ierr)
           ONE_INTEGER_MPI,MPI_INTEGER,MPI_MAX,option%comm%communicator, &
           ierr);CHKERRQ(ierr)
 
-        ! DEBUGGING:
-        ! if (pmwell_ptr%tran_soln%cut_ts_flag) then
-        !   call PrintMsgByRank(option,'After MPIBarrier & MPI_Bcast(), &
-        !     &pmwell_ptr%tran_soln%cut_ts_flag = TRUE')
-        !   write(tran_time,'(es10.2)') pmwell_ptr%tran_soln%tran_time
-        !   call PrintMsgByRank(option,'After MPIBarrier & MPI_Bcast(), &
-        !     &pmwell_ptr%tran_soln%tran_time = ' // trim(tran_time))
-        !   return
-        ! else
-        !   call PrintMsgByRank(option,'After MPIBarrier & MPI_Bcast(), &
-        !     &pmwell_ptr%tran_soln%cut_ts_flag = FALSE')
-        !   write(tran_time,'(es10.2)') pmwell_ptr%tran_soln%tran_time
-        !   call PrintMsgByRank(option,'After MPIBarrier & MPI_Bcast(), &
-        !     &pmwell_ptr%tran_soln%tran_time = ' // trim(tran_time))
-        ! endif
+        !DEBUGGING:
+        if (pmwell_ptr%tran_soln%cut_ts_flag) then
+          call PrintMsgByRank(option,'After MPIBarrier & MPI_Bcast(), &
+            &pmwell_ptr%tran_soln%cut_ts_flag = TRUE')
+          write(tran_time,'(es10.2)') pmwell_ptr%tran_soln%tran_time
+          call PrintMsgByRank(option,'After MPIBarrier & MPI_Bcast(), &
+            &pmwell_ptr%tran_soln%tran_time = ' // trim(tran_time))
+          return
+        else
+          call PrintMsgByRank(option,'After MPIBarrier & MPI_Bcast(), &
+            &pmwell_ptr%tran_soln%cut_ts_flag = FALSE')
+          write(tran_time,'(es10.2)') pmwell_ptr%tran_soln%tran_time
+          call PrintMsgByRank(option,'After MPIBarrier & MPI_Bcast(), &
+            &pmwell_ptr%tran_soln%tran_time = ' // trim(tran_time))
+        endif
 
         if (pmwell_ptr%tran_soln%cut_ts_flag) return
       endif
