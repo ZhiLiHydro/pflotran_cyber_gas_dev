@@ -123,6 +123,8 @@ subroutine GeomechanicsMaterialPropertyRead(geomech_material_property, &
                              biot_coeff)
         call InputErrorMsg(input,option,'BIOT_COEFFICIENT', &
                            'GEOMECHANICS_MATERIAL_PROPERTY')
+        option%geomechanics%biot_coefficient = geomech_material_property% &
+                             biot_coeff
       case('THERMAL_EXPANSION_COEFFICIENT')
         call InputReadDouble(input,option,geomech_material_property% &
                              thermal_exp_coeff)

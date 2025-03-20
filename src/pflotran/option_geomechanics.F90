@@ -19,6 +19,12 @@ module Option_Geomechanics_module
     PetscInt :: split_scheme
     PetscBool :: sync_flow_dt
 
+    ! jaa testing - making my life easy
+    ! assuming we have 1 geomech region/mat prop
+    PetscReal :: poissons_ratio
+    PetscReal :: youngs_modulus
+    PetscReal :: biot_coefficient
+
   end type geomechanics_option_type
 
   public :: OptionGeomechanicsCreate, &
@@ -100,6 +106,9 @@ subroutine OptionGeomechanicsInitRealization(option)
   option%gravity(:) = 0.d0
   option%gravity(3) = -1.d0*EARTH_GRAVITY    ! m/s^2
   option%sync_flow_dt = PETSC_FALSE
+  option%poissons_ratio = UNINITIALIZED_DOUBLE
+  option%youngs_modulus = UNINITIALIZED_DOUBLE
+  option%biot_coefficient = UNINITIALIZED_DOUBLE
 
 end subroutine OptionGeomechanicsInitRealization
 

@@ -360,6 +360,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
   PetscReal :: perm_new
   PetscInt :: i
   PetscInt :: parameter_index
+  PetscInt :: strainv_index, strainv_old_index
   Vec :: geomech_vec
   Vec :: subsurf_vec
 
@@ -573,6 +574,26 @@ subroutine PMCGeomechanicsSetAuxData(this)
                   perm0_p(local_id),local_stress,local_strain,local_pressure, &
                   perm_new,this%option)
             perm_p(local_id) = perm_new
+            ! Store updated vol strain in global_aux%parameters
+            strainv_index = ParameterGetIDFromName( &
+                               'geomech_vol_strain', &
+                               pmc%subsurf_realization%option)
+            strainv_old_index = ParameterGetIDFromName( &
+                               'geomech_vol_strain_old', &
+                               pmc%subsurf_realization%option)
+            ghosted_id = grid%nL2G(local_id)
+            pmc%subsurf_realization%patch%aux% &
+              Global%auxvars(ghosted_id)%parameters(strainv_old_index) = &
+              pmc%subsurf_realization%patch%aux%Global% &
+              auxvars(ghosted_id)%parameters(strainv_index)
+            pmc%subsurf_realization%patch%aux% &
+              Global%auxvars(ghosted_id)%parameters(strainv_index) = &
+              local_strain(1) + local_strain(2) + local_strain(3)
+            print *, 'check old strainv and strainv: ', &
+              pmc%subsurf_realization%patch%aux% &
+              Global%auxvars(ghosted_id)%parameters(strainv_old_index), &
+              pmc%subsurf_realization%patch%aux% &
+              Global%auxvars(ghosted_id)%parameters(strainv_index)
           enddo
 
           call VecRestoreArrayF90(pmc%sim_aux%subsurf_por0,por0_p, &

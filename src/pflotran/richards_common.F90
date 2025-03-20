@@ -68,6 +68,7 @@ subroutine RichardsAccumDerivative(rich_auxvar,global_auxvar, &
 
   vol_over_dt = material_auxvar%volume/option%flow_dt
 
+  print *, 'dphi/dp: ', material_auxvar%dporosity_dp
   ! accumulation term units = dkmol/dp
   J(1,1) = (material_auxvar%dporosity_dp*global_auxvar%sat(1)* &
             global_auxvar%den(1) + &
@@ -122,6 +123,7 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
 
   use Option_module
   use Material_Aux_module, only : material_auxvar_type
+  use Parameter_module
 
   implicit none
 
@@ -130,14 +132,35 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
   type(material_auxvar_type) :: material_auxvar
   type(option_type) :: option
   PetscReal :: Res(1:option%nflowdof)
-
   PetscReal :: vol_over_dt
+  PetscInt :: strainv_index, strainv_old_index
+  PetscReal :: vol_strain, biot_coeff
+  PetscReal :: vol_strain_old
 
   vol_over_dt = material_auxvar%volume/option%flow_dt
 
   ! accumulation term units = kmol/s
   Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
            material_auxvar%porosity * vol_over_dt
+
+  biot_coeff = option%geomechanics%biot_coefficient
+  strainv_index = ParameterGetIDFromName('geomech_vol_strain', &
+                                 option)
+  vol_strain = global_auxvar%parameters(strainv_index)
+  strainv_old_index = ParameterGetIDFromName('geomech_vol_strain_old', &
+                                 option)
+  print *, 'time, biot coeff: ', option%time, biot_coeff
+  if (option%time < 1.d-15) then
+    vol_strain_old = 0.d0 ! init to avoid initialized double val for 1st ts
+  else
+    vol_strain_old = global_auxvar%parameters(strainv_old_index)
+  endif
+  print *, 'strain, old strain: ', vol_strain, vol_strain_old
+  if (option%iflag == RICHARDS_UPDATE_FOR_FIXED_ACCUM) then
+    Res(1) = Res(1) + (vol_over_dt*biot_coeff* &
+                       global_auxvar%den(1)* &
+                       (vol_strain-vol_strain_old))
+  endif
 
 end subroutine RichardsAccumulation
 
