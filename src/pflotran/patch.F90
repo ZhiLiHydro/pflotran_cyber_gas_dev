@@ -7549,10 +7549,25 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
         end select
       else ! null flow mode
         select case(ivar)
+          case(LIQUID_PRESSURE)
+            do local_id=1,grid%nlmax
+              vec_ptr(local_id) = patch%aux%Global%auxvars( &
+                  grid%nL2G(local_id))%pres(option%liquid_phase)
+            enddo
           case(LIQUID_SATURATION)
             do local_id=1,grid%nlmax
               vec_ptr(local_id) = patch%aux%Global%auxvars( &
                   grid%nL2G(local_id))%sat(option%liquid_phase)
+            enddo
+          case(LIQUID_DENSITY)
+            do local_id=1,grid%nlmax
+              vec_ptr(local_id) = patch%aux%Global%auxvars( &
+                  grid%nL2G(local_id))%den_kg(option%liquid_phase)
+            enddo
+          case(TEMPERATURE)
+            do local_id=1,grid%nlmax
+              vec_ptr(local_id) = patch%aux%Global%auxvars( &
+                  grid%nL2G(local_id))%temp
             enddo
           case default
             call PatchUnsupportedVariable('NULL_FLOW',ivar,option)
@@ -9105,9 +9120,17 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
         end select
       else ! null flow mode
         select case(ivar)
+          case(LIQUID_PRESSURE)
+            value = patch%aux%Global%auxvars(ghosted_id)% &
+                      pres(option%liquid_phase)
           case(LIQUID_SATURATION)
             value = patch%aux%Global%auxvars(ghosted_id)% &
                       sat(option%liquid_phase)
+          case(LIQUID_DENSITY)
+            value = patch%aux%Global%auxvars(ghosted_id)% &
+                      den_kg(option%liquid_phase)
+          case(TEMPERATURE)
+            value = patch%aux%Global%auxvars(ghosted_id)%temp
           case default
             call PatchUnsupportedVariable('NULL_FLOW',ivar,option)
         end select
@@ -12038,6 +12061,8 @@ subroutine PatchDestroy(patch)
 
   type(patch_type), pointer :: patch
 
+  if (.not.associated(patch)) return
+
   call DeallocateArray(patch%imat)
   call DeallocateArray(patch%imat_internal_to_external)
   call DeallocateArray(patch%cc_id)
@@ -12057,7 +12082,6 @@ subroutine PatchDestroy(patch)
 
   call DeallocateArray(patch%flow_upwind_direction)
   call DeallocateArray(patch%flow_upwind_direction_bc)
-
 
   if (associated(patch%material_property_array)) &
     deallocate(patch%material_property_array)
