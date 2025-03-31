@@ -601,8 +601,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
               pmc%subsurf_realization%patch%aux% &
                 Global%auxvars(ghosted_id)%parameters(stressv_old_index) = &
                 0.032822040669
-                !-367108.30051090370
-                !-367108.30051090283
+                ! ^^ uniform value obtained from initial state of drained split
                 !0.d0
 
                 !- this%option%geomechanics%biot_coefficient * &
@@ -616,8 +615,8 @@ subroutine PMCGeomechanicsSetAuxData(this)
             !pmc%subsurf_realization%patch%aux% &
             !  Global%auxvars(ghosted_id)%parameters(stressv_index) = &
             !  (local_stress(1) + local_stress(2) + local_stress(3))/3.d0
-            !print *, 'updated stress', &
-            !      (local_stress(1) + local_stress(2) + local_stress(3))/3.d0
+            print *, 'internal vol (mean) stress', &
+                  (local_stress(1) + local_stress(2) + local_stress(3))/3.d0
             print *, 'strain', strain_vol
             youngs_mod = this%option%geomechanics%youngs_modulus
             poissons_ratio = this%option%geomechanics%poissons_ratio
@@ -626,15 +625,20 @@ subroutine PMCGeomechanicsSetAuxData(this)
                        (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
             pmc%subsurf_realization%patch%aux% &
               Global%auxvars(ghosted_id)%parameters(stressv_index) = &
-              (dr_bulk_modulus*strain_vol)-(biot_coeff*(local_pressure))
-            print *, 'old stressv, stressv, delta press, step: ', &
-              pmc%subsurf_realization%patch%aux% &
-              Global%auxvars(ghosted_id)%parameters(stressv_old_index), &
-              pmc%subsurf_realization%patch%aux% &
-              Global%auxvars(ghosted_id)%parameters(stressv_index), &
-              local_pressure - 1101325.0d0, &
-              this%timestepper%steps
-            print *, 'dr_bulk_modulus', dr_bulk_modulus
+              (dr_bulk_modulus*strain_vol)-(biot_coeff * &
+              (local_pressure - 1101325.0d0))
+            print *, 'step, stress', &
+                   this%timestepper%steps, &
+                   pmc%subsurf_realization%patch%aux% &
+                   Global%auxvars(ghosted_id)%parameters(stressv_index)
+            !print *, 'old stressv, effe stressv, delta press, step: ', &
+            !  pmc%subsurf_realization%patch%aux% &
+            !  Global%auxvars(ghosted_id)%parameters(stressv_old_index), &
+            !  pmc%subsurf_realization%patch%aux% &
+            !  Global%auxvars(ghosted_id)%parameters(stressv_index), &
+            !  local_pressure - 1101325.0d0, &
+            !  this%timestepper%steps
+            !print *, 'dr_bulk_modulus', dr_bulk_modulus
             !print *, 'vol stress (internal), K_dr*volstrain,', &
             !  (local_stress(1) + local_stress(2) + local_stress(3))/3.d0, &
             !  dr_bulk_modulus * &

@@ -589,7 +589,7 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
       petsc_ids(ivertex) = grid%node_ids_ghosted_petsc(ghosted_id)
     enddo
     !print *, 'ele delta press: ', press(ghosted_id) - press_init(ghosted_id)
-    print *, 'ele, press, init_press: ', ielem, press(ghosted_id), press_init(ghosted_id)
+    !print *, 'ele, press, init_press: ', ielem, press(ghosted_id), press_init(ghosted_id)
     do ivertex = 1, grid%elem_nodes(0,ielem)
       ghosted_id = elenodes(ivertex)
       do idof = 1, option%ngeomechdof

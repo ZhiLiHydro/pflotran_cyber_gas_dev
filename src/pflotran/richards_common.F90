@@ -230,10 +230,12 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
   !  vol_stress_old = 0.
   !  vol_stress = 0.
   !endif
-  if (option%flow_steps < 3) then
-    !vol_stress = -biot_coeff * global_auxvar%pres(1)
+  if (option%flow_steps == 1) then
     vol_stress = 0.d0
+    !vol_stress_old = 0.032822040669
     vol_stress_old = 0.d0
+  elseif (option%flow_steps == 2) then
+    vol_stress_old = 0.032822040669
   else
     vol_stress_old = global_auxvar%parameters(stressv_old_index)
   endif
@@ -258,10 +260,10 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
                       rich_auxvar%den_0* &
                       (vol_stress-vol_stress_old)/ &
                       dr_bulk_modulus)
-    print *, 'val fixed addition: ', vol_over_dt*biot_coeff* &
-                                 rich_auxvar%den_0* &
-                                 (vol_stress-vol_stress_old)/ &
-                                 dr_bulk_modulus
+    !print *, 'val fixed addition: ', vol_over_dt*biot_coeff* &
+    !                             rich_auxvar%den_0* &
+    !                             (vol_stress-vol_stress_old)/ &
+    !                             dr_bulk_modulus
     !Res(1) = Res(1) - (vol_over_dt* &
     !                   rich_auxvar%den_0* &
     !                   global_auxvar%pres(1)* &
