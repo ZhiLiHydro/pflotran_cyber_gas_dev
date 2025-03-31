@@ -31,6 +31,7 @@ module PM_Richards_class
     procedure, public :: ReadNewtonBlock => PMRichardsReadNewtonSelectCase
     procedure, public :: InitializeTimestep => PMRichardsInitializeTimestep
     procedure, public :: Setup => PMRichardsSetup
+    procedure, public :: InitializeRun => PMRichardsInitializeRun
     procedure, public :: Residual => PMRichardsResidual
     procedure, public :: Jacobian => PMRichardsJacobian
     procedure, public :: UpdateTimestep => PMRichardsUpdateTimestep
@@ -268,6 +269,37 @@ subroutine PMRichardsSetup(this)
   call PMSubsurfaceFlowSetup(this)
 
 end subroutine PMRichardsSetup
+
+! ************************************************************************** !
+
+subroutine PMRichardsInitializeRun(this)
+
+  use Richards_module
+  use Richards_Aux_module
+  use Global_Aux_module
+  use Grid_module
+
+  implicit none
+
+  class(pm_richards_type) :: this
+  type(richards_auxvar_type), pointer :: rich_auxvars(:)
+  type(global_auxvar_type), pointer :: global_auxvars(:)
+  type(grid_type), pointer :: grid
+  PetscInt :: local_id, ghosted_id
+
+  ! call parent implementation
+  call PMSubsurfaceFlowInitializeRun(this)
+
+  ! jaa - test init density for geomech accumulation
+  rich_auxvars => this%realization%patch%aux%Richards%auxvars
+  global_auxvars => this%realization%patch%aux%Global%auxvars
+  grid => this%realization%patch%grid
+  do local_id = 1, grid%nlmax
+    ghosted_id = grid%nL2G(local_id)
+    rich_auxvars(ghosted_id)%den_0 = global_auxvars(ghosted_id)%den(1)
+  enddo
+
+end subroutine PMRichardsInitializeRun
 
 ! ************************************************************************** !
 

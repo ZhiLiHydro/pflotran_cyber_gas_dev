@@ -108,11 +108,15 @@ subroutine GeomechanicsMaterialPropertyRead(geomech_material_property, &
                              youngs_modulus)
         call InputErrorMsg(input,option,'YOUNGS_MODULUS', &
                            'GEOMECHANICS_MATERIAL_PROPERTY')
+        option%geomechanics%youngs_modulus = geomech_material_property% &
+                                             youngs_modulus
       case('POISSONS_RATIO')
         call InputReadDouble(input,option,geomech_material_property% &
                              poissons_ratio)
         call InputErrorMsg(input,option,'POISSONS_RATIO', &
                            'GEOMECHANICS_MATERIAL_PROPERTY')
+        option%geomechanics%poissons_ratio = geomech_material_property% &
+                                             poissons_ratio
       case('ROCK_DENSITY')
         call InputReadDouble(input,option,geomech_material_property% &
                              density)

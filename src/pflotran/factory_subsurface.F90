@@ -373,6 +373,10 @@ subroutine FactorySubsurfaceInitSimulation(simulation)
                                         'geomech_vol_strain')
       call RealizationRegisterParameter(realization, &
                                         'geomech_vol_strain_old')
+      call RealizationRegisterParameter(realization, &
+                                        'geomech_vol_stress')
+      call RealizationRegisterParameter(realization, &
+                                        'geomech_vol_stress_old')
   end select
   call FactorySubsurfSetupRealization(simulation)
 
