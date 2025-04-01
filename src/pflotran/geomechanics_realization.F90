@@ -285,6 +285,11 @@ subroutine GeomechRealizCreateDiscretization(geomech_realization)
                                             geomech_field%press_loc, &
                                             geomech_field%press_init_loc)
 
+  ! jaa testing
+  call GeomechDiscretizationDuplicateVector(geomech_discretization, &
+                                            geomech_field%press_loc, &
+                                            geomech_field%press_old_loc)
+
   call GeomechDiscretizationDuplicateVector(geomech_discretization, &
                                             geomech_field%press_loc, &
                                             geomech_field%temp_init_loc)

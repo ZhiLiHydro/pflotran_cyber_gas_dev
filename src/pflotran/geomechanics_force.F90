@@ -510,11 +510,11 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
   PetscInt, allocatable :: elenodes(:)
   PetscReal, allocatable :: local_coordinates(:,:)
   PetscReal, allocatable :: local_disp(:,:)
-  PetscReal, allocatable :: local_press(:), local_temp(:)
+  PetscReal, allocatable :: local_press(:), local_temp(:), local_press_old(:) ! jaa
   PetscInt, allocatable :: petsc_ids(:)
   PetscInt, allocatable :: ids(:)
   PetscReal, allocatable :: res_vec(:)
-  PetscReal, pointer :: press(:), temp(:)
+  PetscReal, pointer :: press(:), temp(:), press_old(:)
   PetscReal, pointer :: fluid_density(:), porosity(:)
   PetscReal, pointer :: press_init(:), temp_init(:)
   PetscReal, pointer :: fluid_density_init(:)
@@ -560,6 +560,9 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
   call VecGetArrayF90(field%temp_init_loc,temp_init,ierr);CHKERRQ(ierr)
   call VecGetArrayF90(field%fluid_density_init_loc,fluid_density_init, &
                       ierr);CHKERRQ(ierr)
+
+  ! jaa testing
+  call VecGetArrayF90(field%press_old_loc,press_old,ierr);CHKERRQ(ierr)
 
   ! Loop over elements on a processor
   do ielem = 1, grid%nlmax_elem
@@ -634,6 +637,9 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
     error_H1_global = error_H1_global + error_H1
     error_L2_global = error_L2_global + error_L2
 #endif
+
+    ! jaa testing
+    !press_old = press
     deallocate(elenodes)
     deallocate(local_coordinates)
     deallocate(local_disp)
@@ -663,6 +669,8 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
   call VecRestoreArrayF90(field%temp_init_loc,temp_init,ierr);CHKERRQ(ierr)
   call VecRestoreArrayF90(field%fluid_density_init_loc,fluid_density_init, &
                           ierr);CHKERRQ(ierr)
+  ! jaa testing
+  call VecRestoreArrayF90(field%press_old_loc,press,ierr);CHKERRQ(ierr)
 
 #if 0
   call MPI_Allreduce(error_H1_global,error_H1_global,ONE_INTEGER_MPI, &
@@ -2263,6 +2271,10 @@ subroutine GeomechStoreInitialPressTemp(geomech_realization)
 
   call VecCopy(geomech_realization%geomech_field%press_loc, &
                geomech_realization%geomech_field%press_init_loc, &
+               ierr);CHKERRQ(ierr)
+
+  call VecCopy(geomech_realization%geomech_field%press_init_loc, &
+               geomech_realization%geomech_field%press_old_loc, &
                ierr);CHKERRQ(ierr)
 
   call VecCopy(geomech_realization%geomech_field%temp_loc, &

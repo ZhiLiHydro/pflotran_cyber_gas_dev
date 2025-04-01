@@ -609,14 +609,14 @@ subroutine PMCGeomechanicsSetAuxData(this)
                                'geomech_vol_strain_old', &
                                pmc%subsurf_realization%option)
             ghosted_id = grid%nL2G(local_id)
-            pmc%subsurf_realization%patch%aux% &
-              Global%auxvars(ghosted_id)%parameters(strainv_old_index) = &
-              pmc%subsurf_realization%patch%aux%Global% &
-              auxvars(ghosted_id)%parameters(strainv_index)
+            !pmc%subsurf_realization%patch%aux% &
+            !  Global%auxvars(ghosted_id)%parameters(strainv_old_index) = &
+            !  pmc%subsurf_realization%patch%aux%Global% &
+            !  auxvars(ghosted_id)%parameters(strainv_index)
             strain_vol = local_strain(1) + local_strain(2) + local_strain(3)
-            pmc%subsurf_realization%patch%aux% &
-              Global%auxvars(ghosted_id)%parameters(strainv_index) = &
-              strain_vol
+            !pmc%subsurf_realization%patch%aux% &
+            !  Global%auxvars(ghosted_id)%parameters(strainv_index) = &
+            !  strain_vol
             ! Store updated vol stress in global_aux%parameters
             stressv_index = ParameterGetIDFromName( &
                                'geomech_vol_stress', &
@@ -624,21 +624,16 @@ subroutine PMCGeomechanicsSetAuxData(this)
             stressv_old_index = ParameterGetIDFromName( &
                                'geomech_vol_stress_old', &
                                pmc%subsurf_realization%option)
-            if (this%timestepper%steps == 1) then ! fixed stress/strain splits only
-              pmc%subsurf_realization%patch%aux% &
-                Global%auxvars(ghosted_id)%parameters(stressv_old_index) = &
-                0.032822040669
-                ! ^^ uniform value obtained from initial state of drained split
-                !0.d0
-
-                !- this%option%geomechanics%biot_coefficient * &
-                !1101325.0d0 ! initial pressure hardcoded here <<
-            else
-              pmc%subsurf_realization%patch%aux% &
-                Global%auxvars(ghosted_id)%parameters(stressv_old_index) = &
-                pmc%subsurf_realization%patch%aux%Global% &
-                auxvars(ghosted_id)%parameters(stressv_index)
-            endif
+            !if (this%timestepper%steps == 1) then ! fixed stress/strain splits only
+            !  pmc%subsurf_realization%patch%aux% &
+            !    Global%auxvars(ghosted_id)%parameters(stressv_old_index) = &
+            !    0.d0
+            !else
+            pmc%subsurf_realization%patch%aux% &
+              Global%auxvars(ghosted_id)%parameters(stressv_old_index) = &
+              pmc%subsurf_realization%patch%aux%Global% &
+              auxvars(ghosted_id)%parameters(stressv_index)
+            !endif
             !pmc%subsurf_realization%patch%aux% &
             !  Global%auxvars(ghosted_id)%parameters(stressv_index) = &
             !  (local_stress(1) + local_stress(2) + local_stress(3))/3.d0
@@ -652,12 +647,15 @@ subroutine PMCGeomechanicsSetAuxData(this)
                        (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
             pmc%subsurf_realization%patch%aux% &
               Global%auxvars(ghosted_id)%parameters(stressv_index) = &
-              (dr_bulk_modulus*strain_vol)-(biot_coeff * &
-              (local_pressure - 1101325.0d0))
-            print *, 'step, stress', &
+              (dr_bulk_modulus * strain_vol) !- (biot_coeff * local_pressure)
+              !((local_stress(1) + local_stress(2) + local_stress(3))/3.d0) - &
+              !(biot_coeff * local_pressure)
+            print *, 'step, stress, old stress', &
                    this%timestepper%steps, &
                    pmc%subsurf_realization%patch%aux% &
-                   Global%auxvars(ghosted_id)%parameters(stressv_index)
+                   Global%auxvars(ghosted_id)%parameters(stressv_index), &
+                   pmc%subsurf_realization%patch%aux% &
+                   Global%auxvars(ghosted_id)%parameters(stressv_old_index)
             !print *, 'old stressv, effe stressv, delta press, step: ', &
             !  pmc%subsurf_realization%patch%aux% &
             !  Global%auxvars(ghosted_id)%parameters(stressv_old_index), &
