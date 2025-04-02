@@ -373,6 +373,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
   use Discretization_module
   use Geomechanics_Subsurface_Properties_module
   use Parameter_module
+  use Global_Aux_module
 
   implicit none
 
@@ -394,8 +395,10 @@ subroutine PMCGeomechanicsSetAuxData(this)
   PetscReal :: perm_new
   PetscInt :: i
   PetscInt :: parameter_index
-  PetscInt :: stressv_index, stressv_old_index
-  PetscInt :: strainv_index, strainv_old_index
+  ! jaa
+  PetscInt :: stressv_id, stressv_old_id
+  PetscInt :: strainv_id, strainv_old_id
+  type(global_auxvar_type), pointer :: global_auxvars(:)
   Vec :: geomech_vec
   Vec :: subsurf_vec
   PetscReal :: biot_coeff, youngs_mod, poissons_ratio, dr_bulk_modulus
@@ -608,76 +611,48 @@ subroutine PMCGeomechanicsSetAuxData(this)
                   perm0_p(local_id),local_stress,local_strain,local_pressure, &
                   perm_new,this%option)
             perm_p(local_id) = perm_new
-            ! Store updated vol strain in global_aux%parameters
-            strainv_index = ParameterGetIDFromName( &
+            ! jaa begin -------------------------------------------------------
+            ! get id's for global_aux%parameters
+            strainv_id = ParameterGetIDFromName( &
                                'geomech_vol_strain', &
                                pmc%subsurf_realization%option)
-            strainv_old_index = ParameterGetIDFromName( &
+            strainv_old_id = ParameterGetIDFromName( &
                                'geomech_vol_strain_old', &
                                pmc%subsurf_realization%option)
-            ghosted_id = grid%nL2G(local_id)
-            !pmc%subsurf_realization%patch%aux% &
-            !  Global%auxvars(ghosted_id)%parameters(strainv_old_index) = &
-            !  pmc%subsurf_realization%patch%aux%Global% &
-            !  auxvars(ghosted_id)%parameters(strainv_index)
-            strain_vol = local_strain(1) + local_strain(2) + local_strain(3)
-            !pmc%subsurf_realization%patch%aux% &
-            !  Global%auxvars(ghosted_id)%parameters(strainv_index) = &
-            !  strain_vol
-            ! Store updated vol stress in global_aux%parameters
-            stressv_index = ParameterGetIDFromName( &
+            stressv_id = ParameterGetIDFromName( &
                                'geomech_vol_stress', &
                                pmc%subsurf_realization%option)
-            stressv_old_index = ParameterGetIDFromName( &
+            stressv_old_id = ParameterGetIDFromName( &
                                'geomech_vol_stress_old', &
                                pmc%subsurf_realization%option)
-            !if (this%timestepper%steps == 1) then ! fixed stress/strain splits only
-            !  pmc%subsurf_realization%patch%aux% &
-            !    Global%auxvars(ghosted_id)%parameters(stressv_old_index) = &
-            !    0.d0
-            !else
-            ! store old stress value
-            pmc%subsurf_realization%patch%aux% &
-              Global%auxvars(ghosted_id)%parameters(stressv_old_index) = &
-              pmc%subsurf_realization%patch%aux%Global% &
-              auxvars(ghosted_id)%parameters(stressv_index)
-            !endif
-            !pmc%subsurf_realization%patch%aux% &
-            !  Global%auxvars(ghosted_id)%parameters(stressv_index) = &
-            !  (local_stress(1) + local_stress(2) + local_stress(3))/3.d0
-            !print *, 'internal vol (mean) stress', &
-            !      (local_stress(1) + local_stress(2) + local_stress(3))/3.d0
+            ghosted_id = grid%nL2G(local_id)
+            global_auxvars => pmc%subsurf_realization%patch%aux% &
+                              Global%auxvars
+            ! calc volumetric strain
+            strain_vol = local_strain(1) + local_strain(2) + local_strain(3)
             print *, 'strain', strain_vol
+            ! store old effective stress
+            global_auxvars(ghosted_id)%parameters(stressv_old_id) = &
+              global_auxvars(ghosted_id)%parameters(stressv_id)
+            ! total stress is: tr(stress)/3
+            !  (local_stress(1) + local_stress(2) + local_stress(3))/3.d0
             youngs_mod = this%option%geomechanics%youngs_modulus
             poissons_ratio = this%option%geomechanics%poissons_ratio
             biot_coeff = this%option%geomechanics%biot_coefficient
             dr_bulk_modulus = youngs_mod / &
                        (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
-            pmc%subsurf_realization%patch%aux% &
-              Global%auxvars(ghosted_id)%parameters(stressv_index) = &
-              !(dr_bulk_modulus * strain_vol) !- (biot_coeff * local_pressure)
+            ! store updated effective stress
+            global_auxvars(ghosted_id)%parameters(stressv_id) = &
               ((local_stress(1) + local_stress(2) + local_stress(3))/3.d0) - &
               (biot_coeff * local_pressure)
+              ! above same as
+              !(dr_bulk_modulus * strain_vol) - (biot_coeff * local_pressure)
             print *, 'step, stress, old stress, local_press', &
                    this%timestepper%steps, &
-                   pmc%subsurf_realization%patch%aux% &
-                   Global%auxvars(ghosted_id)%parameters(stressv_index), &
-                   pmc%subsurf_realization%patch%aux% &
-                   Global%auxvars(ghosted_id)%parameters(stressv_old_index), &
+                   global_auxvars(ghosted_id)%parameters(stressv_id), &
+                   global_auxvars(ghosted_id)%parameters(stressv_old_id), &
                    local_pressure
-            !print *, 'old stressv, effe stressv, delta press, step: ', &
-            !  pmc%subsurf_realization%patch%aux% &
-            !  Global%auxvars(ghosted_id)%parameters(stressv_old_index), &
-            !  pmc%subsurf_realization%patch%aux% &
-            !  Global%auxvars(ghosted_id)%parameters(stressv_index), &
-            !  local_pressure - 1101325.0d0, &
-            !  this%timestepper%steps
-            !print *, 'dr_bulk_modulus', dr_bulk_modulus
-            !print *, 'vol stress (internal), K_dr*volstrain,', &
-            !  (local_stress(1) + local_stress(2) + local_stress(3))/3.d0, &
-            !  dr_bulk_modulus * &
-            !  pmc%subsurf_realization%patch%aux%Global% &
-            !  auxvars(ghosted_id)%parameters(strainv_index)
+            ! jaa end ---------------------------------------------------------
           enddo
 
           call VecRestoreArrayF90(pmc%sim_aux%subsurf_por0,por0_p, &
