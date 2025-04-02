@@ -246,6 +246,8 @@ recursive subroutine PMCGeomechanicsRunToTime(this,sync_time,stop_flag)
   PetscBool :: checkpoint_flag
   PetscBool :: peer_already_run_to_time
 
+  PetscErrorCode :: ierr
+
   class(pm_base_type), pointer :: cur_pm
 
   if (stop_flag == TS_STOP_FAILURE) return
@@ -336,6 +338,11 @@ recursive subroutine PMCGeomechanicsRunToTime(this,sync_time,stop_flag)
                           observation_plot_flag,massbal_plot_flag)
   ! Set data needed by process-model
   call this%SetAuxData()
+
+  ! jaa testing
+  call VecCopy(this%geomech_realization%geomech_field%press_loc, &
+               this%geomech_realization%geomech_field%press_old_loc, &
+               ierr); CHKERRQ(ierr)
 
   ! Run neighboring process model couplers
   if (associated(this%peer) .and. .not.peer_already_run_to_time) then
@@ -629,6 +636,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
             !    Global%auxvars(ghosted_id)%parameters(stressv_old_index) = &
             !    0.d0
             !else
+            ! store old stress value
             pmc%subsurf_realization%patch%aux% &
               Global%auxvars(ghosted_id)%parameters(stressv_old_index) = &
               pmc%subsurf_realization%patch%aux%Global% &
@@ -637,8 +645,8 @@ subroutine PMCGeomechanicsSetAuxData(this)
             !pmc%subsurf_realization%patch%aux% &
             !  Global%auxvars(ghosted_id)%parameters(stressv_index) = &
             !  (local_stress(1) + local_stress(2) + local_stress(3))/3.d0
-            print *, 'internal vol (mean) stress', &
-                  (local_stress(1) + local_stress(2) + local_stress(3))/3.d0
+            !print *, 'internal vol (mean) stress', &
+            !      (local_stress(1) + local_stress(2) + local_stress(3))/3.d0
             print *, 'strain', strain_vol
             youngs_mod = this%option%geomechanics%youngs_modulus
             poissons_ratio = this%option%geomechanics%poissons_ratio
@@ -647,15 +655,16 @@ subroutine PMCGeomechanicsSetAuxData(this)
                        (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
             pmc%subsurf_realization%patch%aux% &
               Global%auxvars(ghosted_id)%parameters(stressv_index) = &
-              (dr_bulk_modulus * strain_vol) !- (biot_coeff * local_pressure)
-              !((local_stress(1) + local_stress(2) + local_stress(3))/3.d0) - &
-              !(biot_coeff * local_pressure)
-            print *, 'step, stress, old stress', &
+              !(dr_bulk_modulus * strain_vol) !- (biot_coeff * local_pressure)
+              ((local_stress(1) + local_stress(2) + local_stress(3))/3.d0) - &
+              (biot_coeff * local_pressure)
+            print *, 'step, stress, old stress, local_press', &
                    this%timestepper%steps, &
                    pmc%subsurf_realization%patch%aux% &
                    Global%auxvars(ghosted_id)%parameters(stressv_index), &
                    pmc%subsurf_realization%patch%aux% &
-                   Global%auxvars(ghosted_id)%parameters(stressv_old_index)
+                   Global%auxvars(ghosted_id)%parameters(stressv_old_index), &
+                   local_pressure
             !print *, 'old stressv, effe stressv, delta press, step: ', &
             !  pmc%subsurf_realization%patch%aux% &
             !  Global%auxvars(ghosted_id)%parameters(stressv_old_index), &

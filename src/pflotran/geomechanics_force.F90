@@ -510,7 +510,7 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
   PetscInt, allocatable :: elenodes(:)
   PetscReal, allocatable :: local_coordinates(:,:)
   PetscReal, allocatable :: local_disp(:,:)
-  PetscReal, allocatable :: local_press(:), local_temp(:), local_press_old(:) ! jaa
+  PetscReal, allocatable :: local_press(:), local_temp(:), local_del_press(:) ! jaa
   PetscInt, allocatable :: petsc_ids(:)
   PetscInt, allocatable :: ids(:)
   PetscReal, allocatable :: res_vec(:)
@@ -570,6 +570,7 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
     allocate(local_coordinates(size(elenodes),THREE_INTEGER))
     allocate(local_disp(size(elenodes),option%ngeomechdof))
     allocate(local_press(size(elenodes)))
+    allocate(local_del_press(size(elenodes))) ! jaa
     allocate(local_temp(size(elenodes)))
     allocate(petsc_ids(size(elenodes)))
     allocate(ids(size(elenodes)*option%ngeomechdof))
@@ -591,8 +592,6 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
       local_coordinates(ivertex,GEOMECH_DISP_Z_DOF) = grid%nodes(ghosted_id)%z
       petsc_ids(ivertex) = grid%node_ids_ghosted_petsc(ghosted_id)
     enddo
-    !print *, 'ele delta press: ', press(ghosted_id) - press_init(ghosted_id)
-    !print *, 'ele, press, init_press: ', ielem, press(ghosted_id), press_init(ghosted_id)
     do ivertex = 1, grid%elem_nodes(0,ielem)
       ghosted_id = elenodes(ivertex)
       do idof = 1, option%ngeomechdof
@@ -603,6 +602,7 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
       enddo
       local_press(ivertex) = press(ghosted_id) - press_init(ghosted_id)  ! p - p_0
       local_temp(ivertex) = temp(ghosted_id) - temp_init(ghosted_id)     ! T - T_0
+      local_del_press(ivertex) = press(ghosted_id) - press_old(ghosted_id) ! jaa
       alpha_vec(ivertex) = &
         GeomechParam%thermal_exp_coef(nint(imech_loc_p(ghosted_id)))
       beta_vec(ivertex) = &
@@ -620,9 +620,10 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
       poissons_vec(ivertex) = &
         GeomechParam%poissons_ratio(nint(imech_loc_p(ghosted_id)))
     enddo
+    !print *, 'ielem, local_del_press: ', ielem, local_del_press
     size_elenodes = size(elenodes)
     call GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
-       local_disp,local_press,local_temp,youngs_vec,poissons_vec, &
+       local_disp,local_press,local_del_press,local_temp,youngs_vec,poissons_vec, &
        density_bulk_vec,beta_vec,alpha_vec,eletype, &
        grid%gauss_node(ielem)%dim,grid%gauss_node(ielem)%r, &
        grid%gauss_node(ielem)%w,res_vec,option)
@@ -638,8 +639,6 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
     error_L2_global = error_L2_global + error_L2
 #endif
 
-    ! jaa testing
-    !press_old = press
     deallocate(elenodes)
     deallocate(local_coordinates)
     deallocate(local_disp)
@@ -647,6 +646,7 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
     deallocate(ids)
     deallocate(res_vec)
     deallocate(local_press)
+    deallocate(local_del_press)
     deallocate(local_temp)
     deallocate(beta_vec)
     deallocate(alpha_vec)
@@ -671,7 +671,7 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
                           ierr);CHKERRQ(ierr)
   ! jaa testing
   call VecRestoreArrayF90(field%press_old_loc,press,ierr);CHKERRQ(ierr)
-
+  !call VecCopy(field%press_loc, field%press_old_loc, ierr);CHKERRQ(ierr)
 #if 0
   call MPI_Allreduce(error_H1_global,error_H1_global,ONE_INTEGER_MPI, &
                      MPI_DOUBLE_PRECISION,MPI_SUM,option%mycomm, &
@@ -844,7 +844,7 @@ end subroutine GeomechForceResidualPatch
 
 subroutine GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
                                          local_disp, &
-                                         local_press,local_temp, &
+                                         local_press,local_del_press,local_temp, &
                                          local_youngs,local_poissons, &
                                          local_density,local_beta, &
                                          local_alpha, &
@@ -869,6 +869,7 @@ subroutine GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
   PetscReal, allocatable :: res_vec(:)
   PetscReal, allocatable :: local_disp(:,:)
   PetscReal, allocatable :: local_press(:)
+  PetscReal, allocatable :: local_del_press(:)
   PetscReal, allocatable :: local_temp(:)
   PetscReal, allocatable :: local_youngs(:)
   PetscReal, allocatable :: local_poissons(:)
@@ -960,6 +961,9 @@ subroutine GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
     force = force + w(igpt)*density*matmul(kron_N_eye,bf)*detJ_map
     force = force + w(igpt)*beta*dot_product(N(:,1),local_press)* &
       vecB_transpose(:,1)*detJ_map
+    ! jaa testing - need this for sequential iter to update press val
+    !force = force + w(igpt)*beta*dot_product(N(:,1),local_del_press)* &
+    !  vecB_transpose(:,1)*detJ_map
     force = force + w(igpt)*alpha*(3*lambda+2*mu)* &
       dot_product(N(:,1),local_temp)*vecB_transpose(:,1)*detJ_map
     call ShapeFunctionDestroy(shapefunction)
