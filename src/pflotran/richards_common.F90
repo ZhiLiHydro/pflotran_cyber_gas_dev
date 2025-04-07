@@ -186,8 +186,8 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
   porosity_0 = material_auxvar%porosity_0
 
   ! accumulation term units = kmol/s
-  Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
-           material_auxvar%porosity * vol_over_dt
+  !Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
+  !         material_auxvar%porosity * vol_over_dt
 
   !print *, 'step no. ', option%flow_steps
   !print *, 'orig Res(1): ', Res(1)
@@ -249,7 +249,7 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
     !Res(1) = Res(1) + (vol_over_dt*biot_coeff* &
     !                   global_auxvar%den(1)* &
     !                   (vol_strain-vol_strain_old))
-    ! vol stress
+    ! fixed stress
     Res(1) = Res(1) + (vol_over_dt*biot_coeff* &
                       rich_auxvar%den_0* &
                       (vol_stress-vol_stress_old)/ &

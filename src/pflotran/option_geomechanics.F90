@@ -99,7 +99,7 @@ subroutine OptionGeomechanicsInitRealization(option)
   ! These variables should be initialized once at the beginning of every
   ! PFLOTRAN realization or simulation of a single realization
 
-  option%initial_flag = PETSC_FALSE
+  option%initial_flag = PETSC_TRUE
   option%time = 0.d0
   option%subsurf_coupling = 0
   option%split_scheme = 0
