@@ -250,7 +250,7 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
     !                   global_auxvar%den(1)* &
     !                   (vol_strain-vol_strain_old))
     ! fixed stress
-    Res(1) = Res(1) + (vol_over_dt*biot_coeff* &
+    Res(1) = Res(1) + (2.*vol_over_dt*biot_coeff* &
                       rich_auxvar%den_0* &
                       (vol_stress-vol_stress_old)/ &
                       dr_bulk_modulus)
