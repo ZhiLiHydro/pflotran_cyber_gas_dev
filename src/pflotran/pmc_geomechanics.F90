@@ -648,6 +648,11 @@ subroutine PMCGeomechanicsSetAuxData(this)
             global_auxvars(ghosted_id)%parameters(stressv_id) = &
               ((local_stress(1) + local_stress(2) + local_stress(3))/3.d0) !- &
               !(biot_coeff * local_pressure)
+            print *, 'tr(stress_n)/3 , tr(stress_n)/3-bp, stress_xx -bp:', &
+              global_auxvars(ghosted_id)%parameters(stressv_id), &
+              global_auxvars(ghosted_id)%parameters(stressv_id) - &
+              (biot_coeff * local_pressure), &
+              local_stress(1) - (biot_coeff * local_pressure)
               ! above same as
               !(dr_bulk_modulus * strain_vol) - (biot_coeff * local_pressure)
             print *, 'K_dr * volstrain: ', dr_bulk_modulus * strain_vol

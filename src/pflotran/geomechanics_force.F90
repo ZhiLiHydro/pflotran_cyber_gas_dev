@@ -2186,6 +2186,7 @@ subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
     stress_local = lambda*(strain_local(1,1)+ &
                    strain_local(5,1)+strain_local(9,1))*eye_vec + &
                    2*mu*strain_local
+    !print *, 'ivertex, strain_local', ivertex, strain_local
     call ShapeFunctionDestroy(shapefunction)
     deallocate(kron_B_eye)
     deallocate(kron_B_transpose_eye)
