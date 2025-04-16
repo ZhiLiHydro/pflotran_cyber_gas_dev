@@ -600,8 +600,7 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
         ids(idof + (ivertex-1)*option%ngeomechdof) = &
           (petsc_ids(ivertex)-1)*option%ngeomechdof + (idof-1)
       enddo
-      !local_press(ivertex) = press(ghosted_id) - press_init(ghosted_id)  ! p - p_0
-      local_press(ivertex) = press(ghosted_id) !- press_init(ghosted_id)  ! p - p_0
+      local_press(ivertex) = press(ghosted_id) - press_init(ghosted_id)  ! p - p_0
       local_temp(ivertex) = temp(ghosted_id) - temp_init(ghosted_id)     ! T - T_0
       local_del_press(ivertex) = press(ghosted_id) - press_old(ghosted_id) ! jaa
       alpha_vec(ivertex) = &

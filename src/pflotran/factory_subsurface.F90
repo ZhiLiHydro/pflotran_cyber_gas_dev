@@ -373,6 +373,10 @@ subroutine FactorySubsurfaceInitSimulation(simulation)
       call RealizationRegisterParameter(realization,'geomechanics_strain')
     case(GEOMECH_TWO_WAY_COUPLED) ! jaa testing
       call RealizationRegisterParameter(realization, &
+                                        'geomech_vol_strain_0')
+      call RealizationRegisterParameter(realization, &
+                                        'geomech_vol_stress_0')
+      call RealizationRegisterParameter(realization, &
                                         'geomech_vol_strain')
       call RealizationRegisterParameter(realization, &
                                         'geomech_vol_strain_old')
@@ -380,6 +384,10 @@ subroutine FactorySubsurfaceInitSimulation(simulation)
                                         'geomech_vol_stress')
       call RealizationRegisterParameter(realization, &
                                         'geomech_vol_stress_old')
+      call RealizationRegisterParameter(realization, &
+                                        'geomech_old_press')
+      call RealizationRegisterParameter(realization, &
+                                        'geomech_press_0')
   end select
   call FactorySubsurfSetupRealization(simulation)
 

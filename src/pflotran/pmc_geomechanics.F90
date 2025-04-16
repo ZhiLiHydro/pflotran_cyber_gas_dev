@@ -396,13 +396,16 @@ subroutine PMCGeomechanicsSetAuxData(this)
   PetscInt :: i
   PetscInt :: parameter_index
   ! jaa
+  PetscInt :: strainv_0_id, stressv_0_id, press_0_id
   PetscInt :: stressv_id, stressv_old_id
   PetscInt :: strainv_id, strainv_old_id
+  PetscInt :: press_old_id
   type(global_auxvar_type), pointer :: global_auxvars(:)
   Vec :: geomech_vec
   Vec :: subsurf_vec
   PetscReal :: biot_coeff, youngs_mod, poissons_ratio, dr_bulk_modulus
-  PetscReal :: strain_vol
+  PetscReal :: strain_vol, stress_vol, local_old_press
+  PetscReal :: press_init
 #if GEOMECH_DEBUG
   PetscViewer :: viewer
   print *, 'PMCGeomechSetAuxData'
@@ -613,6 +616,12 @@ subroutine PMCGeomechanicsSetAuxData(this)
             perm_p(local_id) = perm_new
             ! jaa begin -------------------------------------------------------
             ! get id's for global_aux%parameters
+            strainv_0_id = ParameterGetIDFromName( &
+                               'geomech_vol_strain_0', &
+                               pmc%subsurf_realization%option)
+            stressv_0_id = ParameterGetIDFromName( &
+                               'geomech_vol_stress_0', &
+                               pmc%subsurf_realization%option)
             strainv_id = ParameterGetIDFromName( &
                                'geomech_vol_strain', &
                                pmc%subsurf_realization%option)
@@ -625,43 +634,61 @@ subroutine PMCGeomechanicsSetAuxData(this)
             stressv_old_id = ParameterGetIDFromName( &
                                'geomech_vol_stress_old', &
                                pmc%subsurf_realization%option)
+            press_old_id = ParameterGetIDFromName( &
+                               'geomech_old_press', &
+                               pmc%subsurf_realization%option)
+            press_0_id = ParameterGetIDFromName( &
+                               'geomech_press_0', &
+                               pmc%subsurf_realization%option)
             ghosted_id = grid%nL2G(local_id)
             global_auxvars => pmc%subsurf_realization%patch%aux% &
                               Global%auxvars
             ! calc volumetric strain
             strain_vol = local_strain(1) + local_strain(2) + local_strain(3)
-            print *, 'strain', strain_vol
-            if (this%timestepper%steps == 0) then
-              global_auxvars(ghosted_id)%parameters(stressv_id) = 0.d0
-            endif
-            ! store old effective stress
-            global_auxvars(ghosted_id)%parameters(stressv_old_id) = &
-              global_auxvars(ghosted_id)%parameters(stressv_id)
-            ! total stress is: tr(stress)/3
-            !  (local_stress(1) + local_stress(2) + local_stress(3))/3.d0
+            ! calc volumetric stress
+            stress_vol = (local_stress(1) + local_stress(2) + &
+                          local_stress(3))/3.d0
             youngs_mod = this%option%geomechanics%youngs_modulus
             poissons_ratio = this%option%geomechanics%poissons_ratio
             biot_coeff = this%option%geomechanics%biot_coefficient
             dr_bulk_modulus = youngs_mod / &
                        (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
-            ! store updated effective stress
-            global_auxvars(ghosted_id)%parameters(stressv_id) = &
-              ((local_stress(1) + local_stress(2) + local_stress(3))/3.d0) !- &
-              !(biot_coeff * local_pressure)
-            print *, 'tr(stress_n)/3 , tr(stress_n)/3-bp, stress_xx -bp:', &
-              global_auxvars(ghosted_id)%parameters(stressv_id), &
-              global_auxvars(ghosted_id)%parameters(stressv_id) - &
-              (biot_coeff * local_pressure), &
-              local_stress(1) - (biot_coeff * local_pressure)
-              ! above same as
-              !(dr_bulk_modulus * strain_vol) - (biot_coeff * local_pressure)
-            print *, 'K_dr * volstrain: ', dr_bulk_modulus * strain_vol
-            print *, 'step, del stress, local_press, local_id', &
+            print *, 'old press: ', global_auxvars(ghosted_id)%parameters(press_old_id)
+            local_old_press = global_auxvars(ghosted_id)%parameters(press_old_id)
+
+            if (this%timestepper%steps == 0) then ! before init
+              global_auxvars(ghosted_id)%parameters(stressv_id) = 0.d0
+              global_auxvars(ghosted_id)%parameters(stressv_old_id) = 0.d0
+              global_auxvars(ghosted_id)%parameters(press_0_id) = local_pressure
+            elseif (this%timestepper%steps == 1) then ! at init
+              press_init = global_auxvars(ghosted_id)%parameters(press_0_id)
+              global_auxvars(ghosted_id)%parameters(stressv_0_id) = stress_vol
+              global_auxvars(ghosted_id)%parameters(stressv_old_id) = 0.d0
+              global_auxvars(ghosted_id)%parameters(stressv_id) = &
+                ! with geomech
+                stress_vol
+                ! without geomech
+                !(biot_coeff * (local_pressure-press_init)/3.d0)
+            else ! post init
+              press_init = global_auxvars(ghosted_id)%parameters(press_0_id)
+              global_auxvars(ghosted_id)%parameters(stressv_old_id) = &
+                global_auxvars(ghosted_id)%parameters(stressv_id)
+              global_auxvars(ghosted_id)%parameters(stressv_id) = &
+                ! with geomech
+                stress_vol
+                ! without geomech
+                !(biot_coeff*(local_pressure-press_init)/3.d0)
+            endif
+            print *, 'step, stress, old_stress, local_press, local_id', &
                    this%timestepper%steps, &
-                   global_auxvars(ghosted_id)%parameters(stressv_id) - &
+                   global_auxvars(ghosted_id)%parameters(stressv_id), &
                    global_auxvars(ghosted_id)%parameters(stressv_old_id), &
                    local_pressure, &
                    local_id
+            print *, 'strain ', global_auxvars(ghosted_id)%parameters(stressv_id)/ &
+                  dr_bulk_modulus
+
+            global_auxvars(ghosted_id)%parameters(press_old_id) = local_pressure
             ! jaa end ---------------------------------------------------------
           enddo
 
