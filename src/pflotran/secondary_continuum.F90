@@ -545,6 +545,12 @@ subroutine SecondaryRTTimeCut(realization)
           rt_sec_transport_vars(ghosted_id)%sec_rt_auxvar(cell)%pri_molal(comp)
       enddo
     enddo
+    !rosie: Add immobile loop here
+    !do iimob = 1, reaction%immobile%nimmobile ! or even better reaction%nimcomp
+    !  icomp = reaction%offset_immobile + iimob
+    !  rt_sec_transport_vars(ghosted_id)%updated_conc(icomp,cell) = &
+    !    rt_sec_transport_vars(ghosted_id)%sec_rt_auxvar(cell)%immobile(iimob)
+    !enddo
   enddo
 
 end subroutine SecondaryRTTimeCut
@@ -818,6 +824,7 @@ subroutine SecondaryRTResJacMulti(sec_transport_vars,auxvar, &
   PetscReal :: dtotal_prim_num(reaction%naqcomp,reaction%naqcomp)
   PetscReal :: dPsisec_dCprim_num(reaction%naqcomp,reaction%naqcomp)
   PetscReal :: pert
+  !rosie: resize to reaction%ncomp
   PetscReal :: coeff_diag_dm(reaction%naqcomp,reaction%naqcomp, &
                           sec_transport_vars%ncells)
   PetscReal :: coeff_left_dm(reaction%naqcomp,reaction%naqcomp, &
@@ -857,6 +864,7 @@ subroutine SecondaryRTResJacMulti(sec_transport_vars,auxvar, &
   dm_plus = sec_transport_vars%dm_plus
   dm_minus = sec_transport_vars%dm_minus
   area_fm = sec_transport_vars%interfacial_area
+  !rosie: ncomp = reaction%ncomp and add naqcomp = reaction%naqcomp
   ncomp = reaction%naqcomp
   nphase = option%transport%nphase
 
@@ -874,6 +882,10 @@ subroutine SecondaryRTResJacMulti(sec_transport_vars,auxvar, &
       enddo
     enddo
   enddo
+
+  ! Add immobile loop here
+  ! immobile_prev
+
   conc_upd = sec_transport_vars%updated_conc
 
   ! Note that sec_transport_vars%sec_rt_auxvar(i)%pri_molal(j) units are in mol/kg
@@ -930,6 +942,11 @@ subroutine SecondaryRTResJacMulti(sec_transport_vars,auxvar, &
 
 !================ Calculate the secondary residual =============================
 
+  !rosie: invert the below to be
+  ! do icell = 1, ngcells
+  !   do iphase = 1, nphase
+  !     do icomp = 1, naqcomp
+
   do j = 1, ncomp
 
     ! Accumulation
@@ -942,6 +959,11 @@ subroutine SecondaryRTResJacMulti(sec_transport_vars,auxvar, &
         res(n) = res(n) + vol(i)/option%tran_dt*(total_sorb_upd(j,i) - total_sorb_prev(j,i))
       endif
     enddo
+
+    !rosie: after inverted, you can add an immobile loop here
+    !do iimob = 1, reaction%immobile%nimmobile ! or even better reaction%nimcomp
+    !  idof = (icell-1)*ncomp+reaction%immobile_offset+iimob
+    !  res(idof) = ....
 
     ! Flux terms
     do i = 2, ngcells - 1
@@ -974,6 +996,7 @@ subroutine SecondaryRTResJacMulti(sec_transport_vars,auxvar, &
   enddo
 !================ Calculate the secondary jacobian =============================
 
+  !rosie: invert apha_diag to be (ispec,jspec,iphase,icell)
 
   do n = 1, nphase
     do j = 1, ncomp
@@ -983,8 +1006,10 @@ subroutine SecondaryRTResJacMulti(sec_transport_vars,auxvar, &
           alpha_diag(j,k,i,n) = alpha_diag(j,k,i,n) + pordt*vol(i)*global_auxvar%sat(n)
         enddo
 
+        !rosie: after inverted, add derivative for immobile here
+
         ! Flux terms
-        do i = 2, ngcells-1
+        do i = 2, ngcells-n1
           alpha_diag(j,k,i,n) = alpha_diag(j,k,i,n) + &
                                 pordiff(n)*area(i)/(dm_minus(i+1) + dm_plus(i)) + &
                                 pordiff(n)*area(i-1)/(dm_minus(i) + dm_plus(i-1))
@@ -1018,6 +1043,11 @@ subroutine SecondaryRTResJacMulti(sec_transport_vars,auxvar, &
 !============================= Include dtotal ==================================
 
   ! Include dtotal (units of kg water/ L water)
+
+  ! rosie invert so that phase is inside of cell
+  ! do icell = 1...
+  !   do iphase = 1...
+
   do l = 1, nphase
     i = 1
     do j = 1, ncomp
