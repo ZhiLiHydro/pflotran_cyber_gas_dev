@@ -454,9 +454,14 @@ subroutine RTAuxVarCopy(auxvar,auxvar2,option)
   if (associated(auxvar%sec_act_coef)) &
     auxvar2%sec_act_coef = auxvar%sec_act_coef
 
-  if (associated(auxvar%mass_balance)) then
-    auxvar2%mass_balance = auxvar%mass_balance
-    auxvar2%mass_balance_delta = auxvar%mass_balance_delta
+  if (option%iflag /= 0 .and. option%compute_mass_balance_new) then
+    if (associated(auxvar%mass_balance)) then
+      auxvar2%mass_balance = auxvar%mass_balance
+    endif
+
+    if (associated(auxvar%mass_balance_delta)) then
+      auxvar2%mass_balance_delta = auxvar%mass_balance_delta
+    endif
   endif
 
   if (associated(auxvar%kinmr_total_sorb)) then
