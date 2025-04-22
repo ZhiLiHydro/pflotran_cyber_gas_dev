@@ -399,13 +399,13 @@ subroutine PMCGeomechanicsSetAuxData(this)
   PetscInt :: strainv_0_id, stressv_0_id, press_0_id
   PetscInt :: stressv_id, stressv_old_id
   PetscInt :: strainv_id, strainv_old_id
-  PetscInt :: press_old_id
+  PetscInt :: press_old_id, porosity_id
   type(global_auxvar_type), pointer :: global_auxvars(:)
   Vec :: geomech_vec
   Vec :: subsurf_vec
   PetscReal :: biot_coeff, youngs_mod, poissons_ratio, dr_bulk_modulus
   PetscReal :: strain_vol, stress_vol, local_old_press
-  PetscReal :: press_init
+  PetscReal :: press_init, porosity_0, strain_vol_0
 #if GEOMECH_DEBUG
   PetscViewer :: viewer
   print *, 'PMCGeomechSetAuxData'
@@ -640,6 +640,9 @@ subroutine PMCGeomechanicsSetAuxData(this)
             press_0_id = ParameterGetIDFromName( &
                                'geomech_press_0', &
                                pmc%subsurf_realization%option)
+            porosity_id = ParameterGetIDFromName( &
+                               'geomech_porosity', &
+                               pmc%subsurf_realization%option)
             ghosted_id = grid%nL2G(local_id)
             global_auxvars => pmc%subsurf_realization%patch%aux% &
                               Global%auxvars
@@ -651,9 +654,14 @@ subroutine PMCGeomechanicsSetAuxData(this)
             youngs_mod = this%option%geomechanics%youngs_modulus
             poissons_ratio = this%option%geomechanics%poissons_ratio
             biot_coeff = this%option%geomechanics%biot_coefficient
+            !print *, 'youngs_mod, poissons_ratio, biot_coeff: ', &
+            !     youngs_mod, poissons_ratio, biot_coeff
+            !stop
             dr_bulk_modulus = youngs_mod / &
                        (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
-            print *, 'old press: ', global_auxvars(ghosted_id)%parameters(press_old_id)
+            !print *, 'dr_bulk_modulus: ', dr_bulk_modulus
+            !stop
+            !print *, 'old press: ', global_auxvars(ghosted_id)%parameters(press_old_id)
             local_old_press = global_auxvars(ghosted_id)%parameters(press_old_id)
 
             if (this%timestepper%steps == 0) then ! before init
@@ -662,6 +670,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
               global_auxvars(ghosted_id)%parameters(press_0_id) = local_pressure
             elseif (this%timestepper%steps == 1) then ! at init
               press_init = global_auxvars(ghosted_id)%parameters(press_0_id)
+              global_auxvars(ghosted_id)%parameters(strainv_0_id) = strain_vol
               global_auxvars(ghosted_id)%parameters(stressv_0_id) = stress_vol
               global_auxvars(ghosted_id)%parameters(stressv_old_id) = 0.d0
               global_auxvars(ghosted_id)%parameters(stressv_id) = &
@@ -679,14 +688,30 @@ subroutine PMCGeomechanicsSetAuxData(this)
                 ! without geomech
                 !(biot_coeff*(local_pressure-press_init)/3.d0)
             endif
-            print *, 'step, stress, old_stress, local_press, local_id', &
-                   this%timestepper%steps, &
-                   global_auxvars(ghosted_id)%parameters(stressv_id), &
-                   global_auxvars(ghosted_id)%parameters(stressv_old_id), &
-                   local_pressure, &
-                   local_id
-            print *, 'strain ', global_auxvars(ghosted_id)%parameters(stressv_id)/ &
-                  dr_bulk_modulus
+            !print *, 'step, stress, old_stress, local_press, local_id', &
+            !       this%timestepper%steps, &
+            !       global_auxvars(ghosted_id)%parameters(stressv_id), &
+            !       global_auxvars(ghosted_id)%parameters(stressv_old_id), &
+            !       local_pressure, &
+            !       local_id
+            !print *, 'strain ', global_auxvars(ghosted_id)%parameters(stressv_id)/ &
+            !      dr_bulk_modulus
+
+            ! jaa testing - using Jeff's paper
+            porosity_0 = pmc%subsurf_realization%patch%aux%Material% &
+                         auxvars(local_id)%porosity_0
+            strain_vol_0 = global_auxvars(ghosted_id)%parameters(strainv_0_id)
+            !if (abs(local_pressure-press_init)<1.d-20) then
+            !  strain_vol = strain_vol_0
+            !endif
+            por_p(local_id) = porosity_0 +&
+                              (biot_coeff*(strain_vol-strain_vol_0)) + &
+                              (((biot_coeff-porosity_0)* &
+                              (1.d0-biot_coeff)/dr_bulk_modulus)* &
+                              (local_pressure-press_init))
+            global_auxvars(ghosted_id)%parameters(porosity_id) = por_p(local_id)
+            print *, 'id, por_p, del_volstrain, press ', local_id, por_p(local_id), &
+                   strain_vol - strain_vol_0, local_pressure
 
             global_auxvars(ghosted_id)%parameters(press_old_id) = local_pressure
             ! jaa end ---------------------------------------------------------
