@@ -18,6 +18,8 @@ module Reactive_Transport_module
 
   private
 
+  PetscReal, public :: rosie_flux2(2)
+
   public :: RTTimeCut, &
             RTSetup, &
             RTMaxChange, &
@@ -2595,6 +2597,7 @@ subroutine RTResidualNonFlux(snes,xx,r,realization,ierr)
                                     option,res_sec_transport)
       end if
 
+      rosie_flux2(istartall) = res_sec_transport(1)
       r_p(istartall:iendall) = r_p(istartall:iendall) - &
                                res_sec_transport(1:reaction%ncomp) ! in mol/s
 

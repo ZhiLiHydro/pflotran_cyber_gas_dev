@@ -20,6 +20,9 @@ module Secondary_Continuum_module
 
   PetscReal, parameter :: perturbation_tolerance = 1.d-5
 
+  PetscReal, public :: rosie_flux(2)
+  PetscReal :: rosie_flux_temp
+
   public :: SecondaryContinuumType, &
             SecondaryContinuumSetProperties, &
             SecondaryRTAuxVarInit, &
@@ -1579,6 +1582,7 @@ subroutine SecondaryRTUpdateIterate(snes,P0,dP,P1,dX_changed, &
                                     fracture_global_auxvar(ghosted_id), &
                                     reaction,sec_diffusion_coefficient, &
                                     sec_porosity,option,inf_norm_sec)
+      rosie_flux(local_id) = rosie_flux_temp
 
       max_inf_norm_sec = max(max_inf_norm_sec,inf_norm_sec)
     enddo
@@ -1793,6 +1797,7 @@ subroutine SecondaryRTCheckResidual(sec_transport_vars,auxvar, &
   PetscReal :: total_sorb_upd(reaction%naqcomp,sec_transport_vars%ncells)
   PetscReal :: total_sorb_prev(reaction%naqcomp,sec_transport_vars%ncells)
 
+
   call GlobalAuxVarInit(global_auxvar,option)
   call GlobalAuxVarCopy(fracture_global_auxvar,global_auxvar,option)
   if (option%transport%sc_fixed_water_density) then
@@ -1892,6 +1897,8 @@ subroutine SecondaryRTCheckResidual(sec_transport_vars,auxvar, &
                         (total_upd(j,2,k) - total_upd(j,1,k))
 
       ! Outer boundary
+      rosie_flux_temp = pordiff(k)*area(ngcells)/dm_plus(ngcells)* &
+                                 (total_primary_node(j,k) - total_upd(j,ngcells,k))
       res(j+(ngcells-1)*ncomp) = res(j+(ngcells-1)*ncomp) - &
                                  pordiff(k)*area(ngcells)/dm_plus(ngcells)* &
                                  (total_primary_node(j,k) - total_upd(j,ngcells,k))
