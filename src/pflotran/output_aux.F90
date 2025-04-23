@@ -72,6 +72,7 @@ module Output_Aux_module
 
     PetscBool :: filter_non_state_variables
     PetscBool :: force_synchronized_output
+    PetscBool :: write_32bit_hdf5_ugrid_xdmf_explicit
 
     PetscInt :: xmf_vert_len
 
@@ -248,6 +249,7 @@ function OutputOptionCreate()
 
   output_option%filter_non_state_variables = PETSC_TRUE
   output_option%force_synchronized_output = PETSC_TRUE
+  output_option%write_32bit_hdf5_ugrid_xdmf_explicit = PETSC_FALSE
 
   output_option%xmf_vert_len = UNINITIALIZED_INTEGER
 
@@ -381,6 +383,8 @@ function OutputOptionDuplicate(output_option)
     output_option%filter_non_state_variables
   output_option2%force_synchronized_output = &
     output_option%force_synchronized_output
+  output_option2%write_32bit_hdf5_ugrid_xdmf_explicit = &
+    output_option%write_32bit_hdf5_ugrid_xdmf_explicit
 
   output_option2%xmf_vert_len = output_option%xmf_vert_len
 

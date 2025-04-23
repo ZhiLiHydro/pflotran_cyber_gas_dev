@@ -2165,6 +2165,8 @@ subroutine FactorySubsurfReadInput(simulation,input)
               output_option%extend_hdf5_time_format = PETSC_TRUE
             case ('ACKNOWLEDGE_VTK_FLAW')
               output_option%vtk_acknowledgment = PETSC_TRUE
+            case('WRITE_32BIT_HDF5_UGRID_XDMF_EXPLICIT')
+              output_option%write_32bit_hdf5_ugrid_xdmf_explicit = PETSC_TRUE
             case default
               call InputKeywordUnrecognized(input,word,'OUTPUT',option)
           end select

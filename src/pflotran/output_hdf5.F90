@@ -805,6 +805,7 @@ subroutine OutputHDF5UGridXDMFExplicit(realization_base,var_list_type)
   integer(HID_T) :: grp_id, new_grp_id
   integer(HID_T) :: file_space_id
   integer(HID_T) :: data_set_id
+  integer(HID_T) :: floatingpoint_data_type
   integer(HSIZE_T) :: dims(3), max_dims(3)
 
   type(grid_type), pointer :: grid
@@ -840,6 +841,12 @@ subroutine OutputHDF5UGridXDMFExplicit(realization_base,var_list_type)
   option => realization_base%option
   field => realization_base%field
   output_option => realization_base%output_option
+
+  if(output_option%write_32bit_hdf5_ugrid_xdmf_explicit) then
+    floatingpoint_data_type = H5T_NATIVE_REAL
+  else
+    floatingpoint_data_type = H5T_NATIVE_DOUBLE
+  endif
 
   select case (var_list_type)
     case (INSTANTANEOUS_VARS)
@@ -1046,7 +1053,7 @@ subroutine OutputHDF5UGridXDMFExplicit(realization_base,var_list_type)
         endif
         if (cur_variable%iformat == 0) then
           call HDF5WriteDataSetFromVec(string,option,natural_vec, &
-                                       grp_id,H5T_NATIVE_DOUBLE)
+                                       grp_id,floatingpoint_data_type)
         else
           call HDF5WriteDataSetFromVec(string,option,natural_vec, &
                                        grp_id,H5T_NATIVE_INTEGER)
@@ -1077,7 +1084,7 @@ subroutine OutputHDF5UGridXDMFExplicit(realization_base,var_list_type)
                                              field%avg_vars_vec(ivar), &
                                              natural_vec,ONEDOF)
           call HDF5WriteDataSetFromVec(string,option,natural_vec, &
-                                       grp_id,H5T_NATIVE_DOUBLE)
+                                       grp_id,floatingpoint_data_type)
           att_datasetname = trim(filename_header) // ":/" // &
                             trim(group_name) // "/" // trim(string)
           if (write_xdmf) then
@@ -1109,7 +1116,7 @@ subroutine OutputHDF5UGridXDMFExplicit(realization_base,var_list_type)
      call DiscretizationGlobalToNatural(discretization,global_vec_vx, &
                                         natural_vec,ONEDOF)
      call HDF5WriteDataSetFromVec(string,option,natural_vec,grp_id, &
-                                  H5T_NATIVE_DOUBLE)
+                                  floatingpoint_data_type)
      att_datasetname = trim(filename_header) // ":/" // &
                        trim(group_name) // "/" // trim(string)
      if (write_xdmf) then
@@ -1121,7 +1128,7 @@ subroutine OutputHDF5UGridXDMFExplicit(realization_base,var_list_type)
      call DiscretizationGlobalToNatural(discretization,global_vec_vy, &
                                         natural_vec,ONEDOF)
      call HDF5WriteDataSetFromVec(string,option,natural_vec,grp_id, &
-                                  H5T_NATIVE_DOUBLE)
+                                  floatingpoint_data_type)
      att_datasetname = trim(filename_header) // ":/" // &
                        trim(group_name) // "/" // trim(string)
      if (write_xdmf) then
@@ -1133,7 +1140,7 @@ subroutine OutputHDF5UGridXDMFExplicit(realization_base,var_list_type)
      call DiscretizationGlobalToNatural(discretization,global_vec_vz, &
                                         natural_vec,ONEDOF)
      call HDF5WriteDataSetFromVec(string,option,natural_vec,grp_id, &
-                                  H5T_NATIVE_DOUBLE)
+                                  floatingpoint_data_type)
 
      att_datasetname = trim(filename_header) // ":/" // &
                        trim(group_name) // "/" // trim(string)
@@ -1151,7 +1158,7 @@ subroutine OutputHDF5UGridXDMFExplicit(realization_base,var_list_type)
         call DiscretizationGlobalToNatural(discretization,global_vec_vx, &
                                            natural_vec,ONEDOF)
         call HDF5WriteDataSetFromVec(string,option,natural_vec,grp_id, &
-                                    H5T_NATIVE_DOUBLE)
+                                    floatingpoint_data_type)
         att_datasetname = trim(filename_header) // ":/" // &
                           trim(group_name) // "/" // trim(string)
         if (write_xdmf) then
@@ -1163,7 +1170,7 @@ subroutine OutputHDF5UGridXDMFExplicit(realization_base,var_list_type)
         call DiscretizationGlobalToNatural(discretization,global_vec_vy, &
                                            natural_vec,ONEDOF)
         call HDF5WriteDataSetFromVec(string,option,natural_vec,grp_id, &
-                                     H5T_NATIVE_DOUBLE)
+                                     floatingpoint_data_type)
         att_datasetname = trim(filename_header) // ":/" // &
                           trim(group_name) // "/" // trim(string)
         if (write_xdmf) then
@@ -1175,7 +1182,7 @@ subroutine OutputHDF5UGridXDMFExplicit(realization_base,var_list_type)
         call DiscretizationGlobalToNatural(discretization,global_vec_vz, &
                                            natural_vec,ONEDOF)
         call HDF5WriteDataSetFromVec(string,option,natural_vec,grp_id, &
-                                     H5T_NATIVE_DOUBLE)
+                                     floatingpoint_data_type)
         att_datasetname = trim(filename_header) // ":/" // &
                           trim(group_name) // "/" // trim(string)
         if (write_xdmf) then
