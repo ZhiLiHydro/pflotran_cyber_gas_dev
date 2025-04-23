@@ -2006,8 +2006,7 @@ subroutine PMFracSetPlotVariables(list,this)
 
   name = 'Fracture Aperture'
   units = 'm'
-  call OutputVariableAddToList(list,name,OUTPUT_PRESSURE,units, &
-                               FRACTURE_APERTURE)
+  call OutputVariableAddToList(list,name,OUTPUT_GENERIC,units,FRACTURE_APERTURE)
 
 end subroutine PMFracSetPlotVariables
 
