@@ -617,11 +617,11 @@ subroutine GMGridDMCreateMatrix(geomech_grid,gmdm,mat_type,J,option)
   allocate(d_nnz(geomech_grid%nlmax_node))
   allocate(o_nnz(geomech_grid%nlmax_node))
 
-  ! The following is an approximate estimate only.
   ! Need to come up with a more accurate way of calculating d_nnz, o_nnz
-  ! Assuming max vertices based on hex.
-  d_nnz = min(128,geomech_grid%nlmax_node)
-  o_nnz = min(128,geomech_grid%nmax_node - geomech_grid%nlmax_node)
+  d_nnz = min(option%geomechanics%max_vertex_connection, &
+              geomech_grid%nlmax_node)
+  o_nnz = min(option%geomechanics%max_vertex_connection, &
+              geomech_grid%nmax_node - geomech_grid%nlmax_node)
 
 #ifdef GEOMECH_DEBUG
   write(string,*) option%myrank

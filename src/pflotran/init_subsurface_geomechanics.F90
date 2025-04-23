@@ -499,6 +499,9 @@ subroutine InitSubsurfGeomechReadGridBlock(geomech_realization,input,option)
             write(option%fid_out,'(/," *GEOMECH_GRAV",/, &
             & "  gravity    = "," [m/s^2]",3x,1p3e12.4 &
             & )') option%geomechanics%gravity(1:3)
+      case ('MAX_VERTEX_CONNECTIONS')
+        call InputReadInt(input,option, &
+                          option%geomechanics%max_vertex_connection)
       case default
         call InputKeywordUnrecognized(input,word,'GEOMECHANICS_GRID',option)
     end select
