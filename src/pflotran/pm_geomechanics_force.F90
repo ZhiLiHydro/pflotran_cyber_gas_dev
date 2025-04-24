@@ -123,6 +123,8 @@ subroutine PMGeomechReadSimOptionsBlock(this,input)
             call InputKeywordUnrecognized(input,word, &
                                 trim(error_string)//',COUPLING',option)
         end select
+      case ('SKIP_RESTART')
+        this%skip_restart = PETSC_TRUE
       case default
         call InputKeywordUnrecognized(input,keyword,error_string,option)
     end select
