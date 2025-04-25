@@ -176,9 +176,6 @@ subroutine EOSRead(input,option)
                 call InputKeywordUnrecognized(input,word,'EOS,WATER,DENSITY',option)
             end select
             call EOSWaterSetDensity(word,temparray)
-            ! jaa: shortcut
-            !print *, 'setting fluid comp: ', temparray(3)
-            option%flow%fluid_compressibility = temparray(3)
           case('ENTHALPY')
             call InputReadCard(input,option,word)
             call InputErrorMsg(input,option,'ENTHALPY','EOS,WATER')

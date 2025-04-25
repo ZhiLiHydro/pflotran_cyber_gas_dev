@@ -64,9 +64,6 @@ module Option_Flow_module
     PetscBool :: update_transport_h2o_src
     PetscInt :: well_coupling
 
-    ! jaa -- taking a shortcut
-    PetscReal :: fluid_compressibility
-
   end type flow_option_type
 
   public :: OptionFlowCreate, &
@@ -185,8 +182,6 @@ subroutine OptionFlowInitRealization(option)
   option%co2_database_filename = ''
   option%update_transport_h2o_src = PETSC_TRUE
   option%well_coupling = UNINITIALIZED_INTEGER
-
-  option%fluid_compressibility = UNINITIALIZED_DOUBLE
 
 end subroutine OptionFlowInitRealization
 
