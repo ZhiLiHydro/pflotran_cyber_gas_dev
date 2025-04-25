@@ -20,10 +20,11 @@ module Option_Geomechanics_module
     PetscBool :: sync_flow_dt
 
     ! jaa testing - making my life easy
-    ! assuming we have 1 geomech region/mat prop
-    PetscReal :: poissons_ratio
-    PetscReal :: youngs_modulus
-    PetscReal :: biot_coefficient
+    ! max of 100 geomech region/mat prop
+    ! clean up later!!
+    PetscReal :: poissons_ratio(100)
+    PetscReal :: youngs_modulus(100)
+    PetscReal :: biot_coefficient(100)
 
   end type geomechanics_option_type
 

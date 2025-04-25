@@ -406,6 +406,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
   PetscReal :: biot_coeff, youngs_mod, poissons_ratio, dr_bulk_modulus
   PetscReal :: strain_vol, stress_vol, local_old_press
   PetscReal :: press_init, porosity_0, strain_vol_0
+  PetscInt :: imat
 #if GEOMECH_DEBUG
   PetscViewer :: viewer
   print *, 'PMCGeomechSetAuxData'
@@ -646,14 +647,16 @@ subroutine PMCGeomechanicsSetAuxData(this)
             ghosted_id = grid%nL2G(local_id)
             global_auxvars => pmc%subsurf_realization%patch%aux% &
                               Global%auxvars
+            imat = pmc%subsurf_realization%patch%aux%Material% &
+                   auxvars(local_id)%id
             ! calc volumetric strain
             strain_vol = local_strain(1) + local_strain(2) + local_strain(3)
             ! calc volumetric stress
             stress_vol = (local_stress(1) + local_stress(2) + &
                           local_stress(3))/3.d0
-            youngs_mod = this%option%geomechanics%youngs_modulus
-            poissons_ratio = this%option%geomechanics%poissons_ratio
-            biot_coeff = this%option%geomechanics%biot_coefficient
+            youngs_mod = this%option%geomechanics%youngs_modulus(imat)
+            poissons_ratio = this%option%geomechanics%poissons_ratio(imat)
+            biot_coeff = this%option%geomechanics%biot_coefficient(imat)
             !print *, 'youngs_mod, poissons_ratio, biot_coeff: ', &
             !     youngs_mod, poissons_ratio, biot_coeff
             !stop

@@ -108,15 +108,17 @@ subroutine GeomechanicsMaterialPropertyRead(geomech_material_property, &
                              youngs_modulus)
         call InputErrorMsg(input,option,'YOUNGS_MODULUS', &
                            'GEOMECHANICS_MATERIAL_PROPERTY')
-        option%geomechanics%youngs_modulus = geomech_material_property% &
-                                             youngs_modulus
+        option%geomechanics%youngs_modulus( &
+              geomech_material_property%id) = &
+              geomech_material_property%youngs_modulus
       case('POISSONS_RATIO')
         call InputReadDouble(input,option,geomech_material_property% &
                              poissons_ratio)
         call InputErrorMsg(input,option,'POISSONS_RATIO', &
                            'GEOMECHANICS_MATERIAL_PROPERTY')
-        option%geomechanics%poissons_ratio = geomech_material_property% &
-                                             poissons_ratio
+        option%geomechanics%poissons_ratio( &
+              geomech_material_property%id) = &
+              geomech_material_property%poissons_ratio
       case('ROCK_DENSITY')
         call InputReadDouble(input,option,geomech_material_property% &
                              density)
@@ -127,8 +129,9 @@ subroutine GeomechanicsMaterialPropertyRead(geomech_material_property, &
                              biot_coeff)
         call InputErrorMsg(input,option,'BIOT_COEFFICIENT', &
                            'GEOMECHANICS_MATERIAL_PROPERTY')
-        option%geomechanics%biot_coefficient = geomech_material_property% &
-                             biot_coeff
+        option%geomechanics%biot_coefficient( &
+               geomech_material_property%id) = &
+               geomech_material_property%biot_coeff
       case('THERMAL_EXPANSION_COEFFICIENT')
         call InputReadDouble(input,option,geomech_material_property% &
                              thermal_exp_coeff)

@@ -73,9 +73,9 @@ subroutine RichardsAccumDerivative(rich_auxvar,global_auxvar, &
 
   ! jaa
   porosity_0 = material_auxvar%porosity_0
-  youngs_mod = option%geomechanics%youngs_modulus
-  poissons_ratio = option%geomechanics%poissons_ratio
-  biot_coeff = option%geomechanics%biot_coefficient
+  youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
+  poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
+  biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
   fluid_comp = option%flow%fluid_compressibility
   ! Bulk modulus unit = Pa
   dr_bulk_modulus = youngs_mod / &
@@ -194,9 +194,9 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
 
   ! jaa: test alt term
   ! maybe a cleaner way is to store them in option%geomechanics
-  youngs_mod = option%geomechanics%youngs_modulus
-  poissons_ratio = option%geomechanics%poissons_ratio
-  biot_coeff = option%geomechanics%biot_coefficient
+  youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
+  poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
+  biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
   fluid_comp = option%flow%fluid_compressibility
   porosity_0 = material_auxvar%porosity_0
   ! 3D
