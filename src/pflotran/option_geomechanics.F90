@@ -18,6 +18,9 @@ module Option_Geomechanics_module
     PetscReal :: gravity(3)
     PetscInt :: split_scheme
     PetscBool :: sync_flow_dt
+    PetscBool :: skip_stepdt_flag
+    PetscBool :: use_porosity_update
+    PetscReal :: del_poro_tol
 
     ! jaa testing - making my life easy
     ! max of 100 geomech region/mat prop
@@ -110,6 +113,9 @@ subroutine OptionGeomechanicsInitRealization(option)
   option%poissons_ratio = UNINITIALIZED_DOUBLE
   option%youngs_modulus = UNINITIALIZED_DOUBLE
   option%biot_coefficient = UNINITIALIZED_DOUBLE
+  option%skip_stepdt_flag = PETSC_FALSE
+  option%use_porosity_update = PETSC_FALSE
+  option%del_poro_tol = UNINITIALIZED_DOUBLE
 
 end subroutine OptionGeomechanicsInitRealization
 

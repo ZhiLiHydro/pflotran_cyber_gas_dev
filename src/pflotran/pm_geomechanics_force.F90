@@ -322,11 +322,61 @@ subroutine PMGeomechForcePreSolve(this)
   ! Date: 12/31/13
   !
 
+  use Grid_module
+  use Global_Aux_module
+  use Parameter_module
+  use Option_module
+
   implicit none
 
   class(pm_geomech_force_type) :: this
 
+  ! jaa
+  PetscReal :: threshold_tol
+  type(grid_type), pointer :: grid
+  type(global_auxvar_type), pointer :: global_auxvars(:)
+  type(option_type), pointer :: option
+  PetscInt :: local_id, ghosted_id
+  PetscInt :: por_mech_id, por_flow_id
+  PetscReal :: por_mech, por_flow
+  PetscReal :: max_val
+
+  option => this%option
+
+  if (.not. option%geomechanics%use_porosity_update) return
+
+  threshold_tol = option%geomechanics%del_poro_tol
+  max_val = 0.d0
+
+  print *, 'in PMGeomechForcePreSolve'
+  print *, 'init flag: ', option%geomechanics%initial_flag
+
   ! jaa: add skip check here?
+  if (.not. option%geomechanics%initial_flag) then
+    print *, 'want to skip here?'
+    grid => this%subsurf_realization%patch%grid
+    global_auxvars => this%subsurf_realization%patch%aux% &
+                              Global%auxvars
+    por_mech_id = ParameterGetIDFromName( &
+                  'geomech_porosity', &
+                  option)
+    por_flow_id = ParameterGetIDFromName( &
+                  'geomech_temp_porosity', &
+                  option)
+    do local_id = 1, grid%nlmax
+      ghosted_id = grid%nL2G(local_id)
+      por_mech = global_auxvars(ghosted_id)%parameters(por_mech_id)
+      por_flow = global_auxvars(ghosted_id)%parameters(por_flow_id)
+      max_val = max(max_val, abs(por_flow-por_mech)/por_mech)
+      print *, 'ghosted_id, por_mech, por_flow, max_val, tol: ', &
+             ghosted_id, por_mech, por_flow, max_val, threshold_tol
+    enddo
+    if (max_val < threshold_tol) then ! skip mech
+      option%geomechanics%skip_stepdt_flag = PETSC_TRUE
+    else
+      print *, 'continue to solve mech..'
+    endif
+  endif
 
 end subroutine PMGeomechForcePreSolve
 

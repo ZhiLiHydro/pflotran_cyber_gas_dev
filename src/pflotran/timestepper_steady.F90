@@ -198,6 +198,7 @@ subroutine TimestepperSteadyStepDT(this,process_model,stop_flag)
   use petscsnes
   use PM_Base_class
   use PM_Subsurface_Flow_class
+  use PM_Geomechanics_Force_class
   use Option_module
   use Output_module, only : Output, OutputFindNaNOrInfInVec
   use Output_EKG_module, only : IUNIT_EKG
@@ -236,6 +237,15 @@ subroutine TimestepperSteadyStepDT(this,process_model,stop_flag)
   call process_model%InitializeTimestep()
 
   call process_model%PreSolve()
+  ! jaa - want to skip geomech based on a threshold
+  select type(process_model)
+    class is (pm_geomech_force_type)
+      if (option%geomechanics%skip_stepdt_flag) then
+        print *, 'skipping timestepper_steady ..'
+        return
+      endif
+  end select
+
 
   call PetscTime(log_start_time,ierr);CHKERRQ(ierr)
 

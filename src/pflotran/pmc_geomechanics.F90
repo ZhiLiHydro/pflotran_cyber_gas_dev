@@ -277,8 +277,16 @@ recursive subroutine PMCGeomechanicsRunToTime(this,sync_time,stop_flag)
   call this%timestepper%StepDT(this%pm_list,local_stop_flag)
 
   ! Check if it is initial solve
-  if (this%timestepper%steps == 1) then
-    this%option%geomechanics%initial_flag = PETSC_TRUE
+  ! jaa - do we need this?
+  !if (this%timestepper%steps == 1) then
+  !  this%option%geomechanics%initial_flag = PETSC_TRUE
+  !endif
+
+  if (this%option%geomechanics%skip_stepdt_flag) then
+    ! reset
+    this%option%geomechanics%skip_stepdt_flag = PETSC_FALSE
+    print *, 'skipping PMCGeomechanicsRunToTime ...'
+    return
   endif
 
   ! Have to loop over all process models coupled in this object and update
@@ -417,6 +425,8 @@ subroutine PMCGeomechanicsSetAuxData(this)
             GEOMECH_ERT_COUPLING) then
 
         grid => pmc%subsurf_realization%patch%grid
+        global_auxvars => pmc%subsurf_realization% &
+                          patch%aux%Global%auxvars
 
         ! Find the number of geomech grid nodes for each flow cell
         call VecDuplicate(pmc%geomech_realization%geomech_field%strain, &
@@ -638,8 +648,6 @@ subroutine PMCGeomechanicsSetAuxData(this)
                                'geomech_porosity', &
                                pmc%subsurf_realization%option)
             ghosted_id = grid%nL2G(local_id)
-            global_auxvars => pmc%subsurf_realization%patch%aux% &
-                              Global%auxvars
             imat = pmc%subsurf_realization%patch%aux%Material% &
                    auxvars(local_id)%id
             ! calc volumetric strain

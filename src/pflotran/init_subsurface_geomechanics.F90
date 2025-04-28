@@ -253,6 +253,14 @@ subroutine InitSubsurfGeomechReadInput(geomech,geomech_solver, &
                                             &COUPLING_TIMESTEP_SIZE',option)
             case('SYNC_FLOW_TIMESTEP_SIZE') ! jaa: added for sync drained split
               option%geomechanics%sync_flow_dt = PETSC_TRUE
+            case('POROSITY_UPDATE_THRESHOLD')
+              call InputReadDouble(input,option,option%geomechanics% &
+                                   del_poro_tol)
+              call InputErrorMsg(input,option, &
+                   'Porosity Update Threshold','GEOMECHANICS_TIME')
+              option%geomechanics%use_porosity_update = PETSC_TRUE
+              print *, 'set threshold val: ', option%geomechanics% &
+                      del_poro_tol
             case default
               call InputKeywordUnrecognized(input,word, &
                                             'GEOMECHANICS_TIME',option)

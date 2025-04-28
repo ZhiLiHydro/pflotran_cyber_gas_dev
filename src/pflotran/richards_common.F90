@@ -154,7 +154,7 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
   PetscReal :: youngs_mod, poissons_ratio
   PetscReal :: porosity_0, dr_bulk_modulus
   PetscReal :: temp_porosity, old_pressure, porosity
-  PetscInt :: press_old_id, porosity_id
+  PetscInt :: press_old_id, porosity_id, temp_porosity_id
 
   vol_over_dt = material_auxvar%volume/option%flow_dt
 
@@ -183,18 +183,23 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
                porosity * vol_over_dt
     else ! porosity@ n+1
       press_old_id = ParameterGetIDFromName( &
-                     'geomech_old_press', &
-                     option)
+                     'geomech_old_press', option)
+      temp_porosity_id = ParameterGetIDFromName( &
+                     'geomech_temp_porosity', option)
+
       old_pressure = global_auxvar%parameters(press_old_id)
       ! Burghardt 2017 paper
       temp_porosity = porosity + (((biot_coeff**2/dr_bulk_modulus) + &
          ((biot_coeff-porosity_0)*(1.d0-biot_coeff)/dr_bulk_modulus)) * &
-         ! pressure@ n+1 - pressure@ n
+         ! (pressure@ n+1 - pressure@ n)
+         ! pressure@ n is pressure used in last mech step
          (global_auxvar%pres(1)-old_pressure))
       print *, 'temp por, old_press, new_press', &
                temp_porosity, old_pressure, global_auxvar%pres(1)
       Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
         temp_porosity * vol_over_dt
+      ! store temp porosity for threshold check
+      global_auxvar%parameters(temp_porosity_id) = temp_porosity
     endif
   endif
 
