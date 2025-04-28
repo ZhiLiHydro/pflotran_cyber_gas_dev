@@ -760,11 +760,6 @@ print *, 'PMCGeomechanicsGetAuxData'
                          pmc%sim_aux%subsurf_pres, &
                          pmc%geomech_realization%geomech_field%press, &
                          INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
-      ! jaa testing
-      !print *, 'pass press from subsurf to geomech'
-      !call VecView(pmc%sim_aux%subsurf_pres,PETSC_VIEWER_STDOUT_WORLD &
-      !                ,ierr);CHKERRQ(ierr)
-      !stop
 
       call VecScatterBegin(pmc%sim_aux%subsurf_to_geomechanics, &
                            pmc%sim_aux%subsurf_temp, &

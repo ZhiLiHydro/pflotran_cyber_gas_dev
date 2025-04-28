@@ -93,7 +93,6 @@ subroutine RichardsAccumDerivative(rich_auxvar,global_auxvar, &
             material_auxvar%porosity) * &
             vol_over_dt
 
-
   if (option%flow%numerical_derivatives) then
     call GlobalAuxVarInit(global_auxvar_pert,option)
     call MaterialAuxVarInit(material_auxvar_pert,option)
@@ -150,12 +149,12 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
   type(option_type) :: option
   PetscReal :: Res(1:option%nflowdof)
   PetscReal :: vol_over_dt
+
   PetscReal :: biot_coeff
   PetscReal :: youngs_mod, poissons_ratio
   PetscReal :: porosity_0, dr_bulk_modulus
   PetscReal :: temp_porosity, old_pressure, porosity
   PetscInt :: press_old_id, porosity_id
-
 
   vol_over_dt = material_auxvar%volume/option%flow_dt
 

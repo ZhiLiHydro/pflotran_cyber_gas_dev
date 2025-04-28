@@ -661,6 +661,7 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
   call VecRestoreArrayF90(field%temp_init_loc,temp_init,ierr);CHKERRQ(ierr)
   call VecRestoreArrayF90(field%fluid_density_init_loc,fluid_density_init, &
                           ierr);CHKERRQ(ierr)
+
 #if 0
   call MPI_Allreduce(error_H1_global,error_H1_global,ONE_INTEGER_MPI, &
                      MPI_DOUBLE_PRECISION,MPI_SUM,option%mycomm, &
@@ -2169,7 +2170,6 @@ subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
     stress_local = lambda*(strain_local(1,1)+ &
                    strain_local(5,1)+strain_local(9,1))*eye_vec + &
                    2*mu*strain_local
-    !print *, 'ivertex, strain_local', ivertex, strain_local
     call ShapeFunctionDestroy(shapefunction)
     deallocate(kron_B_eye)
     deallocate(kron_B_transpose_eye)
