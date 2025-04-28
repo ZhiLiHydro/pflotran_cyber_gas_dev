@@ -65,26 +65,26 @@ subroutine RichardsAccumDerivative(rich_auxvar,global_auxvar, &
   ! leave as type
   type(material_auxvar_type) :: material_auxvar_pert
   PetscReal :: x(1), x_pert(1), pert, res(1), res_pert(1), J_pert(1,1)
-  PetscReal :: storage_coeff, biot_coeff
-  PetscReal :: youngs_mod, poissons_ratio, fluid_comp
-  PetscReal :: porosity_0, dr_bulk_modulus, solid_bulk_modulus
+  PetscReal :: biot_coeff
+  PetscReal :: youngs_mod, poissons_ratio
+  PetscReal :: porosity_0, dr_bulk_modulus
 
   vol_over_dt = material_auxvar%volume/option%flow_dt
 
-  ! jaa
-  porosity_0 = material_auxvar%porosity_0
-  youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
-  poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
-  biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
-  ! Bulk modulus unit = Pa
-  dr_bulk_modulus = youngs_mod / &
-                   (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
+  if (option%geomechanics%split_scheme == &
+      GEOMECH_FIXED_STRAIN_SPLIT) then ! jaa.. change to fixed stress later
+    porosity_0 = material_auxvar%porosity_0
+    youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
+    poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
+    biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
+    ! Bulk modulus unit = Pa
+    dr_bulk_modulus = youngs_mod / &
+                     (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
+    ! Burghardt 2017 paper
+    material_auxvar%dporosity_dp = (biot_coeff**2)/dr_bulk_modulus + &
+           ((biot_coeff-porosity_0)*(1.d0-biot_coeff))/dr_bulk_modulus
+  endif
 
-  ! from Jeff's paper
-  material_auxvar%dporosity_dp = (biot_coeff**2)/dr_bulk_modulus + &
-         ((biot_coeff-porosity_0)*(1.d0-biot_coeff))/dr_bulk_modulus
-
-  !print *, 'dphi/dp: ', material_auxvar%dporosity_dp
   ! accumulation term units = dkmol/dp
   J(1,1) = (material_auxvar%dporosity_dp*global_auxvar%sat(1)* &
             global_auxvar%den(1) + &
@@ -93,28 +93,6 @@ subroutine RichardsAccumDerivative(rich_auxvar,global_auxvar, &
             material_auxvar%porosity) * &
             vol_over_dt
 
- ! ! only for fully saturated flow
- ! !print *, 'sat, press: ', global_auxvar%sat(1), global_auxvar%pres(1)
- ! if (abs(global_auxvar%sat(1) - 1.d0) > 1.e-14) then
- !   print *, 'cannot use this for variably saturated models'
- !   stop
- ! endif
- ! ! Bulk modulus unit = Pa
- ! ! 3D
- ! dr_bulk_modulus = youngs_mod / &
- !                  (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
- ! !solid_bulk_modulus = dr_bulk_modulus/(1.d0 - biot_coeff)
-
- ! ! storage coefficient unit = Pa^-1
- ! storage_coeff = (porosity_0*fluid_comp) + &
- !                ((biot_coeff - porosity_0)*(1.d0 - biot_coeff)/dr_bulk_modulus)
- ! !print *, 'jac, storage_coeff: ', storage_coeff
- ! ! fixed strain
- ! !J(1,1) = vol_over_dt*storage_coeff
- ! !J(1,1) = vol_over_dt*rich_auxvar%den_0*storage_coeff
- ! ! fixed stress
- ! J(1,1) = vol_over_dt*rich_auxvar%den_0*(storage_coeff &
- !          + (biot_coeff**2/dr_bulk_modulus))
 
   if (option%flow%numerical_derivatives) then
     call GlobalAuxVarInit(global_auxvar_pert,option)
@@ -172,15 +150,9 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
   type(option_type) :: option
   PetscReal :: Res(1:option%nflowdof)
   PetscReal :: vol_over_dt
-  PetscInt :: strainv_index, strainv_old_index
-  PetscInt :: stressv_index, stressv_old_index
-  PetscReal :: vol_strain, biot_coeff
-  PetscReal :: vol_strain_old
-  PetscReal :: vol_stress, vol_stress_old
-  PetscReal :: storage_coeff
-  PetscReal :: youngs_mod, poissons_ratio, fluid_comp
+  PetscReal :: biot_coeff
+  PetscReal :: youngs_mod, poissons_ratio
   PetscReal :: porosity_0, dr_bulk_modulus
-  PetscReal :: solid_bulk_modulus
   PetscReal :: temp_porosity, old_pressure, porosity
   PetscInt :: press_old_id, porosity_id
 
@@ -188,118 +160,44 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
   vol_over_dt = material_auxvar%volume/option%flow_dt
 
   ! accumulation term units = kmol/s
-  !Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
-  !         material_auxvar%porosity * vol_over_dt
+  Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
+           material_auxvar%porosity * vol_over_dt
 
-  ! jaa: test alt term
-  ! maybe a cleaner way is to store them in option%geomechanics
-  youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
-  poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
-  biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
-  porosity_0 = material_auxvar%porosity_0
-  ! 3D
-  dr_bulk_modulus = youngs_mod / &
-                       (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
-  porosity_id = ParameterGetIDFromName( &
-                 'geomech_porosity', &
-                 option)
-  porosity = global_auxvar%parameters(porosity_id)
-
-  if (option%iflag == RICHARDS_UPDATE_FOR_FIXED_ACCUM) then
-    print *, 'fixed por: ', porosity
-    ! porosity@ n
-    Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
-             porosity * vol_over_dt
-  else
-    press_old_id = ParameterGetIDFromName( &
-                   'geomech_old_press', &
+  if (option%geomechanics%split_scheme == &
+      GEOMECH_FIXED_STRAIN_SPLIT) then ! jaa.. change to fixed stress later
+    youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
+    poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
+    biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
+    porosity_0 = material_auxvar%porosity_0
+    ! 3D bulk modulus
+    dr_bulk_modulus = youngs_mod / &
+                         (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
+    porosity_id = ParameterGetIDFromName( &
+                   'geomech_porosity', &
                    option)
-    old_pressure = global_auxvar%parameters(press_old_id)
-    ! porosity@ new
-    temp_porosity = porosity + (((biot_coeff**2/dr_bulk_modulus) + &
-       ((biot_coeff-porosity_0)*(1.d0-biot_coeff)/dr_bulk_modulus)) * &
-       ! p@ new - p@ n
-       (global_auxvar%pres(1)-old_pressure))
-    print *, 'temp por, old_press, new_press', &
-             temp_porosity, old_pressure, global_auxvar%pres(1)
-    Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
-      temp_porosity * vol_over_dt
-  endif
-  !strainv_index = ParameterGetIDFromName('geomech_vol_strain', &
-  !                               option)
-  !vol_strain = global_auxvar%parameters(strainv_index)
-  !strainv_old_index = ParameterGetIDFromName('geomech_vol_strain_old', &
-  !                               option)
-!  stressv_index = ParameterGetIDFromName('geomech_vol_stress', &
-!                                 option)
-!  vol_stress = global_auxvar%parameters(stressv_index)
-!  stressv_old_index = ParameterGetIDFromName('geomech_vol_stress_old', &
-!                                 option)
-!  ! 3D
-!  dr_bulk_modulus = youngs_mod / &
-!                       (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
-!
-!  !solid_bulk_modulus = dr_bulk_modulus/(1.d0 - biot_coeff)
-!  ! storage coefficient unit = Pa^-1
-!  storage_coeff = (porosity_0*fluid_comp)+ &
-!                 ((biot_coeff - porosity_0)*(1.d0 - biot_coeff)/dr_bulk_modulus)
-!  print *, 'c_v: ', storage_coeff +(biot_coeff**2/dr_bulk_modulus)
-!  !print *, 'storage_coeff: ', storage_coeff
-!  ! accumulation unit = kmol/s
-!  ! fixed strain residual
-!  !Res(1) = vol_over_dt*rich_auxvar%den_0*storage_coeff* &
-!  !         global_auxvar%pres(1)
-!  !Res(1) = vol_over_dt*storage_coeff* &
-!  !         global_auxvar%pres(1)
-!  ! fixed stress residual
-!  Res(1) = vol_over_dt*rich_auxvar%den_0*(storage_coeff + &
-!           (biot_coeff**2/dr_bulk_modulus))* &
-!           global_auxvar%pres(1)
-!  !print *, 'val fixed Res(1): ', Res(1)
-!  !if (option%flow_steps > 1) then
-!  !  vol_stress_old = global_auxvar%parameters(stressv_old_index)
-!  !else
-!  !  vol_stress_old = 0.
-!  !  vol_stress = 0.
-!  !endif
-!  if (option%flow_steps == 1) then
-!    vol_stress = 0.d0
-!    vol_stress_old = 0.d0
-!  else
-!    vol_stress_old = global_auxvar%parameters(stressv_old_index)
-!  endif
+    porosity = global_auxvar%parameters(porosity_id)
 
-    !vol_stress_old = 0.d0 ! init to avoid uninitialized double val for 1st ts
-    !vol_stress = - biot_coeff * global_auxvar%pres(1)
-!  else
-  !  !vol_strain_old = global_auxvar%parameters(strainv_old_index)
-    !vol_stress_old = global_auxvar%parameters(stressv_old_index)
-!  endif
-  !print *, 'strain, old strain: ', vol_strain, vol_strain_old
- ! if (option%iflag == RICHARDS_UPDATE_FOR_FIXED_ACCUM) then
- !   print *, 'stress, old stress: ', vol_stress, vol_stress_old
- !   !Res(1) = Res(1) + (vol_over_dt*biot_coeff* &
- !   !               rich_auxvar%den_0* &
- !   !               (vol_strain-vol_strain_old))
- !   !Res(1) = Res(1) + (vol_over_dt*biot_coeff* &
- !   !                   global_auxvar%den(1)* &
- !   !                   (vol_strain-vol_strain_old))
- !   ! fixed stress
- !   Res(1) = Res(1) + (2.*vol_over_dt*biot_coeff* &
- !                     rich_auxvar%den_0* &
- !                     (vol_stress-vol_stress_old)/ &
- !                     dr_bulk_modulus)
-    !print *, 'val fixed addition: ', vol_over_dt*biot_coeff* &
-    !                             rich_auxvar%den_0* &
-    !                             (vol_stress-vol_stress_old)/ &
-    !                             dr_bulk_modulus
-    !Res(1) = Res(1) - (vol_over_dt* &
-    !                   rich_auxvar%den_0* &
-    !                   global_auxvar%pres(1)* &
-    !                   (biot_coeff**2)/ &
-    !                   dr_bulk_modulus)
- ! endif
-  !print *, 'mod Res(1): ', Res(1)
+    ! porosity@ n
+    if (option%iflag == RICHARDS_UPDATE_FOR_FIXED_ACCUM) then
+      print *, 'fixed por: ', porosity
+      Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
+               porosity * vol_over_dt
+    else ! porosity@ n+1
+      press_old_id = ParameterGetIDFromName( &
+                     'geomech_old_press', &
+                     option)
+      old_pressure = global_auxvar%parameters(press_old_id)
+      ! Burghardt 2017 paper
+      temp_porosity = porosity + (((biot_coeff**2/dr_bulk_modulus) + &
+         ((biot_coeff-porosity_0)*(1.d0-biot_coeff)/dr_bulk_modulus)) * &
+         ! pressure@ n+1 - pressure@ n
+         (global_auxvar%pres(1)-old_pressure))
+      print *, 'temp por, old_press, new_press', &
+               temp_porosity, old_pressure, global_auxvar%pres(1)
+      Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
+        temp_porosity * vol_over_dt
+    endif
+  endif
 
 end subroutine RichardsAccumulation
 

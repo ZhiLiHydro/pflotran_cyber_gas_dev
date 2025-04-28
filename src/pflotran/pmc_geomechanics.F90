@@ -246,8 +246,6 @@ recursive subroutine PMCGeomechanicsRunToTime(this,sync_time,stop_flag)
   PetscBool :: checkpoint_flag
   PetscBool :: peer_already_run_to_time
 
-  PetscErrorCode :: ierr
-
   class(pm_base_type), pointer :: cur_pm
 
   if (stop_flag == TS_STOP_FAILURE) return
@@ -339,11 +337,6 @@ recursive subroutine PMCGeomechanicsRunToTime(this,sync_time,stop_flag)
   ! Set data needed by process-model
   call this%SetAuxData()
 
-  ! jaa testing
-  call VecCopy(this%geomech_realization%geomech_field%press_loc, &
-               this%geomech_realization%geomech_field%press_old_loc, &
-               ierr); CHKERRQ(ierr)
-
   ! Run neighboring process model couplers
   if (associated(this%peer) .and. .not.peer_already_run_to_time) then
     call this%SetAuxData()
@@ -404,7 +397,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
   Vec :: geomech_vec
   Vec :: subsurf_vec
   PetscReal :: biot_coeff, youngs_mod, poissons_ratio, dr_bulk_modulus
-  PetscReal :: strain_vol, stress_vol, local_old_press
+  PetscReal :: strain_vol, stress_vol
   PetscReal :: press_init, porosity_0, strain_vol_0
   PetscInt :: imat
 #if GEOMECH_DEBUG
@@ -657,15 +650,8 @@ subroutine PMCGeomechanicsSetAuxData(this)
             youngs_mod = this%option%geomechanics%youngs_modulus(imat)
             poissons_ratio = this%option%geomechanics%poissons_ratio(imat)
             biot_coeff = this%option%geomechanics%biot_coefficient(imat)
-            !print *, 'youngs_mod, poissons_ratio, biot_coeff: ', &
-            !     youngs_mod, poissons_ratio, biot_coeff
-            !stop
             dr_bulk_modulus = youngs_mod / &
                        (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
-            !print *, 'dr_bulk_modulus: ', dr_bulk_modulus
-            !stop
-            !print *, 'old press: ', global_auxvars(ghosted_id)%parameters(press_old_id)
-            local_old_press = global_auxvars(ghosted_id)%parameters(press_old_id)
 
             if (this%timestepper%steps == 0) then ! before init
               global_auxvars(ghosted_id)%parameters(stressv_id) = 0.d0
@@ -691,22 +677,11 @@ subroutine PMCGeomechanicsSetAuxData(this)
                 ! without geomech
                 !(biot_coeff*(local_pressure-press_init)/3.d0)
             endif
-            !print *, 'step, stress, old_stress, local_press, local_id', &
-            !       this%timestepper%steps, &
-            !       global_auxvars(ghosted_id)%parameters(stressv_id), &
-            !       global_auxvars(ghosted_id)%parameters(stressv_old_id), &
-            !       local_pressure, &
-            !       local_id
-            !print *, 'strain ', global_auxvars(ghosted_id)%parameters(stressv_id)/ &
-            !      dr_bulk_modulus
 
-            ! jaa testing - using Jeff's paper
+            ! jaa - using Jeff's paper
             porosity_0 = pmc%subsurf_realization%patch%aux%Material% &
                          auxvars(local_id)%porosity_0
             strain_vol_0 = global_auxvars(ghosted_id)%parameters(strainv_0_id)
-            !if (abs(local_pressure-press_init)<1.d-20) then
-            !  strain_vol = strain_vol_0
-            !endif
             por_p(local_id) = porosity_0 +&
                               (biot_coeff*(strain_vol-strain_vol_0)) + &
                               (((biot_coeff-porosity_0)* &

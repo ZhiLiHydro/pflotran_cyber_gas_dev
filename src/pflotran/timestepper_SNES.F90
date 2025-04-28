@@ -435,8 +435,6 @@ subroutine TimestepperSNESStepDT(this,process_model,stop_flag)
   enddo
 
   this%steps = this%steps + 1
-  ! jaa testing
-  option%flow_steps = option%flow_steps + 1
   this%cumulative_newton_iterations = &
     this%cumulative_newton_iterations + sum_newton_iterations
   this%cumulative_linear_iterations = &

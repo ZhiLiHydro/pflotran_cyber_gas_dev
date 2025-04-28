@@ -323,6 +323,8 @@ subroutine PMGeomechForcePreSolve(this)
 
   class(pm_geomech_force_type) :: this
 
+  ! jaa: add skip check here?
+
 end subroutine PMGeomechForcePreSolve
 
 ! ************************************************************************** !

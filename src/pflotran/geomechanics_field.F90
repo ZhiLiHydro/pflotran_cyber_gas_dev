@@ -17,7 +17,6 @@ module Geomechanics_Field_module
     Vec :: press          ! store pressure from subsurf
     Vec :: press_loc
     Vec :: press_init_loc ! store initial pressure
-    Vec :: press_old_loc ! jaa testing
     Vec :: temp           ! store temperature from subsurf
     Vec :: temp_loc
     Vec :: temp_init_loc  ! store initial temperature
@@ -80,7 +79,6 @@ function GeomechFieldCreate()
   geomech_field%press = PETSC_NULL_VEC
   geomech_field%press_loc = PETSC_NULL_VEC
   geomech_field%press_init_loc = PETSC_NULL_VEC
-  geomech_field%press_old_loc = PETSC_NULL_VEC
   geomech_field%temp = PETSC_NULL_VEC
   geomech_field%temp_loc = PETSC_NULL_VEC
   geomech_field%temp_init_loc = PETSC_NULL_VEC
@@ -155,9 +153,6 @@ subroutine GeomechFieldDestroy(geomech_field)
   endif
   if (geomech_field%press_init_loc /= PETSC_NULL_VEC) then
     call VecDestroy(geomech_field%press_init_loc,ierr);CHKERRQ(ierr)
-  endif
-  if (geomech_field%press_old_loc /= PETSC_NULL_VEC) then
-    call VecDestroy(geomech_field%press_old_loc,ierr);CHKERRQ(ierr)
   endif
   if (geomech_field%temp /= PETSC_NULL_VEC) then
     call VecDestroy(geomech_field%temp,ierr);CHKERRQ(ierr)

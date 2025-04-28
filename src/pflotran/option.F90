@@ -111,7 +111,6 @@ module Option_module
     PetscBool :: use_sc           ! If true, multiple continuum formulation is used.
     PetscReal :: flow_time, tran_time, time  ! The time elapsed in the simulation.
     PetscReal :: flow_dt ! The size of the time step.
-    PetscInt :: flow_steps
     PetscReal :: tran_dt
     PetscReal :: dt
     PetscBool :: match_waypoint
@@ -562,7 +561,6 @@ subroutine OptionInitRealization(option)
 
   option%time = 0.d0
   option%flow_dt = 0.d0
-  option%flow_steps = 1
   option%tran_dt = 0.d0
   option%dt = 0.d0
   option%match_waypoint = PETSC_FALSE
