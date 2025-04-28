@@ -219,6 +219,7 @@ subroutine RealizationCreateDiscretization(realization)
   use DM_Custom_module
   use Communicator_Structured_class, only : StructuredCommunicatorCreate
   use Communicator_Unstructured_class, only : UnstructuredCommunicatorCreate
+  use String_module
 
   implicit none
 
@@ -228,6 +229,7 @@ subroutine RealizationCreateDiscretization(realization)
   type(grid_type), pointer :: grid
   type(field_type), pointer :: field
   type(option_type), pointer :: option
+  PetscReal :: tempreal
   PetscErrorCode :: ierr
   PetscInt :: ivar
 
@@ -426,7 +428,12 @@ subroutine RealizationCreateDiscretization(realization)
   end select
   call GridPrintExtents(grid,option)
   call GridPrintSize(grid,option)
-
+  ! min/max cell volume
+  call PrintMsg(option,NL//'Min/Max Cell Volumes [m^3]')
+  call VecMax(field%volume0,PETSC_NULL_INTEGER,tempreal,ierr);CHKERRQ(ierr)
+  call PrintMsg(option,' Maximum: ' // StringWriteF('(f20.2)',tempreal))
+  call VecMin(field%volume0,PETSC_NULL_INTEGER,tempreal,ierr);CHKERRQ(ierr)
+  call PrintMsg(option,' Maximum: ' // StringWriteF('(f20.2)',tempreal))
 
   ! initialize to UNINITIALIZED_DOUBLE for check later that verifies all values
   ! have been set
@@ -1811,7 +1818,7 @@ subroutine RealizationAddWaypointsToList(realization,waypoint_list)
             waypoint => WaypointCreate()
             waypoint%time = times(itime)
             waypoint%update_conditions = PETSC_TRUE
-            call WaypointInsertInList(waypoint,waypoint_list)
+            call WaypointInsertInList(waypoint,waypoint_list,option)
           enddo
           deallocate(times)
           nullify(times)
@@ -1833,7 +1840,7 @@ subroutine RealizationAddWaypointsToList(realization,waypoint_list)
           waypoint => WaypointCreate()
           waypoint%time = cur_constraint_coupler%time
           waypoint%update_conditions = PETSC_TRUE
-          call WaypointInsertInList(waypoint,waypoint_list)
+          call WaypointInsertInList(waypoint,waypoint_list,option)
         endif
         cur_constraint_coupler => cur_constraint_coupler%next
       enddo
@@ -1851,7 +1858,7 @@ subroutine RealizationAddWaypointsToList(realization,waypoint_list)
           waypoint => WaypointCreate()
           waypoint%time = time_storage_ptr%times(itime)
           waypoint%update_conditions = PETSC_TRUE
-          call WaypointInsertInList(waypoint,waypoint_list)
+          call WaypointInsertInList(waypoint,waypoint_list,option)
         enddo
       endif
     endif
@@ -1870,7 +1877,7 @@ subroutine RealizationAddWaypointsToList(realization,waypoint_list)
               waypoint => WaypointCreate()
               waypoint%time = time_storage_ptr%times(itime)
               waypoint%update_conditions = PETSC_TRUE
-              call WaypointInsertInList(waypoint,waypoint_list)
+              call WaypointInsertInList(waypoint,waypoint_list,option)
             enddo
           endif
         class default
@@ -1892,7 +1899,7 @@ subroutine RealizationAddWaypointsToList(realization,waypoint_list)
               waypoint => WaypointCreate()
               waypoint%time = time_storage_ptr%times(itime)
               waypoint%update_conditions = PETSC_TRUE
-              call WaypointInsertInList(waypoint,waypoint_list)
+              call WaypointInsertInList(waypoint,waypoint_list,option)
             enddo
           endif
         class default
@@ -1909,13 +1916,13 @@ subroutine RealizationAddWaypointsToList(realization,waypoint_list)
       waypoint => WaypointCreate()
       waypoint%time = cur_strata%start_time
       waypoint%sync = PETSC_TRUE
-      call WaypointInsertInList(waypoint,waypoint_list)
+      call WaypointInsertInList(waypoint,waypoint_list,option)
     endif
     if (Initialized(cur_strata%final_time)) then
       waypoint => WaypointCreate()
       waypoint%time = cur_strata%final_time
       waypoint%sync = PETSC_TRUE
-      call WaypointInsertInList(waypoint,waypoint_list)
+      call WaypointInsertInList(waypoint,waypoint_list,option)
     endif
     cur_strata => cur_strata%next
   enddo
