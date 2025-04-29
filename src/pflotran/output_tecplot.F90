@@ -2193,12 +2193,12 @@ subroutine WriteGridHDF5_Int(file_id, grp_id, dataspace_id, dims, dataset_name, 
   character(len=*) :: dataset_name
   PetscInt, pointer :: to_write(:)
 
-  call h5dcreate_f(grp_id, dataset_name, H5T_NATIVE_INTEGER, dataspace_id, dataset_id, error)
+  call h5dcreate_f(grp_id, dataset_name, H5T_STD_U32LE, dataspace_id, dataset_id, error)
   if (error < 0) then
     option%io_buffer = 'Could not create dataset ' // trim(dataset_name)
     call PrintErrMsg(option)
   endif
-  call h5dwrite_f(dataset_id, H5T_NATIVE_INTEGER, to_write, dims, error)
+  call h5dwrite_f(dataset_id, H5T_STD_U32LE, to_write, dims, error)
   if (error < 0) then
     option%io_buffer = 'Could not write integer dataset' // trim(dataset_name)
     call PrintErrMsg(option)
@@ -2231,12 +2231,12 @@ subroutine WriteGridHDF5_Real(file_id, grp_id, dataspace_id, dims, dataset_name,
   character(len=*) :: dataset_name
   PetscReal, pointer :: to_write(:)
 
-  call h5dcreate_f(grp_id, dataset_name, H5T_NATIVE_REAL, dataspace_id, dataset_id, error)
+  call h5dcreate_f(grp_id, dataset_name, H5T_IEEE_F64LE, dataspace_id, dataset_id, error)
   if (error < 0) then
     option%io_buffer = 'Could not create dataset ' // trim(dataset_name)
     call PrintErrMsg(option)
   endif
-  call h5dwrite_f(dataset_id, H5T_NATIVE_REAL, to_write, dims, error)
+  call h5dwrite_f(dataset_id, H5T_IEEE_F64LE, to_write, dims, error)
   if (error < 0) then
     option%io_buffer = 'Could not write real dataset' // trim(dataset_name)
     call PrintErrMsg(option)
