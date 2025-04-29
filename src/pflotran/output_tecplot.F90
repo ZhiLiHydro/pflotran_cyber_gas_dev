@@ -2387,7 +2387,6 @@ subroutine OutputPrintExplicitFlowrates(realization_base)
     deallocate(ids)
     deallocate(sat)
     deallocate(por)
-    deallocate(density)
     deallocate(pressure)
   endif
 
