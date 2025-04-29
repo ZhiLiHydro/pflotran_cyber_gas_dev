@@ -970,6 +970,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
   PetscBool :: vel_face
   PetscBool :: fluxes
   PetscBool :: mass_flowrate
+  PetscBool :: mass_flowrate_as_hdf5
   PetscBool :: energy_flowrate
   PetscBool :: aveg_mass_flowrate
   PetscBool :: aveg_energy_flowrate
@@ -1784,6 +1785,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
         vel_face = PETSC_FALSE
         fluxes = PETSC_FALSE
         mass_flowrate = PETSC_FALSE
+        mass_flowrate_as_hdf5 = PETSC_FALSE
         energy_flowrate = PETSC_FALSE
         aveg_mass_flowrate = PETSC_FALSE
         aveg_energy_flowrate = PETSC_FALSE
@@ -2148,6 +2150,8 @@ subroutine FactorySubsurfReadInput(simulation,input)
               energy_flowrate = PETSC_TRUE
             case('MASS_FLOWRATE')
               mass_flowrate = PETSC_TRUE
+            case('MASS_FLOWRATE_AS_HDF5')
+              mass_flowrate_as_hdf5 = PETSC_TRUE
             case('ENERGY_FLOWRATE')
               energy_flowrate = PETSC_TRUE
             case('AVERAGE_FLOWRATES','AVERAGE_FLOWRATE')
@@ -2242,6 +2246,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
             if (associated(grid%unstructured_grid%explicit_grid)) then
               option%flow%store_fluxes = PETSC_TRUE
               output_option%print_explicit_flowrate = mass_flowrate
+              output_option%print_explicit_flowrate_hdf5 = mass_flowrate_as_hdf5
             endif
           endif
         endif

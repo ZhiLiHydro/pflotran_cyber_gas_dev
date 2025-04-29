@@ -2172,6 +2172,84 @@ end subroutine WriteTecplotDataSetNumPerLine
 
 ! ************************************************************************** !
 
+subroutine WriteGridHDF5_Int(file_id, grp_id, dataspace_id, dims, dataset_name, to_write, option)
+  !
+  ! Writes an integer array to an existing file_id and grp_id
+  !
+  ! Author: Joe Eyles, WSP
+  ! Date: 29/04/2025
+  !
+
+  use hdf5
+  use HDF5_Aux_module, only : HDF5DatasetOpen, HDF5DatasetClose
+  use Option_module
+
+  implicit none
+
+  type(option_type), pointer :: option
+  integer(HID_T) :: file_id, grp_id, dataset_id, dataspace_id
+  integer :: error
+  integer(HSIZE_T) :: dims(1)
+  character(len=*) :: dataset_name
+  PetscInt, pointer :: to_write(:)
+
+  call h5dcreate_f(grp_id, dataset_name, H5T_NATIVE_INTEGER, dataspace_id, dataset_id, error)
+  if (error < 0) then
+    option%io_buffer = 'Could not create dataset ' // trim(dataset_name)
+    call PrintErrMsg(option)
+  endif
+  call h5dwrite_f(dataset_id, H5T_NATIVE_INTEGER, to_write, dims, error)
+  if (error < 0) then
+    option%io_buffer = 'Could not write integer dataset' // trim(dataset_name)
+    call PrintErrMsg(option)
+  endif
+  call h5dclose_f(dataset_id, error)
+  if (error < 0) then
+    option%io_buffer = 'Could not close dataset ' // trim(dataset_name)
+    call PrintErrMsg(option)
+  endif
+end subroutine WriteGridHDF5_Int
+
+subroutine WriteGridHDF5_Real(file_id, grp_id, dataspace_id, dims, dataset_name, to_write, option)
+  !
+  ! Writes a real array to an existing file_id and grp_id
+  !
+  ! Author: Joe Eyles, WSP
+  ! Date: 29/04/2025
+  !
+
+  use hdf5
+  use HDF5_Aux_module, only : HDF5DatasetOpen, HDF5DatasetClose
+  use Option_module
+
+  implicit none
+
+  type(option_type), pointer :: option
+  integer(HID_T) :: file_id, grp_id, dataset_id, dataspace_id
+  integer :: error
+  integer(HSIZE_T) :: dims(1)
+  character(len=*) :: dataset_name
+  PetscReal, pointer :: to_write(:)
+
+  call h5dcreate_f(grp_id, dataset_name, H5T_NATIVE_REAL, dataspace_id, dataset_id, error)
+  if (error < 0) then
+    option%io_buffer = 'Could not create dataset ' // trim(dataset_name)
+    call PrintErrMsg(option)
+  endif
+  call h5dwrite_f(dataset_id, H5T_NATIVE_REAL, to_write, dims, error)
+  if (error < 0) then
+    option%io_buffer = 'Could not write real dataset' // trim(dataset_name)
+    call PrintErrMsg(option)
+  endif
+  call h5dclose_f(dataset_id, error)
+  if (error < 0) then
+    option%io_buffer = 'Could not close dataset ' // trim(dataset_name)
+    call PrintErrMsg(option)
+  endif
+end subroutine WriteGridHDF5_Real
+
+! ************************************************************************** !
+
 subroutine OutputPrintExplicitFlowrates(realization_base)
   !
   ! Prints out the flow rate through a voronoi face
@@ -2180,6 +2258,7 @@ subroutine OutputPrintExplicitFlowrates(realization_base)
   !
   ! Author: Satish Karra, LANL
   ! Date: 04/24/13, 08/21/13 (Updated to Walkabout format)
+  ! Date: 29/04/2025 (Updated to HDF5 format)
   !
 
   use Realization_Base_class, only : realization_base_type
@@ -2189,6 +2268,9 @@ subroutine OutputPrintExplicitFlowrates(realization_base)
   use Field_module
   use Patch_module
   use Output_Common_module
+  use hdf5
+  use HDF5_Aux_module, only : HDF5FileOpen, HDF5FileClose, HDF5GroupCreate, HDF5GroupClose
+
 
   implicit none
 
@@ -2209,6 +2291,10 @@ subroutine OutputPrintExplicitFlowrates(realization_base)
   PetscInt :: i, icell, num_cells
   PetscInt, pointer :: ids(:)
   PetscReal, pointer :: sat(:), por(:), pressure(:)
+
+  integer(HID_T) :: file_id, grp_dom_id, grp_conn_id, dataspace_id
+  integer :: error
+  integer(HSIZE_T) :: dims(1)
 
   patch => realization_base%patch
   grid => patch%grid
@@ -2239,26 +2325,71 @@ subroutine OutputPrintExplicitFlowrates(realization_base)
     call PrintMsg(option)
   endif
 
-
-1000 format(es13.6,1x)
-1001 format(i10,1x)
-
- ! Order of printing for the 1st file
- ! id1 id2 darcy_vel[m/s] density[kg/m3]
-
   write(string,*) option%myrank
-  string = trim(filename) // '-rank' // trim(adjustl(string)) // '.dat'
-  open(unit=OUTPUT_UNIT,file=trim(string),action="write")
-  do i = 1, count
-    density(i) = density(i)*FMWH2O
-    write(OUTPUT_UNIT,1001,advance='no') nat_ids_up(i)
-    write(OUTPUT_UNIT,1001,advance='no') nat_ids_dn(i)
-    write(OUTPUT_UNIT,1000,advance='no') darcy(i)
-    write(OUTPUT_UNIT,1000,advance='no') density(i)
-    write(OUTPUT_UNIT,1000,advance='no') area(i)
-    write(OUTPUT_UNIT,'(a)')
-  enddo
-  close(OUTPUT_UNIT)
+  if (output_option%print_explicit_flowrate_hdf5) then
+    string = trim(filename) // '-rank' // trim(adjustl(string)) // '.h5'
+    dims(1) = count
+    call HDF5FileOpen(trim(string), file_id, PETSC_TRUE, option)
+    call HDF5GroupCreate(file_id, "Domain", grp_dom_id, option)
+    call HDF5GroupCreate(grp_dom_id, "Connections", grp_conn_id, option)
+    call h5screate_simple_f(1, dims, dataspace_id, error)
+    if (error < 0) then
+      option%io_buffer = 'Could not create dataspace for ' // trim(string)
+      call PrintErrMsg(option)
+    endif
+    call WriteGridHDF5_Int(file_id, grp_conn_id, dataspace_id, dims, "Cell1", nat_ids_up, option)
+    call WriteGridHDF5_Int(file_id, grp_conn_id, dataspace_id, dims, "Cell2", nat_ids_dn, option)
+    call WriteGridHDF5_Real(file_id, grp_conn_id, dataspace_id, dims, "Flux", darcy, option)
+    call WriteGridHDF5_Real(file_id, grp_conn_id, dataspace_id, dims, "Density", density, option)
+    call WriteGridHDF5_Real(file_id, grp_conn_id, dataspace_id, dims, "Area", area, option)
+    call h5sclose_f(dataspace_id, error)
+    call HDF5GroupClose(grp_conn_id, option)
+    call HDF5GroupClose(grp_dom_id, option)
+    call HDF5FileClose(file_id, option)
+  else
+    1000 format(es13.6,1x)
+    1001 format(i10,1x)
+    ! Order of printing for the 1st file
+    ! id1 id2 darcy_vel[m/s] density[kg/m3]
+    string = trim(filename) // '-rank' // trim(adjustl(string)) // '.dat'
+    open(unit=OUTPUT_UNIT,file=trim(string),action="write")
+    do i = 1, count
+      density(i) = density(i)*FMWH2O
+      write(OUTPUT_UNIT,1001,advance='no') nat_ids_up(i)
+      write(OUTPUT_UNIT,1001,advance='no') nat_ids_dn(i)
+      write(OUTPUT_UNIT,1000,advance='no') darcy(i)
+      write(OUTPUT_UNIT,1000,advance='no') density(i)
+      write(OUTPUT_UNIT,1000,advance='no') area(i)
+      write(OUTPUT_UNIT,'(a)')
+    enddo
+    close(OUTPUT_UNIT)
+
+  ! Order of printing for the 2nd file
+  ! cellid saturation porosity density[kg/m3] pressure[Pa]
+
+    call OutputGetExplicitCellInfo(realization_base,num_cells,ids,sat,por, &
+                                  density,pressure)
+
+    write(string,*) option%myrank
+    string = trim(filename2) // '-rank' // trim(adjustl(string)) // '.dat'
+    open(unit=OUTPUT_UNIT,file=trim(string),action="write")
+    do icell = 1, num_cells
+      density(icell) = density(icell)*FMWH2O
+      write(OUTPUT_UNIT,1001,advance='no') ids(icell)
+      write(OUTPUT_UNIT,1000,advance='no') sat(icell)
+      write(OUTPUT_UNIT,1000,advance='no') por(icell)
+      write(OUTPUT_UNIT,1000,advance='no') density(icell)
+      write(OUTPUT_UNIT,1000,advance='no') pressure(icell)
+      write(OUTPUT_UNIT,'(a)')
+    enddo
+    close(OUTPUT_UNIT)
+
+    deallocate(ids)
+    deallocate(sat)
+    deallocate(por)
+    deallocate(density)
+    deallocate(pressure)
+  endif
 
   deallocate(flowrates)
   deallocate(darcy)
@@ -2266,32 +2397,6 @@ subroutine OutputPrintExplicitFlowrates(realization_base)
   deallocate(nat_ids_dn)
   deallocate(density)
   deallocate(area)
-
- ! Order of printing for the 2nd file
- ! cellid saturation porosity density[kg/m3] pressure[Pa]
-
-  call OutputGetExplicitCellInfo(realization_base,num_cells,ids,sat,por, &
-                                 density,pressure)
-
-  write(string,*) option%myrank
-  string = trim(filename2) // '-rank' // trim(adjustl(string)) // '.dat'
-  open(unit=OUTPUT_UNIT,file=trim(string),action="write")
-  do icell = 1, num_cells
-    density(icell) = density(icell)*FMWH2O
-    write(OUTPUT_UNIT,1001,advance='no') ids(icell)
-    write(OUTPUT_UNIT,1000,advance='no') sat(icell)
-    write(OUTPUT_UNIT,1000,advance='no') por(icell)
-    write(OUTPUT_UNIT,1000,advance='no') density(icell)
-    write(OUTPUT_UNIT,1000,advance='no') pressure(icell)
-    write(OUTPUT_UNIT,'(a)')
-  enddo
-  close(OUTPUT_UNIT)
-
-  deallocate(ids)
-  deallocate(sat)
-  deallocate(por)
-  deallocate(density)
-  deallocate(pressure)
 
 end subroutine OutputPrintExplicitFlowrates
 
