@@ -603,7 +603,11 @@ subroutine PMCGeomechanicsSetAuxData(this)
               local_stress(i) = stress_p((local_id - 1)*SIX_INTEGER + i)
               local_strain(i) = strain_p((local_id - 1)*SIX_INTEGER + i)
             enddo
+            if (this%option%iflowmode == TH_MODE) then
+              local_pressure = press_p(local_id*this%option%nflowdof-1)
+            else ! richards mode
               local_pressure = press_p(local_id)
+            endif
             ! Update porosity based on stress/strain
             call GeomechanicsSubsurfacePropsPoroEvaluate( &
                   grid, &

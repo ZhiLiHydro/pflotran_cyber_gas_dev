@@ -83,6 +83,8 @@ subroutine RichardsAccumDerivative(rich_auxvar,global_auxvar, &
     ! Burghardt 2017 paper
     material_auxvar%dporosity_dp = (biot_coeff**2)/dr_bulk_modulus + &
            ((biot_coeff-porosity_0)*(1.d0-biot_coeff))/dr_bulk_modulus
+
+    ! jaa - double check porosity is correct in material_auxvar%porosity!!
   endif
 
   ! accumulation term units = dkmol/dp
