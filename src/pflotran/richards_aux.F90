@@ -27,6 +27,19 @@ module Richards_Aux_module
   PetscInt, parameter, public :: RICHARDS_UPDATE_FOR_FIXED_ACCUM = 0
   PetscInt, parameter, public :: RICHARDS_UPDATE_FOR_ACCUM = 1
 
+  ! Well
+  PetscInt, public :: richards_well_coupling = UNINITIALIZED_INTEGER
+  PetscInt, parameter, public :: RICHARDS_FULLY_IMPLICIT_WELL = ONE_INTEGER
+
+  type, public :: richards_well_aux_type
+    PetscReal :: pl   ! liquid pressure
+    PetscReal :: sl   ! liquid saturation
+    PetscReal :: dpl  ! reservoir-well liquid pressure differential
+    PetscReal :: Ql   ! liquid exchange flux
+    PetscReal :: bh_p ! bottom hole pressure
+    PetscReal :: pressure_bump ! pressure change for initialization
+  end type richards_well_aux_type
+
   type, public :: richards_auxvar_type
 
     PetscReal :: pc
@@ -46,6 +59,7 @@ module Richards_Aux_module
     PetscReal :: dpres_dtime
     PetscReal :: dmass_dtime
 
+    type(richards_well_aux_type), pointer :: well
   end type richards_auxvar_type
 
   type, public :: richards_type
