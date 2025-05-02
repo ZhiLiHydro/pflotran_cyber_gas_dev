@@ -215,6 +215,7 @@ subroutine RichardsSetupPatch(realization)
   ! count the number of source/sink connections and allocate
   ! auxvar data structures for them
   sum_connection = CouplerGetNumConnectionsInList(patch%source_sink_list)
+  write(*,*) "JOE: in richards got sum_connection =", sum_connection
   if (sum_connection > 0) then
     allocate(rich_auxvars_ss(sum_connection))
     do iconn = 1, sum_connection
@@ -917,6 +918,11 @@ subroutine RichardsUpdateAuxVarsPatch(realization,pm_well)
   sum_connection = 0
   do
     if (.not.associated(source_sink)) exit
+    if (associated(source_sink%flow_condition%well)) then
+      source_sink => source_sink%next
+      cycle
+    endif
+    write(*,*) "JOE: RichardsUpdateAuxVarsPatch, ss=", source_sink%name
     cur_connection_set => source_sink%connection_set
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
@@ -1926,6 +1932,10 @@ subroutine RichardsResidualSourceSink(r,realization,pm_well,ierr)
   sum_connection = 0
   do
     if (.not.associated(source_sink)) exit
+    if (associated(source_sink%flow_condition%well)) then
+      source_sink => source_sink%next
+      cycle
+    endif
 
     cur_connection_set => source_sink%connection_set
 
@@ -2976,6 +2986,10 @@ subroutine RichardsJacobianSourceSink(A,realization,pm_well,ierr)
   source_sink => patch%source_sink_list%first
   do
     if (.not.associated(source_sink)) exit
+    if (associated(source_sink%flow_condition%well)) then
+      source_sink => source_sink%next
+      cycle
+    endif
 
     if (source_sink%flow_condition%itype(1)/=HET_VOL_RATE_SS.and. &
        source_sink%flow_condition%itype(1)/=HET_MASS_RATE_SS .and. &

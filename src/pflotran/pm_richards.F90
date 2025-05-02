@@ -52,6 +52,7 @@ module PM_Richards_class
   end type pm_richards_type
 
   public :: PMRichardsCreate, &
+            PMRichardsSetFlowMode, &
             PMRichardsInit, &
             PMRichardsDestroy, &
             PMRichardsCheckConvergence
@@ -90,6 +91,49 @@ function PMRichardsCreate()
   PMRichardsCreate => this
 
 end function PMRichardsCreate
+
+! ************************************************************************** !
+
+subroutine PMRichardsSetFlowMode(pm_well,option)
+!
+! Sets the flow mode for Richards mode
+!
+! Author: Joe Eyles, WSP
+! Date: 02/05/2025
+!
+
+  use Option_module
+
+  implicit none
+
+  class(pm_well_type), pointer :: pm_well
+  type(option_type) :: option
+
+  option%iflowmode = RICHARDS_MODE
+  option%nphase = 1
+  option%nflowdof = 1
+  option%nflowspec = 1
+  option%flow%isothermal = PETSC_TRUE
+
+  if (associated(pm_well)) then
+    if (pm_well%flow_coupling == FULLY_IMPLICIT_WELL) then
+      if (pm_well%well%well_model_type /= WELL_MODEL_HYDROSTATIC) then
+        option%io_buffer = 'Currently, Richards mode can only be &
+                  &used with the HYDROSTATIC well model.'
+        call PrintErrMsg(option)
+      endif
+      richards_well_coupling = RICHARDS_FULLY_IMPLICIT_WELL
+      option%nflowdof = option%nflowdof + 1 ! TODO: What is going on here??
+      option%coupled_well = PETSC_TRUE
+      RICHARDS_WELL_DOF = option%nflowdof
+    else
+      option%io_buffer = 'Currently, only FULLY_IMPLICIT &
+                  &wellbore coupling is implemented for Richards Mode.'
+      call PrintErrMsg(option)
+    endif
+  endif
+
+end subroutine PMRichardsSetFlowMode
 
 ! ************************************************************************** !
 

@@ -23,6 +23,7 @@ module Richards_Aux_module
 
   PetscInt, parameter, public :: RICHARDS_PRESSURE_DOF = 1
   PetscInt, parameter, public :: RICHARDS_CONDUCTANCE_DOF = 2
+  PetscInt, public :: RICHARDS_WELL_DOF = UNINITIALIZED_INTEGER
 
   PetscInt, parameter, public :: RICHARDS_UPDATE_FOR_FIXED_ACCUM = 0
   PetscInt, parameter, public :: RICHARDS_UPDATE_FOR_ACCUM = 1
@@ -157,6 +158,23 @@ subroutine RichardsAuxVarInit(auxvar,option)
   auxvar%bc_lambda  = 0.0d0
 #endif
 
+
+  if (richards_well_coupling > ZERO_INTEGER) then
+    allocate(auxvar%well)
+    auxvar%well%pl = UNINITIALIZED_DOUBLE
+    auxvar%well%pg = UNINITIALIZED_DOUBLE
+    auxvar%well%sl = UNINITIALIZED_DOUBLE
+    auxvar%well%sg = UNINITIALIZED_DOUBLE
+    auxvar%well%dpl = UNINITIALIZED_DOUBLE
+    auxvar%well%dpg = UNINITIALIZED_DOUBLE
+    auxvar%well%Ql = UNINITIALIZED_DOUBLE
+    auxvar%well%Qg = UNINITIALIZED_DOUBLE
+    auxvar%well%bh_p = UNINITIALIZED_DOUBLE
+    auxvar%well%pressure_bump = 0.d0
+  else
+    nullify(auxvar%well)
+  endif
+
 end subroutine RichardsAuxVarInit
 
 ! ************************************************************************** !
@@ -195,6 +213,8 @@ subroutine RichardsAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%bc_alpha  = auxvar%bc_alpha
   auxvar2%bc_lambda = auxvar%bc_lambda
 #endif
+
+  if (richards_well_coupling > ZERO_INTEGER) auxvar2%well = auxvar%well
 
 end subroutine RichardsAuxVarCopy
 

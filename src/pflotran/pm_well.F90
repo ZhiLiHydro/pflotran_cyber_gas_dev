@@ -2797,6 +2797,39 @@ subroutine PMWellSetupHydrostatic(this)
           enddo
         endif
 
+      case(RICHARDS_MODE)
+        !source_sink%flow_condition => FlowRichardsConditionCreate(option)
+        string = 'RATE'
+        source_sink%flow_condition%rate => FlowSubConditionCreate(ONE_INTEGER)
+        source_sink%flow_condition%rate%itype = SCALED_MASS_RATE_SS
+        source_sink%flow_condition%pressure = FlowSubConditionCreate(ONE_INTEGER)
+        allocate(source_sink%flow_condition%rate%dataset%rarray(1))
+        source_sink%flow_condition%rate%dataset%rarray(1) = 0.d0
+        source_sink%flow_condition%well => FlowSubConditionCreate(ONE_INTEGER)
+        ! Bottom of hole is special for fully implicit coupling with steady
+        ! state well model.
+        if (k==1) then
+          source_sink%flow_condition%well%ctype = 'well-bottom'
+        else
+          source_sink%flow_condition%well%ctype = 'well'
+        endif
+
+        if (this%use_well_coupler) then
+          coupler => realization%patch%well_coupler_list%first
+          do
+            if (.not.associated(coupler)) exit
+            if (StringCompare(coupler%well_name,this%name)) then
+              source_sink%well_name = coupler%well_name
+              if (option%ntrandof > 0) then
+                if (option%itranmode == RT_MODE) then
+                  source_sink%tran_condition => coupler%tran_condition
+                endif
+              endif
+            endif
+            coupler => coupler%next
+          enddo
+        endif
+
     end select
 
     source_sink%connection_set => &
@@ -2852,6 +2885,9 @@ subroutine PMWellSetupHydrostatic(this)
     case(H_MODE)
       realization%patch%aux%Hydrate%num_aux_ss = realization%patch%aux% &
                                       Hydrate%num_aux_ss + num_new_source_sinks
+    case(RICHARDS_MODE)
+      realization%patch%aux%Richards%num_aux_ss = realization%patch%aux% &
+                                      Richards%num_aux_ss + num_new_source_sinks
   end select
   if (sum_connection > 0) then
     option%iflag = 1 ! enable allocation of mass_balance array
@@ -2895,6 +2931,8 @@ subroutine PMWellSetupHydrostatic(this)
       matrix_zeroing => realization%patch%aux%SCO2%matrix_zeroing
     case(H_MODE)
       matrix_zeroing => realization%patch%aux%Hydrate%matrix_zeroing
+    case(RICHARDS_MODE)
+      matrix_zeroing => realization%patch%aux%Richards%matrix_zeroing
   end select
   if (associated(matrix_zeroing)) then
     if (well_bottom_local > 0 .and. matrix_zeroing%zero_rows_exist) then
@@ -5101,20 +5139,23 @@ subroutine PMWellInitFluidVars(well,nsegments,reference_density,option)
   allocate(well%liq%xmass(nsegments,option%nflowspec))
   well%liq%xmass = 0.d0
 
-  allocate(well%gas%s(nsegments))
-  well%gas%den0 = reference_density(2)
-  allocate(well%gas%den(nsegments))
-  well%gas%den(:) = well%gas%den0
-  allocate(well%gas%visc(nsegments))
-  well%gas%visc = 0.d0
-  allocate(well%gas%H(nsegments))
-  well%gas%H = 0.d0
-  allocate(well%gas%Q(nsegments))
-  well%gas%Q = 0.d0
-  allocate(well%gas%kr(nsegments))
-  well%gas%kr = 0.d0
-  allocate(well%gas%xmass(nsegments,option%nflowspec))
-  well%gas%xmass = 0.d0
+  select case(option%iflowmode)
+    case(WF_MODE,SCO2_MODE,HMODE)
+      allocate(well%gas%s(nsegments))
+      well%gas%den0 = reference_density(2)
+      allocate(well%gas%den(nsegments))
+      well%gas%den(:) = well%gas%den0
+      allocate(well%gas%visc(nsegments))
+      well%gas%visc = 0.d0
+      allocate(well%gas%H(nsegments))
+      well%gas%H = 0.d0
+      allocate(well%gas%Q(nsegments))
+      well%gas%Q = 0.d0
+      allocate(well%gas%kr(nsegments))
+      well%gas%kr = 0.d0
+      allocate(well%gas%xmass(nsegments,option%nflowspec))
+      well%gas%xmass = 0.d0
+  end select
 
 end subroutine PMWellInitFluidVars
 
@@ -5136,23 +5177,15 @@ subroutine PMWellInitRes(reservoir,nsegments,idof,option)
   type(option_type), pointer :: option
 
   allocate(reservoir%p_l(nsegments))
-  allocate(reservoir%p_g(nsegments))
   allocate(reservoir%s_l(nsegments))
-  allocate(reservoir%s_g(nsegments))
   allocate(reservoir%temp(nsegments))
   allocate(reservoir%mobility_l(nsegments))
-  allocate(reservoir%mobility_g(nsegments))
   allocate(reservoir%kr_l(nsegments))
-  allocate(reservoir%kr_g(nsegments))
   allocate(reservoir%den_l(nsegments))
-  allocate(reservoir%den_g(nsegments))
   allocate(reservoir%visc_l(nsegments))
-  allocate(reservoir%visc_g(nsegments))
   allocate(reservoir%H_l(nsegments))
-  allocate(reservoir%H_g(nsegments))
   allocate(reservoir%e_por(nsegments))
   allocate(reservoir%xmass_liq(nsegments,option%nflowspec))
-  allocate(reservoir%xmass_gas(nsegments,option%nflowspec))
   allocate(reservoir%kx(nsegments))
   allocate(reservoir%ky(nsegments))
   allocate(reservoir%kz(nsegments))
@@ -5165,6 +5198,18 @@ subroutine PMWellInitRes(reservoir,nsegments,idof,option)
   allocate(reservoir%aqueous_conc(idof,nsegments))
   allocate(reservoir%aqueous_mass(idof,nsegments))
   allocate(reservoir%tmp_tran(idof,nsegments,2))
+
+  select case(option%iflowmode)
+    case(WF_MODE,SCO2_MODE,HMODE)
+      allocate(reservoir%p_g(nsegments))
+      allocate(reservoir%s_g(nsegments))
+      allocate(reservoir%mobility_g(nsegments))
+      allocate(reservoir%kr_g(nsegments))
+      allocate(reservoir%den_g(nsegments))
+      allocate(reservoir%visc_g(nsegments))
+      allocate(reservoir%H_g(nsegments))
+      allocate(reservoir%xmass_gas(nsegments,option%nflowspec))
+  end select
 
 end subroutine PMWellInitRes
 
@@ -5196,9 +5241,13 @@ subroutine PMWellInitFlowSoln(flow_soln,nphase,nsegments)
   enddo
 
   allocate(flow_soln%prev_soln%pl(nsegments))
-  allocate(flow_soln%prev_soln%sg(nsegments))
   allocate(flow_soln%soln_save%pl(nsegments))
-  allocate(flow_soln%soln_save%sg(nsegments))
+
+  select case(option%iflowmode)
+    case(WF_MODE,SCO2_MODE,HMODE)
+      allocate(flow_soln%prev_soln%sg(nsegments))
+      allocate(flow_soln%soln_save%sg(nsegments))
+  end select
 
 end subroutine PMWellInitFlowSoln
 
@@ -5305,6 +5354,7 @@ subroutine PMWellInitializeWellFlow(pm_well)
   type(strata_type), pointer :: strata
   type(sco2_auxvar_type), pointer :: sco2_auxvar
   type(hydrate_auxvar_type), pointer :: hyd_auxvar
+  type(richards_auxvar_type), pointer :: rich_auxvar
   type(option_type), pointer :: option
   PetscInt :: k, ghosted_id
 
@@ -5313,18 +5363,23 @@ subroutine PMWellInitializeWellFlow(pm_well)
 
   ! set initial flow parameters to the reservoir flow parameters
   pm_well%well%pl = reservoir%p_l
-  pm_well%well%pg = reservoir%p_g
   if (Uninitialized(pm_well%well%temp(1))) pm_well%well%temp = reservoir%temp
   pm_well%well%liq%s = reservoir%s_l
-  pm_well%well%gas%s = reservoir%s_g
   pm_well%well%liq%den = reservoir%den_l
-  pm_well%well%gas%den = reservoir%den_g
   pm_well%well%liq%visc = reservoir%visc_l
-  pm_well%well%gas%visc = reservoir%visc_g
   pm_well%well%liq%xmass = reservoir%xmass_liq
-  pm_well%well%gas%xmass = reservoir%xmass_gas
   pm_well%well%liq%H = reservoir%H_l
-  pm_well%well%gas%H = reservoir%H_g
+
+  select case(option%iflowmode)
+    case(WF_MODE,SCO2_MODE,HMODE)
+      pm_well%well%pg = reservoir%p_g
+      pm_well%well%gas%s = reservoir%s_g
+      pm_well%well%gas%den = reservoir%den_g
+      pm_well%well%gas%visc = reservoir%visc_g
+      pm_well%well%gas%xmass = reservoir%xmass_gas
+      pm_well%well%gas%H = reservoir%H_g
+  end select
+
   ! BHP can be a flow primary variable if fully coupled to flow.
   select case (option%iflowmode)
     case (SCO2_MODE)
@@ -5343,26 +5398,37 @@ subroutine PMWellInitializeWellFlow(pm_well)
                             pm_well%well%liq%den(1) * &
                             pm_well%option%gravity(Z_DIRECTION) * &
                             pm_well%well_grid%dh(1)/2.d0
+    case (RICHARDS_MODE)
+      ghosted_id = pm_well%well_grid%h_ghosted_id(1)
+      rich_auxvar => &
+        pm_well%realization%patch%aux%richards%auxvars(ghosted_id)
+        pm_well%well%bh_p = -1.0 * pm_well%well%liq%den(1) * &
+                            pm_well%option%gravity(Z_DIRECTION) * &
+                            pm_well%well_grid%dh(1)/2.d0
   end select
   ! update the Darcy fluxes within the well
   do k = 1,option%nflowdof
 
     pm_well%well_pert(k)%pl = reservoir%p_l
-    pm_well%well_pert(k)%pg = reservoir%p_g
     if (Uninitialized(pm_well%well_pert(k)%temp(1))) then
       pm_well%well_pert(k)%temp = reservoir%temp
     endif
     pm_well%well_pert(k)%liq%s = reservoir%s_l
-    pm_well%well_pert(k)%gas%s = reservoir%s_g
     pm_well%well_pert(k)%liq%den = reservoir%den_l
-    pm_well%well_pert(k)%gas%den = reservoir%den_g
     pm_well%well_pert(k)%liq%visc = reservoir%visc_l
-    pm_well%well_pert(k)%gas%visc = reservoir%visc_g
     pm_well%well_pert(k)%liq%xmass = reservoir%xmass_liq
-    pm_well%well_pert(k)%gas%xmass = reservoir%xmass_gas
     pm_well%well_pert(k)%liq%H = reservoir%H_l
-    pm_well%well_pert(k)%gas%H = reservoir%H_g
     pm_well%well_pert(k)%bh_p = pm_well%well%bh_p
+
+    select case(option%iflowmode)
+      case(WF_MODE,SCO2_MODE,HMODE)
+        pm_well%well_pert(k)%pg = reservoir%p_g
+        pm_well%well_pert(k)%gas%s = reservoir%s_g
+        pm_well%well_pert(k)%gas%den = reservoir%den_g
+        pm_well%well_pert(k)%gas%visc = reservoir%visc_g
+        pm_well%well_pert(k)%gas%xmass = reservoir%xmass_gas
+        pm_well%well_pert(k)%gas%H = reservoir%H_g
+    end select
 
   enddo
 
@@ -5394,8 +5460,11 @@ subroutine PMWellInitializeWellFlow(pm_well)
     pm_well%well_pert(k)%WI(:) = pm_well%well%WI(:)
   enddo
 
-  if (option%iflowmode /= SCO2_MODE .and. option%iflowmode /= H_MODE) &
-     initialize_well_flow = PETSC_FALSE
+  if (option%iflowmode /= SCO2_MODE .and. &
+      option%iflowmode /= H_MODE .and. &
+      option%iflowmode /= RICHARDS_MODE)
+    initialize_well_flow = PETSC_FALSE
+  endif
 
 end subroutine PMWellInitializeWellFlow
 
@@ -5424,6 +5493,8 @@ subroutine PMWellBasePerturb(this)
       call PMWellSCO2Perturb(this)
     case (H_MODE)
       call PMWellHydratePerturb(this)
+    case (RICHARDS_MODE)
+      call PMWellRichardsPerturb(this)
   end select
 
 end subroutine PMWellBasePerturb
@@ -5714,6 +5785,155 @@ subroutine PMWellHydratePerturb(pm_well)
     call pm_well%SolveFlow(idof,ierr)
   enddo
 end subroutine PMWellHydratePerturb
+
+! ************************************************************************** !
+
+subroutine PMWellRichardsPerturb(pm_well)
+  !
+  ! Perturb well variables when using Richards flow mode.
+  !
+  ! Author: Joe Eyles, WSP
+  ! Date: 04/01/2024
+  !
+
+  use Option_module
+  use Richards_Aux_module
+  use Material_Aux_module
+  use Grid_module
+
+  implicit none
+
+  class(pm_well_type) :: pm_well
+
+  type(well_type), pointer :: well
+  type(well_reservoir_type), pointer :: reservoir
+  type(richards_auxvar_type), pointer :: richards_auxvar
+  type(material_auxvar_type), pointer :: material_auxvar
+  type(grid_type), pointer :: res_grid
+  type(option_type), pointer :: option
+  PetscInt :: idof, k, i
+  PetscInt :: ghosted_id
+  PetscInt :: lid
+  PetscReal :: pres_bump
+  PetscErrorCode :: ierr
+
+  PetscReal, parameter :: perturbation_tolerance = 1.d-8
+  PetscReal, parameter :: min_perturbation = 1.d-15
+  ! PetscReal :: dpl, dpg
+
+  option => pm_well%option
+  res_grid => pm_well%realization%patch%grid
+
+  lid = option%liquid_phase
+
+  ! Make sure well is actually flowing if injection/production rates
+  ! are specified.
+  pres_bump = 0.d0
+  i = 0
+  well => pm_well%well
+  do
+    call pm_well%SolveFlow(ZERO_INTEGER,ierr)
+    if (any(dabs(well%liq%Q) > 0.d0)) exit
+    if (well%th_ql > 0.d0) then
+      ! Injection well
+      pres_bump = 1.25d0 * (pres_bump + 1.d0)
+    elseif (well%total_rate < 0.d0) then
+      ! Extraction well
+      pres_bump = 1.25d0 * (pres_bump - 1.d0)
+    else
+      ! No need for this
+      exit
+    endif
+    well%bh_p = well%bh_p + pres_bump
+    i = i + 1
+    if (i > 100) then
+      option%io_buffer = "Exceeded maximum number of iterations (100) to &
+                          &recover vanishing well Jacobian."
+      call PrintErrMsg(option)
+    endif
+  enddo
+
+  ! Go up the well: for each well segment that is on-process, update
+  ! perturbed values for reservoir and well variables.
+
+  ! Perturbed fluxes wrt reservoir variables
+  do k = 1,pm_well%well_grid%nsegments
+    ghosted_id = pm_well%well_grid%h_ghosted_id(k)
+
+    do idof = 1,option%nflowdof
+      well => pm_well%well_pert(idof)
+      well%bh_p = pm_well%well%bh_p
+      if (idof == RICHARDS_WELL_DOF) then
+        richards_auxvar => &
+          pm_well%realization%patch%aux%richards%auxvars(ZERO_INTEGER,ghosted_id)
+        well%bh_p = well%bh_p + pm_well%realization%patch%aux%sco2% &
+                    auxvars(SCO2_WELL_DOF,ghosted_id)%pert
+        if (.not. Initialized(sco2_auxvar%well%pressure_bump)) then
+          if (k == 1) then
+            sco2_auxvar%well%pressure_bump = (well%bh_p - &
+                      sco2_auxvar%pres(lid)) + pres_bump
+          else
+            sco2_auxvar%well%pressure_bump = 0.d0
+          endif
+        else
+          sco2_auxvar%well%pressure_bump = pres_bump
+        endif
+      else
+        sco2_auxvar => &
+          pm_well%realization%patch%aux%sco2%auxvars(idof,ghosted_id)
+        well%bh_p = pm_well%well%bh_p
+      endif
+      reservoir => well%reservoir
+
+      material_auxvar => &
+        pm_well%realization%patch%aux%material%auxvars(ghosted_id)
+
+      reservoir%p_l(k) = sco2_auxvar%pres(option%liquid_phase)
+      reservoir%p_g(k) = sco2_auxvar%pres(option%gas_phase)
+      reservoir%s_l(k) = sco2_auxvar%sat(option%liquid_phase)
+      reservoir%s_g(k) = sco2_auxvar%sat(option%gas_phase)
+      reservoir%temp(k) = sco2_auxvar%temp
+      reservoir%mobility_l(k) = &
+        sco2_auxvar%mobility(option%liquid_phase)
+      reservoir%mobility_g(k) = sco2_auxvar%mobility(option%gas_phase)
+      reservoir%kr_l(k) = sco2_auxvar%kr(option%liquid_phase)
+      reservoir%kr_g(k) = sco2_auxvar%kr(option%gas_phase)
+      reservoir%den_l(k) = sco2_auxvar%den_kg(option%liquid_phase)
+      reservoir%den_g(k) = sco2_auxvar%den_kg(option%gas_phase)
+      reservoir%visc_l(k) = sco2_auxvar%visc(option%liquid_phase)
+      reservoir%visc_g(k) = sco2_auxvar%visc(option%gas_phase)
+      reservoir%H_l(k) = sco2_auxvar%H(option%liquid_phase)
+      reservoir%H_g(k) = sco2_auxvar%H(option%gas_phase)
+      reservoir%xmass_liq(k,:) = sco2_auxvar%xmass(:, &
+                                                  option%liquid_phase)
+      reservoir%xmass_gas(k,:) = sco2_auxvar%xmass(:, &
+                                                  option%gas_phase)
+      reservoir%e_por(k) = sco2_auxvar%effective_porosity
+
+      reservoir%kx(k) = material_auxvar%permeability(1)
+      reservoir%ky(k) = material_auxvar%permeability(2)
+      reservoir%kz(k) = material_auxvar%permeability(3)
+      reservoir%volume(k) = material_auxvar%volume
+
+      if (res_grid%itype == STRUCTURED_GRID) then
+        reservoir%dx(k) = res_grid%structured_grid%dx(ghosted_id)
+        reservoir%dy(k) = res_grid%structured_grid%dy(ghosted_id)
+        reservoir%dz(k) = res_grid%structured_grid%dz(ghosted_id)
+      else
+        reservoir%dz(k) = pm_well%well_grid%res_dz(k)
+        reservoir%dx(k) = sqrt(material_auxvar%volume/ &
+                                reservoir%dz(k))
+        reservoir%dy(k) = reservoir%dx(k)
+      endif
+    enddo
+  enddo
+
+  ! Now update fluxes associated with perturbed values
+  do idof = 1,option%nflowdof
+    call pm_well%SolveFlow(idof,ierr)
+  enddo
+
+end subroutine PMWellRichardsPerturb
 
 ! ************************************************************************** !
 
@@ -6307,6 +6527,32 @@ subroutine PMWellUpdateReservoirSrcSinkFlow(pm_well)
               auxvars(ZERO_INTEGER,ghosted_id)%well%Qg = pm_well%well%gas%Q(k)
             pm_well%realization%patch%aux%hydrate% &
               auxvars(ZERO_INTEGER,ghosted_id)%well%bh_p = pm_well%well%bh_p
+
+          case(RICHARDS_MODE)
+            if (richards_well_coupling == RICHARDS_FULLY_IMPLICIT_WELL) then
+              source_sink%flow_condition%rate%dataset%rarray(1) = &
+                                      -1.d0 * pm_well%well%liq%Q(k) ! [kg/s]
+            else
+              source_sink%flow_condition%rate%dataset%rarray(1) = &
+                -1.d0 * pm_well%well%liq%Q(k) ! [kmol/s]
+            endif
+            source_sink%flow_condition%pressure%aux_real(1) = &
+                                                            pm_well%well%pl(k)
+            well_delta_liq = pm_well%well%pl(k) - pm_well%well%reservoir%p_l(k)
+            source_sink%flow_condition%pressure%aux_real(2) = &
+                                                               well_delta_liq
+            source_sink%flow_condition%well%aux_real(1) = density_avg ! kg/m3
+            pm_well%realization%patch%aux%richards% &
+              auxvars(ghosted_id)%well%pl = pm_well%well%pl(k)
+            pm_well%realization%patch%aux%richards% &
+              auxvars(ghosted_id)%well%sl = pm_well%well%liq%s(k)
+            pm_well%realization%patch%aux%richards% &
+              auxvars(ghosted_id)%well%dpl = well_delta_liq
+            pm_well%realization%patch%aux%richards% &
+              auxvars(ghosted_id)%well%Ql = pm_well%well%liq%Q(k)
+            pm_well%realization%patch%aux%richards% &
+              auxvars(ghosted_id)%well%bh_p = pm_well%well%bh_p
+
         end select
         exit
       endif
@@ -6486,6 +6732,8 @@ subroutine PMWellUpdateFlowRatesHydrostatic(this,well_pert,res_pert, &
       call PMWellUpdateReservoirSCO2(this,res_pert,segment_index)
     case(H_MODE)
       call PMWellUpdateReservoirHydrate(this,res_pert,segment_index)
+    case(RICHARDS_MODE)
+      call PMWellUpdateReservoirRichards(this,res_pert,segment_index)
   end select
 
   if (initialize_well_flow) then
@@ -6637,6 +6885,29 @@ subroutine PMWellModifyFlowResHydrostatic(this,residual)
                   this%well%liq%H(k) + &
                   this%well%gas%q(k)* &
                   this%well%gas%H(k))
+      enddo
+    case(RICHARDS_MODE)
+      sum_q = 0.d0
+      do k = 1,this%well_grid%nsegments
+        if (this%well_grid%h_rank_id(k) /= this%option%myrank) &
+            cycle
+        ghosted_id = this%well_grid%h_ghosted_id(k)
+        local_id = this%realization%patch%grid%nG2L(ghosted_id)
+        local_end = local_id * this%option%nflowdof
+        local_start = local_end - this%option%nflowdof + 1
+        if (k == 1) then
+          ! An extra residual is required for the bottom well cell.
+          ! Residual = Q - sum(q)
+          sum_q = sum(this%well%liq%q)
+          Q = -1.d0 * (this%well%th_ql)
+          residual(local_end) = Q - sum_q
+        endif
+        j = 0
+        ! Compontent j+1 residual at well segment k
+        residual(local_start + j) = residual(local_start + j) + &
+                                    this%well%liq%q(k)* &
+                                    this%well%liq%xmass(k,j+1)
+        enddo
       enddo
   end select
 
@@ -7065,6 +7336,124 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
                                       J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
         endif
       enddo
+
+    case(RICHARDS_MODE)
+
+      allocate(J_block(option%nflowdof,option%nflowdof))
+      allocate(residual(this%well_grid%nsegments,option%nflowdof))
+
+      J_block = 0.d0
+      residual = 0.d0
+
+      ! Calculate Jacobian entries wrt reservoir perturbation:
+      ! BHP residual and reservoir source/sink residuals.
+
+      ! Unperturbed residual
+      well => this%well
+      do k = 1,this%well_grid%nsegments
+        do irow = 1, option%nflowspec
+          residual(k,irow) = well%liq%q(k)* &
+                             well%liq%xmass(k,irow)
+        enddo
+        if (k==1) then
+          sum_q = sum(well%liq%q)
+          Q = -1.d0 * (well%th_ql)
+          residual(k,option%nflowdof) = Q - sum_q
+        endif
+      enddo
+
+      ! Perturbations
+      do k = 1,this%well_grid%nsegments
+        J_block = 0.d0
+        ghosted_id = this%well_grid%h_ghosted_id(k)
+        idof = 1
+        well_pert => this%well_pert(idof)
+        pert = this%realization%patch%aux%richards% &
+                      auxvars(ghosted_id)%pert
+
+        ! Compute dRwell / dXres: only in the cell that owns the
+        ! well bottom
+        if (this%well_grid%h_rank_id(1) == option%myrank) then
+          res_pert = well_pert%liq%q(k) - well%liq%q(k)
+
+            local_row_index = this%well_grid%h_ghosted_id(1)* &
+                              option%nflowdof-1
+            local_col_index = (ghosted_id-1)*option%nflowdof + idof - 1
+          J_well = -(res_pert)/pert
+          if (dabs(J_well) > 0.d0) then
+            call MatSetValuesLocal(Jac,1,local_row_index,1, &
+                                    local_col_index,J_well, &
+                                    ADD_VALUES,ierr);CHKERRQ(ierr)
+          endif
+
+        endif
+
+        if (this%well_grid%h_rank_id(k) == option%myrank) then
+          ! Compute dRres / dXres at a given P_BHP
+          do irow = 1,option%nflowspec
+            res_pert = well_pert%liq%q(k)* &
+                       well_pert%liq%xmass(k,irow)
+            J_block(irow,idof) = (res_pert - residual(k,irow))/pert
+          enddo
+        endif
+
+        if (any(dabs(J_block) > 0.d0)) then
+          call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1,&
+                                      J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
+        endif
+
+        !Perturbed rates wrt well perturbation.
+        well_pert => this%well_pert(RICHARDS_WELL_DOF)
+
+        if (this%well_grid%h_rank_id(k) /= option%myrank) cycle
+
+        J_block = 0.d0
+
+        ghosted_id = this%well_grid%h_ghosted_id(k)
+        pert = well_pert%bh_p - well%bh_p
+
+        ! Compute dRwell / dPwell
+        if (k == 1) then
+          sum_q = sum(well%liq%q)
+          if (well%total_rate < 0.d0) then
+            Q = -1.d0 * well%total_rate
+          else
+            Q = -1.d0 * well%th_ql
+          endif
+          res = Q - sum_q
+
+          sum_q = 0.d0
+          sum_q = sum(well_pert%liq%q)
+          if (well_pert%total_rate < 0.d0) then
+            Q = -1.d0 * well_pert%total_rate
+          else
+            Q = -1.d0 * well_pert%th_ql
+          endif
+          res_pert = Q - sum_q
+
+          J_block(option%nflowdof,option%nflowdof) = &
+                  (res_pert - res)/pert
+        endif
+
+        ! Compute dRres / dPwell
+        j = 0
+        res = this%well%liq%q(k)*this%well%liq%xmass(k,j+1)
+        res_pert = well_pert%liq%q(k)* &
+                    well_pert%liq%xmass(k,j+1)
+        ! Just change 1 column
+        local_row_index = (ghosted_id-1)*option%nflowdof + j
+        local_col_index = this%well_grid%h_ghosted_id(1)*option%nflowdof-1
+        J_well = (res_pert - res)/pert
+        if (dabs(J_well) > 0.d0) then
+          call MatSetValuesLocal(Jac,1,local_row_index,1,local_col_index, &
+                                  J_well,ADD_VALUES,ierr);CHKERRQ(ierr)
+        endif
+
+        if (any(dabs(J_block) > 0.d0)) then
+          call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1, &
+                                      J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
+        endif
+      enddo
   end select
 
   if (allocated(J_block)) deallocate(J_block)
@@ -7225,6 +7614,70 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
         if (any(dabs(J_block) > 0.d0)) then
           call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1, &
                                         J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
+        endif
+      enddo
+
+    case(RICHARDS_MODE)
+
+      allocate(J_block(option%nflowdof,option%nflowdof))
+
+      J_block = 0.d0
+
+      do k = 1,this%well_grid%nsegments
+        J_block = 0.d0
+        ghosted_id = this%well_grid%h_ghosted_id(k)
+        idof = 1
+        ! Compute dRwell / dXres: only in the cell that owns the well
+        if (this%well_grid%h_rank_id(1) == option%myrank) then
+          local_row_index = this%well_grid%h_ghosted_id(1)* &
+                            option%nflowdof-1
+          local_col_index = (ghosted_id-1)*option%nflowdof + idof - 1
+          J_well = UNINITIALIZED_DOUBLE
+          if (dabs(J_well) > 0.d0) then
+            call MatSetValuesLocal(Jac,1,local_row_index,1, &
+                                    local_col_index,J_well, &
+                                    ADD_VALUES,ierr);CHKERRQ(ierr)
+          endif
+        endif
+        if (this%well_grid%h_rank_id(k) == option%myrank) then
+          ! Compute dRres / dXres at a given P_BHP
+          do irow = 1,option%nflowspec  ! TODO: if this works, simplify stuff like this to have irow = 1 for Richards
+            J_block(irow,idof) = UNINITIALIZED_DOUBLE
+          enddo
+        endif
+
+        if (any(dabs(J_block) > 0.d0)) then
+          call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1,&
+                                        J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
+        endif
+
+        !Perturbed rates wrt well perturbation.
+
+        if (this%well_grid%h_rank_id(k) /= option%myrank) cycle
+
+        J_block = 0.d0
+
+        ghosted_id = this%well_grid%h_ghosted_id(k)
+
+        ! Compute dRwell / dPwell
+        if (k == 1) then
+          J_block(option%nflowdof,option%nflowdof) = UNINITIALIZED_DOUBLE
+        endif
+
+        ! Compute dRres / dPwell
+        j = 0
+        ! Just change 1 column
+        local_row_index = (ghosted_id-1)*option%nflowdof + j
+        local_col_index = this%well_grid%h_ghosted_id(1)*option%nflowdof-1
+        J_well = UNINITIALIZED_DOUBLE
+        if (dabs(J_well) > 0.d0) then
+          call MatSetValuesLocal(Jac,1,local_row_index,1,local_col_index, &
+                                  J_well,ADD_VALUES,ierr);CHKERRQ(ierr)
+        endif
+
+        if (any(dabs(J_block) > 0.d0)) then
+          call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1, &
+                                      J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
         endif
       enddo
   end select
@@ -7468,6 +7921,8 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
       fmw_comp_temp(:) = fmw_comp(:)
     case (H_MODE)
       fmw_comp_temp(:) = hydrate_fmw_comp(:)
+    case (RICHARDS_MODE)
+      fmw_comp_temp(:) = FMWH2O
   end select
 
   if (perturbation_index > 0) then
@@ -7493,7 +7948,13 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
   pg = pl
 
   !MAN: pure brine and pure gas columns for now, needs updating.
-  aux(1) = well%liq%xmass(1,option%salt_id)
+
+  select case (option%iflowmode)
+    case (RICHARDS_MODE)
+      aux(1) = well%liq%xmass(1,option%liquid_phase)
+    case default
+      aux(1) = well%liq%xmass(1,option%salt_id)
+  end select
   select case (option%iflowmode)
     case (SCO2_MODE)
       call SCO2BrineDensity(temperature, pl, &
@@ -7520,7 +7981,6 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
 
     ! Compute well cell pressures based off of bottom segment pressure
     temperature = well%temp(i)
-    aux(1) = well%liq%xmass(1,option%salt_id)
     select case (option%iflowmode)
       case (SCO2_MODE)
         call SCO2BrineDensity(temperature, pl, &
@@ -7550,6 +8010,11 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
 
       ! STOMP doesn't iterate
       exit
+
+      if (option%iflowmode == RICHARDS_MODE) then
+        ! Ensure that the iterations can converge, ignoring the gas phase
+        rho_kg_gas = rho_one_gas
+      endif
 
       if (dabs(rho_kg_liq-rho_one_liq) < 1.d-5 .and. &
           dabs(rho_kg_gas-rho_one_gas) < 1.d-5) exit
@@ -7585,6 +8050,8 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
       call PMWellUpdatePropertiesSCO2Flow(this,well,option)
     case(H_MODE)
       call PMWellUpdatePropertiesHydrateFlow(this,well,option)
+    case(RICHARDS_MODE)
+      call PMWellUpdatePropertiesRichardsFlow(this,well,option)
   end select
 
   ! Compute fluxes in/out of well
@@ -7674,7 +8141,11 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
       ! Extraction well
       ! Compute reservoir pressure at well cell center
         well%liq%Q(i) = 0.d0
-        well%gas%Q(i) = 0.d0
+        select case (option%iflowmode)
+          case(RICHARDS_MODE)
+          case default
+            well%gas%Q(i) = 0.d0
+        end select
         res_pl_temp = reservoir%p_l(i) + reservoir%den_l(i) * gravity * delta_z
         mobility = reservoir%kr_l(i)/reservoir%visc_l(i)
         den_ave = reservoir%den_l(i)
@@ -7683,23 +8154,31 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
           well%liq%Q(i) = den_ave*mobility*well%WI(i) * &
                           (res_pl_temp-well%pl(i)) * &
                           reservoir%xmass_liq(i,ONE_INTEGER)
-          well%gas%Q(i) = den_ave*mobility*well%WI(i)* &
-                          (res_pl_temp-well%pl(i)) * &
-                          reservoir%xmass_liq(i,TWO_INTEGER)
+          select case (option%iflowmode)
+            case(RICHARDS_MODE)
+            case default
+              well%gas%Q(i) = den_ave*mobility*well%WI(i)* &
+                              (res_pl_temp-well%pl(i)) * &
+                              reservoir%xmass_liq(i,TWO_INTEGER)
+          end select
         endif
 
-        res_pg_temp = reservoir%p_g(i) + reservoir%den_g(i) * gravity * delta_z
-        mobility = reservoir%kr_g(i)/reservoir%visc_g(i)
-        den_ave = reservoir%den_g(i)
-        ! Flowrate in kg/s
-        if (res_pg_temp > well%pg(i)) then
-          well%liq%Q(i) = well%liq%Q(i) + den_ave*mobility*well%WI(i) * &
-                          (res_pg_temp-well%pg(i)) * &
-                          reservoir%xmass_gas(i,ONE_INTEGER)
-          well%gas%Q(i) = well%gas%Q(i) + den_ave*mobility*well%WI(i) * &
-                          (res_pg_temp-well%pg(i)) * &
-                          reservoir%xmass_gas(i,TWO_INTEGER)
-        endif
+        select case (option%iflowmode)
+          case(RICHARDS_MODE)
+          case default
+            res_pg_temp = reservoir%p_g(i) + reservoir%den_g(i) * gravity * delta_z
+            mobility = reservoir%kr_g(i)/reservoir%visc_g(i)
+            den_ave = reservoir%den_g(i)
+            ! Flowrate in kg/s
+            if (res_pg_temp > well%pg(i)) then
+              well%liq%Q(i) = well%liq%Q(i) + den_ave*mobility*well%WI(i) * &
+                              (res_pg_temp-well%pg(i)) * &
+                              reservoir%xmass_gas(i,ONE_INTEGER)
+              well%gas%Q(i) = well%gas%Q(i) + den_ave*mobility*well%WI(i) * &
+                              (res_pg_temp-well%pg(i)) * &
+                              reservoir%xmass_gas(i,TWO_INTEGER)
+            endif
+        end select
     endif
   enddo
 

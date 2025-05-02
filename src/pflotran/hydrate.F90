@@ -165,6 +165,7 @@ subroutine HydrateSetup(realization)
   ! count the number of source/sink connections and allocate
   ! auxvar data structures for them
   sum_connection = CouplerGetNumConnectionsInList(patch%source_sink_list)
+  write(*,*) "JOE: in hydrate got sum_connection =", sum_connection
   if (sum_connection > 0) then
     allocate(hyd_auxvars_ss(sum_connection))
     do iconn = 1, sum_connection
@@ -915,6 +916,8 @@ subroutine HydrateUpdateAuxVars(realization,pm_well,update_state)
       source_sink => source_sink%next
       cycle
     endif
+
+    write(*,*) "JOE: HydrateUpdateAuxVars, ss=", source_sink%name
 
     qsrc = source_sink%flow_condition%hydrate%rate%dataset%rarray(:)
     cur_connection_set => source_sink%connection_set
