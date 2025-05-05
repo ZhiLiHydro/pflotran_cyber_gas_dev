@@ -349,12 +349,13 @@ subroutine UnitsCategory(unit,unit_category,error,error_msg)
 
   do while (k < 4)
     select case(trim(unit(k)))
-      case('cm^3','l','L','ml','mL','dm^3','m^3','gal','gallon',&
-           'bbl','cf','Mcf')
+      case('cm^3','l','L','ml','mL','dm^3','m^3','gal','gallon', &
+           'bbl','cf','Mcf','in^3','ft^3','yd^3')
         unit_category(k) = 'volume'
-      case('cm^2','dm^2','m^2','km^2')
+      case('cm^2','dm^2','m^2','km^2','in^2','ft^2','yd^2')
         unit_category(k) = 'area'
-      case('km','m','met','meter','dm','cm','mm')
+      case('km','m','meter','dm','cm','mm', &
+           'in','inch','ft','foot','yd','yard')
         unit_category(k) = 'length'
       case('s','sec','second','min','minute','h','hr','hour','d','day','w', &
            'week','mo','month','y','yr','year')
@@ -367,7 +368,7 @@ subroutine UnitsCategory(unit,unit_category,error,error_msg)
         unit_category(k) = 'power'
       case('mol','mole','moles','kmol')
         unit_category(k) = 'molar_mass'
-      case('ug','mg','g','kg')
+      case('ug','mg','g','kg','lb')
         unit_category(k) = 'mass'
       case('C','Celcius')
         unit_category(k) = 'temperature'
@@ -421,6 +422,7 @@ subroutine UnitsConvertToSI(unit,conversion_factor,error,error_msg)
   ! month, Pa.s, cP, P, Poise, kcal, mole, moles, ug, Celsius, N
 
   select case(trim(unit))
+    case('')
   !---> VOLUME ---> (meter^3)
     case('cm^3','mL')
       conversion_factor = 1.d-6
@@ -430,13 +432,16 @@ subroutine UnitsConvertToSI(unit,conversion_factor,error,error_msg)
       conversion_factor = 1.d0
     case('gal','gallon')
       conversion_factor = 3.785411784d-3
-    case('cf')
-      conversion_factor = 0.02831685
-    case('Mcf') !In Field units M means 1000
-      conversion_factor = 0.02831685d3
     case('bbl')
-      conversion_factor = 0.1589873141
-    case('')
+      conversion_factor = 0.1589872949d0
+    case('in^3')
+      conversion_factor = 1.6387064d-5
+    case('ft^3','cf')
+      conversion_factor = 2.831684659d-2
+    case('yd^3')
+      conversion_factor = 0.764554858d0
+    case('Mcf')
+      conversion_factor = 2.831684659d1
   !---> AREA ---> (meter^2)
     case('cm^2')
       conversion_factor = 1.d-4
@@ -446,6 +451,12 @@ subroutine UnitsConvertToSI(unit,conversion_factor,error,error_msg)
       conversion_factor = 1.d0
     case('km^2')
       conversion_factor = 1.d6
+    case('in^2')
+      conversion_factor = 6.4516d-4
+    case('ft^2')
+      conversion_factor = 9.290304d-2
+    case('yd^2')
+      conversion_factor = 8.3612736d-1
   ! ---> LENGTH ---> (meter)
     case('km')
       conversion_factor = 1000.d0
@@ -457,6 +468,12 @@ subroutine UnitsConvertToSI(unit,conversion_factor,error,error_msg)
       conversion_factor = 1.d-2
     case('mm')
       conversion_factor = 1.d-3
+    case('in','inch')
+      conversion_factor = 0.0254d0
+    case('ft','foot')
+      conversion_factor = 0.3048d0
+    case('yd','yard')
+      conversion_factor = 0.9144d0
   ! ---> TIME ---> (second)
     case('s','sec','second')
       conversion_factor = 1.d0
@@ -511,6 +528,8 @@ subroutine UnitsConvertToSI(unit,conversion_factor,error,error_msg)
       conversion_factor = 1.d-3
     case('kg')
       conversion_factor = 1.d0
+    case('lb')
+      conversion_factor = 0.45359237d0
   ! ---> TEMPERATURE ---> (C)
     case('C','Celsius')
       conversion_factor = 1.d0
@@ -524,7 +543,7 @@ subroutine UnitsConvertToSI(unit,conversion_factor,error,error_msg)
     case('Bar')
       conversion_factor = 1.d5
     case('psi')
-      conversion_factor = 6894.757
+      conversion_factor = 6894.757d0
     case('atm')
       conversion_factor = 101325.d0
   ! ---> CONCENTRATION ---> (M)
