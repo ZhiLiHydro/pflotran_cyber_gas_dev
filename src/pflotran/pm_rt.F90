@@ -1541,6 +1541,7 @@ subroutine PMRTUpdateSolution2(this,update_kinetics)
   class(pm_rt_type) :: this
   PetscBool :: update_kinetics
   PetscReal, save :: cum_rosie_flux(2) = 0.d0
+  PetscReal, save :: cum_rosie_flux2(2) = 0.d0
 
   ! begin from RealizationUpdate()
   call TranConditionUpdate(this%realization%transport_conditions, &
@@ -1563,10 +1564,10 @@ subroutine PMRTUpdateSolution2(this,update_kinetics)
 !                          this%realization%patch%grid, &
 !                          this%realization%option)
 
-!  cum_rosie_flux(:) = cum_rosie_flux(:) + rosie_flux(:)*this%option%tran_dt
-!  print *, 'rosie_flux: ', cum_rosie_flux(:), rosie_flux(:)
-  cum_rosie_flux(:) = cum_rosie_flux(:) + rosie_flux2(:)*this%option%tran_dt
-  print *, 'rosie_flux2: ', cum_rosie_flux(:), rosie_flux2(:)
+  cum_rosie_flux(:) = cum_rosie_flux(:) + rosie_flux(:)*this%option%tran_dt
+  print *, 'rosie_flux: ', cum_rosie_flux(:), rosie_flux(:)
+  cum_rosie_flux2(:) = cum_rosie_flux2(:) + rosie_flux2(:)*this%option%tran_dt
+  print *, 'rosie_flux2: ', cum_rosie_flux2(:), rosie_flux2(:)
   if (this%realization%option%compute_mass_balance_new) then
     call RTUpdateMassBalance(this%realization)
   endif

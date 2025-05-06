@@ -1897,8 +1897,12 @@ subroutine SecondaryRTCheckResidual(sec_transport_vars,auxvar, &
                         (total_upd(j,2,k) - total_upd(j,1,k))
 
       ! Outer boundary
-      rosie_flux_temp = pordiff(k)*area(ngcells)/dm_plus(ngcells)* &
+      rosie_flux_temp = -pordiff(k)*area(ngcells)/dm_plus(ngcells)* &
                                  (total_primary_node(j,k) - total_upd(j,ngcells,k))
+      rosie_flux_temp = rosie_flux_temp &
+                                 + pordiff(k)*area(ngcells-1)/(dm_minus(ngcells) &
+                                 + dm_plus(ngcells-1))*(total_upd(j,ngcells,k) - &
+                                 total_upd(j,ngcells-1,k))
       res(j+(ngcells-1)*ncomp) = res(j+(ngcells-1)*ncomp) - &
                                  pordiff(k)*area(ngcells)/dm_plus(ngcells)* &
                                  (total_primary_node(j,k) - total_upd(j,ngcells,k))
