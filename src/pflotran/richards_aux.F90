@@ -46,6 +46,7 @@ module Richards_Aux_module
     PetscReal :: pc
     PetscReal :: kvr
     PetscReal :: kr
+    PetscReal :: visc
     PetscReal :: dkvr_dp
     PetscReal :: dsat_dp
     PetscReal :: dden_dp
@@ -60,6 +61,7 @@ module Richards_Aux_module
     PetscReal :: dpres_dtime
     PetscReal :: dmass_dtime
 
+    PetscReal :: pert
     type(richards_well_aux_type), pointer :: well
   end type richards_auxvar_type
 
@@ -141,6 +143,7 @@ subroutine RichardsAuxVarInit(auxvar,option)
   auxvar%pc = 0.d0
 
   auxvar%kvr = 0.d0
+  auxvar%visc = 0.d0
   auxvar%kr = 0.d0
   auxvar%dkvr_dp = 0.d0
 
@@ -152,6 +155,8 @@ subroutine RichardsAuxVarInit(auxvar,option)
   auxvar%mass = 0.d0
   auxvar%dpres_dtime = 0.d0
   auxvar%dmass_dtime = 0.0d0
+
+  auxvar%pert = 0.d0
 
 #if defined(CLM_PFLOTRAN) || defined(CLM_OFFLINE)
   auxvar%bc_alpha  = 0.0d0
@@ -197,6 +202,7 @@ subroutine RichardsAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%pc = auxvar%pc
 
   auxvar2%kvr = auxvar%kvr
+  auxvar2%visc = auxvar%visc
   auxvar2%kr = auxvar%kr
   auxvar2%dkvr_dp = auxvar%dkvr_dp
 
@@ -208,6 +214,8 @@ subroutine RichardsAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%mass = auxvar%mass
   auxvar2%dpres_dtime = auxvar%dpres_dtime
   auxvar2%dmass_dtime = auxvar%dmass_dtime
+
+  auxvar2%pert = auxvar%pert
 
 #if defined(CLM_PFLOTRAN) || defined(CLM_OFFLINE)
   auxvar2%bc_alpha  = auxvar%bc_alpha
@@ -265,6 +273,7 @@ subroutine RichardsAuxVarCompute(x,auxvar,global_auxvar,material_auxvar, &
   global_auxvar%den_kg = 0.d0
 
   auxvar%kvr = 0.d0
+  auxvar%visc = 0.d0
   auxvar%kr = 0.d0
 
   kr = 0.d0
@@ -398,6 +407,7 @@ subroutine RichardsAuxVarCompute(x,auxvar,global_auxvar,material_auxvar, &
   auxvar%dsat_dp = ds_dp
   auxvar%kr = kr  ! stored solely for output purposes
   auxvar%kvr = kr/visl
+  auxvar%visc = visl
   auxvar%dkvr_dp = dkr_dp/visl - kr/(visl*visl)*dvis_dp
 
   if (size(global_auxvar%sat) > 1) then

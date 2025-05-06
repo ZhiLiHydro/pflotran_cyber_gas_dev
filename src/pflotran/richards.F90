@@ -2298,6 +2298,7 @@ subroutine RichardsJacobian(snes,xx,A,B,realization,pm_well,ierr)
   Mat :: A, B
   class(realization_subsurface_type) :: realization
   class(pm_well_type), pointer :: pm_well
+  class(pm_well_type), pointer :: cur_well
   PetscErrorCode :: ierr
 
   Mat :: J
@@ -2307,9 +2308,26 @@ subroutine RichardsJacobian(snes,xx,A,B,realization,pm_well,ierr)
   PetscReal :: norm
   character(len=MAXSTRINGLENGTH) :: string
 
+  PetscInt :: k,ghosted_id
+
   call PetscLogEventBegin(logging%event_r_jacobian,ierr);CHKERRQ(ierr)
 
   option => realization%option
+
+  ! Compute the perturbation pert for the well
+  if (richards_well_coupling == RICHARDS_FULLY_IMPLICIT_WELL) then
+    if (associated(pm_well)) then
+      cur_well => pm_well
+      do
+        if (.not. associated(cur_well)) exit
+        do k = 1:cur_well%well_grid%nsegments
+          ghosted_id = cur_well%well_grid%h_ghosted_id(k)
+          realization%patch%aux%richards%auxvars(ghosted_id)%pert = 1.d-6  ! TODO: is this ok? Do we need to do some proportion of the pressure or something
+        enddo
+        cur_well => cur_well%next_well
+      enddo
+    endif
+  endif
 
   call MatGetType(A,mat_type_A,ierr);CHKERRQ(ierr)
   call MatGetType(B,mat_type_B,ierr);CHKERRQ(ierr)
