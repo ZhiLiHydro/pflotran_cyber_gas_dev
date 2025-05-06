@@ -5140,7 +5140,7 @@ subroutine PMWellInitFluidVars(well,nsegments,reference_density,option)
   well%liq%xmass = 0.d0
 
   select case(option%iflowmode)
-    case(WF_MODE,SCO2_MODE,HMODE)
+    case(WF_MODE,SCO2_MODE,H_MODE)
       allocate(well%gas%s(nsegments))
       well%gas%den0 = reference_density(2)
       allocate(well%gas%den(nsegments))
@@ -5200,7 +5200,7 @@ subroutine PMWellInitRes(reservoir,nsegments,idof,option)
   allocate(reservoir%tmp_tran(idof,nsegments,2))
 
   select case(option%iflowmode)
-    case(WF_MODE,SCO2_MODE,HMODE)
+    case(WF_MODE,SCO2_MODE,H_MODE)
       allocate(reservoir%p_g(nsegments))
       allocate(reservoir%s_g(nsegments))
       allocate(reservoir%mobility_g(nsegments))
@@ -5243,11 +5243,10 @@ subroutine PMWellInitFlowSoln(flow_soln,nphase,nsegments)
   allocate(flow_soln%prev_soln%pl(nsegments))
   allocate(flow_soln%soln_save%pl(nsegments))
 
-  select case(option%iflowmode)
-    case(WF_MODE,SCO2_MODE,HMODE)
+  if (nphase > 1) then
       allocate(flow_soln%prev_soln%sg(nsegments))
       allocate(flow_soln%soln_save%sg(nsegments))
-  end select
+  end if
 
 end subroutine PMWellInitFlowSoln
 
@@ -5345,6 +5344,7 @@ subroutine PMWellInitializeWellFlow(pm_well)
 
   use SCO2_Aux_module
   use Hydrate_Aux_module
+  use Richards_Aux_module
 
   implicit none
 
@@ -5371,7 +5371,7 @@ subroutine PMWellInitializeWellFlow(pm_well)
   pm_well%well%liq%H = reservoir%H_l
 
   select case(option%iflowmode)
-    case(WF_MODE,SCO2_MODE,HMODE)
+    case(WF_MODE,SCO2_MODE,H_MODE)
       pm_well%well%pg = reservoir%p_g
       pm_well%well%gas%s = reservoir%s_g
       pm_well%well%gas%den = reservoir%den_g
@@ -5421,7 +5421,7 @@ subroutine PMWellInitializeWellFlow(pm_well)
     pm_well%well_pert(k)%bh_p = pm_well%well%bh_p
 
     select case(option%iflowmode)
-      case(WF_MODE,SCO2_MODE,HMODE)
+      case(WF_MODE,SCO2_MODE,H_MODE)
         pm_well%well_pert(k)%pg = reservoir%p_g
         pm_well%well_pert(k)%gas%s = reservoir%s_g
         pm_well%well_pert(k)%gas%den = reservoir%den_g
@@ -5462,7 +5462,7 @@ subroutine PMWellInitializeWellFlow(pm_well)
 
   if (option%iflowmode /= SCO2_MODE .and. &
       option%iflowmode /= H_MODE .and. &
-      option%iflowmode /= RICHARDS_MODE)
+      option%iflowmode /= RICHARDS_MODE) then
     initialize_well_flow = PETSC_FALSE
   endif
 
@@ -5865,6 +5865,10 @@ subroutine PMWellRichardsPerturb(pm_well)
     do idof = 1,option%nflowdof
       well => pm_well%well_pert(idof)
       well%bh_p = pm_well%well%bh_p
+
+      global_auxvar => &
+        pm_well%realization%patch%aux%global%auxvars(ghosted_id)
+
       if (idof == RICHARDS_WELL_DOF) then
         richards_auxvar => &
           pm_well%realization%patch%aux%richards%auxvars(ghosted_id)
@@ -5873,7 +5877,7 @@ subroutine PMWellRichardsPerturb(pm_well)
         if (.not. Initialized(richards_auxvar%well%pressure_bump)) then
           if (k == 1) then
             richards_auxvar%well%pressure_bump = (well%bh_p - &
-                      richards_auxvar%pres(lid)) + pres_bump
+                      global_auxvar%pres(lid)) + pres_bump
           else
             richards_auxvar%well%pressure_bump = 0.d0
           endif
@@ -5889,15 +5893,13 @@ subroutine PMWellRichardsPerturb(pm_well)
 
       material_auxvar => &
         pm_well%realization%patch%aux%material%auxvars(ghosted_id)
-      global_auxvar => &
-        pm_well%realization%patch%aux%global%auxvars(ghosted_id)
 
       reservoir%p_l(k) = global_auxvar%pres(option%liquid_phase)
       reservoir%s_l(k) = global_auxvar%sat(option%liquid_phase)
-      reservoir%mobility_l(k) = richards_auxvar%kvr(option%liquid_phase)
-      reservoir%kr_l(k) = richards_auxvar%kr(option%liquid_phase)
+      reservoir%mobility_l(k) = richards_auxvar%kvr
+      reservoir%kr_l(k) = richards_auxvar%kr
       reservoir%den_l(k) = global_auxvar%den_kg(option%liquid_phase)
-      reservoir%visc_l(k) = richards_auxvar%visc(option%liquid_phase)
+      reservoir%visc_l(k) = richards_auxvar%visc
       reservoir%xmass_liq(k,:) = global_auxvar%xmass
       reservoir%e_por(k) = material_auxvar%porosity  ! TODO: do I need to compute this using MaterialCompressSoil() as they do in hydrate (but not in richards?)
 
@@ -6304,20 +6306,8 @@ subroutine PMWellUpdateReservoirRichards(pm_well,update_index,segment_index)
 
     ghosted_id = pm_well%well_grid%h_ghosted_id(k)
 
-    if (Initialized(segment_index)) then
-      ! Use reservoir perturbation: only perturb one reservoir variable
-      ! at a time.
-      if (k == segment_index) then
-        richards_auxvar => &
-          pm_well%realization%patch%aux%richards%auxvars(indx,ghosted_id)
-      else
-        richards_auxvar => &
-          pm_well%realization%patch%aux%richards%auxvars(ZERO_INTEGER,ghosted_id)
-      endif
-    else
-      richards_auxvar => &
-        pm_well%realization%patch%aux%richards%auxvars(ZERO_INTEGER,ghosted_id)
-    endif
+    richards_auxvar => &
+      pm_well%realization%patch%aux%richards%auxvars(ghosted_id)
 
     if (k == 1 .and. indx == 0 .and. Initialized(richards_auxvar%well%bh_p)) &
       pm_well%well%bh_p = richards_auxvar%well%bh_p
@@ -6329,11 +6319,11 @@ subroutine PMWellUpdateReservoirRichards(pm_well,update_index,segment_index)
 
     reservoir%p_l(k) = global_auxvar%pres(option%liquid_phase)
     reservoir%s_l(k) = global_auxvar%sat(option%liquid_phase)
-    reservoir%mobility_l(k) = richards_auxvar%kvr(option%liquid_phase)
-    reservoir%kr_l(k) = richards_auxvar%kr(option%liquid_phase)
+    reservoir%mobility_l(k) = richards_auxvar%kvr
+    reservoir%kr_l(k) = richards_auxvar%kr
     reservoir%den_l(k) = global_auxvar%den_kg(option%liquid_phase)
-    reservoir%visc_l(k) = richards_auxvar%visc(option%liquid_phase)
-    reservoir%xmass_liq(k,:) = global_auxvar%xmass(:,option%liquid_phase)
+    reservoir%visc_l(k) = richards_auxvar%visc
+    reservoir%xmass_liq(k,:) = global_auxvar%xmass(option%liquid_phase)
     reservoir%e_por(k) = material_auxvar%porosity
 
     reservoir%temp(k) = 25.0  ! Constant as Richards does not solve for temperature
@@ -6487,6 +6477,8 @@ subroutine PMWellUpdateReservoirSrcSinkFlow(pm_well)
   use String_module
   use Hydrate_Aux_module, only: hydrate_well_coupling, &
                              HYDRATE_FULLY_IMPLICIT_WELL
+  use Richards_Aux_module, only: richards_well_coupling, &
+                             RICHARDS_FULLY_IMPLICIT_WELL
 
   implicit none
 
@@ -6643,8 +6635,9 @@ subroutine PMWellUpdateReservoirSrcSinkFlow(pm_well)
               source_sink%flow_condition%rate%dataset%rarray(1) = &
                                       -1.d0 * pm_well%well%liq%Q(k) ! [kg/s]
             else
-              source_sink%flow_condition%rate%dataset%rarray(1) = &
-                -1.d0 * pm_well%well%liq%Q(k) ! [kmol/s]
+              ! Not yet implemented
+              option%io_buffer = "Richards mode only supports a full implicit well."
+              call PrintErrMsg(option)
             endif
             source_sink%flow_condition%pressure%aux_real(1) = &
                                                             pm_well%well%pl(k)
@@ -7017,7 +7010,6 @@ subroutine PMWellModifyFlowResHydrostatic(this,residual)
         residual(local_start + j) = residual(local_start + j) + &
                                     this%well%liq%q(k)* &
                                     this%well%liq%xmass(k,j+1)
-        enddo
       enddo
   end select
 
@@ -7054,6 +7046,8 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
   use SCO2_Aux_module, only : SCO2_WELL_DOF, SCO2_TEMPERATURE_DOF, sco2_thermal
   use Hydrate_Aux_module, only : HYDRATE_WELL_DOF, HYDRATE_ENERGY_DOF, &
                                  hydrate_fmw_comp
+  use Richards_Aux_module, only: RICHARDS_WELL_DOF, &
+                             RICHARDS_FULLY_IMPLICIT_WELL
 
   implicit none
 
@@ -8872,9 +8866,8 @@ subroutine PMWellUpdatePropertiesRichardsFlow(pm_well,well,option)
   type(option_type) :: option
 
   PetscInt :: i,nsegments
-  PetscReal :: dwmol,dwp
+  PetscReal :: dwmol,dw
   PetscReal :: sat_pres
-  PetscReal :: den_kg_water, den_kg_liq
 
   PetscReal :: visc_liq
   PetscErrorCode :: ierr
@@ -8897,9 +8890,8 @@ subroutine PMWellUpdatePropertiesRichardsFlow(pm_well,well,option)
 
     do i = 1,nsegments
 
-      call EOSWaterDensity(well%temp(i),well%pl(i),den_kg_liq,PETSC_FALSE, &
-                           dw,dwmol,ierr)
-      well%liq%den(i) = den_kg_liq
+      call EOSWaterDensity(well%temp(i),well%pl(i),dw,dwmol,ierr)
+      well%liq%den(i) = dw
 
       call EOSWaterSaturationPressure(well%temp(i),sat_pres,ierr)
       call EOSWaterViscosity(well%temp(i),well%pl(i),sat_pres,visc_liq,ierr)

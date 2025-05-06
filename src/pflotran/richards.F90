@@ -215,7 +215,6 @@ subroutine RichardsSetupPatch(realization)
   ! count the number of source/sink connections and allocate
   ! auxvar data structures for them
   sum_connection = CouplerGetNumConnectionsInList(patch%source_sink_list)
-  write(*,*) "JOE: in richards got sum_connection =", sum_connection
   if (sum_connection > 0) then
     allocate(rich_auxvars_ss(sum_connection))
     do iconn = 1, sum_connection
@@ -922,7 +921,6 @@ subroutine RichardsUpdateAuxVarsPatch(realization,pm_well)
       source_sink => source_sink%next
       cycle
     endif
-    write(*,*) "JOE: RichardsUpdateAuxVarsPatch, ss=", source_sink%name
     cur_connection_set => source_sink%connection_set
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
@@ -2320,7 +2318,7 @@ subroutine RichardsJacobian(snes,xx,A,B,realization,pm_well,ierr)
       cur_well => pm_well
       do
         if (.not. associated(cur_well)) exit
-        do k = 1:cur_well%well_grid%nsegments
+        do k = 1, cur_well%well_grid%nsegments
           ghosted_id = cur_well%well_grid%h_ghosted_id(k)
           realization%patch%aux%richards%auxvars(ghosted_id)%pert = 1.d-6  ! TODO: is this ok? Do we need to do some proportion of the pressure or something
         enddo

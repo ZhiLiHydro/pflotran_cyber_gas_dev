@@ -167,13 +167,9 @@ subroutine RichardsAuxVarInit(auxvar,option)
   if (richards_well_coupling > ZERO_INTEGER) then
     allocate(auxvar%well)
     auxvar%well%pl = UNINITIALIZED_DOUBLE
-    auxvar%well%pg = UNINITIALIZED_DOUBLE
     auxvar%well%sl = UNINITIALIZED_DOUBLE
-    auxvar%well%sg = UNINITIALIZED_DOUBLE
     auxvar%well%dpl = UNINITIALIZED_DOUBLE
-    auxvar%well%dpg = UNINITIALIZED_DOUBLE
     auxvar%well%Ql = UNINITIALIZED_DOUBLE
-    auxvar%well%Qg = UNINITIALIZED_DOUBLE
     auxvar%well%bh_p = UNINITIALIZED_DOUBLE
     auxvar%well%pressure_bump = 0.d0
   else
