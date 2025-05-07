@@ -2798,13 +2798,12 @@ subroutine PMWellSetupHydrostatic(this)
         endif
 
       case(RICHARDS_MODE)
-        !source_sink%flow_condition => FlowRichardsConditionCreate(option)
-        string = 'RATE'
-        source_sink%flow_condition%rate => FlowSubConditionCreate(ONE_INTEGER)
+        source_sink%flow_condition => FlowConditionCreate(option)
+        source_sink%flow_condition%rate => FlowSubConditionCreate(TWO_INTEGER)
         source_sink%flow_condition%rate%itype = SCALED_MASS_RATE_SS
-        source_sink%flow_condition%pressure = FlowSubConditionCreate(ONE_INTEGER)
+        source_sink%flow_condition%pressure => FlowSubConditionCreate(TWO_INTEGER)
         allocate(source_sink%flow_condition%rate%dataset%rarray(1))
-        source_sink%flow_condition%rate%dataset%rarray(1) = 0.d0
+        source_sink%flow_condition%rate%dataset%rarray(:) = 0.d0
         source_sink%flow_condition%well => FlowSubConditionCreate(ONE_INTEGER)
         ! Bottom of hole is special for fully implicit coupling with steady
         ! state well model.
@@ -5900,7 +5899,7 @@ subroutine PMWellRichardsPerturb(pm_well)
       reservoir%kr_l(k) = richards_auxvar%kr
       reservoir%den_l(k) = global_auxvar%den_kg(option%liquid_phase)
       reservoir%visc_l(k) = richards_auxvar%visc
-      reservoir%xmass_liq(k,:) = global_auxvar%xmass
+      reservoir%xmass_liq(k,:) = 1.0
       reservoir%e_por(k) = material_auxvar%porosity  ! TODO: do I need to compute this using MaterialCompressSoil() as they do in hydrate (but not in richards?)
 
       reservoir%kx(k) = material_auxvar%permeability(1)
@@ -6323,7 +6322,7 @@ subroutine PMWellUpdateReservoirRichards(pm_well,update_index,segment_index)
     reservoir%kr_l(k) = richards_auxvar%kr
     reservoir%den_l(k) = global_auxvar%den_kg(option%liquid_phase)
     reservoir%visc_l(k) = richards_auxvar%visc
-    reservoir%xmass_liq(k,:) = global_auxvar%xmass(option%liquid_phase)
+    reservoir%xmass_liq(k,:) = 1.0
     reservoir%e_por(k) = material_auxvar%porosity
 
     reservoir%temp(k) = 25.0  ! Constant as Richards does not solve for temperature
@@ -8921,9 +8920,12 @@ subroutine PMWellCopyWell(well,well_copy,transport)
   well_copy%liq%den(:) = well%liq%den0
   well_copy%liq%visc(:) = well%liq%visc(:)
   well_copy%liq%kr = well%liq%kr
-  well_copy%gas%den(:) = well%gas%den0
-  well_copy%gas%visc(:) = well%gas%visc(:)
-  well_copy%gas%kr = well%gas%kr
+  if(associated(well_copy%gas%den)) &
+    well_copy%gas%den(:) = well%gas%den0
+  if(associated(well_copy%gas%visc)) &
+    well_copy%gas%visc(:) = well%gas%visc(:)
+  if(associated(well_copy%gas%kr)) &
+    well_copy%gas%kr = well%gas%kr
   well_copy%diameter(:) = well%diameter(:)
   well_copy%permeability(:) = well%permeability(:)
   well_copy%phi(:) = well%phi(:)
@@ -8940,7 +8942,8 @@ subroutine PMWellCopyWell(well,well_copy,transport)
   well_copy%th_qg = well%th_qg
   well_copy%total_rate = well%total_rate
   well_copy%liq%visc(:) = well%liq%visc(:)
-  well_copy%gas%visc(:) = well%gas%visc(:)
+  if(associated(well_copy%gas%visc)) &
+    well_copy%gas%visc(:) = well%gas%visc(:)
   well_copy%temp(:) = well%temp(:)
   call PMWellCopyReservoir(well%reservoir, well_copy%reservoir,transport)
 

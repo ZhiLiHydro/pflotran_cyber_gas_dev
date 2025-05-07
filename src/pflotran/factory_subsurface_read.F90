@@ -1201,6 +1201,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
         call InputReadWord(input,option,flow_condition%name,PETSC_TRUE)
         call InputErrorMsg(input,option,'FLOW_CONDITION','name')
         call PrintMsg(option,flow_condition%name)
+        write(*,*) "JOE: reading FC: ", flow_condition%name
         select case(option%iflowmode)
           case(G_MODE,WF_MODE)
             call FlowConditionGeneralRead(flow_condition,input,option)

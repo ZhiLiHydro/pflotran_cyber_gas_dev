@@ -163,17 +163,17 @@ SUBSURFACE
 
     !=========================== condition couplers ===============================
 
-    INITIAL_CONDITION
+    INITIAL_CONDITION ic
       FLOW_CONDITION initial
       REGION all
     END
 
-    BOUNDARY_CONDITION
+    BOUNDARY_CONDITION bc
       FLOW_CONDITION boundary
       REGION west
     END
 
-    WELL_COUPLER
+    WELL_COUPLER well
       FLOW_CONDITION injection
       WELL well01
     END

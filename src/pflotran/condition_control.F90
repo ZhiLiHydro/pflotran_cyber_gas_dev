@@ -55,6 +55,7 @@ subroutine CondControlAssignFlowInitCond(realization)
   use WIPP_Flow_Aux_module, wf_dof_to_primary_variable => dof_to_primary_variable
   use Hydrate_Aux_module, hyd_dof_to_primary_variable => dof_to_primary_variable
   use SCO2_Aux_module, sco2_dof_to_primary_variable => dof_to_primary_variable
+  use Richards_Aux_module
 
   implicit none
 
@@ -76,6 +77,7 @@ subroutine CondControlAssignFlowInitCond(realization)
   type(flow_general_condition_type), pointer :: general
   type(flow_hydrate_condition_type), pointer :: hydrate
   type(flow_sco2_condition_type) , pointer :: sco2
+  type(flow_condition_type) , pointer :: richards
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(material_property_ptr_type), pointer :: material_property_array(:)
   class(dataset_base_type), pointer :: dataset
@@ -1254,6 +1256,78 @@ subroutine CondControlAssignFlowInitCond(realization)
 
         call VecRestoreArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
 
+      case(RICHARDS_MODE)
+
+        call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+
+        xx_p = UNINITIALIZED_DOUBLE
+
+        initial_condition => patch%initial_condition_list%first
+        do
+
+          if (.not.associated(initial_condition)) exit
+
+          if (.not.associated(initial_condition%flow_aux_real_var)) then
+            if (.not.associated(initial_condition%flow_condition)) then
+              option%io_buffer = 'Flow condition is NULL in initial condition'
+              call PrintErrMsg(option)
+            endif
+
+            richards => initial_condition%flow_condition
+
+            do icell = 1,initial_condition%region%num_cells
+              local_id = initial_condition%region%cell_ids(icell)
+              ghosted_id = grid%nL2G(local_id)
+              iend = local_id*option%nflowdof
+              ibegin = iend-option%nflowdof+1
+
+              if (patch%imat(ghosted_id) <= 0) then
+                xx_p(ibegin:iend) = 0.d0
+                patch%aux%Global%auxvars(ghosted_id)%istate = 0
+                cycle
+              endif
+
+              ! decrement ibegin to give a local offset of 0
+              ibegin = ibegin - 1
+
+              xx_p(ibegin + RICHARDS_PRESSURE_DOF) = &
+                richards%pressure%dataset%rarray(1)
+
+              if (richards_well_coupling == RICHARDS_FULLY_IMPLICIT_WELL) then
+                xx_p(ibegin + RICHARDS_WELL_DOF) = &
+                    richards%pressure%dataset%rarray(1)
+              endif
+
+              patch%aux%Global%auxvars(ghosted_id)%istate = &
+                initial_condition%flow_condition%iphase
+            enddo
+          else
+            do iconn=1,initial_condition%connection_set%num_connections
+              local_id = initial_condition%connection_set%id_dn(iconn)
+              ghosted_id = grid%nL2G(local_id)
+              if (patch%imat(ghosted_id) <= 0) then
+                iend = local_id*option%nflowdof
+                ibegin = iend-option%nflowdof+1
+                xx_p(ibegin:iend) = 0.d0
+                patch%aux%Global%auxvars(ghosted_id)%istate = 0
+                cycle
+              endif
+              offset = (local_id-1)*option%nflowdof
+              istate = initial_condition%flow_aux_int_var(1,iconn)
+              do idof = 1, option%nflowdof
+                xx_p(offset+idof) = &
+                  initial_condition%flow_aux_real_var( &
+                  initial_condition%flow_aux_mapping( &
+                  RICHARDS_PRESSURE_DOF),iconn)
+              enddo
+              patch%aux%Global%auxvars(ghosted_id)%istate = istate
+            enddo
+          endif
+          initial_condition => initial_condition%next
+        enddo
+
+        call VecRestoreArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+
       case default
         ! assign initial conditions values to domain
         call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
@@ -1264,6 +1338,8 @@ subroutine CondControlAssignFlowInitCond(realization)
         do
 
           if (.not.associated(initial_condition)) exit
+          write(*,*) "JOE: IC: ", initial_condition%name
+          write(*,*) "JOE: FC: ", initial_condition%flow_condition%name
 
           dataset_flag = PETSC_FALSE
           do idof = 1, option%nflowdof

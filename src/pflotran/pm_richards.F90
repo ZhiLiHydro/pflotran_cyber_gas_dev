@@ -103,6 +103,7 @@ subroutine PMRichardsSetFlowMode(pm_well,option)
 !
 
   use Option_module
+  use Richards_Aux_module
 
   implicit none
 
@@ -123,7 +124,7 @@ subroutine PMRichardsSetFlowMode(pm_well,option)
         call PrintErrMsg(option)
       endif
       richards_well_coupling = RICHARDS_FULLY_IMPLICIT_WELL
-      option%nflowdof = option%nflowdof + 1 ! TODO: What is going on here??
+      option%nflowdof = option%nflowdof + 1
       option%coupled_well = PETSC_TRUE
       RICHARDS_WELL_DOF = option%nflowdof
     else
