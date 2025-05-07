@@ -796,7 +796,7 @@ recursive subroutine PMFracConnectedness(this,natural_id)
   if (.not.this%clip_unconnected_fracs) return
 
   if (any(this%allfrac_unique_cell_ids == natural_id)) then
-    i = findloc(this%allfrac_unique_cell_ids,natural_id,dim=1)
+    i = FINDLOC(this%allfrac_unique_cell_ids,natural_id,1)
     this%connected_to_start(i) = PETSC_TRUE
   else
     ! write(*,*) " "
@@ -823,7 +823,7 @@ recursive subroutine PMFracConnectedness(this,natural_id)
         !             natural_id_dn, "."
         if (any(this%allfrac_unique_cell_ids == natural_id_dn)) then
           ! write(*,*) "!! Cell", natural_id_dn, "is a fracture cell!!"
-          i = findloc(this%allfrac_unique_cell_ids,natural_id_dn,dim=1)
+          i = FINDLOC(this%allfrac_unique_cell_ids,natural_id_dn,1)
           if (.not.this%connected_to_start(i)) then
             call PMFracConnectedness(this,natural_id_dn)
           endif
@@ -838,7 +838,7 @@ recursive subroutine PMFracConnectedness(this,natural_id)
         !             natural_id_up, "."
         if (any(this%allfrac_unique_cell_ids == natural_id_up)) then
           ! write(*,*) "!! Cell", natural_id_up, "is a fracture cell!!"
-          i = findloc(this%allfrac_unique_cell_ids,natural_id_up,dim=1)
+          i = FINDLOC(this%allfrac_unique_cell_ids,natural_id_up,1)
           if (.not.this%connected_to_start(i)) then
             call PMFracConnectedness(this,natural_id_up)
           endif
@@ -950,7 +950,7 @@ subroutine PMFracInitializeRun(this)
       if (this%clip_unconnected_fracs) then
         sit2 = any(icell == this%unique_connected_cell_ids)
       endif
-      
+
       if (sit1 .or. sit2) then
         material_auxvar%porosity_0 = material_auxvar%porosity_0 + &
                                      (cur_fracture%hap0/L)
