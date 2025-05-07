@@ -914,6 +914,9 @@ subroutine PMFracInitializeRun(this)
   this%sum_frac_kx = 0.d0; this%sum_frac_ky = 0.d0; this%sum_frac_kz = 0.d0
   this%max_frac_hap = 0.d0; this%sum_frac_hap = 0.d0
 
+  sit1 = .not.this%clip_unconnected_fracs
+  sit2 = PETSC_FALSE
+
   cur_fracture => this%fracture_list
   do
     if (.not.associated(cur_fracture)) exit
@@ -944,9 +947,10 @@ subroutine PMFracInitializeRun(this)
       this%sum_frac_kz(icell) = this%sum_frac_kz(icell) + kz
       this%sum_frac_hap(icell) = this%sum_frac_hap(icell) + cur_fracture%hap0
 
-      sit1 = .not.this%clip_unconnected_fracs
-      sit2 = this%clip_unconnected_fracs .and. &
-             (any(icell == this%unique_connected_cell_ids))
+      if (this%clip_unconnected_fracs) then
+        sit2 = any(icell == this%unique_connected_cell_ids)
+      endif
+      
       if (sit1 .or. sit2) then
         material_auxvar%porosity_0 = material_auxvar%porosity_0 + &
                                      (cur_fracture%hap0/L)
