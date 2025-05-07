@@ -118,11 +118,17 @@
      Mean:   1.0000000000000E+00
         5:         1
         9:         1
+-- PRESSURE: Fracture Aperture --
+      Max:   1.2667842535783E-02
+      Min:   0.0000000000000E+00
+     Mean:   5.7645447533507E-03
+        5:   0.0000000000000E+00
+        9:   1.0812194315434E-02
 -- GENERIC: LIQUID VELOCITY [m/y] --
         5:  -2.6603952741656E-02  1.4309994933154E-03  1.0914418783624E+00
         9:  -1.7194192318257E+00 -3.0631615766135E-01  2.7926747255783E+00
 -- SOLUTION: Flow --
-   Time (seconds):   3.2719615499923E-01
+   Time (seconds):   3.2225607999658E-01
    Time Steps:          305
    Newton Iterations:          612
    Linear Solver Iterations:         7153
@@ -130,7 +136,7 @@
    Solution 2-Norm:   1.9358187212384E+07
    Residual 2-Norm:   2.3878941754426E-10
 -- SOLUTION: Transport --
-   Time (seconds):   2.8419293500065E-01
+   Time (seconds):   2.8088171200125E-01
    Time Steps:          322
    Newton Iterations:          995
    Linear Solver Iterations:         1399

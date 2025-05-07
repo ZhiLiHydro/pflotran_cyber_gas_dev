@@ -411,3 +411,4 @@ clean-tests :
 	-rm -f geophys/ert/*.h5
 	-rm -f geophys/ert/*.dat
 	-rm -f inversion/*.h5
+	-rm -f fracture/*.h5

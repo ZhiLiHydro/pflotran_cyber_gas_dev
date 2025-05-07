@@ -124,6 +124,10 @@ module PM_Fracture_class
     PetscReal, pointer :: sum_frac_kx(:)
     PetscReal, pointer :: sum_frac_ky(:)
     PetscReal, pointer :: sum_frac_kz(:)
+    ! maximum fracture aperture at global cell ids
+    PetscReal, pointer :: max_frac_hap(:)
+    ! sum of fracture aperture at global cell ids
+    PetscReal, pointer :: sum_frac_hap(:)
     ! behavior at fracture intersections (1=sum,2=max)
     PetscInt :: frac_intersection_type
     ! thermal expansion coefficient # [1/C]
@@ -193,6 +197,8 @@ function PMFractureCreate()
   nullify(this%sum_frac_kx)
   nullify(this%sum_frac_ky)
   nullify(this%sum_frac_kz)
+  nullify(this%max_frac_hap)
+  nullify(this%sum_frac_hap)
   this%frac_intersection_type = 1  ! (1=sum;2=max)
   this%nfrac = 0
   this%max_frac = UNINITIALIZED_INTEGER
@@ -336,6 +342,7 @@ subroutine PMFracSetup(this)
   ! Date: 12/13/2023
   !
   use Region_module
+  use Material_Aux_module
   use Grid_module
 
   implicit none
@@ -364,11 +371,19 @@ subroutine PMFracSetup(this)
   PetscBool :: within_x,within_y,within_z
   PetscBool :: frac_is_within_grid_cell_volume
   PetscBool :: added
+  type(material_auxvar_type), pointer :: material_auxvar
 
   call this%SetRealization()
 
   option => this%option
   res_grid => this%realization%patch%grid
+
+  do k = 1,res_grid%nlmax
+    material_auxvar => &
+        this%realization%patch%aux%material%auxvars(res_grid%nL2G(k))
+    material_auxvar%fracture_aperture = 0.d0
+  enddo
+
   nf = 0
   read_max = 15000 ! Set to a large but realistic number
 
@@ -731,11 +746,15 @@ subroutine PMFracSetup(this)
   allocate(this%max_frac_ky(res_grid%nmax))
   allocate(this%max_frac_kz(res_grid%nmax))
   this%max_frac_kx = 0.d0; this%max_frac_ky = 0.d0; this%max_frac_kz = 0.d0
+  allocate(this%max_frac_hap(res_grid%nmax))
+  this%max_frac_hap = 0.d0
 
   allocate(this%sum_frac_kx(res_grid%nmax))
   allocate(this%sum_frac_ky(res_grid%nmax))
   allocate(this%sum_frac_kz(res_grid%nmax))
   this%sum_frac_kx = 0.d0; this%sum_frac_ky = 0.d0; this%sum_frac_kz = 0.d0
+  allocate(this%sum_frac_hap(res_grid%nmax))
+  this%sum_frac_hap = 0.d0
 
   deallocate(temp_cell_ids)
   deallocate(temp_allfrac_cell_ids)
@@ -861,6 +880,7 @@ subroutine PMFracInitializeRun(this)
   use Material_Aux_module
   use Global_Aux_module
   use General_Aux_module
+  use Output_Aux_module
   use Field_module
   use Grid_module
 
@@ -871,6 +891,7 @@ subroutine PMFracInitializeRun(this)
   type(material_auxvar_type), pointer :: material_auxvar
   type(global_auxvar_type), pointer :: global_auxvar
   type(general_auxvar_type), pointer :: general_auxvar
+  type(output_variable_list_type), pointer :: output_var_list
   type(option_type), pointer :: option
   type(field_type), pointer :: field
   type(grid_type), pointer :: grid
@@ -891,6 +912,7 @@ subroutine PMFracInitializeRun(this)
   call VecGetArrayReadF90(field%perm0_zz,perm0_zz_p,ierr);CHKERRQ(ierr)
   this%max_frac_kx = 0.d0; this%max_frac_ky = 0.d0; this%max_frac_kz = 0.d0
   this%sum_frac_kx = 0.d0; this%sum_frac_ky = 0.d0; this%sum_frac_kz = 0.d0
+  this%max_frac_hap = 0.d0; this%sum_frac_hap = 0.d0
 
   cur_fracture => this%fracture_list
   do
@@ -913,11 +935,14 @@ subroutine PMFracInitializeRun(this)
       this%max_frac_kx(icell) = max(kx,this%max_frac_kx(icell))
       this%max_frac_ky(icell) = max(ky,this%max_frac_ky(icell))
       this%max_frac_kz(icell) = max(kz,this%max_frac_kz(icell))
+      this%max_frac_hap(icell) = &
+        max(cur_fracture%hap0,this%max_frac_hap(icell))
 
       ! record the sum of permeability encountered so far
       this%sum_frac_kx(icell) = this%sum_frac_kx(icell) + kx
       this%sum_frac_ky(icell) = this%sum_frac_ky(icell) + ky
       this%sum_frac_kz(icell) = this%sum_frac_kz(icell) + kz
+      this%sum_frac_hap(icell) = this%sum_frac_hap(icell) + cur_fracture%hap0
 
       sit1 = .not.this%clip_unconnected_fracs
       sit2 = this%clip_unconnected_fracs .and. &
@@ -955,15 +980,19 @@ subroutine PMFracInitializeRun(this)
   if (associated(cellid_list)) then
     do k = 1,size(cellid_list)
       icell = cellid_list(k)
+      material_auxvar => &
+        this%realization%patch%aux%material%auxvars(grid%nL2G(icell))
       if (this%frac_intersection_type == 2) then ! maximum
         perm0_xx_p(icell) = perm0_xx_p(icell) + this%max_frac_kx(icell)
         perm0_yy_p(icell) = perm0_yy_p(icell) + this%max_frac_ky(icell)
         perm0_zz_p(icell) = perm0_zz_p(icell) + this%max_frac_kz(icell)
+        material_auxvar%fracture_aperture = this%max_frac_hap(icell)
       endif
       if (this%frac_intersection_type == 1) then ! summation
         perm0_xx_p(icell) = perm0_xx_p(icell) + this%sum_frac_kx(icell)
         perm0_yy_p(icell) = perm0_yy_p(icell) + this%sum_frac_ky(icell)
         perm0_zz_p(icell) = perm0_zz_p(icell) + this%sum_frac_kz(icell)
+        material_auxvar%fracture_aperture = this%sum_frac_hap(icell)
       endif
     enddo
   endif
@@ -984,6 +1013,16 @@ subroutine PMFracInitializeRun(this)
   call VecRestoreArrayReadF90(field%perm0_xx,perm0_xx_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayReadF90(field%perm0_yy,perm0_yy_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayReadF90(field%perm0_zz,perm0_zz_p,ierr);CHKERRQ(ierr)
+
+  ! Setup the output variables for snapshot and observation files
+  output_var_list => this%realization%output_option%output_snap_variable_list
+  call PMFracSetPlotVariables(output_var_list,this)
+  if (.not.associated( &
+                this%realization%output_option%output_snap_variable_list, &
+                this%realization%output_option%output_obs_variable_list)) then
+    output_var_list => this%realization%output_option%output_obs_variable_list
+    call PMFracSetPlotVariables(output_var_list,this)
+  endif
 
 end subroutine PMFracInitializeRun
 
@@ -2076,6 +2115,7 @@ subroutine PMFracSolve(this,time,ierr)
   call VecGetArrayReadF90(field%perm0_yy,perm0_yy_p,ierr);CHKERRQ(ierr)
   this%max_frac_kx = 0.d0; this%max_frac_ky = 0.d0; this%max_frac_kz = 0.d0
   this%sum_frac_kx = 0.d0; this%sum_frac_ky = 0.d0; this%sum_frac_kz = 0.d0
+  this%max_frac_hap = 0.d0; this%sum_frac_hap = 0.d0
 
   cur_fracture => this%fracture_list
   do
@@ -2119,11 +2159,14 @@ subroutine PMFracSolve(this,time,ierr)
       this%max_frac_kx(icell) = max(kx,this%max_frac_kx(icell))
       this%max_frac_ky(icell) = max(ky,this%max_frac_ky(icell))
       this%max_frac_kz(icell) = max(kz,this%max_frac_kz(icell))
+      this%max_frac_hap(icell) = &
+        max(cur_fracture%hap(k),this%max_frac_hap(icell))
 
       ! record the sum of permeability encountered so far
       this%sum_frac_kx(icell) = this%sum_frac_kx(icell) + kx
       this%sum_frac_ky(icell) = this%sum_frac_ky(icell) + ky
       this%sum_frac_kz(icell) = this%sum_frac_kz(icell) + kz
+      this%sum_frac_hap(icell) = this%sum_frac_hap(icell) + cur_fracture%hap(k)
 
       ! reset previous temperature for next time step
       cur_fracture%prev_temperature(k) = cur_temperature
@@ -2142,15 +2185,19 @@ subroutine PMFracSolve(this,time,ierr)
   if (associated(cellid_list)) then
     do k = 1,size(cellid_list)
       icell = cellid_list(k)
+      material_auxvar => &
+        this%realization%patch%aux%material%auxvars(grid%nL2G(icell))
       if (this%frac_intersection_type == 2) then ! maximum
         perm0_xx_p(icell) = perm0_xx_p(icell) + this%max_frac_kx(icell)
         perm0_yy_p(icell) = perm0_yy_p(icell) + this%max_frac_ky(icell)
         perm0_zz_p(icell) = perm0_zz_p(icell) + this%max_frac_kz(icell)
+        material_auxvar%fracture_aperture = this%max_frac_hap(icell)
       endif
       if (this%frac_intersection_type == 1) then ! summation
         perm0_xx_p(icell) = perm0_xx_p(icell) + this%sum_frac_kx(icell)
         perm0_yy_p(icell) = perm0_yy_p(icell) + this%sum_frac_ky(icell)
         perm0_zz_p(icell) = perm0_zz_p(icell) + this%sum_frac_kz(icell)
+        material_auxvar%fracture_aperture = this%sum_frac_hap(icell)
       endif
     enddo
   endif
@@ -2175,6 +2222,29 @@ subroutine PMFracSolve(this,time,ierr)
   ierr = 0 ! If this is not set to zero, TS_STOP_FAILURE occurs
 
 end subroutine PMFracSolve
+
+! ************************************************************************** !
+
+subroutine PMFracSetPlotVariables(list,this)
+  !
+  ! Adds variables to be printed for plotting.
+  !
+  ! Author: Jenn Frederick
+  ! Date: 04/23/2025
+  !
+  use Output_Aux_module
+  use Variables_module
+
+  type(output_variable_list_type), pointer :: list
+  class(pm_fracture_type) :: this
+
+  character(len=MAXWORDLENGTH) :: name, units
+
+  name = 'Fracture Aperture'
+  units = 'm'
+  call OutputVariableAddToList(list,name,OUTPUT_GENERIC,units,FRACTURE_APERTURE)
+
+end subroutine PMFracSetPlotVariables
 
 ! ************************************************************************** !
 
