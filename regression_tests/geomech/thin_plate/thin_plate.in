@@ -17,7 +17,7 @@ END
 SUBSURFACE
     #=================== Discretization =========================
     GRID
-        TYPE unstructured_explicit datafiles/MP_longplate_geomech_grid.h5
+        TYPE unstructured_explicit datafiles/MP_longplate_geomech_grid.uge
         UPWIND_FRACTION_METHOD CELL_VOLUME
         PERM_TENSOR_TO_SCALAR_MODEL FLOW
     END
