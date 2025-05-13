@@ -773,6 +773,8 @@ subroutine RichardsUpdateAuxVarsPatch(realization,pm_well)
   PetscReal :: xxbc(realization%option%nflowdof), Pl
   PetscErrorCode :: ierr
 
+  write(*,*) "JOE: RichardsUpdateAuxVarsPatch()"
+
   call PetscLogEventBegin(logging%event_r_auxvars,ierr);CHKERRQ(ierr)
 
   option => realization%option
@@ -921,6 +923,7 @@ subroutine RichardsUpdateAuxVarsPatch(realization,pm_well)
       source_sink => source_sink%next
       cycle
     endif
+    write(*,*) "JOE: - source_sink ", source_sink%name
     cur_connection_set => source_sink%connection_set
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
@@ -941,9 +944,13 @@ subroutine RichardsUpdateAuxVarsPatch(realization,pm_well)
     cur_well => pm_well
     do
       if (.not. associated(cur_well)) exit
+      write(*,*) "JOE: - Considering well..."
       if (associated(cur_well%flow_condition)) then
+        write(*,*) "JOE:  - Found flow cond ", cur_well%flow_condition%name
         well_flow_condition => cur_well%flow_condition
         if (associated(well_flow_condition%rate)) then
+          write(*,*) "JOE:  - Has a rate ", well_flow_condition%rate%name
+          write(*,*) "JOE:  - rate ", well_flow_condition%rate%dataset%rarray
           if (any(well_flow_condition%rate%dataset%rarray(:) < 0.d0)) then
             cur_well%well%total_rate = well_flow_condition%rate%dataset% &
                                        rarray(1)
@@ -959,6 +966,7 @@ subroutine RichardsUpdateAuxVarsPatch(realization,pm_well)
           endif
         endif
         if (Initialized(cur_well%well%bh_p)) then
+          write(*,*) "JOE:  - Has a bhp ", cur_well%well%bh_p
           do idof = 1,option%nflowdof
             call PMWellCopyWell(cur_well%well,cur_well%well_pert(idof), &
                                 PETSC_FALSE)
@@ -1867,6 +1875,8 @@ subroutine RichardsResidualSourceSink(r,realization,pm_well,ierr)
   PetscBool :: inhibit_flow_above_pressure
   PetscReal :: dummy
 
+  PetscInt :: JOE_debug_i
+
   character(len=MAXSTRINGLENGTH) :: srcsink_name
 
   Mat, parameter :: null_mat = tMat(0)
@@ -1883,6 +1893,8 @@ subroutine RichardsResidualSourceSink(r,realization,pm_well,ierr)
   global_auxvars_ss => patch%aux%Global%auxvars_ss
   material_auxvars => patch%aux%Material%auxvars
 
+  write(*,*) "JOE: RichardsResidualSourceSink()"
+
   ! now assign access pointer to local variables
   call VecGetArrayF90(r,r_p,ierr);CHKERRQ(ierr)
 #if defined(CLM_PFLOTRAN) || defined(CLM_OFFLINE)
@@ -1897,13 +1909,24 @@ subroutine RichardsResidualSourceSink(r,realization,pm_well,ierr)
       do
         if (.not. associated(cur_well)) exit
         if (any(cur_well%well_grid%h_rank_id == option%myrank)) then
+          write(*,*) "JOE: - Updating flow rates..."
           call cur_well%UpdateFlowRates(ZERO_INTEGER,ZERO_INTEGER,-999,ierr)
+          write(*,*) "JOE: - Modifying residual"
+          write(*,*) "JOE:   -  was r_p(",size(r_p),")"
+          do JOE_debug_i = 0, size(r_p)
+            write(*,*) "JOE:      ", r_p(JOE_debug_i)
+          enddo
           call cur_well%ModifyFlowResidual(r_p)
+          write(*,*) "JOE:   -  now r_p(",size(r_p),")"
+          do JOE_debug_i = 0, size(r_p)
+            write(*,*) "JOE:      ", r_p(JOE_debug_i)
+          enddo
           source_sink => patch%source_sink_list%first
           do
             if (.not.associated(source_sink)) exit
             if (associated(source_sink%flow_condition%well)) then
               do k = 1,cur_well%well_grid%nsegments
+                write(*,*) "JOE: - In seg ", k
                 if (cur_well%well_grid%h_rank_id(k) /= option%myrank) cycle
                 srcsink_name = trim(cur_well%name) // '_well_segment_' // &
                               StringWrite(k)
@@ -1912,6 +1935,7 @@ subroutine RichardsResidualSourceSink(r,realization,pm_well,ierr)
                   if (associated(patch%ss_flow_vol_fluxes)) then
                     patch%ss_flow_vol_fluxes(ONE_INTEGER,sum_connection) = &
                                       -1.d0 * cur_well%well%liq%Q(k) ! [kg/s]
+                    write(*,*) "JOE:   - Q is now ", cur_well%well%liq%Q(k)
                   endif
                   exit
                 endif
@@ -2990,6 +3014,8 @@ subroutine RichardsJacobianSourceSink(A,realization,pm_well,ierr)
   PetscBool :: inhibit_flow_above_pressure
   PetscReal :: derivative
 
+  write(*,*) "JOE: RichardsJacobianSourceSink()"
+
   patch => realization%patch
   grid => patch%grid
   option => realization%option
@@ -3141,10 +3167,14 @@ subroutine RichardsJacobianSourceSink(A,realization,pm_well,ierr)
         if (.not. associated(cur_well)) exit
         if (any(cur_well%well_grid%h_rank_id == option%myrank)) then
           ! Perturb the well and well's reservoir variables.
+          write(*,*) "JOE: - perturbing well"
           call cur_well%Perturb()
           ! Go through and update the well contributions to the Jacobian:
           ! dRi/d(P_well), dRwell/d(P_well), dRi/dxi, and dRwell,dxi
+          write(*,*) "JOE: - ModifyFlowJacobian"
+          write(*,*) "JOE:   - jac was    ", A
           call cur_well%ModifyFlowJacobian(A,ierr)
+          write(*,*) "JOE:   - jac is now ", A
         endif
         cur_well => cur_well%next_well
       enddo

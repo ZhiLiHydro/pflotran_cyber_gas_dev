@@ -289,6 +289,8 @@ subroutine PatchProcessCouplers(patch,flow_conditions,transport_conditions, &
   PetscBool :: iflag
   PetscErrorCode :: ierr
 
+  write(*,*) "JOE: PatchProcessCouplers()"
+
   ! boundary conditions
   coupler => patch%boundary_condition_list%first
   do
@@ -556,6 +558,7 @@ subroutine PatchProcessCouplers(patch,flow_conditions,transport_conditions, &
   end select
   do
     if (.not.associated(coupler)) exit
+    write(*,*) "JOE: - looking at coupler ", coupler%name
     ! pointer to flow condition
     if (option%nflowdof > 0) then
       if (len_trim(coupler%flow_condition_name) > 0) then
@@ -570,6 +573,7 @@ subroutine PatchProcessCouplers(patch,flow_conditions,transport_conditions, &
                    '" not found in flow condition list'
           call PrintErrMsg(option)
         endif
+        write(*,*) " -   Got flow cond ", coupler%flow_condition%name
       else
         option%io_buffer = 'A FLOW_CONDITION must be specified in &
                            &WELL_COUPLER: ' // trim(coupler%name) // '.'
@@ -950,12 +954,14 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
   character(len=MAXSTRINGLENGTH) :: string
   PetscInt :: temp_int
 
+  write(*,*) "JOE: PatchInitCouplerAuxVars()"
+
   if (.not.associated(coupler_list)) return
 
   coupler => coupler_list%first
   do
     if (.not.associated(coupler)) exit
-
+    write(*,*) "JOE: - Considering coupler ", coupler%name
     if (associated(coupler%connection_set)) then
       num_connections = coupler%connection_set%num_connections
 
@@ -975,6 +981,7 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
               associated(coupler%flow_condition%general) .or. &
               associated(coupler%flow_condition%hydrate) .or. &
               associated(coupler%flow_condition%sco2)) then
+            write(*,*) "JOE:   - press, conc, sat, temp, gen, hyd, sco2"
 
             ! allocate arrays that match the number of connections
             select case(option%iflowmode)
@@ -989,6 +996,7 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
                       temp_int = temp_int + 1
                   end select
                 endif
+                write(*,*) "JOE:     - alloc ", temp_int, ", ", num_connections
                 allocate(coupler%flow_aux_real_var(temp_int,num_connections))
                 allocate(coupler%flow_aux_int_var(1,num_connections))
                 coupler%flow_aux_real_var = 0.d0
@@ -4393,6 +4401,10 @@ subroutine PatchUpdateCouplerAuxVarsRich(patch,coupler,option)
             flow_condition%pressure%aux_real(1)
         endif
     end select
+    if (richards_well_coupling == RICHARDS_FULLY_IMPLICIT_WELL) then
+      coupler%flow_aux_real_var(RICHARDS_WELL_DOF, 1:num_connections) = &
+                  coupler%flow_aux_real_var(RICHARDS_PRESSURE_DOF,1:num_connections)
+    endif
   endif
   if (associated(flow_condition%saturation)) then
     call PatchUpdateCouplerSaturation(coupler,option,patch%grid, &

@@ -28,7 +28,7 @@ SUBSURFACE
     !=========================== discretization ===================================
 
     GRID
-      GRAVITY 0.0d0  0.0d0  0.0d0
+      GRAVITY 0.0d0  0.0d0  -9.81d0  ! TODO: We seem to need gravity /= 0 for hydrostatic wells. This doesn't seem right
       TYPE structured
       NXYZ 3 3 3
   	      BOUNDS

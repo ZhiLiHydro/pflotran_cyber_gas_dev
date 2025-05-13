@@ -281,6 +281,13 @@ subroutine RichardsAuxVarCompute(x,auxvar,global_auxvar,material_auxvar, &
     call MaterialAuxVarCompute(material_auxvar,global_auxvar%pres(1))
   endif
 
+  if (richards_well_coupling == RICHARDS_FULLY_IMPLICIT_WELL) then
+    ! This is an initialization hack:
+    if(x(RICHARDS_PRESSURE_DOF) /= x(RICHARDS_WELL_DOF))then
+      auxvar%well%bh_p = x(RICHARDS_WELL_DOF)
+    endif
+  endif
+
   ! For a very large negative liquid pressure (e.g. -1.d18), the capillary
   ! pressure can go near infinite, resulting in ds_dp being < 1.d-40 below
   ! and flipping the cell to saturated, when it is really far from saturated.

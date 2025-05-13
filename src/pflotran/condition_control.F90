@@ -1338,8 +1338,6 @@ subroutine CondControlAssignFlowInitCond(realization)
         do
 
           if (.not.associated(initial_condition)) exit
-          write(*,*) "JOE: IC: ", initial_condition%name
-          write(*,*) "JOE: FC: ", initial_condition%flow_condition%name
 
           dataset_flag = PETSC_FALSE
           do idof = 1, option%nflowdof
