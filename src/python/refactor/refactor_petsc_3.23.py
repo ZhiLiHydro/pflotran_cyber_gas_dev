@@ -5,8 +5,8 @@ try:
 except KeyError:
     print('PFLOTRAN_DIR must point to PFLOTRAN installation directory and be defined in system environment variables.')
     sys.exit(1)
-sys.path.append(pflotran_dir + '/src/python/refactor')
-from pflotran_source_files import *
+sys.path.append(pflotran_dir + '/src/python/util')
+from source_files import *
 
 import shutil
 import fnmatch
@@ -32,7 +32,7 @@ def compile_regex(list_):
 #regex_matsetval = re.compile(r'(?P<pre>\s*call\s*)MatSetValuesLocal\s*\(\s*(?P<arg>[^(&]+)(?P<ending>[\)\&])\s*\w*',flags=myflags)
 #regex_matsetval = re.compile(r'(?P<pre>\w*)\s*\)MatSetValuesBlockedLocal\s*\(\s*(?P<arg>\w*)',flags=myflags)
 
-def refactor_routine(routine_info,line,fin,fout):
+def refactor_routine(routine_info,line,fin,fout,debug_info):
     old_name = routine_info[1]
     new_name = routine_info[2]
     regex_string = r'(?P<pre>\s*call\s*)'+\
@@ -41,7 +41,7 @@ def refactor_routine(routine_info,line,fin,fout):
     regex_ = re.compile(regex_string,flags=myflags)
     m = re.search(regex_,line)
     if not m:
-        print('error')
+        print(f'error in {debug_info[0]} at line {debug_info[1]} for routine {debug_info[2]}')
         sys.exit(0)
     arguments = []
     for entry in m.group('arg').strip().split(','):
@@ -92,12 +92,15 @@ def refactor(filename,regex_list):
     fin = open(filename,'r')
     fout = open(filename+'.tmp','w')
     prev_line = ''
+    iline = 0
     for line in fin:
+        iline += 1
         found = False
         for routine in regex_list:
             m = re.search(routine[0],line)
             if m:
-                refactor_routine(routine,line,fin,fout)
+                refactor_routine(routine,line,fin,fout,
+                                 [filename,iline,routine[0]])
                 found = True
                 break
             # arguments = []
@@ -143,15 +146,18 @@ def refactor(filename,regex_list):
 
 
 def main():
-    test = True
+    test = False
+#    test = True
     print('\nRefactoring MatSetValues calls\n')
     regex_list = compile_regex(routine_list)
     if test:
-        filename_list = ['./test/test.F90']
+        filename_list = ['test']
     else:
-        filename_list = create_source_file_list('./test',test=True)
+        filename_list = get_source_file_roots()
     print(filename_list)
     for filename in filename_list:
+        filename += '.F90'
+        print(f'refactoring {filename}')
         refactor(filename,regex_list)
 
 
