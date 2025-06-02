@@ -616,6 +616,7 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
         GeomechParam%poissons_ratio(nint(imech_loc_p(ghosted_id)))
     enddo
     size_elenodes = size(elenodes)
+    !print *, 'ele no. ', ielem
     call GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
        local_disp,local_press,local_temp,youngs_vec,poissons_vec, &
        density_bulk_vec,beta_vec,alpha_vec,eletype, &
@@ -774,7 +775,7 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
                              (petsc_id-1)*option% &
                                ngeomechdof+GEOMECH_DISP_X_DOF-1, &
                              -boundary_condition% &
-                               geomech_aux_real_var(GEOMECH_DISP_X_DOF,ivertex), &
+                             geomech_aux_real_var(GEOMECH_DISP_X_DOF,ivertex), &
                              ADD_VALUES,ierr);CHKERRQ(ierr)
           case(ZERO_GRADIENT_BC)
            ! do nothing
@@ -950,7 +951,7 @@ subroutine GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
     force = force + w(igpt)*density*matmul(kron_N_eye,bf)*detJ_map
     force = force + w(igpt)*beta*dot_product(N(:,1),local_press)* &
       vecB_transpose(:,1)*detJ_map
-    force = force + w(igpt)*alpha*(3*lambda+2*mu)* &
+    force = force + w(igpt)*alpha*(3.d0*lambda+2.d0*mu)* &
       dot_product(N(:,1),local_temp)*vecB_transpose(:,1)*detJ_map
     call ShapeFunctionDestroy(shapefunction)
     deallocate(N)

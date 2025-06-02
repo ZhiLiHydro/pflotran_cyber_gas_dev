@@ -189,6 +189,9 @@ subroutine PMCGeomechanicsSetupSolvers(this)
 
   call PrintMsg(option,"  Finished setting up GEOMECH SNES ")
 
+  ! jaa - account for initialization
+  if (this%option%geomechanics%split_scheme == GEOMECH_FIXED_STRAIN_SPLIT) &
+    this%timestepper%steps = -1
 
 end subroutine PMCGeomechanicsSetupSolvers
 
@@ -665,11 +668,11 @@ subroutine PMCGeomechanicsSetAuxData(this)
             dr_bulk_modulus = youngs_mod / &
                        (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
 
-            if (this%timestepper%steps == 0) then ! before init
+            if (this%timestepper%steps < 0) then ! before init
               global_auxvars(ghosted_id)%parameters(stressv_id) = 0.d0
               global_auxvars(ghosted_id)%parameters(stressv_old_id) = 0.d0
               global_auxvars(ghosted_id)%parameters(press_0_id) = local_pressure
-            elseif (this%timestepper%steps == 1) then ! at init
+            elseif (this%timestepper%steps < 1) then ! at init
               press_init = global_auxvars(ghosted_id)%parameters(press_0_id)
               global_auxvars(ghosted_id)%parameters(strainv_0_id) = strain_vol
               global_auxvars(ghosted_id)%parameters(stressv_0_id) = stress_vol
@@ -703,6 +706,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
             print *, 'id, por_p, del_volstrain, press ', local_id, por_p(local_id), &
                    strain_vol - strain_vol_0, local_pressure
 
+            print *, 'strain_vol_0 ', strain_vol_0
             global_auxvars(ghosted_id)%parameters(press_old_id) = local_pressure
             ! jaa end ---------------------------------------------------------
           enddo
