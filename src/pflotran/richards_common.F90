@@ -154,8 +154,8 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
   PetscReal :: biot_coeff
   PetscReal :: youngs_mod, poissons_ratio
   PetscReal :: porosity_0, dr_bulk_modulus
-  PetscReal :: temp_porosity, old_pressure, porosity
-  PetscInt :: press_old_id, porosity_id, temp_porosity_id
+  PetscReal :: temp_porosity, old_pressure, porosity, porosity_fixed
+  PetscInt :: press_old_id, porosity_id, temp_porosity_id, porosity_old_id
 
   vol_over_dt = material_auxvar%volume/option%flow_dt
 
@@ -175,13 +175,18 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
     porosity_id = ParameterGetIDFromName( &
                    'geomech_porosity', &
                    option)
+    porosity_old_id = ParameterGetIDFromName( &
+                       'geomech_old_porosity', &
+                       option)
     porosity = global_auxvar%parameters(porosity_id)
+    porosity_fixed = global_auxvar%parameters(porosity_old_id)
 
     ! porosity@ n
     if (option%iflag == RICHARDS_UPDATE_FOR_FIXED_ACCUM) then
-      print *, 'fixed por: ', porosity
+      ! porosity needs to correspond to last rich step
+      print *, 'fixed por: ', porosity_fixed
       Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
-               porosity * vol_over_dt
+               porosity_fixed * vol_over_dt
     else ! porosity@ n+1
       press_old_id = ParameterGetIDFromName( &
                      'geomech_old_press', option)

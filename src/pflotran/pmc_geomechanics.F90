@@ -404,6 +404,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
   PetscInt :: stressv_id, stressv_old_id
   PetscInt :: strainv_id, strainv_old_id
   PetscInt :: press_old_id, porosity_id
+  PetscInt :: temp_porosity_id, porosity_old_id
   type(global_auxvar_type), pointer :: global_auxvars(:)
   Vec :: geomech_vec
   Vec :: subsurf_vec
@@ -654,6 +655,12 @@ subroutine PMCGeomechanicsSetAuxData(this)
             porosity_id = ParameterGetIDFromName( &
                                'geomech_porosity', &
                                pmc%subsurf_realization%option)
+            porosity_old_id = ParameterGetIDFromName( &
+                                'geomech_old_porosity', &
+                                pmc%subsurf_realization%option)
+            temp_porosity_id = ParameterGetIDFromName( &
+                                 'geomech_temp_porosity', &
+                                 pmc%subsurf_realization%option)
             ghosted_id = grid%nL2G(local_id)
             imat = pmc%subsurf_realization%patch%aux%Material% &
                    auxvars(local_id)%id
@@ -682,6 +689,9 @@ subroutine PMCGeomechanicsSetAuxData(this)
                 stress_vol
                 ! without geomech
                 !(biot_coeff * (local_pressure-press_init)/3.d0)
+              global_auxvars(ghosted_id)%parameters(porosity_old_id) = &
+                pmc%subsurf_realization%patch%aux%Material% &
+                auxvars(local_id)%porosity_0
             else ! post init
               press_init = global_auxvars(ghosted_id)%parameters(press_0_id)
               global_auxvars(ghosted_id)%parameters(stressv_old_id) = &
@@ -691,6 +701,9 @@ subroutine PMCGeomechanicsSetAuxData(this)
                 stress_vol
                 ! without geomech
                 !(biot_coeff*(local_pressure-press_init)/3.d0)
+              ! use temp porosity for flow sol. at fixed
+              global_auxvars(ghosted_id)%parameters(porosity_old_id) = &
+                global_auxvars(ghosted_id)%parameters(temp_porosity_id)
             endif
 
             ! jaa - using Jeff's paper
@@ -705,8 +718,8 @@ subroutine PMCGeomechanicsSetAuxData(this)
             global_auxvars(ghosted_id)%parameters(porosity_id) = por_p(local_id)
             print *, 'id, por_p, del_volstrain, press ', local_id, por_p(local_id), &
                    strain_vol - strain_vol_0, local_pressure
-
-            print *, 'strain_vol_0 ', strain_vol_0
+            !print *, 'strain_vol_0, porosity_old ', strain_vol_0, &
+            !   global_auxvars(ghosted_id)%parameters(porosity_old_id)
             global_auxvars(ghosted_id)%parameters(press_old_id) = local_pressure
             ! jaa end ---------------------------------------------------------
           enddo
