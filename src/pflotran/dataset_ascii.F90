@@ -410,13 +410,18 @@ subroutine DatasetAsciiReadSingle(this,input,data_external_units, &
 
   nullify(external_data_units_strings)
 
+  write(*,*) "JOE     - DatasetAsciiReadSingle()"
+
   data_external_units = ''
   internal_data_units_strings => StringSplit(data_internal_units,',')
 
   ! read data
+    write(*,*) "JOE     - Reading data"
   allocate(this%rarray(this%array_width))
   do icol=1,this%array_width
+    write(*,*) "JOE       - icol = ", icol
     call InputReadDouble(input,option,this%rarray(icol))
+    write(*,*) "JOE       - Read in, this%rarray(icol) = ", this%rarray(icol)
     if (InputError(input)) then
       option%io_buffer = StringWrite(icol-1) // ' values read when ' // &
         StringWrite(this%array_width) // ' were expected under ' // &
@@ -427,6 +432,7 @@ subroutine DatasetAsciiReadSingle(this,input,data_external_units, &
   enddo
 
   ! read units
+    write(*,*) "JOE     - Reading units"
   if (len_trim(input%buf) == 0) then
     call InputCheckMandatoryUnits(input,option)
     word = trim(error_string) // ' UNITS'
@@ -435,16 +441,20 @@ subroutine DatasetAsciiReadSingle(this,input,data_external_units, &
     string = adjustl(input%buf) ! remove leading blanks
     external_data_units_strings => StringSplit(string,' ')
     do icol=1,this%array_width
+      write(*,*) "JOE       - icol = ", icol
       if (icol == 1 .or. size(external_data_units_strings) > 1) then
         call InputReadWord(input,option,word,PETSC_TRUE)
+        write(*,*) "JOE       - read word = ", word
         call InputErrorMsg(input,option,'units',error_string)
       endif
       internal_units = trim(internal_data_units_strings( &
                             min(icol,size(internal_data_units_strings))))
+      write(*,*) "JOE       - internal_units = ", internal_units
       this%rarray(icol) = &
         UnitsConvertToInternal(word,internal_units, &
                                trim(error_string)//',UNITS',option) * &
                                this%rarray(icol)
+      write(*,*) "JOE       - Converted units to ", this%rarray(icol)
       data_external_units = trim(data_external_units) // ' ' // trim(word)
     enddo
   endif

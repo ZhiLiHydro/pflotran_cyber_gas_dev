@@ -1913,12 +1913,12 @@ subroutine RichardsResidualSourceSink(r,realization,pm_well,ierr)
           call cur_well%UpdateFlowRates(ZERO_INTEGER,ZERO_INTEGER,-999,ierr)
           write(*,*) "JOE: - Modifying residual"
           write(*,*) "JOE:   -  was r_p(",size(r_p),")"
-          do JOE_debug_i = 0, size(r_p)
+          do JOE_debug_i = 1, size(r_p)
             write(*,*) "JOE:      ", r_p(JOE_debug_i)
           enddo
           call cur_well%ModifyFlowResidual(r_p)
           write(*,*) "JOE:   -  now r_p(",size(r_p),")"
-          do JOE_debug_i = 0, size(r_p)
+          do JOE_debug_i = 1, size(r_p)
             write(*,*) "JOE:      ", r_p(JOE_debug_i)
           enddo
           source_sink => patch%source_sink_list%first
@@ -2094,6 +2094,10 @@ subroutine RichardsResidualSourceSink(r,realization,pm_well,ierr)
     source_sink => source_sink%next
   enddo
 
+  write(*,*) "JOE:   -  now after other SS terms r_p(",size(r_p),")"
+  do JOE_debug_i = 1, size(r_p)
+    write(*,*) "JOE:      ", r_p(JOE_debug_i)
+  enddo
 
   call VecRestoreArrayF90(r,r_p,ierr);CHKERRQ(ierr)
 
@@ -3008,6 +3012,7 @@ subroutine RichardsJacobianSourceSink(A,realization,pm_well,ierr)
   character(len=MAXSTRINGLENGTH) :: string
   PetscInt :: deactivate_row
   PetscReal, parameter :: epsilon = 1.d-30
+  integer :: i, j ! TODO: delete these, they are for debugging
 
   PetscReal :: threshold_pressure, pressure_span, min_pressure, max_pressure
   PetscReal :: volume_scale, smoothstep_scale
@@ -3167,14 +3172,12 @@ subroutine RichardsJacobianSourceSink(A,realization,pm_well,ierr)
         if (.not. associated(cur_well)) exit
         if (any(cur_well%well_grid%h_rank_id == option%myrank)) then
           ! Perturb the well and well's reservoir variables.
-          write(*,*) "JOE: - perturbing well"
-          call cur_well%Perturb()
+          write(*,*) "JOE: - perturbing well, debug skip"
+          ! call cur_well%Perturb()  ! TODO: debug skip this as we are trying to solve analytically
           ! Go through and update the well contributions to the Jacobian:
           ! dRi/d(P_well), dRwell/d(P_well), dRi/dxi, and dRwell,dxi
           write(*,*) "JOE: - ModifyFlowJacobian"
-          write(*,*) "JOE:   - jac was    ", A
           call cur_well%ModifyFlowJacobian(A,ierr)
-          write(*,*) "JOE:   - jac is now ", A
         endif
         cur_well => cur_well%next_well
       enddo
