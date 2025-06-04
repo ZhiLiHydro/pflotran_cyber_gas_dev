@@ -813,6 +813,17 @@ subroutine RichardsUpdateAuxVarsPatch(realization,pm_well)
                                  patch%cc_id(ghosted_id))%ptr, &
                                grid%nG2A(ghosted_id), &
                                PETSC_TRUE,option)
+    if (richards_well_coupling == RICHARDS_FULLY_IMPLICIT_WELL) then
+      ! MAN: this is a hack to get well to initialize properly
+      if (xx_loc_p(iend) /= &
+          global_auxvars(ghosted_id)%pres(option%liquid_phase)) then
+        rich_auxvars(ghosted_id)%well%bh_p = xx_loc_p(iend)
+        write(*,*) "JOE:  - Updated rich_auxvar bhp to ", xx_loc_p(iend), " from xx_loc_p"
+      else
+        rich_auxvars(ghosted_id)%well%pressure_bump = &
+                                                   UNINITIALIZED_DOUBLE
+      endif
+    endif
   enddo
 
   if (option%flow%inline_surface_flow) then
@@ -2340,6 +2351,7 @@ subroutine RichardsJacobian(snes,xx,A,B,realization,pm_well,ierr)
 
   option => realization%option
 
+  ! TODO: JOE: I should delete this if I am computing it analytically
   ! Compute the perturbation pert for the well
   if (richards_well_coupling == RICHARDS_FULLY_IMPLICIT_WELL) then
     if (associated(pm_well)) then
@@ -3174,6 +3186,7 @@ subroutine RichardsJacobianSourceSink(A,realization,pm_well,ierr)
           ! Perturb the well and well's reservoir variables.
           write(*,*) "JOE: - perturbing well, debug skip"
           ! call cur_well%Perturb()  ! TODO: debug skip this as we are trying to solve analytically
+          call cur_well%SolveFlow(ZERO_INTEGER, ierr)  ! TODO: not sure if we need this, since it seems to already get called somewhere, but it can't hurt
           ! Go through and update the well contributions to the Jacobian:
           ! dRi/d(P_well), dRwell/d(P_well), dRi/dxi, and dRwell,dxi
           write(*,*) "JOE: - ModifyFlowJacobian"
