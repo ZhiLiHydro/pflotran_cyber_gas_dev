@@ -7092,15 +7092,15 @@ subroutine PMWellModifyFlowResHydrostatic(this,residual)
         R_reservoir_idx = 1 + (k-1) * this%option%nflowdof  ! 1, 3, 5, ...
         R_well_idx = 1 + R_reservoir_idx  ! 2, 4, 6, ...
 
-        if (k == 1) then
-          ! Handle the special term for the bottom segment
-          sum_q = sum(this%well%liq%q)
-          Q = -1.0 * this%well%th_ql
-          !residual(R_reservoir_idx) = residual(R_reservoir_idx) - (Q - sum_q)
-          residual(R_well_idx) = residual(R_well_idx) + (Q - sum_q)
-          write(*,*) "JOE:    - here Q = ", Q
-          write(*,*) "JOE:    - here sum_q = ", sum_q
-        endif
+        ! if (k == 1) then
+        !   ! Handle the special term for the bottom segment
+        !   sum_q = sum(this%well%liq%q)
+        !   Q = -1.0 * this%well%th_ql
+        !   !residual(R_reservoir_idx) = residual(R_reservoir_idx) - (Q - sum_q)
+        !   residual(R_well_idx) = residual(R_well_idx) + (Q - sum_q)
+        !   write(*,*) "JOE:    - here Q = ", Q
+        !   write(*,*) "JOE:    - here sum_q = ", sum_q
+        ! endif
 
 
         write(*,*) "JOE:     - residual with bottom segment term added:"
@@ -7112,7 +7112,7 @@ subroutine PMWellModifyFlowResHydrostatic(this,residual)
         enddo
 
         write(*,*) "JOE:    - here q(",k,") = ", this%well%liq%q(k)
-        residual(R_reservoir_idx) = residual(R_reservoir_idx) - this%well%liq%q(k)
+        residual(R_reservoir_idx) = residual(R_reservoir_idx) + this%well%liq%q(k)  ! was -
         residual(R_well_idx) = residual(R_well_idx) + this%well%liq%q(k)
 
 
@@ -7135,6 +7135,11 @@ subroutine PMWellModifyFlowResHydrostatic(this,residual)
         write(*,*) residual(R_reservoir_idx)
         write(*,*) residual(R_well_idx)
       enddo
+
+
+
+
+
 
       ! sum_q = 0.d0
       ! do k = 1,this%well_grid%nsegments
@@ -7253,8 +7258,10 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
   PetscInt :: R_reservoir_idx, R_well_idx, P_reservoir_idx, P_well_idx  ! JOE: TODO: Possibly delete this
   PetscInt :: k_ghosted_id, j_ghosted_id  ! JOE: TODO: Possibly delete this
   PetscReal :: deriv_const_sum ! JOE: TODO: Possibly delete this
-  PetscViewer viewer ! JOE: TODO: Possibly delete this
-  !PetscBool :: upwind  ! JOE: TODO: Possibly delete this
+  PetscReal :: deriv, den_ave, mobility ! JOE: TODO: Possibly delete this
+  PetscInt :: jac_start, jac_end  ! JOE: TODO: Possibly delete this
+  type(well_reservoir_type), pointer :: reservoir  ! JOE: TODO: Possibly delete this
+  PetscBool :: upwind  ! JOE: TODO: Possibly delete this
   PetscInt :: local_row_index, local_col_index
   ! PetscInt :: global_row_index, global_col_index
   ! PetscReal :: dpl, dpg
@@ -7645,42 +7652,137 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
       P_reservoir_idx = 1
       P_well_idx = 2
 
-      do k = 1,this%well_grid%nsegments  ! row, this is the index for R
-        write(*,*) "JOE: - block at row ", k
-        do j = 1,this%well_grid%nsegments  ! column, this is the index for P
-          write(*,*) "JOE:   - block at col ", j
+
+
+
+
+      ! do k = 1,this%well_grid%nsegments  ! row, this is the index for R
+      !   write(*,*) "JOE: - block at row ", k
+      !   do j = 1,this%well_grid%nsegments  ! column, this is the index for P
+      !     write(*,*) "JOE:   - block at col ", j
+      !     J_block = 0.d0
+
+      !     if (j > 1 .and. k == 1) then
+      !       J_block(R_well_idx, P_reservoir_idx) = GetConst(well, j) ! was -
+      !     endif
+
+      !     if (j == 1 .and. k > 1) then
+      !       J_block(R_reservoir_idx, P_well_idx) = GetConst(well, k)
+      !       J_block(R_well_idx, P_well_idx) = GetConst(well, k) ! was -
+      !     endif
+
+      !     if (j > 1 .and. k > 1 .and. j == k) then
+      !       J_block(R_reservoir_idx, P_reservoir_idx) = GetConst(well, k) ! was -
+      !       J_block(R_well_idx, P_reservoir_idx) = GetConst(well, k)
+      !     endif
+
+      !     if (j == 1 .and. k == 1) then
+      !       J_block(R_reservoir_idx, P_reservoir_idx) = GetConst(well, k) ! was -
+      !       J_block(R_reservoir_idx, P_well_idx) = GetConst(well, k)
+      !       deriv_const_sum = 0
+      !       do i = 2,this%well_grid%nsegments
+      !         deriv_const_sum = deriv_const_sum + GetConst(well, i)
+      !       enddo
+      !       J_block(R_well_idx, P_well_idx) = deriv_const_sum
+      !     endif
+
+      !     write(*,*) "JOE:     - JBlock: "
+      !     write(*,*) "JOE:       - ", J_block(R_reservoir_idx, P_reservoir_idx), ", ", J_block(R_reservoir_idx, P_well_idx)
+      !     write(*,*) "JOE:       - ", J_block(R_well_idx, P_reservoir_idx), ", ", J_block(R_well_idx, P_well_idx)
+
+      !     k_ghosted_id = this%well_grid%h_ghosted_id(k)
+      !     j_ghosted_id = this%well_grid%h_ghosted_id(j)
+      !     write(*,*) "JOE:     - inserted into : ", k_ghosted_id, ", ", j_ghosted_id
+
+      !     if (any(dabs(J_block) > 0.d0)) then
+      !       call MatSetValuesBlockedLocal(Jac, &
+      !                                   1,k_ghosted_id-1, &
+      !                                   1,j_ghosted_id-1, &
+      !                                   J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
+      !     endif
+      !   enddo
+      ! enddo
+
+      ! ! TODO: this is a bit of a hack to make it non-singular
+      ! k_ghosted_id = this%well_grid%h_ghosted_id(1)
+      ! write(*,*) "JOE:  - bottom hole ghosted_id = ", k_ghosted_id
+      ! call MatGetOwnershipRange(Jac, jac_start, jac_end, ierr)
+      ! write(*,*) "JOE:  - mat is between = ", jac_start, ", ", jac_end
+      ! jac_end = jac_end/2
+      ! write(*,*) "JOE:  - which, in terms of blocks, is between = ", jac_start, ", ", jac_end
+      ! do i = jac_start,jac_end - 1
+      !   write(*,*) "JOE:    - testing i = ", i
+      !   if (i+1 /= k_ghosted_id) then  ! Here i is in c-space (0-indexed), while k_ghosted_id is in fortran space (1-indexed)
+      !     J_block(R_reservoir_idx, P_reservoir_idx) = -GetConst(well, 1)
+      !     J_block(R_reservoir_idx, P_well_idx) = GetConst(well, 1)
+      !     J_block(R_well_idx, P_reservoir_idx) = GetConst(well, 1)
+      !     J_block(R_well_idx, P_well_idx) = -GetConst(well, 1)
+
+      !     write(*,*) "JOE:   - JBlock: "
+      !     write(*,*) "JOE:     - ", J_block(R_reservoir_idx, P_reservoir_idx), ", ", J_block(R_reservoir_idx, P_well_idx)
+      !     write(*,*) "JOE:     - ", J_block(R_well_idx, P_reservoir_idx), ", ", J_block(R_well_idx, P_well_idx)
+
+      !     call MatSetValuesBlockedLocal(Jac, &
+      !                           1,i, &
+      !                           1,i, &
+      !                           J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
+      !   endif
+      ! enddo
+
+
+
+
+
+      reservoir => well%reservoir
+      do k = 1,this%well_grid%nsegments  ! row
+        write(*,*) "JOE: - row of block ", k
+        do j = 1,this%well_grid%nsegments  ! column
+          write(*,*) "JOE:   - col of block ", j
           J_block = 0.d0
 
-          if (j > 1 .and. k == 1) then
-            J_block(R_well_idx, P_reservoir_idx) = - GetConst(well, j)
+          ! Compute the constant derivative
+          upwind = reservoir%p_l(j) > well%pl(j)
+          if (upwind) then
+            mobility = reservoir%kr_l(j)/reservoir%visc_l(j)
+            den_ave = reservoir%den_l(j)
+          else
+            mobility = 1.d0 / well%liq%visc(j)
+            den_ave = well%liq%den(j)
+          endif
+          deriv = den_ave*mobility*well%WI(j)
+
+          write(*,*) "JOE:     - Initial JBlock: "
+          write(*,*) "JOE:       - ", J_block(R_reservoir_idx, P_reservoir_idx), ", ", J_block(R_reservoir_idx, P_well_idx)
+          write(*,*) "JOE:       - ", J_block(R_well_idx, P_reservoir_idx), ", ", J_block(R_well_idx, P_well_idx)
+
+          ! if (k == 1) then
+          !   ! Add the extra d(Q-sum(q_i))/dP_reservoir and d(Q-sum(q_i))/dP_well terms for the bottom segment
+          !   !J_block(R_reservoir_idx, P_reservoir_idx) = J_block(R_reservoir_idx, P_reservoir_idx) + deriv
+          !   !J_block(R_reservoir_idx, P_well_idx) = J_block(R_reservoir_idx, P_well_idx) - deriv
+
+          !   J_block(R_well_idx, P_reservoir_idx) = J_block(R_well_idx, P_reservoir_idx) - deriv
+          !   J_block(R_well_idx, P_well_idx) = J_block(R_well_idx, P_well_idx) + deriv
+          ! endif
+
+          write(*,*) "JOE:     - JBlock after bottom special case: "
+          write(*,*) "JOE:       - ", J_block(R_reservoir_idx, P_reservoir_idx), ", ", J_block(R_reservoir_idx, P_well_idx)
+          write(*,*) "JOE:       - ", J_block(R_well_idx, P_reservoir_idx), ", ", J_block(R_well_idx, P_well_idx)
+
+          if (k == j) then
+            ! Add the diagonal terms
+            J_block(R_reservoir_idx, P_reservoir_idx) = J_block(R_reservoir_idx, P_reservoir_idx) + deriv ! was -
+            J_block(R_reservoir_idx, P_well_idx) = J_block(R_reservoir_idx, P_well_idx) + deriv
+            J_block(R_well_idx, P_reservoir_idx) = J_block(R_well_idx, P_reservoir_idx) + deriv
+            J_block(R_well_idx, P_well_idx) = J_block(R_well_idx, P_well_idx) + deriv ! was -
           endif
 
-          if (j == 1 .and. k > 1) then
-            J_block(R_reservoir_idx, P_well_idx) = GetConst(well, k)
-            J_block(R_well_idx, P_well_idx) = - GetConst(well, k)
-          endif
-
-          if (j > 1 .and. k > 1 .and. j == k) then
-            J_block(R_reservoir_idx, P_reservoir_idx) = - GetConst(well, k)
-            J_block(R_well_idx, P_reservoir_idx) = GetConst(well, k)
-          endif
-
-          if (j == 1 .and. k == 1) then
-            J_block(R_reservoir_idx, P_reservoir_idx) = - GetConst(well, k)
-            J_block(R_reservoir_idx, P_well_idx) = GetConst(well, k)
-            deriv_const_sum = 0
-            do i = 2,this%well_grid%nsegments
-              deriv_const_sum = deriv_const_sum + GetConst(well, i)
-            enddo
-            J_block(R_well_idx, P_well_idx) = deriv_const_sum
-          endif
-
-          write(*,*) "JOE:     - JBlock: "
+          write(*,*) "JOE:     - Set JBlock: "
           write(*,*) "JOE:       - ", J_block(R_reservoir_idx, P_reservoir_idx), ", ", J_block(R_reservoir_idx, P_well_idx)
           write(*,*) "JOE:       - ", J_block(R_well_idx, P_reservoir_idx), ", ", J_block(R_well_idx, P_well_idx)
 
           k_ghosted_id = this%well_grid%h_ghosted_id(k)
           j_ghosted_id = this%well_grid%h_ghosted_id(j)
+
           write(*,*) "JOE:     - inserted into : ", k_ghosted_id, ", ", j_ghosted_id
 
           if (any(dabs(J_block) > 0.d0)) then
@@ -7690,75 +7792,8 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
                                         J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
           endif
 
-          ! TODO: DEBUG
-          viewer = PETSC_VIEWER_STDOUT_WORLD;
-          call MatView(Jac, viewer, ierr)
-
         enddo
       enddo
-
-
-
-      ! do k = 1,this%well_grid%nsegments  ! row
-      !   write(*,*) "JOE: - row of block ", k
-      !   do j = 1,this%well_grid%nsegments  ! column
-      !     write(*,*) "JOE:   - col of block ", j
-      !     J_block = 0.d0
-
-      !     ! Compute the constant derivative
-      !     upwind = reservoir%p_l(j) > well%pl(j)
-      !     if (upwind) then
-      !       mobility = reservoir%kr_l(j)/reservoir%visc_l(j)
-      !       den_ave = reservoir%den_l(j)
-      !     else
-      !       mobility = 1.d0 / well%liq%visc(j)
-      !       den_ave = well%liq%den(j)
-      !     endif
-      !     deriv = den_ave*mobility*well%WI(j)
-
-      !     write(*,*) "JOE:     - Initial JBlock: "
-      !     write(*,*) "JOE:       - ", J_block(R_reservoir_idx, P_reservoir_idx), ", ", J_block(R_reservoir_idx, P_well_idx)
-      !     write(*,*) "JOE:       - ", J_block(R_well_idx, P_reservoir_idx), ", ", J_block(R_well_idx, P_well_idx)
-
-      !     if (k == 1) then
-      !       ! Add the extra d(Q-sum(q_i))/dP_reservoir and d(Q-sum(q_i))/dP_well terms for the bottom segment
-      !       !J_block(R_reservoir_idx, P_reservoir_idx) = J_block(R_reservoir_idx, P_reservoir_idx) + deriv
-      !       !J_block(R_reservoir_idx, P_well_idx) = J_block(R_reservoir_idx, P_well_idx) - deriv
-
-      !       J_block(R_well_idx, P_reservoir_idx) = J_block(R_well_idx, P_reservoir_idx) - deriv
-      !       J_block(R_well_idx, P_well_idx) = J_block(R_well_idx, P_well_idx) + deriv
-      !     endif
-
-      !     write(*,*) "JOE:     - JBlock after bottom special case: "
-      !     write(*,*) "JOE:       - ", J_block(R_reservoir_idx, P_reservoir_idx), ", ", J_block(R_reservoir_idx, P_well_idx)
-      !     write(*,*) "JOE:       - ", J_block(R_well_idx, P_reservoir_idx), ", ", J_block(R_well_idx, P_well_idx)
-
-      !     if (k == j) then
-      !       ! Add the diagonal terms
-      !       J_block(R_reservoir_idx, P_reservoir_idx) = J_block(R_reservoir_idx, P_reservoir_idx) - deriv
-      !       J_block(R_reservoir_idx, P_well_idx) = J_block(R_reservoir_idx, P_well_idx) + deriv
-      !       J_block(R_well_idx, P_reservoir_idx) = J_block(R_well_idx, P_reservoir_idx) + deriv
-      !       J_block(R_well_idx, P_well_idx) = J_block(R_well_idx, P_well_idx) - deriv
-      !     endif
-
-      !     write(*,*) "JOE:     - Set JBlock: "
-      !     write(*,*) "JOE:       - ", J_block(R_reservoir_idx, P_reservoir_idx), ", ", J_block(R_reservoir_idx, P_well_idx)
-      !     write(*,*) "JOE:       - ", J_block(R_well_idx, P_reservoir_idx), ", ", J_block(R_well_idx, P_well_idx)
-
-      !     k_ghosted_id = this%well_grid%h_ghosted_id(k)
-      !     j_ghosted_id = this%well_grid%h_ghosted_id(j)
-
-      !     write(*,*) "JOE:     - inserted into : ", k_ghosted_id, ", ", j_ghosted_id
-
-      !     if (any(dabs(J_block) > 0.d0)) then
-      !       call MatSetValuesBlockedLocal(Jac, &
-      !                                   1,k_ghosted_id-1, &
-      !                                   1,j_ghosted_id-1, &
-      !                                   J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
-      !     endif
-
-      !   enddo
-      ! enddo
 
 
 
@@ -7784,8 +7819,8 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
       !   write(*,*) ""
       ! end do
 
-      ! Calculate Jacobian entries wrt reservoir perturbation:
-      ! BHP residual and reservoir source/sink residuals.
+      ! ! Calculate Jacobian entries wrt reservoir perturbation:
+      ! ! BHP residual and reservoir source/sink residuals.
 
       ! ! Unperturbed residual
       ! well => this%well
