@@ -1068,11 +1068,11 @@ subroutine FactSubLinkAddPMCWell(simulation,pm_well_list,pmc_name,input)
 
     select case(option%iflowmode)
 
-      case (WF_MODE, SCO2_MODE, H_MODE)
+      case (WF_MODE, SCO2_MODE, H_MODE, TH_MODE)
 
       case default
         option%io_buffer = 'Currently, the WELLBORE_MODEL process model can &
-               &only be used with WIPP_FLOW mode, SCO2 mode, and HYDRATE mode.'
+               &only be used with WIPP_FLOW mode, SCO2 mode, HYDRATE mode, and TH mode.'
         call PrintErrMsg(option)
     end select
 

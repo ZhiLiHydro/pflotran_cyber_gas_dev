@@ -634,6 +634,7 @@ subroutine THUpdateAuxVars(realization)
   implicit none
 
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
 
   type(option_type), pointer :: option
   type(patch_type), pointer :: patch
@@ -650,8 +651,11 @@ subroutine THUpdateAuxVars(realization)
   type(global_auxvar_type), pointer :: global_auxvars_ss(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(th_parameter_type), pointer :: th_parameter
+  type(flow_condition_type), pointer :: well_flow_condition
+  class(pm_well_type), pointer :: cur_well
 
   PetscInt :: ghosted_id, local_id, istart, iend, sum_connection, idof, iconn
+  PetscInt :: well_seg
   PetscInt :: iphasebc, iphase
   PetscReal, pointer :: xx_loc_p(:)
   PetscReal :: xxbc(realization%option%nflowdof)
