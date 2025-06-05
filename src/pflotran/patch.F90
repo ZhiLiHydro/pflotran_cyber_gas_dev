@@ -540,7 +540,7 @@ subroutine PatchProcessCouplers(patch,flow_conditions,transport_conditions, &
   coupler => patch%well_coupler_list%first
   ! catch flow modes that do not support the well model
   select case(option%iflowmode)
-    case(SCO2_MODE,H_MODE,RICHARDS_MODE)
+    case(SCO2_MODE,H_MODE,RICHARDS_MODE, TH_MODE)
     case(WF_MODE)
       if (associated(coupler)) then
         option%io_buffer = 'WIPP_FLOW has not been tested using a &

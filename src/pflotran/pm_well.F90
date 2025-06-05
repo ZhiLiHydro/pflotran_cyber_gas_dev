@@ -488,7 +488,15 @@ module PM_Well_class
 
   ! Closed Loop Well Model
   type, public, extends(pm_well_implicit_type) :: pm_well_closed_loop_type
-    ! Placeholder for now
+  contains
+    procedure, public :: ReadPMBlock => PMWellReadPMBlockClosedLoop
+    procedure, public :: ReadSimulationOptionsBlock => &
+                           PMWellReadSimOptionsBlockClosedLoop
+    procedure, public :: InitializeRun => PMWellInitializeRunClosedLoop
+    procedure, public :: Setup => PMWellSetupClosedLoop
+    procedure, public :: Solve => PMWellSolveClosedLoop
+    procedure, public :: SolveFlow => PMWellSolveFlowClosedLoop
+    procedure, public :: ModifyFlowResidual => PMWellModifyFlowResClosedLoop
   end type pm_well_closed_loop_type
 
   ! Extensions of the closed loop well model type
@@ -2971,6 +2979,290 @@ end subroutine PMWellSetupHydrostatic
 
 ! ************************************************************************** !
 
+subroutine PMWellSetupClosedLoop(this)
+  !
+  ! Initializes variables associated with the hydrostatic well process model.
+  !
+  ! Author: Michael Nole
+  ! Date: 02/03/2025
+  !
+
+  use Grid_module
+  use Utility_module
+  use String_module
+  use Coupler_module
+  use Connection_module
+  use Condition_module
+  use Input_Aux_module
+  use Dataset_module
+  use Dataset_Base_class
+  use Dataset_Ascii_class
+  use SCO2_Aux_module
+  use Hydrate_Aux_module
+  use Global_Aux_module
+  use Reactive_Transport_Aux_module
+  use Matrix_Zeroing_module
+
+  implicit none
+
+  class(pm_well_closed_loop_type) :: this
+
+  type(option_type), pointer :: option
+  type(grid_type), pointer :: res_grid
+  type(well_grid_type), pointer :: well_grid
+  type(coupler_type), pointer :: source_sink, coupler
+  type(input_type) :: input_dummy
+  class(realization_subsurface_type), pointer :: realization
+  character(len=MAXSTRINGLENGTH) :: string
+  PetscInt :: k
+  PetscInt :: well_bottom_local, well_bottom_ghosted
+  PetscInt :: iconn, sum_connection, global_ss_connections
+  PetscInt :: num_new_source_sinks, offset
+  PetscInt, allocatable :: temp(:), temp2(:)
+  type(global_auxvar_type), pointer :: auxvars_ss(:), auxvars_ss_temp(:)
+  type(reactive_transport_auxvar_type), pointer :: rt_auxvars_ss(:), &
+                                                   rt_auxvars_ss_temp(:)
+  type(matrix_zeroing_type), pointer :: matrix_zeroing
+
+  call PMWellSetupBase(this)
+
+  option => this%option
+  realization => this%realization
+  res_grid => realization%patch%grid
+  well_grid => this%well_grid
+
+  well_bottom_local = ZERO_INTEGER
+  well_bottom_ghosted = ZERO_INTEGER
+
+  ! add a reservoir src/sink coupler for each well segment
+  num_new_source_sinks = 0
+  if (associated(realization%patch%aux%Global%auxvars_ss)) then
+    offset = realization%patch%aux%Global%num_aux_ss
+  else
+    offset = 0
+  endif
+  do k = 1,well_grid%nsegments
+
+    source_sink => CouplerCreate()
+    source_sink%itype = SRC_SINK_COUPLER_TYPE
+    source_sink%name = trim(this%name) // '_well_segment_' // StringWrite(k)
+
+    ! ----- flow ------------------
+    source_sink%flow_condition_name = trim(this%name) // '_well_segment_' // &
+                                      StringWrite(k) // '_flow_srcsink'
+    source_sink%flow_condition => FlowConditionCreate(option)
+    source_sink%flow_condition%name = source_sink%flow_condition_name
+    select case (option%iflowmode)
+      case(SCO2_MODE)
+        source_sink%flow_condition%sco2 => FlowSCO2ConditionCreate(option)
+        string = 'RATE'
+        source_sink%flow_condition%sco2%rate => FlowSCO2SubConditionPtr( &
+          input_dummy,string,source_sink%flow_condition%sco2,option)
+        source_sink%flow_condition%sco2%rate%itype = SCALED_MASS_RATE_SS
+        source_sink%flow_condition%sco2%liquid_pressure => &
+              FlowSCO2SubConditionPtr(input_dummy,string,source_sink% &
+                                        flow_condition%sco2,option)
+        source_sink%flow_condition%sco2%gas_pressure => &
+              FlowSCO2SubConditionPtr(input_dummy,string,source_sink% &
+                                        flow_condition%sco2,option)
+        allocate(source_sink%flow_condition%sco2%rate%dataset%rarray(2))
+        source_sink%flow_condition%sco2%rate%dataset%rarray(:) = 0.d0
+
+        source_sink%flow_condition%well => FlowSubConditionCreate(ONE_INTEGER)
+
+        ! Bottom of hole is special for fully implicit coupling with steady
+        ! state well model.
+        if (k==1) then
+          source_sink%flow_condition%well%ctype = 'well-bottom'
+        else
+          source_sink%flow_condition%well%ctype = 'well'
+        endif
+
+        if (this%use_well_coupler) then
+          coupler => realization%patch%well_coupler_list%first
+          do
+            if (.not.associated(coupler)) exit
+            if (StringCompare(coupler%well_name,this%name)) then
+              source_sink%well_name = coupler%well_name
+              if (option%ntrandof > 0) then
+                if (option%itranmode == RT_MODE) then
+                  source_sink%tran_condition => coupler%tran_condition
+                endif
+              endif
+            endif
+            coupler => coupler%next
+          enddo
+        endif
+
+      case(H_MODE)
+        source_sink%flow_condition%hydrate => FlowHydrateConditionCreate(option)
+        string = 'RATE'
+        source_sink%flow_condition%hydrate%rate => FlowHydrateSubConditionPtr( &
+          input_dummy,string,source_sink%flow_condition%hydrate,option)
+        source_sink%flow_condition%hydrate%rate%itype = SCALED_MASS_RATE_SS
+        source_sink%flow_condition%hydrate%liquid_pressure => &
+              FlowHydrateSubConditionPtr(input_dummy,string,source_sink% &
+                                        flow_condition%hydrate,option)
+        source_sink%flow_condition%hydrate%gas_pressure => &
+              FlowHydrateSubConditionPtr(input_dummy,string,source_sink% &
+                                        flow_condition%hydrate,option)
+        allocate(source_sink%flow_condition%hydrate%rate%dataset%rarray(2))
+        source_sink%flow_condition%hydrate%rate%dataset%rarray(:) = 0.d0
+        source_sink%flow_condition%well => FlowSubConditionCreate(ONE_INTEGER)
+        ! Bottom of hole is special for fully implicit coupling with steady
+        ! state well model.
+        if (k==1) then
+          source_sink%flow_condition%well%ctype = 'well-bottom'
+        else
+          source_sink%flow_condition%well%ctype = 'well'
+        endif
+
+        if (this%use_well_coupler) then
+          coupler => realization%patch%well_coupler_list%first
+          do
+            if (.not.associated(coupler)) exit
+            if (StringCompare(coupler%well_name,this%name)) then
+              source_sink%well_name = coupler%well_name
+              if (option%ntrandof > 0) then
+                if (option%itranmode == RT_MODE) then
+                  source_sink%tran_condition => coupler%tran_condition
+                endif
+              endif
+            endif
+            coupler => coupler%next
+          enddo
+        endif
+
+    end select
+
+    source_sink%connection_set => &
+      ConnectionCreate(1,GENERIC_CONNECTION_TYPE,res_grid%itype)
+    source_sink%connection_set%id_dn = well_grid%h_local_id(k)
+    if (well_grid%h_local_id(k) < 0) then
+      source_sink%connection_set%num_connections = 0
+    else
+      num_new_source_sinks = num_new_source_sinks + 1
+      source_sink%connection_set%offset = num_new_source_sinks + offset - 1
+    endif
+
+    call CouplerAddToList(source_sink,this%realization%patch%source_sink_list)
+    nullify(source_sink)
+  enddo
+
+  ! Enable allocation of mass balance array
+  if (associated(realization%patch%aux%Global%auxvars_ss)) then
+    auxvars_ss => realization%patch%aux%Global%auxvars_ss
+    global_ss_connections = realization%patch%aux%Global%num_aux_ss
+    sum_connection = num_new_source_sinks + global_ss_connections
+    allocate(auxvars_ss_temp(sum_connection))
+    auxvars_ss_temp(1:global_ss_connections) = auxvars_ss(:)
+    realization%patch%aux%Global%auxvars_ss => auxvars_ss_temp
+    deallocate(auxvars_ss)
+    nullify(auxvars_ss_temp)
+    auxvars_ss => realization%patch%aux%Global%auxvars_ss
+    if (option%ntrandof > 0) then
+      rt_auxvars_ss => realization%patch%aux%RT%auxvars_ss
+      allocate(rt_auxvars_ss_temp(sum_connection))
+      rt_auxvars_ss_temp(1:global_ss_connections) = rt_auxvars_ss(:)
+      realization%patch%aux%RT%auxvars_ss => rt_auxvars_ss_temp
+      deallocate(rt_auxvars_ss)
+      nullify(rt_auxvars_ss_temp)
+      realization%patch%aux%RT%num_aux_ss = &
+            realization%patch%aux%RT%num_aux_ss + num_new_source_sinks
+    endif
+  else
+    sum_connection = num_new_source_sinks
+    global_ss_connections = 0
+    allocate (auxvars_ss(sum_connection))
+    realization%patch%aux%Global%auxvars_ss => auxvars_ss
+    if (option%ntrandof > 0) then
+      allocate(realization%patch%aux%RT%auxvars_ss(sum_connection))
+      realization%patch%aux%RT%num_aux_ss = &
+            realization%patch%aux%RT%num_aux_ss + num_new_source_sinks
+    endif
+  endif
+  select case (option%iflowmode)
+    case(SCO2_MODE)
+      realization%patch%aux%SCO2%num_aux_ss = realization%patch%aux%SCO2% &
+                                              num_aux_ss + num_new_source_sinks
+    case(H_MODE)
+      realization%patch%aux%Hydrate%num_aux_ss = realization%patch%aux% &
+                                      Hydrate%num_aux_ss + num_new_source_sinks
+  end select
+  if (sum_connection > 0) then
+    option%iflag = 1 ! enable allocation of mass_balance array
+    do iconn = global_ss_connections + 1, sum_connection
+      call GlobalAuxVarInit(auxvars_ss(iconn),option)
+      if (option%ntrandof > 0) then
+        call RTAuxVarInit(realization%patch%aux%RT%auxvars_ss(iconn), &
+                          realization%reaction,PETSC_FALSE,option)
+      endif
+    enddo
+  endif
+  realization%patch%aux%Global%num_aux_ss = sum_connection
+
+  if (sum_connection > 0) then
+    ! flow
+    if (option%nflowdof > 0) then
+      allocate(realization%patch%ss_flow_fluxes(option%nflowdof, &
+                sum_connection))
+      realization%patch%ss_flow_fluxes = 0.d0
+    endif
+    ! transport
+    if (option%ntrandof > 0) then
+      allocate(realization%patch%ss_tran_fluxes(option%ntrandof, &
+                sum_connection))
+      realization%patch%ss_tran_fluxes = 0.d0
+      ! only needed by transport
+      allocate(realization%patch%ss_flow_vol_fluxes(option%nphase, &
+                sum_connection))
+      realization%patch%ss_flow_vol_fluxes = 0.d0
+    endif
+  endif
+
+  ! For fully-implicit well coupling, resize the matrix zeroing arrays to
+  ! exclude the bottom of the well for hydrostatic well model.
+
+  well_bottom_ghosted = well_grid%h_ghosted_id(1)
+  well_bottom_local = well_grid%h_local_id(1)
+  nullify(matrix_zeroing)
+  select case (option%iflowmode)
+    case(SCO2_MODE)
+      matrix_zeroing => realization%patch%aux%SCO2%matrix_zeroing
+    case(H_MODE)
+      matrix_zeroing => realization%patch%aux%Hydrate%matrix_zeroing
+  end select
+  if (associated(matrix_zeroing)) then
+    if (well_bottom_local > 0 .and. matrix_zeroing%zero_rows_exist) then
+      if (size(matrix_zeroing%zero_rows_local) == 1) then
+        deallocate(matrix_zeroing%zero_rows_local)
+        deallocate(matrix_zeroing%zero_rows_local_ghosted)
+        matrix_zeroing%zero_rows_exist = PETSC_FALSE
+        matrix_zeroing%n_zero_rows = 0
+      else
+        if (allocated(temp)) deallocate(temp)
+        if (allocated(temp2)) deallocate(temp2)
+        allocate(temp(size(matrix_zeroing%zero_rows_local)))
+        allocate(temp2(size(matrix_zeroing%zero_rows_local)-1))
+        matrix_zeroing%n_zero_rows = matrix_zeroing%n_zero_rows - 1
+        temp(:) = matrix_zeroing%zero_rows_local(:)
+        temp2 = pack(temp,temp /= well_bottom_local*option%nflowdof)
+        deallocate(matrix_zeroing%zero_rows_local)
+        allocate(matrix_zeroing%zero_rows_local(size(temp2)))
+        matrix_zeroing%zero_rows_local(:) = temp2(:)
+        temp(:) = matrix_zeroing%zero_rows_local_ghosted(:)
+        temp2 = pack(temp,temp /= well_bottom_ghosted*option%nflowdof-1)
+        deallocate(matrix_zeroing%zero_rows_local_ghosted)
+        allocate(matrix_zeroing%zero_rows_local_ghosted(size(temp2)))
+        matrix_zeroing%zero_rows_local_ghosted(:) = temp2(:)
+      endif
+    endif
+  endif
+
+end subroutine PMWellSetupClosedLoop
+
+! ************************************************************************** !
+
 subroutine PMWellReadSimOptionsBlockBase(this,input)
   !
   ! Author: Michael Nole
@@ -3111,6 +3403,27 @@ subroutine PMWellReadSimOptionsBlockHyd(this,input)
   call PMWellReadSimOptionsBlockBase(this,input)
 
 end subroutine PMWellReadSimOptionsBlockHyd
+
+! ************************************************************************** !
+
+subroutine PMWellReadSimOptionsBlockClosedLoop(this,input)
+  !
+  ! Author: Michael Nole
+  ! Date: 03/08/24
+  !
+
+  use Input_Aux_module
+  use String_module
+  use Option_module
+
+  implicit none
+
+  type(input_type), pointer :: input
+  class(pm_well_closed_loop_type) :: this
+
+  call PMWellReadSimOptionsBlockBase(this,input)
+
+end subroutine PMWellReadSimOptionsBlockClosedLoop
 
 ! ************************************************************************** !
 
@@ -3321,6 +3634,30 @@ subroutine PMWellReadPMBlockHydrostatic(this,input)
   call PMWellReadPMBlockBase(this,input)
 
 end subroutine PMWellReadPMBlockHydrostatic
+
+! ************************************************************************** !
+
+subroutine PMWellReadPMBlockClosedLoop(this,input)
+  !
+  ! Author: Michael Nole
+  ! Date: 03/08/24
+  !
+
+  use Input_Aux_module
+  use String_module
+  use Option_module
+
+  implicit none
+
+  type(input_type), pointer :: input
+  class(pm_well_closed_loop_type) :: this
+  type(option_type), pointer :: option
+
+  option => this%option
+
+  call PMWellReadPMBlockBase(this,input)
+
+end subroutine PMWellReadPMBlockClosedLoop
 
 ! ************************************************************************** !
 
@@ -5036,6 +5373,93 @@ recursive subroutine PMWellInitializeRunHydrostatic(this)
   endif
 
 end subroutine PMWellInitializeRunHydrostatic
+
+! ************************************************************************** !
+
+recursive subroutine PMWellInitializeRunClosedLoop(this)
+  !
+  ! Initializes the simulation run for the well process model.
+  !
+  ! Author: Jennifer M. Frederick
+  ! Date: 08/04/2021
+  !
+
+  use Condition_module
+  use Strata_module
+  use Output_Aux_module
+  use Option_module
+  use Transport_Constraint_Base_module
+  use Transport_Constraint_NWT_module
+  use Transport_Constraint_module
+
+  implicit none
+
+  class(pm_well_closed_loop_type) :: this
+
+  type(output_variable_list_type), pointer :: output_var_list
+  type(option_type), pointer :: option
+  PetscInt :: nsegments, k
+
+  option => this%option
+
+  nsegments = this%well_grid%nsegments
+
+  ! srcsink_water/gas is indexed (0,:) unperturbed value
+  !                              (1,:) perturbed wrt gas pressure
+  !                              (2,:) perturbed wrt gas saturation
+  allocate(this%srcsink_water(0:2,nsegments))
+  allocate(this%srcsink_gas(0:2,nsegments))
+  this%srcsink_water = 0.d0
+  this%srcsink_gas = 0.d0
+
+  call PMWellInitWellVars(this%well,this%well_grid,PETSC_FALSE, &
+                          nsegments,ZERO_INTEGER)
+  call PMWellInitFluidVars(this%well,nsegments, &
+                           this%option%flow%reference_density,option)
+
+  do k = 1,option%nflowdof
+    allocate(this%well_pert(k)%diameter(nsegments))
+    allocate(this%well_pert(k)% &
+             friction_factor(size(this%well%friction_factor)))
+    allocate(this%well_pert(k)%r0(size(this%well%r0)))
+    allocate(this%well_pert(k)%skin(size(this%well%skin)))
+    this%well_pert(k)%diameter = this%well%diameter
+    this%well_pert(k)%friction_factor = this%well%friction_factor
+    this%well_pert(k)%well_model_type = this%well%well_model_type
+    call PMWellInitWellVars(this%well_pert(k),this%well_grid, &
+                          PETSC_FALSE,nsegments,ZERO_INTEGER)
+    call PMWellInitFluidVars(this%well_pert(k),nsegments, &
+                           this%option%flow%reference_density,option)
+    call PMWellInitRes(this%well_pert(k)%reservoir,nsegments,ZERO_INTEGER, &
+                       option)
+    call PMWellInitRes(this%well_pert(k)%reservoir_save,nsegments, &
+                       ZERO_INTEGER,option)
+  enddo
+
+  call PMWellInitRes(this%well%reservoir,nsegments,ZERO_INTEGER,option)
+  call PMWellInitRes(this%well%reservoir_save,nsegments,ZERO_INTEGER,option)
+
+
+
+  ! Initialize perturbations
+  allocate(this%pert(nsegments,option%nflowdof))
+  this%pert = 0.d0
+
+  ! Setup the output variables for snapshot and observation files
+  output_var_list => this%realization%output_option%output_snap_variable_list
+  call PMWellSetPlotVariablesClosedLoop(output_var_list,this)
+  if (.not.associated( &
+                this%realization%output_option%output_snap_variable_list, &
+                this%realization%output_option%output_obs_variable_list)) then
+    output_var_list => this%realization%output_option%output_obs_variable_list
+    call PMWellSetPlotVariablesClosedLoop(output_var_list,this)
+  endif
+
+  if (this%print_well) then
+    call PMWellOutputHeaderClosedLoop(this)
+  endif
+
+end subroutine PMWellInitializeRunClosedLoop
 
 ! ************************************************************************** !
 
@@ -6965,6 +7389,131 @@ end subroutine PMWellModifyFlowResHydrostatic
 
 ! ************************************************************************** !
 
+subroutine PMWellModifyFlowResClosedLoop(this,residual)
+  !
+  ! This subroutine computes the well contribution to the reservoir residual
+  ! when called from the Hydrostatic well model.
+  !
+  ! Author: Michael Nole
+  ! Date: 01/16/2023
+  !
+
+  use SCO2_Aux_module, only : sco2_thermal, SCO2_TEMPERATURE_DOF
+  use Hydrate_Aux_module, only : HYDRATE_ENERGY_DOF, hydrate_fmw_comp
+
+  class(pm_well_closed_loop_type) :: this
+  PetscReal, pointer :: residual(:)
+
+  PetscReal :: Res(this%option%nflowdof)
+  PetscReal :: Q, sum_q
+  PetscInt :: air_comp_id, wat_comp_id
+  PetscInt :: local_id, local_start, local_end
+  PetscInt :: ghosted_id
+  PetscInt :: j,k
+
+  air_comp_id = this%option%air_id
+  wat_comp_id = this%option%water_id
+
+  Res(:) = 0.d0
+
+  if (this%well_comm%comm == MPI_COMM_NULL) return
+
+  select case (this%option%iflowmode)
+    case(SCO2_MODE)
+      sum_q = 0.d0
+      do k = 1,this%well_grid%nsegments
+        if (this%well_grid%h_rank_id(k) /= this%option%myrank) &
+            cycle
+
+        ghosted_id = this%well_grid%h_ghosted_id(k)
+        local_id = this%realization%patch%grid%nG2L(ghosted_id)
+        local_end = local_id * this%option%nflowdof
+        local_start = local_end - this%option%nflowdof + 1
+        if (k == 1) then
+          ! An extra residual is required for the bottom well cell.
+          ! Residual = Q - sum(q)
+          sum_q = sum_q + sum(this%well%gas%q) + sum(this%well%liq%q)
+          if (this%well%total_rate < 0.d0) then
+            Q = -1.d0 * this%well%total_rate
+          else
+            Q = -1.d0 * (this%well%th_qg + this%well%th_ql)
+          endif
+          residual(local_end) = Q - sum_q
+        endif
+        do j = 0,2
+          ! Compontent j+1 residual at well segment k
+          residual(local_start + j) = residual(local_start + j) + &
+                  (this%well%liq%q(k)* &
+                  this%well%liq%xmass(k,j+1) + &
+                  this%well%gas%q(k)* &
+                  this%well%gas%xmass(k,j+1))
+        enddo
+        if (sco2_thermal) then
+          ! Energy contribution
+          j = SCO2_TEMPERATURE_DOF - 1
+          residual(local_start + j) = residual(local_start + j) + &
+                  (this%well%liq%q(k)* &
+                  this%well%liq%H(k) + &
+                  this%well%gas%q(k)* &
+                  this%well%gas%H(k))
+        endif
+      enddo
+    case(H_MODE)
+      sum_q = 0.d0
+      do k = 1,this%well_grid%nsegments
+        if (this%well_grid%h_rank_id(k) /= this%option%myrank) &
+            cycle
+        ghosted_id = this%well_grid%h_ghosted_id(k)
+        local_id = this%realization%patch%grid%nG2L(ghosted_id)
+        local_end = local_id * this%option%nflowdof
+        local_start = local_end - this%option%nflowdof + 1
+        if (k == 1) then
+          ! An extra residual is required for the bottom well cell.
+          ! Residual = Q - sum(q)
+          if (dabs(this%well%th_qg) > 0.d0) then
+            sum_q = sum_q + sum(this%well%gas%q)
+            Q = -1.d0 * (this%well%th_qg)
+          else
+            sum_q = sum(this%well%liq%q)
+            Q = -1.d0 * (this%well%th_ql)
+          endif
+          residual(local_end) = Q - sum_q
+        endif
+        do j = 0,2
+          ! Compontent j+1 residual at well segment k
+          if (j == TWO_INTEGER) then
+            ! Salt is offset by 1
+            residual(local_start + j + 1) = &
+                  residual(local_start + j + 1) + &
+                  (this%well%liq%q(k)* &
+                  this%well%liq%xmass(k,j+1) / &
+                  hydrate_fmw_comp(j+1) + &
+                  this%well%gas%q(k)* &
+                  this%well%gas%xmass(k,j+1)) / &
+                  hydrate_fmw_comp(j+1)
+          else
+            residual(local_start + j) = residual(local_start + j) + &
+                  (this%well%liq%q(k)* &
+                  this%well%liq%xmass(k,j+1) / &
+                  hydrate_fmw_comp(j+1) + &
+                  this%well%gas%q(k)* &
+                  this%well%gas%xmass(k,j+1)) / &
+                  hydrate_fmw_comp(j+1)
+          endif
+        enddo
+        j = HYDRATE_ENERGY_DOF - 1
+        residual(local_start + j) = residual(local_start + j) + &
+                  (this%well%liq%q(k)* &
+                  this%well%liq%H(k) + &
+                  this%well%gas%q(k)* &
+                  this%well%gas%H(k))
+      enddo
+  end select
+
+end subroutine PMWellModifyFlowResClosedLoop
+
+! ************************************************************************** !
+
 subroutine PMWellModifyFlowJacBase(this,Jac,ierr)
   !
   ! Author: Michael Nole
@@ -7800,6 +8349,26 @@ end subroutine PMWellSolveHydrostatic
 
 ! ************************************************************************** !
 
+subroutine PMWellSolveClosedLoop(this,time,ierr)
+  !
+  ! Author: Michael Nole
+  ! Date: 02/03/2025
+  !
+
+  implicit none
+
+  class(pm_well_closed_loop_type) :: this
+  PetscReal :: time
+  PetscErrorCode :: ierr
+
+  ierr = 0
+  call this%SolveFlow(UNINITIALIZED_INTEGER,ierr)
+  call PMWellCalcCumulativeQFlux(this)
+
+end subroutine PMWellSolveClosedLoop
+
+! ************************************************************************** !
+
 subroutine PMWellSolveFlowSequential(this,perturbation_index,ierr)
   !
   ! Author: Michael Nole
@@ -8258,6 +8827,313 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
   mass_conserved_gas = sum(well%gas%Q)
 
 end subroutine PMWellSolveFlowHydrostatic
+
+subroutine PMWellSolveFlowClosedLoop(this,perturbation_index,ierr)
+  !
+  ! Author: Michael Nole
+  ! Date: 02/03/2025
+  !
+
+  use Option_module
+  use Grid_module
+  use EOS_Water_module
+  use EOS_Gas_module
+  use SCO2_Aux_module, only : fmw_comp, SCO2BrineDensity
+  use Hydrate_Aux_module, only : hydrate_fmw_comp
+
+  implicit none
+
+  class(pm_well_closed_loop_type) :: this
+  PetscInt :: perturbation_index
+  PetscErrorCode :: ierr
+
+  type(well_type), pointer :: well
+  type(well_reservoir_type), pointer :: reservoir
+  type(grid_type), pointer :: reservoir_grid
+  type(option_type), pointer :: option
+  PetscLogDouble :: log_start_time
+  PetscReal :: Q_liq(this%well_grid%nsegments,this%well_grid%nsegments),&
+               Q_gas(this%well_grid%nsegments,this%well_grid%nsegments)
+  PetscReal :: v_darcy
+  PetscBool :: upwind
+  PetscReal :: mobility, enthalpy
+  PetscReal :: area, mass_conserved_liq, mass_conserved_gas
+  PetscInt :: i
+  PetscReal :: pl, pl0, pg, pg0, temperature, den_mol
+  PetscReal :: rho_kg_liq, rho_zero_liq, rho_one_liq, &
+               rho_kg_gas, rho_zero_gas, rho_one_gas
+  PetscReal :: dist_z, delta_z
+  PetscReal :: gravity, den_ave
+  PetscInt :: num_iteration
+  PetscReal :: dummy, dummy2
+  PetscReal :: aux(2)
+  PetscReal :: res_pg_temp, res_pl_temp, res_z
+  PetscReal :: fmw_comp_temp(3)
+  PetscReal :: mixture_ratio
+  PetscReal, parameter :: threshold_p = 0.d0
+  PetscReal, parameter :: epsilon = 1.d-14
+
+  option => this%realization%option
+  reservoir_grid => this%realization%patch%grid
+
+  if (this%well_comm%comm == MPI_COMM_NULL) return
+
+  ierr = 0
+  call PetscTime(log_start_time,ierr);CHKERRQ(ierr)
+
+  gravity = option%gravity(Z_DIRECTION)
+
+  ! update well index
+  call PMWellComputeWellIndex(this)
+
+  ! Compute hydrostatic pressure relative to bottom-hole pressure,
+  ! then compute well fluxes from those pressures.
+
+  select case (option%iflowmode)
+    case (SCO2_MODE)
+      fmw_comp_temp(:) = fmw_comp(:)
+    case (H_MODE)
+      fmw_comp_temp(:) = hydrate_fmw_comp(:)
+  end select
+
+  if (perturbation_index > 0) then
+    well => this%well_pert(perturbation_index)
+  else
+    well => this%well
+  endif
+
+  reservoir => well%reservoir
+
+  aux(:) = 0.d0
+  area = 0.d0
+  v_darcy = 0.d0
+  Q_liq = 0.d0
+  Q_gas = 0.d0
+  well%liq%Q = 0.d0
+  well%gas%Q = 0.d0
+
+  temperature = well%temp(1)
+  ! Start from bottom hole pressure
+  pl = well%bh_p
+  ! No capillarity in the well
+  pg = pl
+
+  !MAN: pure brine and pure gas columns for now, needs updating.
+  aux(1) = well%liq%xmass(1,option%salt_id)
+  select case (option%iflowmode)
+    case (SCO2_MODE)
+      call SCO2BrineDensity(temperature, pl, &
+                            aux(1), rho_kg_liq, option)
+    case default
+      call EOSWaterDensityExt(temperature,pl, &
+                                aux,rho_kg_liq,dummy,ierr)
+  end select
+
+  pl0 = pl
+
+  call EOSGasDensity(temperature,pg, &
+                      den_mol,dummy,dummy2,ierr)
+  rho_kg_gas = den_mol * fmw_comp_temp(TWO_INTEGER)
+
+  pg0 = pg
+
+  ! compute pressures above datum
+  dist_z = 0.d0
+  rho_zero_liq = rho_kg_liq
+  rho_zero_gas = rho_kg_gas
+
+  do i = 1,this%well_grid%nsegments
+
+    ! Compute well cell pressures based off of bottom segment pressure
+    temperature = well%temp(i)
+    aux(1) = well%liq%xmass(1,option%salt_id)
+    select case (option%iflowmode)
+      case (SCO2_MODE)
+        call SCO2BrineDensity(temperature, pl, &
+                              aux(1), rho_kg_liq, option)
+      case default
+        call EOSWaterDensityExt(temperature,pl, &
+                                  aux,rho_kg_liq,dummy,ierr)
+    end select
+    call EOSGasDensity(temperature,pg0, &
+                      den_mol,dummy,dummy2,ierr)
+    rho_kg_gas = den_mol * fmw_comp_temp(TWO_INTEGER)
+
+    num_iteration = 0
+    if (i == 1) then
+      delta_z = this%well_grid%h(i)%z - this%well_grid%bottomhole(3)
+    else
+      delta_z = this%well_grid%h(i)%z - this%well_grid%h(i-1)%z
+    endif
+    do
+      pl = pl0 + 0.5d0*(rho_kg_liq+rho_zero_liq) * &
+            gravity * delta_z
+      pg = pg0 + 0.5d0*(rho_kg_gas+rho_zero_gas) * &
+            gravity * delta_z
+      call EOSWaterDensityExt(temperature,pl,aux,rho_one_liq,dummy,ierr)
+      call EOSGasDensity(temperature,pg,den_mol,dummy,dummy2,ierr)
+      rho_one_gas = den_mol * fmw_comp_temp(TWO_INTEGER)
+
+      ! STOMP doesn't iterate
+      exit
+
+      if (dabs(rho_kg_liq-rho_one_liq) < 1.d-5 .and. &
+          dabs(rho_kg_gas-rho_one_gas) < 1.d-5) exit
+      rho_kg_liq = rho_one_liq
+      rho_kg_gas = rho_one_gas
+      num_iteration = num_iteration + 1
+      if (num_iteration > 100) then
+        option%io_buffer = 'Hydrostatic iteration failed to &
+                            &converge in the well model'
+        call PrintErrMsg(option)
+      endif
+    enddo
+    rho_zero_liq = rho_kg_liq
+    rho_zero_gas = rho_kg_gas
+    well%pl(i) = pl
+    well%pg(i) = pg
+    well%liq%den(i) = rho_kg_liq
+    well%gas%den(i) = rho_kg_gas
+    pl0 = pl
+    pg0 = pg
+
+    if (pg < 0.d0 .and. well%th_qg > 0.d0) then
+      option%io_buffer = 'BHP cannot support the gas column: &
+                          &hydrostatic well pressure calcuation &
+                          &results in negative gas pressure.'
+      call PrintErrMsg(option)
+    endif
+  enddo
+
+  ! Update well properties based off new pressures
+  select case(option%iflowmode)
+    case(SCO2_MODE)
+      call PMWellUpdatePropertiesSCO2Flow(this,well,option)
+    case(H_MODE)
+      call PMWellUpdatePropertiesHydrateFlow(this,well,option)
+  end select
+
+  ! Compute fluxes in/out of well
+  well%liq%Q = 0.d0
+  well%gas%Q = 0.d0
+
+  do i = 1,this%well_grid%nsegments
+
+    if (well%WI(i) == 0) cycle
+
+    res_z = this%well_grid%res_z(i)
+    delta_z = res_z - this%well_grid%h(i)%z
+
+    if (well%th_qg > 0.d0 .and. well%th_ql > 0.d0) then
+      ! mixture injection: assume constant mass ratio
+      mixture_ratio = well%th_ql / well%th_qg
+
+      if (reservoir%s_g(i) > epsilon) then
+        res_pg_temp = reservoir%p_g(i) + reservoir%den_g(i) * gravity * &
+                      delta_z
+      else
+        res_pg_temp = reservoir%p_g(i) + reservoir%den_l(i) * gravity * &
+                      delta_z
+      endif
+      upwind = res_pg_temp > well%pg(i)
+      if (upwind) then
+        mobility = reservoir%kr_g(i)/reservoir%visc_g(i)
+        den_ave = reservoir%den_g(i)
+        enthalpy = reservoir%H_g(i)
+      else
+        mobility = 1.d0 / well%gas%visc(i)
+        den_ave = well%gas%den(i)
+        enthalpy = well%gas%H(i)
+      endif
+
+      ! Flowrate in kg/s
+      well%gas%Q(i) = den_ave*mobility*well%WI(i)* &
+                      (res_pg_temp-well%pg(i))
+
+      ! Assuming the mass ratio of water and CO2 remains the same
+      ! everywhere.
+      well%liq%Q(i) = well%gas%Q(i) * mixture_ratio
+
+    elseif (well%th_qg > 0.d0) then
+      ! Rate-controlled gas injection well. Can potentially have
+      ! under-pressure in some well segments.
+      ! Compute reservoir pressure at well cell center
+      if (reservoir%s_g(i) > epsilon) then
+        res_pg_temp = reservoir%p_g(i) + reservoir%den_g(i) * gravity * delta_z
+      else
+        res_pg_temp = reservoir%p_g(i) + reservoir%den_l(i) * gravity * delta_z
+      endif
+      upwind = res_pg_temp > well%pg(i)
+      if (upwind) then
+        mobility = reservoir%kr_g(i)/reservoir%visc_g(i)
+        den_ave = reservoir%den_g(i)
+        enthalpy = reservoir%H_g(i)
+      else
+        mobility = 1.d0 / well%gas%visc(i)
+        den_ave = well%gas%den(i)
+        enthalpy = well%gas%H(i)
+      endif
+
+      ! Flowrate in kg/s
+      well%gas%Q(i) = den_ave*mobility*well%WI(i)* &
+                      (res_pg_temp-well%pg(i))
+      ! if (well%gas%Q(i) < 0.d0) well%gas%Q(i) = 0.d0
+    elseif (well%th_ql > 0.d0) then
+      ! Rate-controlled water injection well
+      ! Compute reservoir pressure at well cell center
+      res_pl_temp = reservoir%p_l(i) + reservoir%den_l(i) * gravity * delta_z
+      upwind = res_pl_temp > well%pl(i)
+      if (upwind) then
+        mobility = reservoir%kr_l(i)/reservoir%visc_l(i)
+        den_ave = reservoir%den_l(i)
+        enthalpy = reservoir%H_l(i)
+      else
+        mobility = 1.d0 / well%liq%visc(i)
+        den_ave = well%liq%den(i)
+        enthalpy = well%liq%H(i)
+      endif
+      ! Flowrate in kg/s
+      well%liq%Q(i) = den_ave*mobility*well%WI(i)* &
+                      (res_pl_temp-well%pl(i))
+      ! if (well%liq%Q(i) > 0.d0) well%liq%Q(i) = 0.d0
+    elseif (well%total_rate < 0.d0) then
+      ! Extraction well
+      ! Compute reservoir pressure at well cell center
+        well%liq%Q(i) = 0.d0
+        well%gas%Q(i) = 0.d0
+        res_pl_temp = reservoir%p_l(i) + reservoir%den_l(i) * gravity * delta_z
+        mobility = reservoir%kr_l(i)/reservoir%visc_l(i)
+        den_ave = reservoir%den_l(i)
+        ! Flowrate in kg/s
+        if (res_pl_temp > well%pl(i)) then
+          well%liq%Q(i) = den_ave*mobility*well%WI(i) * &
+                          (res_pl_temp-well%pl(i)) * &
+                          reservoir%xmass_liq(i,ONE_INTEGER)
+          well%gas%Q(i) = den_ave*mobility*well%WI(i)* &
+                          (res_pl_temp-well%pl(i)) * &
+                          reservoir%xmass_liq(i,TWO_INTEGER)
+        endif
+
+        res_pg_temp = reservoir%p_g(i) + reservoir%den_g(i) * gravity * delta_z
+        mobility = reservoir%kr_g(i)/reservoir%visc_g(i)
+        den_ave = reservoir%den_g(i)
+        ! Flowrate in kg/s
+        if (res_pg_temp > well%pg(i)) then
+          well%liq%Q(i) = well%liq%Q(i) + den_ave*mobility*well%WI(i) * &
+                          (res_pg_temp-well%pg(i)) * &
+                          reservoir%xmass_gas(i,ONE_INTEGER)
+          well%gas%Q(i) = well%gas%Q(i) + den_ave*mobility*well%WI(i) * &
+                          (res_pg_temp-well%pg(i)) * &
+                          reservoir%xmass_gas(i,TWO_INTEGER)
+        endif
+    endif
+  enddo
+
+  ! Should equal the total flux out the top of the domain
+  mass_conserved_liq = sum(well%liq%Q)
+  mass_conserved_gas = sum(well%gas%Q)
+
+end subroutine PMWellSolveFlowClosedLoop
 
 ! ! ************************************************************************** !
 
@@ -9136,6 +10012,31 @@ end subroutine PMWellSetPlotVariablesHydrostatic
 
 ! ************************************************************************** !
 
+subroutine PMWellSetPlotVariablesClosedLoop(list,pm_well)
+  !
+  ! Adds variables to be printed for plotting.
+  !
+  ! Author: Jenn Frederick
+  ! Date: 09/29/2022
+  !
+  use Output_Aux_module
+  use Variables_module
+
+  type(output_variable_list_type), pointer :: list
+  class(pm_well_closed_loop_type) :: pm_well
+
+  character(len=MAXWORDLENGTH) :: name,  units
+
+  call PMWellSetPlotVariablesBase(list,pm_well)
+
+  name = 'Well BHP'
+  units = 'Pa'
+  call OutputVariableAddToList(list,name,OUTPUT_PRESSURE,units,WELL_BHP)
+
+end subroutine PMWellSetPlotVariablesClosedLoop
+
+! ************************************************************************** !
+
 function PMWellOutputFilename(name,option)
   !
   ! Generates a filename for wellbore model output
@@ -9624,6 +10525,224 @@ subroutine PMWellOutputHeaderHydrostatic(pm_well)
   enddo
 
 end subroutine PMWellOutputHeaderHydrostatic
+
+! ************************************************************************** !
+
+subroutine PMWellOutputHeaderClosedLoop(pm_well)
+  !
+  ! Writes the header for wellbore model output file.
+  !
+  ! Author: Jennifer M. Frederick
+  ! Date: 12/16/2021, updated 01/09/2025
+  !
+
+  use Output_Aux_module
+  use Grid_module
+  use Utility_module
+
+  implicit none
+
+  class(pm_well_closed_loop_type) :: pm_well
+
+  type(output_option_type), pointer :: output_option
+  character(len=MAXSTRINGLENGTH) :: filename,word
+  character(len=MAXWORDLENGTH) :: units_string, variable_string
+  character(len=MAXSTRINGLENGTH) :: cell_string
+  PetscBool :: exist
+  PetscInt :: fid
+  PetscInt :: icolumn
+  PetscInt :: k, j
+
+  if (pm_well%option%myrank /= pm_well%well_grid%h_rank_id(1)) return
+
+  output_option => pm_well%realization%output_option
+
+  if (output_option%print_column_ids) then
+    icolumn = 1
+  else
+    icolumn = -1
+  endif
+
+  do k = 1,pm_well%well_grid%nsegments
+    ! only print the segments that are being requested in the .well file
+    if (.not. pm_well%well%output_in_well_file(k)) cycle
+
+    fid = k + 100
+    filename = PMWellOutputFilename(pm_well%name,pm_well%option)
+    write(word,'(i5)') k
+    if (k < 10000) word(1:1) = '0'; if (k < 1000) word(1:2) = '00'
+    if (k < 100) word(1:3) = '000'; if (k < 10) word(1:4) = '0000'
+    if (pm_well%split_output_file) then
+      filename = trim(filename) // trim(word)
+    endif
+
+    exist = FileExists(trim(filename))
+    if (pm_well%option%restart_flag .and. exist) return
+    open(unit=fid,file=filename,action="write",status="replace")
+
+    ! First write out the well grid information
+    write(fid,'(a)',advance="yes") '========= WELLBORE MODEL GRID INFORMATION &
+                                    &======================='
+    write(word,'(i5)') pm_well%well_grid%nsegments
+    write(fid,'(a)',advance="yes") ' Number of segments: ' // trim(word)
+    write(word,'(i5)') pm_well%well_grid%nconnections
+    write(fid,'(a)',advance="yes") ' Number of connections: ' // trim(word)
+    write(word,'(es10.3,es10.3,es10.3)') pm_well%well_grid%tophole(1), &
+                            pm_well%well_grid%tophole(2), pm_well%well_grid% &
+                            tophole(3)
+    write(fid,'(a)',advance="yes") ' Top of hole (x,y,z) [m]: ' // trim(word)
+    write(word,'(es10.3,es10.3,es10.3)') pm_well%well_grid%bottomhole(1), &
+                      pm_well%well_grid%bottomhole(2), pm_well%well_grid% &
+                      bottomhole(3)
+    write(fid,'(a)',advance="yes") ' Bottom of hole (x,y,z) [m]: ' // trim(word)
+    write(fid,'(a)',advance="yes") '===========================================&
+                                    &======================'
+    write(fid,'(a)',advance="yes") ' Segment Number: Center coordinate (x,y,z) [m] '
+    do j = 1,pm_well%well_grid%nsegments
+      write(word,'(i4,a3,es10.3,es10.3,es10.3,a1)') j,': (', &
+        pm_well%well_grid%h(j)%x,pm_well%well_grid%h(j)%y,pm_well% &
+        well_grid%h(j)%z,')'
+      write(fid,'(a)',advance="yes") trim(word)
+    enddo
+    write(fid,'(a)',advance="yes") '===========================================&
+                                    &======================'
+    write(fid,'(a)',advance="yes") ' Segment Number: Segment length [m] '
+    do j = 1,pm_well%well_grid%nsegments
+      write(word,'(i4,a3,es10.3,a1)') j,': (',pm_well%well_grid%dh(j),')'
+      write(fid,'(a)',advance="yes") trim(word)
+    enddo
+    write(fid,'(a)',advance="yes") '===========================================&
+                                    &======================'
+    write(fid,'(a)',advance="no") ' Segment Numbers Requested for Output: '
+    if (associated(pm_well%well%segments_for_output)) then
+      do j = 1,size(pm_well%well%segments_for_output)
+        write(word,'(i4)') pm_well%well%segments_for_output(j)
+        write(fid,'(a)',advance="no") trim(word)
+      enddo
+      write(fid,'(a)',advance="yes") ' '
+    else
+      write(fid,'(a)',advance="yes") 'ALL SEGMENTS'
+    endif
+    write(fid,'(a)',advance="yes") '===========================================&
+                                    &======================'
+
+    close(fid)
+    if (.not. pm_well%split_output_file) exit
+  enddo
+
+  do k = 1,pm_well%well_grid%nsegments
+    ! only print the segments that are being requested in the .well file
+    if (.not. pm_well%well%output_in_well_file(k)) cycle
+
+    fid = k + 100
+    filename = PMWellOutputFilename(pm_well%name,pm_well%option)
+    write(word,'(i5)') k
+    if (k < 10000) word(1:1) = '0'; if (k < 1000) word(1:2) = '00'
+    if (k < 100) word(1:3) = '000'; if (k < 10) word(1:4) = '0000'
+    if (pm_well%split_output_file) then
+      filename = trim(filename) // trim(word)
+    endif
+    open(unit=fid,file=filename,action="write",status="old", &
+         position="append")
+
+    write(fid,'(a)',advance="no") ' "Time [' // trim(output_option%tunit) // ']"'
+    cell_string = ''
+
+    variable_string = 'Well BHP'
+    units_string = 'Pa'
+    call OutputWriteToHeader(fid,variable_string,units_string, &
+                              cell_string,icolumn)
+
+    ! here a j while loop that depends on if the file is split or not
+    j = k
+    do while (j <= pm_well%well_grid%nsegments)
+      if (.not. pm_well%well%output_in_well_file(j)) then
+        j = j + 1
+        cycle
+      endif
+
+      variable_string = 'Seg.#'
+      units_string = ''
+      call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
+                               icolumn)
+      variable_string = 'X'
+      units_string = 'm'
+      call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
+                               icolumn)
+      variable_string = 'Y'
+      units_string = 'm'
+      call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
+                               icolumn)
+      variable_string = 'Z'
+      units_string = 'm'
+      call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
+                               icolumn)
+      variable_string = 'Well P-liq'
+      units_string = 'Pa'
+      call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
+                               icolumn)
+      variable_string = 'Res P-liq'
+      units_string = 'Pa'
+      call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
+                               icolumn)
+      variable_string = 'Well P-gas'
+      units_string = 'Pa'
+      call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
+                               icolumn)
+      variable_string = 'Res P-gas'
+      units_string = 'Pa'
+      call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
+                               icolumn)
+      variable_string = 'Well S-liq'
+      units_string = '-'
+      call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
+                               icolumn)
+      variable_string = 'Well S-gas'
+      units_string = '-'
+      call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
+                               icolumn)
+      variable_string = 'Well Q-liq'
+      units_string = 'kmol/s'
+      call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
+                               icolumn)
+      variable_string = 'Well Q-gas'
+      units_string = 'kmol/s'
+      call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
+                               icolumn)
+      variable_string = 'Well Q-liq-cumu'
+      units_string = 'kmol'
+      call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
+                               icolumn)
+      variable_string = 'Well q-liq'
+      units_string = 'm/s'
+      call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
+                               icolumn)
+      variable_string = 'Well q-gas'
+      units_string = 'm/s'
+      call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
+                               icolumn)
+      variable_string = 'Well Liq Mass Bal'
+      units_string = 'kmol/s'
+      call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
+                               icolumn)
+      variable_string = 'Well Liq Mass'
+      units_string = 'kmol'
+      call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
+                               icolumn)
+      variable_string = 'Well P. Index'
+      units_string = '-'
+      call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
+                               icolumn)
+
+      if (pm_well%split_output_file) exit
+      j = j + 1
+    enddo
+
+    close(fid)
+    if (.not. pm_well%split_output_file) exit
+  enddo
+
+end subroutine PMWellOutputHeaderClosedLoop
 
 ! ************************************************************************** !
 
