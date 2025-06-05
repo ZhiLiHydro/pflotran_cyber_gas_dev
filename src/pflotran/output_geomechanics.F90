@@ -38,7 +38,7 @@ subroutine OutputGeomechInit(num_steps)
 
   PetscInt :: num_steps
 
-  if (num_steps == 0) then
+  if (num_steps == -1) then
     geomech_hdf5_first = PETSC_TRUE
   else
     geomech_hdf5_first = PETSC_FALSE
