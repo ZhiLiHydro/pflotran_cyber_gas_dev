@@ -3175,6 +3175,17 @@ subroutine RichardsJacobianSourceSink(A,realization,pm_well,ierr)
   call RichardsSSSandbox(null_vec,A,PETSC_TRUE,grid,material_auxvars, &
                          global_auxvars,rich_auxvars,option)
 
+  if (realization%debug%matview_Matrix_detailed) then
+    call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+    call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+    call DebugWriteFilename(realization%debug,string,'Rjacobian_srcsink_nowell','', &
+                            richards_ts_count,richards_ts_cut_count, &
+                            richards_ni_count)
+    call DebugCreateViewer(realization%debug,string,option,viewer)
+    call MatView(A,viewer,ierr);CHKERRQ(ierr)
+    call DebugViewerDestroy(realization%debug,viewer)
+  endif
+
   ! Well Terms
   ! perturbation in bottom pressure
   if (richards_well_coupling == RICHARDS_FULLY_IMPLICIT_WELL) then
@@ -3185,8 +3196,9 @@ subroutine RichardsJacobianSourceSink(A,realization,pm_well,ierr)
         if (any(cur_well%well_grid%h_rank_id == option%myrank)) then
           ! Perturb the well and well's reservoir variables.
           write(*,*) "JOE: - perturbing well, debug skip"
-          ! call cur_well%Perturb()  ! TODO: debug skip this as we are trying to solve analytically
-          call cur_well%SolveFlow(ZERO_INTEGER, ierr)  ! TODO: not sure if we need this, since it seems to already get called somewhere, but it can't hurt
+          ! TODO: can we just SolveFlow() instead of Perturb?
+          call cur_well%Perturb()  ! TODO: debug skip this as we are trying to solve analytically
+          ! call cur_well%SolveFlow(ZERO_INTEGER, ierr)  ! TODO: not sure if we need this, since it seems to already get called somewhere, but it can't hurt
           ! Go through and update the well contributions to the Jacobian:
           ! dRi/d(P_well), dRwell/d(P_well), dRi/dxi, and dRwell,dxi
           write(*,*) "JOE: - ModifyFlowJacobian"

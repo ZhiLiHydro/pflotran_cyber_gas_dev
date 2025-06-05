@@ -23,7 +23,13 @@ END
 
 SUBSURFACE
 
-
+    #=========================== Numerical methods ================================
+    NUMERICAL_METHODS FLOW
+        LINEAR_SOLVER
+            SOLVER BCGS
+            PC_TYPE NONE
+        /
+    END
 
     !=========================== discretization ===================================
 
@@ -106,14 +112,14 @@ SUBSURFACE
       /
     END
 
-!    DEBUG
-!        PRINT_SOLUTION
-!        PRINT_RESIDUAL
-!        PRINT_JACOBIAN
+    DEBUG
+        PRINT_SOLUTION
+        PRINT_RESIDUAL
+        PRINT_JACOBIAN
 !        PRINT_JACOBIAN_DETAILED
 !        FORMAT ASCII
 !        APPEND_COUNTS_TO_FILENAMES
-!    END
+    END
     !=========================== times ============================================
 
     TIME
