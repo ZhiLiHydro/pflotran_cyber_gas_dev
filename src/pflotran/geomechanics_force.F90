@@ -4,6 +4,7 @@ module Geomechanics_Force_module
   use petscsnes
   use Geomechanics_Global_Aux_module
   use PFLOTRAN_Constants_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -1742,7 +1743,7 @@ subroutine GeomechForceJacobianLinearPart(A,geomech_realization)
                    option%ngeomechdof*(id2-1)+GEOMECH_DISP_X_DOF: &
                    option%ngeomechdof*(id2-1)+GEOMECH_DISP_Z_DOF)
 
-        call MatSetValuesBlocked(A,1,petsc_id1-1,1,petsc_id2-1,Jac_sub_mat, &
+        call PUMSetValuesBlocked(A,1,petsc_id1-1,1,petsc_id2-1,Jac_sub_mat, &
                                  ADD_VALUES,ierr);CHKERRQ(ierr)
       enddo
     enddo

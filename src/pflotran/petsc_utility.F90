@@ -43,6 +43,7 @@ module Petsc_Utility_module
   public :: PUMSetValue, &
             PUMSetValues, &
             PUMSetValuesLocal, &
+            PUMSetValuesBlocked, &
             PUMSetValuesBlockedLocal
 
 contains
@@ -482,6 +483,32 @@ subroutine PUMSetValuesLocal3(A,nrow,irow,ncol,icol,array1d, &
 !                         insert_mode,ierr);CHKERRQ(ierr)
 
 end subroutine PUMSetValuesLocal3
+
+! ************************************************************************** !
+
+subroutine PUMSetValuesBlocked(A,nrow,irow,ncol,icol,matrix_block, &
+                                    insert_mode,ierr)
+  !
+  ! Maps to MatSetValuesBlocked()
+  !
+  ! Author: Glenn Hammond
+  ! Date: 06/06/25
+
+  implicit none
+
+  Mat :: A
+  PetscInt :: nrow
+  PetscInt :: irow
+  PetscInt :: ncol
+  PetscInt :: icol
+  PetscReal :: matrix_block(:,:)
+  PetscInt :: insert_mode
+  PetscErrorCode :: ierr
+
+  call MatSetValuesBlocked(A,nrow,irow,ncol,icol,matrix_block, &
+                           insert_mode,ierr);CHKERRQ(ierr)
+
+end subroutine PUMSetValuesBlocked
 
 ! ************************************************************************** !
 
