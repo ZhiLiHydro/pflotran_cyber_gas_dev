@@ -802,7 +802,7 @@ subroutine WIPPFloNumericalJacobianTest(xx,B,realization,pmwss_ptr,pmwell_ptr)
             print *, 'dof: ', idof2, idof, '| cell: ', (idof2+1)/2, (idof+1)/2
             print *, vec_p(idof2), vec2_p(idof2), perturbation
           endif
-          call MatSetValue(A,idof2-1,idof-1,derivative,INSERT_VALUES, &
+          call PUMSetValue(A,idof2-1,idof-1,derivative,INSERT_VALUES, &
                            ierr);CHKERRQ(ierr)
         endif
       enddo

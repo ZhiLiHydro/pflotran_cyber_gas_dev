@@ -13,6 +13,7 @@ module Inversion_Subsurface_class
   use Realization_Subsurface_class
   use Simulation_Subsurface_class
   use Option_Inversion_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -1906,7 +1907,7 @@ subroutine InvSubsurfAdjAddSensitivities(this)
           if (OptionIsIORank(option)) then
             tempreal = -measurements(imeasurement)%dobs_dparam
             iparameter = 1
-            call MatSetValue(this%inversion_aux%JsensitivityT,iparameter-1, &
+            call PUMSetValue(this%inversion_aux%JsensitivityT,iparameter-1, &
                             imeasurement-1,tempreal,ADD_VALUES, &
                             ierr);CHKERRQ(ierr)
           endif
@@ -1991,7 +1992,7 @@ subroutine InvSubsurfAdjAddSensitivities(this)
         do iparameter = 1, grid%nlmax
           natural_id_ = grid%nG2A(grid%nL2G(iparameter))
           offset = (iparameter-1)*option%nflowdof
-          call MatSetValue(this%inversion_aux%JsensitivityT,natural_id_-1, &
+          call PUMSetValue(this%inversion_aux%JsensitivityT,natural_id_-1, &
                            imeasurement-1,vec_ptr(offset+1),ADD_VALUES, &
                            ierr);CHKERRQ(ierr)
         enddo
@@ -2013,7 +2014,7 @@ subroutine InvSubsurfAdjAddSensitivities(this)
           call VecDot(ndof_vec2,lambda(imeasurement), &
                       tempreal,ierr);CHKERRQ(ierr)
           if (OptionIsIORank(option)) then
-            call MatSetValue(this%inversion_aux%JsensitivityT,iparameter-1, &
+            call PUMSetValue(this%inversion_aux%JsensitivityT,iparameter-1, &
                              imeasurement-1,tempreal,ADD_VALUES, &
                              ierr);CHKERRQ(ierr)
           endif
@@ -2319,7 +2320,7 @@ subroutine InvSubsurfPerturbationFillRow(this,my_dof)
       do i = 1, size(vec_ptr)
 !        print *, 'gehmat: ', inversion_option%forcomm%group_id,iparameter, &
 !                this%dist_measurement_offset+i, vec_ptr(i)
-        call MatSetValue(this%inversion_aux%JsensitivityT, &
+        call PUMSetValue(this%inversion_aux%JsensitivityT, &
                         iparameter-1, &
                         this%dist_measurement_offset+i-1,vec_ptr(i), &
                         INSERT_VALUES,ierr);CHKERRQ(ierr)

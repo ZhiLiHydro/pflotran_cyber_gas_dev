@@ -31,6 +31,7 @@ module Petsc_Utility_module
   interface PUMSetValues
     module procedure PUMSetValues1
     module procedure PUMSetValues2
+    module procedure PUMSetValues3
   end interface
 
   interface PUMSetValuesLocal
@@ -338,7 +339,37 @@ end subroutine PUMSetValues1
 
 ! ************************************************************************** !
 
-subroutine PUMSetValues2(A,nrow,irow,ncol,icol,scalar, &
+subroutine PUMSetValues2(A,nrow,irow,ncol,icol,array1d, &
+                         insert_mode,ierr)
+  !
+  ! Maps to MatSetValues()
+  !
+  ! Author: Glenn Hammond
+  ! Date: 06/06/25
+
+  implicit none
+
+  Mat :: A
+  PetscInt :: nrow
+  PetscInt :: irow
+  PetscInt :: ncol
+  PetscInt :: icol(:)
+  PetscReal :: array1d(:)
+  PetscInt :: insert_mode
+  PetscErrorCode :: ierr
+
+  PetscInt :: irow1d(1)
+
+  irow1d(1) = irow
+
+  call MatSetValues(A,nrow,irow1d,ncol,icol,array1d, &
+                    insert_mode,ierr);CHKERRQ(ierr)
+
+end subroutine PUMSetValues2
+
+! ************************************************************************** !
+
+subroutine PUMSetValues3(A,nrow,irow,ncol,icol,array1d, &
                          insert_mode,ierr)
   !
   ! Maps to MatSetValues()
@@ -353,18 +384,14 @@ subroutine PUMSetValues2(A,nrow,irow,ncol,icol,scalar, &
   PetscInt :: irow(:)
   PetscInt :: ncol
   PetscInt :: icol(:)
-  PetscReal :: scalar
+  PetscReal :: array1d(:)
   PetscInt :: insert_mode
   PetscErrorCode :: ierr
-
-  PetscReal :: array1d(1)
-
-  array1d(1) = scalar
 
   call MatSetValues(A,nrow,irow,ncol,icol,array1d, &
                     insert_mode,ierr);CHKERRQ(ierr)
 
-end subroutine PUMSetValues2
+end subroutine PUMSetValues3
 
 ! ************************************************************************** !
 

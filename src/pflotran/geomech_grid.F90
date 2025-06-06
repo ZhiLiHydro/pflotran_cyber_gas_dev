@@ -5,6 +5,7 @@ module Geomechanics_Grid_module
   use Geomechanics_Grid_Aux_module
   use Grid_Unstructured_Cell_module
   use PFLOTRAN_Constants_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -262,7 +263,7 @@ subroutine CopySubsurfaceGridtoGeomechGrid(ugrid,geomech_grid,option)
 
   rank = option%myrank + 1
   do ivertex = 1, geomech_grid%ngmax_node
-    call MatSetValue(Rank_Mat, &
+    call PUMSetValue(Rank_Mat, &
                      geomech_grid%node_ids_ghosted_natural(ivertex)-1, &
                      option%myrank,rank,INSERT_VALUES,ierr);CHKERRQ(ierr)
   enddo

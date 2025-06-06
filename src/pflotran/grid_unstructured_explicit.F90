@@ -6,6 +6,7 @@ module Grid_Unstructured_Explicit_module
   use Grid_Unstructured_Aux_module
 
   use PFLOTRAN_Constants_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -1015,7 +1016,7 @@ subroutine UGridExplicitDecompose(ugrid,option)
     temp_int = iconn+global_connection_offset-1
     do i = 1, 2
       icell = explicit_grid%connections(i,iconn)-1
-      call MatSetValue(M_mat,icell,temp_int,1.d0,INSERT_VALUES, &
+      call PUMSetValue(M_mat,icell,temp_int,1.d0,INSERT_VALUES, &
                        ierr);CHKERRQ(ierr)
     enddo
   enddo
@@ -1088,9 +1089,9 @@ subroutine UGridExplicitDecompose(ugrid,option)
   do iconn = 1, num_connections_local_old
     icell_up = explicit_grid%connections(1,iconn)-1
     icell_dn = explicit_grid%connections(2,iconn)-1
-    call MatSetValue(M_mat,icell_up,icell_dn,1.d0,INSERT_VALUES, &
+    call PUMSetValue(M_mat,icell_up,icell_dn,1.d0,INSERT_VALUES, &
                      ierr);CHKERRQ(ierr)
-    call MatSetValue(M_mat,icell_dn,icell_up,1.d0,INSERT_VALUES, &
+    call PUMSetValue(M_mat,icell_dn,icell_up,1.d0,INSERT_VALUES, &
                      ierr);CHKERRQ(ierr)
   enddo
 

@@ -11,6 +11,7 @@ module PM_ERT_class
   use Survey_module
   use Waypoint_module
   use PFLOTRAN_Constants_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -1668,7 +1669,7 @@ subroutine PMERTBuildCoupledJacobian(this)
                              MPI_DOUBLE_PRECISION,MPI_SUM,option%mycomm, &
                              ierr);CHKERRQ(ierr)
 
-          call MatSetValue(patch%aux%inversion_aux%JsensitivityT, &
+          call PUMSetValue(patch%aux%inversion_aux%JsensitivityT, &
                            iparam-1,imeasurement-1,coupled_jacob, &
                            INSERT_VALUES,ierr);CHKERRQ(ierr)
         enddo

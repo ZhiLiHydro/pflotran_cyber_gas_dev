@@ -7,6 +7,7 @@ module Grid_Unstructured_module
   use Grid_Unstructured_Cell_module
 
   use PFLOTRAN_Constants_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -2657,7 +2658,7 @@ subroutine UGridMapSideSet(unstructured_grid,face_vertices,n_ss_faces, &
           int_array4_0(ivertex) = &
             unstructured_grid%vertex_ids_natural(vertex_id_local)-1
         enddo
-        call MatSetValues(Mat_vert_to_face,1,boundary_face_count-1+offset, &
+        call PUMSetValues(Mat_vert_to_face,1,boundary_face_count-1+offset, &
                           nvertices,int_array4_0,real_array4,INSERT_VALUES, &
                           ierr);CHKERRQ(ierr)
       endif
@@ -2982,7 +2983,7 @@ subroutine UGridMapSideSet2(unstructured_grid,face_vertices,n_ss_faces, &
           int_array4_0(ivertex) = &
             unstructured_grid%vertex_ids_natural(vertex_id_local)-1
         enddo
-        call MatSetValues(Mat_vert_to_face,1,boundary_face_count-1+offset, &
+        call PUMSetValues(Mat_vert_to_face,1,boundary_face_count-1+offset, &
                           nvertices,int_array4_0,real_array4,INSERT_VALUES, &
                           ierr);CHKERRQ(ierr)
       endif
@@ -3021,7 +3022,7 @@ subroutine UGridMapSideSet2(unstructured_grid,face_vertices,n_ss_faces, &
   do iface = 1, n_ss_faces
     do ivertex = 1, size(face_vertices,1)
       if (face_vertices(ivertex,iface) > 0) then
-        call MatSetValue(Mat_region_vert_to_face,iface-1+offset, &
+        call PUMSetValue(Mat_region_vert_to_face,iface-1+offset, &
                          face_vertices(ivertex,iface)-1,1.d0,INSERT_VALUES, &
                          ierr);CHKERRQ(ierr)
 

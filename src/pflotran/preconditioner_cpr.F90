@@ -13,6 +13,7 @@ module CPR_Preconditioner_module
   use petscpc
   use petscvec
   use PFLOTRAN_Constants_module
+  use Petsc_Utility_module
   use Option_module
   implicit none
 
@@ -1090,13 +1091,13 @@ subroutine MatGetSubABFImmiscible(A, App, Ass, factors1Vec,  &
     end do
 
     ! e) set values
-    call MatSetValues(App,1,insert_rows,num_col_blocks, &
+    call PUMSetValues(App,1,insert_rows,num_col_blocks, &
                       ctx%insert_colIdx(0:num_col_blocks-1), &
                       ctx%insert_vals(0:num_col_blocks-1),INSERT_VALUES, &
                       ierr);CHKERRQ(ierr)
 
     if (ctx%CPR_type == "ADDITIVE") then
-      call MatSetValues(Ass,1,insert_rows,num_col_blocks, &
+      call PUMSetValues(Ass,1,insert_rows,num_col_blocks, &
                         ctx%insert_colIdx(0:num_col_blocks-1), &
                         ctx%insert_vals2(0:num_col_blocks-1),INSERT_VALUES, &
                         ierr);CHKERRQ(ierr)
@@ -1275,12 +1276,12 @@ subroutine MatGetSubQIMPESImmiscible(A, App, Ass, factors1Vec, &
     end do
 
     ! e) set values
-    call MatSetValues(App,1,insert_rows,num_col_blocks, &
+    call PUMSetValues(App,1,insert_rows,num_col_blocks, &
                       ctx%insert_colIdx(0:num_col_blocks-1), &
                       ctx%insert_vals(0:num_col_blocks-1),INSERT_VALUES, &
                       ierr);CHKERRQ(ierr)
     if (ctx%CPR_type == "ADDITIVE") then
-      call MatSetValues(Ass,1,insert_rows,num_col_blocks, &
+      call PUMSetValues(Ass,1,insert_rows,num_col_blocks, &
                         ctx%insert_colIdx(0:num_col_blocks-1), &
                         ctx%insert_vals2(0:num_col_blocks-1),INSERT_VALUES, &
                         ierr);CHKERRQ(ierr)
@@ -1441,7 +1442,7 @@ subroutine MatGetSubABFMiscible(a, ap, factors1Vec,  ierr, ctx)
     end do
 
     ! h) set values
-    call MatSetValues(ap,1,insert_rows,ncolblks, &
+    call PUMSetValues(ap,1,insert_rows,ncolblks, &
                       ctx%insert_colIdx(0:ncolblks-1), &
                       ctx%insert_vals(0:ncolblks-1),INSERT_VALUES, &
                       ierr);CHKERRQ(ierr)
@@ -1610,7 +1611,7 @@ subroutine MatGetSubABFGeneric(a, ap, factors1Vec,  ierr, &
 
 
     ! set values
-    call MatSetValues(ap,1,insert_rows,ncolblks, &
+    call PUMSetValues(ap,1,insert_rows,ncolblks, &
                       ctx%insert_colIdx(0:ncolblks-1), &
                       ctx%insert_vals(0:ncolblks-1),INSERT_VALUES, &
                       ierr);CHKERRQ(ierr)
