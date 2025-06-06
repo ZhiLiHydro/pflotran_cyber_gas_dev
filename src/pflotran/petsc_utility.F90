@@ -28,13 +28,20 @@ module Petsc_Utility_module
             PetUtilUnloadVec, &
             PetscUtilCompareMatrices
 
+  interface PUMSetValues
+    module procedure PUMSetValues1
+    module procedure PUMSetValues2
+  end interface
+
   interface PUMSetValuesLocal
     module procedure PUMSetValuesLocal1
     module procedure PUMSetValuesLocal2
     module procedure PUMSetValuesLocal3
   end interface
 
-  public :: PUMSetValuesLocal, &
+  public :: PUMSetValue, &
+            PUMSetValues, &
+            PUMSetValuesLocal, &
             PUMSetValuesBlockedLocal
 
 contains
@@ -274,6 +281,93 @@ end subroutine PetscUtilCompareMatrices
 
 ! ************************************************************************** !
 
+subroutine PUMSetValue(A,irow,icol,scalar, &
+                       insert_mode,ierr)
+  !
+  ! Maps to MatSetValue()
+  !
+  ! Author: Glenn Hammond
+  ! Date: 06/06/25
+
+  implicit none
+
+  Mat :: A
+  PetscInt :: irow
+  PetscInt :: icol
+  PetscReal :: scalar
+  PetscInt :: insert_mode
+  PetscErrorCode :: ierr
+
+  call MatSetValue(A,irow,icol,scalar,insert_mode,ierr);CHKERRQ(ierr)
+
+end subroutine PUMSetValue
+
+! ************************************************************************** !
+
+subroutine PUMSetValues1(A,nrow,irow,ncol,icol,scalar, &
+                         insert_mode,ierr)
+  !
+  ! Maps to MatSetValues()
+  !
+  ! Author: Glenn Hammond
+  ! Date: 06/06/25
+
+  implicit none
+
+  Mat :: A
+  PetscInt :: nrow
+  PetscInt :: irow
+  PetscInt :: ncol
+  PetscInt :: icol
+  PetscReal :: scalar
+  PetscInt :: insert_mode
+  PetscErrorCode :: ierr
+
+  PetscInt :: irow1d(1)
+  PetscInt :: icol1d(1)
+  PetscReal :: array1d(1)
+
+  irow1d(:) = irow
+  icol1d(:) = icol
+  array1d(1) = scalar
+
+  call MatSetValues(A,nrow,irow1d,ncol,icol1d,array1d, &
+                    insert_mode,ierr);CHKERRQ(ierr)
+
+end subroutine PUMSetValues1
+
+! ************************************************************************** !
+
+subroutine PUMSetValues2(A,nrow,irow,ncol,icol,scalar, &
+                         insert_mode,ierr)
+  !
+  ! Maps to MatSetValues()
+  !
+  ! Author: Glenn Hammond
+  ! Date: 06/06/25
+
+  implicit none
+
+  Mat :: A
+  PetscInt :: nrow
+  PetscInt :: irow(:)
+  PetscInt :: ncol
+  PetscInt :: icol(:)
+  PetscReal :: scalar
+  PetscInt :: insert_mode
+  PetscErrorCode :: ierr
+
+  PetscReal :: array1d(1)
+
+  array1d(1) = scalar
+
+  call MatSetValues(A,nrow,irow,ncol,icol,array1d, &
+                    insert_mode,ierr);CHKERRQ(ierr)
+
+end subroutine PUMSetValues2
+
+! ************************************************************************** !
+
 subroutine PUMSetValuesLocal1(A,nrow,irow,ncol,icol,scalar, &
                               insert_mode,ierr)
   !
@@ -367,7 +461,7 @@ end subroutine PUMSetValuesLocal3
 subroutine PUMSetValuesBlockedLocal(A,nrow,irow,ncol,icol,matrix_block, &
                                     insert_mode,ierr)
   !
-  ! Maps to MatSetValuesLocal()
+  ! Maps to MatSetValuesBlockedLocal()
   !
   ! Author: Glenn Hammond
   ! Date: 06/06/25
