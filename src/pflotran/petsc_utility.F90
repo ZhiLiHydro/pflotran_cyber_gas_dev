@@ -28,6 +28,9 @@ module Petsc_Utility_module
             PetUtilUnloadVec, &
             PetscUtilCompareMatrices
 
+  public :: PUMSetValuesLocal, &
+            PUMSetValuesBlockedLocal
+
 contains
 
 ! ************************************************************************** !
@@ -262,5 +265,57 @@ subroutine PetscUtilCompareMatrices(A,B,nL2G,nG2A,rtol,row_rtol,option)
                           nrow,irow_ptr,icol_ptr,success,ierr);CHKERRQ(ierr)
 
 end subroutine PetscUtilCompareMatrices
+
+! ************************************************************************** !
+
+subroutine PUMSetValuesLocal(A,nrow,irow,ncol,icol,matrix_block, &
+                             insert_mode,ierr)
+  !
+  ! Maps to MatSetValuesLocal()
+  !
+  ! Author: Glenn Hammond
+  ! Date: 06/06/25
+
+  implicit none
+
+  Mat :: A
+  PetscInt :: nrow
+  PetscInt :: irow
+  PetscInt :: ncol
+  PetscInt :: icol
+  PetscReal :: matrix_block(:,:)
+  PetscInt :: insert_mode
+  PetscErrorCode :: ierr
+
+  call MatSetValuesLocal(A,nrow,irow,ncol,icol,matrix_block, &
+                         insert_mode,ierr);CHKERRQ(ierr)
+
+end subroutine PUMSetValuesLocal
+
+! ************************************************************************** !
+
+subroutine PUMSetValuesBlockedLocal(A,nrow,irow,ncol,icol,matrix_block, &
+                                    insert_mode,ierr)
+  !
+  ! Maps to MatSetValuesLocal()
+  !
+  ! Author: Glenn Hammond
+  ! Date: 06/06/25
+
+  implicit none
+
+  Mat :: A
+  PetscInt :: nrow
+  PetscInt :: irow
+  PetscInt :: ncol
+  PetscInt :: icol
+  PetscReal :: matrix_block(:,:)
+  PetscInt :: insert_mode
+  PetscErrorCode :: ierr
+
+  call MatSetValuesBlockedLocal(A,nrow,irow,ncol,icol,matrix_block, &
+                                insert_mode,ierr);CHKERRQ(ierr)
+
+end subroutine PUMSetValuesBlockedLocal
 
 end module Petsc_Utility_module
