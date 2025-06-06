@@ -12,6 +12,7 @@ module Reactive_Transport_module
   use Material_Aux_module
 
   use PFLOTRAN_Constants_module
+  use Petsc_Utility_module
   use Utility_module, only : Equal
 
   implicit none
@@ -1685,17 +1686,17 @@ subroutine RTCalculateTransportMatrix(realization,T)
                      coef_up,coef_dn)
 
       if (local_id_up > 0) then
-        call MatSetValuesLocal(T,1,ghosted_id_up-1,1,ghosted_id_up-1,coef_up, &
+        call PUMSetValuesLocal(T,1,ghosted_id_up-1,1,ghosted_id_up-1,coef_up, &
                                ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesLocal(T,1,ghosted_id_up-1,1,ghosted_id_dn-1,coef_dn, &
+        call PUMSetValuesLocal(T,1,ghosted_id_up-1,1,ghosted_id_dn-1,coef_dn, &
                                ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
       if (local_id_dn > 0) then
         coef_up = -coef_up
         coef_dn = -coef_dn
-        call MatSetValuesLocal(T,1,ghosted_id_dn-1,1,ghosted_id_dn-1,coef_dn, &
+        call PUMSetValuesLocal(T,1,ghosted_id_dn-1,1,ghosted_id_dn-1,coef_dn, &
                                ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesLocal(T,1,ghosted_id_dn-1,1,ghosted_id_up-1,coef_up, &
+        call PUMSetValuesLocal(T,1,ghosted_id_dn-1,1,ghosted_id_up-1,coef_up, &
                                ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
 
@@ -1733,7 +1734,7 @@ subroutine RTCalculateTransportMatrix(realization,T)
 
       !Jup not needed
       coef_dn = -coef_dn
-      call MatSetValuesLocal(T,1,ghosted_id-1,1,ghosted_id-1,coef_dn, &
+      call PUMSetValuesLocal(T,1,ghosted_id-1,1,ghosted_id-1,coef_dn, &
                              ADD_VALUES,ierr);CHKERRQ(ierr)
 
     enddo
@@ -1750,7 +1751,7 @@ subroutine RTCalculateTransportMatrix(realization,T)
 !geh           global_auxvars(ghosted_id)%den_kg(iphase)* &
            1000.d0* &
            material_auxvars(ghosted_id)%volume/option%tran_dt
-    call MatSetValuesLocal(T,1,ghosted_id-1,1,ghosted_id-1,coef,ADD_VALUES, &
+    call PUMSetValuesLocal(T,1,ghosted_id-1,1,ghosted_id-1,coef,ADD_VALUES, &
                            ierr);CHKERRQ(ierr)
   enddo
 
@@ -1794,7 +1795,7 @@ subroutine RTCalculateTransportMatrix(realization,T)
       !geh: do not remove this conditional as otherwise MatSetValuesLocal()
       !     will be called for injection too (wasted calls)
       if (coef > 0.d0) then
-        call MatSetValuesLocal(T,1,ghosted_id-1,1,ghosted_id-1,coef, &
+        call PUMSetValuesLocal(T,1,ghosted_id-1,1,ghosted_id-1,coef, &
                                ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
 
@@ -3083,18 +3084,18 @@ subroutine RTJacobianFlux(snes,xx,A,B,realization,ierr)
       end if
 
       if (local_id_up>0) then
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_up-1, &
+        call PUMSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_up-1, &
                                       Jup,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_dn-1, &
+        call PUMSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_dn-1, &
                                       Jdn,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
 
       if (local_id_dn>0) then
         Jup = -Jup
         Jdn = -Jdn
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_dn-1, &
+        call PUMSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_dn-1, &
                                       Jdn,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_up-1, &
+        call PUMSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_up-1, &
                                       Jup,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
     enddo
@@ -3143,7 +3144,7 @@ subroutine RTJacobianFlux(snes,xx,A,B,realization,ierr)
       !Jup not needed
       Jdn = -Jdn
 
-      call MatSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jdn, &
+      call PUMSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jdn, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
 
     enddo
@@ -3265,7 +3266,7 @@ subroutine RTJacobianNonFlux(snes,xx,A,B,realization,ierr)
 
       endif
 
-      call MatSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jup, &
+      call PUMSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jup, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
     enddo
 #endif
@@ -3304,7 +3305,7 @@ subroutine RTJacobianNonFlux(snes,xx,A,B,realization,ierr)
                         coef_in,coef_out)
       call RTSourceSinkDerivative(rt_parameter,rt_auxvars(ghosted_id), &
                                   rt_auxvar_out,coef_in,coef_out,option,Jup)
-      call MatSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jup, &
+      call PUMSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jup, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
     enddo
     source_sink => source_sink%next
@@ -3338,7 +3339,7 @@ subroutine RTJacobianNonFlux(snes,xx,A,B,realization,ierr)
       if (option%use_sc) then
         Jup = Jup*rt_sec_transport_vars(ghosted_id)%epsilon
       endif
-      call MatSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jup, &
+      call PUMSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jup, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
     enddo
 

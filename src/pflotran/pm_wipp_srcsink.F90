@@ -19,6 +19,7 @@ module PM_WIPP_SrcSink_class
   use PFLOTRAN_Constants_module
   use Realization_Subsurface_class
   use Utility_module, only : Equal
+  use Petsc_Utility_module
 
   implicit none
 
@@ -4530,7 +4531,7 @@ subroutine PMWSSCalcJacobianValues(this,A,ierr)
     call WIPPFloConvertUnitsToBRAGFlo(J_block,material_auxvars(ghosted_id), &
                                       this%option)
 
-    call MatSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,J_block, &
+    call PUMSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,J_block, &
                                   ADD_VALUES,ierr);CHKERRQ(ierr)
 
   enddo

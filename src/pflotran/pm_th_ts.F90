@@ -13,6 +13,7 @@ module PM_TH_TS_class
   use PM_TH_class
 
   use PFLOTRAN_Constants_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -684,7 +685,7 @@ subroutine IJacobianAccumulation(J,shift,realization,ierr)
                    d2energy_dPdt*TH_auxvars(ghosted_id)%dpres_dtime)* &
                    material_auxvars(ghosted_id)%volume
 
-    call MatSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1,Jlocal, &
+    call PUMSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1,Jlocal, &
                                   ADD_VALUES,ierr);CHKERRQ(ierr)
 
 

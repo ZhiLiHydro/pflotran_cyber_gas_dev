@@ -8,6 +8,7 @@ module WIPP_Flow_module
   use WIPP_Well_class
 
   use PFLOTRAN_Constants_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -1482,7 +1483,7 @@ subroutine WIPPFloJacobian(snes,xx,A,B,realization,pmwss_ptr,pmwell_ptr,ierr)
                               Jup)
     call WIPPFloConvertUnitsToBRAGFlo(Jup,material_auxvars(ghosted_id), &
                                       option)
-    call MatSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jup, &
+    call PUMSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jup, &
                                   ADD_VALUES,ierr);CHKERRQ(ierr)
   enddo
 
@@ -1553,7 +1554,7 @@ subroutine WIPPFloJacobian(snes,xx,A,B,realization,pmwss_ptr,pmwell_ptr,ierr)
         if (wippflo_jacobian_test .and. wippflo_jacobian_test_rdof > 0) then
           print *, 'up-up: ',Jtmp, local_id_up
         endif
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_up-1, &
+        call PUMSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_up-1, &
                                       Jtmp,ADD_VALUES,ierr);CHKERRQ(ierr)
         Jtmp = Jdn
         call WIPPFloConvertUnitsToBRAGFlo(Jtmp, &
@@ -1562,7 +1563,7 @@ subroutine WIPPFloJacobian(snes,xx,A,B,realization,pmwss_ptr,pmwell_ptr,ierr)
         if (wippflo_jacobian_test .and. wippflo_jacobian_test_rdof > 0) then
           print *, 'up-dn: ',Jtmp, local_id_up
         endif
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_dn-1, &
+        call PUMSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_dn-1, &
                                       Jtmp,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
       if (local_id_dn > 0) then
@@ -1575,7 +1576,7 @@ subroutine WIPPFloJacobian(snes,xx,A,B,realization,pmwss_ptr,pmwell_ptr,ierr)
         if (wippflo_jacobian_test) then
           print *, 'dn-dn: ',Jtmp, local_id_dn
         endif
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_dn-1, &
+        call PUMSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_dn-1, &
                                       Jtmp,ADD_VALUES,ierr);CHKERRQ(ierr)
         Jtmp = Jup
         call WIPPFloConvertUnitsToBRAGFlo(Jtmp, &
@@ -1584,7 +1585,7 @@ subroutine WIPPFloJacobian(snes,xx,A,B,realization,pmwss_ptr,pmwell_ptr,ierr)
         if (wippflo_jacobian_test) then
           print *, 'dn-up: ',Jtmp, local_id_dn
         endif
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_up-1, &
+        call PUMSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_up-1, &
                                       Jtmp,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
     enddo
@@ -1641,7 +1642,7 @@ subroutine WIPPFloJacobian(snes,xx,A,B,realization,pmwss_ptr,pmwell_ptr,ierr)
       Jdn = -Jdn
       call WIPPFloConvertUnitsToBRAGFlo(Jdn,material_auxvars(ghosted_id), &
                                         option)
-      call MatSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jdn, &
+      call PUMSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jdn, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
     enddo
     boundary_condition => boundary_condition%next
@@ -1690,7 +1691,7 @@ subroutine WIPPFloJacobian(snes,xx,A,B,realization,pmwss_ptr,pmwell_ptr,ierr)
 
       call WIPPFloConvertUnitsToBRAGFlo(Jup,material_auxvars(ghosted_id), &
                                         option)
-      call MatSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jup, &
+      call PUMSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jup, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
 
     enddo
@@ -1964,7 +1965,7 @@ subroutine WIPPFloSSSandbox(residual,Jacobian,compute_derivative, &
                               wippflo_auxvars(idof,ghosted_id)%pert
           enddo
         enddo
-        call MatSetValuesBlockedLocal(Jacobian,1,ghosted_id-1,1,ghosted_id-1, &
+        call PUMSetValuesBlockedLocal(Jacobian,1,ghosted_id-1,1,ghosted_id-1, &
                                       Jac,ADD_VALUES,ierr);CHKERRQ(ierr)
       else
         iend = local_id*option%nflowdof

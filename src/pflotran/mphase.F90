@@ -6,6 +6,7 @@ module Mphase_module
   use Global_Aux_module
 
   use PFLOTRAN_Constants_module
+  use Petsc_Utility_module
   use Utility_module, only : Equal
 
   implicit none
@@ -3390,7 +3391,7 @@ subroutine MphaseJacobianPatch(snes,xx,A,B,realization,ierr)
       Jup = Jup / material_auxvars(ghosted_id)%volume
 
      ! if (n==1) print *,  blkmat11, volume_p(n), ra
-    call MatSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jup, &
+    call PUMSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jup, &
                                   ADD_VALUES,ierr);CHKERRQ(ierr)
   end do
 
@@ -3509,9 +3510,9 @@ subroutine MphaseJacobianPatch(snes,xx,A,B,realization,ierr)
         Jdn(:,1:option%nflowdof)= &
           ra(:,1 + option%nflowdof:2 * option%nflowdof)*voltemp !12
 
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_up-1, &
+        call PUMSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_up-1, &
                                       Jup,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_dn-1, &
+        call PUMSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_dn-1, &
                                       Jdn,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
       if (local_id_dn > 0) then
@@ -3522,9 +3523,9 @@ subroutine MphaseJacobianPatch(snes,xx,A,B,realization,ierr)
         Jup(:,1:option%nflowdof) = -ra(:,1:option%nflowdof)*voltemp !21
         Jdn(:,1:option%nflowdof) = -ra(:, 1 + option%nflowdof:2 * option%nflowdof)*voltemp !22
 
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_dn-1, &
+        call PUMSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_dn-1, &
                                       Jdn,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_up-1, &
+        call PUMSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_up-1, &
                                       Jup,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
     enddo
@@ -3575,7 +3576,7 @@ subroutine MphaseJacobianPatch(snes,xx,A,B,realization,ierr)
     else
       ip2 = ip1
     endif
-    call MatSetValuesLocal(A,1,ip1,1,ip2,1.d0,INSERT_VALUES, &
+    call PUMSetValuesLocal(A,1,ip1,1,ip2,1.d0,INSERT_VALUES, &
                            ierr);CHKERRQ(ierr)
   enddo
 

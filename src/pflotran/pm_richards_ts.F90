@@ -14,6 +14,7 @@ module PM_Richards_TS_class
   use PM_Richards_class
 
   use PFLOTRAN_Constants_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -411,7 +412,7 @@ subroutine IJacobianAccumulation(J,shift,realization,ierr)
             rich_auxvars(ghosted_id)%dpres_dtime)* &
             material_auxvars(ghosted_id)%volume
 
-    call MatSetValuesLocal(J,1,row,1,col,val,ADD_VALUES,ierr);CHKERRQ(ierr)
+    call PUMSetValuesLocal(J,1,row,1,col,val,ADD_VALUES,ierr);CHKERRQ(ierr)
 
   enddo
 

@@ -9,6 +9,7 @@ module WIPP_Well_class
   use Strata_module
   use Realization_Subsurface_class
   use PFLOTRAN_Constants_module
+  use Petsc_Utility_module
   use WIPP_Flow_Aux_module
   use NW_Transport_Aux_module
   use Well_Grid_module
@@ -920,7 +921,7 @@ subroutine PMWellModifyFlowJacWIPPQI(this,Jac,ierr)
     call WIPPFloConvertUnitsToBRAGFlo(J_block,this%realization%patch%aux% &
                                   Material%auxvars(ghosted_id),this%option)
 
-    call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1, &
+    call PUMSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1, &
                                   J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
   enddo
 
