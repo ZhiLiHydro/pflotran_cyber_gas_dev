@@ -5410,10 +5410,11 @@ subroutine PMWellInitializeWellFlow(pm_well)
       write(*,*) "JOE:   - den ", pm_well%well%liq%den(1)
       write(*,*) "JOE:   - gravity ", pm_well%option%gravity(Z_DIRECTION)
       write(*,*) "JOE:   - dh ", pm_well%well_grid%dh(1)
-      pm_well%well%bh_p = global_auxvar%pres(option%liquid_phase) &
-                          -1.0 * pm_well%well%liq%den(1) * &
-                          pm_well%option%gravity(Z_DIRECTION) * &
-                          pm_well%well_grid%dh(1)/2.d0
+      ! TODO: To make the maths simpler, let's just set the BHP to be the same as Pw1 (i.e. the pressure in the bottom segment)
+      pm_well%well%bh_p = global_auxvar%pres(option%liquid_phase) !&
+                          ! -1.0 * pm_well%well%liq%den(1) * &
+                          ! pm_well%option%gravity(Z_DIRECTION) * &
+                          ! pm_well%well_grid%dh(1)/2.d0
       write(*,*) "JOE:   - bhp ", pm_well%well%bh_p
 
 
@@ -7075,105 +7076,107 @@ subroutine PMWellModifyFlowResHydrostatic(this,residual)
       enddo
     case(RICHARDS_MODE)
 
-      write(*,*) "JOE:   - residual without any well:"
-      do j = 1,this%well_grid%nsegments
-        R_reservoir_idx = 1 + (j-1) * this%option%nflowdof  ! 1, 3, 5, ...
-        R_well_idx = 1 + R_reservoir_idx  ! 2, 4, 6, ...
-        write(*,*) residual(R_reservoir_idx)
-        write(*,*) residual(R_well_idx)
-      enddo
+      ! write(*,*) "JOE:   - residual without any well:"
+      ! do j = 1,this%well_grid%nsegments
+      !   R_reservoir_idx = 1 + (j-1) * this%option%nflowdof  ! 1, 3, 5, ...
+      !   R_well_idx = 1 + R_reservoir_idx  ! 2, 4, 6, ...
+      !   write(*,*) residual(R_reservoir_idx)
+      !   write(*,*) residual(R_well_idx)
+      ! enddo
 
-      do k = 1,this%well_grid%nsegments
-        if (this%well_grid%h_rank_id(k) /= this%option%myrank) &
-          cycle
-
-        write(*,*) "JOE:  - Segment ", k
-
-        R_reservoir_idx = 1 + (k-1) * this%option%nflowdof  ! 1, 3, 5, ...
-        R_well_idx = 1 + R_reservoir_idx  ! 2, 4, 6, ...
-
-        ! if (k == 1) then
-        !   ! Handle the special term for the bottom segment
-        !   sum_q = sum(this%well%liq%q)
-        !   Q = -1.0 * this%well%th_ql
-        !   !residual(R_reservoir_idx) = residual(R_reservoir_idx) - (Q - sum_q)
-        !   residual(R_well_idx) = residual(R_well_idx) + (Q - sum_q)
-        !   write(*,*) "JOE:    - here Q = ", Q
-        !   write(*,*) "JOE:    - here sum_q = ", sum_q
-        ! endif
-
-
-        write(*,*) "JOE:     - residual with bottom segment term added:"
-        do j = 1,this%well_grid%nsegments
-          R_reservoir_idx = 1 + (j-1) * this%option%nflowdof  ! 1, 3, 5, ...
-          R_well_idx = 1 + R_reservoir_idx  ! 2, 4, 6, ...
-          write(*,*) residual(R_reservoir_idx)
-          write(*,*) residual(R_well_idx)
-        enddo
-
-        write(*,*) "JOE:    - here q(",k,") = ", this%well%liq%q(k)
-        residual(R_reservoir_idx) = residual(R_reservoir_idx) + this%well%liq%q(k)  ! was -
-        residual(R_well_idx) = residual(R_well_idx) + this%well%liq%q(k)
-
-
-        write(*,*) "JOE:     - residual with all terms added to segment:"
-        do j = 1,this%well_grid%nsegments
-          R_reservoir_idx = 1 + (j-1) * this%option%nflowdof  ! 1, 3, 5, ...
-          R_well_idx = 1 + R_reservoir_idx  ! 2, 4, 6, ...
-          write(*,*) residual(R_reservoir_idx)
-          write(*,*) residual(R_well_idx)
-        enddo
-
-
-      enddo
-
-
-      write(*,*) "JOE:   - residual with well:"
-      do j = 1,this%well_grid%nsegments
-        R_reservoir_idx = 1 + (j-1) * this%option%nflowdof  ! 1, 3, 5, ...
-        R_well_idx = 1 + R_reservoir_idx  ! 2, 4, 6, ...
-        write(*,*) residual(R_reservoir_idx)
-        write(*,*) residual(R_well_idx)
-      enddo
-
-
-
-
-
-
-      ! sum_q = 0.d0
       ! do k = 1,this%well_grid%nsegments
       !   if (this%well_grid%h_rank_id(k) /= this%option%myrank) &
-      !       cycle
-      !   ghosted_id = this%well_grid%h_ghosted_id(k)
-      !   write(*,*) "JOE: - seg ", k, ", at ghosted_id", ghosted_id
-      !   local_id = this%realization%patch%grid%nG2L(ghosted_id)
-      !   local_end = local_id * this%option%nflowdof
-      !   local_start = local_end - this%option%nflowdof + 1
-      !   write(*,*) "JOE:   - local_id ", local_id
-      !   write(*,*) "JOE:   - local_end ", local_end
-      !   write(*,*) "JOE:   - local_start ", local_start
+      !     cycle
+
+      !   write(*,*) "JOE:  - Segment ", k
+
+      !   R_reservoir_idx = 1 + (k-1) * this%option%nflowdof  ! 1, 3, 5, ...
+      !   R_well_idx = 1 + R_reservoir_idx  ! 2, 4, 6, ...
+
       !   if (k == 1) then
-      !     ! An extra residual is required for the bottom well cell.
-      !     ! Residual = Q - sum(q)
+      !     ! Handle the special term for the bottom segment
       !     sum_q = sum(this%well%liq%q)
-      !     Q = -1.d0 * (this%well%th_ql)
-      !     residual(local_end) = Q - sum_q
-      !     write(*,*) "JOE:   - residual(", local_end, ") = ", Q - sum_q
-      !     write(*,*) "JOE:    - which is -(well%th_ql) - sum(well%liq%q)"
+      !     Q = this%well%th_ql
+      !     ! Q = -1.0 * this%well%th_ql  ! this gives a -ve Q, but since we want to go into the well we want this +ve
+      !     !residual(R_reservoir_idx) = residual(R_reservoir_idx) + (Q - sum_q) ! was -
+      !     residual(R_well_idx) = residual(R_well_idx) - (Q + sum_q)
+      !     write(*,*) "JOE:    - here Q = ", Q
+      !     write(*,*) "JOE:    - here sum_q = ", sum_q
       !   endif
-      !   ! TODO: need to check out the sign on this
-      !   j = 0  ! 0, as nflowspec = 1 for Richards, and so xmass is of size(n_segs, 1)
-      !   residual(local_start + j) = residual(local_start + j) - &
-      !                               this%well%liq%q(k)
-      !   write(*,*) "JOE:   - residual(", local_start + j, ") -= ", this%well%liq%q(k)
-      !   j = 1
-      !   residual(local_start + j) = residual(local_start + j) + &
-      !                               this%well%liq%q(k)
-      !   write(*,*) "JOE:   - residual(", local_start + j, ") += ", this%well%liq%q(k)
-      !   write(*,*) "JOE:    - of which this%well%liq%q(k) = ", this%well%liq%q(k)
-      !   write(*,*) "JOE:    - which is this%well%liq%q(k)"
+
+
+      !   write(*,*) "JOE:     - residual with bottom segment term added:"
+      !   do j = 1,this%well_grid%nsegments
+      !     R_reservoir_idx = 1 + (j-1) * this%option%nflowdof  ! 1, 3, 5, ...
+      !     R_well_idx = 1 + R_reservoir_idx  ! 2, 4, 6, ...
+      !     write(*,*) residual(R_reservoir_idx)
+      !     write(*,*) residual(R_well_idx)
+      !   enddo
+
+      !   write(*,*) "JOE:    - here q(",k,") = ", this%well%liq%q(k)
+      !   residual(R_reservoir_idx) = residual(R_reservoir_idx) + this%well%liq%q(k)  ! was -
+      !   residual(R_well_idx) = residual(R_well_idx) + this%well%liq%q(k)
+
+
+      !   write(*,*) "JOE:     - residual with all terms added to segment:"
+      !   do j = 1,this%well_grid%nsegments
+      !     R_reservoir_idx = 1 + (j-1) * this%option%nflowdof  ! 1, 3, 5, ...
+      !     R_well_idx = 1 + R_reservoir_idx  ! 2, 4, 6, ...
+      !     write(*,*) residual(R_reservoir_idx)
+      !     write(*,*) residual(R_well_idx)
+      !   enddo
+
+
       ! enddo
+
+
+      ! write(*,*) "JOE:   - residual with well:"
+      ! do j = 1,this%well_grid%nsegments
+      !   R_reservoir_idx = 1 + (j-1) * this%option%nflowdof  ! 1, 3, 5, ...
+      !   R_well_idx = 1 + R_reservoir_idx  ! 2, 4, 6, ...
+      !   write(*,*) residual(R_reservoir_idx)
+      !   write(*,*) residual(R_well_idx)
+      ! enddo
+
+
+
+
+
+
+      sum_q = 0.d0
+      do k = 1,this%well_grid%nsegments
+        if (this%well_grid%h_rank_id(k) /= this%option%myrank) &
+            cycle
+        ghosted_id = this%well_grid%h_ghosted_id(k)
+        write(*,*) "JOE: - seg ", k, ", at ghosted_id", ghosted_id
+        local_id = this%realization%patch%grid%nG2L(ghosted_id)
+        local_end = local_id * this%option%nflowdof
+        local_start = local_end - this%option%nflowdof + 1
+        write(*,*) "JOE:   - local_id ", local_id
+        write(*,*) "JOE:   - local_end ", local_end
+        write(*,*) "JOE:   - local_start ", local_start
+        if (k == 1) then
+          ! An extra residual is required for the bottom well cell.
+          ! Residual = Q - sum(q)
+          sum_q = sum(this%well%liq%q)
+          Q = -1.d0 * (this%well%th_ql)
+          residual(local_end) = Q - sum_q
+          write(*,*) "JOE:   - residual(", local_end, ") = ", Q - sum_q
+          write(*,*) "JOE:    - which is -(well%th_ql) - sum(well%liq%q)"
+        endif
+        ! TODO: put this in a loop over j...
+        j = 0  ! 0, as nflowspec = 1 for Richards, and so xmass is of size(n_segs, 1)
+        residual(local_start + j) = residual(local_start + j) + &
+                                    this%well%liq%q(k)
+        write(*,*) "JOE:   - residual(", local_start + j, ") += ", this%well%liq%q(k)
+        write(*,*) "JOE:    - of which this%well%liq%q(k) = ", this%well%liq%q(k)
+
+        ! j = 1
+        ! residual(local_start + j) = residual(local_start + j) + &
+        !                             this%well%liq%q(k)
+        ! write(*,*) "JOE:   - residual(", local_start + j, ") += ", this%well%liq%q(k)
+        ! write(*,*) "JOE:    - of which this%well%liq%q(k) = ", this%well%liq%q(k)
+      enddo
   end select
 
 end subroutine PMWellModifyFlowResHydrostatic
@@ -7647,12 +7650,83 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
 
       well => this%well
 
-      R_reservoir_idx = 1
-      R_well_idx = 2
-      P_reservoir_idx = 1
-      P_well_idx = 2
+      ! R_reservoir_idx = 1
+      ! R_well_idx = 2
+      ! P_reservoir_idx = 1
+      ! P_well_idx = 2
 
 
+      ! TODO: the below is just debugging
+      do k = 1,this%well_grid%nsegments
+        write(*,*) "JOE:   - k = ",k,", deriv =", GetConst(well, k)
+      enddo
+
+
+      deriv_const_sum = 0
+      do k = 1,this%well_grid%nsegments
+        deriv = GetConst(well, k)
+        deriv_const_sum = deriv_const_sum + deriv
+
+        ! Set dRw1/dPrk
+        local_row_index = (this%well_grid%h_ghosted_id(1) - 1) * option%nflowdof + 1
+        local_col_index = (this%well_grid%h_ghosted_id(k) - 1) * option%nflowdof
+        write(*,*) "JOE:   - Modifying jac at row x col = ", local_row_index, ", ", local_col_index
+        !deriv = (local_row_index*4+local_col_index)  ! TODO: DEBUG
+        call MatSetValuesLocal(Jac,1,local_row_index, &
+                                   1,local_col_index, &
+                                   -deriv, &
+                                   ADD_VALUES,ierr);CHKERRQ(ierr)
+
+        ! Set dRrk/dPrk
+        local_row_index = (this%well_grid%h_ghosted_id(k) - 1) * option%nflowdof
+        local_col_index = (this%well_grid%h_ghosted_id(k) - 1) * option%nflowdof
+        write(*,*) "JOE:   - Modifying jac at row x col = ", local_row_index, ", ", local_col_index
+        !deriv = (local_row_index*4+local_col_index)  ! TODO: DEBUG
+        call MatSetValuesLocal(Jac,1,local_row_index, &
+                                   1,local_col_index, &
+                                   deriv, &
+                                   ADD_VALUES,ierr);CHKERRQ(ierr)
+
+        ! Set dRrk/dPw1
+        local_row_index = (this%well_grid%h_ghosted_id(k) - 1) * option%nflowdof
+        local_col_index = (this%well_grid%h_ghosted_id(1) - 1) * option%nflowdof + 1
+        write(*,*) "JOE:   - Modifying jac at row x col = ", local_row_index, ", ", local_col_index
+        !deriv = (local_row_index*4+local_col_index)  ! TODO: DEBUG
+        call MatSetValuesLocal(Jac,1,local_row_index, &
+                                   1,local_col_index, &
+                                   -deriv, &
+                                   ADD_VALUES,ierr);CHKERRQ(ierr)
+      enddo
+
+      ! Set dRw1/dPw1
+      local_row_index = (this%well_grid%h_ghosted_id(1) - 1) * option%nflowdof + 1
+      local_col_index = (this%well_grid%h_ghosted_id(1) - 1) * option%nflowdof + 1
+      write(*,*) "JOE:   - Modifying jac at row x col = ", local_row_index, ", ", local_col_index
+      !deriv_const_sum = (local_row_index*4+local_col_index)  ! TODO: DEBUG
+      call MatSetValuesLocal(Jac,1,local_row_index, &
+                                  1,local_col_index, &
+                                  deriv_const_sum, &
+                                  ADD_VALUES,ierr);CHKERRQ(ierr)
+
+
+
+
+
+
+
+
+
+
+
+
+            !     local_row_index = this%well_grid%h_ghosted_id(1)* &
+      !                       option%nflowdof-1
+      !     local_col_index = (ghosted_id-1)*option%nflowdof + idof - 1
+      !     P_well = -(res_pert)/pert
+      !     if (dabs(P_well) > 0.d0) then
+      !       call MatSetValuesLocal(Jac,1,local_row_index,1, &
+      !                               local_col_index,P_well, &
+      !                               ADD_VALUES,ierr);CHKERRQ(ierr)
 
 
 
@@ -7733,76 +7807,76 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
 
 
 
-      reservoir => well%reservoir
-      do k = 1,this%well_grid%nsegments  ! row
-        write(*,*) "JOE: - row of block ", k
-        do j = 1,this%well_grid%nsegments  ! column
-          write(*,*) "JOE:   - col of block ", j
-          J_block = 0.d0
+      ! reservoir => well%reservoir
+      ! do k = 1,this%well_grid%nsegments  ! row
+      !   write(*,*) "JOE: - row of block ", k
+      !   do j = 1,this%well_grid%nsegments  ! column
+      !     write(*,*) "JOE:   - col of block ", j
+      !     J_block = 0.d0
 
-          ! Compute the constant derivative
-          upwind = reservoir%p_l(j) > well%pl(j)
-          if (upwind) then
-            mobility = reservoir%kr_l(j)/reservoir%visc_l(j)
-            den_ave = reservoir%den_l(j)
-          else
-            mobility = 1.d0 / well%liq%visc(j)
-            den_ave = well%liq%den(j)
-          endif
-          deriv = den_ave*mobility*well%WI(j)
+      !     ! Compute the constant derivative
+      !     upwind = reservoir%p_l(j) > well%pl(j)
+      !     if (upwind) then
+      !       mobility = reservoir%kr_l(j)/reservoir%visc_l(j)
+      !       den_ave = reservoir%den_l(j)
+      !     else
+      !       mobility = 1.d0 / well%liq%visc(j)
+      !       den_ave = well%liq%den(j)
+      !     endif
+      !     deriv = den_ave*mobility*well%WI(j)
 
-          write(*,*) "JOE:     - Initial JBlock: "
-          write(*,*) "JOE:       - ", J_block(R_reservoir_idx, P_reservoir_idx), ", ", J_block(R_reservoir_idx, P_well_idx)
-          write(*,*) "JOE:       - ", J_block(R_well_idx, P_reservoir_idx), ", ", J_block(R_well_idx, P_well_idx)
+      !     write(*,*) "JOE:     - Initial JBlock: "
+      !     write(*,*) "JOE:       - ", J_block(R_reservoir_idx, P_reservoir_idx), ", ", J_block(R_reservoir_idx, P_well_idx)
+      !     write(*,*) "JOE:       - ", J_block(R_well_idx, P_reservoir_idx), ", ", J_block(R_well_idx, P_well_idx)
 
-          ! if (k == 1) then
-          !   ! Add the extra d(Q-sum(q_i))/dP_reservoir and d(Q-sum(q_i))/dP_well terms for the bottom segment
-          !   !J_block(R_reservoir_idx, P_reservoir_idx) = J_block(R_reservoir_idx, P_reservoir_idx) + deriv
-          !   !J_block(R_reservoir_idx, P_well_idx) = J_block(R_reservoir_idx, P_well_idx) - deriv
+      !     if (k == 1) then
+      !       ! Add the extra d(Q-sum(q_i))/dP_reservoir and d(Q-sum(q_i))/dP_well terms for the bottom segment
+      !       !J_block(R_reservoir_idx, P_reservoir_idx) = J_block(R_reservoir_idx, P_reservoir_idx) - deriv ! was +
+      !       !J_block(R_reservoir_idx, P_well_idx) = J_block(R_reservoir_idx, P_well_idx) - deriv
 
-          !   J_block(R_well_idx, P_reservoir_idx) = J_block(R_well_idx, P_reservoir_idx) - deriv
-          !   J_block(R_well_idx, P_well_idx) = J_block(R_well_idx, P_well_idx) + deriv
-          ! endif
+      !       J_block(R_well_idx, P_reservoir_idx) = J_block(R_well_idx, P_reservoir_idx) - deriv ! was -
+      !       J_block(R_well_idx, P_well_idx) = J_block(R_well_idx, P_well_idx) + deriv ! was +
+      !     endif
 
-          write(*,*) "JOE:     - JBlock after bottom special case: "
-          write(*,*) "JOE:       - ", J_block(R_reservoir_idx, P_reservoir_idx), ", ", J_block(R_reservoir_idx, P_well_idx)
-          write(*,*) "JOE:       - ", J_block(R_well_idx, P_reservoir_idx), ", ", J_block(R_well_idx, P_well_idx)
+      !     write(*,*) "JOE:     - JBlock after bottom special case: "
+      !     write(*,*) "JOE:       - ", J_block(R_reservoir_idx, P_reservoir_idx), ", ", J_block(R_reservoir_idx, P_well_idx)
+      !     write(*,*) "JOE:       - ", J_block(R_well_idx, P_reservoir_idx), ", ", J_block(R_well_idx, P_well_idx)
 
-          if (k == j) then
-            ! Add the diagonal terms
-            J_block(R_reservoir_idx, P_reservoir_idx) = J_block(R_reservoir_idx, P_reservoir_idx) + deriv ! was -
-            J_block(R_reservoir_idx, P_well_idx) = J_block(R_reservoir_idx, P_well_idx) + deriv
-            J_block(R_well_idx, P_reservoir_idx) = J_block(R_well_idx, P_reservoir_idx) + deriv
-            J_block(R_well_idx, P_well_idx) = J_block(R_well_idx, P_well_idx) + deriv ! was -
-          endif
+      !     if (k == j) then
+      !       ! Add the diagonal terms
+      !       J_block(R_reservoir_idx, P_reservoir_idx) = J_block(R_reservoir_idx, P_reservoir_idx) + deriv ! was -
+      !       J_block(R_reservoir_idx, P_well_idx) = J_block(R_reservoir_idx, P_well_idx) - deriv ! was +
+      !       J_block(R_well_idx, P_reservoir_idx) = J_block(R_well_idx, P_reservoir_idx) + deriv
+      !       J_block(R_well_idx, P_well_idx) = J_block(R_well_idx, P_well_idx) - deriv
+      !     endif
 
-          write(*,*) "JOE:     - Set JBlock: "
-          write(*,*) "JOE:       - ", J_block(R_reservoir_idx, P_reservoir_idx), ", ", J_block(R_reservoir_idx, P_well_idx)
-          write(*,*) "JOE:       - ", J_block(R_well_idx, P_reservoir_idx), ", ", J_block(R_well_idx, P_well_idx)
+      !     write(*,*) "JOE:     - Set JBlock: "
+      !     write(*,*) "JOE:       - ", J_block(R_reservoir_idx, P_reservoir_idx), ", ", J_block(R_reservoir_idx, P_well_idx)
+      !     write(*,*) "JOE:       - ", J_block(R_well_idx, P_reservoir_idx), ", ", J_block(R_well_idx, P_well_idx)
 
-          k_ghosted_id = this%well_grid%h_ghosted_id(k)
-          j_ghosted_id = this%well_grid%h_ghosted_id(j)
+      !     k_ghosted_id = this%well_grid%h_ghosted_id(k)
+      !     j_ghosted_id = this%well_grid%h_ghosted_id(j)
 
-          write(*,*) "JOE:     - inserted into : ", k_ghosted_id, ", ", j_ghosted_id
+      !     write(*,*) "JOE:     - inserted into : ", k_ghosted_id, ", ", j_ghosted_id
 
-          if (any(dabs(J_block) > 0.d0)) then
-            call MatSetValuesBlockedLocal(Jac, &
-                                        1,k_ghosted_id-1, &
-                                        1,j_ghosted_id-1, &
-                                        J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
-          endif
+      !     if (any(dabs(J_block) > 0.d0)) then
+      !       call MatSetValuesBlockedLocal(Jac, &
+      !                                   1,k_ghosted_id-1, &
+      !                                   1,j_ghosted_id-1, &
+      !                                   J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
+      !     endif
 
-        enddo
-      enddo
-
-
+      !   enddo
+      ! enddo
 
 
 
 
 
-      ! allocate(residual(this%well_grid%nsegments,option%nflowdof))
-      ! residual = 0.d0
+
+
+      !allocate(residual(this%well_grid%nsegments,option%nflowdof))
+      !residual = 0.d0
 
       ! write(*,*) "JOE: - J_block starts as:"
       ! do i_debug = 1, option%nflowdof
@@ -7823,28 +7897,28 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
       ! ! BHP residual and reservoir source/sink residuals.
 
       ! ! Unperturbed residual
-      ! well => this%well
+      ! !well => this%well  ! Already set above
       ! do k = 1,this%well_grid%nsegments
       !   write(*,*) "JOE: - seg ", k
       !   do irow = 1, option%nflowspec
-      !     residual(k,irow) = well%liq%q(k)* &
-      !                        well%liq%xmass(k,irow)
+      !     residual(k,irow) = well%liq%q(k)!* &
+      !                        !well%liq%xmass(k,irow)
       !   enddo
       !   if (k==1) then
       !     sum_q = sum(well%liq%q)
       !     Q = -1.d0 * (well%th_ql)
-      !     residual(k,option%nflowdof) = Q - sum_q
+      !     residual(k,option%nflowdof) = Q - sum_q  ! TODO: why are we not += here? Is it because qi is never set for the Rwell?
       !   endif
       !   write(*,*) "JOE:   - unpert res ", residual(k, :)
       ! enddo
 
-      ! write(*,*) "JOE: - unpertturbed residual goes to:"
-      ! do i_debug = 1, this%well_grid%nsegments
-      !   do j_debug = 1, option%nflowdof
-      !     write(*, '(F7.2, A)', advance='no') residual(i_debug, j_debug), ", "
-      !   end do
-      !   write(*,*) ""
-      ! end do
+      ! ! write(*,*) "JOE: - unpertturbed residual goes to:"
+      ! ! do i_debug = 1, this%well_grid%nsegments
+      ! !   do j_debug = 1, option%nflowdof
+      ! !     write(*, '(F7.2, A)', advance='no') residual(i_debug, j_debug), ", "
+      ! !   end do
+      ! !   write(*,*) ""
+      ! ! end do
 
 
       ! ! Perturbations
@@ -7875,10 +7949,10 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
       !   endif
 
       !   if (this%well_grid%h_rank_id(k) == option%myrank) then
-      !     ! Compute dRres / dXres at a given P_BHP
+      !     ! Compute dRres / dXres at a given BHP
       !     do irow = 1,option%nflowspec
-      !       res_pert = well_pert%liq%q(k)* &
-      !                  well_pert%liq%xmass(k,irow)
+      !       res_pert = well_pert%liq%q(k)!* &
+      !                  !well_pert%liq%xmass(k,irow)
       !       J_block(irow,idof) = (res_pert - residual(k,irow))/pert
       !     enddo
       !   endif
@@ -7901,20 +7975,20 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
       !   ! Compute dRwell / dPwell
       !   if (k == 1) then
       !     sum_q = sum(well%liq%q)
-      !     if (well%total_rate < 0.d0) then
-      !       Q = -1.d0 * well%total_rate
-      !     else
-      !       Q = -1.d0 * well%th_ql
-      !     endif
+      !     ! if (well%total_rate < 0.d0) then
+      !     !   Q = -1.d0 * well%total_rate
+      !     ! else
+      !     Q = -1.d0 * well%th_ql
+      !     ! endif
       !     res = Q - sum_q
 
       !     sum_q = 0.d0
       !     sum_q = sum(well_pert%liq%q)
-      !     if (well_pert%total_rate < 0.d0) then
-      !       Q = -1.d0 * well_pert%total_rate
-      !     else
-      !       Q = -1.d0 * well_pert%th_ql
-      !     endif
+      !     ! if (well_pert%total_rate < 0.d0) then
+      !     !   Q = -1.d0 * well_pert%total_rate
+      !     ! else
+      !     Q = -1.d0 * well_pert%th_ql
+      !     !endif
       !     res_pert = Q - sum_q
 
       !     J_block(option%nflowdof,option%nflowdof) = &
@@ -7923,9 +7997,9 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
 
       !   ! Compute dRres / dPwell
       !   j = 0  ! 0 as nflowspec = 1 for Richards, so xmass is of size(n_segs, 1)
-      !   res = this%well%liq%q(k)*this%well%liq%xmass(k,j+1)
-      !   res_pert = well_pert%liq%q(k)* &
-      !               well_pert%liq%xmass(k,j+1)
+      !   res = this%well%liq%q(k)!*this%well%liq%xmass(k,j+1)
+      !   res_pert = well_pert%liq%q(k)!* &
+      !               !well_pert%liq%xmass(k,j+1)
       !   ! Just change 1 column
       !   local_row_index = (ghosted_id-1)*option%nflowdof + j
       !   local_col_index = this%well_grid%h_ghosted_id(1)*option%nflowdof-1
@@ -8494,7 +8568,9 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
 
     num_iteration = 0
     if (i == 1) then
-      delta_z = this%well_grid%h(i)%z - this%well_grid%bottomhole(3)
+      ! TODO: for now we do the simplification that the bhp is the same as Pw1 (the well pressure in the bottom segment)
+      ! delta_z = this%well_grid%h(i)%z - this%well_grid%bottomhole(3)
+      delta_z = 0
     else
       delta_z = this%well_grid%h(i)%z - this%well_grid%h(i-1)%z
     endif

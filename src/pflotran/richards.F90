@@ -3197,8 +3197,8 @@ subroutine RichardsJacobianSourceSink(A,realization,pm_well,ierr)
           ! Perturb the well and well's reservoir variables.
           write(*,*) "JOE: - perturbing well, debug skip"
           ! TODO: can we just SolveFlow() instead of Perturb?
-          call cur_well%Perturb()  ! TODO: debug skip this as we are trying to solve analytically
-          ! call cur_well%SolveFlow(ZERO_INTEGER, ierr)  ! TODO: not sure if we need this, since it seems to already get called somewhere, but it can't hurt
+          ! call cur_well%Perturb()  ! TODO: debug skip this as we are trying to solve analytically
+          call cur_well%SolveFlow(ZERO_INTEGER, ierr)  ! TODO: not sure if we need this, since it seems to already get called somewhere, but it can't hurt
           ! Go through and update the well contributions to the Jacobian:
           ! dRi/d(P_well), dRwell/d(P_well), dRi/dxi, and dRwell,dxi
           write(*,*) "JOE: - ModifyFlowJacobian"

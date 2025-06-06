@@ -34,9 +34,9 @@ SUBSURFACE
     !=========================== discretization ===================================
 
     GRID
-      GRAVITY 0.0d0  0.0d0  -9.81d0  ! TODO: We seem to need gravity /= 0 for hydrostatic wells. This doesn't seem right
+      GRAVITY 0.0d0  0.0d0  -9.81d0
       TYPE structured
-      NXYZ 1 1 2
+      NXYZ 1 1 1
   	      BOUNDS
 		    -1. -1. -1.
 		     1.  1.  1.
@@ -112,20 +112,21 @@ SUBSURFACE
       /
     END
 
-!    DEBUG
-!        PRINT_SOLUTION
-!        PRINT_RESIDUAL
-!        PRINT_JACOBIAN
-!!        PRINT_JACOBIAN_DETAILED
-!!        FORMAT ASCII
-!        APPEND_COUNTS_TO_FILENAMES
-!    END
+    DEBUG
+        PRINT_SOLUTION
+        PRINT_RESIDUAL
+        PRINT_JACOBIAN
+!        PRINT_JACOBIAN_DETAILED
+        FORMAT ASCII
+        APPEND_COUNTS_TO_FILENAMES
+    END
     !=========================== times ============================================
 
     TIME
-      FINAL_TIME 1.d-2 d
-      INITIAL_TIMESTEP_SIZE 1.d-3 d
-      MAXIMUM_TIMESTEP_SIZE 1.d-3 d
+      FINAL_TIME 1.d-2 s
+      INITIAL_TIMESTEP_SIZE 1.d-3 s
+      MAXIMUM_TIMESTEP_SIZE 1.d-3 s
+      MINIMUM_TIMESTEP_SIZE 1.d-3 s
     END
 
     !=========================== regions ==========================================
@@ -152,12 +153,12 @@ SUBSURFACE
     END
 
     
-!    FLOW_CONDITION boundary
-!      TYPE
-!        LIQUID_PRESSURE DIRICHLET
-!      /
-!      LIQUID_PRESSURE 1.0d6 Pa
-!    END
+    FLOW_CONDITION boundary
+      TYPE
+        LIQUID_PRESSURE DIRICHLET
+      /
+      LIQUID_PRESSURE 1.0d6 Pa
+    END
 
     FLOW_CONDITION injection
       TYPE
@@ -174,10 +175,10 @@ SUBSURFACE
       REGION all
     END
 
-!    BOUNDARY_CONDITION bc
-!      FLOW_CONDITION boundary
-!      REGION west
-!    END
+    BOUNDARY_CONDITION bc
+      FLOW_CONDITION boundary
+      REGION west
+    END
 
     WELL_COUPLER well
       FLOW_CONDITION injection
@@ -195,10 +196,10 @@ SUBSURFACE
 
     WELLBORE_MODEL well01
       WELL_GRID
-        NUMBER_OF_SEGMENTS 2
-        TOP_OF_HOLE    0.d0 0.d0 1.0d0   # [x,y,z] in meters
-        BOTTOM_OF_HOLE 0.d0 0.d0  -1.0d0   # [x,y,z] in meters
-        CASING 0 0
+        NUMBER_OF_SEGMENTS 1
+        TOP_OF_HOLE    0.d0 0.d0  1.0d0   # [x,y,z] in meters
+        BOTTOM_OF_HOLE 0.d0 0.d0 -1.0d0   # [x,y,z] in meters
+        CASING 0
       /
       WELL
         DIAMETER 0.02d0
