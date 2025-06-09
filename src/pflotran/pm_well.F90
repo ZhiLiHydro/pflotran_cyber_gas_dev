@@ -5501,7 +5501,7 @@ subroutine PMWellBasePerturb(this)
       call PMWellHydratePerturb(this)
     case (RICHARDS_MODE)
       this%option%io_buffer = "The Jacobian for a Wellbore coupled to &
-        Richard's mode is solved analytically, so cannot be perturbed."
+        &Richard's mode is solved analytically, so cannot be perturbed."
       call PrintErrMsg(this%option)
   end select
 
@@ -7914,7 +7914,7 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
 
       if (option%iflowmode == RICHARDS_MODE) then
         option%io_buffer = 'Hydrostatic iteration not yet implemented &
-                            in Richards mode.'
+                            &in Richards mode.'
         call PrintErrMsg(option)
       endif
 
