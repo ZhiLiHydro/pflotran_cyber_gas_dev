@@ -36,7 +36,7 @@ SUBSURFACE
     GRID
       GRAVITY 0.0d0  0.0d0  -9.81d0
       TYPE structured
-      NXYZ 1 1 1
+      NXYZ 1 1 2
   	      BOUNDS
 		    -1. -1. -1.
 		     1.  1.  1.
@@ -85,41 +85,50 @@ SUBSURFACE
 
 
     END
+
+    #=========================== regression test ========================================
+    REGRESSION
+      CELL_IDS
+        1
+        2
+      /
+    END
+
     !=========================== output options ===================================
 
-    OUTPUT 
-      VELOCITY_AT_CENTER
-      !MASS_FLOWRATE
-      SNAPSHOT_FILE
-        ! PERIODIC TIME 0.05 d
-        PERIODIC TIMESTEP 1
-        FORMAT HDF5
-      /
-      VARIABLES
-	    COORDINATES
-        LIQUID_PRESSURE
-        !LIQUID_SATURATION
-        !LIQUID_DENSITY
-        !LIQUID_RELATIVE_PERMEABILITY
-        !LIQUID_MOBILITY
-        !PERMEABILITY
-        !POROSITY
-        !LIQUID_VISCOSITY
-        !NATURAL_ID
-      /
-      MASS_BALANCE_FILE
-        PERIODIC TIMESTEP 1
-      /
-    END
+!    OUTPUT
+!      VELOCITY_AT_CENTER
+!      !MASS_FLOWRATE
+!      SNAPSHOT_FILE
+!        ! PERIODIC TIME 0.05 d
+!        PERIODIC TIMESTEP 1
+!        FORMAT HDF5
+!      /
+!      VARIABLES
+!	    COORDINATES
+!        LIQUID_PRESSURE
+!        !LIQUID_SATURATION
+!        !LIQUID_DENSITY
+!        !LIQUID_RELATIVE_PERMEABILITY
+!        !LIQUID_MOBILITY
+!        !PERMEABILITY
+!        !POROSITY
+!        !LIQUID_VISCOSITY
+!        !NATURAL_ID
+!      /
+!      MASS_BALANCE_FILE
+!        PERIODIC TIMESTEP 1
+!      /
+!    END
 
-    DEBUG
-        PRINT_SOLUTION
-        PRINT_RESIDUAL
-        PRINT_JACOBIAN
-!        PRINT_JACOBIAN_DETAILED
-        FORMAT ASCII
-        APPEND_COUNTS_TO_FILENAMES
-    END
+!    DEBUG
+!        PRINT_SOLUTION
+!        PRINT_RESIDUAL
+!        PRINT_JACOBIAN
+!        !PRINT_JACOBIAN_DETAILED
+!        FORMAT ASCII
+!        APPEND_COUNTS_TO_FILENAMES
+!    END
     !=========================== times ============================================
 
     TIME
@@ -196,9 +205,9 @@ SUBSURFACE
 
     WELLBORE_MODEL well01
       WELL_GRID
-        NUMBER_OF_SEGMENTS 1
-        TOP_OF_HOLE    0.0d0 0.d0  1.0d0   # [x,y,z] in meters
-        BOTTOM_OF_HOLE 0.0d0 0.d0 -1.0d0   # [x,y,z] in meters
+        NUMBER_OF_SEGMENTS 2
+        TOP_OF_HOLE    0.d0 0.d0  1.0d0   # [x,y,z] in meters
+        BOTTOM_OF_HOLE 0.d0 0.d0 -1.0d0   # [x,y,z] in meters
         CASING 0
       /
       WELL
