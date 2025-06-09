@@ -61,7 +61,6 @@ module Richards_Aux_module
     PetscReal :: dpres_dtime
     PetscReal :: dmass_dtime
 
-    PetscReal :: pert
     type(richards_well_aux_type), pointer :: well
   end type richards_auxvar_type
 
@@ -156,8 +155,6 @@ subroutine RichardsAuxVarInit(auxvar,option)
   auxvar%dpres_dtime = 0.d0
   auxvar%dmass_dtime = 0.0d0
 
-  auxvar%pert = 0.d0
-
 #if defined(CLM_PFLOTRAN) || defined(CLM_OFFLINE)
   auxvar%bc_alpha  = 0.0d0
   auxvar%bc_lambda  = 0.0d0
@@ -210,8 +207,6 @@ subroutine RichardsAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%mass = auxvar%mass
   auxvar2%dpres_dtime = auxvar%dpres_dtime
   auxvar2%dmass_dtime = auxvar%dmass_dtime
-
-  auxvar2%pert = auxvar%pert
 
 #if defined(CLM_PFLOTRAN) || defined(CLM_OFFLINE)
   auxvar2%bc_alpha  = auxvar%bc_alpha
