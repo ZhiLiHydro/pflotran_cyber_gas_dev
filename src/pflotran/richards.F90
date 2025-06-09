@@ -1145,7 +1145,7 @@ subroutine RichardsUpdateFixedAccumPatch(realization)
   type(global_auxvar_type), pointer :: global_auxvars(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
 
-  PetscInt :: ghosted_id, local_id
+  PetscInt :: ghosted_id, local_id, istart
   PetscInt :: region_id
   PetscReal, pointer :: xx_p(:)
   PetscReal, pointer :: accum_p(:)
@@ -1172,6 +1172,7 @@ subroutine RichardsUpdateFixedAccumPatch(realization)
   do local_id = 1, grid%nlmax
 
     ghosted_id = grid%nL2G(local_id)
+    istart = (local_id-1)*option%nflowdof + 1
 
     !geh - Ignore inactive cells with inactive materials
     if (patch%imat(ghosted_id) <= 0) cycle
@@ -1187,7 +1188,7 @@ subroutine RichardsUpdateFixedAccumPatch(realization)
     call RichardsAccumulation(rich_auxvars(ghosted_id), &
                               global_auxvars(ghosted_id), &
                               material_auxvars(ghosted_id), &
-                              option,accum_p(local_id:local_id))
+                              option,accum_p(istart:istart))
   enddo
 
 
@@ -1196,6 +1197,7 @@ subroutine RichardsUpdateFixedAccumPatch(realization)
                                    patch%region_list)
     do region_id = 1, patch%aux%InlineSurface%num_aux
       local_id = region%cell_ids(region_id)
+      istart = (local_id-1)*option%nflowdof + 1
       ghosted_id = grid%nL2G(local_id)
       call InlineSurfaceAuxVarCompute(patch%aux%InlineSurface% &
                                         auxvars(region_id), &
@@ -1204,7 +1206,7 @@ subroutine RichardsUpdateFixedAccumPatch(realization)
       call InlineSurfaceAccumulation(patch%aux%InlineSurface% &
                                        auxvars(region_id), &
                                      material_auxvars(ghosted_id),option,Res)
-      accum_p(local_id:local_id) = accum_p(local_id:local_id) + Res(1)
+      accum_p(istart:istart) = accum_p(istart:istart) + Res(1)
     enddo
   endif
 
@@ -1540,6 +1542,7 @@ subroutine RichardsResidualInternalConn(r,realization,skip_conn_type,ierr)
   PetscReal :: Res(realization%option%nflowdof)
   PetscReal :: v_darcy
   PetscReal, pointer :: r_p(:)
+  PetscInt :: JOE_debug_i ! TODO: Delete me
 
   patch => realization%patch
   grid => patch%grid
@@ -1553,6 +1556,11 @@ subroutine RichardsResidualInternalConn(r,realization,skip_conn_type,ierr)
   endif
 
   call VecGetArrayF90(r,r_p,ierr);CHKERRQ(ierr)
+
+  write(*,*) "JOE:   -  before internal conn r_p(",size(r_p),")"
+  do JOE_debug_i = 1, size(r_p)
+    write(*,*) "JOE:      ", r_p(JOE_debug_i)
+  enddo
 
   ! Interior Flux Terms -----------------------------------
   connection_set_list => grid%internal_connection_set_list
@@ -1656,6 +1664,12 @@ subroutine RichardsResidualInternalConn(r,realization,skip_conn_type,ierr)
     cur_connection_set => cur_connection_set%next
   enddo
 
+
+  write(*,*) "JOE:   -  after internal conn r_p(",size(r_p),")"
+  do JOE_debug_i = 1, size(r_p)
+    write(*,*) "JOE:      ", r_p(JOE_debug_i)
+  enddo
+
   call VecRestoreArrayF90(r,r_p,ierr);CHKERRQ(ierr)
 
 end subroutine RichardsResidualInternalConn
@@ -1705,6 +1719,7 @@ subroutine RichardsResidualBoundaryConn(r,realization,ierr)
 
   PetscReal :: Res(realization%option%nflowdof), v_darcy
   PetscReal, pointer :: r_p(:)
+  PetscInt :: JOE_debug_i ! TODO: Delete me
 
   PetscErrorCode :: ierr
 
@@ -1719,6 +1734,12 @@ subroutine RichardsResidualBoundaryConn(r,realization,ierr)
   material_auxvars => patch%aux%Material%auxvars
 
   call VecGetArrayF90(r,r_p,ierr);CHKERRQ(ierr)
+
+
+  write(*,*) "JOE:   -  before boundary conn r_p(",size(r_p),")"
+  do JOE_debug_i = 1, size(r_p)
+    write(*,*) "JOE:      ", r_p(JOE_debug_i)
+  enddo
 
   ! Boundary Flux Terms -----------------------------------
   boundary_condition => patch%boundary_condition_list%first
@@ -1817,6 +1838,12 @@ subroutine RichardsResidualBoundaryConn(r,realization,ierr)
     enddo
 
   endif
+
+
+  write(*,*) "JOE:   -  after boundary conn r_p(",size(r_p),")"
+  do JOE_debug_i = 1, size(r_p)
+    write(*,*) "JOE:      ", r_p(JOE_debug_i)
+  enddo
 
   call VecRestoreArrayF90(r,r_p,ierr);CHKERRQ(ierr)
 
@@ -2175,6 +2202,7 @@ subroutine RichardsResidualAccumulation(r,realization,pm_well,ierr)
   PetscReal :: Res(realization%option%nflowdof)
 
   PetscErrorCode :: ierr
+  PetscInt :: JOE_debug_i ! TODO: Delete me
 
   patch => realization%patch
   grid => patch%grid
@@ -2195,9 +2223,26 @@ subroutine RichardsResidualAccumulation(r,realization,pm_well,ierr)
   call VecGetArrayF90(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
   call VecGetArrayF90(field%flow_accum2,accum2_p,ierr);CHKERRQ(ierr)
 
+
+  write(*,*) "JOE:   -  before accum conn r_p(",size(r_p),")"
+  do JOE_debug_i = 1, size(r_p)
+    write(*,*) "JOE:      ", r_p(JOE_debug_i)
+  enddo
+
+  write(*,*) "JOE:   -  before accum conn accum_p(",size(accum_p),")"
+  do JOE_debug_i = 1, size(accum_p)
+    write(*,*) "JOE:      ", accum_p(JOE_debug_i)
+  enddo
+
+  write(*,*) "JOE:   -  before accum conn accum_p(",size(accum2_p),")"
+  do JOE_debug_i = 1, size(accum2_p)
+    write(*,*) "JOE:      ", accum2_p(JOE_debug_i)
+  enddo
+
   ! Accumulation terms ------------------------------------
   if (.not.option%flow%steady_state) then
-    r_p(1:grid%nlmax) = r_p(1:grid%nlmax) - accum_p(1:grid%nlmax)
+    r_p(1:grid%nlmax*option%nflowdof) = r_p(1:grid%nlmax*option%nflowdof) - &
+                                        accum_p(1:grid%nlmax*option%nflowdof)
 
     do local_id = 1, grid%nlmax  ! For each local node do...
       ghosted_id = grid%nL2G(local_id)
@@ -2248,6 +2293,22 @@ subroutine RichardsResidualAccumulation(r,realization,pm_well,ierr)
     endif
 
   endif
+
+
+  write(*,*) "JOE:   -  after accum conn r_p(",size(r_p),")"
+  do JOE_debug_i = 1, size(r_p)
+    write(*,*) "JOE:      ", r_p(JOE_debug_i)
+  enddo
+
+  write(*,*) "JOE:   -  before accum conn accum_p(",size(accum_p),")"
+  do JOE_debug_i = 1, size(accum_p)
+    write(*,*) "JOE:      ", accum_p(JOE_debug_i)
+  enddo
+
+  write(*,*) "JOE:   -  before accum conn accum_p(",size(accum2_p),")"
+  do JOE_debug_i = 1, size(accum2_p)
+    write(*,*) "JOE:      ", accum2_p(JOE_debug_i)
+  enddo
 
   call VecRestoreArrayF90(r,r_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayF90(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
