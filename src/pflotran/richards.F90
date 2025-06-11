@@ -2309,7 +2309,6 @@ subroutine RichardsJacobian(snes,xx,A,B,realization,pm_well,ierr)
   Mat :: A, B
   class(realization_subsurface_type) :: realization
   class(pm_well_type), pointer :: pm_well
-  class(pm_well_type), pointer :: cur_well
   PetscErrorCode :: ierr
 
   Mat :: J
@@ -2318,8 +2317,6 @@ subroutine RichardsJacobian(snes,xx,A,B,realization,pm_well,ierr)
   type(option_type), pointer :: option
   PetscReal :: norm
   character(len=MAXSTRINGLENGTH) :: string
-
-  PetscInt :: k,ghosted_id
 
   call PetscLogEventBegin(logging%event_r_jacobian,ierr);CHKERRQ(ierr)
 

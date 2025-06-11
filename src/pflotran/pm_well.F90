@@ -6937,8 +6937,7 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
   use SCO2_Aux_module, only : SCO2_WELL_DOF, SCO2_TEMPERATURE_DOF, sco2_thermal
   use Hydrate_Aux_module, only : HYDRATE_WELL_DOF, HYDRATE_ENERGY_DOF, &
                                  hydrate_fmw_comp
-  use Richards_Aux_module, only: RICHARDS_WELL_DOF, &
-                             RICHARDS_FULLY_IMPLICIT_WELL
+  use Richards_Aux_module, only: RICHARDS_FULLY_IMPLICIT_WELL
 
   implicit none
 
