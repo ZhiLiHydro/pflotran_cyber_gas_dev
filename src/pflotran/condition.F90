@@ -1097,8 +1097,6 @@ subroutine FlowConditionRead(condition,input,option)
 
   PetscErrorCode :: ierr
 
-  write(*,*) "JOE - FlowConditionRead()"
-
   call PetscLogEventBegin(logging%event_flow_condition_read, &
                           ierr);CHKERRQ(ierr)
 
@@ -1226,7 +1224,6 @@ subroutine FlowConditionRead(condition,input,option)
           call StringToUpper(word)
           select case(trim(word))
             case('LIQUID_PRESSURE','LIQUID_HEAD')
-              write(*,*) "JOE   - sub_condition_ptr => pressure"
               sub_condition_ptr => pressure
             case('RATE')
               sub_condition_ptr => rate
@@ -1258,7 +1255,6 @@ subroutine FlowConditionRead(condition,input,option)
           select case(word)
             case('DIRICHLET')
               sub_condition_ptr%itype = DIRICHLET_BC
-              write(*,*) "JOE   - sub_condition_ptr%itype = DIRICHLET_BC"
             case('NEUMANN')
               sub_condition_ptr%itype = NEUMANN_BC
             case('MASS_RATE')
@@ -1456,7 +1452,6 @@ subroutine FlowConditionRead(condition,input,option)
                                  enthalpy%units,internal_units)
       case('LIQUID_PRESSURE')
         internal_units = 'Pa'
-        write(*,*) "JOE   - Reading LIQUID_PRESSURE"
         call ConditionReadValues(input,option,word, &
                                  pressure%dataset, &
                                  pressure%units,internal_units)
@@ -4237,7 +4232,6 @@ subroutine ConditionReadValues(input,option,keyword,dataset_base, &
   PetscInt :: length, i
   PetscErrorCode :: ierr
 
-  write(*,*) "JOE   - ConditionReadValues()"
 
   call PetscLogEventBegin(logging%event_flow_condition_read_values, &
                           ierr);CHKERRQ(ierr)
@@ -4263,12 +4257,10 @@ subroutine ConditionReadValues(input,option,keyword,dataset_base, &
   input%ierr = INPUT_ERROR_NONE
   string2 = trim(input%buf)
   call InputReadWord(input,option,word,PETSC_TRUE)
-  write(*,*) "JOE     - Read ", word
   call InputErrorMsg(input,option,'file or value','CONDITION')
   call StringToUpper(word)
   length = len_trim(word)
   if (StringStartsWithAlpha(word)) then
-    write(*,*) "JOE     - Starts with alpha "
     call InputPushCard(input,word,option)
     if (length == FOUR_INTEGER .and. &
         StringCompare(word,'FILE',FOUR_INTEGER)) then
@@ -4331,7 +4323,6 @@ subroutine ConditionReadValues(input,option,keyword,dataset_base, &
   else
     input%buf = trim(string2)
     error_string = 'CONDITION,' // trim(keyword) // ',SINGLE'
-    write(*,*) "JOE     - Reading single "
     call DatasetAsciiReadSingle(dataset_ascii,input,data_external_units, &
                                 data_internal_units,error_string,option)
   endif
