@@ -1076,7 +1076,7 @@ subroutine FactSubLinkAddPMCWell(simulation,pm_well_list,pmc_name,input)
       case default
         option%io_buffer = 'Currently, the WELLBORE_MODEL process model can &
                &only be used with WIPP_FLOW mode, SCO2 mode, RICHARDS mode &
-               and HYDRATE mode.'
+               &and HYDRATE mode.'
         call PrintErrMsg(option)
     end select
 
