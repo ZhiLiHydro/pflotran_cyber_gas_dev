@@ -4232,7 +4232,6 @@ subroutine ConditionReadValues(input,option,keyword,dataset_base, &
   PetscInt :: length, i
   PetscErrorCode :: ierr
 
-
   call PetscLogEventBegin(logging%event_flow_condition_read_values, &
                           ierr);CHKERRQ(ierr)
 

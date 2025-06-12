@@ -1257,7 +1257,7 @@ subroutine CondControlAssignFlowInitCond(realization)
         call VecRestoreArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
 
       case(RICHARDS_MODE)
-
+          ! assign initial conditions values to domain
         call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
 
         xx_p = UNINITIALIZED_DOUBLE
@@ -1267,67 +1267,76 @@ subroutine CondControlAssignFlowInitCond(realization)
 
           if (.not.associated(initial_condition)) exit
 
-          if (.not.associated(initial_condition%flow_aux_real_var)) then
-            if (.not.associated(initial_condition%flow_condition)) then
-              option%io_buffer = 'Flow condition is NULL in initial condition'
-              call PrintErrMsg(option)
-            endif
-
-            richards => initial_condition%flow_condition
-
-            do icell = 1,initial_condition%region%num_cells
-              local_id = initial_condition%region%cell_ids(icell)
-              ghosted_id = grid%nL2G(local_id)
-              iend = local_id*option%nflowdof
-              ibegin = iend-option%nflowdof+1
-
-              if (patch%imat(ghosted_id) <= 0) then
-                xx_p(ibegin:iend) = 0.d0
-                patch%aux%Global%auxvars(ghosted_id)%istate = 0
-                cycle
+          dataset_flag = PETSC_FALSE
+          dataset =>  initial_condition%flow_condition% &
+                            sub_condition_ptr(RICHARDS_PRESSURE_DOF)%ptr%dataset
+          select type(dataset_ptr => dataset)
+            class is(dataset_gridded_hdf5_type)
+              ! already mapped to flow_aux_real_var
+              if (.not.associated(initial_condition%flow_aux_real_var)) then
+                option%io_buffer = 'A gridded dataset is being &
+                  &used with ' // trim(option%flowmode) // &
+                  ', yet flow_aux_real_var is not allocated.'
+                call PrintErrMsgToDev(option,'')
               endif
-
-              ! decrement ibegin to give a local offset of 0
-              ibegin = ibegin - 1
-
-              xx_p(ibegin + RICHARDS_PRESSURE_DOF) = &
-                richards%pressure%dataset%rarray(1)
-
-              if (richards_well_coupling == RICHARDS_FULLY_IMPLICIT_WELL) then
-                xx_p(ibegin + RICHARDS_WELL_DOF) = &
-                    richards%pressure%dataset%rarray(1)
-              endif
-
-              patch%aux%Global%auxvars(ghosted_id)%istate = &
-                initial_condition%flow_condition%iphase
-            enddo
-          else
-            do iconn=1,initial_condition%connection_set%num_connections
-              local_id = initial_condition%connection_set%id_dn(iconn)
-              ghosted_id = grid%nL2G(local_id)
-              if (patch%imat(ghosted_id) <= 0) then
-                iend = local_id*option%nflowdof
-                ibegin = iend-option%nflowdof+1
-                xx_p(ibegin:iend) = 0.d0
-                patch%aux%Global%auxvars(ghosted_id)%istate = 0
-                cycle
-              endif
-              offset = (local_id-1)*option%nflowdof
-              istate = initial_condition%flow_aux_int_var(1,iconn)
+            class is(dataset_common_hdf5_type)
+              dataset_flag(RICHARDS_PRESSURE_DOF) = PETSC_TRUE
+              call VecRestoreArrayF90(field%flow_xx,xx_p, &
+                                      ierr);CHKERRQ(ierr)
               do idof = 1, option%nflowdof
-                xx_p(offset+idof) = &
-                  initial_condition%flow_aux_real_var( &
-                  initial_condition%flow_aux_mapping( &
-                  RICHARDS_PRESSURE_DOF),iconn)
+                call ConditionControlMapDatasetToVec(realization, &
+                        initial_condition%flow_condition% &
+                        sub_condition_ptr(RICHARDS_PRESSURE_DOF)%ptr%dataset, &
+                        idof,field%flow_xx,GLOBAL)
               enddo
-              patch%aux%Global%auxvars(ghosted_id)%istate = istate
-            enddo
+              call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+          end select
+
+          if (.not.associated(initial_condition%flow_aux_real_var) .and. &
+              .not.associated(initial_condition%flow_condition)) then
+            option%io_buffer = 'Flow condition is NULL in initial condition'
+            call PrintErrMsg(option)
           endif
+          if (associated(initial_condition%flow_aux_real_var)) then
+            num_connections = &
+              initial_condition%connection_set%num_connections
+            conn_id_ptr => initial_condition%connection_set%id_dn
+          else
+            num_connections = initial_condition%region%num_cells
+            conn_id_ptr => initial_condition%region%cell_ids
+          endif
+          do iconn=1, num_connections
+            local_id = conn_id_ptr(iconn)
+            ghosted_id = grid%nL2G(local_id)
+            iend = local_id*option%nflowdof
+            ibegin = iend-option%nflowdof+1
+            if (patch%imat(ghosted_id) <= 0) then
+              xx_p(ibegin:iend) = 0.d0
+              patch%aux%Global%auxvars(ghosted_id)%istate = 0
+              cycle
+            endif
+            if (associated(initial_condition%flow_aux_real_var)) then
+              do idof = 1, option%nflowdof
+                if (.not.dataset_flag(RICHARDS_PRESSURE_DOF)) then
+                  xx_p(ibegin+idof-1) =  &
+                    initial_condition%flow_aux_real_var(RICHARDS_PRESSURE_DOF,iconn)
+                endif
+              enddo
+            else
+              do idof = 1, option%nflowdof
+                if (.not.dataset_flag(RICHARDS_PRESSURE_DOF)) then
+                  xx_p(ibegin+idof-1) = &
+                    initial_condition%flow_condition% &
+                      sub_condition_ptr(RICHARDS_PRESSURE_DOF)%ptr%dataset%rarray(1)
+                endif
+              enddo
+            endif
+            patch%aux%Global%auxvars(ghosted_id)%istate = &
+              initial_condition%flow_condition%iphase
+          enddo
           initial_condition => initial_condition%next
         enddo
-
         call VecRestoreArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-
       case default
         ! assign initial conditions values to domain
         call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)

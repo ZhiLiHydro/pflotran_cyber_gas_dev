@@ -570,7 +570,6 @@ subroutine PatchProcessCouplers(patch,flow_conditions,transport_conditions, &
                    '" not found in flow condition list'
           call PrintErrMsg(option)
         endif
-        write(*,*) " -   Got flow cond ", coupler%flow_condition%name
       else
         option%io_buffer = 'A FLOW_CONDITION must be specified in &
                            &WELL_COUPLER: ' // trim(coupler%name) // '.'
@@ -951,12 +950,12 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
   character(len=MAXSTRINGLENGTH) :: string
   PetscInt :: temp_int
 
-
   if (.not.associated(coupler_list)) return
 
   coupler => coupler_list%first
   do
     if (.not.associated(coupler)) exit
+
     if (associated(coupler%connection_set)) then
       num_connections = coupler%connection_set%num_connections
 

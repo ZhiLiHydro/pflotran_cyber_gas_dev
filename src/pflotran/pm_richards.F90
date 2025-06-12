@@ -682,7 +682,7 @@ subroutine PMRichardsCheckUpdatePre(this,snes,X,dX,changed,ierr)
         rich_auxvar = rich_auxvars(ghosted_id)
         global_auxvar = global_auxvars(ghosted_id)
         offset = (local_id-1)*option%nflowdof
-        well_index = offset + FIVE_INTEGER ! TODO: why 5?
+        well_index = offset + ONE_INTEGER
 
         dX_p(well_index) = sign(min(5.d5,dabs(dX_p(well_index))), &
                                 dX_p(well_index))
@@ -694,21 +694,22 @@ subroutine PMRichardsCheckUpdatePre(this,snes,X,dX,changed,ierr)
             if (ghosted_id == cur_well%well_grid% &
                 h_ghosted_id(ONE_INTEGER)) then
               if (cur_well%well%total_rate < 0.d0) then
-                if (Equal(X_p(well_index),global_auxvar%pres(1))) then
+                if (Equal(X_p(well_index),global_auxvar% &
+                                          pres(option%liquid_phase))) then
                   dX_p(well_index) = dX_p(well_index) + &
                                     (rich_auxvar%well%bh_p - &
-                                    global_auxvar%pres(1))
+                                    global_auxvar%pres(option%liquid_phase))
                 elseif (.not. Equal(X_p(well_index), cur_well%well%bh_p)) then
                   dX_p(well_index) = dX_p(well_index) + &
                                     (cur_well%well%bh_p - X_p(well_index))
                 endif
               else
                 if (X_p(well_index) == global_auxvar% &
-                                      pres(1)) then
+                                      pres(option%liquid_phase)) then
                   dX_p(well_index) = dX_p(well_index) + &
                                     (rich_auxvar%well%bh_p - &
                                     global_auxvar% &
-                                    pres(1))
+                                    pres(option%liquid_phase))
                 elseif (X_p(well_index) /= cur_well%well%bh_p) then
                   dX_p(well_index) = dX_p(well_index) + &
                                     (cur_well%well%bh_p - X_p(well_index))

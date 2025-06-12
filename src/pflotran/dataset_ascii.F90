@@ -410,7 +410,6 @@ subroutine DatasetAsciiReadSingle(this,input,data_external_units, &
 
   nullify(external_data_units_strings)
 
-
   data_external_units = ''
   internal_data_units_strings => StringSplit(data_internal_units,',')
 
