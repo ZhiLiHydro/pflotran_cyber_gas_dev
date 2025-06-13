@@ -4393,10 +4393,11 @@ subroutine PatchUpdateCouplerAuxVarsRich(patch,coupler,option)
             flow_condition%pressure%aux_real(1)
         endif
     end select
-    if (richards_well_coupling == RICHARDS_FULLY_IMPLICIT_WELL) then
-      coupler%flow_aux_real_var(RICHARDS_WELL_DOF, 1:num_connections) = &
-                  coupler%flow_aux_real_var(RICHARDS_PRESSURE_DOF,1:num_connections)
-    endif
+    ! TODO: JOE: I am not sure if I need this or not, I need to check!
+    ! if (richards_well_coupling == RICHARDS_FULLY_IMPLICIT_WELL) then
+    !   coupler%flow_aux_real_var(RICHARDS_WELL_DOF, 1:num_connections) = &
+    !               coupler%flow_aux_real_var(RICHARDS_PRESSURE_DOF,1:num_connections)
+    ! endif
   endif
   if (associated(flow_condition%saturation)) then
     call PatchUpdateCouplerSaturation(coupler,option,patch%grid, &
