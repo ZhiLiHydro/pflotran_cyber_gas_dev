@@ -7367,7 +7367,7 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
         endif
       enddo
 
-      if (this%well_grid%h_rank_id(k) == option%myrank) then
+      if (this%well_grid%h_rank_id(1) == option%myrank) then
         ! Set dRw1/dPw1
         local_row_index = (this%well_grid%h_ghosted_id(1) - 1) * option%nflowdof + 1
         local_col_index = (this%well_grid%h_ghosted_id(1) - 1) * option%nflowdof + 1
@@ -7571,7 +7571,7 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
         endif
       enddo
 
-      if (this%well_grid%h_rank_id(k) == option%myrank) then
+      if (this%well_grid%h_rank_id(1) == option%myrank) then
         ! Set dRw1/dPw1
         local_row_index = (this%well_grid%h_ghosted_id(1) - 1) * option%nflowdof + 1
         local_col_index = (this%well_grid%h_ghosted_id(1) - 1) * option%nflowdof + 1
