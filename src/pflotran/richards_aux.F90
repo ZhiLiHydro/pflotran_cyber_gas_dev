@@ -494,6 +494,11 @@ subroutine AuxVarDestroy(auxvar)
 
   type(richards_auxvar_type) :: auxvar
 
+  if (associated(auxvar%well)) then
+    deallocate(auxvar%well)
+    nullify(auxvar%well)
+  endif
+
 end subroutine AuxVarDestroy
 
 ! ************************************************************************** !

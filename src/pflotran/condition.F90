@@ -23,6 +23,7 @@ module Condition_module
 
   type, public :: flow_condition_type
     PetscInt :: id                          ! id from which condition can be referenced
+    PetscBool :: managed_by_source_sink     ! If this should be deallocated by the src sink
     PetscBool :: is_transient
     PetscBool :: sync_time_with_update
     character(len=MAXWORDLENGTH) :: name    ! name of condition (e.g. initial, recharge)
@@ -261,6 +262,7 @@ function FlowConditionCreate(option)
   condition%iphase = 0
   condition%num_sub_conditions = 0
   condition%name = ''
+  condition%managed_by_source_sink = PETSC_FALSE
 
   FlowConditionCreate => condition
 
