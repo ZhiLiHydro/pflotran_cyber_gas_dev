@@ -139,7 +139,7 @@ subroutine PMTHTSUpdateAuxVarsPatch(realization)
   material_auxvars => patch%aux%Material%auxvars
 
   ! 1. Update auxvars based on new values of pressure, temperature
-  call THUpdateAuxVars(realization)
+  call THUpdateAuxVars(realization,null())
 
   ! 2. Update auxvars based on new value of dpressure_dtime, mass, and
   !    dmass_dtime
@@ -219,7 +219,7 @@ subroutine PMTHTSIFunction(this,ts,time,U,Udot,F,ierr)
 
   call THResidualInternalConn(F,realization,ierr)
   call THResidualBoundaryConn(F,realization,ierr)
-  call THResidualSourceSink(F,realization,ierr)
+  call THResidualSourceSink(F,realization,null(),ierr)
   call IFunctionAccumulation(F,realization,ierr)
 
 

@@ -4,6 +4,7 @@ module PM_TH_class
   use petscsnes
   use PM_Base_class
   use PM_Subsurface_Flow_class
+  use PM_Well_class
 !geh: using TH_module here fails with gfortran (internal compiler error)
 !  use TH_module
   use Realization_Subsurface_class
@@ -31,6 +32,7 @@ module PM_TH_class
     PetscReal :: residual_scaled_inf_tol(2)
     PetscReal :: abs_update_inf_tol(2)
     PetscReal :: rel_update_inf_tol(2)
+    class(pm_well_type), pointer :: pmwell_ptr
   contains
     procedure, public :: Setup => PMTHSetup
     procedure, public :: ReadSimulationOptionsBlock => PMTHReadSimOptionsBlock
@@ -93,6 +95,7 @@ function PMTHCreate()
   allocate(this)
 
   nullify(this%commN)
+  nullify(this%pmwell_ptr)
 
   call PMSubsurfaceFlowInit(this)
   this%name = 'TH Flow'
@@ -508,7 +511,7 @@ subroutine PMTHResidual(this,snes,xx,r,ierr)
   Vec :: r
   PetscErrorCode :: ierr
 
-  call THResidual(snes,xx,r,this%realization,ierr)
+  call THResidual(snes,xx,r,this%realization,this%pmwell_ptr,ierr)
 
 end subroutine PMTHResidual
 
@@ -532,7 +535,7 @@ subroutine PMTHJacobian(this,snes,xx,A,B,ierr)
   Mat :: A, B
   PetscErrorCode :: ierr
 
-  call THJacobian(snes,xx,A,B,this%realization,ierr)
+  call THJacobian(snes,xx,A,B,this%realization,this%pmwell_ptr,ierr)
 
 end subroutine PMTHJacobian
 
@@ -1028,7 +1031,7 @@ subroutine PMTHUpdateAuxVars(this)
 
   class(pm_th_type) :: this
 
-  call THUpdateAuxVars(this%realization)
+  call THUpdateAuxVars(this%realization, this%pmwell_ptr)
 
 end subroutine PMTHUpdateAuxVars
 
