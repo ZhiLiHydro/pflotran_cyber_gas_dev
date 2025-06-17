@@ -7,6 +7,7 @@ module TH_module
   use Material_Aux_module
   use PFLOTRAN_Constants_module
   use Utility_module, only : Equal
+  use Geothermal_Well_class
 
   implicit none
 

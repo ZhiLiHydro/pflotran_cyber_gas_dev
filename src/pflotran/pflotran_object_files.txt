@@ -90,6 +90,7 @@ mode_process_model_obj = \
 mode_obj = \
 	${common_src}general.o \
 	${common_src}general_common.o \
+	${common_src}geothermal_well.o \
 	${common_src}global.o \
 	${common_src}hydrate.o \
 	${common_src}hydrate_common.o \

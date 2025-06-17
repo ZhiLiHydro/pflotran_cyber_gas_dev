@@ -1002,6 +1002,10 @@ geometry.o : \
   input_aux.o \
   option.o \
   pflotran_constants.o
+geothermal_well.o : \
+  option.o \
+  pm_base.o \
+  pm_well.o
 global.o : \
   communicator_base.o \
   connection.o \
@@ -3830,6 +3834,7 @@ th.o : \
   eos_water.o \
   field.o \
   fluid.o \
+  geothermal_well.o \
   global_aux.o \
   grid.o \
   logging.o \
