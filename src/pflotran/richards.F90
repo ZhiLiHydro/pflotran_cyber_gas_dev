@@ -3147,7 +3147,7 @@ subroutine RichardsJacobianSourceSink(A,realization,pm_well,ierr)
         if (.not. associated(cur_well)) exit
         if (any(cur_well%well_grid%h_rank_id == option%myrank)) then
           ! Update the well and well's reservoir variables.
-          call cur_well%SolveFlow(ZERO_INTEGER, ierr)
+          call cur_well%Perturb()
           ! Go through and update the well contributions to the Jacobian:
           ! dRi/d(P_well), dRwell/d(P_well), dRi/dxi, and dRwell,dxi
           call cur_well%ModifyFlowJacobian(A,ierr)

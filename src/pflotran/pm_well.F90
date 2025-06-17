@@ -5501,9 +5501,10 @@ subroutine PMWellBasePerturb(this)
     case (H_MODE)
       call PMWellHydratePerturb(this)
     case (RICHARDS_MODE)
-      this%option%io_buffer = "The Jacobian for a Wellbore coupled to &
-        &Richard's mode is solved analytically, so cannot be perturbed."
-      call PrintErrMsg(this%option)
+      call PMWellRichardsPerturb(this)
+      ! this%option%io_buffer = "The Jacobian for a Wellbore coupled to &
+      !   &Richard's mode is solved analytically, so cannot be perturbed."
+      ! call PrintErrMsg(this%option)
   end select
 
 end subroutine PMWellBasePerturb
@@ -5794,6 +5795,60 @@ subroutine PMWellHydratePerturb(pm_well)
     call pm_well%SolveFlow(idof,ierr)
   enddo
 end subroutine PMWellHydratePerturb
+
+! ************************************************************************** !
+
+subroutine PMWellRichardsPerturb(pm_well)
+  !
+  ! Perturb well variables when using Richards flow mode.
+  !
+  ! Author: Joe Eyles, WSP
+  ! Date: 17/06/2025
+  !
+
+  use Option_module
+
+  implicit none
+
+  class(pm_well_type) :: pm_well
+
+  type(well_type), pointer :: well
+  type(option_type), pointer :: option
+  PetscInt :: i
+  PetscReal :: pres_bump
+  PetscErrorCode :: ierr
+
+  option => pm_well%option
+
+  ! Make sure well is actually flowing if injection/production rates
+  ! are specified.
+  pres_bump = 0.d0
+  i = 0
+  well => pm_well%well
+  do
+    call pm_well%SolveFlow(ZERO_INTEGER,ierr)
+    if (any(dabs(well%liq%Q) > 0.d0)) exit
+    if (well%th_ql > 0.d0) then
+      ! Injection well
+      pres_bump = 1.25d0 * (pres_bump + 1.d0)
+    elseif (well%total_rate < 0.d0) then
+      ! Extraction well
+      pres_bump = 1.25d0 * (pres_bump - 1.d0)
+    else
+      ! No need for this
+      exit
+    endif
+    well%bh_p = well%bh_p + pres_bump
+    i = i + 1
+    if (i > 100) then
+      option%io_buffer = "Exceeded maximum number of iterations (100) to &
+                          &recover vanishing well Jacobian."
+      call PrintErrMsg(option)
+    endif
+  enddo
+  call pm_well%SolveFlow(ZERO_INTEGER,ierr)
+
+end subroutine PMWellRichardsPerturb
 
 ! ************************************************************************** !
 
@@ -6871,7 +6926,11 @@ subroutine PMWellModifyFlowResHydrostatic(this,residual)
           ! An extra residual is required for the bottom well cell.
           ! Residual = Q - sum(q)
           sum_q = sum(this%well%liq%q)
-          Q = -1.d0 * (this%well%th_ql)
+          if (this%well%total_rate < 0.d0) then
+            Q = -1.d0 * this%well%total_rate
+          else
+            Q = -1.d0 * (this%well%th_ql)
+          endif
           residual(local_end) = Q - sum_q
         endif
         residual(local_start) = residual(local_start) + &
@@ -8040,37 +8099,37 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
     elseif (well%total_rate < 0.d0) then
       ! Extraction well
       ! Compute reservoir pressure at well cell center
-        well%liq%Q(i) = 0.d0
-        well%gas%Q(i) = 0.d0
-        res_pl_temp = reservoir%p_l(i) + reservoir%den_l(i) * gravity * delta_z
-        mobility = reservoir%kr_l(i)/reservoir%visc_l(i)
-        den_ave = reservoir%den_l(i)
-        ! Flowrate in kg/s
-        if (res_pl_temp > well%pl(i)) then
-          well%liq%Q(i) = den_ave*mobility*well%WI(i) * &
+      well%liq%Q(i) = 0.d0
+      well%gas%Q(i) = 0.d0
+      res_pl_temp = reservoir%p_l(i) + reservoir%den_l(i) * gravity * delta_z
+      mobility = reservoir%kr_l(i)/reservoir%visc_l(i)
+      den_ave = reservoir%den_l(i)
+      ! Flowrate in kg/s
+      if (res_pl_temp > well%pl(i)) then
+        well%liq%Q(i) = den_ave*mobility*well%WI(i) * &
+                        (res_pl_temp-well%pl(i)) * &
+                        reservoir%xmass_liq(i,ONE_INTEGER)
+        if (option%iflowmode == RICHARDS_MODE) then
+          well%gas%Q(i) = 0.0
+        else
+          well%gas%Q(i) = den_ave*mobility*well%WI(i)* &
                           (res_pl_temp-well%pl(i)) * &
-                          reservoir%xmass_liq(i,ONE_INTEGER)
-          if (option%iflowmode == RICHARDS_MODE) then
-            well%gas%Q(i) = 0.0
-          else
-            well%gas%Q(i) = den_ave*mobility*well%WI(i)* &
-                            (res_pl_temp-well%pl(i)) * &
-                            reservoir%xmass_liq(i,TWO_INTEGER)
-          endif
+                          reservoir%xmass_liq(i,TWO_INTEGER)
         endif
+      endif
 
-        res_pg_temp = reservoir%p_g(i) + reservoir%den_g(i) * gravity * delta_z
-        mobility = reservoir%kr_g(i)/reservoir%visc_g(i)
-        den_ave = reservoir%den_g(i)
-        ! Flowrate in kg/s
-        if (res_pg_temp > well%pg(i)) then
-          well%liq%Q(i) = well%liq%Q(i) + den_ave*mobility*well%WI(i) * &
-                          (res_pg_temp-well%pg(i)) * &
-                          reservoir%xmass_gas(i,ONE_INTEGER)
-          well%gas%Q(i) = well%gas%Q(i) + den_ave*mobility*well%WI(i) * &
-                          (res_pg_temp-well%pg(i)) * &
-                          reservoir%xmass_gas(i,TWO_INTEGER)
-        endif
+      res_pg_temp = reservoir%p_g(i) + reservoir%den_g(i) * gravity * delta_z
+      mobility = reservoir%kr_g(i)/reservoir%visc_g(i)
+      den_ave = reservoir%den_g(i)
+      ! Flowrate in kg/s
+      if (res_pg_temp > well%pg(i)) then
+        well%liq%Q(i) = well%liq%Q(i) + den_ave*mobility*well%WI(i) * &
+                        (res_pg_temp-well%pg(i)) * &
+                        reservoir%xmass_gas(i,ONE_INTEGER)
+        well%gas%Q(i) = well%gas%Q(i) + den_ave*mobility*well%WI(i) * &
+                        (res_pg_temp-well%pg(i)) * &
+                        reservoir%xmass_gas(i,TWO_INTEGER)
+      endif
     endif
   enddo
 
