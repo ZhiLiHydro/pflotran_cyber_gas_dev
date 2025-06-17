@@ -2207,40 +2207,40 @@ subroutine PMWellSetupBase(this)
   call MPI_Allreduce(well_grid%h_global_id,h_all_global_id,nsegments, &
                      MPI_INTEGER,MPI_MAX,option%mycomm,ierr);CHKERRQ(ierr)
   call MPI_Allreduce(MPI_IN_PLACE,well_grid%casing,size(well_grid%casing), &
-                     MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr); &
+                     MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr)
                      CHKERRQ(ierr)
   call MPI_Allreduce(MPI_IN_PLACE,well_grid%dh,nsegments, &
-                     MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr); &
+                     MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr)
                      CHKERRQ(ierr)
   if (associated(well_grid%dx)) then
     call MPI_Allreduce(MPI_IN_PLACE,well_grid%dx,nsegments, &
-                      MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr); &
+                      MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr)
                       CHKERRQ(ierr)
   endif
   if (associated(well_grid%dy)) then
     call MPI_Allreduce(MPI_IN_PLACE,well_grid%dy,nsegments, &
-                      MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr); &
+                      MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr)
                       CHKERRQ(ierr)
   endif
   if (associated(well_grid%dz)) then
     call MPI_Allreduce(MPI_IN_PLACE,well_grid%dz,nsegments, &
-                      MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr); &
+                      MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr)
                       CHKERRQ(ierr)
   endif
   call MPI_Allreduce(MPI_IN_PLACE,well_grid%res_dz,nsegments, &
-                     MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr); &
+                     MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr)
                      CHKERRQ(ierr)
   call MPI_Allreduce(MPI_IN_PLACE,well_grid%res_z,nsegments, &
-                     MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr); &
+                     MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr)
                      CHKERRQ(ierr)
   call MPI_Allreduce(MPI_IN_PLACE,well_grid%h(:)%x,nsegments, &
-                     MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr); &
+                     MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr)
                      CHKERRQ(ierr)
   call MPI_Allreduce(MPI_IN_PLACE,well_grid%h(:)%y,nsegments, &
-                     MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr); &
+                     MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr)
                      CHKERRQ(ierr)
   call MPI_Allreduce(MPI_IN_PLACE,well_grid%h(:)%z,nsegments, &
-                     MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr); &
+                     MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr)
                      CHKERRQ(ierr)
   well_grid%h_rank_id = h_all_rank_id
   well_grid%h_global_id = h_all_global_id
@@ -2477,7 +2477,7 @@ subroutine PMWellSetupBase(this)
     ! total in count2_global.
     if (this%well_comm%comm /= MPI_COMM_NULL) then
       call MPI_Allreduce(count2_local,count2_global,ONE_INTEGER_MPI, &
-                        MPI_INTEGER, MPI_SUM,this%well_comm%comm,ierr); &
+                        MPI_INTEGER, MPI_SUM,this%well_comm%comm,ierr)
                         CHKERRQ(ierr)
     endif
     call MPI_Bcast(count2_global,ONE_INTEGER_MPI,MPI_INTEGER, &
@@ -6044,7 +6044,7 @@ subroutine PMWellUpdateReservoirSCO2(pm_well,update_index,segment_index)
       if (option%myrank == pm_well%well_grid%h_rank_id(1)) then
         if (option%myrank == pm_well%well_grid%h_rank_id(k)) cycle
         call MPI_Send(pm_well%well%bh_p,ONE_INTEGER_MPI,MPI_DOUBLE_PRECISION, &
-                      pm_well%well_grid%h_rank_id(k),tag,option%mycomm,ierr); &
+                      pm_well%well_grid%h_rank_id(k),tag,option%mycomm,ierr)
                       CHKERRQ(ierr)
       elseif (option%myrank == pm_well%well_grid%h_rank_id(k)) then
         call MPI_Recv(pm_well%well%bh_p,ONE_INTEGER_MPI,MPI_DOUBLE_PRECISION, &
@@ -6167,7 +6167,7 @@ subroutine PMWellUpdateReservoirHydrate(pm_well,update_index,segment_index)
       if (option%myrank == pm_well%well_grid%h_rank_id(1)) then
         if (option%myrank == pm_well%well_grid%h_rank_id(k)) cycle
         call MPI_Send(pm_well%well%bh_p,ONE_INTEGER_MPI,MPI_DOUBLE_PRECISION, &
-                      pm_well%well_grid%h_rank_id(k),TAG,option%mycomm,ierr); &
+                      pm_well%well_grid%h_rank_id(k),TAG,option%mycomm,ierr)
                       CHKERRQ(ierr)
       elseif (option%myrank == pm_well%well_grid%h_rank_id(k)) then
         call MPI_Recv(pm_well%well%bh_p,ONE_INTEGER_MPI,MPI_DOUBLE_PRECISION, &
@@ -6277,7 +6277,7 @@ subroutine PMWellUpdateReservoirRichards(pm_well,update_index,segment_index)
       if (option%myrank == pm_well%well_grid%h_rank_id(1)) then
         if (option%myrank == pm_well%well_grid%h_rank_id(k)) cycle
         call MPI_Send(pm_well%well%bh_p,ONE_INTEGER_MPI,MPI_DOUBLE_PRECISION, &
-                      pm_well%well_grid%h_rank_id(k),tag,option%mycomm,ierr); &
+                      pm_well%well_grid%h_rank_id(k),tag,option%mycomm,ierr)
                       CHKERRQ(ierr)
       elseif (option%myrank == pm_well%well_grid%h_rank_id(k)) then
         call MPI_Recv(pm_well%well%bh_p,ONE_INTEGER_MPI,MPI_DOUBLE_PRECISION, &
