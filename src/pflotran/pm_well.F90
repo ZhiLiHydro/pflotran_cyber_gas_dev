@@ -6926,10 +6926,12 @@ subroutine PMWellModifyFlowResHydrostatic(this,residual)
           ! An extra residual is required for the bottom well cell.
           ! Residual = Q - sum(q)
           sum_q = sum(this%well%liq%q)
-          if (this%well%total_rate < 0.d0) then
+          if (this%well%th_ql > 0.d0) then
+            Q = -1.d0 * (this%well%th_ql)
+          else if (this%well%total_rate < 0.d0) then
             Q = -1.d0 * this%well%total_rate
           else
-            Q = -1.d0 * (this%well%th_ql)
+            Q = 0
           endif
           residual(local_end) = Q - sum_q
         endif
