@@ -8369,6 +8369,29 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
                                             grid%nL2G(local_id))%well%bh_p
               enddo
           end select
+        case(RICHARDS_MODE)
+          select case(ivar)
+            case(WELL_LIQ_PRESSURE)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = &
+                  patch%aux%richards%auxvars(grid%nL2G(local_id))%well%pl
+              enddo
+            case(WELL_LIQ_SATURATION)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = &
+                  patch%aux%richards%auxvars(grid%nL2G(local_id))%well%sl
+              enddo
+            case(WELL_LIQ_Q)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = &
+                  patch%aux%richards%auxvars(grid%nL2G(local_id))%well%Ql
+              enddo
+            case(WELL_BHP)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = &
+                  patch%aux%richards%auxvars(grid%nL2G(local_id))%well%bh_p
+              enddo
+          end select
       end select
     case(NAMED_PARAMETER)
       do local_id=1,grid%nlmax
@@ -9660,6 +9683,21 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
           case(WELL_BHP)
             value = &
               patch%aux%hydrate%auxvars(ZERO_INTEGER,ghosted_id)%well%bh_p
+        end select
+      case (RICHARDS_MODE)
+        select case(ivar)
+          case(WELL_LIQ_PRESSURE)
+            value = &
+                patch%aux%richards%auxvars(ghosted_id)%well%pl
+          case(WELL_LIQ_SATURATION)
+            value = &
+                patch%aux%richards%auxvars(ghosted_id)%well%sl
+          case(WELL_LIQ_Q)
+            value = &
+              patch%aux%richards%auxvars(ghosted_id)%well%Ql
+          case(WELL_BHP)
+            value = &
+              patch%aux%richards%auxvars(ghosted_id)%well%bh_p
         end select
       end select
     case(NAMED_PARAMETER)
