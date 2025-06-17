@@ -622,7 +622,7 @@ end subroutine THUpdateMassBalance
 
 ! ************************************************************************** !
 
-subroutine THUpdateAuxVars(realization)
+subroutine THUpdateAuxVars(realization,pm_well)
   !
   ! Updates the auxiliary variables associated with
   ! the TH problem
@@ -639,6 +639,7 @@ subroutine THUpdateAuxVars(realization)
   use Coupler_module
   use Connection_module
   use Material_module
+  use PM_Well_class
 
   implicit none
 
@@ -660,8 +661,6 @@ subroutine THUpdateAuxVars(realization)
   type(global_auxvar_type), pointer :: global_auxvars_ss(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(th_parameter_type), pointer :: th_parameter
-  type(flow_condition_type), pointer :: well_flow_condition
-  class(pm_well_type), pointer :: cur_well
 
   PetscInt :: ghosted_id, local_id, istart, iend, sum_connection, idof, iconn
   PetscInt :: well_seg
@@ -1067,7 +1066,7 @@ end subroutine THUpdateFixedAccumulation
 
 ! ************************************************************************** !
 
-subroutine THNumericalJacobianTest(xx,realization)
+subroutine THNumericalJacobianTest(xx,realization,pm_well)
   !
   ! Computes the a test numerical jacobian
   !
@@ -1080,11 +1079,13 @@ subroutine THNumericalJacobianTest(xx,realization)
   use Option_module
   use Grid_module
   use Field_module
+  use PM_Well_class
 
   implicit none
 
   Vec :: xx
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
 
   Vec :: xx_pert
   Vec :: res
@@ -1119,7 +1120,7 @@ subroutine THNumericalJacobianTest(xx,realization)
   call MatSetType(A,MATAIJ,ierr);CHKERRQ(ierr)
   call MatSetFromOptions(A,ierr);CHKERRQ(ierr)
 
-  call THResidual(PETSC_NULL_SNES,xx,res,realization,ierr)
+  call THResidual(PETSC_NULL_SNES,xx,res,realization,pm_well,ierr)
   call VecGetArrayF90(res,vec2_p,ierr);CHKERRQ(ierr)
   do icell = 1,grid%nlmax
     if (patch%imat(icell) <= 0) cycle
@@ -1129,7 +1130,7 @@ subroutine THNumericalJacobianTest(xx,realization)
       perturbation = vec_p(idof)*perturbation_tolerance
       vec_p(idof) = vec_p(idof)+perturbation
       call VecRestoreArrayF90(xx_pert,vec_p,ierr);CHKERRQ(ierr)
-      call THResidual(PETSC_NULL_SNES,xx_pert,res_pert,realization,ierr)
+      call THResidual(PETSC_NULL_SNES,xx_pert,res_pert,realization,pm_well,ierr)
       call VecGetArrayF90(res_pert,vec_p,ierr);CHKERRQ(ierr)
       do idof2 = 1, grid%nlmax*option%nflowdof
         derivative = (vec_p(idof2)-vec2_p(idof2))/perturbation
@@ -3486,7 +3487,7 @@ end subroutine THBCFlux
 
 ! ************************************************************************** !
 
-subroutine THResidual(snes,xx,r,realization,ierr)
+subroutine THResidual(snes,xx,r,realization,pm_well,ierr)
   !
   ! Computes the residual equation
   !
@@ -3502,6 +3503,7 @@ subroutine THResidual(snes,xx,r,realization,ierr)
   use Variables_module
   use Material_module
   use Debug_module
+  use PM_Well_class
   use Matrix_Zeroing_module
 
   implicit none
@@ -3510,6 +3512,8 @@ subroutine THResidual(snes,xx,r,realization,ierr)
   Vec :: xx
   Vec :: r
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
+  class(pm_well_type), pointer :: cur_well
   PetscErrorCode :: ierr
 
   type(discretization_type), pointer :: discretization
@@ -3529,12 +3533,12 @@ subroutine THResidual(snes,xx,r,realization,ierr)
     return
   endif
 
-  call THResidualPreliminaries(xx,r,realization,ierr)
+  call THResidualPreliminaries(xx,r,realization,pm_well,ierr)
 
   call THResidualInternalConn(r,realization,ierr)
   call THResidualBoundaryConn(r,realization,ierr)
-  call THResidualAccumulation(r,realization,ierr)
-  call THResidualSourceSink(r,realization,ierr)
+  call THResidualAccumulation(r,realization,pm_well,ierr)
+  call THResidualSourceSink(r,realization,pm_well,ierr)
   call MatrixZeroingZeroVecEntries(realization%patch%aux%TH%matrix_zeroing,r)
 
   if (realization%debug%vecview_residual) then
@@ -3614,7 +3618,7 @@ end subroutine THApplyPrescribedConditions
 
 ! ************************************************************************** !
 
-subroutine THResidualPreliminaries(xx,r,realization,ierr)
+subroutine THResidualPreliminaries(xx,r,realization,pm_well,ierr)
   !
   ! Perform preliminary work prior to residual computation
   !
@@ -3626,12 +3630,15 @@ subroutine THResidualPreliminaries(xx,r,realization,ierr)
   use Realization_Subsurface_class
   use Patch_module
   use Option_module
+  use PM_Well_class
 
   implicit none
 
   Vec, intent(inout) :: xx
   Vec, intent(inout) :: r
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
+  class(pm_well_type), pointer :: cur_well
 
   type(patch_type), pointer :: patch
   type(option_type), pointer :: option
@@ -3644,7 +3651,7 @@ subroutine THResidualPreliminaries(xx,r,realization,ierr)
 
   call THUpdateLocalVecs(xx,realization,ierr)
 
-  call THUpdateAuxVars(realization)
+  call THUpdateAuxVars(realization,pm_well)
   ! override flags since they will soon be out of date
   patch%aux%TH%auxvars_up_to_date = PETSC_FALSE
 
@@ -4046,7 +4053,7 @@ end subroutine THResidualBoundaryConn
 
 ! ************************************************************************** !
 
-subroutine THResidualAccumulation(r,realization,ierr)
+subroutine THResidualAccumulation(r,realization,pm_well,ierr)
   !
   ! Perform preliminary work prior to residual computation
   !
@@ -4064,11 +4071,13 @@ subroutine THResidualAccumulation(r,realization,ierr)
   use Debug_module
   use Secondary_Continuum_Aux_module
   use Secondary_Continuum_module
+  use PM_Well_class
 
   implicit none
 
   Vec :: r
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
 
   PetscErrorCode :: ierr
   PetscInt :: local_id, ghosted_id
@@ -4172,7 +4181,7 @@ end subroutine THResidualAccumulation
 
 ! ************************************************************************** !
 
-subroutine THResidualSourceSink(r,realization,ierr)
+subroutine THResidualSourceSink(r,realization,pm_well,ierr)
   !
   ! Perform preliminary work prior to residual computation
   !
@@ -4188,12 +4197,14 @@ subroutine THResidualSourceSink(r,realization,ierr)
   use Coupler_module
   use Field_module
   use Debug_module
+  use PM_Well_class
   use Utility_module, only : Smoothstep
 
   implicit none
 
   Vec :: r
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
 
   PetscErrorCode :: ierr
   PetscInt :: local_id, ghosted_id
@@ -4322,7 +4333,7 @@ end subroutine THResidualSourceSink
 
 ! ************************************************************************** !
 
-subroutine THJacobian(snes,xx,A,B,realization,ierr)
+subroutine THJacobian(snes,xx,A,B,realization,pm_well,ierr)
   !
   ! Computes the Jacobian
   !
@@ -4336,6 +4347,7 @@ subroutine THJacobian(snes,xx,A,B,realization,ierr)
   use Option_module
   use Debug_module
   use Matrix_Zeroing_module
+  use PM_Well_class
 
   implicit none
 
@@ -4343,8 +4355,10 @@ subroutine THJacobian(snes,xx,A,B,realization,ierr)
   Vec :: xx
   Mat :: A, B
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
   PetscErrorCode :: ierr
 
+  class(pm_well_type), pointer :: cur_well
   Mat :: J
   MatType :: mat_type
   PetscViewer :: viewer
@@ -4365,7 +4379,7 @@ subroutine THJacobian(snes,xx,A,B,realization,ierr)
   call MatZeroEntries(J,ierr);CHKERRQ(ierr)
 
 #if 0
-   call THNumericalJacobianTest(xx,realization)
+   call THNumericalJacobianTest(xx,realization,pm_well)
 #endif
 
   if (th_numerical_derivatives) then

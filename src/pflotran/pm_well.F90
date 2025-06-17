@@ -2773,6 +2773,37 @@ subroutine PMWellSetupHydrostatic(this)
             coupler => coupler%next
           enddo
         endif
+      
+      case(TH_MODE)
+        source_sink%flow_condition => FlowConditionCreate(option)
+        source_sink%flow_condition%rate => FlowSubConditionCreate(TWO_INTEGER)
+        source_sink%flow_condition%rate%itype = SCALED_MASS_RATE_SS
+        source_sink%flow_condition%pressure => FlowSubConditionCreate(TWO_INTEGER)
+        allocate(source_sink%flow_condition%rate%dataset%rarray(1))
+        source_sink%flow_condition%rate%dataset%rarray(:) = 0.d0
+        source_sink%flow_condition%well => FlowSubConditionCreate(ONE_INTEGER)
+        ! Bottom of hole is special for fully implicit coupling with steady
+        ! state well model.
+        if (k==1) then
+          source_sink%flow_condition%well%ctype = 'well-bottom'
+        else
+          source_sink%flow_condition%well%ctype = 'well'
+        endif
+        if (this%use_well_coupler) then
+          coupler => realization%patch%well_coupler_list%first
+          do
+            if (.not.associated(coupler)) exit
+            if (StringCompare(coupler%well_name,this%name)) then
+              source_sink%well_name = coupler%well_name
+              if (option%ntrandof > 0) then
+                if (option%itranmode == RT_MODE) then
+                  source_sink%tran_condition => coupler%tran_condition
+                endif
+              endif
+            endif
+            coupler => coupler%next
+          enddo
+        endif
 
       case(H_MODE)
         source_sink%flow_condition%hydrate => FlowHydrateConditionCreate(option)
@@ -5770,6 +5801,7 @@ subroutine PMWellInitializeWellFlow(pm_well)
   use SCO2_Aux_module
   use Hydrate_Aux_module
   use Global_Aux_module
+  use TH_Aux_module
 
   implicit none
 
@@ -5779,7 +5811,7 @@ subroutine PMWellInitializeWellFlow(pm_well)
   type(strata_type), pointer :: strata
   type(sco2_auxvar_type), pointer :: sco2_auxvar
   type(hydrate_auxvar_type), pointer :: hyd_auxvar
-  type(global_auxvar_type), pointer :: global_auxvar
+  type(th_auxvar_type), pointer :: th_auxvar
   type(option_type), pointer :: option
   PetscInt :: k, ghosted_id
   !PetscReal :: depth_from_seg_above
@@ -5805,7 +5837,7 @@ subroutine PMWellInitializeWellFlow(pm_well)
     case(WF_MODE,SCO2_MODE,H_MODE)
       pm_well%well%pg = reservoir%p_g
       pm_well%well%gas%s = reservoir%s_g
-    case(RICHARDS_MODE)
+    case(RICHARDS_MODE, TH_MODE)
       pm_well%well%pg = 0.0
       pm_well%well%gas%s = 0.0
       pm_well%well%liq%xmass(:,ONE_INTEGER) = 1.0
@@ -5838,6 +5870,13 @@ subroutine PMWellInitializeWellFlow(pm_well)
                           -1.0 * pm_well%well%liq%den(1) * &
                           pm_well%option%gravity(Z_DIRECTION) * &
                           pm_well%well_grid%dh(1)/2.d0
+    case (TH_MODE)
+      ghosted_id = pm_well%well_grid%h_ghosted_id(1)
+      th_auxvar => &
+        pm_well%realization%patch%aux%th%auxvars(ghosted_id)
+        pm_well%well%bh_p = -1.0 * pm_well%well%liq%den(1) * &
+                            pm_well%option%gravity(Z_DIRECTION) * &
+                            pm_well%well_grid%dh(1)/2.d0
   end select
   ! update the Darcy fluxes within the well
   do k = 1,option%nflowdof
@@ -5862,7 +5901,7 @@ subroutine PMWellInitializeWellFlow(pm_well)
       case(WF_MODE,SCO2_MODE,H_MODE)
         pm_well%well_pert(k)%pg = reservoir%p_g
         pm_well%well_pert(k)%gas%s = reservoir%s_g
-      case(RICHARDS_MODE)
+      case(RICHARDS_MODE, TH_MODE)
         pm_well%well_pert(k)%pg = 0.0
         pm_well%well_pert(k)%gas%s = 0.0
         pm_well%well_pert(k)%liq%xmass(:,ONE_INTEGER) = 1.0
@@ -5901,7 +5940,8 @@ subroutine PMWellInitializeWellFlow(pm_well)
 
   if (option%iflowmode /= SCO2_MODE .and. &
       option%iflowmode /= H_MODE .and. &
-      option%iflowmode /= RICHARDS_MODE) then
+      option%iflowmode /= RICHARDS_MODE.and. &
+      option%iflowmode /= TH_MODE) then
     initialize_well_flow = PETSC_FALSE
   endif
 

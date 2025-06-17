@@ -227,6 +227,7 @@ subroutine FactSubLinkSetupPMCLinkages(simulation,pm_flow,pm_tran, &
   use PM_NWT_class
   use PM_Fracture_class
   use PM_SCO2_class
+  use PM_TH_class
   use PM_Hydrate_class
   use PM_Richards_class
   use PM_Parameter_class
@@ -326,6 +327,8 @@ subroutine FactSubLinkSetupPMCLinkages(simulation,pm_flow,pm_tran, &
         class is (pm_hydrate_type)
           pm_flow%pmwell_ptr => pm_well_list
         class is (pm_richards_type)
+         pm_flow%pmwell_ptr => pm_well_list
+        class is (pm_th_type)
           pm_flow%pmwell_ptr => pm_well_list
       end select
     endif
