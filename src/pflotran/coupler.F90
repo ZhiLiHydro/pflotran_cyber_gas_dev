@@ -578,12 +578,6 @@ subroutine CouplerDestroy(coupler)
   ! since the below are simply pointers to objects in list that have already
   ! or will be deallocated from the list, nullify instead of destroying
 
-  if (associated(coupler%flow_condition)) then
-    if (coupler%flow_condition%managed_by_source_sink) then
-      call FlowConditionDestroy(coupler%flow_condition)
-    endif
-  endif
-
   nullify(coupler%flow_condition)     ! since these are simply pointers to
   nullify(coupler%tran_condition)     ! since these are simply pointers to
   nullify(coupler%geop_condition)

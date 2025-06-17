@@ -2714,8 +2714,9 @@ subroutine PMWellSetupHydrostatic(this)
     ! ----- flow ------------------
     source_sink%flow_condition_name = trim(this%name) // '_well_segment_' // &
                                       StringWrite(k) // '_flow_srcsink'
+    ! TODO: source_sink%flow_condition is not correctly deallocated, as it
+    ! is not added to a list such as realization%flow_conditions
     source_sink%flow_condition => FlowConditionCreate(option)
-    source_sink%flow_condition%managed_by_source_sink = PETSC_TRUE
     source_sink%flow_condition%name = source_sink%flow_condition_name
     select case (option%iflowmode)
       case(SCO2_MODE)
@@ -2799,7 +2800,6 @@ subroutine PMWellSetupHydrostatic(this)
         endif
 
       case(RICHARDS_MODE)
-        source_sink%flow_condition%managed_by_source_sink = PETSC_TRUE
         source_sink%flow_condition%rate => FlowSubConditionCreate(TWO_INTEGER)
         source_sink%flow_condition%rate%itype = SCALED_MASS_RATE_SS
         source_sink%flow_condition%pressure => FlowSubConditionCreate(TWO_INTEGER)
