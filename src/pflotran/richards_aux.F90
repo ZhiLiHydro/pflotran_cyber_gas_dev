@@ -403,7 +403,7 @@ subroutine RichardsAuxVarCompute(x,auxvar,global_auxvar,material_auxvar, &
   endif
   global_auxvar%den_kg = dw_kg
   auxvar%dsat_dp = ds_dp
-  auxvar%kr = kr  ! stored solely for output purposes
+  auxvar%kr = kr  ! stored solely for output purposes and use in the wellbore
   auxvar%kvr = kr/visl
   auxvar%visc = visl
   auxvar%dkvr_dp = dkr_dp/visl - kr/(visl*visl)*dvis_dp

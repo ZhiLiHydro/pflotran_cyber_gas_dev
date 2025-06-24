@@ -8107,17 +8107,15 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
       mobility = reservoir%kr_l(i)/reservoir%visc_l(i)
       den_ave = reservoir%den_l(i)
       ! Flowrate in kg/s
-      if (res_pl_temp > well%pl(i)) then
-        well%liq%Q(i) = den_ave*mobility*well%WI(i) * &
+      well%liq%Q(i) = den_ave*mobility*well%WI(i) * &
+                      (res_pl_temp-well%pl(i)) * &
+                      reservoir%xmass_liq(i,ONE_INTEGER)
+      if (option%iflowmode == RICHARDS_MODE) then
+        well%gas%Q(i) = 0.0
+      else
+        well%gas%Q(i) = den_ave*mobility*well%WI(i)* &
                         (res_pl_temp-well%pl(i)) * &
-                        reservoir%xmass_liq(i,ONE_INTEGER)
-        if (option%iflowmode == RICHARDS_MODE) then
-          well%gas%Q(i) = 0.0
-        else
-          well%gas%Q(i) = den_ave*mobility*well%WI(i)* &
-                          (res_pl_temp-well%pl(i)) * &
-                          reservoir%xmass_liq(i,TWO_INTEGER)
-        endif
+                        reservoir%xmass_liq(i,TWO_INTEGER)
       endif
 
       res_pg_temp = reservoir%p_g(i) + reservoir%den_g(i) * gravity * delta_z
