@@ -19,8 +19,22 @@ module TH_Aux_module
   PetscInt, parameter, public :: TH_PRESSURE_DOF = 1
   PetscInt, parameter, public :: TH_TEMPERATURE_DOF = 2
   PetscInt, parameter, public :: TH_CONDUCTANCE_DOF = 3
+  PetscInt, public :: TH_WELL_DOF = UNINITIALIZED_INTEGER
 
   PetscInt, parameter, public :: TH_UPDATE_FOR_FIXED_ACCUM = 0
+
+  ! Well
+  PetscInt, public :: th_well_coupling = UNINITIALIZED_INTEGER
+  PetscInt, parameter, public :: TH_FULLY_IMPLICIT_WELL = ONE_INTEGER
+
+  type, public :: th_well_aux_type
+    PetscReal :: pl   ! liquid pressure
+    PetscReal :: sl   ! liquid saturation
+    PetscReal :: dpl  ! reservoir-well liquid pressure differential
+    PetscReal :: Ql   ! liquid exchange flux
+    PetscReal :: bh_p ! bottom hole pressure
+    PetscReal :: pressure_bump ! pressure change for initialization  ! TODO: JOE: Can I remove this as I am not creating a numerical jacobian?
+  end type th_well_aux_type
 
   type, public :: TH_auxvar_type
     PetscReal :: avgmw
@@ -57,6 +71,7 @@ module TH_Aux_module
     PetscReal :: d2sat_dTdp
     PetscReal :: d2den_dTdp
     PetscReal :: d2u_dTdp
+    type(th_well_aux_type), pointer :: well
 
     ! for ice
     type(th_ice_type), pointer :: ice
@@ -253,6 +268,18 @@ subroutine THAuxVarInit(auxvar,option)
   auxvar%bc_alpha      = uninit_value
   auxvar%bc_lambda     = uninit_value
 #endif
+
+if (th_well_coupling > ZERO_INTEGER) then
+  allocate(auxvar%well)
+  auxvar%well%pl = UNINITIALIZED_DOUBLE
+  auxvar%well%sl = UNINITIALIZED_DOUBLE
+  auxvar%well%dpl = UNINITIALIZED_DOUBLE
+  auxvar%well%Ql = UNINITIALIZED_DOUBLE
+  auxvar%well%bh_p = UNINITIALIZED_DOUBLE
+  auxvar%well%pressure_bump = 0.d0
+else
+  nullify(auxvar%well)
+endif
 
 end subroutine THAuxVarInit
 
