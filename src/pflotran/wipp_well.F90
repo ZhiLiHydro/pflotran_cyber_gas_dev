@@ -2740,11 +2740,7 @@ subroutine PMWellCheckConvergenceTran(pm_well,n_iter,fixed_accum)
   PetscReal :: aq_mass_vec(pm_well%well_grid%nsegments*pm_well%tran_soln%ndof)
   PetscReal :: max_scaled_residual,max_absolute_residual
   PetscReal :: max_update
-<<<<<<< Updated upstream
   PetscReal :: max_criteria(3)
-=======
-  PetscReal :: aRsR_factor
->>>>>>> Stashed changes
   PetscInt :: loc_max_scaled_residual,loc_max_abs_residual
   PetscInt :: loc_max_update
   PetscInt :: k,n,j,S
