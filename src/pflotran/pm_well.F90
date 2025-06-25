@@ -2779,7 +2779,7 @@ subroutine PMWellSetupHydrostatic(this)
         source_sink%flow_condition%rate => FlowSubConditionCreate(TWO_INTEGER)
         source_sink%flow_condition%rate%itype = SCALED_MASS_RATE_SS
         source_sink%flow_condition%pressure => FlowSubConditionCreate(TWO_INTEGER)
-        allocate(source_sink%flow_condition%rate%dataset%rarray(1))
+        allocate(source_sink%flow_condition%rate%dataset%rarray(2))
         source_sink%flow_condition%rate%dataset%rarray(:) = 0.d0
         source_sink%flow_condition%well => FlowSubConditionCreate(ONE_INTEGER)
         ! Bottom of hole is special for fully implicit coupling with steady

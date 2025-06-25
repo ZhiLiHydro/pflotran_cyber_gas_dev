@@ -56,6 +56,7 @@ module PM_TH_class
   end type pm_th_type
 
   public :: PMTHCreate, &
+            PMTHSetFlowMode, &
             PMTHDestroy, &
             PMTHCheckConvergence
 
@@ -109,6 +110,46 @@ function PMTHCreate()
   PMTHCreate => this
 
 end function PMTHCreate
+
+! ************************************************************************** !
+
+subroutine PMTHSetFlowMode(pm_well,option)
+!
+! Sets the flow mode for TH mode
+!
+! Author: Joe Eyles, WSP
+! Date: 02/05/2025
+!
+  use Option_module
+  use TH_Aux_module
+
+  implicit none
+  class(pm_well_type), pointer :: pm_well
+  type(option_type) :: option
+  option%iflowmode = TH_MODE
+  option%nphase = 1
+  option%nflowdof = 2
+  option%nflowspec = 1
+  option%flow%isothermal = PETSC_FALSE
+  option%flow%store_fluxes = PETSC_TRUE
+  if (associated(pm_well)) then
+    if (pm_well%flow_coupling == FULLY_IMPLICIT_WELL) then
+      if (pm_well%well%well_model_type /= WELL_MODEL_HYDROSTATIC) then
+        option%io_buffer = 'Currently, TH mode can only be &
+                  &used with the HYDROSTATIC well model.'
+        call PrintErrMsg(option)
+      endif
+      th_well_coupling = TH_FULLY_IMPLICIT_WELL
+      option%nflowdof = option%nflowdof + 1
+      option%coupled_well = PETSC_TRUE
+      TH_WELL_DOF = option%nflowdof
+    else
+      option%io_buffer = 'Currently, only FULLY_IMPLICIT &
+                  &wellbore coupling is implemented for Richards Mode.'
+      call PrintErrMsg(option)
+    endif
+  endif
+end subroutine PMTHSetFlowMode
 
 ! ************************************************************************** !
 
