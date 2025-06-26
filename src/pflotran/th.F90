@@ -865,6 +865,38 @@ subroutine THUpdateAuxVars(realization,pm_well)
     source_sink => source_sink%next
   enddo
   deallocate(xx)
+  
+  if (option%coupled_well .and. associated(pm_well)) then
+    cur_well => pm_well
+    do
+      if (.not. associated(cur_well)) exit
+      if (associated(cur_well%flow_condition)) then
+        well_flow_condition => cur_well%flow_condition
+        if (associated(well_flow_condition%rate)) then
+          if (any(well_flow_condition%rate%dataset%rarray(:) < 0.d0)) then
+            cur_well%well%total_rate = well_flow_condition%rate%dataset% &
+                                       rarray(1)
+            if (cur_well%well%total_rate > 0.d0) then
+              option%io_buffer = "The well model does not support a concurrent &
+                                & injection and production well."
+            endif
+            cur_well%well%th_ql = 0.d0
+          else
+            cur_well%well%th_ql = well_flow_condition%rate%dataset% &
+                                  rarray(1)
+            cur_well%well%total_rate = UNINITIALIZED_DOUBLE
+          endif
+        endif
+        if (Initialized(cur_well%well%bh_p)) then
+          do idof = 1,option%nflowdof
+            call PMWellCopyWell(cur_well%well,cur_well%well_pert(idof), &
+                                PETSC_FALSE)
+          enddo
+        endif
+      endif
+      cur_well => cur_well%next_well
+    enddo
+  endif
 
   call VecRestoreArrayF90(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
