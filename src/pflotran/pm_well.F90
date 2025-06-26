@@ -54,6 +54,7 @@ module PM_Well_class
   PetscInt, parameter, public :: WELL_MODEL_HYDROSTATIC = 4
   PetscInt, parameter, public :: WELL_MODEL_U_SHAPE = 5
   PetscInt, parameter, public :: WELL_MODEL_COAXIAL = 6
+  PetscInt, parameter, public :: WELL_MODEL_TH_GEOTHERMAL = 7
 
   ! Well constraint types
   PetscInt, parameter :: CONSTANT_PRESSURE = 1
@@ -505,6 +506,7 @@ module PM_Well_class
             PMWellTranCreate, &
             PMWellVarCreate, &
             PMWellSetupGrid, &
+            PMWellReadPMBlockBase, &
             PMWellReadGrid, &
             PMWellReadPass2, &
             PMWellReadWellOutput, &
@@ -6297,6 +6299,8 @@ subroutine PMWellUpdateReservoirSrcSinkFlow(pm_well)
               auxvars(ZERO_INTEGER,ghosted_id)%well%Qg = pm_well%well%gas%Q(k)
             pm_well%realization%patch%aux%hydrate% &
               auxvars(ZERO_INTEGER,ghosted_id)%well%bh_p = pm_well%well%bh_p
+          case(TH_MODE)
+            ! PLACEHOLDER
         end select
         exit
       endif

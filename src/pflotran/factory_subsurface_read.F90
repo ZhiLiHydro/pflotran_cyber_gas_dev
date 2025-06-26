@@ -513,6 +513,7 @@ subroutine FactorySubsurfReadWellPM(input,option,pm)
   use PM_Base_class
   use PM_Well_class
   use WIPP_Well_class
+  use Geothermal_Well_class
 
   implicit none
 
@@ -546,6 +547,10 @@ subroutine FactorySubsurfReadWellPM(input,option,pm)
           case('WIPP_QI','WIPP_QUASI_IMPLICIT')
             pm => PMWellWIPPQICreate()
             option%flow%well_coupling = WELL_MODEL_WIPP_QI
+        !-----------------------------
+          case('TH_QUASI_IMPLICIT')
+            pm => PMWellGeoThQICreate()
+            option%flow%well_coupling = WELL_MODEL_TH_GEOTHERMAL
         !-----------------------------
           case('CLOSED_LOOP_COAXIAL')
             pm => PMWellCoaxialCreate()
@@ -950,6 +955,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
   use TH_Aux_module
   use Survey_module
   use WIPP_Well_class
+  use Geothermal_Well_class
 
   implicit none
 
@@ -2527,6 +2533,8 @@ subroutine FactorySubsurfReadInput(simulation,input)
             well => PMWellCoaxialCreate()
           case(WELL_MODEL_WIPP_QI)
             well => PMWellWIPPQICreate()
+          case(WELL_MODEL_TH_GEOTHERMAL)
+            well => PMWellGeoThQICreate()
           case default
             option%io_buffer = 'Well model coupling must be specified in the &
                                 &SIMULATION block.'

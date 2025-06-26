@@ -225,6 +225,7 @@ subroutine FactSubLinkSetupPMCLinkages(simulation,pm_flow,pm_tran, &
   use PM_Material_Transform_class
   use PM_WIPP_Flow_class
   use PM_NWT_class
+  use PM_TH_class
   use PM_Fracture_class
   use PM_SCO2_class
   use PM_Hydrate_class
@@ -323,6 +324,8 @@ subroutine FactSubLinkSetupPMCLinkages(simulation,pm_flow,pm_tran, &
         class is (pm_sco2_type)
           pm_flow%pmwell_ptr => pm_well_list
         class is (pm_hydrate_type)
+          pm_flow%pmwell_ptr => pm_well_list
+        class is (pm_th_type)
           pm_flow%pmwell_ptr => pm_well_list
       end select
     endif
@@ -973,6 +976,7 @@ subroutine FactSubLinkAddPMCWell(simulation,pm_well_list,pmc_name,input)
   use PMC_Third_Party_class
   use PM_Well_class
   use WIPP_Well_class
+  use Geothermal_Well_class
   use Realization_Subsurface_class
   use String_module
   use Option_module
@@ -1021,6 +1025,8 @@ subroutine FactSubLinkAddPMCWell(simulation,pm_well_list,pmc_name,input)
         pm_well%next_well => PMWellUShapeCreate()
       case(WELL_MODEL_COAXIAL)
         pm_well%next_well => PMWellCoaxialCreate()
+      case(WELL_MODEL_TH_GEOTHERMAL)
+        pm_well%next_well => PMWellGeoThQICreate()
     end select
     pm_well => pm_well%next_well
     pm_well%flow_coupling = pm_well_temp%flow_coupling
@@ -1068,11 +1074,12 @@ subroutine FactSubLinkAddPMCWell(simulation,pm_well_list,pmc_name,input)
 
     select case(option%iflowmode)
 
-      case (WF_MODE, SCO2_MODE, H_MODE)
+      case (WF_MODE,SCO2_MODE,H_MODE,TH_MODE)
 
       case default
         option%io_buffer = 'Currently, the WELLBORE_MODEL process model can &
-               &only be used with WIPP_FLOW mode, SCO2 mode, and HYDRATE mode.'
+               &only be used with WIPP_FLOW mode, SCO2 mode, HYDRATE mode, &
+               &and TH mode.'
         call PrintErrMsg(option)
     end select
 

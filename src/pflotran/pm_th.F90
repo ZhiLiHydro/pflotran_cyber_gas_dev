@@ -9,6 +9,7 @@ module PM_TH_class
   use Realization_Subsurface_class
   use Communicator_Base_class
   use Option_module
+  use PM_Well_class
 
   use PFLOTRAN_Constants_module
 
@@ -31,6 +32,7 @@ module PM_TH_class
     PetscReal :: residual_scaled_inf_tol(2)
     PetscReal :: abs_update_inf_tol(2)
     PetscReal :: rel_update_inf_tol(2)
+    class(pm_well_type), pointer :: pmwell_ptr
   contains
     procedure, public :: Setup => PMTHSetup
     procedure, public :: ReadSimulationOptionsBlock => PMTHReadSimOptionsBlock
@@ -93,6 +95,7 @@ function PMTHCreate()
   allocate(this)
 
   nullify(this%commN)
+  nullify(this%pmwell_ptr)
 
   call PMSubsurfaceFlowInit(this)
   this%name = 'TH Flow'
