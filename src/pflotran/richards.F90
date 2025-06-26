@@ -955,6 +955,7 @@ subroutine RichardsUpdateAuxVarsPatch(realization,pm_well)
       if (associated(cur_well%flow_condition)) then
         well_flow_condition => cur_well%flow_condition
         if (associated(well_flow_condition%rate)) then
+          cur_well%well%well_constraint_type = CONSTANT_RATE
           if (any(well_flow_condition%rate%dataset%rarray(:) < 0.d0)) then
             cur_well%well%total_rate = well_flow_condition%rate%dataset% &
                                        rarray(1)
@@ -968,6 +969,11 @@ subroutine RichardsUpdateAuxVarsPatch(realization,pm_well)
                                   rarray(1)
             cur_well%well%total_rate = UNINITIALIZED_DOUBLE
           endif
+        elseif (associated(well_flow_condition%pressure)) then
+          cur_well%well%well_constraint_type = CONSTANT_PRESSURE_HYDROSTATIC
+          cur_well%well%th_p = well_flow_condition%pressure%dataset% &
+                                       rarray(1)
+          cur_well%well%th_ql = 0.d0
         endif
         if (Initialized(cur_well%well%bh_p)) then
           do idof = 1,option%nflowdof

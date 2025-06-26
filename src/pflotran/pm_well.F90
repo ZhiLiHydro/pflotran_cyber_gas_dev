@@ -56,9 +56,9 @@ module PM_Well_class
   PetscInt, parameter, public :: WELL_MODEL_COAXIAL = 6
 
   ! Well constraint types
-  PetscInt, parameter :: CONSTANT_PRESSURE = 1
-  PetscInt, parameter :: CONSTANT_PRESSURE_HYDROSTATIC = 2
-  PetscInt, parameter :: CONSTANT_RATE = 3
+  PetscInt, parameter, public :: CONSTANT_PRESSURE = 1
+  PetscInt, parameter, public :: CONSTANT_PRESSURE_HYDROSTATIC = 2
+  PetscInt, parameter, public :: CONSTANT_RATE = 3
 
   ! Well coupling options
   PetscInt, parameter, public :: FULLY_IMPLICIT_WELL = ONE_INTEGER
@@ -6914,30 +6914,43 @@ subroutine PMWellModifyFlowResHydrostatic(this,residual)
                   this%well%gas%H(k))
       enddo
     case(RICHARDS_MODE)
-      sum_q = 0.d0
-      do k = 1,this%well_grid%nsegments
-        if (this%well_grid%h_rank_id(k) /= this%option%myrank) &
-            cycle
-        ghosted_id = this%well_grid%h_ghosted_id(k)
-        local_id = this%realization%patch%grid%nG2L(ghosted_id)
-        local_end = local_id * this%option%nflowdof
-        local_start = local_end - this%option%nflowdof + 1
-        if (k == 1) then
-          ! An extra residual is required for the bottom well cell.
-          ! Residual = Q - sum(q)
-          sum_q = sum(this%well%liq%q)
-          if (this%well%th_ql > 0.d0) then
-            Q = -1.d0 * (this%well%th_ql)
-          else if (this%well%total_rate < 0.d0) then
-            Q = -1.d0 * this%well%total_rate
-          else
-            Q = 0
+      if (this%well%well_constraint_type == CONSTANT_RATE) then
+        sum_q = 0.d0
+        do k = 1,this%well_grid%nsegments
+          if (this%well_grid%h_rank_id(k) /= this%option%myrank) &
+              cycle
+          ghosted_id = this%well_grid%h_ghosted_id(k)
+          local_id = this%realization%patch%grid%nG2L(ghosted_id)
+          local_end = local_id * this%option%nflowdof
+          local_start = local_end - this%option%nflowdof + 1
+          if (k == 1) then
+            ! An extra residual is required for the bottom well cell.
+            ! Residual = Q - sum(q)
+            sum_q = sum(this%well%liq%q)
+            if (this%well%th_ql > 0.d0) then
+              Q = -1.d0 * (this%well%th_ql)
+            else if (this%well%total_rate < 0.d0) then
+              Q = -1.d0 * this%well%total_rate
+            else
+              Q = 0
+            endif
+            residual(local_end) = Q - sum_q
           endif
-          residual(local_end) = Q - sum_q
-        endif
-        residual(local_start) = residual(local_start) + &
-                                    this%well%liq%q(k)
-      enddo
+          residual(local_start) = residual(local_start) + &
+                                      this%well%liq%q(k)
+        enddo
+      elseif (this%well%well_constraint_type == CONSTANT_PRESSURE_HYDROSTATIC) then
+        do k = 1,this%well_grid%nsegments
+          if (this%well_grid%h_rank_id(k) /= this%option%myrank) &
+              cycle
+          ghosted_id = this%well_grid%h_ghosted_id(k)
+          local_id = this%realization%patch%grid%nG2L(ghosted_id)
+          local_end = local_id * this%option%nflowdof
+          local_start = local_end - this%option%nflowdof + 1
+          residual(local_start) = residual(local_start) + &
+                                      this%well%liq%q(k)
+        enddo
+      endif
   end select
 
 end subroutine PMWellModifyFlowResHydrostatic
@@ -7395,48 +7408,65 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
       enddo
 
     case(RICHARDS_MODE)
-      deriv_const_sum = 0
-      do k = 1,this%well_grid%nsegments
-        deriv = GetConst(this%well, k)
-        deriv_const_sum = deriv_const_sum + deriv
 
-        ! Set dRw1/dPrk
+      if (this%well%well_constraint_type == CONSTANT_RATE) then
+        deriv_const_sum = 0
+        do k = 1,this%well_grid%nsegments
+          deriv = GetConst(this%well, k)
+          deriv_const_sum = deriv_const_sum + deriv
+
+          ! Set dRw1/dPrk
+          if (this%well_grid%h_rank_id(1) == option%myrank) then
+            local_row_index = (this%well_grid%h_ghosted_id(1) - 1) * option%nflowdof + 1
+            local_col_index = (this%well_grid%h_ghosted_id(k) - 1) * option%nflowdof
+            call MatSetValuesLocal(Jac,1,local_row_index, &
+                                      1,local_col_index, &
+                                      -deriv, &
+                                      ADD_VALUES,ierr);CHKERRQ(ierr)
+          endif
+
+          ! Set dRrk/dPrk
+          if (this%well_grid%h_rank_id(k) == option%myrank) then
+            local_row_index = (this%well_grid%h_ghosted_id(k) - 1) * option%nflowdof
+            local_col_index = (this%well_grid%h_ghosted_id(k) - 1) * option%nflowdof
+            call MatSetValuesLocal(Jac,1,local_row_index, &
+                                      1,local_col_index, &
+                                      deriv, &
+                                      ADD_VALUES,ierr);CHKERRQ(ierr)
+
+            ! Set dRrk/dPw1
+            local_row_index = (this%well_grid%h_ghosted_id(k) - 1) * option%nflowdof
+            local_col_index = (this%well_grid%h_ghosted_id(1) - 1) * option%nflowdof + 1
+            call MatSetValuesLocal(Jac,1,local_row_index, &
+                                      1,local_col_index, &
+                                      -deriv, &
+                                      ADD_VALUES,ierr);CHKERRQ(ierr)
+          endif
+        enddo
+
         if (this%well_grid%h_rank_id(1) == option%myrank) then
+          ! Set dRw1/dPw1
           local_row_index = (this%well_grid%h_ghosted_id(1) - 1) * option%nflowdof + 1
-          local_col_index = (this%well_grid%h_ghosted_id(k) - 1) * option%nflowdof
-          call MatSetValuesLocal(Jac,1,local_row_index, &
-                                    1,local_col_index, &
-                                    -deriv, &
-                                    ADD_VALUES,ierr);CHKERRQ(ierr)
-        endif
-
-        ! Set dRrk/dPrk
-        if (this%well_grid%h_rank_id(k) == option%myrank) then
-          local_row_index = (this%well_grid%h_ghosted_id(k) - 1) * option%nflowdof
-          local_col_index = (this%well_grid%h_ghosted_id(k) - 1) * option%nflowdof
-          call MatSetValuesLocal(Jac,1,local_row_index, &
-                                    1,local_col_index, &
-                                    deriv, &
-                                    ADD_VALUES,ierr);CHKERRQ(ierr)
-
-          ! Set dRrk/dPw1
-          local_row_index = (this%well_grid%h_ghosted_id(k) - 1) * option%nflowdof
           local_col_index = (this%well_grid%h_ghosted_id(1) - 1) * option%nflowdof + 1
           call MatSetValuesLocal(Jac,1,local_row_index, &
-                                    1,local_col_index, &
-                                    -deriv, &
-                                    ADD_VALUES,ierr);CHKERRQ(ierr)
+                                      1,local_col_index, &
+                                      deriv_const_sum, &
+                                      ADD_VALUES,ierr);CHKERRQ(ierr)
         endif
-      enddo
+      elseif (this%well%well_constraint_type == CONSTANT_PRESSURE_HYDROSTATIC) then
+        do k = 1,this%well_grid%nsegments
+          deriv = GetConst(this%well, k)
 
-      if (this%well_grid%h_rank_id(1) == option%myrank) then
-        ! Set dRw1/dPw1
-        local_row_index = (this%well_grid%h_ghosted_id(1) - 1) * option%nflowdof + 1
-        local_col_index = (this%well_grid%h_ghosted_id(1) - 1) * option%nflowdof + 1
-        call MatSetValuesLocal(Jac,1,local_row_index, &
-                                    1,local_col_index, &
-                                    deriv_const_sum, &
-                                    ADD_VALUES,ierr);CHKERRQ(ierr)
+          ! Set dRrk/dPrk
+          if (this%well_grid%h_rank_id(k) == option%myrank) then
+            local_row_index = (this%well_grid%h_ghosted_id(k) - 1) * option%nflowdof
+            local_col_index = (this%well_grid%h_ghosted_id(k) - 1) * option%nflowdof
+            call MatSetValuesLocal(Jac,1,local_row_index, &
+                                      1,local_col_index, &
+                                      deriv, &
+                                      ADD_VALUES,ierr);CHKERRQ(ierr)
+          endif
+        enddo
       endif
   end select
 
@@ -7602,6 +7632,8 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
       enddo
 
     case(RICHARDS_MODE)
+      ! Build the entire matrix, as we don't know which well_constraint_type
+      ! the well has yet.
       temp_real = 1.0
       do k = 1,this%well_grid%nsegments
         if (this%well_grid%h_rank_id(1) == option%myrank) then
@@ -7847,7 +7879,7 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
   PetscBool :: upwind
   PetscReal :: mobility, enthalpy
   PetscReal :: area, mass_conserved_liq, mass_conserved_gas
-  PetscInt :: i
+  PetscInt :: i, k
   PetscReal :: pl, pl0, pg, pg0, temperature, den_mol
   PetscReal :: rho_kg_liq, rho_zero_liq, rho_one_liq, &
                rho_kg_gas, rho_zero_gas, rho_one_gas
@@ -7903,46 +7935,23 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
   well%liq%Q = 0.d0
   well%gas%Q = 0.d0
 
-  temperature = well%temp(1)
-  ! Start from bottom hole pressure
-  pl = well%bh_p
-  ! No capillarity in the well
-  pg = pl
+  if (well%well_constraint_type == CONSTANT_RATE) then
 
-  !MAN: pure brine and pure gas columns for now, needs updating.
+    temperature = well%temp(1)
+    ! Start from bottom hole pressure
+    pl = well%bh_p
+    ! No capillarity in the well
+    pg = pl
+
+    !MAN: pure brine and pure gas columns for now, needs updating.
 
 
-  select case (option%iflowmode)
-    case (RICHARDS_MODE)
-      aux(1) = 0.0  ! No salt in Richards mode
-    case default
-      aux(1) = well%liq%xmass(1,option%salt_id)
-  end select
-  select case (option%iflowmode)
-    case (SCO2_MODE)
-      call SCO2BrineDensity(temperature, pl, &
-                            aux(1), rho_kg_liq, option)
-    case default
-      call EOSWaterDensityExt(temperature,pl, &
-                                aux,rho_kg_liq,dummy,ierr)
-  end select
-
-  pl0 = pl
-
-  call EOSGasDensity(temperature,pg, &
-                      den_mol,dummy,dummy2,ierr)
-  rho_kg_gas = den_mol * fmw_comp_temp(TWO_INTEGER)
-
-  pg0 = pg
-
-  ! compute pressures above datum
-  dist_z = 0.d0
-  rho_zero_liq = rho_kg_liq
-  rho_zero_gas = rho_kg_gas
-
-  do i = 1,this%well_grid%nsegments
-    ! Compute well cell pressures based off of bottom segment pressure
-    temperature = well%temp(i)
+    select case (option%iflowmode)
+      case (RICHARDS_MODE)
+        aux(1) = 0.0  ! No salt in Richards mode
+      case default
+        aux(1) = well%liq%xmass(1,option%salt_id)
+    end select
     select case (option%iflowmode)
       case (SCO2_MODE)
         call SCO2BrineDensity(temperature, pl, &
@@ -7951,61 +7960,133 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
         call EOSWaterDensityExt(temperature,pl, &
                                   aux,rho_kg_liq,dummy,ierr)
     end select
-    call EOSGasDensity(temperature,pg0, &
-                      den_mol,dummy,dummy2,ierr)
+
+    pl0 = pl
+
+    call EOSGasDensity(temperature,pg, &
+                        den_mol,dummy,dummy2,ierr)
     rho_kg_gas = den_mol * fmw_comp_temp(TWO_INTEGER)
 
-    num_iteration = 0
-    if (i == 1) then
-      delta_z = this%well_grid%h(i)%z - this%well_grid%bottomhole(3)
-    else
-      delta_z = this%well_grid%h(i)%z - this%well_grid%h(i-1)%z
-    endif
-    do
-      pl = pl0 + 0.5d0*(rho_kg_liq+rho_zero_liq) * &
-            gravity * delta_z
-      pg = pg0 + 0.5d0*(rho_kg_gas+rho_zero_gas) * &
-            gravity * delta_z
-      call EOSWaterDensityExt(temperature,pl,aux,rho_one_liq,dummy,ierr)
-      call EOSGasDensity(temperature,pg,den_mol,dummy,dummy2,ierr)
-      rho_one_gas = den_mol * fmw_comp_temp(TWO_INTEGER)
+    pg0 = pg
 
-      ! STOMP doesn't iterate
-      exit
+    ! compute pressures above datum
+    dist_z = 0.d0
+    rho_zero_liq = rho_kg_liq
+    rho_zero_gas = rho_kg_gas
 
-      if (option%iflowmode == RICHARDS_MODE) then
-        option%io_buffer = 'Hydrostatic iteration not yet implemented &
-                            &in Richards mode.'
-        call PrintErrMsg(option)
+    do i = 1,this%well_grid%nsegments
+      ! Compute well cell pressures based off of bottom segment pressure
+      temperature = well%temp(i)
+      select case (option%iflowmode)
+        case (SCO2_MODE)
+          call SCO2BrineDensity(temperature, pl, &
+                                aux(1), rho_kg_liq, option)
+        case default
+          call EOSWaterDensityExt(temperature,pl, &
+                                    aux,rho_kg_liq,dummy,ierr)
+      end select
+      call EOSGasDensity(temperature,pg0, &
+                        den_mol,dummy,dummy2,ierr)
+      rho_kg_gas = den_mol * fmw_comp_temp(TWO_INTEGER)
+
+      num_iteration = 0
+      if (i == 1) then
+        delta_z = this%well_grid%h(i)%z - this%well_grid%bottomhole(3)
+      else
+        delta_z = this%well_grid%h(i)%z - this%well_grid%h(i-1)%z
       endif
+      do
+        pl = pl0 + 0.5d0*(rho_kg_liq+rho_zero_liq) * &
+              gravity * delta_z
+        pg = pg0 + 0.5d0*(rho_kg_gas+rho_zero_gas) * &
+              gravity * delta_z
+        call EOSWaterDensityExt(temperature,pl,aux,rho_one_liq,dummy,ierr)
+        call EOSGasDensity(temperature,pg,den_mol,dummy,dummy2,ierr)
+        rho_one_gas = den_mol * fmw_comp_temp(TWO_INTEGER)
 
-      if (dabs(rho_kg_liq-rho_one_liq) < 1.d-5 .and. &
-          dabs(rho_kg_gas-rho_one_gas) < 1.d-5) exit
-      rho_kg_liq = rho_one_liq
-      rho_kg_gas = rho_one_gas
-      num_iteration = num_iteration + 1
-      if (num_iteration > 100) then
-        option%io_buffer = 'Hydrostatic iteration failed to &
-                            &converge in the well model'
+        ! STOMP doesn't iterate
+        exit
+
+        if (option%iflowmode == RICHARDS_MODE) then
+          option%io_buffer = 'Hydrostatic iteration not yet implemented &
+                              &in Richards mode.'
+          call PrintErrMsg(option)
+        endif
+
+        if (dabs(rho_kg_liq-rho_one_liq) < 1.d-5 .and. &
+            dabs(rho_kg_gas-rho_one_gas) < 1.d-5) exit
+        rho_kg_liq = rho_one_liq
+        rho_kg_gas = rho_one_gas
+        num_iteration = num_iteration + 1
+        if (num_iteration > 100) then
+          option%io_buffer = 'Hydrostatic iteration failed to &
+                              &converge in the well model'
+          call PrintErrMsg(option)
+        endif
+      enddo
+      rho_zero_liq = rho_kg_liq
+      rho_zero_gas = rho_kg_gas
+      well%pl(i) = pl
+      well%pg(i) = pg
+      well%liq%den(i) = rho_kg_liq
+      well%gas%den(i) = rho_kg_gas
+      pl0 = pl
+      pg0 = pg
+
+      if (pg < 0.d0 .and. well%th_qg > 0.d0) then
+        option%io_buffer = 'BHP cannot support the gas column: &
+                            &hydrostatic well pressure calcuation &
+                            &results in negative gas pressure.'
         call PrintErrMsg(option)
       endif
     enddo
-    rho_zero_liq = rho_kg_liq
-    rho_zero_gas = rho_kg_gas
-    well%pl(i) = pl
-    well%pg(i) = pg
-    well%liq%den(i) = rho_kg_liq
-    well%gas%den(i) = rho_kg_gas
-    pl0 = pl
-    pg0 = pg
 
-    if (pg < 0.d0 .and. well%th_qg > 0.d0) then
-      option%io_buffer = 'BHP cannot support the gas column: &
-                          &hydrostatic well pressure calcuation &
-                          &results in negative gas pressure.'
+  elseif (well%well_constraint_type == CONSTANT_PRESSURE_HYDROSTATIC) then
+
+    if (option%iflowmode /= RICHARDS_MODE) then
+      option%io_buffer = 'CONSTANT_PRESSURE_HYDROSTATIC only implemented in RICHARDS_MODE.'
       call PrintErrMsg(option)
     endif
-  enddo
+
+    temperature = well%temp(1)
+    ! Start from top hole pressure
+    pl = well%th_p
+
+    aux(1) = 0.0  ! No salt in Richards mode
+    call EOSWaterDensityExt(temperature,pl, &
+                            aux,rho_kg_liq,dummy,ierr)
+
+    pl0 = pl
+
+    ! compute pressures above datum
+    dist_z = 0.d0
+    rho_zero_liq = rho_kg_liq
+
+    do i = 1,this%well_grid%nsegments
+      k = this%well_grid%nsegments - i + 1 ! Top to bottom
+      ! Compute well cell pressures based off of top segment pressure
+      temperature = well%temp(k)
+      call EOSWaterDensityExt(temperature,pl, &
+                                aux,rho_kg_liq,dummy,ierr)
+
+      if (k == this%well_grid%nsegments) then
+        delta_z = this%well_grid%tophole(3) - this%well_grid%h(k)%z
+      else
+        delta_z = this%well_grid%h(k+1)%z - this%well_grid%h(k)%z
+      endif
+
+      pl = pl0 - 0.5d0*(rho_kg_liq+rho_zero_liq) * &
+            gravity * delta_z
+      call EOSWaterDensityExt(temperature,pl,aux,rho_one_liq,dummy,ierr)
+
+      rho_zero_liq = rho_kg_liq
+      well%pl(i) = pl
+      well%liq%den(i) = rho_kg_liq
+      pl0 = pl
+
+    enddo
+
+  endif
 
   ! Update well properties based off new pressures
   select case(option%iflowmode)
@@ -8026,62 +8107,118 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
 
     res_z = this%well_grid%res_z(i)
     delta_z = res_z - this%well_grid%h(i)%z
-    if (well%th_qg > 0.d0 .and. well%th_ql > 0.d0) then
-      ! mixture injection: assume constant mass ratio
-      mixture_ratio = well%th_ql / well%th_qg
+    if (well%well_constraint_type == CONSTANT_RATE) then
+      if (well%th_qg > 0.d0 .and. well%th_ql > 0.d0) then
+        ! mixture injection: assume constant mass ratio
+        mixture_ratio = well%th_ql / well%th_qg
 
-      if (reservoir%s_g(i) > epsilon) then
-        res_pg_temp = reservoir%p_g(i) + reservoir%den_g(i) * gravity * &
-                      delta_z
-      else
-        res_pg_temp = reservoir%p_g(i) + reservoir%den_l(i) * gravity * &
-                      delta_z
-      endif
-      upwind = res_pg_temp > well%pg(i)
-      if (upwind) then
-        mobility = reservoir%kr_g(i)/reservoir%visc_g(i)
-        den_ave = reservoir%den_g(i)
-        enthalpy = reservoir%H_g(i)
-      else
-        mobility = 1.d0 / well%gas%visc(i)
-        den_ave = well%gas%den(i)
-        enthalpy = well%gas%H(i)
-      endif
+        if (reservoir%s_g(i) > epsilon) then
+          res_pg_temp = reservoir%p_g(i) + reservoir%den_g(i) * gravity * &
+                        delta_z
+        else
+          res_pg_temp = reservoir%p_g(i) + reservoir%den_l(i) * gravity * &
+                        delta_z
+        endif
+        upwind = res_pg_temp > well%pg(i)
+        if (upwind) then
+          mobility = reservoir%kr_g(i)/reservoir%visc_g(i)
+          den_ave = reservoir%den_g(i)
+          enthalpy = reservoir%H_g(i)
+        else
+          mobility = 1.d0 / well%gas%visc(i)
+          den_ave = well%gas%den(i)
+          enthalpy = well%gas%H(i)
+        endif
 
-      ! Flowrate in kg/s
-      well%gas%Q(i) = den_ave*mobility*well%WI(i)* &
-                      (res_pg_temp-well%pg(i))
+        ! Flowrate in kg/s
+        well%gas%Q(i) = den_ave*mobility*well%WI(i)* &
+                        (res_pg_temp-well%pg(i))
 
-      ! Assuming the mass ratio of water and CO2 remains the same
-      ! everywhere.
-      well%liq%Q(i) = well%gas%Q(i) * mixture_ratio
+        ! Assuming the mass ratio of water and CO2 remains the same
+        ! everywhere.
+        well%liq%Q(i) = well%gas%Q(i) * mixture_ratio
 
-    elseif (well%th_qg > 0.d0) then
-      ! Rate-controlled gas injection well. Can potentially have
-      ! under-pressure in some well segments.
-      ! Compute reservoir pressure at well cell center
-      if (reservoir%s_g(i) > epsilon) then
+      elseif (well%th_qg > 0.d0) then
+        ! Rate-controlled gas injection well. Can potentially have
+        ! under-pressure in some well segments.
+        ! Compute reservoir pressure at well cell center
+        if (reservoir%s_g(i) > epsilon) then
+          res_pg_temp = reservoir%p_g(i) + reservoir%den_g(i) * gravity * delta_z
+        else
+          res_pg_temp = reservoir%p_g(i) + reservoir%den_l(i) * gravity * delta_z
+        endif
+        upwind = res_pg_temp > well%pg(i)
+        if (upwind) then
+          mobility = reservoir%kr_g(i)/reservoir%visc_g(i)
+          den_ave = reservoir%den_g(i)
+          enthalpy = reservoir%H_g(i)
+        else
+          mobility = 1.d0 / well%gas%visc(i)
+          den_ave = well%gas%den(i)
+          enthalpy = well%gas%H(i)
+        endif
+
+        ! Flowrate in kg/s
+        well%gas%Q(i) = den_ave*mobility*well%WI(i)* &
+                        (res_pg_temp-well%pg(i))
+        ! if (well%gas%Q(i) < 0.d0) well%gas%Q(i) = 0.d0
+      elseif (well%th_ql > 0.d0) then
+        ! Rate-controlled water injection well
+        ! Compute reservoir pressure at well cell center
+        res_pl_temp = reservoir%p_l(i) + reservoir%den_l(i) * gravity * delta_z
+        upwind = res_pl_temp > well%pl(i)
+        if (upwind) then
+          mobility = reservoir%kr_l(i)/reservoir%visc_l(i)
+          den_ave = reservoir%den_l(i)
+          enthalpy = reservoir%H_l(i)
+        else
+          mobility = 1.d0 / well%liq%visc(i)
+          den_ave = well%liq%den(i)
+          enthalpy = well%liq%H(i)
+        endif
+        ! Flowrate in kg/s
+        well%liq%Q(i) = den_ave*mobility*well%WI(i)* &
+                        (res_pl_temp-well%pl(i))
+        ! if (well%liq%Q(i) > 0.d0) well%liq%Q(i) = 0.d0
+      elseif (well%total_rate < 0.d0) then
+        ! Extraction well
+        ! Compute reservoir pressure at well cell center
+        well%liq%Q(i) = 0.d0
+        well%gas%Q(i) = 0.d0
+        res_pl_temp = reservoir%p_l(i) + reservoir%den_l(i) * gravity * delta_z
+        mobility = reservoir%kr_l(i)/reservoir%visc_l(i)
+        den_ave = reservoir%den_l(i)
+        ! Flowrate in kg/s
+        well%liq%Q(i) = den_ave*mobility*well%WI(i) * &
+                        (res_pl_temp-well%pl(i)) * &
+                        reservoir%xmass_liq(i,ONE_INTEGER)
+        if (option%iflowmode == RICHARDS_MODE) then
+          well%gas%Q(i) = 0.0
+        else
+          well%gas%Q(i) = den_ave*mobility*well%WI(i)* &
+                          (res_pl_temp-well%pl(i)) * &
+                          reservoir%xmass_liq(i,TWO_INTEGER)
+        endif
+
         res_pg_temp = reservoir%p_g(i) + reservoir%den_g(i) * gravity * delta_z
-      else
-        res_pg_temp = reservoir%p_g(i) + reservoir%den_l(i) * gravity * delta_z
-      endif
-      upwind = res_pg_temp > well%pg(i)
-      if (upwind) then
         mobility = reservoir%kr_g(i)/reservoir%visc_g(i)
         den_ave = reservoir%den_g(i)
-        enthalpy = reservoir%H_g(i)
-      else
-        mobility = 1.d0 / well%gas%visc(i)
-        den_ave = well%gas%den(i)
-        enthalpy = well%gas%H(i)
+        ! Flowrate in kg/s
+        if (res_pg_temp > well%pg(i)) then
+          well%liq%Q(i) = well%liq%Q(i) + den_ave*mobility*well%WI(i) * &
+                          (res_pg_temp-well%pg(i)) * &
+                          reservoir%xmass_gas(i,ONE_INTEGER)
+          well%gas%Q(i) = well%gas%Q(i) + den_ave*mobility*well%WI(i) * &
+                          (res_pg_temp-well%pg(i)) * &
+                          reservoir%xmass_gas(i,TWO_INTEGER)
+        endif
       endif
 
-      ! Flowrate in kg/s
-      well%gas%Q(i) = den_ave*mobility*well%WI(i)* &
-                      (res_pg_temp-well%pg(i))
-      ! if (well%gas%Q(i) < 0.d0) well%gas%Q(i) = 0.d0
-    elseif (well%th_ql > 0.d0) then
-      ! Rate-controlled water injection well
+    elseif (well%well_constraint_type == CONSTANT_PRESSURE_HYDROSTATIC) then
+      if (option%iflowmode /= RICHARDS_MODE) then
+        option%io_buffer = 'CONSTANT_PRESSURE_HYDROSTATIC only implemented in RICHARDS_MODE.'
+        call PrintErrMsg(option)
+      endif
       ! Compute reservoir pressure at well cell center
       res_pl_temp = reservoir%p_l(i) + reservoir%den_l(i) * gravity * delta_z
       upwind = res_pl_temp > well%pl(i)
@@ -8097,43 +8234,11 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
       ! Flowrate in kg/s
       well%liq%Q(i) = den_ave*mobility*well%WI(i)* &
                       (res_pl_temp-well%pl(i))
-      ! if (well%liq%Q(i) > 0.d0) well%liq%Q(i) = 0.d0
-    elseif (well%total_rate < 0.d0) then
-      ! Extraction well
-      ! Compute reservoir pressure at well cell center
-      well%liq%Q(i) = 0.d0
-      well%gas%Q(i) = 0.d0
-      res_pl_temp = reservoir%p_l(i) + reservoir%den_l(i) * gravity * delta_z
-      mobility = reservoir%kr_l(i)/reservoir%visc_l(i)
-      den_ave = reservoir%den_l(i)
-      ! Flowrate in kg/s
-      well%liq%Q(i) = den_ave*mobility*well%WI(i) * &
-                      (res_pl_temp-well%pl(i)) * &
-                      reservoir%xmass_liq(i,ONE_INTEGER)
-      if (option%iflowmode == RICHARDS_MODE) then
-        well%gas%Q(i) = 0.0
-      else
-        well%gas%Q(i) = den_ave*mobility*well%WI(i)* &
-                        (res_pl_temp-well%pl(i)) * &
-                        reservoir%xmass_liq(i,TWO_INTEGER)
-      endif
-
-      res_pg_temp = reservoir%p_g(i) + reservoir%den_g(i) * gravity * delta_z
-      mobility = reservoir%kr_g(i)/reservoir%visc_g(i)
-      den_ave = reservoir%den_g(i)
-      ! Flowrate in kg/s
-      if (res_pg_temp > well%pg(i)) then
-        well%liq%Q(i) = well%liq%Q(i) + den_ave*mobility*well%WI(i) * &
-                        (res_pg_temp-well%pg(i)) * &
-                        reservoir%xmass_gas(i,ONE_INTEGER)
-        well%gas%Q(i) = well%gas%Q(i) + den_ave*mobility*well%WI(i) * &
-                        (res_pg_temp-well%pg(i)) * &
-                        reservoir%xmass_gas(i,TWO_INTEGER)
-      endif
     endif
   enddo
 
   ! Should equal the total flux out the top of the domain
+  ! in CONSTANT_RATE mode.
   mass_conserved_liq = sum(well%liq%Q)
   mass_conserved_gas = sum(well%gas%Q)
 
