@@ -716,7 +716,16 @@ subroutine THUpdateAuxVars(realization,pm_well)
             th_parameter, icct, &
             grid%nG2A(ghosted_id),PETSC_TRUE,option)
     endif
-
+    if (th_well_coupling == TH_FULLY_IMPLICIT_WELL) then
+      ! MAN: this is a hack to get well to initialize properly
+      if (xx_loc_p(iend) /= &
+          global_auxvars(ghosted_id)%pres(option%liquid_phase)) then
+        TH_auxvars(ghosted_id)%well%bh_p = xx_loc_p(iend)
+      else
+        TH_auxvars(ghosted_id)%well%pressure_bump = &
+                                                   UNINITIALIZED_DOUBLE
+      endif
+    endif
     global_auxvars(ghosted_id)%istate = iphase
   enddo
 
@@ -785,6 +794,10 @@ subroutine THUpdateAuxVars(realization,pm_well)
   allocate(xx(option%nflowdof))
   do
     if (.not.associated(source_sink)) exit
+    if (associated(source_sink%flow_condition%well)) then
+      source_sink => source_sink%next
+      cycle
+    endif
     cur_connection_set => source_sink%connection_set
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
