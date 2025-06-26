@@ -1018,12 +1018,14 @@ geothermal_well.o : \
   input_aux.o \
   material_aux.o \
   option.o \
+  patch.o \
   pflotran_constants.o \
   pm_base.o \
   pm_well.o \
   realization_subsurface.o \
   strata.o \
   string.o \
+  th_aux.o \
   utility.o \
   well_grid.o
 global.o : \

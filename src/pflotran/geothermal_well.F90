@@ -2,6 +2,7 @@ module Geothermal_Well_class
 
 #include "petsc/finclude/petscsnes.h"
   use petscsnes
+  use TH_Aux_module
   use PM_Well_class
   use PM_Base_class
   use Well_Grid_module
@@ -12,7 +13,9 @@ module Geothermal_Well_class
   use Strata_module
   use String_module
   use Grid_module
+  use Patch_module
   use Material_Aux_module
+  use Global_Aux_module
   use Realization_Subsurface_class
   use PFLOTRAN_Constants_module
 
@@ -96,7 +99,6 @@ subroutine PMWellSetupGeoTh(pm_well)
   ! Date: 01/01/2025
   !
 
-  use Grid_module
   use Utility_module
   use Coupler_module
   use Connection_module
@@ -104,26 +106,30 @@ subroutine PMWellSetupGeoTh(pm_well)
   use Dataset_module
   use Dataset_Base_class
   use Dataset_Ascii_class
-  use Global_Aux_module
 
   implicit none
 
   class(pm_well_sequential_type) :: pm_well
 
   type(option_type), pointer :: option
+  type(patch_type), pointer :: patch
   type(grid_type), pointer :: res_grid
   type(well_grid_type), pointer :: well_grid
   type(coupler_type), pointer :: source_sink
   type(input_type) :: input_dummy
   class(realization_subsurface_type), pointer :: realization
+  type(flow_sub_condition_type), pointer :: rate,temperature
+  type(TH_auxvar_type), pointer :: TH_auxvars_ss(:)
+  type(global_auxvar_type), pointer :: global_auxvars_ss(:)
   character(len=MAXSTRINGLENGTH) :: string
+  PetscInt :: sum_connection,num_new_source_sinks, offset
   PetscInt :: k
-  PetscInt :: num_new_source_sinks, offset
 
   call PMWellSetupBase(pm_well)
   option => pm_well%option
   realization => pm_well%realization
-  res_grid => realization%patch%grid
+  patch => realization%patch
+  res_grid => patch%grid
   well_grid => pm_well%well_grid
 
   pm_well%flow_soln%ndof = pm_well%nphase
@@ -135,11 +141,16 @@ subroutine PMWellSetupGeoTh(pm_well)
       &type WELL_MODEL_TH_GEOTHERMAL to work."
     call PrintErrMsg(option)
   endif
+  if (option%iflowmode /= TH_MODE) then
+    option%io_buffer ="The WELLBORE_MODEL, type WELL_MODEL_TH_GEOTHERMAL &
+      &can only be used with TH flow mode."
+    call PrintErrMsg(option)
+  endif
 
   ! add a reservoir src/sink coupler for each well segment
   num_new_source_sinks = 0
-  if (associated(realization%patch%aux%Global%auxvars_ss)) then
-    offset = realization%patch%aux%Global%num_aux_ss
+  if (associated(patch%aux%Global%auxvars_ss)) then
+    offset = patch%aux%Global%num_aux_ss
   else
     offset = 0
   endif
@@ -147,31 +158,46 @@ subroutine PMWellSetupGeoTh(pm_well)
 
     source_sink => CouplerCreate()
     source_sink%itype = SRC_SINK_COUPLER_TYPE
-    source_sink%name = trim(pm_well%name) // '_well_segment_' // StringWrite(k)
-
-    ! ----- flow: begin ------------------
+    source_sink%name = trim(pm_well%name) // '_wellseg_' // StringWrite(k)
+    source_sink%well_name = trim(pm_well%name)
     source_sink%flow_condition_name = trim(pm_well%name) // &
-                          '_well_segment_' // StringWrite(k) // '_flow_srcsink'
+                          '_wellseg_' // StringWrite(k) // '_flow_ss'
     source_sink%flow_condition => FlowConditionCreate(option)
     source_sink%flow_condition%name = source_sink%flow_condition_name
+    allocate(source_sink%flow_condition%itype(TWO_INTEGER))
+    source_sink%flow_condition%num_sub_conditions = TWO_INTEGER
+    allocate(source_sink%flow_condition%sub_condition_ptr(TWO_INTEGER))
+
     if (well_grid%h_rank_id(k) /= option%myrank) cycle
-
-    source_sink%flow_condition%general => FlowGeneralConditionCreate(option)
-    string = 'RATE'
-    source_sink%flow_condition%general%rate => FlowGeneralSubConditionPtr( &
-      input_dummy,string,source_sink%flow_condition%general,option)
-    source_sink%flow_condition%general%rate%itype = SCALED_MASS_RATE_SS
-    source_sink%flow_condition%general%liquid_pressure => &
-          FlowGeneralSubConditionPtr(input_dummy,string,source_sink% &
-                                      flow_condition%general,option)
-    source_sink%flow_condition%general%gas_pressure => &
-          FlowGeneralSubConditionPtr(input_dummy,string,source_sink% &
-                                    flow_condition%general,option)
-    allocate(source_sink%flow_condition%general%rate%dataset%rarray(4))
-    source_sink%flow_condition%general%rate%dataset%rarray(:) = 0.d0
-
     source_sink%flow_condition%well => FlowSubConditionCreate(ONE_INTEGER)
+    
+    ! ----- flow: begin ------------------
+    source_sink%flow_condition%itype(TH_PRESSURE_DOF) = MASS_RATE_SS
+    nullify(source_sink%flow_condition%sub_condition_ptr(1)%ptr)
+    rate => FlowSubConditionCreate(ONE_INTEGER)
+    rate%name = trim(pm_well%name) // '_wellseg_' // StringWrite(k) &
+                       // '_rate_ss'
+    rate%units = 'kg/sec'
+    rate%itype = MASS_RATE_SS
+    allocate(rate%dataset%rarray(1))
+    rate%dataset%rarray(:) = 0.d0
+    source_sink%flow_condition%rate => rate
+    source_sink%flow_condition%sub_condition_ptr(1)%ptr => rate
     ! ----- flow: end --------------------
+
+    ! ----- temperature: begin ------------------
+    source_sink%flow_condition%itype(TH_TEMPERATURE_DOF) = DIRICHLET_BC ! or ZERO_GRADIENT_BC?
+    nullify(source_sink%flow_condition%sub_condition_ptr(2)%ptr)
+    temperature => FlowSubConditionCreate(ONE_INTEGER)
+    temperature%name = trim(pm_well%name) // '_wellseg_' // StringWrite(k) &
+                       // '_temp_ss'
+    temperature%units = 'C'
+    temperature%itype = DIRICHLET_BC ! or ZERO_GRADIENT_BC?
+    allocate(temperature%dataset%rarray(1))
+    temperature%dataset%rarray(:) = 25.d0 
+    source_sink%flow_condition%temperature => temperature
+    source_sink%flow_condition%sub_condition_ptr(2)%ptr => temperature
+    ! ----- temperature: end --------------------
 
     source_sink%connection_set => &
       ConnectionCreate(1,GENERIC_CONNECTION_TYPE,res_grid%itype)
@@ -183,10 +209,35 @@ subroutine PMWellSetupGeoTh(pm_well)
       source_sink%connection_set%offset = num_new_source_sinks + offset - 1
     endif
 
-    call CouplerAddToList(source_sink, &
-                          pm_well%realization%patch%source_sink_list)
+    call CouplerAddToList(source_sink,patch%source_sink_list)
     nullify(source_sink)
   enddo
+
+  sum_connection = CouplerGetNumConnectionsInList(patch%source_sink_list)
+  if (sum_connection > num_new_source_sinks) then
+    ! there were some non-well ss's in TH flow conditions
+    ! figure out how to add to them, or copy what's there into a new one
+    ! that also includes the well ss's
+    option%io_buffer = 'There are non-well source_sink objects. Stopping!'
+    call PrintErrMsg(option)
+  else
+    ! all ss's are well ss's, carry out line 375 in th.F90
+    allocate(TH_auxvars_ss(sum_connection))
+    allocate(global_auxvars_ss(sum_connection))
+    do k = 1, sum_connection
+      call THAuxVarInit(TH_auxvars_ss(k),option)
+      call GlobalAuxVarInit(global_auxvars_ss(k),option)
+    enddo
+    patch%aux%TH%auxvars_ss => TH_auxvars_ss
+    patch%aux%Global%auxvars_ss => global_auxvars_ss
+    patch%aux%TH%num_aux_ss = sum_connection
+    patch%aux%Global%num_aux_ss = sum_connection
+  endif
+  !call THUpdateAuxVars(realization) ! can't call, or there is a circular dependency
+
+  ! Next, re-set up patch%aux%TH%auxvars_ss => TH_auxvars_ss. This was already
+  ! done for TH mode in th.F90, line 372. You will need to add the new set of
+  ! auxvars_ss for all well segments. Then call AuxvarCompute again.
 
 end subroutine PMWellSetupGeoTh
 
@@ -350,7 +401,95 @@ subroutine PMWellUpdateReservoirGeoTh(pm_well,TH_update_index)
   class(pm_well_sequential_type) :: pm_well
   PetscInt :: TH_update_index
 
-  ! PLACEHOLDER
+  type(well_reservoir_type), pointer :: reservoir
+  type(grid_type), pointer :: res_grid
+  type(patch_type), pointer :: patch
+  type(option_type), pointer :: option
+  type(well_comm_type), pointer :: well_comm
+  type(material_auxvar_type), pointer :: material_auxvar
+  type(global_auxvar_type), pointer :: global_auxvar
+  type(TH_auxvar_type), pointer :: TH_auxvar
+  PetscInt :: ghosted_id
+  PetscInt :: k,vec_size
+  PetscErrorCode :: ierr
+
+  option => pm_well%option
+  well_comm => pm_well%well_comm
+  reservoir => pm_well%well%reservoir
+  patch => pm_well%realization%patch
+  res_grid => patch%grid
+
+  reservoir%tmp_flow = -MAX_DOUBLE
+
+  do k = 1,pm_well%well_grid%nsegments
+    if (pm_well%well_grid%h_rank_id(k) /= option%myrank) cycle
+
+    ghosted_id = pm_well%well_grid%h_ghosted_id(k)
+
+    material_auxvar => patch%aux%material%auxvars(ghosted_id)
+    global_auxvar => patch%aux%Global%auxvars(ghosted_id)
+    TH_auxvar => patch%aux%TH%auxvars(ghosted_id)
+
+    ! TODO: Do we need to extend the well_reservoir_type to include TH mode
+    ! reservoir variables?
+
+    ! reservoir%tmp_flow(k,?) = TH_auxvar%pc     ! liquid capillary pressure
+    ! reservoir%tmp_flow(k,?) = TH_auxvar%avgmw  ! avg. mw
+    ! reservoir%tmp_flow(k,?) = TH_auxvar%u      ! liquid energy
+
+    reservoir%tmp_flow(k,1) = global_auxvar%pres(1)     ! liquid pressure
+    reservoir%tmp_flow(k,2) = global_auxvar%sat(1)      ! liquid saturation
+    reservoir%tmp_flow(k,3) = 1.d0-global_auxvar%sat(1) ! gas saturation
+    reservoir%tmp_flow(k,4) = TH_auxvar%kvr              ! liquid mobility
+    reservoir%tmp_flow(k,5) = global_auxvar%den_kg(1)   ! liquid density
+    reservoir%tmp_flow(k,6) = TH_auxvar%vis              ! liquid viscosity
+    reservoir%tmp_flow(k,7) = global_auxvar%temp        ! liq temperature
+    reservoir%tmp_flow(k,8) = TH_auxvar%h                ! liquid enthalpy
+
+    reservoir%tmp_flow(k,14) = material_auxvar%permeability(1) ! kx
+    reservoir%tmp_flow(k,15) = material_auxvar%permeability(2) ! ky
+    reservoir%tmp_flow(k,16) = material_auxvar%permeability(3) ! kz
+    reservoir%tmp_flow(k,17) = material_auxvar%volume
+
+    if (res_grid%itype == STRUCTURED_GRID) then
+      reservoir%tmp_flow(k,18) = res_grid%structured_grid%dx(ghosted_id) ! dx
+      reservoir%tmp_flow(k,19) = res_grid%structured_grid%dy(ghosted_id) ! dy
+      reservoir%tmp_flow(k,20) = res_grid%structured_grid%dz(ghosted_id) ! dz
+    else
+      reservoir%tmp_flow(k,20) = pm_well%well_grid%res_dz(k) ! dz
+      reservoir%tmp_flow(k,18) = sqrt(material_auxvar%volume/ &
+                                  reservoir%tmp_flow(k,20)) ! dx
+      reservoir%tmp_flow(k,19) = reservoir%tmp_flow(k,18) ! dy
+    endif
+
+  enddo
+
+  vec_size = pm_well%well_grid%nsegments
+  if (well_comm%commsize > 1) then
+    ! Updates reservoir property vector in place using the maximum value.
+    ! The rank-updated value will be larger then the initialized value (-MAX_DOUBLE)
+    call MPI_Allreduce(MPI_IN_PLACE,reservoir%tmp_flow,vec_size*20,&
+                       MPI_DOUBLE_PRECISION,MPI_MAX,pm_well%well_comm%comm,ierr)
+  endif
+
+  do k = 1,pm_well%well_grid%nsegments
+    reservoir%p_l(k) = reservoir%tmp_flow(k,1)
+    reservoir%s_l(k) = reservoir%tmp_flow(k,2)
+    reservoir%s_g(k) = reservoir%tmp_flow(k,3)
+    reservoir%mobility_l(k) = reservoir%tmp_flow(k,4)
+    reservoir%den_l(k) = reservoir%tmp_flow(k,5)
+    reservoir%visc_l(k) = reservoir%tmp_flow(k,6)
+    reservoir%temp(k) = reservoir%tmp_flow(k,7)
+    reservoir%H_l(k) = reservoir%tmp_flow(k,8)
+
+    reservoir%kx(k) = reservoir%tmp_flow(k,14)
+    reservoir%ky(k) = reservoir%tmp_flow(k,15)
+    reservoir%kz(k) = reservoir%tmp_flow(k,16)
+    reservoir%volume(k) = reservoir%tmp_flow(k,17)
+    reservoir%dx(k) = reservoir%tmp_flow(k,18)
+    reservoir%dy(k) = reservoir%tmp_flow(k,19)
+    reservoir%dz(k) = reservoir%tmp_flow(k,20)
+  enddo
 
 end subroutine PMWellUpdateReservoirGeoTh
 
@@ -1033,3 +1172,5 @@ end module Geothermal_Well_class
 !
 ! Add TH to patch.F90, factory_subsurface.F90(?)
 ! 
+! Look at Julia Camargo commits (2303b58) - she is adding an implicit 
+! hydrostatic well.
