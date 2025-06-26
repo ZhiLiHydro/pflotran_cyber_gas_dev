@@ -2930,9 +2930,15 @@ subroutine PMWellSetupHydrostatic(this)
     case(H_MODE)
       realization%patch%aux%Hydrate%num_aux_ss = realization%patch%aux% &
                                       Hydrate%num_aux_ss + num_new_source_sinks
+<<<<<<< HEAD
     case(RICHARDS_MODE)
       realization%patch%aux%Richards%num_aux_ss = realization%patch%aux% &
                                       Richards%num_aux_ss + num_new_source_sinks
+=======
+    case(TH_MODE)
+      realization%patch%aux%TH%num_aux_ss = realization%patch%aux% &
+                                      TH%num_aux_ss + num_new_source_sinks
+>>>>>>> efede0346 (adding th mode to get patch variable)
   end select
   if (sum_connection > 0) then
     option%iflag = 1 ! enable allocation of mass_balance array
@@ -2976,8 +2982,13 @@ subroutine PMWellSetupHydrostatic(this)
       matrix_zeroing => realization%patch%aux%SCO2%matrix_zeroing
     case(H_MODE)
       matrix_zeroing => realization%patch%aux%Hydrate%matrix_zeroing
+<<<<<<< HEAD
     case(RICHARDS_MODE)
       matrix_zeroing => realization%patch%aux%Richards%matrix_zeroing
+=======
+    case(TH_MODE)
+      matrix_zeroing => realization%patch%aux%TH%matrix_zeroing
+>>>>>>> efede0346 (adding th mode to get patch variable)
   end select
   if (associated(matrix_zeroing)) then
     if (well_bottom_local > 0 .and. matrix_zeroing%zero_rows_exist) then
