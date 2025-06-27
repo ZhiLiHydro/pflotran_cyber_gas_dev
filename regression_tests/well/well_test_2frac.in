@@ -1,0 +1,319 @@
+#Regression test for TH Mode well model.
+
+
+#================================================
+
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE TH
+    /
+   
+    FRACTURE_MODEL frac01
+    /
+    
+    WELL_MODEL well01
+      TYPE TH_QUASI_IMPLICIT
+    END
+/
+END
+
+SUBSURFACE
+
+#=========================== discretization ===================================
+GRID
+  TYPE STRUCTURED
+  Origin 0.d0  0.d0 -10.0d0
+  NXYZ 3 2 10
+  DXYZ
+    3@1
+    2@0.5
+    10@1
+  /
+END
+
+#===========================  flow solver options ===================================
+
+NUMERICAL_METHODS FLOW
+
+  TIMESTEPPER
+    TIMESTEP_REDUCTION_FACTOR 2.0d0
+    TIMESTEP_MAXIMUM_GROWTH_FACTOR 2.2d0
+    MAXIMUM_CONSECUTIVE_TS_CUTS 10
+    INITIAL_TIMESTEP_SIZE 50.d0 s
+    MAXIMUM_TIMESTEP_SIZE 0.5d0 d
+  /
+
+  NEWTON_SOLVER
+    VERBOSE_LOGGING
+  /
+
+  LINEAR_SOLVER
+    SOLVER ITERATIVE
+  /
+
+END
+ 
+#=========================== times ============================================
+TIME
+  FINAL_TIME 0.4d0 y
+END
+
+#=========================== regression =======================================
+REGRESSION
+  CELL_IDS
+    2
+    8
+  /
+END
+
+#=========================== output options ===================================
+
+OUTPUT
+  VELOCITY_AT_CENTER
+  SNAPSHOT_FILE
+    
+    PERIODIC TIMESTEP 1
+  /
+    FORMAT HDF5
+    VARIABLES
+      TEMPERATURE
+      LIQUID_PRESSURE
+      PERMEABILITY
+      MINERAL_POROSITY #m^3 mineral/m^3 bulk
+      LIQUID_SATURATION
+      LIQUID_MOBILITY #(m/s/kg)
+      MATERIAL_ID
+      PERMEABILITY_X
+      PERMEABILITY_Y
+      PERMEABILITY_Z
+  /
+END
+
+!=========================== geothermal fracture model ========================
+GEOTHERMAL_FRACTURE_MODEL
+  
+  THERMAL_EXPANSION_COEFFICIENT 40.0d-6 # [1/C]
+  FRACTURE_INTERSECTION_PERM MAXIMUM
+
+  FRACTURE
+    ID 1
+    HYDRAULIC_APERTURE 3.d-3 # [m]
+    CENTER 1.5d0 0.5d0 -5.0d0 # [m]
+    NORMAL_VECTOR 1.0d0 0.0d0 0.3d0 # [m]
+    RADIUS_X 2.0d0 # [m]
+    RADIUS_Y 0.25d0 # [m]
+    RADIUS_Z 5.0d0 # [m]
+  /
+  
+   FRACTURE
+    ID 2
+    HYDRAULIC_APERTURE 3.d-3 # [m]
+    CENTER 1.5d0 0.5d0 -8.5d0 # [m]
+    NORMAL_VECTOR 0.0d0 0.0d0 1.0d0 # [m]
+    RADIUS_X 3.0d0 # [m]
+    RADIUS_Y 0.5d0 # [m]
+    RADIUS_Z 5.0d0 # [m]
+   /
+  
+/
+
+!=========================== wellbore model ===================================
+# All ordering begins at the bottom of the hole and goes towards 
+# the top of the hole.
+WELLBORE_MODEL well01
+
+  # Uncommenting PRINT_WELL_FILE will create the .well file at each time step
+  PRINT_WELL_FILE  # This prints all segments by default
+  #PRINT_WELL_FILE SEGMENTS 1 2  # This will only print the listed segments
+  SPLIT_WELL_FILE
+
+  WELL_GRID
+    NUMBER_OF_SEGMENTS 9
+    
+    TOP_OF_HOLE    1.5d0 0.5d0  0.0d0   # [x,y,z] in meters
+    BOTTOM_OF_HOLE 1.5d0 0.5d0 -9.0d0   # [x,y,z] in meters
+    
+    CASING 0.d0 8@1.d0
+  /
+
+  WELL
+    DIAMETER 0.03d0
+    FRICTION_COEFFICIENT 1.d0
+    SKIN_FACTOR 0.d0 
+    #WELL_INDEX_MODEL PEACEMAN_3D
+    WELL_INDEX_MODEL PEACEMAN_ISO
+  /
+
+  WELL_BOUNDARY_CONDITIONS
+    BOTTOM_OF_HOLE
+      LIQUID_VELOCITY 0.d0 m/s
+      GAS_VELOCITY 0.d0 m/s
+    /
+    TOP_OF_HOLE
+      LIQUID_PRESSURE 101400.d0 Pa
+      GAS_SATURATION 0.0d0 
+    /
+  /
+
+  # This will create output in snapshot and observation files.
+  # Outside of the well region, the values will read -999
+  WELL_MODEL_OUTPUT
+    WELL_LIQ_PRESSURE
+    WELL_LIQ_Q
+    WELL_LIQ_SATURATION
+    #WELL_GAS_PRESSURE
+    #WELL_GAS_Q
+    #WELL_GAS_SATURATION
+    #WELL_AQ_CONC     
+    #WELL_AQ_MASS     
+  /
+
+skip
+  WELL_FLOW_SOLVER
+    MAXIMUM_NUMBER_OF_ITERATIONS 8      ! default=8
+    MAXIMUM_NUMBER_OF_TS_CUTS 15        ! default=20
+    TIMESTEP_CUT_FACTOR 2               ! default 2.0
+    ITOL_ABSOLUTE_RESIDUAL 1.0d-8       ! default=1.0d-8
+    ITOL_SCALED_RESIDUAL 1.0d-5         ! default=1.0d-5
+    ITOL_ABS_UPDATE_PRESSURE 1.0d1      ! default=1.0d0
+    ITOL_ABS_UPDATE_SATURATION 1.0d-5   ! default=1.0d-5
+    ITOL_REL_UPDATE_PRESSURE 1.0d-1     ! default=1.0d-4
+    ITOL_REL_UPDATE_SATURATION 1.0d-4   ! default=1.0d-4
+  /
+noskip
+END
+
+#=========================== equation of state ================================
+EOS WATER
+  DENSITY IF97
+  ENTHALPY IF97
+  STEAM_DENSITY IF97
+  STEAM_ENTHALPY IF97
+END
+
+#=========================== regions ==========================================
+
+REGION all
+  COORDINATES
+    -1.d20 -1.e20 -1.d20
+     1.d20  1.d20  1.d20
+  /
+END
+
+REGION well_all
+  COORDINATES
+    -1.d20 -1.d20 -1.d20
+     1.d20  1.d20  1.d20
+  /
+END
+
+REGION bottom_face
+  FACE WEST
+  COORDINATES
+    0.d0  0.d0  -10.d0
+    3.0d0 1.0d0 -10.d0
+  /
+END
+
+REGION top_face
+  FACE EAST
+  COORDINATES
+    0.d0  0.d0  0.d0
+    3.0d0 0.3d0 0.d0
+  /
+END
+
+#=========================== material properties ==============================
+MATERIAL_PROPERTY rock1 # 0 to -2500 m
+  ID 1
+  CHARACTERISTIC_CURVES rock1
+  POROSITY 0.01d0 #not being read
+  TORTUOSITY 1.d0
+  ROCK_DENSITY 2.8E3
+  SPECIFIC_HEAT 0.9d3
+  THERMAL_CONDUCTIVITY_DRY 0.1 W/m-C
+  THERMAL_CONDUCTIVITY_WET 0.1 W/m-C
+  PERMEABILITY_CRITICAL_POROSITY 0.00001
+  PERMEABILITY_POWER 0.2
+  PERMEABILITY_MIN_SCALE_FACTOR 1.0d-30
+  PERMEABILITY
+    PERM_X 1.0d-16
+    PERM_Y 1.0d-16
+    PERM_Z 1.0d-16
+  /
+END
+
+
+CHARACTERISTIC_CURVES rock1
+  SATURATION_FUNCTION VAN_GENUCHTEN
+    ALPHA 5.d-8
+    M 0.6 
+    LIQUID_RESIDUAL_SATURATION 0.0d0
+  /
+  PERMEABILITY_FUNCTION MUALEM_VG_LIQ
+    M 0.6 
+    LIQUID_RESIDUAL_SATURATION 0.0d0
+  /
+  PERMEABILITY_FUNCTION MUALEM_VG_GAS
+    M 0.6 
+    LIQUID_RESIDUAL_SATURATION 0.0d0
+    GAS_RESIDUAL_SATURATION 0.0d0
+  /
+END
+
+#=========================== fluid properties =================================
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.d-9
+END
+
+#=========================== flow conditions ==================================
+
+FLOW_CONDITION initial
+  TYPE
+    LIQUID_PRESSURE HYDROSTATIC
+    TEMPERATURE dirichlet
+  /
+  DATUM 0.0 0.0 10.0
+  LIQUID_PRESSURE 101325.d0
+  TEMPERATURE 150.0d0 # [C]
+
+END
+
+
+FLOW_CONDITION top_face
+  TYPE
+   LIQUID_PRESSURE HYDROSTATIC
+   TEMPERATURE dirichlet
+  /
+  TEMPERATURE 150.0d0 # [C]
+  
+  DATUM 0.0 0.0 10.0
+  LIQUID_PRESSURE 101325.d0
+ END
+
+
+#=========================== set initial and bc conditions ====================
+
+INITIAL_CONDITION initial
+  REGION all
+  FLOW_CONDITION initial
+END
+
+
+BOUNDARY_CONDITION top
+  REGION top_face
+  FLOW_CONDITION top_face
+END
+
+
+#=========================== stratigraphy couplers ============================
+STRATA
+  REGION all
+  MATERIAL rock1
+END
+
+END_SUBSURFACE
+
+
