@@ -6145,7 +6145,7 @@ subroutine PMWellUpdateReservoirSrcSinkFlow(pm_well)
   use Coupler_module
   use NW_Transport_Aux_module
   use Transport_Constraint_NWT_module
-  use Option_module
+  use Patch_module
   use String_module
   use Hydrate_Aux_module, only: hydrate_well_coupling, &
                              HYDRATE_FULLY_IMPLICIT_WELL
@@ -6157,11 +6157,13 @@ subroutine PMWellUpdateReservoirSrcSinkFlow(pm_well)
   type(option_type), pointer :: option
   character(len=MAXSTRINGLENGTH) :: srcsink_name
   type(coupler_type), pointer :: source_sink
+  type(patch_type), pointer :: patch
   PetscInt :: k, ghosted_id
   PetscReal :: well_delta_liq, well_delta_gas
   PetscReal :: density_avg
 
   option => pm_well%option
+  patch => pm_well%realization%patch
 
   if (pm_well%well_comm%comm == MPI_COMM_NULL) return
 
@@ -6175,7 +6177,7 @@ subroutine PMWellUpdateReservoirSrcSinkFlow(pm_well)
     density_avg = 0.5d0 * (pm_well%well%liq%den(k) + pm_well%well%reservoir% &
                   den_l(k))
 
-    source_sink => pm_well%realization%patch%source_sink_list%first
+    source_sink => patch%source_sink_list%first
     do
       if (.not.associated(source_sink)) exit
 
@@ -6205,22 +6207,26 @@ subroutine PMWellUpdateReservoirSrcSinkFlow(pm_well)
                                                                well_delta_gas
             source_sink%flow_condition%well%aux_real(1) = density_avg ! kg/m3
 
-            pm_well%realization%patch%aux%wippflo%auxvars(:,ghosted_id)%&
-                 well%pl = pm_well%well%pl(k)
-            pm_well%realization%patch%aux%wippflo%auxvars(:,ghosted_id)%&
-                 well%pg = pm_well%well%pg(k)
-            pm_well%realization%patch%aux%wippflo%auxvars(:,ghosted_id)%&
-                 well%sl = pm_well%well%liq%s(k)
-            pm_well%realization%patch%aux%wippflo%auxvars(:,ghosted_id)%&
-                 well%sg = pm_well%well%gas%s(k)
-            pm_well%realization%patch%aux%wippflo%auxvars(:,ghosted_id)%&
-                 well%dpl = well_delta_liq
-            pm_well%realization%patch%aux%wippflo%auxvars(:,ghosted_id)%&
-                 well%dpg = well_delta_gas
-            pm_well%realization%patch%aux%wippflo%auxvars(:,ghosted_id)%&
-                 well%Ql = pm_well%well%liq%Q(k)
-            pm_well%realization%patch%aux%wippflo%auxvars(:,ghosted_id)%&
-                 well%Qg = pm_well%well%gas%Q(k)
+            patch%aux%wippflo%auxvars(:,ghosted_id)%well%pl = pm_well%well%pl(k)
+            patch%aux%wippflo%auxvars(:,ghosted_id)%well%pg = pm_well%well%pg(k)
+            patch%aux%wippflo%auxvars(:,ghosted_id)%well%sl = &
+                                                          pm_well%well%liq%s(k)
+            patch%aux%wippflo%auxvars(:,ghosted_id)%well%sg = &
+                                                          pm_well%well%gas%s(k)
+            patch%aux%wippflo%auxvars(:,ghosted_id)%well%dpl = well_delta_liq
+            patch%aux%wippflo%auxvars(:,ghosted_id)%well%dpg = well_delta_gas
+            patch%aux%wippflo%auxvars(:,ghosted_id)%well%Ql = &
+                                                          pm_well%well%liq%Q(k)
+            patch%aux%wippflo%auxvars(:,ghosted_id)%well%Qg = &
+                                                          pm_well%well%gas%Q(k)
+          case(TH_MODE)
+            source_sink%flow_condition%rate%dataset%rarray(1) = &
+              -1.d0 * pm_well%well%liq%Q(k) ! [kmol/s]
+            patch%aux%TH%auxvars(ghosted_id)%well%pl = pm_well%well%pl(k)
+            patch%aux%TH%auxvars(ghosted_id)%well%sl = pm_well%well%liq%s(k)
+            patch%aux%TH%auxvars(ghosted_id)%well%Ql = pm_well%well%liq%Q(k)
+            patch%aux%TH%auxvars(ghosted_id)%well%temp = pm_well%well%temp(k)
+            source_sink%flow_condition%well%aux_real(1) = density_avg ! kg/m3
           case(SCO2_MODE)
             source_sink%flow_condition%sco2%rate%dataset%rarray(1) = &
               -1.d0 * pm_well%well%liq%Q(k) ! [kg/s]
@@ -6299,8 +6305,6 @@ subroutine PMWellUpdateReservoirSrcSinkFlow(pm_well)
               auxvars(ZERO_INTEGER,ghosted_id)%well%Qg = pm_well%well%gas%Q(k)
             pm_well%realization%patch%aux%hydrate% &
               auxvars(ZERO_INTEGER,ghosted_id)%well%bh_p = pm_well%well%bh_p
-          case(TH_MODE)
-            ! PLACEHOLDER
         end select
         exit
       endif

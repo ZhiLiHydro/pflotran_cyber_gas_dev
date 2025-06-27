@@ -22,6 +22,13 @@ module TH_Aux_module
 
   PetscInt, parameter, public :: TH_UPDATE_FOR_FIXED_ACCUM = 0
 
+  type, public :: th_well_aux_type
+    PetscReal :: pl   ! liquid pressure [Pa]
+    PetscReal :: sl   ! liquid saturation [-]
+    PetscReal :: Ql   ! liquid exchange flux [kg/sec]
+    PetscReal :: temp ! liquid temperature [C]
+  end type th_well_aux_type
+
   type, public :: TH_auxvar_type
     PetscReal :: avgmw
     PetscReal :: h
@@ -57,6 +64,7 @@ module TH_Aux_module
     PetscReal :: d2sat_dTdp
     PetscReal :: d2den_dTdp
     PetscReal :: d2u_dTdp
+    type(th_well_aux_type), pointer :: well
 
     ! for ice
     type(th_ice_type), pointer :: ice
@@ -217,7 +225,8 @@ subroutine THAuxVarInit(auxvar,option)
   auxvar%Ke        = uninit_value
   auxvar%dKe_dp    = uninit_value
   auxvar%dKe_dT    = uninit_value
- if (option%flow%th_freezing) then
+
+  if (option%flow%th_freezing) then
     allocate(auxvar%ice)
     auxvar%ice%Ke_fr     = uninit_value
     auxvar%ice%dKe_fr_dp = uninit_value
@@ -248,6 +257,12 @@ subroutine THAuxVarInit(auxvar,option)
   else
     nullify(auxvar%ice)
   endif
+
+  allocate(auxvar%well)
+  auxvar%well%pl = UNINITIALIZED_DOUBLE
+  auxvar%well%sl = UNINITIALIZED_DOUBLE
+  auxvar%well%Ql = UNINITIALIZED_DOUBLE
+  auxvar%well%temp = UNINITIALIZED_DOUBLE
 
 #if defined(CLM_PFLOTRAN) || defined(CLM_OFFLINE)
   auxvar%bc_alpha      = uninit_value

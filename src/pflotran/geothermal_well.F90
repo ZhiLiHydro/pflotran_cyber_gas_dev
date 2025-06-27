@@ -21,7 +21,7 @@ module Geothermal_Well_class
 
   implicit none
 
-  private 
+  private
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   !
@@ -46,7 +46,7 @@ module Geothermal_Well_class
   ! Geothermal Quasi-Implicit Well Model
   type, public, extends(pm_well_qi_type) :: pm_well_geoth_qi_type
     contains
-    
+
     procedure, public :: ReadPMBlock => PMWellReadPMBlockGeoThQI
     procedure, public :: ReadSimulationOptionsBlock => &
                          PMWellReadSimOptionsBlockGeoThQI
@@ -61,7 +61,7 @@ module Geothermal_Well_class
   end type pm_well_geoth_qi_type
 
   public :: PMWellGeoThQICreate
-  
+
   contains
 
 ! ************************************************************************** !
@@ -170,7 +170,7 @@ subroutine PMWellSetupGeoTh(pm_well)
 
     if (well_grid%h_rank_id(k) /= option%myrank) cycle
     source_sink%flow_condition%well => FlowSubConditionCreate(ONE_INTEGER)
-    
+
     ! ----- flow: begin ------------------
     source_sink%flow_condition%itype(TH_PRESSURE_DOF) = MASS_RATE_SS
     nullify(source_sink%flow_condition%sub_condition_ptr(1)%ptr)
@@ -194,7 +194,7 @@ subroutine PMWellSetupGeoTh(pm_well)
     temperature%units = 'C'
     temperature%itype = DIRICHLET_BC ! or ZERO_GRADIENT_BC?
     allocate(temperature%dataset%rarray(1))
-    temperature%dataset%rarray(:) = 25.d0 
+    temperature%dataset%rarray(:) = 25.d0
     source_sink%flow_condition%temperature => temperature
     source_sink%flow_condition%sub_condition_ptr(2)%ptr => temperature
     ! ----- temperature: end --------------------
@@ -355,6 +355,8 @@ subroutine PMWellInitializeTimestepFlow(pm_well,curr_time)
 
   PetscInt :: i
 
+  write(*,*) 'PMWellInitializeTimestepFlow is called within geothermal_well.F90'
+
   ! update the reservoir object with current reservoir properties
   call PMWellCopyReservoir(pm_well%well%reservoir,pm_well%well%reservoir_save, &
                            pm_well%transport)
@@ -394,7 +396,7 @@ subroutine PMWellUpdateReservoirGeoTh(pm_well,TH_update_index)
   !
   ! Author: Fill Me In
   ! Date: 01/01/2025
-  !  
+  !
 
   implicit none
 
@@ -647,7 +649,7 @@ subroutine PMWellAccumulationFlow(pm_well,well,id,Res)
   PetscReal :: Res(pm_well%nphase)
 
   Res = 0.d0
-  
+
   ! PLACEHOLDER
 
 end subroutine PMWellAccumulationFlow
@@ -1098,7 +1100,7 @@ subroutine PMWellCheckConvergenceFlow(pm_well,n_iter,fixed_accum)
   PetscReal :: fixed_accum(pm_well%flow_soln%ndof*pm_well%well_grid%nsegments)
 
   ! PLACEHOLDER
-  
+
 end subroutine PMWellCheckConvergenceFlow
 
 ! ************************************************************************** !
@@ -1166,11 +1168,10 @@ end module Geothermal_Well_class
 ! TODO:
 !
 ! Add case(TH_MODE) to pm_well.F90,PMWellUpdateReservoirSrcSinkFlow(). Note, a
-! placeholder has already been inserted into the right spot, you just need to
-! put in the content for updating the source_sink with Q values and pm_well 
-! with th auxvar values.
+! placeholder has already been inserted into the right spot. We need to add
+! the liquid pressure to the source_sink condition.
 !
-! Add TH to patch.F90, factory_subsurface.F90(?)
-! 
-! Look at Julia Camargo commits (2303b58) - she is adding an implicit 
+! Add TH to patch.F90 for TH_MODE specific output, factory_subsurface.F90(?)
+!
+! Look at Julia Camargo commits (2303b58) - she is adding an implicit
 ! hydrostatic well.
