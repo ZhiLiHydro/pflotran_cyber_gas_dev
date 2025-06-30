@@ -28,6 +28,7 @@ module Option_Geomechanics_module
     PetscReal :: poissons_ratio(100)
     PetscReal :: youngs_modulus(100)
     PetscReal :: biot_coefficient(100)
+    PetscBool :: improve_tet_weighting
 
   end type geomechanics_option_type
 
@@ -116,6 +117,7 @@ subroutine OptionGeomechanicsInitRealization(option)
   option%skip_stepdt_flag = PETSC_FALSE
   option%use_porosity_update = PETSC_FALSE
   option%del_poro_tol = UNINITIALIZED_DOUBLE
+  option%improve_tet_weighting = PETSC_FALSE
 
 end subroutine OptionGeomechanicsInitRealization
 

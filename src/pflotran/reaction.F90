@@ -513,6 +513,11 @@ subroutine ReactionReadPass1(reaction,input,option)
         call InputPopBlock(input,option)
         reaction%mineral%nkinmnrl = reaction%mineral%nkinmnrl + temp_int
 
+      case('MINERAL_RATE_SCALING_FACTOR')
+        call InputReadDouble(input,option, &
+                             reaction%mineral%rate_constant_scaling_factor)
+        call InputErrorMsg(input,option,word,error_string)
+
       case('NUCLEATION_KINETICS')
         error_string = 'CHEMISTRY,NUCLEATION_KINETICS'
         call InputPushBlock(input,option)
@@ -1101,10 +1106,9 @@ subroutine ReactionReadPass2(reaction,input,option)
           end select
         enddo
       case('MOLAL','MOLALITY', &
-            'UPDATE_POROSITY','UPDATE_TORTUOSITY', &
-            'UPDATE_PERMEABILITY', &
-            'NO_RESTART_MINERAL_VOL_FRAC','USE_FULL_GEOCHEMISTRY', &
-           'DECOUPLE_CO2')
+           'UPDATE_POROSITY','UPDATE_TORTUOSITY','UPDATE_PERMEABILITY', &
+           'NO_RESTART_MINERAL_VOL_FRAC','USE_FULL_GEOCHEMISTRY', &
+           'DECOUPLE_CO2','MINERAL_RATE_SCALING_FACTOR')
         ! dummy placeholder
     end select
   enddo
@@ -1995,19 +1999,23 @@ subroutine ReactionEquilibrateConstraint(rt_auxvar,global_auxvar, &
 
     num_iterations = num_iterations + 1
 
-    if (mod(num_iterations,1000) == 0) then
-100   format('Constraint iteration count has exceeded: ',i5)
-      write(option%io_buffer,100) num_iterations
+    if (mod(num_iterations,1000) == 0 .or. num_iterations > 10000) then
+      option%io_buffer = 'Constraint "' // trim(constraint%name) // &
+        '" iteration count: ' // StringWrite(num_iterations)
       call PrintMsg(option)
-      option%io_buffer = 'species_name  prev_free_ion  residual'
+      option%io_buffer = 'species_name   free_ion    prev_free  &
+                         & abs_dfree   rel_dfree   residual'
       call PrintMsg(option)
       do icomp=1,reaction%naqcomp
+        tempreal = rt_auxvar%pri_molal(icomp)-prev_molal(icomp)
         write(option%io_buffer,200) reaction%primary_species_names(icomp), &
-        prev_molal(icomp),Res(icomp)
+          rt_auxvar%pri_molal(icomp),prev_molal(icomp), &
+          tempreal, tempreal/prev_molal(icomp), &
+          Res(icomp)
         call PrintMsg(option)
       enddo
-200   format(a12,1x,1p2e12.4)
-      if (num_iterations >= 10000) then
+200   format(a12,1x,5es12.4)
+      if (num_iterations >= 10004) then
         print *, 'cell id (natural):', option%iflag
         print *, 'constraint:', conc
         print *, 'constraint type:', constraint_type

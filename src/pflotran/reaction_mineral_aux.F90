@@ -98,6 +98,7 @@ module Reaction_Mineral_Aux_module
     PetscInt, pointer :: area_units_type(:)
     PetscBool, pointer :: external_vol_frac_dataset(:)
     PetscBool, pointer :: external_area_dataset(:)
+    PetscBool :: acknowledge_zero_surface_area
   end type mineral_constraint_type
 
   type, public :: nucleation_type
@@ -138,6 +139,7 @@ module Reaction_Mineral_Aux_module
 
     ! for kinetic reactions
     PetscBool :: update_surface_area
+    PetscReal :: rate_constant_scaling_factor
 
     PetscInt :: nkinmnrl
     character(len=MAXWORDLENGTH), pointer :: kinmnrl_names(:)
@@ -255,6 +257,7 @@ function ReactionMnrlCreateAux()
   ! for kinetic mineral reactions
   mineral%nkinmnrl = 0
   mineral%update_surface_area = PETSC_FALSE
+  mineral%rate_constant_scaling_factor = 1.d0
   nullify(mineral%kinmnrl_names)
   nullify(mineral%kinmnrl_print)
   nullify(mineral%kinmnrl_tst_itype)
@@ -536,6 +539,7 @@ function ReactionMnrlCreateMnrlConstraint(mineral,option)
   constraint%external_vol_frac_dataset = PETSC_FALSE
   allocate(constraint%external_area_dataset(mineral%nkinmnrl))
   constraint%external_area_dataset = PETSC_FALSE
+  constraint%acknowledge_zero_surface_area = PETSC_FALSE
 
   ReactionMnrlCreateMnrlConstraint => constraint
 
