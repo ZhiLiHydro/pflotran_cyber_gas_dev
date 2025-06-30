@@ -631,11 +631,13 @@ subroutine THUpdateAuxVars(realization,pm_well)
   use Connection_module
   use Material_module
   use PM_Well_class
+  use Condition_module
 
   implicit none
 
   class(realization_subsurface_type) :: realization
   class(pm_well_type), pointer :: pm_well
+  class(pm_well_type), pointer :: cur_well
 
   type(option_type), pointer :: option
   type(patch_type), pointer :: patch
@@ -652,6 +654,7 @@ subroutine THUpdateAuxVars(realization,pm_well)
   type(global_auxvar_type), pointer :: global_auxvars_ss(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(th_parameter_type), pointer :: th_parameter
+  type(flow_condition_type), pointer :: well_flow_condition
 
   PetscInt :: ghosted_id, local_id, istart, iend, sum_connection, idof, iconn
   PetscInt :: well_seg
@@ -856,7 +859,7 @@ subroutine THUpdateAuxVars(realization,pm_well)
     source_sink => source_sink%next
   enddo
   deallocate(xx)
-  
+
   if (option%coupled_well .and. associated(pm_well)) then
     cur_well => pm_well
     do
@@ -866,7 +869,7 @@ subroutine THUpdateAuxVars(realization,pm_well)
         if (associated(well_flow_condition%rate)) then
           if (any(well_flow_condition%rate%dataset%rarray(:) < 0.d0)) then
             cur_well%well%total_rate = well_flow_condition%rate%dataset% &
-                                       rarray(1)
+                                       rarray(1) !why (1) as opposed to sum(:)?
             if (cur_well%well%total_rate > 0.d0) then
               option%io_buffer = "The well model does not support a concurrent &
                                 & injection and production well."
@@ -875,6 +878,11 @@ subroutine THUpdateAuxVars(realization,pm_well)
           else
             cur_well%well%th_ql = well_flow_condition%rate%dataset% &
                                   rarray(1)
+            !why not this:
+            ! cur_well%well%th_ql = 0.d0
+            ! cur_well%well%th_ql = cur_well%well%th_ql + &
+            !                        well_flow_condition%rate%dataset% &
+            !                        rarray(1)
             cur_well%well%total_rate = UNINITIALIZED_DOUBLE
           endif
         endif
