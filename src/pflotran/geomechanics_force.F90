@@ -13,6 +13,12 @@ module Geomechanics_Force_module
   PetscReal, parameter :: eps       = 1.d-12
   PetscReal, parameter :: perturbation_tolerance = 1.d-6
 
+! testing jaa
+  type, public :: tri_boundary_face_type
+    PetscInt :: ele_id
+    PetscInt :: vertex_ids(THREE_INTEGER)
+  end type tri_boundary_face_type
+
   public :: GeomechForceSetup, &
             GeomechForceUpdateAuxVars, &
             GeomechanicsForceInitialGuess, &
@@ -530,6 +536,9 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
   PetscReal, pointer :: imech_loc_p(:)
   PetscInt :: size_elenodes
 
+  type(tri_boundary_face_type) :: tri_surface(2)
+  PetscInt :: surf_id
+
   field => geomech_realization%geomech_field
   geomech_discretization => geomech_realization%geomech_discretization
   patch => geomech_realization%geomech_patch
@@ -563,6 +572,7 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
 
   ! Loop over elements on a processor
   do ielem = 1, grid%nlmax_elem
+    print *, 'ielem ', ielem
     allocate(elenodes(grid%elem_nodes(0,ielem)))
     allocate(local_coordinates(size(elenodes),THREE_INTEGER))
     allocate(local_disp(size(elenodes),option%ngeomechdof))
@@ -616,7 +626,7 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
         GeomechParam%poissons_ratio(nint(imech_loc_p(ghosted_id)))
     enddo
     size_elenodes = size(elenodes)
-    !print *, 'ele no. ', ielem
+    print *, 'jaa elenodes: ', elenodes
     call GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
        local_disp,local_press,local_temp,youngs_vec,poissons_vec, &
        density_bulk_vec,beta_vec,alpha_vec,eletype, &
@@ -829,6 +839,57 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
   call VecAssemblyBegin(r,ierr);CHKERRQ(ierr)
   call VecAssemblyEnd(r,ierr);CHKERRQ(ierr)
 
+  ! jaa begin traction part here
+  ! want to use face (mapped to ele id) instead of vertices
+
+  print *, 'jaa testing'
+  ! hardcoded surfaces for now
+  ! eventually want to process region based on vertices and map to ele id's
+  tri_surface(1)%ele_id = 16 ! 9 15 13
+  tri_surface(1)%vertex_ids(1) = 9
+  tri_surface(1)%vertex_ids(2) = 15
+  tri_surface(1)%vertex_ids(3) = 13
+  tri_surface(2)%ele_id = 15 ! 13 15 16
+  tri_surface(2)%vertex_ids(1) = 13
+  tri_surface(2)%vertex_ids(2) = 15
+  tri_surface(2)%vertex_ids(3) = 16
+
+  boundary_condition => patch%geomech_boundary_condition_list%first
+  do
+    if (.not.associated(boundary_condition)) exit
+    region => boundary_condition%region
+    do surf_id = 1, 2 ! for 2 faces on boundary
+      print *, 'this works!'
+      !local_id = region%vertex_ids(ivertex)
+      !ghosted_id = grid%nL2G(local_id)
+      !petsc_id = grid%node_ids_ghosted_petsc(ghosted_id)
+      !if (associated(patch%imat)) then
+      !  if (patch%imat(ghosted_id) <= 0) cycle
+      !endif
+      !! jaa -- just checking if we read traction correctly. remove later!
+      !if (associated(boundary_condition%geomech_condition%traction)) then
+      !  select case(boundary_condition%geomech_condition%traction%itype)
+      !    case(DIRICHLET_BC)
+      !      option%io_buffer = 'Dirichlet BC for traction not available.'
+      !      call PrintErrMsg(option)
+      !    case(ZERO_GRADIENT_BC)
+      !     ! do nothing
+      !    case(NEUMANN_BC)
+      !      print *, 'ivertex, local_id, ghosted_id, petsc_id', &
+      !              ivertex, local_id, ghosted_id, petsc_id
+      !      print *, 'yay!'
+      !  end select
+      !endif
+
+    enddo ! ivertex
+    boundary_condition => boundary_condition%next
+  enddo ! bc
+  print *, 'stopping ..'; stop
+
+  call VecAssemblyBegin(r,ierr);CHKERRQ(ierr)
+  call VecAssemblyEnd(r,ierr);CHKERRQ(ierr)
+  ! jee end traction
+
 end subroutine GeomechForceResidualPatch
 
 ! ************************************************************************** !
@@ -944,6 +1005,8 @@ subroutine GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
     call Kron(transpose(B),identity,kron_B_transpose_eye)
     call Kron(identity,transpose(B),kron_eye_B_transpose)
     N(:,1)= shapefunction%N
+    print *, 'igpt, N(:,1)', igpt, N(:,1)
+    !stop
     call Kron(N,identity,kron_N_eye)
     Kmat = Kmat + w(igpt)*mu*matmul(kron_B_eye,kron_B_transpose_eye)*detJ_map
     Kmat = Kmat + w(igpt)*mu* &
@@ -953,6 +1016,9 @@ subroutine GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
       vecB_transpose(:,1)*detJ_map
     force = force + w(igpt)*alpha*(3.d0*lambda+2.d0*mu)* &
       dot_product(N(:,1),local_temp)*vecB_transpose(:,1)*detJ_map
+    ! jaa: add traction component here
+    ! for boundary element
+
     call ShapeFunctionDestroy(shapefunction)
     deallocate(N)
     deallocate(vecB_transpose)

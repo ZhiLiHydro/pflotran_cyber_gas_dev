@@ -887,6 +887,7 @@ subroutine GeomechRealizPrintCoupler(coupler,option)
   write(option%fid_out,99)
 
   if (associated(geomech_condition)) then
+    print *, 'jaa here?'
     call GeomechConditionPrint(geomech_condition,option)
   endif
 
