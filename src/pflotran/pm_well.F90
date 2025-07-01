@@ -1655,6 +1655,8 @@ subroutine PMWellSetupGrid(well_grid,res_grid,option)
   top_of_hole = well_grid%tophole(3)
   bottom_of_reservoir = res_grid%z_min_global
   bottom_of_hole = well_grid%bottomhole(3)
+  if (res_grid%itype /= EXPLICIT_UNSTRUCTURED_GRID .and. &
+      res_grid%itype /= ECLIPSE_UNSTRUCTURED_GRID) then
   if (top_of_reservoir < top_of_hole) then
     ! MAN: this might be hard to get right, not sure it is necessary.
     ! option%io_buffer = 'The WELLBORE_MODEL TOP_OF_HOLE coordinates extend &
@@ -1684,6 +1686,7 @@ subroutine PMWellSetupGrid(well_grid,res_grid,option)
   !                    &well occupies.'
   ! call PrintErrMsg(option)
     well_grid%bottomhole(3) = bottom_of_reservoir
+    endif
   endif
 
   diff_x = well_grid%tophole(1)-well_grid%bottomhole(1)
