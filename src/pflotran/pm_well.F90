@@ -1655,35 +1655,38 @@ subroutine PMWellSetupGrid(well_grid,res_grid,option)
     top_of_hole = well_grid%tophole(3)
     bottom_of_reservoir = res_grid%z_min_global
     bottom_of_hole = well_grid%bottomhole(3)
-    if (top_of_reservoir < top_of_hole) then
+    if (res_grid%itype /= EXPLICIT_UNSTRUCTURED_GRID .and. &
+      res_grid%itype /= ECLIPSE_UNSTRUCTURED_GRID) then
+      if (top_of_reservoir < top_of_hole) then
+        ! MAN: this might be hard to get right, not sure it is necessary.
+        ! option%io_buffer = 'The WELLBORE_MODEL TOP_OF_HOLE coordinates extend &
+        !                    &beyond the top of the reservoir domain. &
+        !                    &You must fix the TOP_OF_HOLE coordinates to align &
+        !                    &with the top face of the reservoir grid cell that &
+        !                    &it occupies.'
+        ! call PrintErrMsg(option)
+        well_grid%tophole(3) = top_of_reservoir
+      endif
+      if (top_of_reservoir > top_of_hole) then
+        option%io_buffer = 'The WELLBORE_MODEL TOP_OF_HOLE coordinates do not &
+                          &reach the top of the reservoir domain. &
+                          &You must fix the TOP_OF_HOLE coordinates to align &
+                          &with the top face of the reservoir grid cell that &
+                          &it occupies.'
+        call PrintErrMsg(option)
+      endif
+      if (bottom_of_reservoir > bottom_of_hole) then
       ! MAN: this might be hard to get right, not sure it is necessary.
-      ! option%io_buffer = 'The WELLBORE_MODEL TOP_OF_HOLE coordinates extend &
-      !                    &beyond the top of the reservoir domain. &
-      !                    &You must fix the TOP_OF_HOLE coordinates to align &
-      !                    &with the top face of the reservoir grid cell that &
-      !                    &it occupies.'
+      ! option%io_buffer = 'The WELLBORE_MODEL BOTTOM_OF_HOLE coordinates extend &
+      !                    &beyond the bottom of the reservoir domain. &
+      !                    &You must fix the BOTTOM_OF_HOLE coordinates so that &
+      !                    &the bottom of the well is aligned with the bottom &
+      !                    &face of the reservoir, or is above the bottom &
+      !                    &face of the reservoir in the vertical column that the &
+      !                    &well occupies.'
       ! call PrintErrMsg(option)
-      well_grid%tophole(3) = top_of_reservoir
-    endif
-    if (top_of_reservoir > top_of_hole) then
-      option%io_buffer = 'The WELLBORE_MODEL TOP_OF_HOLE coordinates do not &
-                        &reach the top of the reservoir domain. &
-                        &You must fix the TOP_OF_HOLE coordinates to align &
-                        &with the top face of the reservoir grid cell that &
-                        &it occupies.'
-      call PrintErrMsg(option)
-    endif
-    if (bottom_of_reservoir > bottom_of_hole) then
-    ! MAN: this might be hard to get right, not sure it is necessary.
-    ! option%io_buffer = 'The WELLBORE_MODEL BOTTOM_OF_HOLE coordinates extend &
-    !                    &beyond the bottom of the reservoir domain. &
-    !                    &You must fix the BOTTOM_OF_HOLE coordinates so that &
-    !                    &the bottom of the well is aligned with the bottom &
-    !                    &face of the reservoir, or is above the bottom &
-    !                    &face of the reservoir in the vertical column that the &
-    !                    &well occupies.'
-    ! call PrintErrMsg(option)
-      well_grid%bottomhole(3) = bottom_of_reservoir
+        well_grid%bottomhole(3) = bottom_of_reservoir
+      endif
     endif
 
     diff_x = well_grid%tophole(1)-well_grid%bottomhole(1)
