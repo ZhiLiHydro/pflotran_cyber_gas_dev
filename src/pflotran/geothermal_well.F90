@@ -118,7 +118,7 @@ subroutine PMWellSetupGeoTh(pm_well)
   type(coupler_type), pointer :: source_sink
   type(input_type) :: input_dummy
   class(realization_subsurface_type), pointer :: realization
-  type(flow_sub_condition_type), pointer :: rate,temperature
+  type(flow_sub_condition_type), pointer :: rate,temperature,pressure
   type(TH_auxvar_type), pointer :: TH_auxvars_ss(:)
   type(global_auxvar_type), pointer :: global_auxvars_ss(:)
   character(len=MAXSTRINGLENGTH) :: string
@@ -166,7 +166,7 @@ subroutine PMWellSetupGeoTh(pm_well)
     source_sink%flow_condition%name = source_sink%flow_condition_name
     allocate(source_sink%flow_condition%itype(TWO_INTEGER))
     source_sink%flow_condition%num_sub_conditions = TWO_INTEGER
-    allocate(source_sink%flow_condition%sub_condition_ptr(TWO_INTEGER))
+    allocate(source_sink%flow_condition%sub_condition_ptr(THREE_INTEGER))
 
     if (well_grid%h_rank_id(k) /= option%myrank) cycle
     source_sink%flow_condition%well => FlowSubConditionCreate(ONE_INTEGER)
@@ -183,11 +183,21 @@ subroutine PMWellSetupGeoTh(pm_well)
     rate%dataset%rarray(:) = 0.d0
     source_sink%flow_condition%rate => rate
     source_sink%flow_condition%sub_condition_ptr(1)%ptr => rate
+    nullify(source_sink%flow_condition%sub_condition_ptr(2)%ptr)
+    pressure => FlowSubConditionCreate(ONE_INTEGER)
+    pressure%name = trim(pm_well%name) // '_wellseg_' // StringWrite(k) &
+                       // '_pressure_ss'
+    pressure%units = 'Pa'
+    pressure%itype = DIRICHLET_BC
+    allocate(pressure%dataset%rarray(1))
+    pressure%dataset%rarray(:) = 0.d0
+    source_sink%flow_condition%pressure => pressure
+    source_sink%flow_condition%sub_condition_ptr(2)%ptr => pressure
     ! ----- flow: end --------------------
 
     ! ----- temperature: begin ------------------
     source_sink%flow_condition%itype(TH_TEMPERATURE_DOF) = DIRICHLET_BC ! or ZERO_GRADIENT_BC?
-    nullify(source_sink%flow_condition%sub_condition_ptr(2)%ptr)
+    nullify(source_sink%flow_condition%sub_condition_ptr(3)%ptr)
     temperature => FlowSubConditionCreate(ONE_INTEGER)
     temperature%name = trim(pm_well%name) // '_wellseg_' // StringWrite(k) &
                        // '_temp_ss'
@@ -196,7 +206,7 @@ subroutine PMWellSetupGeoTh(pm_well)
     allocate(temperature%dataset%rarray(1))
     temperature%dataset%rarray(:) = 25.d0
     source_sink%flow_condition%temperature => temperature
-    source_sink%flow_condition%sub_condition_ptr(2)%ptr => temperature
+    source_sink%flow_condition%sub_condition_ptr(3)%ptr => temperature
     ! ----- temperature: end --------------------
 
     source_sink%connection_set => &
@@ -512,6 +522,7 @@ subroutine UpdateFlowPropertiesGeoTh(pm_well,pert,index)
   PetscInt :: index
 
   ! PLACEHOLDER (this is pm_well%UpdateFlowProperties => UpdateFlowPropertiesGeoThQI)
+  ! see UpdateFlowPropertiesWIPP() in wipp_well.F90
 
 end subroutine UpdateFlowPropertiesGeoTh
 
@@ -988,7 +999,21 @@ subroutine PMWellSolveGeoTh(pm_well,time,qi_coupling,ierr)
   PetscBool :: qi_coupling
   PetscErrorCode :: ierr
 
-  ! PLACEHOLDER (called by PMWellSolveGeoThQI)
+  character(len=MAXSTRINGLENGTH) :: out_string
+  PetscReal :: curr_time, curr_time_converted
+
+  curr_time = pm_well%option%time
+  curr_time_converted = curr_time/pm_well%output_option%tconv
+
+  ierr = 0 ! If pm_well is not set to zero, TS_STOP_FAILURE occurs if the solve
+           ! routines are not entered, either due to an inactive well or due
+           ! to being on a process that doesn't contain a well segment.
+
+  write(out_string,'(" FLOW Step          Quasi-implicit wellbore flow &
+                      &coupling is being used.")')
+  call PrintMsg(pm_well%option,out_string)
+
+  call PMWellCalcCumulativeQFlux(pm_well)
 
 end subroutine PMWellSolveGeoTh
 
@@ -1001,6 +1026,10 @@ subroutine PMWellSolveGeoThQI(this,time,ierr)
   class(pm_well_geoth_qi_type) :: this
   PetscReal :: time
   PetscErrorCode :: ierr
+
+  ! This is called when the well model is executed, after TH flow and
+  ! after the fracture process model. It doesn't do much, since all the
+  ! action should be happening with the TH mode solve calling the well model.
 
   call PMWellSolveGeoTh(this,time,this%update_for_flow_qi_coupling,ierr)
 
@@ -1020,7 +1049,50 @@ subroutine GeoThWellSolveFlowSequential(pm_well,perturbation_index,ierr)
   PetscInt :: perturbation_index
   PetscErrorCode :: ierr
 
+  PetscReal :: res_fixed(pm_well%flow_soln%ndof*pm_well%well_grid%nsegments)
+  PetscReal :: res(pm_well%flow_soln%ndof)
+  PetscInt :: n_iter
+  PetscInt :: i,istart, iend
+
   ! PLACEHOLDER (this is pm_well%SolveFlow => PMWellSolveFlowGeoThQI)
+  ! see WIPPWellSolveFlowSequential in wipp_well.F90
+
+  ! update well index
+  call PMWellComputeWellIndex(pm_well)
+
+  do while (pm_well%cumulative_dt_flow < pm_well%realization%option%flow_dt)
+
+    ! update the well src/sink Q vector at start of time step
+    call PMWellUpdateWellQ(pm_well%well,pm_well%well%reservoir)
+
+    call PMWellPreSolveFlow(pm_well)
+
+    ! Fixed accumulation term
+    res_fixed = 0.d0
+    res = 0.d0
+    do i = 1,pm_well%well_grid%nsegments
+      call PMWellAccumulationFlow(pm_well,pm_well%well,i,res)
+      istart = pm_well%flow_soln%ndof*(i-1)+1
+      iend = pm_well%flow_soln%ndof*i
+      res_fixed(istart:iend) = -1.d0 * res * pm_well%dt_flow
+    enddo
+
+    n_iter = 0
+
+    do while (pm_well%flow_soln%not_converged)
+
+      call PMWellNewtonFlow(pm_well)
+
+      call PMWellCheckConvergenceFlow(pm_well,n_iter,res_fixed)
+
+    enddo
+
+    ! hack so we get out of while loop
+    pm_well%cumulative_dt_flow = pm_well%realization%option%flow_dt
+
+    call PMWellPostSolveFlow(pm_well)
+
+  enddo
 
 end subroutine GeoThWellSolveFlowSequential
 
@@ -1037,6 +1109,9 @@ subroutine PMWellSolveFlowGeoThQI(this,perturbation_index,ierr)
   class(pm_well_geoth_qi_type) :: this
   PetscInt :: perturbation_index
   PetscErrorCode :: ierr
+
+  ! This is called by TH mode so that the well model can solve for pressure
+  ! and the exchange fluxes.
 
   call GeoThWellSolveFlowSequential(this,perturbation_index,ierr)
 
@@ -1099,8 +1174,29 @@ subroutine PMWellCheckConvergenceFlow(pm_well,n_iter,fixed_accum)
   PetscInt :: n_iter
   PetscReal :: fixed_accum(pm_well%flow_soln%ndof*pm_well%well_grid%nsegments)
 
+  type(well_soln_flow_type), pointer :: flow_soln
+  character(len=MAXSTRINGLENGTH) :: out_string
+  character(len=MAXSTRINGLENGTH) :: rsn_string
+
+  flow_soln => pm_well%flow_soln
+
+  n_iter = n_iter + 1
+  flow_soln%n_newton = flow_soln%n_newton + 1
+
   ! PLACEHOLDER
 
+  ! pretend the soln converged
+  flow_soln%converged = PETSC_TRUE
+  flow_soln%not_converged = PETSC_FALSE
+  rsn_string = 'dummy!'
+
+  if (pm_well%print_output) then
+    if (flow_soln%converged) then
+      out_string = ' WELL FLOW Solution converged!  ---> ' // trim(rsn_string)
+      call PMWellPrint(pm_well,out_string)
+    endif
+  endif
+  
 end subroutine PMWellCheckConvergenceFlow
 
 ! ************************************************************************** !
@@ -1167,11 +1263,9 @@ end module Geothermal_Well_class
 
 ! TODO:
 !
-! Add case(TH_MODE) to pm_well.F90,PMWellUpdateReservoirSrcSinkFlow(). Note, a
-! placeholder has already been inserted into the right spot. We need to add
-! the liquid pressure to the source_sink condition.
+! How to initialize the well variables?
 !
-! Add TH to patch.F90 for TH_MODE specific output, factory_subsurface.F90(?)
+! Add TH to factory_subsurface.F90(?)
 !
 ! Look at Julia Camargo commits (2303b58) - she is adding an implicit
 ! hydrostatic well.

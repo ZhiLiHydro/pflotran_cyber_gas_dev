@@ -165,6 +165,8 @@ module PM_Well_class
     PetscBool :: output_sl
     ! flag for output
     PetscBool :: output_sg
+    ! flag for output
+    PetscBool :: output_temp
     ! flag for .well file segment output
     PetscBool, pointer :: output_in_well_file(:)
     ! list of segments for printing in the .well file
@@ -902,6 +904,7 @@ subroutine PMWellVarCreate(well)
   well%output_pg = PETSC_FALSE
   well%output_sl = PETSC_FALSE
   well%output_sg = PETSC_FALSE
+  well%output_temp = PETSC_FALSE
   nullify(well%output_in_well_file)
   nullify(well%segments_for_output)
   nullify(well%ql)
@@ -4566,6 +4569,9 @@ subroutine PMWellReadWellOutput(pm_well,input,option,keyword,error_string, &
           case('WELL_GAS_SATURATION')
             pm_well%well%output_sg = PETSC_TRUE
         !-----------------------------
+          case('WELL_TEMPERATURE')
+            pm_well%well%output_temp = PETSC_TRUE
+        !-----------------------------
           case('WELL_AQ_CONC')
             pm_well%well%output_aqc = PETSC_TRUE
         !-----------------------------
@@ -5299,6 +5305,8 @@ subroutine PMWellInitializeWellFlow(pm_well)
   type(hydrate_auxvar_type), pointer :: hyd_auxvar
   type(option_type), pointer :: option
   PetscInt :: k, ghosted_id
+
+  write(*,*) 'PMWellInitializeWellFlow is called within pm_well.F90'
 
   option => pm_well%option
   reservoir => pm_well%well%reservoir
@@ -6222,6 +6230,10 @@ subroutine PMWellUpdateReservoirSrcSinkFlow(pm_well)
           case(TH_MODE)
             source_sink%flow_condition%rate%dataset%rarray(1) = &
               -1.d0 * pm_well%well%liq%Q(k) ! [kmol/s]
+            source_sink%flow_condition%pressure%dataset%rarray(1) = &
+              pm_well%well%pl(k) ! [Pa]
+            well_delta_liq = pm_well%well%pl(k) - pm_well%well%reservoir%p_l(k)
+            source_sink%flow_condition%pressure%aux_real(1) = well_delta_liq
             patch%aux%TH%auxvars(ghosted_id)%well%pl = pm_well%well%pl(k)
             patch%aux%TH%auxvars(ghosted_id)%well%sl = pm_well%well%liq%s(k)
             patch%aux%TH%auxvars(ghosted_id)%well%Ql = pm_well%well%liq%Q(k)
@@ -8397,6 +8409,13 @@ subroutine PMWellSetPlotVariablesBase(list,pm_well)
                                  WELL_GAS_SATURATION)
   endif
 
+  if (pm_well%well%output_temp) then
+    name = 'Well Temperature'
+    units = 'C'
+    call OutputVariableAddToList(list,name,OUTPUT_SATURATION,units, &
+                                 WELL_TEMPERATURE)
+  endif
+
   select case (pm_well%option%iflowmode)
     case (WF_MODE)
       units = 'kmol/sec'
@@ -8458,6 +8477,13 @@ subroutine PMWellSetPlotVariablesSequential(list,pm_well)
     units = '-'
     call OutputVariableAddToList(list,name,OUTPUT_SATURATION,units, &
                                  WELL_GAS_SATURATION)
+  endif
+
+  if (pm_well%well%output_temp) then
+    name = 'Well Temperature'
+    units = 'C'
+    call OutputVariableAddToList(list,name,OUTPUT_SATURATION,units, &
+                                 WELL_TEMPERATURE)
   endif
 
   if (pm_well%well%output_aqc .and. pm_well%transport) then
@@ -8735,6 +8761,10 @@ subroutine PMWellOutputHeaderSequential(pm_well)
                                icolumn)
       variable_string = 'Well q-gas'
       units_string = 'm/s'
+      call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
+                               icolumn)
+      variable_string = 'Well Temperature'
+      units_string = 'C'
       call OutputWriteToHeader(fid,variable_string,units_string,cell_string, &
                                icolumn)
       variable_string = 'Well Liq Mass Bal'
@@ -9086,7 +9116,8 @@ subroutine PMWellOutputSequential(pm_well)
          write(fid,100,advance="no") pm_well%well%ql(j-1), &
                                      pm_well%well%qg(j-1)
       endif
-      write(fid,100,advance="no") pm_well%well%mass_balance_liq(j), &
+      write(fid,100,advance="no") pm_well%well%temp(j), &
+                                  pm_well%well%mass_balance_liq(j), &
                                   pm_well%well%liq_mass(j), &
                                   pm_well%well%WI(j)
       if (pm_well%transport) then

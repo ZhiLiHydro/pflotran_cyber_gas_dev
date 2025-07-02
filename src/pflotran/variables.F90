@@ -138,8 +138,8 @@ module Variables_module
 
   PetscInt, parameter, public :: LIQUID_RELATIVE_PERMEABILITY = 115
   PetscInt, parameter, public :: GAS_RELATIVE_PERMEABILITY    = 116
+  
   PetscInt, parameter, public :: SALINITY                = 117
-
   PetscInt, parameter, public :: HYDRATE_SATURATION      = 118
 
   PetscInt, parameter, public :: AQUEOUS_EQ_CONC         = 119
@@ -174,44 +174,45 @@ module Variables_module
   PetscInt, parameter, public :: SMECTITE                = 140
   PetscInt, parameter, public :: GAS_PARTIAL_PRESSURE    = 141
 
-  PetscInt, parameter, public :: WELL_LIQ_PRESSURE       = 142
-  PetscInt, parameter, public :: WELL_GAS_PRESSURE       = 143
-  PetscInt, parameter, public :: WELL_AQ_CONC            = 144
-  PetscInt, parameter, public :: WELL_AQ_MASS            = 145
-  PetscInt, parameter, public :: WELL_LIQ_Q              = 146
-  PetscInt, parameter, public :: WELL_GAS_Q              = 147
-  PetscInt, parameter, public :: WELL_LIQ_SATURATION       = 148
-  PetscInt, parameter, public :: WELL_GAS_SATURATION       = 149
+  PetscInt, parameter, public :: PRECIPITATE_SATURATION  = 142
+  PetscInt, parameter, public :: SOLUBLE_MATRIX          = 143
 
-  PetscInt, parameter, public :: PRECIPITATE_SATURATION  = 150
-  PetscInt, parameter, public :: SOLUBLE_MATRIX          = 151
+  PetscInt, parameter, public :: ARCHIE_CEMENTATION_EXPONENT = 144
+  PetscInt, parameter, public :: ARCHIE_SATURATION_EXPONENT = 145
+  PetscInt, parameter, public :: ARCHIE_TORTUOSITY_CONSTANT = 146
+  PetscInt, parameter, public :: SURFACE_ELECTRICAL_CONDUCTIVITY = 147
+  PetscInt, parameter, public :: WAXMAN_SMITS_CLAY_CONDUCTIVITY = 148
 
-  PetscInt, parameter, public :: ARCHIE_CEMENTATION_EXPONENT = 152
-  PetscInt, parameter, public :: ARCHIE_SATURATION_EXPONENT = 153
-  PetscInt, parameter, public :: ARCHIE_TORTUOSITY_CONSTANT = 154
-  PetscInt, parameter, public :: SURFACE_ELECTRICAL_CONDUCTIVITY = 155
-  PetscInt, parameter, public :: WAXMAN_SMITS_CLAY_CONDUCTIVITY = 156
+  PetscInt, parameter, public :: NUMBER_SECONDARY_CELLS = 149
 
-  PetscInt, parameter, public :: NUMBER_SECONDARY_CELLS = 157
+  PetscInt, parameter, public :: VERTICAL_PERM_ANISOTROPY_RATIO = 150
+  PetscInt, parameter, public :: TORTUOSITY_Y                   = 151
+  PetscInt, parameter, public :: TORTUOSITY_Z                   = 152
+  PetscInt, parameter, public :: NAMED_PARAMETER                = 153
 
-  PetscInt, parameter, public :: VERTICAL_PERM_ANISOTROPY_RATIO = 158
-  PetscInt, parameter, public :: TORTUOSITY_Y                   = 159
-  PetscInt, parameter, public :: TORTUOSITY_Z                   = 160
-  PetscInt, parameter, public :: NAMED_PARAMETER                = 161
+  PetscInt, parameter, public :: CO2_PRESSURE = 154
+  PetscInt, parameter, public :: LIQUID_SALT_MASS_FRAC = 155
+  PetscInt, parameter, public :: TRAPPED_GAS_SATURATION = 156
 
-  PetscInt, parameter, public :: CO2_PRESSURE = 162
-  PetscInt, parameter, public :: LIQUID_SALT_MASS_FRAC = 163
-  PetscInt, parameter, public :: TRAPPED_GAS_SATURATION = 164
+  PetscInt, parameter, public :: THERMAL_CONDUCTIVITY = 157
+  PetscInt, parameter, public :: MATERIAL_ELECTRICAL_CONDUCTIVITY = 158
+  PetscInt, parameter, public :: PETSC_CELL_ID = 159
+  PetscInt, parameter, public :: LOCAL_CELL_ID = 160
+  PetscInt, parameter, public :: GHOSTED_CELL_ID = 161
 
-  PetscInt, parameter, public :: THERMAL_CONDUCTIVITY = 165
-  PetscInt, parameter, public :: MATERIAL_ELECTRICAL_CONDUCTIVITY = 166
-  PetscInt, parameter, public :: PETSC_CELL_ID = 167
-  PetscInt, parameter, public :: LOCAL_CELL_ID = 168
-  PetscInt, parameter, public :: GHOSTED_CELL_ID = 169
+  PetscInt, parameter, public :: GEOMECH_VOLUMETRIC_STRAIN = 162
+  
+  PetscInt, parameter, public :: TOTAL_LIQUID_HEAD = 163
 
-  PetscInt, parameter, public :: GEOMECH_VOLUMETRIC_STRAIN = 170
-
-  PetscInt, parameter, public :: WELL_BHP = 171
-  PetscInt, parameter, public :: TOTAL_LIQUID_HEAD             = 172
+  PetscInt, parameter, public :: WELL_BHP              = 1001
+  PetscInt, parameter, public :: WELL_LIQ_PRESSURE     = 1002
+  PetscInt, parameter, public :: WELL_GAS_PRESSURE     = 1003
+  PetscInt, parameter, public :: WELL_AQ_CONC          = 1004
+  PetscInt, parameter, public :: WELL_AQ_MASS          = 1005
+  PetscInt, parameter, public :: WELL_LIQ_Q            = 1006
+  PetscInt, parameter, public :: WELL_GAS_Q            = 1007
+  PetscInt, parameter, public :: WELL_LIQ_SATURATION   = 1008
+  PetscInt, parameter, public :: WELL_GAS_SATURATION   = 1009
+  PetscInt, parameter, public :: WELL_TEMPERATURE      = 1010
 
 end module Variables_module

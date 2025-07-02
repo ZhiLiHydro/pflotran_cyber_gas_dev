@@ -8185,7 +8185,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
     ! PM WELL (wellbore model)
     case(WELL_LIQ_PRESSURE,WELL_GAS_PRESSURE,WELL_LIQ_SATURATION, &
          WELL_GAS_SATURATION,WELL_AQ_CONC,WELL_AQ_MASS, &
-         WELL_LIQ_Q,WELL_GAS_Q,WELL_BHP)
+         WELL_LIQ_Q,WELL_GAS_Q,WELL_BHP,WELL_TEMPERATURE)
       select case(option%iflowmode)
         case(WF_MODE)
           select case(ivar)
@@ -8234,6 +8234,34 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
                 vec_ptr(local_id) = &
                   patch%aux%wippflo%auxvars(ZERO_INTEGER, &
                                             grid%nL2G(local_id))%well%Qg
+              enddo
+          end select
+        case(TH_MODE)
+          select case(ivar)
+            case(WELL_LIQ_PRESSURE)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = &
+                  patch%aux%TH%auxvars(grid%nL2G(local_id))%well%pl
+              enddo
+            case(WELL_LIQ_SATURATION)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = &
+                  patch%aux%TH%auxvars(grid%nL2G(local_id))%well%sl
+              enddo
+            case(WELL_GAS_SATURATION)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = 1.d0 - &
+                  patch%aux%TH%auxvars(grid%nL2G(local_id))%well%sl
+              enddo
+            case(WELL_LIQ_Q)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = &
+                  patch%aux%TH%auxvars(grid%nL2G(local_id))%well%Ql
+              enddo
+            case(WELL_TEMPERATURE)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = &
+                  patch%aux%TH%auxvars(grid%nL2G(local_id))%well%temp
               enddo
           end select
         case(SCO2_MODE)
@@ -9541,7 +9569,7 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
     ! PM Well (wellbore model)
     case(WELL_LIQ_PRESSURE,WELL_GAS_PRESSURE,WELL_LIQ_SATURATION, &
          WELL_GAS_SATURATION,WELL_AQ_CONC,WELL_AQ_MASS, &
-         WELL_LIQ_Q,WELL_GAS_Q,WELL_BHP)
+         WELL_LIQ_Q,WELL_GAS_Q,WELL_BHP,WELL_TEMPERATURE)
       select case(option%iflowmode)
       case(WF_MODE)
         select case(ivar)
@@ -9569,6 +9597,23 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
           case(WELL_GAS_Q)
             value = &
               patch%aux%wippflo%auxvars(ZERO_INTEGER,ghosted_id)%well%Qg
+        end select
+      case(TH_MODE)
+        select case(ivar)
+          case(WELL_LIQ_PRESSURE)
+            value = patch%aux%TH%auxvars(ghosted_id)%well%pl
+          case(WELL_GAS_PRESSURE)
+            value = UNINITIALIZED_DOUBLE
+          case(WELL_LIQ_SATURATION)
+            value = patch%aux%TH%auxvars(ghosted_id)%well%sl
+          case(WELL_GAS_SATURATION)
+            value = 1.d0 - patch%aux%TH%auxvars(ghosted_id)%well%sl
+          case(WELL_LIQ_Q)
+            value = patch%aux%TH%auxvars(ghosted_id)%well%Ql
+          case(WELL_GAS_Q)
+            value = UNINITIALIZED_DOUBLE
+          case(WELL_TEMPERATURE)
+            value = patch%aux%TH%auxvars(ghosted_id)%well%temp
         end select
       case(SCO2_MODE)
         select case(ivar)
@@ -10495,7 +10540,7 @@ subroutine PatchSetVariable(patch,field,option,vec,vec_format,ivar,isubvar)
     ! PM Well (wellbore model)
     case(WELL_LIQ_PRESSURE,WELL_GAS_PRESSURE,WELL_LIQ_SATURATION, &
          WELL_GAS_SATURATION,WELL_AQ_CONC,WELL_AQ_MASS, &
-         WELL_LIQ_Q,WELL_GAS_Q)
+         WELL_LIQ_Q,WELL_GAS_Q,WELL_TEMPERATURE)
       select case(ivar)
         case(WELL_LIQ_PRESSURE)
           call PrintErrMsg(option,'Setting of WELL_LIQ_PRESSURE at grid cell &
@@ -10520,6 +10565,9 @@ subroutine PatchSetVariable(patch,field,option,vec,vec_format,ivar,isubvar)
                            &cell not yet supported.')
         case(WELL_GAS_Q)
           call PrintErrMsg(option,'Setting of WELL_GAS_Q at grid &
+                           &cell not yet supported.')
+        case(WELL_TEMPERATURE)
+          call PrintErrMsg(option,'Setting of WELL_TEMPERATURE at grid &
                            &cell not yet supported.')
       end select
     case(NAMED_PARAMETER)
