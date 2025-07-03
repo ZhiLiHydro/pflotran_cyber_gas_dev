@@ -9714,6 +9714,7 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
             value = &
               patch%aux%hydrate%auxvars(ZERO_INTEGER,ghosted_id)%well%bh_p
         end select
+<<<<<<< HEAD
       case (RICHARDS_MODE)
         select case(ivar)
           case(WELL_LIQ_PRESSURE)
@@ -9728,6 +9729,22 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
           case(WELL_BHP)
             value = &
               patch%aux%richards%auxvars(ghosted_id)%well%bh_p
+=======
+      case (TH_MODE)
+        select case(ivar)
+          case(WELL_LIQ_PRESSURE)
+            value = &
+                patch%aux%th%auxvars(ghosted_id)%well%pl
+          case(WELL_LIQ_SATURATION)
+            value = &
+                patch%aux%th%auxvars(ghosted_id)%well%sl
+          case(WELL_LIQ_Q)
+            value = &
+              patch%aux%th%auxvars(ghosted_id)%well%Ql
+          case(WELL_BHP)
+            value = &
+              patch%aux%th%auxvars(ghosted_id)%well%bh_p
+>>>>>>> 2dc809459 (added th_mode when getting variable value at cell for a well)
         end select
       end select
     case(NAMED_PARAMETER)
