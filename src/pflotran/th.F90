@@ -4251,6 +4251,7 @@ subroutine THResidualSourceSink(r,realization,pm_well,ierr)
   use Field_module
   use Debug_module
   use PM_Well_class
+  use String_module
   use Utility_module, only : Smoothstep
 
   implicit none
@@ -4258,6 +4259,7 @@ subroutine THResidualSourceSink(r,realization,pm_well,ierr)
   Vec :: r
   class(realization_subsurface_type) :: realization
   class(pm_well_type), pointer :: pm_well
+  class(pm_well_type), pointer :: cur_well
 
   PetscErrorCode :: ierr
   PetscInt :: local_id, ghosted_id
@@ -4280,12 +4282,24 @@ subroutine THResidualSourceSink(r,realization,pm_well,ierr)
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(coupler_type), pointer :: source_sink
   type(connection_set_type), pointer :: cur_connection_set
+<<<<<<< HEAD
   PetscReal :: qsrc_kmol
+=======
+  character(len=MAXSTRINGLENGTH) :: string
+  character(len=MAXSTRINGLENGTH) :: srcsink_name
+  PetscReal, pointer :: mmsrc(:)
+  PetscReal :: well_status
+  PetscReal :: well_factor
+  PetscReal :: pressure_bh
+  PetscReal :: pressure_max
+  PetscReal :: pressure_min
+  PetscReal :: Dq, dphi, v_darcy, ukvr
+>>>>>>> e12cc96fa (modified residual source-sink)
 
   PetscReal, pointer :: flow_array(:)
   PetscReal, pointer :: energy_array(:)
 
-  PetscInt :: iconn, istart, iend
+  PetscInt :: iconn, istart, iend, k
   PetscInt :: sum_connection
 
   patch => realization%patch
@@ -4306,12 +4320,56 @@ subroutine THResidualSourceSink(r,realization,pm_well,ierr)
   call VecGetArrayF90(r,r_p,ierr);CHKERRQ(ierr)
   call VecGetArrayF90(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
   call VecGetArrayF90(field%flow_yy,yy_p,ierr);CHKERRQ(ierr)
+<<<<<<< HEAD
+=======
+  !print *,' Finished scattering non deriv'
+
+! Update well source/sink terms
+  if (th_well_coupling == TH_FULLY_IMPLICIT_WELL) then
+    if (associated(pm_well)) then
+      cur_well => pm_well
+      sum_connection = 0
+      do
+        if (.not. associated(cur_well)) exit
+        if (any(cur_well%well_grid%h_rank_id == option%myrank)) then
+          call cur_well%UpdateFlowRates(ZERO_INTEGER,ZERO_INTEGER,-999,ierr)
+          call cur_well%ModifyFlowResidual(r_p)
+          source_sink => patch%source_sink_list%first
+          do
+            if (.not.associated(source_sink)) exit
+            if (associated(source_sink%flow_condition%well)) then
+              do k = 1,cur_well%well_grid%nsegments
+                if (cur_well%well_grid%h_rank_id(k) /= option%myrank) cycle
+                srcsink_name = trim(cur_well%name) // '_well_segment_' // &
+                              StringWrite(k)
+                if (trim(srcsink_name) == trim(source_sink%name)) then
+                  sum_connection = sum_connection + 1
+                  if (associated(patch%ss_flow_vol_fluxes)) then
+                    patch%ss_flow_vol_fluxes(ONE_INTEGER,sum_connection) = &
+                                      -1.d0 * cur_well%well%liq%Q(k) ! [kg/s]
+                  endif
+                  exit
+                endif
+              enddo
+            endif
+            source_sink => source_sink%next
+          enddo
+        endif
+        cur_well => cur_well%next_well
+      enddo
+    endif
+  endif
+>>>>>>> e12cc96fa (modified residual source-sink)
 
   ! Source/sink terms -------------------------------------
   source_sink => patch%source_sink_list%first
   sum_connection = 0
   do
     if (.not.associated(source_sink)) exit
+    if (associated(source_sink%flow_condition%well)) then
+      source_sink => source_sink%next
+      cycle
+    endif
 
     cur_connection_set => source_sink%connection_set
 
