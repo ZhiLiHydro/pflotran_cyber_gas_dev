@@ -4488,7 +4488,7 @@ subroutine THJacobian(snes,xx,A,B,realization,pm_well,ierr)
   call THJacobianInternalConn(J,realization,ierr)
   call THJacobianBoundaryConn(J,realization,ierr)
   call THJacobianAccumulation(J,realization,ierr)
-  call THJacobianSourceSink(J,realization,ierr)
+  call THJacobianSourceSink(J,realization,pm_well,ierr)
 
   call MatrixZeroingZeroMatEntries(realization%patch%aux%TH%matrix_zeroing,J)
 
@@ -5051,7 +5051,7 @@ end subroutine THJacobianAccumulation
 
 ! ************************************************************************** !
 
-subroutine THJacobianSourceSink(A,realization,ierr)
+subroutine THJacobianSourceSink(A,realization,pm_well,ierr)
   !
   ! Computes the jacobian contribution from source sink
   !
@@ -5068,12 +5068,15 @@ subroutine THJacobianSourceSink(A,realization,ierr)
   use Patch_module
   use Coupler_module
   use Field_module
+  use PM_Well_class
   use Debug_module
   use Secondary_Continuum_Aux_module
   use Utility_module, only : Smoothstep
 
   Mat :: A
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
+  class(pm_well_type), pointer :: cur_well
 
   PetscErrorCode :: ierr
 
@@ -5098,6 +5101,8 @@ subroutine THJacobianSourceSink(A,realization,ierr)
   type(material_auxvar_type), pointer :: material_auxvars(:)
 
   character(len=MAXSTRINGLENGTH) :: string
+  PetscInt :: deactivate_row
+  PetscReal, parameter :: epsilon = 1.d-30
 
   PetscViewer :: viewer
 
@@ -5124,6 +5129,10 @@ subroutine THJacobianSourceSink(A,realization,ierr)
   sum_connection = 0
   do
     if (.not.associated(source_sink)) exit
+    if (associated(source_sink%flow_condition%well)) then
+      source_sink => source_sink%next
+      cycle
+    endif
 
     cur_connection_set => source_sink%connection_set
     smoothstep_scale = 1.d0
@@ -5222,6 +5231,25 @@ subroutine THJacobianSourceSink(A,realization,ierr)
     source_sink => source_sink%next
   enddo
 
+  ! Well Terms
+  ! perturbation in bottom pressure
+  if (th_well_coupling == TH_FULLY_IMPLICIT_WELL) then
+    if (associated(pm_well)) then
+      cur_well => pm_well
+      do
+        if (.not. associated(cur_well)) exit
+        if (any(cur_well%well_grid%h_rank_id == option%myrank)) then
+          ! Update the well and well's reservoir variables.
+          call cur_well%Perturb()
+          ! Go through and update the well contributions to the Jacobian:
+          ! dRi/d(P_well), dRwell/d(P_well), dRi/dxi, and dRwell,dxi
+          call cur_well%ModifyFlowJacobian(A,ierr)
+        endif
+        cur_well => cur_well%next_well
+      enddo
+    endif
+  endif
+
   if (realization%debug%matview_Matrix_detailed) then
     call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
     call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
@@ -5237,6 +5265,8 @@ subroutine THJacobianSourceSink(A,realization,ierr)
   call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
 
 ! zero out isothermal and inactive cells
+  ! How are we zeroing out inactive cells here? Should I add anything?
+  
 #ifdef ISOTHERMAL_MODE_DOES_NOT_WORK
   do i=1, patch%aux%TH%matrix_zeroing%n_zero_rows
     ii = mod(patch%aux%TH%matrix_zeroing%zero_rows_local(i),option%nflowdof)
