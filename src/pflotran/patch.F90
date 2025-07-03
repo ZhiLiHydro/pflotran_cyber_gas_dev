@@ -9641,6 +9641,21 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
             value = &
               patch%aux%hydrate%auxvars(ZERO_INTEGER,ghosted_id)%well%bh_p
         end select
+      case (TH_MODE)
+        select case(ivar)
+          case(WELL_LIQ_PRESSURE)
+            value = &
+                patch%aux%th%auxvars(ghosted_id)%well%pl
+          case(WELL_LIQ_SATURATION)
+            value = &
+                patch%aux%th%auxvars(ghosted_id)%well%sl
+          case(WELL_LIQ_Q)
+            value = &
+              patch%aux%th%auxvars(ghosted_id)%well%Ql
+          case(WELL_BHP)
+            value = &
+              patch%aux%th%auxvars(ghosted_id)%well%bh_p
+        end select
       end select
     case(NAMED_PARAMETER)
       value = patch%aux%Global%auxvars(ghosted_id)%parameters(isubvar)
