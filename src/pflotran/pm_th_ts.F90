@@ -365,6 +365,7 @@ subroutine PMTHTSIJacobian(this,ts,time,U,Udot,shift,A,B,ierr)
   use Discretization_module
   use Debug_module
   use Option_module
+  use PM_Well_class
 
   implicit none
 
@@ -378,6 +379,7 @@ subroutine PMTHTSIJacobian(this,ts,time,U,Udot,shift,A,B,ierr)
   PetscViewer :: viewer
 
   type(field_type), pointer :: field
+  class(pm_well_type), pointer :: pm_well
   type(discretization_type), pointer :: discretization
   type(option_type), pointer :: option
   class(realization_subsurface_type), pointer :: realization
@@ -394,7 +396,7 @@ subroutine PMTHTSIJacobian(this,ts,time,U,Udot,shift,A,B,ierr)
 
   call THJacobianInternalConn(J,realization,ierr)
   call THJacobianBoundaryConn(J,realization,ierr)
-  call THJacobianSourceSink(J,realization,ierr)
+  call THJacobianSourceSink(J,realization,pm_well,ierr)
   call IJacobianAccumulation(J,shift,realization,ierr)
 
   if (A /= B) then

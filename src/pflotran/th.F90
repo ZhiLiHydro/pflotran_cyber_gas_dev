@@ -4031,9 +4031,10 @@ subroutine THResidualAccumulation(r,realization,pm_well,ierr)
   Vec :: r
   class(realization_subsurface_type) :: realization
   class(pm_well_type), pointer :: pm_well
+  class(pm_well_type), pointer :: cur_well
 
   PetscErrorCode :: ierr
-  PetscInt :: local_id, ghosted_id
+  PetscInt :: local_id, ghosted_id, ghosted_end
 
   PetscReal, pointer :: accum_p(:)
   PetscReal, pointer :: accum2_p(:)
@@ -4123,6 +4124,27 @@ subroutine THResidualAccumulation(r,realization,pm_well,ierr)
 
       r_p(iend) = r_p(iend) - res_sec_heat*material_auxvars(ghosted_id)%volume
     enddo
+  endif
+
+  ! This is for the convergence check.
+  if (th_well_coupling == TH_FULLY_IMPLICIT_WELL) then
+    if (associated(pm_well)) then
+      cur_well => pm_well
+      do
+        if (.not. associated(cur_well)) exit
+        if (cur_well%well_grid%h_rank_id(1) == option%myrank) then
+          ghosted_id = cur_well%well_grid%h_ghosted_id(1)
+          ghosted_end = ghosted_id * option%nflowdof
+          if (cur_well%well%total_rate > 0.d0) then
+            accum2_p(ghosted_end) = cur_well%well%th_ql
+          else
+            accum2_p(ghosted_end) = 0.d0
+          endif
+          r_p(ghosted_end) = 0.d0
+        endif
+        cur_well => cur_well%next_well
+      enddo
+    endif
   endif
 
   call VecRestoreArrayF90(r,r_p,ierr);CHKERRQ(ierr)
@@ -5266,7 +5288,7 @@ subroutine THJacobianSourceSink(A,realization,pm_well,ierr)
 
 ! zero out isothermal and inactive cells
   ! How are we zeroing out inactive cells here? Should I add anything?
-  
+
 #ifdef ISOTHERMAL_MODE_DOES_NOT_WORK
   do i=1, patch%aux%TH%matrix_zeroing%n_zero_rows
     ii = mod(patch%aux%TH%matrix_zeroing%zero_rows_local(i),option%nflowdof)
