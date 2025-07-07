@@ -221,6 +221,37 @@ subroutine GeomechForceSetPlotVariables(list)
   units = 'Pa'
   call OutputVariableAddToList(list,name,OUTPUT_STRESS,units, &
                                STRESS_ZX)
+
+  name = 'stress_total_xx'
+  units = 'Pa'
+  call OutputVariableAddToList(list,name,OUTPUT_STRESS,units, &
+                               STRESS_TOTAL_XX)
+
+  name = 'stress_total_yy'
+  units = 'Pa'
+  call OutputVariableAddToList(list,name,OUTPUT_STRESS,units, &
+                               STRESS_TOTAL_YY)
+
+  name = 'stress_total_zz'
+  units = 'Pa'
+  call OutputVariableAddToList(list,name,OUTPUT_STRESS,units, &
+                               STRESS_TOTAL_ZZ)
+
+  name = 'stress_total_xy'
+  units = 'Pa'
+  call OutputVariableAddToList(list,name,OUTPUT_STRESS,units, &
+                               STRESS_TOTAL_XY)
+
+  name = 'stress_total_yz'
+  units = 'Pa'
+  call OutputVariableAddToList(list,name,OUTPUT_STRESS,units, &
+                               STRESS_TOTAL_YZ)
+
+  name = 'stress_total_zx'
+  units = 'Pa'
+  call OutputVariableAddToList(list,name,OUTPUT_STRESS,units, &
+                               STRESS_TOTAL_ZX)
+
   name = 'relative_displacement_x'
   units = 'm'
   call OutputVariableAddToList(list,name,OUTPUT_DISPLACEMENT,units, &
@@ -832,6 +863,187 @@ end subroutine GeomechForceResidualPatch
 
 ! ************************************************************************** !
 
+subroutine ComputeTetVolAtVertex(vert_0, &
+                                 vert_1, &
+                                 vert_2, &
+                                 vert_3, &
+                                 volume)
+  !
+  ! Returns the volume of the specified tetrahedron after
+  ! being clipped on the positive side of the planes computed
+  ! in this function.
+  ! This works by calling ClippedVolume() recursively on one plane
+  ! at a time.
+  !
+  ! Author: Joe Eyles, WSP
+  ! Date: 29/04/2025
+  !
+
+
+  PetscReal :: vert_0(3)
+  PetscReal :: vert_1(3)
+  PetscReal :: vert_2(3)
+  PetscReal :: vert_3(3)
+
+  PetscReal :: midPoints(3, 3), normals(3, 3)
+  PetscReal :: volume
+
+  midPoints(1, :) = (vert_0(:) + vert_1(:))*0.5
+  midPoints(2, :) = (vert_0(:) + vert_2(:))*0.5
+  midPoints(3, :) = (vert_0(:) + vert_3(:))*0.5
+
+  normals(1, :) = vert_0(:) - vert_1(:)
+  normals(2, :) = vert_0(:) - vert_2(:)
+  normals(3, :) = vert_0(:) - vert_3(:)
+
+  normals(1, :) = normals(1, :) / sqrt(dot_product(normals(1, :), normals(1, :)))
+  normals(2, :) = normals(2, :) / sqrt(dot_product(normals(2, :), normals(2, :)))
+  normals(3, :) = normals(3, :) / sqrt(dot_product(normals(3, :), normals(3, :)))
+
+  volume = ClippedVolume(vert_0, vert_1, vert_2, vert_3, midPoints, normals, 3)
+end subroutine ComputeTetVolAtVertex
+
+! ************************************************************************** !
+
+recursive function ClippedVolume(vert_0, vert_1, vert_2, vert_3, midPoints, normals, nSize_in) result(nRet)
+  !
+  ! Clips on the given plane, splits the resulting
+  ! polyhedron into tetrahedra, and then calls itself recursively,
+  ! ultimately returning the volume.
+  !
+  ! Author: Joe Eyles, WSP
+  ! Date: 29/04/2025
+  !
+
+  PetscReal :: vert_0(3), vert_1(3), vert_2(3), vert_3(3)
+  PetscReal :: midPoints(3, 3), normals(3, 3)
+  PetscInt :: nSize_in
+  PetscInt :: nSize
+  PetscReal :: nRet
+  PetscReal :: vP(3), vN(3), vvert_0(3), vvert_1(3), vvert_2(3), vvert_3(3), vvert_4(3)
+  PetscReal :: V(4, 3)
+  PetscReal :: d(4)
+
+  nRet = 0
+  nSize = nSize_in
+
+  if (nSize == 0) then
+    nRet = abs(dot_product(cross_product(vert_1 - vert_0, vert_2 - vert_0), vert_3 - vert_0) / 6.0)
+  else
+    nSize = nSize - 1
+    vP = midPoints(nSize + 1, :)
+    vN = normals(nSize + 1, :)
+    V(1, :) = vert_0
+    d(1) = dot_product(vert_0 - vP, vN)
+    V(2, :) = vert_1
+    d(2) = dot_product(vert_1 - vP, vN)
+    V(3, :) = vert_2
+    d(3) = dot_product(vert_2 - vP, vN)
+    V(4, :) = vert_3
+    d(4) = dot_product(vert_3 - vP, vN)
+
+    call sort(V, d)
+
+    if (d(1) <= 0.0) then
+      nRet = 0.0
+    else if (d(4) >= 0.0) then
+      nRet = nRet + ClippedVolume(vert_0, vert_1, vert_2, vert_3, midPoints, normals, nSize)
+    else if (d(3) > 0.0) then
+      vvert_0 = Intersect(V(1, :), V(4, :), d(1), d(4))
+      vvert_1 = Intersect(V(2, :), V(4, :), d(2), d(4))
+      vvert_2 = Intersect(V(3, :), V(4, :), d(3), d(4))
+      nRet = nRet + ClippedVolume(V(1, :), V(2, :), V(3, :), vvert_2, midPoints, normals, nSize) + &
+             ClippedVolume(V(1, :), vvert_0, V(2, :), vvert_2, midPoints, normals, nSize) + &
+             ClippedVolume(V(2, :), vvert_0, vvert_1, vvert_2, midPoints, normals, nSize)
+    else if (d(3) == 0.0) then
+      vvert_0 = Intersect(V(1, :), V(4, :), d(1), d(4))
+      vvert_1 = Intersect(V(2, :), V(4, :), d(2), d(4))
+      nRet = nRet + ClippedVolume(V(1, :), vvert_0, V(2, :), V(3, :), midPoints, normals, nSize) + &
+             ClippedVolume(V(2, :), vvert_0, vvert_1, V(3, :), midPoints, normals, nSize)
+    else if (d(2) > 0.0) then
+      vvert_1 = Intersect(V(1, :), V(3, :), d(1), d(3))
+      vvert_2 = Intersect(V(1, :), V(4, :), d(1), d(4))
+      vvert_3 = Intersect(V(2, :), V(3, :), d(2), d(3))
+      vvert_4 = Intersect(V(2, :), V(4, :), d(2), d(4))
+      nRet = nRet + ClippedVolume(V(1, :), vvert_1, vvert_2, vvert_3, midPoints, normals, nSize) + &
+             ClippedVolume(V(1, :), vvert_2, vvert_3, vvert_4, midPoints, normals, nSize) + &
+             ClippedVolume(V(1, :), V(2, :), vvert_3, vvert_4, midPoints, normals, nSize)
+    else
+      vvert_1 = Intersect(V(1, :), V(2, :), d(1), d(2))
+      vvert_2 = Intersect(V(1, :), V(3, :), d(1), d(3))
+      vvert_3 = Intersect(V(1, :), V(4, :), d(1), d(4))
+      nRet = nRet + ClippedVolume(V(1, :), vvert_1, vvert_2, vvert_3, midPoints, normals, nSize)
+    end if
+  end if
+end function ClippedVolume
+
+! ************************************************************************** !
+
+function Intersect(v1, v2, d1, d2) result(v)
+  !
+  ! Computes the intesection
+  !
+  ! Author: Joe Eyles, WSP
+  ! Date: 29/04/2025
+  !
+
+  PetscReal :: v1(3), v2(3)
+  PetscReal :: d1, d2
+  PetscReal :: v(3)
+
+  v = v1 * (-d2 / (d1 - d2)) + v2 * (d1 / (d1 - d2))
+end function Intersect
+
+! ************************************************************************** !
+
+function cross_product(v1, v2) result(v)
+  !
+  ! Computes the cross product between v1 and v2
+  !
+  ! Author: Joe Eyles, WSP
+  ! Date: 29/04/2025
+  !
+
+  PetscReal :: v1(3), v2(3)
+  PetscReal :: v(3)
+
+  v(1) = v1(2) * v2(3) - v1(3) * v2(2)
+  v(2) = v1(3) * v2(1) - v1(1) * v2(3)
+  v(3) = v1(1) * v2(2) - v1(2) * v2(1)
+end function cross_product
+
+! ************************************************************************** !
+
+subroutine sort(V, d)
+  !
+  ! Sorts vectors V and d based on d
+  !
+  ! Author: Joe Eyles, WSP
+  ! Date: 29/04/2025
+  !
+
+  PetscReal :: V(4, 3)
+  PetscReal :: d(4)
+  integer :: i, j
+  PetscReal :: temp_d
+  PetscReal :: temp_V(3)
+
+  do i = 1, 3
+    do j = i + 1, 4
+      if (d(i) < d(j)) then
+        temp_d = d(i)
+        d(i) = d(j)
+        d(j) = temp_d
+        temp_V = V(i, :)
+        V(i, :) = V(j, :)
+        V(j, :) = temp_V
+      end if
+    end do
+  end do
+end subroutine sort
+
+! ************************************************************************** !
+
 subroutine GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
                                          local_disp, &
                                          local_press,local_temp, &
@@ -880,7 +1092,9 @@ subroutine GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
   PetscInt :: load_type
   PetscReal :: bf(THREE_INTEGER)
   PetscReal :: identity(THREE_INTEGER,THREE_INTEGER)
+  PetscReal :: gauss_tot_weight
   PetscReal, allocatable :: N(:,:)
+  PetscReal, allocatable :: gauss_tet_vol_weight(:)
   PetscReal, allocatable :: vecB_transpose(:,:)
   PetscReal, allocatable :: kron_B_eye(:,:)
   PetscReal, allocatable :: kron_B_transpose_eye(:,:)
@@ -909,6 +1123,42 @@ subroutine GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
       if (i == j) identity(i,j) = 1.d0
     enddo
   enddo
+
+  if(option%geomechanics%improve_tet_weighting .and. &
+    eletype == TET_TYPE .and. len_w == 4) then
+    allocate(gauss_tet_vol_weight(len_w))
+    call ComputeTetVolAtVertex(local_coordinates(1, :), &
+                               local_coordinates(2, :), &
+                               local_coordinates(3, :), &
+                               local_coordinates(4, :), &
+                               gauss_tet_vol_weight(1))
+
+    call ComputeTetVolAtVertex(local_coordinates(2, :), &
+                               local_coordinates(3, :), &
+                               local_coordinates(4, :), &
+                               local_coordinates(1, :), &
+                               gauss_tet_vol_weight(2))
+
+    call ComputeTetVolAtVertex(local_coordinates(3, :), &
+                               local_coordinates(4, :), &
+                               local_coordinates(1, :), &
+                               local_coordinates(2, :), &
+                               gauss_tet_vol_weight(3))
+
+    call ComputeTetVolAtVertex(local_coordinates(4, :), &
+                               local_coordinates(1, :), &
+                               local_coordinates(2, :), &
+                               local_coordinates(3, :), &
+                               gauss_tet_vol_weight(4))
+
+    gauss_tot_weight = gauss_tet_vol_weight(1) + &
+                       gauss_tet_vol_weight(2) + &
+                       gauss_tet_vol_weight(3) + &
+                       gauss_tet_vol_weight(4)
+    do i = 1, 4
+      gauss_tet_vol_weight(i) = gauss_tet_vol_weight(i) / gauss_tot_weight
+    enddo
+  endif
 
   call Transposer(option%ngeomechdof,size_elenodes,Trans)
 
@@ -947,7 +1197,21 @@ subroutine GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
     Kmat = Kmat + w(igpt)*mu*matmul(kron_B_eye,kron_B_transpose_eye)*detJ_map
     Kmat = Kmat + w(igpt)*mu* &
       matmul(matmul(kron_B_eye,kron_eye_B_transpose),Trans)*detJ_map
-    force = force + w(igpt)*density*matmul(kron_N_eye,bf)*detJ_map
+    if(option%geomechanics%improve_tet_weighting .and. &
+       eletype == TET_TYPE .and. len_w == 4) then
+      ! w(igpt) = 1/4 * 1/6 = 1/n_gausspoints * reference_tet_volume
+      ! and detJ_map * reference_tet_volume = current_tet_volume
+      ! so w(igpt)*detJ_map = 1/4 * current_tet_volume = proportion_of_current_tet_assigned_to_this_gauss_point
+      ! However we can do better than just using 1/4 (i.e. assigning it evenly).
+      ! This is what gauss_tet_vol_weight is
+      ! (a more careful assigning of the volume of the tetrahedron amongst the gauss points).
+      ! This approach only works for tetrahedrons with 4 gauss points,
+      ! as each guass point sits near a unique vertex.
+      force = force + w(igpt)*4*gauss_tet_vol_weight(igpt)*density* &
+                      matmul(kron_N_eye,bf)*detJ_map
+    else
+      force = force + w(igpt)*density*matmul(kron_N_eye,bf)*detJ_map
+    endif
     force = force + w(igpt)*beta*dot_product(N(:,1),local_press)* &
       vecB_transpose(:,1)*detJ_map
     force = force + w(igpt)*alpha*(3*lambda+2*mu)* &
@@ -960,6 +1224,11 @@ subroutine GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
     deallocate(kron_eye_B_transpose)
     deallocate(kron_N_eye)
   enddo
+
+  if(option%geomechanics%improve_tet_weighting .and. &
+     eletype.eq.2 .and. len_w.eq.4) then
+    deallocate(gauss_tet_vol_weight)
+  endif
 
   call ConvertMatrixToVector(transpose(local_disp),vec_local_disp)
   res_vec_mat = matmul(Kmat,vec_local_disp)
@@ -1934,7 +2203,11 @@ subroutine GeomechForceStressStrain(geomech_realization)
   PetscInt, allocatable :: petsc_ids(:)
   PetscInt, allocatable :: ids(:)
   PetscReal, allocatable :: youngs_vec(:), poissons_vec(:)
-  PetscReal, allocatable :: strain(:,:), stress(:,:)
+  PetscReal, allocatable :: alpha_vec(:)  ! thermal expansion coefficient
+  PetscReal, allocatable :: beta_vec(:)  ! Biot's coefficient
+  PetscReal, allocatable :: local_temp(:)
+  PetscReal, allocatable :: local_press(:)
+  PetscReal, allocatable :: strain(:,:), stress(:,:), stress_total(:,:)
   PetscInt :: ielem, ivertex
   PetscInt :: ghosted_id
   PetscInt :: eletype, idof
@@ -1943,7 +2216,10 @@ subroutine GeomechForceStressStrain(geomech_realization)
   PetscReal, pointer :: imech_loc_p(:)
   PetscReal, pointer :: strain_loc_p(:)
   PetscReal, pointer :: stress_loc_p(:)
-  PetscReal, pointer :: strain_p(:), stress_p(:)
+  PetscReal, pointer :: stress_total_loc_p(:)
+  PetscReal, pointer :: temp_loc_p(:), temp_init_loc_p(:)
+  PetscReal, pointer :: press_loc_p(:), press_init_loc_p(:)
+  PetscReal, pointer :: strain_p(:), stress_p(:), stress_total_p(:)
   PetscReal, pointer :: no_elems_p(:)
 
   PetscErrorCode :: ierr
@@ -1958,13 +2234,20 @@ subroutine GeomechForceStressStrain(geomech_realization)
 
   call VecSet(field%strain,0.d0,ierr);CHKERRQ(ierr)
   call VecSet(field%stress,0.d0,ierr);CHKERRQ(ierr)
+  call VecSet(field%stress_total,0.d0,ierr);CHKERRQ(ierr)
 
   call VecGetArrayF90(field%imech_loc,imech_loc_p,ierr);CHKERRQ(ierr)
   call VecGetArrayF90(field%strain_loc,strain_loc_p,ierr);CHKERRQ(ierr)
   call VecGetArrayF90(field%stress_loc,stress_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayF90(field%stress_total_loc,stress_total_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayF90(field%temp_loc,temp_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayF90(field%temp_init_loc,temp_init_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayF90(field%press_loc,press_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayF90(field%press_init_loc,press_init_loc_p,ierr);CHKERRQ(ierr)
 
   strain_loc_p = 0.d0
   stress_loc_p = 0.d0
+  stress_total_loc_p = 0.d0
 
    ! Loop over elements on a processor
   do ielem = 1, grid%nlmax_elem
@@ -1972,11 +2255,16 @@ subroutine GeomechForceStressStrain(geomech_realization)
     allocate(local_coordinates(size(elenodes),THREE_INTEGER))
     allocate(local_disp(size(elenodes),option%ngeomechdof))
     allocate(petsc_ids(size(elenodes)))
+    allocate(local_temp(size(elenodes)))
+    allocate(local_press(size(elenodes)))
     allocate(ids(size(elenodes)*option%ngeomechdof))
     allocate(youngs_vec(size(elenodes)))
     allocate(poissons_vec(size(elenodes)))
+    allocate(alpha_vec(size(elenodes)))
+    allocate(beta_vec(size(elenodes)))
     allocate(strain(size(elenodes),SIX_INTEGER))
     allocate(stress(size(elenodes),SIX_INTEGER))
+    allocate(stress_total(size(elenodes),SIX_INTEGER))
     elenodes = grid%elem_nodes(1:grid%elem_nodes(0,ielem),ielem)
     eletype = grid%gauss_node(ielem)%element_type
     do ivertex = 1, grid%elem_nodes(0,ielem)
@@ -1994,15 +2282,28 @@ subroutine GeomechForceStressStrain(geomech_realization)
         ids(idof + (ivertex-1)*option%ngeomechdof) = &
           (petsc_ids(ivertex)-1)*option%ngeomechdof + (idof-1)
       enddo
+      local_temp(ivertex) = &
+        temp_loc_p(ghosted_id) - temp_init_loc_p(ghosted_id)
+      local_press(ivertex) = &
+        press_loc_p(ghosted_id) - press_init_loc_p(ghosted_id)
       youngs_vec(ivertex) = &
         GeomechParam%youngs_modulus(nint(imech_loc_p(ghosted_id)))
       poissons_vec(ivertex) = &
         GeomechParam%poissons_ratio(nint(imech_loc_p(ghosted_id)))
+      alpha_vec(ivertex) = &
+        GeomechParam%thermal_exp_coef(int(imech_loc_p(ghosted_id)))
+      beta_vec(ivertex) = &
+        GeomechParam%biot_coef(int(imech_loc_p(ghosted_id)))
     enddo
     size_elenodes = size(elenodes)
     call GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
-       local_disp,youngs_vec,poissons_vec, &
-       eletype,grid%gauss_node(ielem)%dim,strain,stress,option)
+       local_disp,local_temp,local_press,youngs_vec, &
+       poissons_vec,alpha_vec,beta_vec,eletype,grid%gauss_node(ielem)%dim, &
+       strain,stress,PETSC_FALSE,option)
+    call GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
+       local_disp,local_temp,local_press,youngs_vec, &
+       poissons_vec,alpha_vec,beta_vec,eletype,grid%gauss_node(ielem)%dim, &
+       strain,stress_total,PETSC_TRUE,option)
 
     do ivertex = 1, grid%elem_nodes(0,ielem)
       ghosted_id = elenodes(ivertex)
@@ -2013,23 +2314,32 @@ subroutine GeomechForceStressStrain(geomech_realization)
         stress_loc_p(idof + (ghosted_id-1)*SIX_INTEGER) = &
           stress_loc_p(idof + (ghosted_id-1)*SIX_INTEGER) + &
           stress(ivertex,idof)
+        stress_total_loc_p(idof + (ghosted_id-1)*SIX_INTEGER) = &
+          stress_total_loc_p(idof + (ghosted_id-1)*SIX_INTEGER) + &
+          stress_total(ivertex,idof)
       enddo
     enddo
 
     deallocate(elenodes)
     deallocate(local_coordinates)
     deallocate(local_disp)
+    deallocate(local_temp)
+    deallocate(local_press)
     deallocate(petsc_ids)
     deallocate(ids)
     deallocate(youngs_vec)
     deallocate(poissons_vec)
+    deallocate(alpha_vec)
+    deallocate(beta_vec)
     deallocate(strain)
     deallocate(stress)
+    deallocate(stress_total)
   enddo
 
   call VecRestoreArrayF90(field%imech_loc,imech_loc_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayF90(field%strain_loc,strain_loc_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayF90(field%stress_loc,stress_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayF90(field%stress_total_loc,stress_total_loc_p,ierr);CHKERRQ(ierr)
 
   call GeomechDiscretizationLocalToGlobalAdd(geomech_discretization, &
                                              field%strain_loc,field%strain, &
@@ -2037,22 +2347,30 @@ subroutine GeomechForceStressStrain(geomech_realization)
   call GeomechDiscretizationLocalToGlobalAdd(geomech_discretization, &
                                              field%stress_loc,field%stress, &
                                              SIX_INTEGER)
+  call GeomechDiscretizationLocalToGlobalAdd(geomech_discretization, &
+                                             field%stress_total_loc, &
+                                             field%stress_total, &
+                                             SIX_INTEGER)
 
 ! Now take the average at each node for elements sharing the node
   call VecGetArrayF90(grid%no_elems_sharing_node,no_elems_p, &
                       ierr);CHKERRQ(ierr)
   call VecGetArrayF90(field%strain,strain_p,ierr);CHKERRQ(ierr)
   call VecGetArrayF90(field%stress,stress_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayF90(field%stress_total,stress_total_p,ierr);CHKERRQ(ierr)
   do local_id = 1, grid%nlmax_node
     do idof = 1, SIX_INTEGER
       strain_p(idof + (local_id-1)*SIX_INTEGER) = &
         strain_p(idof + (local_id-1)*SIX_INTEGER)/nint(no_elems_p(local_id))
       stress_p(idof + (local_id-1)*SIX_INTEGER) = &
         stress_p(idof + (local_id-1)*SIX_INTEGER)/nint(no_elems_p(local_id))
+      stress_total_p(idof + (local_id-1)*SIX_INTEGER) = &
+        stress_total_p(idof + (local_id-1)*SIX_INTEGER)/nint(no_elems_p(local_id))
     enddo
   enddo
-  call VecRestoreArrayF90(field%stress,stress_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayF90(field%strain,strain_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayF90(field%stress,stress_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayF90(field%stress_total,stress_total_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayF90(grid%no_elems_sharing_node,no_elems_p, &
                           ierr);CHKERRQ(ierr)
 
@@ -2063,9 +2381,14 @@ subroutine GeomechForceStressStrain(geomech_realization)
   call GeomechDiscretizationGlobalToLocal(geomech_discretization, &
                                           field%stress,field%stress_loc, &
                                           SIX_INTEGER)
+  call GeomechDiscretizationGlobalToLocal(geomech_discretization, &
+                                          field%stress_total, &
+                                          field%stress_total_loc, &
+                                          SIX_INTEGER)
 
   call VecGetArrayF90(field%strain_loc,strain_loc_p,ierr);CHKERRQ(ierr)
   call VecGetArrayF90(field%stress_loc,stress_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayF90(field%stress_total_loc,stress_total_loc_p,ierr);CHKERRQ(ierr)
 ! Copy them to global_aux_vars
   do ghosted_id = 1, grid%ngmax_node
     do idof = 1, SIX_INTEGER
@@ -2073,19 +2396,25 @@ subroutine GeomechForceStressStrain(geomech_realization)
         strain_loc_p(idof + (ghosted_id-1)*SIX_INTEGER)
       geomech_global_aux_vars(ghosted_id)%stress(idof) = &
         stress_loc_p(idof + (ghosted_id-1)*SIX_INTEGER)
+      geomech_global_aux_vars(ghosted_id)%stress_total(idof) = &
+        stress_total_loc_p(idof + (ghosted_id-1)*SIX_INTEGER)
     enddo
   enddo
   call VecRestoreArrayF90(field%strain_loc,strain_loc_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayF90(field%stress_loc,stress_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayF90(field%stress_total_loc,stress_total_loc_p,ierr);CHKERRQ(ierr)
 
 end subroutine GeomechForceStressStrain
 
 ! ************************************************************************** !
 
 subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
-                                             local_disp, &
+                                             local_disp,local_temp, &
+                                             local_press, &
                                              local_youngs,local_poissons, &
-                                             eletype,dim,strain,stress,option)
+                                             local_alpha, local_beta, &
+                                             eletype,dim,strain,stress, &
+                                             compute_stress_total,option)
   !
   ! Computes the stress-strain for a local
   ! element
@@ -2105,12 +2434,17 @@ subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
   PetscReal, allocatable :: local_coordinates(:,:)
   PetscReal, allocatable :: B(:,:)
   PetscReal, allocatable :: local_disp(:,:)
+  PetscReal, allocatable :: local_temp(:)
+  PetscReal, allocatable :: local_press(:)
   PetscReal, allocatable :: local_youngs(:)
   PetscReal, allocatable :: local_poissons(:)
+  PetscReal, allocatable :: local_alpha(:)  ! Thermal expansion coefficient
+  PetscReal, allocatable :: local_beta(:)  ! Biot's coefficient
   PetscReal, allocatable :: strain(:,:)
   PetscReal, allocatable :: stress(:,:)
   PetscReal :: strain_local(NINE_INTEGER,ONE_INTEGER)
   PetscReal :: stress_local(NINE_INTEGER,ONE_INTEGER)
+  PetscBool :: compute_stress_total
 
   PetscInt :: ivertex
   PetscInt :: eletype
@@ -2118,7 +2452,7 @@ subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
   PetscInt :: dim
   PetscInt :: i, j
   PetscReal :: lambda, mu
-  PetscReal :: youngs_mod, poissons_ratio
+  PetscReal :: youngs_mod, poissons_ratio, alpha, beta
   PetscReal, allocatable :: kron_B_eye(:,:)
   PetscReal, allocatable :: kron_B_transpose_eye(:,:)
   PetscReal, allocatable :: Trans(:,:)
@@ -2128,6 +2462,7 @@ subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
   PetscReal :: J_map(THREE_INTEGER,THREE_INTEGER)
   PetscReal :: inv_J_map(THREE_INTEGER,THREE_INTEGER)
   PetscReal :: eye_vec(NINE_INTEGER,ONE_INTEGER)
+  PetscReal :: dT, dP
 
   allocate(B(size_elenodes,dim))
 
@@ -2161,6 +2496,8 @@ subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
     B = matmul(shapefunction%DN,inv_J_map)
     youngs_mod = dot_product(shapefunction%N,local_youngs)
     poissons_ratio = dot_product(shapefunction%N,local_poissons)
+    alpha = dot_product(shapefunction%N,local_alpha)
+    beta = dot_product(shapefunction%N,local_beta)
     call GeomechGetLambdaMu(lambda,mu,youngs_mod,poissons_ratio)
     call Kron(B,identity,kron_B_eye)
     call Kron(transpose(B),identity,kron_B_transpose_eye)
@@ -2170,6 +2507,14 @@ subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
     stress_local = lambda*(strain_local(1,1)+ &
                    strain_local(5,1)+strain_local(9,1))*eye_vec + &
                    2*mu*strain_local
+    if (compute_stress_total) then
+      dT = local_temp(ivertex)
+      dP = local_press(ivertex)
+      ! Add the thermal stress
+      stress_local = stress_local - alpha * dT * eye_vec * (3*lambda +2*mu)
+      ! Add Biot's contribution
+      stress_local = stress_local - beta * dP * eye_vec
+    endif
     call ShapeFunctionDestroy(shapefunction)
     deallocate(kron_B_eye)
     deallocate(kron_B_transpose_eye)
