@@ -633,6 +633,10 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
   PetscErrorCode :: eos_henry_ierr
 
   PetscReal :: sigma, temp_psat
+  PetscReal, parameter :: SUPERCRITICAL_SAT_PRES = 1.d6
+  PetscReal, parameter :: SUPERCRITICAL_HENRY_COEFF = 0.26e9
+  PetscReal, parameter :: CRITICAL_TEMP = 374.d0
+
 
   ierr = 0
   eos_henry_ierr = 0
@@ -726,9 +730,14 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
 
       if (.not.option%flow%sat_pres_depends_on_salinity) then
         if (associated(gen_auxvar%d)) then
-          call EOSWaterSaturationPressure(gen_auxvar%temp, &
+          if (gen_auxvar%temp > CRITICAL_TEMP) then
+              print *, "Supercritical temperature detected. Returning Henry's constant from subcritical approximation."
+              gen_auxvar%pres(spid) = SUPERCRITICAL_SAT_PRES ! Define saturation pressure as pseudovalue, if used
+          else
+            call EOSWaterSaturationPressure(gen_auxvar%temp, &
                                           gen_auxvar%pres(spid), &
                                           gen_auxvar%d%psat_T,ierr)
+          endif
           gen_auxvar%d%psat_p = 0.d0
           call EOSGasHenry(gen_auxvar%temp,gen_auxvar%pres(spid), &
                             gen_auxvar%d%psat_p,gen_auxvar%d%psat_T, &
@@ -736,8 +745,13 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
                             eos_henry_ierr)
           gen_auxvar%d%Hc = K_H_tilde
         else
-          call EOSWaterSaturationPressure(gen_auxvar%temp, &
-                                          gen_auxvar%pres(spid),ierr)
+          if (gen_auxvar%temp > CRITICAL_TEMP) then
+              print *, "Supercritical temperature detected. Returning Henry's constant from subcritical approximation."
+              gen_auxvar%pres(spid) = SUPERCRITICAL_SAT_PRES ! Define saturation pressure as pseudovalue, if used
+          else
+              call EOSWaterSaturationPressure(gen_auxvar%temp, &
+                                              gen_auxvar%pres(spid),ierr)
+          endif
           !geh: Henry_air_xxx returns K_H in units of Pa, but I am
           !     not confident that K_H is truly K_H_tilde (i.e. p_g * K_H).
           call EOSGasHenry(gen_auxvar%temp,gen_auxvar%pres(spid),K_H_tilde, &
@@ -2909,6 +2923,7 @@ subroutine GeneralAuxVarUpdateState(x,gen_auxvar,global_auxvar, &
   type(material_auxvar_type) :: material_auxvar
 
   PetscReal, parameter :: epsilon = 0.d0
+  PetscReal, parameter :: CRITICAL_TEMP = 374.0d0
   PetscReal :: liq_epsilon, gas_epsilon, two_phase_epsilon
   PetscReal :: x(option%nflowdof)
   PetscReal :: Sg_new
@@ -2920,6 +2935,7 @@ subroutine GeneralAuxVarUpdateState(x,gen_auxvar,global_auxvar, &
 
   if (general_immiscible .or. gen_auxvar%istatechng) return
 
+  
   lid = option%liquid_phase
   gid = option%gas_phase
   apid = option%air_pressure_id
@@ -2969,7 +2985,9 @@ subroutine GeneralAuxVarUpdateState(x,gen_auxvar,global_auxvar, &
       endif
 
     case(GAS_STATE)
-      if (gen_auxvar%pres(vpid) >= gen_auxvar%pres(spid)* &
+      if (gen_auxvar%temp > CRITICAL_TEMP) then
+          global_auxvar%istate = GAS_STATE
+      else if (gen_auxvar%pres(vpid) >= gen_auxvar%pres(spid)* &
          (1.d0+window_epsilon)) then
 
         global_auxvar%istate = TWO_PHASE_STATE
@@ -2977,7 +2995,7 @@ subroutine GeneralAuxVarUpdateState(x,gen_auxvar,global_auxvar, &
         gas_flag = PETSC_TRUE
         istatechng = PETSC_TRUE
 
-!#ifdef DEBUG_GENERAL
+        !#ifdef DEBUG_GENERAL
 #ifdef DEBUG_GENERAL_INFO
         call GeneralPrintAuxVars(gen_auxvar,global_auxvar,material_auxvar, &
                                  natural_id,'Before Update',option)
@@ -2996,52 +3014,57 @@ subroutine GeneralAuxVarUpdateState(x,gen_auxvar,global_auxvar, &
       endif
 
     case(TWO_PHASE_STATE)
-      Sg_new = x(GENERAL_GAS_SATURATION_DOF)
-      if (Sg_new < 0.d0) then
-
-        global_auxvar%istate = LIQUID_STATE
-        two_phase_epsilon = general_phase_chng_epsilon
-        istatechng = PETSC_TRUE
-
-#ifdef DEBUG_GENERAL_INFO
-        call GeneralPrintAuxVars(gen_auxvar,global_auxvar,material_auxvar, &
-                                 natural_id,'Before Update',option)
-#endif
-        if (option%iflag == GENERAL_UPDATE_FOR_ACCUM) then
-          write(state_change_string,'(''2 Phase -> Liquid at Cell '',i8)') &
-            natural_id
-        else if (option%iflag == GENERAL_UPDATE_FOR_DERIVATIVE) then
-          write(state_change_string, &
-            '(''2 Phase -> Liquid at Cell (due to perturbation) '',i8)') &
-            natural_id
-        else
-          write(state_change_string,'(''2 Phase -> Liquid at Boundary Face '', &
-                                    & i8)') natural_id
-        endif
-
-      elseif (Sg_new > 1.d0 ) then
-
+      if (gen_auxvar%temp > CRITICAL_TEMP) then
         global_auxvar%istate = GAS_STATE
         two_phase_epsilon = general_phase_chng_epsilon
         istatechng = PETSC_TRUE
+      else
+        Sg_new = x(GENERAL_GAS_SATURATION_DOF)
+        if (Sg_new < 0.d0) then
+
+          global_auxvar%istate = LIQUID_STATE
+          two_phase_epsilon = general_phase_chng_epsilon
+          istatechng = PETSC_TRUE
 
 #ifdef DEBUG_GENERAL_INFO
-        call GeneralPrintAuxVars(gen_auxvar,global_auxvar,material_auxvar, &
-                                 natural_id,'Before Update',option)
+          call GeneralPrintAuxVars(gen_auxvar,global_auxvar,material_auxvar, &
+                                  natural_id,'Before Update',option)
 #endif
-        if (option%iflag == GENERAL_UPDATE_FOR_ACCUM) then
-          write(state_change_string,'(''2 Phase -> Gas at Cell '',i8)') &
-            natural_id
-        else if (option%iflag == GENERAL_UPDATE_FOR_DERIVATIVE) then
-          write(state_change_string, &
-            '(''2 Phase -> Gas at Cell (due to perturbation) '',i8)') &
-            natural_id
-        else
-          write(state_change_string,'(''2 Phase -> Gas at Boundary Face '', &
-                                    & i8)') natural_id
+          if (option%iflag == GENERAL_UPDATE_FOR_ACCUM) then
+            write(state_change_string,'(''2 Phase -> Liquid at Cell '',i8)') &
+              natural_id
+          else if (option%iflag == GENERAL_UPDATE_FOR_DERIVATIVE) then
+            write(state_change_string, &
+              '(''2 Phase -> Liquid at Cell (due to perturbation) '',i8)') &
+              natural_id
+          else
+            write(state_change_string,'(''2 Phase -> Liquid at Boundary Face '', &
+                                      & i8)') natural_id
+          endif
+
+        elseif (Sg_new > 1.d0 ) then
+
+          global_auxvar%istate = GAS_STATE
+          two_phase_epsilon = general_phase_chng_epsilon
+          istatechng = PETSC_TRUE
+
+#ifdef DEBUG_GENERAL_INFO
+          call GeneralPrintAuxVars(gen_auxvar,global_auxvar,material_auxvar, &
+                                  natural_id,'Before Update',option)
+#endif
+          if (option%iflag == GENERAL_UPDATE_FOR_ACCUM) then
+            write(state_change_string,'(''2 Phase -> Gas at Cell '',i8)') &
+              natural_id
+          else if (option%iflag == GENERAL_UPDATE_FOR_DERIVATIVE) then
+            write(state_change_string, &
+              '(''2 Phase -> Gas at Cell (due to perturbation) '',i8)') &
+              natural_id
+          else
+            write(state_change_string,'(''2 Phase -> Gas at Boundary Face '', &
+                                      & i8)') natural_id
+          endif
         endif
       endif
-
   end select
 
   !Update the primary variables

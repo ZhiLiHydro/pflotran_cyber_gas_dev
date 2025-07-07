@@ -34,10 +34,16 @@ SRC_DIR = ./
 # make option to search for source files in $SRC_DIR
 VPATH = $(SRC_DIR)
 
+debug = TRUE
 pflotran_src =
 common_src   =
 regression_test_dir = $(SRC_DIR)/../../regression_tests
 unit_test_dir = $(SRC_DIR)/unittests
+
+# path to CoolProp library
+COOLPROP_LIB_DIR = /usr/local/share/CoolProp/build/gccstatic/
+
+MYFLAGS = -I. -g
 
 # Import variables/options/rules from PETSc.
 include ${PETSC_DIR}/lib/petsc/conf/variables
@@ -51,7 +57,7 @@ PETSC_MAKE_STOP_ON_ERROR=
 # so that PFLOTRAN will be built with the same options as 
 # the petsc configured in $PETSC_DIR/$PETSC_ARCH
 
-MYFLAGS = -I. 
+#MYFLAGS = -I. 
 
 ###############################################################################
 # Preprocessor flags for special PFLOTRAN features/hacks
@@ -178,6 +184,10 @@ ifdef have_hdf5
 LIBS +=  -L${HDF5_LIB} -lhdf5_fortran -lhdf5 -lz 
 endif
 
+LIBS += -L$(COOLPROP_LIB_DIR) -lCoolProp -lstdc++
+#MYFLAGS += -I$(COOLPROP_LIB_DIR)
+
+
 # Set this accordingly on your platform
 # SCORPIO_DIR=${HOME}/soft/scorpio
 ifdef scorpio
@@ -245,7 +255,8 @@ CLEANFILES       = pflotran pflotran_rxn libpflotranchem.a make.log $(SRC_DIR)/p
 # approach of including the object files allows us to re-use the list in other
 # makefiles (e.g. clm-pflotran/makefile).
 include $(SRC_DIR)/pflotran_object_files.txt
-
+print_eos_obj:
+	@echo $(eos_obj)
 # End object file block
 
 ###############################################################################

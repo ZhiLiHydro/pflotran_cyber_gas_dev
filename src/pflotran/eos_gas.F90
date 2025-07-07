@@ -5,6 +5,7 @@ module EOS_Gas_module
 
   use PFLOTRAN_Constants_module
   use EOS_Database_module
+  use CoolProp_module
   use Utility_module, only : Equal
 
   implicit none
@@ -178,12 +179,15 @@ module EOS_Gas_module
             EOSGasSetEnergyIdeal, &
             EOSGasSetDensityRKS, &
             EOSGasSetDensityPRMethane, &
+            EOSGasSetDensityCoolProp, &
             EOSGasSetEnergyIdealMethane, &
             EOSGasSetFMWConstant, &
             EOSGasGetFMW, &
             EOSGasSetDensityConstant, &
             EOSGasSetEnergyConstant, &
+            EOSGasSetEnergyCoolProp, &
             EOSGasSetViscosityConstant, &
+            EOSGasSetViscosityCoolProp, &
             EOSGasSetHenry, &
             EOSGasSetHenryMethane, &
             EOSGasSetHenryConstant, &
@@ -248,9 +252,13 @@ subroutine EOSGasVerify(ierr,error_string)
         Initialized(constant_density)) .or. &
       (associated(EOSGasDensityPtr,EOSGasDensityRKS) .and. &
         Initialized(constant_density)) .or. &
+      (associated(EOSGasDensityPtr,EOSGasDensityCoolProp) .and. &
+        Initialized(constant_density)) .or. &
       (associated(EOSGasEnergyPtr,EOSGasEnergyIdeal) .and. &
+        Initialized(constant_enthalpy)) .or. &
+      (associated(EOSGasEnergyPtr,EOSGasEnergyCoolProp) .and. &
         Initialized(constant_enthalpy)) &
-     ) then
+    ) then
     ierr = 1
   endif
 
@@ -273,7 +281,10 @@ subroutine EOSGasVerify(ierr,error_string)
        Uninitialized(constant_viscosity)) .or. &
       (associated(EOSGasViscosityPtr, &
                   EOSGasViscosity1) .and. &
-       Initialized(constant_viscosity))) then
+       Initialized(constant_viscosity)) .or. &
+      (associated(EOSGasViscosityPtr, &
+                  EOSGasViscosityConstant)) &
+  ) then
     ierr = 1
   endif
 
@@ -1805,30 +1816,43 @@ subroutine EOSGasHenry_air(T,Psat,Hc,calculate_derivative, &
     PetscReal :: dTr_dT, dtau_dT, dtmp_dTr, dtmp_dtau
     PetscReal, parameter :: a=-9.67578d0, b=4.72162d0, c=11.70585d0 ! for N2
     PetscReal, parameter :: Tcw=647.096d0 ! H2O critical temp from IAPWS(1995b)
-
+    PetscReal, parameter :: SUPERCRITICAL_HENRY_COEFF = 0.26e9
+  
     TK = T+T273K
+    ! above the critical point Hendry's coefficient doesn't really make sense but
+    ! is needed to have a valid dissolved air mole fraction for the air diffusion
+    ! equation. For now we'll just set it at approximately the value just below
+    ! the critical point
     if ( TK > Tcw .or. TK < 0.0d0 ) then
-       ierr = EOS_GAS_TEMP_BOUND_EXCEEDED
-       TK = 299.999D0
-    end if
-    Tr = TK/Tcw
-    tau = 1.D0-Tr
-    !tmp = a/Tr + b * tau**0.355d0/Tr + c * (Tr**(-0.41d0)) * exp(tau)
-    tmpA = a/Tr
-    tmpB = b*(tau**0.355d0)/Tr
-    tmpC = c*(Tr**(-0.41d0))*exp(tau)
-    tmp = tmpA+tmpB+tmpC
-    Hc = exp(tmp)*Psat
-    if (calculate_derivative) then
-      dTr_dT = 1.d0/Tcw
-      dtau_dT = -1.d0*dTr_dT
-      dtmp_dTr = (-tmpA-tmpB-0.41d0*tmpC)/Tr
-      dtmp_dtau = 0.355d0*tmpB/tau+tmpC
-      Hc_T = Hc*((dtmp_dTr*dTr_dT+dtmp_dtau*dtau_dT)+Psat_T/Psat)
-!      tmp = ((-a/Tr+b*(-0.355d0*tau**(-0.645d0)-tau**0.355d0/Tr))/Tr - &
-!             c*exp(tau)*(tau**(-0.41d0))*(0.41d0/Tr-1.d0))/Tcw
-!      Hc_T = Hc*(tmp+Psat_T/Psat)
-      Hc_P = Psat_P*Hc/Psat
+      Hc = SUPERCRITICAL_HENRY_COEFF
+      print *, "Supercritical or invalid temperature detected. Using pseudo Henry's constant."
+      if (calculate_derivative) then
+        Hc_P = 0.0
+        Hc_T = 0.0
+      endif
+    else
+      !   ierr = EOS_GAS_TEMP_BOUND_EXCEEDED
+      !   TK = 299.999D0
+      !end if
+      Tr = TK/Tcw
+      tau = 1.D0-Tr
+      !tmp = a/Tr + b * tau**0.355d0/Tr + c * (Tr**(-0.41d0)) * exp(tau)
+      tmpA = a/Tr
+      tmpB = b*(tau**0.355d0)/Tr
+      tmpC = c*(Tr**(-0.41d0))*exp(tau)
+      tmp = tmpA+tmpB+tmpC
+      Hc = exp(tmp)*Psat
+      if (calculate_derivative) then
+        dTr_dT = 1.d0/Tcw
+        dtau_dT = -1.d0*dTr_dT
+        dtmp_dTr = (-tmpA-tmpB-0.41d0*tmpC)/Tr
+        dtmp_dtau = 0.355d0*tmpB/tau+tmpC
+        Hc_T = Hc*((dtmp_dTr*dTr_dT+dtmp_dtau*dtau_dT)+Psat_T/Psat)
+  !      tmp = ((-a/Tr+b*(-0.355d0*tau**(-0.645d0)-tau**0.355d0/Tr))/Tr - &
+  !             c*exp(tau)*(tau**(-0.41d0))*(0.41d0/Tr-1.d0))/Tcw
+  !      Hc_T = Hc*(tmp+Psat_T/Psat)
+        Hc_P = Psat_P*Hc/Psat
+      endif
     endif
 
 end subroutine EOSGasHenry_air
@@ -2063,6 +2087,11 @@ subroutine EOSGasInputRecord()
     write(id,'(a29)',advance='no') 'gas density: '
     write(id,'(a)') 'default, ideal'
   endif
+  if (associated(EOSGasDensityEnergyPtr,EOSGasDensityEnergyGeneral) .and. &
+      associated(EOSGasDensityPtr,EOSGasDensityCoolProp)) then
+    write(id,'(a29)',advance='no') 'gas density: '
+    write(id,'(a)') 'CoolProp air'
+  endif
 
   ! gas viscosity [Pa-s]
   if (associated(EOSGasViscosityPtr,EOSGasViscosityConstant)) then
@@ -2073,6 +2102,10 @@ subroutine EOSGasInputRecord()
   if (associated(EOSGasViscosityPtr,EOSGasViscosity1)) then
     write(id,'(a29)',advance='no') 'gas viscosity: '
     write(id,'(a)') 'default'
+  endif
+  if (associated(EOSGasViscosityPtr,EOSGasViscosityCoolProp)) then
+    write(id,'(a29)',advance='no') 'gas viscosity: '
+    write(id,'(a)') 'CoolProp Air'
   endif
 
   ! gas enthalpy [J/kmol]
@@ -2091,6 +2124,11 @@ subroutine EOSGasInputRecord()
       associated(EOSGasEnergyPtr,EOSGasEnergyIdealMethane)) then
     write(id,'(a29)',advance='no') 'gas enthalpy: '
     write(id,'(a)') 'ideal methane'
+  endif
+  if (associated(EOSGasDensityEnergyPtr,EOSGasDensityEnergyGeneral) .and. &
+      associated(EOSGasEnergyPtr,EOSGasEnergyCoolProp)) then
+    write(id,'(a29)',advance='no') 'gas enthalpy: '
+    write(id,'(a)') 'CoolProp air'
   endif
 
   ! henry's constant
@@ -2208,6 +2246,8 @@ subroutine EOSGasTest(temp_low,temp_high,pres_low,pres_high, &
     eos_density_name = 'Redlich-Kwong-Soave'
   else if (associated(EOSGasDensityPtr,EOSGasDensityPRMethane)) then
     eos_density_name = 'Peng-Robinson Methane'
+  else if (associated(EOSGasDensityPtr,EOSGasDensityCoolProp)) then
+    eos_density_name = 'CoolProp'
   else
     eos_density_name = 'Unknown'
   endif
@@ -2219,6 +2259,8 @@ subroutine EOSGasTest(temp_low,temp_high,pres_low,pres_high, &
     eos_energy_name = 'Ideal Gas Law'
   else if (associated(EOSGasEnergyPtr,EOSGasEnergyIdealMethane)) then
     eos_energy_name = 'Ideal Gas Law - Methane'
+  else if (associated(EOSGasEnergyPtr,EOSGasEnergyCoolProp)) then
+    eos_energy_name = 'CoolProp'
   else
     eos_energy_name = 'Unknown'
   endif
@@ -2228,6 +2270,8 @@ subroutine EOSGasTest(temp_low,temp_high,pres_low,pres_high, &
     eos_viscosity_name = 'Constant'
   else if (associated(EOSGasViscosityPtr,EOSGasViscosity1)) then
     eos_viscosity_name = 'Default'
+  else if (associated(EOSGasViscosityPtr,EOSGasViscosityCoolProp)) then
+    eos_viscosity_name = 'CoolProp'
   else
     eos_viscosity_name = 'Unknown'
   endif
@@ -2319,5 +2363,162 @@ subroutine EOSGasDBaseDestroy()
 end subroutine EOSGasDBaseDestroy
 
 ! ************************************************************************** !
+
+subroutine EOSGasDensityCoolProp(T,P,Rho_gas,dRho_dT,dRho_dP,ierr,table_idxs)
+
+  implicit none
+
+  PetscReal, intent(in) :: T        ! temperature [C]
+  PetscReal, intent(in) :: P        ! pressure [Pa]
+  PetscReal, intent(out) :: Rho_gas ! gas density [kmol/m^3]
+  PetscReal, intent(out) :: dRho_dT ! derivative gas density wrt temperature
+  PetscReal, intent(out) :: dRho_dP ! derivative gas density wrt pressure
+  PetscErrorCode, intent(out) :: ierr
+  PetscInt, pointer, optional, intent(inout) :: table_idxs(:)
+
+  character(LEN=32) fluid, out1, n1, n2
+  PetscReal :: T_K
+
+  T_K = T + T273K
+
+  out1 = "D"//CHAR(0)
+  n1 = "T"//CHAR(0)
+  n2 = "P"//CHAR(0)
+  fluid = "Air"//CHAR(0)
+
+  Rho_gas = PropsSI(out1, n1, T_K, n2, P, fluid)
+
+  out1 = "d(D)/d(T)|P"//CHAR(0)
+  dRho_dT = PropsSI(out1, n1, T_K, n2, P, fluid)
+
+  out1 = "d(D)/d(P)|T"//CHAR(0)
+  dRho_dP = PropsSI(out1, n1, T_K, n2, P, fluid)
+
+end subroutine EOSGasDensityCoolProp
+
+subroutine EOSGasEnergyCoolProp(T,P,H,dH_dT,dH_dP,U,dU_dT,dU_dP,ierr)
+
+  implicit none
+
+  PetscReal, intent(in) :: T        ! temperature [C]
+  PetscReal, intent(in) :: P        ! pressure [Pa]
+  PetscReal, intent(out) :: H       ! enthalpy [J/kmol]
+  PetscReal, intent(out) :: dH_dT   ! derivative enthalpy wrt temperature
+  PetscReal, intent(out) :: dH_dP   ! derivative enthalpy wrt pressure
+  PetscReal, intent(out) :: U       ! internal energy [J/kmol]
+  PetscReal, intent(out) :: dU_dT   ! deriv. internal energy wrt temperature
+  PetscReal, intent(out) :: dU_dP   ! deriv. internal energy wrt pressure
+  PetscErrorCode, intent(out) :: ierr
+
+  character(LEN=32) fluid, out1, n1, n2
+  PetscReal :: T_K
+
+  T_K = T + T273K
+
+  out1 = "H"//CHAR(0)
+  n1 = "T"//CHAR(0)
+  n2 = "P"//CHAR(0)
+  fluid = "Air"//CHAR(0)
+
+  H = PropsSI(out1, n1, T_K, n2, P, fluid)
+
+  out1 = "d(H)/d(T)|P"//CHAR(0)
+  dH_dT = PropsSI(out1, n1, T_K, n2, P, fluid)
+
+  out1 = "d(H)/d(P)|T"//CHAR(0)
+  dH_dP = PropsSI(out1, n1, T_K, n2, P, fluid)
+
+  out1 = "U"//CHAR(0)
+  U = PropsSI(out1, n1, T_K, n2, P, fluid)
+
+  out1 = "d(U)/d(T)|P"//CHAR(0)
+  dU_dT = PropsSI(out1, n1, T_K, n2, P, fluid)
+
+  out1 = "d(U)/d(P)|T"//CHAR(0)
+  dU_dP = PropsSI(out1, n1, T_K, n2, P, fluid)
+
+end subroutine EOSGasEnergyCoolProp
+
+
+subroutine EOSGasSetDensityCoolProp()
+
+  implicit none
+
+  EOSGasDensityEnergyPtr => EOSGasDensityEnergyGeneral
+  EOSGasDensityPtr => EOSGasDensityCoolProp
+
+end subroutine EOSGasSetDensityCoolProp
+
+subroutine EOSGasSetEnergyCoolProp()
+
+  implicit none
+
+  EOSGasDensityEnergyPtr => EOSGasDensityEnergyGeneral
+  EOSGasEnergyPtr => EOSGasEnergyCoolProp
+
+end subroutine EOSGasSetEnergyCoolProp
+
+subroutine EOSGasViscosityCoolProp(T, P_comp, P_gas, Rho_comp, V_mix, &
+                                   calculate_derivative, dV_dT, dV_dPcomp, &
+                                   dV_dPgas, dV_dRhocomp, ierr, table_idxs)
+
+  implicit none
+
+  PetscReal, intent(in) :: T            ! temperature [C]
+  PetscReal, intent(in) :: P_comp       ! air pressure [Pa]
+  PetscReal, intent(in) :: P_gas        ! gas pressure [Pa]
+  PetscReal, intent(in) :: Rho_comp     ! air density [C]
+  PetscReal, intent(out) :: V_mix       ! mixture viscosity
+  PetscBool, intent(in) :: calculate_derivative
+  PetscReal, intent(out) :: dV_dT       ! derivative wrt temperature
+  PetscReal, intent(out) :: dV_dPcomp   ! derivative wrt component pressure
+  PetscReal, intent(out) :: dV_dPgas    ! derivative wrt gas pressure
+  PetscReal, intent(out) :: dV_dRhocomp ! derivative wrt component density
+  PetscErrorCode, intent(out) :: ierr
+  PetscInt, pointer, optional, intent(inout) :: table_idxs(:)
+
+  ! we'll need to think through this. CoolProp has a humid air model
+  ! that we can directly use and it is stated to be valid up to 350C
+  ! beyond that I can get the viscosity of dry air and steam up to very
+  ! high temperatures and pressures. They interact such that the viscosity
+  ! of the mixture is still difficult to determine, but maybe we could
+  ! do something sensible.
+
+  ! for now we use the HumidAir model below 350 C and pure air above 350 C
+
+  character(LEN=32) fluid, out1, n1, n2, n3
+  PetscReal :: T_K
+
+  T_K = T + T273K
+
+  if (T .LT. 350.0) then
+
+    out1 = "V"//CHAR(0)
+    n1 = "T"//CHAR(0)
+    n2 = "P"//CHAR(0)
+    n3 = "P_w"//CHAR(0)
+
+    V_mix = HAPropsSI(out1, n1, T_K, n2, P_gas, n3, P_comp)
+  else
+
+    out1 = "V"//CHAR(0)
+    n1 = "T"//CHAR(0)
+    n2 = "P"//CHAR(0)
+    fluid = "Air"//CHAR(0)
+
+    V_mix = PropsSI(out1, n1, T_K, n2, P_gas, fluid)
+
+  endif
+!c======================================================================
+
+end subroutine EOSGasViscosityCoolProp
+
+subroutine EOSGasSetViscosityCoolProp()
+
+  implicit none
+
+  EOSGasViscosityPtr => EOSGasViscosityCoolProp
+
+end subroutine EOSGasSetViscosityCoolProp
 
 end module EOS_Gas_module

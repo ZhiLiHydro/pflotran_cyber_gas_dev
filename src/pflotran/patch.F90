@@ -2010,14 +2010,16 @@ subroutine PatchUpdateCouplerAuxVarsG(patch,coupler,option)
                 if (general_immiscible) then
                   air_pressure = gas_pressure - GENERAL_IMMISCIBLE_VALUE
                 endif
-                call EOSWaterSaturationPressure(temperature,p_sat,ierr)
-                if (gas_pressure - air_pressure >= p_sat) then
-                  option%io_buffer = 'MOLE_FRACTION set in flow &
-                    &condition "' // trim(flow_condition%name) // &
-                    '" results in a vapor pressure exceeding the water &
-                    &saturation pressure, which indicates that a two-phase &
-                    &state with GAS_PRESSURE and GAS_SATURATION should be used.'
-                  call PrintErrMsg(option)
+                if (temperature < 374.0d0) then
+                  call EOSWaterSaturationPressure(temperature,p_sat,ierr)
+                  if (gas_pressure - air_pressure >= p_sat) then
+                    option%io_buffer = 'MOLE_FRACTION set in flow &
+                      &condition "' // trim(flow_condition%name) // &
+                      '" results in a vapor pressure exceeding the water &
+                      &saturation pressure, which indicates that a two-phase &
+                      &state with GAS_PRESSURE and GAS_SATURATION should be used.'
+                    call PrintErrMsg(option)
+                  endif
                 endif
                 if (general_gas_air_mass_dof == GENERAL_AIR_PRESSURE_INDEX) then
                   coupler%flow_aux_real_var(THREE_INTEGER,iconn) = air_pressure

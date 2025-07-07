@@ -387,6 +387,7 @@ eos.o : \
   eos_database.o \
   eos_gas.o \
   eos_water.o \
+  coolprop_module.o \
   input_aux.o \
   option.o \
   pflotran_constants.o \

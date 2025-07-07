@@ -171,7 +171,7 @@ subroutine EOSRead(input,option)
                 enddo
                 call InputPopBlock(input,option)
               case('IFC67','DEFAULT','BATZLE_AND_WANG','TGDPB01','PLANAR', &
-                              'TRANGENSTEIN','IF97','SPARROW','DRIESNER')
+                              'TRANGENSTEIN','IF97','SPARROW','DRIESNER','COOLPROP')
               case default
                 call InputKeywordUnrecognized(input,word,'EOS,WATER,DENSITY',option)
             end select
@@ -187,7 +187,7 @@ subroutine EOSRead(input,option)
                                    'EOS,WATER,ENTHALPY,CONSTANT')
                 call InputReadAndConvertUnits(input,temparray(1), &
                                'J/kmol','EOS,WATER,ENTHALPY,CONSTANT',option)
-              case('IFC67','PAINTER','DEFAULT','PLANAR','IF97')
+              case('IFC67','PAINTER','DEFAULT','PLANAR','IF97','COOLPROP')
               case('SPARROW','DRIESNER')
                 option%flow%enthalpy_depends_on_salinity = PETSC_TRUE
               case default
@@ -206,7 +206,7 @@ subroutine EOSRead(input,option)
                                    'EOS,WATER,VISCOSITY,CONSTANT')
                 call InputReadAndConvertUnits(input,temparray(1), &
                               'Pa-s','EOS,WATER,VISCOSITY,CONSTANT',option)
-              case('DEFAULT','BATZLE_AND_WANG','GRABOWSKI','KESTIN')
+              case('DEFAULT','BATZLE_AND_WANG','GRABOWSKI','KESTIN','COOLPROP')
               case default
                 call InputKeywordUnrecognized(input,word, &
                                               'EOS,WATER,VISCOSITY', &
@@ -224,7 +224,7 @@ subroutine EOSRead(input,option)
                                    'EOS,WATER,STEAM_DENSITY,CONSTANT')
                 call InputReadAndConvertUnits(input,temparray(1), &
                            'kg/m^3','EOS,WATER,STEAM_DENSITY,CONSTANT',option)
-              case('IFC67','DEFAULT','PLANAR','IF97')
+              case('IFC67','DEFAULT','PLANAR','IF97','COOLPROP')
               case default
                 call InputKeywordUnrecognized(input,word, &
                                               'EOS,WATER,STEAM_DENSITY', &
@@ -242,7 +242,7 @@ subroutine EOSRead(input,option)
                                    'EOS,WATER,STEAM_ENTHALPY,CONSTANT')
                 call InputReadAndConvertUnits(input,temparray(1), &
                         'J/kmol','EOS,WATER,STEAM_ENTHALPY,CONSTANT',option)
-              case('IFC67','DEFAULT','PLANAR','IF97')
+              case('IFC67','DEFAULT','PLANAR','IF97','COOLPROP')
               case default
                 call InputKeywordUnrecognized(input,word, &
                        'EOS,WATER,STEAM_ENTHALPY',option)
@@ -266,7 +266,7 @@ subroutine EOSRead(input,option)
             select case(trim(word))
               case('HAAS','SPARROW')
                 option%flow%sat_pres_depends_on_salinity = PETSC_TRUE
-              case('IFC67','IF97','WAGNER_AND_PRUSS','HUANG-ICE','ICE')
+              case('IFC67','IF97','WAGNER_AND_PRUSS','HUANG-ICE','ICE','COOLPROP')
               case default
                 call InputKeywordUnrecognized(input,word, &
                        'EOS,WATER,SATURATION_PRESSURE', &
@@ -440,6 +440,8 @@ subroutine EOSRead(input,option)
                 call EOSGasSetDensityPRMethane()
               case('IDEAL','DEFAULT')
                 call EOSGasSetDensityIdeal()
+              case('COOLPROP')
+                call EOSGasSetDensityCoolProp()
               case default
                 call InputKeywordUnrecognized(input,word, &
                                               'EOS,GAS,DENSITY',option)
@@ -460,6 +462,8 @@ subroutine EOSRead(input,option)
                 call EOSGasSetEnergyIdealMethane()
               case('IDEAL','DEFAULT')
                 call EOSGasSetEnergyIdeal()
+              case('COOLPROP')
+                call EOSGasSetEnergyCoolProp()
               case default
                 call InputKeywordUnrecognized(input,word, &
                                               'EOS,GAS,ENTHALPY',option)
@@ -477,6 +481,8 @@ subroutine EOSRead(input,option)
                                  'Pa-s','EOS,GAS,VISCOSITY,CONSTANT',option)
                 call EOSGasSetViscosityConstant(tempreal)
               case('DEFAULT')
+              case('COOLPROP')
+                call EOSGasSetViscosityCoolProp()
               case default
                 call InputKeywordUnrecognized(input,word, &
                                               'EOS,GAS,VISCOSITY',option)

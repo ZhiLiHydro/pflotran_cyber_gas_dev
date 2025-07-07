@@ -5,7 +5,7 @@ module EOS_Water_module
   use PFLOTRAN_Constants_module
   use Geometry_module
   use EOS_Database_module
-
+  use CoolProp_module
   implicit none
 
   private
@@ -506,6 +506,8 @@ subroutine EOSWaterSetDensity(keyword,aux)
       EOSWaterDensityExtPtr => EOSWaterDensitySparrowExt
     case('DRIESNER')
       EOSWaterDensityExtPtr => EOSWaterDensityDriesnerExt
+    case('COOLPROP')
+      EOSWaterDensityPtr => EOSWaterDensityCoolProp
     case default
       print *, 'Unknown pointer type "' // trim(keyword) // &
         '" in EOSWaterSetDensity().'
@@ -570,6 +572,8 @@ subroutine EOSWaterSetEnthalpy(keyword,aux)
       EOSWaterEnthalpyExtPtr => EOSWaterEnthalpySparrowExt
     case('DRIESNER')
       EOSWaterEnthalpyExtPtr => EOSWaterEnthalpyDriesnerExt
+    case('COOLPROP')
+      EOSWaterEnthalpyPtr => EOSWaterEnthalpyCoolProp
     case default
       print *, 'Unknown pointer type "' // trim(keyword) // &
         '" in EOSWaterSetEnthalpy().'
@@ -602,6 +606,8 @@ subroutine EOSWaterSetViscosity(keyword,aux)
       EOSWaterViscosityExtPtr => EOSWaterViscosityKestinExt
     case('GRABOWSKI')
       EOSWaterViscosityPtr => EOSWaterViscosityGrabowski
+    case('COOLPROP')
+      EOSWaterViscosityPtr => EOSWaterViscosityCoolProp
     case default
       print *, 'Unknown pointer type "' // trim(keyword) // &
         '" in EOSWaterSetViscosity().'
@@ -632,6 +638,8 @@ subroutine EOSWaterSetSaturationPressure(keyword,aux)
       EOSWaterSaturationPressureExtPtr => EOSWaterSatPressSparrowExt
     case('HUANG-ICE','ICE')
       EOSWaterSaturationPressurePtr => EOSWaterSaturationPressureIce
+    case('COOLPROP')
+      EOSWaterSaturationPressurePtr => EOSWaterSatPresCoolProp
     case default
       print *, 'Unknown pointer type "' // trim(keyword) // &
         '" in EOSWaterSetSaturationPressure().'
@@ -660,6 +668,8 @@ subroutine EOSWaterSetSteamDensity(keyword,aux)
       EOSWaterSteamDensityEnthalpyPtr => EOSWaterSteamDensityEnthalpyIFC67
     case('IF97')
       EOSWaterSteamDensityEnthalpyPtr => EOSWaterSteamDensityEnthalpyIF97
+    case('COOLPROP')
+      EOSWaterSteamDensityEnthalpyPtr => EOSWaterSteamDensityEnthalpyCoolProp
     case default
       print *, 'Unknown pointer type "' // trim(keyword) // &
         '" in EOSWaterSetSteamDensity().'
@@ -688,6 +698,8 @@ subroutine EOSWaterSetSteamEnthalpy(keyword,aux)
       EOSWaterSteamDensityEnthalpyPtr => EOSWaterSteamDensityEnthalpyIFC67
     case('IF97')
       EOSWaterSteamDensityEnthalpyPtr => EOSWaterSteamDensityEnthalpyIF97
+    case('COOLPROP')
+      EOSWaterSteamDensityEnthalpyPtr => EOSWaterSteamDensityEnthalpyCoolProp
     case default
       print *, 'Unknown pointer type "' // trim(keyword) // &
         '" in EOSWaterSetSteamEnthalpy().'
@@ -6233,5 +6245,193 @@ subroutine EOSWaterKelvin(Pc,rhow,T,Psat,Pv)
 end subroutine EOSWaterKelvin
 
 ! ************************************************************************** !
+
+subroutine EOSWaterDensityCoolProp(T,P,calculate_derivatives,dw,dwmol, &
+                                   dwp,dwt,ierr,table_idxs)
+
+  implicit none
+
+  PetscReal, intent(in) :: T   ! Temperature in centigrade
+  PetscReal, intent(in) :: P   ! Pressure in Pascals
+  PetscBool, intent(in) :: calculate_derivatives
+  PetscReal, intent(out) :: dw,dwmol,dwp,dwt
+  PetscErrorCode, intent(inout) :: ierr
+  PetscInt, pointer, optional, intent(inout) :: table_idxs(:)
+
+  character(LEN=32) fluid, out1, n1, n2
+  PetscReal :: T_K
+
+  T_K = T + T273K
+  out1 = "D"//CHAR(0)
+  n1 = "T"//CHAR(0)
+  n2 = "P"//CHAR(0)
+  fluid = "Water"//CHAR(0)
+
+  dw = PropsSI(out1, n1, T_K, n2, P, fluid)
+  dwmol = dw/FMWH2O
+
+  if (calculate_derivatives) then
+    out1 = "d(D)/d(T)|P"//CHAR(0)
+    dwt = PropsSI(out1, n1, T_K, n2, P, fluid)
+    out1 = "d(D)/d(P)|T"//CHAR(0)
+    dwp = PropsSI(out1, n1, T_K, n2, P, fluid)
+  else
+    dwt = UNINITIALIZED_DOUBLE
+    dwp = UNINITIALIZED_DOUBLE
+  endif
+end subroutine
+
+subroutine EOSWaterEnthalpyCoolProp(t,p,calculate_derivatives,hw, &
+                                    hwp,hwt,ierr)
+  implicit none
+
+  PetscReal, intent(in) :: t   ! Temperature in centigrade
+  PetscReal, intent(in) :: p   ! Pressure in Pascals
+  PetscBool, intent(in) :: calculate_derivatives
+  PetscReal, intent(out) :: hw,hwp,hwt
+  PetscErrorCode, intent(inout) :: ierr
+
+  character(LEN=32) fluid, out1, n1, n2
+  PetscReal :: T_K
+
+  T_K = T + T273K
+  out1 = "H"//CHAR(0)
+  n1 = "T"//CHAR(0)
+  n2 = "P"//CHAR(0)
+  fluid = "Water"//CHAR(0)
+
+  hw = PropsSI(out1, n1, T_K, n2, P, fluid)
+
+  if (calculate_derivatives) then
+    out1 = "d(H)/d(T)|P"//CHAR(0)
+    hwt = PropsSI(out1, n1, T_K, n2, P, fluid)
+    out1 = "d(H)/d(P)|T"//CHAR(0)
+    hwp = PropsSI(out1, n1, T_K, n2, P, fluid)
+  else
+    hwt = UNINITIALIZED_DOUBLE
+    hwp = UNINITIALIZED_DOUBLE
+  endif
+end subroutine
+
+subroutine EOSWaterViscosityCoolProp(T, P, PS, dPS_dT, &
+                                     calculate_derivatives, VW, &
+                                     dVW_dT, dVW_dP, ierr,table_idxs)
+  
+  implicit none
+  
+  PetscReal, intent(in) :: T       ! C
+  PetscReal, intent(in) :: P       ! Pa
+  PetscReal, intent(in) :: PS      ! Pa
+  PetscReal, intent(in) :: dPS_dT  ! Pa/C
+  PetscBool, intent(in) :: calculate_derivatives
+  PetscReal, intent(out) :: VW     ! Pa-s
+  PetscReal, intent(out) :: dVW_dT, dVW_dP
+  PetscErrorCode, intent(inout) :: ierr
+  PetscInt, pointer, optional, intent(inout) :: table_idxs(:)
+
+  character(LEN=32) fluid, out1, n1, n2
+  PetscReal :: T_K
+
+  T_K = T + T273K
+  out1 = "V"//CHAR(0)
+  n1 = "T"//CHAR(0)
+  n2 = "P"//CHAR(0)
+  fluid = "Water"//CHAR(0)
+
+  VW = PropsSI(out1, n1, T_K, n2, P, fluid)
+
+  if (calculate_derivatives) then
+    out1 = "d(V)/d(T)|P"//CHAR(0)
+    dVW_dT = PropsSI(out1, n1, T_K, n2, P, fluid)
+    out1 = "d(V)/d(P)|T"//CHAR(0)
+    dVW_dP = PropsSI(out1, n1, T_K, n2, P, fluid)
+  else
+    dVW_dT = UNINITIALIZED_DOUBLE
+    dVW_dP = UNINITIALIZED_DOUBLE
+  endif
+end subroutine
+
+subroutine EOSWaterSatPresCoolProp(T, calculate_derivatives, &
+                                   PS, dPS_dT, ierr)
+  
+  implicit none
+
+  PetscReal, intent(in) :: T ! temperature
+  PetscBool, intent(in) :: calculate_derivatives
+  PetscReal, intent(out) :: PS, dPS_dT ! Saturation pres. and derivative
+  PetscErrorCode, intent(inout) :: ierr
+
+  character(LEN=32) fluid, out1, n1, n2
+  PetscReal :: T_K, Q
+
+  ierr = 0
+
+  if (T>374.0d0) then
+    print *, 'saturation pressure of water is undefined under supercritical temperatures (>=374 C) '
+    ierr = 1
+  endif
+
+  Q = 1.0
+  T_K = T + T273K
+  out1 = "P"//CHAR(0)
+  n1 = "T"//CHAR(0)
+  n2 = "Q"//CHAR(0)
+  fluid = "Water"//CHAR(0)
+
+  PS = PropsSI(out1, n1, T_K, n2, Q, fluid)
+
+  if (calculate_derivatives) then
+    out1 = "d(P)/d(T)|P"//CHAR(0)
+    dPS_dT = PropsSI(out1, n1, T_K, n2, Q, fluid)
+  else
+    dPS_dT = UNINITIALIZED_DOUBLE
+  endif
+end subroutine
+
+subroutine EOSWaterSteamDensityEnthalpyCoolProp(t,pv,calculate_derivatives, &
+                                                dg,dgmol,hg, &
+                                                dgp,dgt,hgp,hgt,ierr)
+! t/C  p/Pa dgmol/(mol/m^3)  h/J/kmol
+  implicit none
+
+  PetscReal, intent(in) :: t   ! Temperature in centigrade.
+  PetscReal, intent(in) :: pv  ! Vapor Pressure in Pascals.
+  PetscBool, intent(in) :: calculate_derivatives
+  PetscReal, intent(out) :: dg,dgmol,dgp,dgt
+  PetscReal, intent(out) :: hg,hgp,hgt
+  PetscErrorCode, intent(inout) :: ierr
+  
+  character(LEN=32) fluid, out1, n1, n2
+  PetscReal :: T_K
+
+  T_K = T + T273K
+  out1 = "D"//CHAR(0)
+  n1 = "T"//CHAR(0)
+  n2 = "P"//CHAR(0)
+  fluid = "Water"//CHAR(0)
+
+  dg = PropsSI(out1, n1, T_K, n2, pv, fluid)
+  dgmol = dg/FMWH2O
+
+  out1 = "H"//CHAR(0)
+  hg = PropsSI(out1, n1, T_K, n2, pv, fluid)
+
+  if (calculate_derivatives) then
+    out1 = "d(D)/d(P)|T"//CHAR(0)
+    dgp = PropsSI(out1, n1, T_K, n2, pv, fluid)
+    out1 = "d(D)/d(T)|P"//CHAR(0)
+    dgt = PropsSI(out1, n1, T_K, n2, pv, fluid)
+    out1 = "d(H)/d(P)|T"//CHAR(0)
+    hgp = PropsSI(out1, n1, T_K, n2, pv, fluid)
+    out1 = "d(H)/d(T)|P"//CHAR(0)
+    hgt = PropsSI(out1, n1, T_K, n2, pv, fluid)
+  else
+    dgp = UNINITIALIZED_DOUBLE
+    dgt = UNINITIALIZED_DOUBLE
+    hgp = UNINITIALIZED_DOUBLE
+    hgt = UNINITIALIZED_DOUBLE
+  endif
+end subroutine EOSWaterSteamDensityEnthalpyCoolProp
+
 
 end module EOS_Water_module
