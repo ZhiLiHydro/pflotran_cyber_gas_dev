@@ -55,11 +55,8 @@ subroutine CondControlAssignFlowInitCond(realization)
   use WIPP_Flow_Aux_module, wf_dof_to_primary_variable => dof_to_primary_variable
   use Hydrate_Aux_module, hyd_dof_to_primary_variable => dof_to_primary_variable
   use SCO2_Aux_module, sco2_dof_to_primary_variable => dof_to_primary_variable
-<<<<<<< HEAD
   use Richards_Aux_module
-=======
   use TH_Aux_module
->>>>>>> ee72b3d3c (increased DoFs when there is a well and set up problem)
 
   implicit none
 
@@ -1259,67 +1256,52 @@ subroutine CondControlAssignFlowInitCond(realization)
 
         call VecRestoreArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
 
-<<<<<<< HEAD
-      case(RICHARDS_MODE)
-          ! assign initial conditions values to domain
-        call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-
-        xx_p = UNINITIALIZED_DOUBLE
-
-        initial_condition => patch%initial_condition_list%first
-        do
-
-          if (.not.associated(initial_condition)) exit
-
-          dataset_flag = PETSC_FALSE
-          dataset =>  initial_condition%flow_condition% &
-                            sub_condition_ptr(RICHARDS_PRESSURE_DOF)%ptr%dataset
-=======
       case(TH_MODE)
         ! assign initial conditions values to domain
         call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+
         xx_p = UNINITIALIZED_DOUBLE
+
         initial_condition => patch%initial_condition_list%first
         do
+
           if (.not.associated(initial_condition)) exit
+
           dataset_flag = PETSC_FALSE
-          dataset =>  initial_condition%flow_condition% &
-                            sub_condition_ptr(TH_PRESSURE_DOF)%ptr%dataset
->>>>>>> ee72b3d3c (increased DoFs when there is a well and set up problem)
-          select type(dataset_ptr => dataset)
-            class is(dataset_gridded_hdf5_type)
-              ! already mapped to flow_aux_real_var
-              if (.not.associated(initial_condition%flow_aux_real_var)) then
-                option%io_buffer = 'A gridded dataset is being &
-                  &used with ' // trim(option%flowmode) // &
-                  ', yet flow_aux_real_var is not allocated.'
-                call PrintErrMsgToDev(option,'')
+          do idof = 1, option%nflowdof
+            if (th_well_coupling == TH_FULLY_IMPLICIT_WELL) then
+              if (idof /= option%nflowdof) then
+                dataset =>  initial_condition%flow_condition% &
+                              sub_condition_ptr(idof)%ptr%dataset
+              else 
+                dataset =>  initial_condition%flow_condition% &
+                              sub_condition_ptr(ONE_INTEGER)%ptr%dataset
               endif
-            class is(dataset_common_hdf5_type)
-<<<<<<< HEAD
-              dataset_flag(RICHARDS_PRESSURE_DOF) = PETSC_TRUE
-=======
-              dataset_flag(TH_PRESSURE_DOF) = PETSC_TRUE
->>>>>>> ee72b3d3c (increased DoFs when there is a well and set up problem)
-              call VecRestoreArrayF90(field%flow_xx,xx_p, &
-                                      ierr);CHKERRQ(ierr)
-              do idof = 1, option%nflowdof
+            else
+                dataset =>  initial_condition%flow_condition% &
+                              sub_condition_ptr(idof)%ptr%dataset
+            endif
+
+            select type(dataset_ptr => dataset)
+              class is(dataset_gridded_hdf5_type)
+                ! already mapped to flow_aux_real_var
+                if (.not.associated(initial_condition%flow_aux_real_var)) then
+                  option%io_buffer = 'A gridded dataset is being &
+                    &used with ' // trim(option%flowmode) // &
+                    ', yet flow_aux_real_var is not allocated.'
+                  call PrintErrMsgToDev(option,'')
+                endif
+              class is(dataset_common_hdf5_type)
+                dataset_flag(idof) = PETSC_TRUE
+                call VecRestoreArrayF90(field%flow_xx,xx_p, &
+                                        ierr);CHKERRQ(ierr)
                 call ConditionControlMapDatasetToVec(realization, &
                         initial_condition%flow_condition% &
-<<<<<<< HEAD
-                        sub_condition_ptr(RICHARDS_PRESSURE_DOF)%ptr%dataset, &
-=======
-                        sub_condition_ptr(TH_PRESSURE_DOF)%ptr%dataset, &
->>>>>>> ee72b3d3c (increased DoFs when there is a well and set up problem)
-                        idof,field%flow_xx,GLOBAL)
-              enddo
-              call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-          end select
-<<<<<<< HEAD
-
-=======
-        
->>>>>>> ee72b3d3c (increased DoFs when there is a well and set up problem)
+                          sub_condition_ptr(idof)%ptr%dataset,idof, &
+                        field%flow_xx,GLOBAL)
+                call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+            end select
+          enddo
           if (.not.associated(initial_condition%flow_aux_real_var) .and. &
               .not.associated(initial_condition%flow_condition)) then
             option%io_buffer = 'Flow condition is NULL in initial condition'
@@ -1345,30 +1327,29 @@ subroutine CondControlAssignFlowInitCond(realization)
             endif
             if (associated(initial_condition%flow_aux_real_var)) then
               do idof = 1, option%nflowdof
-<<<<<<< HEAD
-                if (.not.dataset_flag(RICHARDS_PRESSURE_DOF)) then
+                if (.not.dataset_flag(idof)) then
                   xx_p(ibegin+idof-1) =  &
-                    initial_condition%flow_aux_real_var(RICHARDS_PRESSURE_DOF,iconn)
-=======
-                if (.not.dataset_flag(TH_PRESSURE_DOF)) then
-                  xx_p(ibegin+idof-1) =  &
-                    initial_condition%flow_aux_real_var(TH_PRESSURE_DOF,iconn)
->>>>>>> ee72b3d3c (increased DoFs when there is a well and set up problem)
+                    initial_condition%flow_aux_real_var(idof,iconn)
                 endif
               enddo
             else
               do idof = 1, option%nflowdof
-<<<<<<< HEAD
-                if (.not.dataset_flag(RICHARDS_PRESSURE_DOF)) then
-                  xx_p(ibegin+idof-1) = &
-                    initial_condition%flow_condition% &
-                      sub_condition_ptr(RICHARDS_PRESSURE_DOF)%ptr%dataset%rarray(1)
-=======
-                if (.not.dataset_flag(TH_PRESSURE_DOF)) then
-                  xx_p(ibegin+idof-1) = &
-                    initial_condition%flow_condition% &
-                      sub_condition_ptr(TH_PRESSURE_DOF)%ptr%dataset%rarray(1)
->>>>>>> ee72b3d3c (increased DoFs when there is a well and set up problem)
+                if (.not.dataset_flag(idof)) then
+                  if (th_well_coupling == TH_FULLY_IMPLICIT_WELL) then
+                    if (idof /= option%nflowdof) then
+                      xx_p(ibegin+idof-1) = &
+                        initial_condition%flow_condition% &
+                          sub_condition_ptr(idof)%ptr%dataset%rarray(1)
+                    else
+                      xx_p(ibegin+idof-1) = &
+                        initial_condition%flow_condition% &
+                          sub_condition_ptr(ONE_INTEGER)%ptr%dataset%rarray(1)
+                    endif
+                  else
+                    xx_p(ibegin+idof-1) = &
+                        initial_condition%flow_condition% &
+                          sub_condition_ptr(idof)%ptr%dataset%rarray(1)
+                  endif
                 endif
               enddo
             endif
@@ -1378,10 +1359,89 @@ subroutine CondControlAssignFlowInitCond(realization)
           initial_condition => initial_condition%next
         enddo
         call VecRestoreArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-<<<<<<< HEAD
-=======
+      
+      case(RICHARDS_MODE)
+          ! assign initial conditions values to domain
+        call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
 
->>>>>>> ee72b3d3c (increased DoFs when there is a well and set up problem)
+        xx_p = UNINITIALIZED_DOUBLE
+
+        initial_condition => patch%initial_condition_list%first
+        do
+
+          if (.not.associated(initial_condition)) exit
+
+          dataset_flag = PETSC_FALSE
+          dataset =>  initial_condition%flow_condition% &
+                            sub_condition_ptr(RICHARDS_PRESSURE_DOF)%ptr%dataset
+          select type(dataset_ptr => dataset)
+            class is(dataset_gridded_hdf5_type)
+              ! already mapped to flow_aux_real_var
+              if (.not.associated(initial_condition%flow_aux_real_var)) then
+                option%io_buffer = 'A gridded dataset is being &
+                  &used with ' // trim(option%flowmode) // &
+                  ', yet flow_aux_real_var is not allocated.'
+                call PrintErrMsgToDev(option,'')
+              endif
+            class is(dataset_common_hdf5_type)
+              dataset_flag(RICHARDS_PRESSURE_DOF) = PETSC_TRUE
+              call VecRestoreArrayF90(field%flow_xx,xx_p, &
+                                      ierr);CHKERRQ(ierr)
+              do idof = 1, option%nflowdof
+                call ConditionControlMapDatasetToVec(realization, &
+                        initial_condition%flow_condition% &
+                        sub_condition_ptr(RICHARDS_PRESSURE_DOF)%ptr%dataset, &
+                        idof,field%flow_xx,GLOBAL)
+              enddo
+              call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+          end select
+
+          if (.not.associated(initial_condition%flow_aux_real_var) .and. &
+              .not.associated(initial_condition%flow_condition)) then
+            option%io_buffer = 'Flow condition is NULL in initial condition'
+            call PrintErrMsg(option)
+          endif
+          if (associated(initial_condition%flow_aux_real_var)) then
+            num_connections = &
+              initial_condition%connection_set%num_connections
+            conn_id_ptr => initial_condition%connection_set%id_dn
+          else
+            num_connections = initial_condition%region%num_cells
+            conn_id_ptr => initial_condition%region%cell_ids
+          endif
+          do iconn=1, num_connections
+            local_id = conn_id_ptr(iconn)
+            ghosted_id = grid%nL2G(local_id)
+            iend = local_id*option%nflowdof
+            ibegin = iend-option%nflowdof+1
+            if (patch%imat(ghosted_id) <= 0) then
+              xx_p(ibegin:iend) = 0.d0
+              patch%aux%Global%auxvars(ghosted_id)%istate = 0
+              cycle
+            endif
+            if (associated(initial_condition%flow_aux_real_var)) then
+              do idof = 1, option%nflowdof
+                if (.not.dataset_flag(RICHARDS_PRESSURE_DOF)) then
+                  xx_p(ibegin+idof-1) =  &
+                    initial_condition%flow_aux_real_var(RICHARDS_PRESSURE_DOF,iconn)
+                endif
+              enddo
+            else
+              do idof = 1, option%nflowdof
+                if (.not.dataset_flag(RICHARDS_PRESSURE_DOF)) then
+                  xx_p(ibegin+idof-1) = &
+                    initial_condition%flow_condition% &
+                      sub_condition_ptr(RICHARDS_PRESSURE_DOF)%ptr%dataset%rarray(1)
+                endif
+              enddo
+            endif
+            patch%aux%Global%auxvars(ghosted_id)%istate = &
+              initial_condition%flow_condition%iphase
+          enddo
+          initial_condition => initial_condition%next
+        enddo
+        call VecRestoreArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+        
       case default
         ! assign initial conditions values to domain
         call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)

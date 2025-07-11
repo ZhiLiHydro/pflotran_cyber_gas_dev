@@ -13,6 +13,12 @@ SIMULATION
 END
 
 SUBSURFACE
+DEBUG
+PRINT_SOLUTION
+PRINT_RESIDUAL
+PRINT_JACOBIAN
+APPEND_COUNTS_TO_FILENAMES
+END
 
 REGRESSION
   CELL_IDS
@@ -149,6 +155,18 @@ CHARACTERISTIC_CURVES default
   /
 END
 
+#=========================== output options ===================================
+OUTPUT
+  VARIABLES
+   THERMODYNAMIC_STATE
+   TEMPERATURE
+   LIQUID_PRESSURE
+   LIQUID_SATURATION
+   LIQUID_DENSITY
+   PERMEABILITY
+   POROSITY
+  /
+END
 #=========================== times ============================================
 TIME
   FINAL_TIME 8.64000E+06 s

@@ -28,15 +28,6 @@ module TH_Aux_module
   PetscInt, public :: TH_WELL_DOF = UNINITIALIZED_INTEGER
 
   PetscInt, parameter, public :: TH_UPDATE_FOR_FIXED_ACCUM = 0
-
-<<<<<<< HEAD
-  type, public :: th_auxvar_type
-    PetscReal :: pres
-    PetscReal :: temp
-    PetscReal :: sat
-    PetscReal :: den
-    PetscReal :: den_kg
-=======
   ! Well
   PetscInt, public :: th_well_coupling = UNINITIALIZED_INTEGER
   PetscInt, parameter, public :: TH_FULLY_IMPLICIT_WELL = ONE_INTEGER
@@ -49,9 +40,13 @@ module TH_Aux_module
     PetscReal :: bh_p ! bottom hole pressure
     PetscReal :: pressure_bump ! pressure change for initialization  ! TODO: JOE: Can I remove this as I am not creating a numerical jacobian?
   end type th_well_aux_type
-
-  type, public :: TH_auxvar_type
->>>>>>> ee72b3d3c (increased DoFs when there is a well and set up problem)
+  
+  type, public :: th_auxvar_type
+    PetscReal :: pres
+    PetscReal :: temp
+    PetscReal :: sat
+    PetscReal :: den
+    PetscReal :: den_kg
     PetscReal :: avgmw
     PetscReal :: h
     PetscReal :: u
@@ -302,7 +297,6 @@ recursive subroutine THAuxVarInit(auxvar,option,allocate_perturbation)
   auxvar%bc_lambda     = uninit_value
 #endif
 
-<<<<<<< HEAD
   auxvar%pert = uninit_value
   if (allocate_perturbation) then
     allocate(auxvar%auxvar_pert(option%nflowdof))
@@ -312,7 +306,6 @@ recursive subroutine THAuxVarInit(auxvar,option,allocate_perturbation)
   else
     nullify(auxvar%auxvar_pert)
   endif
-=======
 if (th_well_coupling > ZERO_INTEGER) then
   allocate(auxvar%well)
   auxvar%well%pl = UNINITIALIZED_DOUBLE
@@ -324,7 +317,6 @@ if (th_well_coupling > ZERO_INTEGER) then
 else
   nullify(auxvar%well)
 endif
->>>>>>> ee72b3d3c (increased DoFs when there is a well and set up problem)
 
 end subroutine THAuxVarInit
 

@@ -2930,15 +2930,12 @@ subroutine PMWellSetupHydrostatic(this)
     case(H_MODE)
       realization%patch%aux%Hydrate%num_aux_ss = realization%patch%aux% &
                                       Hydrate%num_aux_ss + num_new_source_sinks
-<<<<<<< HEAD
     case(RICHARDS_MODE)
       realization%patch%aux%Richards%num_aux_ss = realization%patch%aux% &
                                       Richards%num_aux_ss + num_new_source_sinks
-=======
     case(TH_MODE)
       realization%patch%aux%TH%num_aux_ss = realization%patch%aux% &
                                       TH%num_aux_ss + num_new_source_sinks
->>>>>>> efede0346 (adding th mode to get patch variable)
   end select
   if (sum_connection > 0) then
     option%iflag = 1 ! enable allocation of mass_balance array
@@ -2982,13 +2979,10 @@ subroutine PMWellSetupHydrostatic(this)
       matrix_zeroing => realization%patch%aux%SCO2%matrix_zeroing
     case(H_MODE)
       matrix_zeroing => realization%patch%aux%Hydrate%matrix_zeroing
-<<<<<<< HEAD
     case(RICHARDS_MODE)
       matrix_zeroing => realization%patch%aux%Richards%matrix_zeroing
-=======
     case(TH_MODE)
       matrix_zeroing => realization%patch%aux%TH%matrix_zeroing
->>>>>>> efede0346 (adding th mode to get patch variable)
   end select
   if (associated(matrix_zeroing)) then
     if (well_bottom_local > 0 .and. matrix_zeroing%zero_rows_exist) then
@@ -6662,7 +6656,6 @@ subroutine PMWellUpdateReservoirHydrate(pm_well,update_index,segment_index)
 
 end subroutine PMWellUpdateReservoirHydrate
 
-
 ! ************************************************************************** !
 
 subroutine PMWellUpdateReservoirRichards(pm_well,update_index,segment_index)
@@ -6771,6 +6764,106 @@ subroutine PMWellUpdateReservoirRichards(pm_well,update_index,segment_index)
   endif
 
 end subroutine PMWellUpdateReservoirRichards
+
+ ************************************************************************** !
+
+subroutine PMWellUpdateReservoirTH(pm_well,update_index,segment_index)
+  !
+  ! Updates the TH mode reservoir properties for the well process model.
+  !
+  ! Author: Julia Camargo
+  ! Date: 07/09/2025
+  use TH_Aux_module
+  use Material_Aux_module
+  use Global_Aux_module
+  use Grid_module
+
+  implicit none
+
+  class(pm_well_type) :: pm_well
+  PetscInt :: update_index
+  PetscInt :: segment_index
+
+  type(well_reservoir_type), pointer :: reservoir
+  type(TH_auxvar_type), pointer :: th_auxvar
+  type(material_auxvar_type), pointer :: material_auxvar
+  type(global_auxvar_type), pointer :: global_auxvar
+  type(grid_type), pointer :: res_grid
+  type(option_type), pointer :: option
+  type(well_comm_type), pointer :: well_comm
+  PetscInt :: k, indx
+  PetscInt :: ghosted_id
+  PetscInt :: tag
+  PetscErrorCode :: ierr
+
+  option => pm_well%option
+  well_comm => pm_well%well_comm
+  reservoir => pm_well%well%reservoir
+  res_grid => pm_well%realization%patch%grid
+
+  if (update_index < ZERO_INTEGER) then
+    indx = ZERO_INTEGER
+  else
+    indx = update_index
+  endif
+
+  do k = 1,pm_well%well_grid%nsegments
+    ghosted_id = pm_well%well_grid%h_ghosted_id(k)
+    th_auxvar => &
+      pm_well%realization%patch%aux%th%auxvars(ghosted_id)
+    if (k == 1 .and. indx == 0 .and. Initialized(th_auxvar%well%bh_p)) then
+      pm_well%well%bh_p = th_auxvar%well%bh_p
+    endif
+    material_auxvar => &
+      pm_well%realization%patch%aux%material%auxvars(ghosted_id)
+    global_auxvar => &
+      pm_well%realization%patch%aux%global%auxvars(ghosted_id)
+
+    reservoir%p_l(k) = global_auxvar%pres(option%liquid_phase)
+    reservoir%s_l(k) = global_auxvar%sat(option%liquid_phase)
+    reservoir%mobility_l(k) = th_auxvar%kvr
+    !reservoir%kr_l(k) = th_auxvar%kr !does not exist in TH mode or Global
+    reservoir%den_l(k) = global_auxvar%den_kg(option%liquid_phase)
+    reservoir%visc_l(k) = th_auxvar%vis
+    reservoir%xmass_liq(k,ONE_INTEGER) = 1.0
+    reservoir%xmass_gas(k,ONE_INTEGER) = 0.0
+    reservoir%e_por(k) = material_auxvar%porosity
+
+    reservoir%p_g(k) = 0.0  ! As th has a single liquid phase
+    reservoir%s_g(k) = 0.0  ! As th has a single liquid phase
+    reservoir%temp(k) = global_auxvar%temp
+    reservoir%H_l(k) = th_auxvar%h
+    reservoir%kx(k) = material_auxvar%permeability(1)
+    reservoir%ky(k) = material_auxvar%permeability(2)
+    reservoir%kz(k) = material_auxvar%permeability(3)
+    reservoir%volume(k) = material_auxvar%volume
+    if (res_grid%itype == STRUCTURED_GRID) then
+      reservoir%dx(k) = res_grid%structured_grid%dx(ghosted_id)
+      reservoir%dy(k) = res_grid%structured_grid%dy(ghosted_id)
+      reservoir%dz(k) = res_grid%structured_grid%dz(ghosted_id)
+    else
+      reservoir%dz(k) = pm_well%well_grid%res_dz(k)
+      reservoir%dx(k) = sqrt(material_auxvar%volume/ &
+                                  reservoir%dz(k))
+      reservoir%dy(k) = reservoir%dx(k)
+    endif
+  enddo
+  if (update_index < 0 .or. initialize_well_flow) then
+    tag = 0
+    do k = 2,pm_well%well_grid%nsegments
+      if (option%myrank == pm_well%well_grid%h_rank_id(1)) then
+        if (option%myrank == pm_well%well_grid%h_rank_id(k)) cycle
+        call MPI_Send(pm_well%well%bh_p,ONE_INTEGER_MPI,MPI_DOUBLE_PRECISION, &
+                      pm_well%well_grid%h_rank_id(k),tag,option%mycomm,ierr)
+                      CHKERRQ(ierr)
+      elseif (option%myrank == pm_well%well_grid%h_rank_id(k)) then
+        call MPI_Recv(pm_well%well%bh_p,ONE_INTEGER_MPI,MPI_DOUBLE_PRECISION, &
+                      pm_well%well_grid%h_rank_id(1),tag,option%mycomm, &
+                      MPI_STATUS_IGNORE,ierr); CHKERRQ(ierr)
+      endif
+    enddo
+  endif
+end subroutine PMWellUpdateReservoirTH
 
 ! ************************************************************************** !
 
@@ -6888,6 +6981,8 @@ subroutine PMWellUpdateReservoirSrcSinkFlow(pm_well)
                              HYDRATE_FULLY_IMPLICIT_WELL
   use Richards_Aux_module, only: richards_well_coupling, &
                              RICHARDS_FULLY_IMPLICIT_WELL
+  use TH_Aux_module, only: th_well_coupling, &
+                             TH_FULLY_IMPLICIT_WELL
 
   implicit none
 
@@ -7063,6 +7158,32 @@ subroutine PMWellUpdateReservoirSrcSinkFlow(pm_well)
               auxvars(ghosted_id)%well%Ql = pm_well%well%liq%Q(k)
             pm_well%realization%patch%aux%richards% &
               auxvars(ghosted_id)%well%bh_p = pm_well%well%bh_p
+          
+            case(TH_MODE)
+            if (th_well_coupling == TH_FULLY_IMPLICIT_WELL) then
+              source_sink%flow_condition%rate%dataset%rarray(1) = &
+                                      -1.d0 * pm_well%well%liq%Q(k) ! [kg/s]
+            else
+              ! Not yet implemented
+              option%io_buffer = "TH mode only supports a full implicit well."
+              call PrintErrMsg(option)
+            endif
+            source_sink%flow_condition%pressure%aux_real(1) = &
+                                                            pm_well%well%pl(k)
+            well_delta_liq = pm_well%well%pl(k) - pm_well%well%reservoir%p_l(k)
+            source_sink%flow_condition%pressure%aux_real(2) = &
+                                                               well_delta_liq
+            source_sink%flow_condition%well%aux_real(1) = density_avg ! kg/m3
+            pm_well%realization%patch%aux%th% &
+              auxvars(ghosted_id)%well%pl = pm_well%well%pl(k)
+            pm_well%realization%patch%aux%th% &
+              auxvars(ghosted_id)%well%sl = pm_well%well%liq%s(k)
+            pm_well%realization%patch%aux%th% &
+              auxvars(ghosted_id)%well%dpl = well_delta_liq
+            pm_well%realization%patch%aux%th% &
+              auxvars(ghosted_id)%well%Ql = pm_well%well%liq%Q(k)
+            pm_well%realization%patch%aux%th% &
+              auxvars(ghosted_id)%well%bh_p = pm_well%well%bh_p       
         end select
         exit
       endif
@@ -7244,6 +7365,8 @@ subroutine PMWellUpdateFlowRatesHydrostatic(this,well_pert,res_pert, &
       call PMWellUpdateReservoirHydrate(this,res_pert,segment_index)
     case(RICHARDS_MODE)
       call PMWellUpdateReservoirRichards(this,res_pert,segment_index)
+    case(TH_MODE)
+      call PMWellUpdateReservoirTH(this,res_pert,segment_index)
   end select
 
   if (initialize_well_flow) then

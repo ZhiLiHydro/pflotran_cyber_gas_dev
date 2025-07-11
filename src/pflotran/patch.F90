@@ -8376,47 +8376,50 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
                                             grid%nL2G(local_id))%well%bh_p
               enddo
           end select
-<<<<<<< HEAD
         case(RICHARDS_MODE)
-=======
-        case(TH_MODE)
->>>>>>> efede0346 (adding th mode to get patch variable)
           select case(ivar)
             case(WELL_LIQ_PRESSURE)
               do local_id=1,grid%nlmax
                 vec_ptr(local_id) = &
-<<<<<<< HEAD
                   patch%aux%richards%auxvars(grid%nL2G(local_id))%well%pl
-=======
-                  patch%aux%th%auxvars(grid%nL2G(local_id))%well%pl
->>>>>>> efede0346 (adding th mode to get patch variable)
               enddo
             case(WELL_LIQ_SATURATION)
               do local_id=1,grid%nlmax
                 vec_ptr(local_id) = &
-<<<<<<< HEAD
                   patch%aux%richards%auxvars(grid%nL2G(local_id))%well%sl
-=======
-                  patch%aux%th%auxvars(grid%nL2G(local_id))%well%sl
->>>>>>> efede0346 (adding th mode to get patch variable)
               enddo
             case(WELL_LIQ_Q)
               do local_id=1,grid%nlmax
                 vec_ptr(local_id) = &
-<<<<<<< HEAD
                   patch%aux%richards%auxvars(grid%nL2G(local_id))%well%Ql
-=======
-                  patch%aux%th%auxvars(grid%nL2G(local_id))%well%Ql
->>>>>>> efede0346 (adding th mode to get patch variable)
               enddo
             case(WELL_BHP)
               do local_id=1,grid%nlmax
                 vec_ptr(local_id) = &
-<<<<<<< HEAD
                   patch%aux%richards%auxvars(grid%nL2G(local_id))%well%bh_p
-=======
+              enddo
+          end select
+        case(TH_MODE)
+          select case(ivar)
+            case(WELL_LIQ_PRESSURE)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = &
+                  patch%aux%th%auxvars(grid%nL2G(local_id))%well%pl
+              enddo
+            case(WELL_LIQ_SATURATION)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = &
+                  patch%aux%th%auxvars(grid%nL2G(local_id))%well%sl
+              enddo
+            case(WELL_LIQ_Q)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = &
+                  patch%aux%th%auxvars(grid%nL2G(local_id))%well%Ql
+              enddo
+            case(WELL_BHP)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = &
                   patch%aux%th%auxvars(grid%nL2G(local_id))%well%bh_p
->>>>>>> efede0346 (adding th mode to get patch variable)
               enddo
           end select
       end select
@@ -9714,7 +9717,6 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
             value = &
               patch%aux%hydrate%auxvars(ZERO_INTEGER,ghosted_id)%well%bh_p
         end select
-<<<<<<< HEAD
       case (RICHARDS_MODE)
         select case(ivar)
           case(WELL_LIQ_PRESSURE)
@@ -9729,7 +9731,7 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
           case(WELL_BHP)
             value = &
               patch%aux%richards%auxvars(ghosted_id)%well%bh_p
-=======
+        end select
       case (TH_MODE)
         select case(ivar)
           case(WELL_LIQ_PRESSURE)
@@ -9744,7 +9746,6 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
           case(WELL_BHP)
             value = &
               patch%aux%th%auxvars(ghosted_id)%well%bh_p
->>>>>>> 2dc809459 (added th_mode when getting variable value at cell for a well)
         end select
       end select
     case(NAMED_PARAMETER)

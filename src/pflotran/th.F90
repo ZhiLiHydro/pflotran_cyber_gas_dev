@@ -4304,9 +4304,7 @@ subroutine THResidualSourceSink(r,realization,pm_well,ierr)
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(coupler_type), pointer :: source_sink
   type(connection_set_type), pointer :: cur_connection_set
-<<<<<<< HEAD
   PetscReal :: qsrc_kmol
-=======
   character(len=MAXSTRINGLENGTH) :: string
   character(len=MAXSTRINGLENGTH) :: srcsink_name
   PetscReal, pointer :: mmsrc(:)
@@ -4316,7 +4314,6 @@ subroutine THResidualSourceSink(r,realization,pm_well,ierr)
   PetscReal :: pressure_max
   PetscReal :: pressure_min
   PetscReal :: Dq, dphi, v_darcy, ukvr
->>>>>>> e12cc96fa (modified residual source-sink)
 
   PetscReal, pointer :: flow_array(:)
   PetscReal, pointer :: energy_array(:)
@@ -4342,8 +4339,6 @@ subroutine THResidualSourceSink(r,realization,pm_well,ierr)
   call VecGetArrayF90(r,r_p,ierr);CHKERRQ(ierr)
   call VecGetArrayF90(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
   call VecGetArrayF90(field%flow_yy,yy_p,ierr);CHKERRQ(ierr)
-<<<<<<< HEAD
-=======
   !print *,' Finished scattering non deriv'
 
 ! Update well source/sink terms
@@ -4381,7 +4376,6 @@ subroutine THResidualSourceSink(r,realization,pm_well,ierr)
       enddo
     endif
   endif
->>>>>>> e12cc96fa (modified residual source-sink)
 
   ! Source/sink terms -------------------------------------
   source_sink => patch%source_sink_list%first
