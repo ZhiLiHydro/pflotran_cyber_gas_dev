@@ -6894,7 +6894,7 @@ subroutine PMWellUpdateReservoirSrcSinkFlow(pm_well)
             pm_well%realization%patch%aux%hydrate% &
               auxvars(ZERO_INTEGER,ghosted_id)%well%bh_p = pm_well%well%bh_p
           case(TH_MODE)
-            if (th_well_coupling = TH_FULLY_IMPLICIT_WELL) then
+            if (th_well_coupling == TH_FULLY_IMPLICIT_WELL) then
               source_sink%flow_condition%rate%dataset%rarray(1) = &
                                       -1.d0 * pm_well%well%liq%Q(k) ! [kg/s]
             else
