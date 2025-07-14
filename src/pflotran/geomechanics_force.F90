@@ -570,6 +570,7 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
 
   type(tri_boundary_face_type) :: tri_surface(2)
   PetscInt :: isurf, surf_vertex_num
+  PetscReal :: pri_stress_bc(THREE_INTEGER)
 
   field => geomech_realization%geomech_field
   geomech_discretization => geomech_realization%geomech_discretization
@@ -604,7 +605,6 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
 
   ! Loop over elements on a processor
   do ielem = 1, grid%nlmax_elem
-    print *, 'ielem ', ielem
     allocate(elenodes(grid%elem_nodes(0,ielem)))
     allocate(local_coordinates(size(elenodes),THREE_INTEGER))
     allocate(local_disp(size(elenodes),option%ngeomechdof))
@@ -658,14 +658,11 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
         GeomechParam%poissons_ratio(nint(imech_loc_p(ghosted_id)))
     enddo
     size_elenodes = size(elenodes)
-    !print *, 'jaa elenodes: ', elenodes
     call GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
        local_disp,local_press,local_temp,youngs_vec,poissons_vec, &
        density_bulk_vec,beta_vec,alpha_vec,eletype, &
        grid%gauss_node(ielem)%dim,grid%gauss_node(ielem)%r, &
        grid%gauss_node(ielem)%w,res_vec,option)
-    print *, 'ids ', ids
-    print *, 'res_vec ', res_vec
     call VecSetValues(r,size(ids),ids,res_vec,ADD_VALUES,ierr);CHKERRQ(ierr)
 #if 0
     call GeomechForceLocalElemError(size_elenodes,local_coordinates, &
@@ -897,8 +894,12 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
           tri_surface(2)%vertex_ids(2) = 15
           tri_surface(2)%vertex_ids(3) = 16
 
-          !print *, 'val', boundary_condition%geomech_aux_real_var(:,:)
+          print *, 'val', &
+          !boundary_condition%geomech_condition%sub_condition_ptr(1)%dataset%rarray(1)
+          boundary_condition%geomech_condition%traction%dataset%rarray
+          !boundary_condition%geomech_aux_real_var(:,:)
           !stop
+          pri_stress_bc = boundary_condition%geomech_condition%traction%dataset%rarray
 
           do isurf = 1, 2 ! change to number of tri faces
             ielem = tri_surface(isurf)%ele_id
@@ -925,6 +926,7 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
             enddo
             call GeomechForceApplyTractionBC( local_coordinates, &
                                               facetype, &
+                                              pri_stress_bc, &
                                               grid%surf_gauss_node(1)%r, &
                                               grid%surf_gauss_node(1)%w, &
                                               res_vec,option)
@@ -1531,7 +1533,8 @@ end subroutine GeomechForceLocalElemError
 ! ************************************************************************** !
 
 subroutine GeomechForceApplyTractionBC( local_coordinates, &
-                                        facetype,r,w,res_vec,option)
+                                        facetype,pri_stress_bc, &
+                                        r,w,res_vec,option)
 
   use Grid_Unstructured_Cell_module
   use Shape_Function_module
@@ -1544,21 +1547,19 @@ subroutine GeomechForceApplyTractionBC( local_coordinates, &
   PetscReal, pointer :: r(:,:), w(:)
   PetscReal, allocatable :: res_vec(:)
   type(option_type) :: option
-  PetscReal, allocatable :: B(:,:)
+  PetscReal :: pri_stress_bc(THREE_INTEGER)
 
   type(shapefunction_type) :: shapefunction
-  PetscInt :: igpt!, i, j
+  PetscInt :: igpt
   PetscInt :: len_w
   PetscReal :: x(THREE_INTEGER), J_map(THREE_INTEGER,TWO_INTEGER)
-  !PetscReal :: inv_J_map(THREE_INTEGER,THREE_INTEGER)
   PetscReal :: xp_J(THREE_INTEGER)
   PetscReal :: boundary_stress(THREE_INTEGER,THREE_INTEGER)
   PetscReal :: traction(THREE_INTEGER,ONE_INTEGER)
-  PetscReal :: detJ_map, surf_J, tri_surf_J
+  PetscReal :: surf_J
 
   PetscReal, allocatable :: N(:,:), force(:), kron_N_traction(:,:)
-  PetscReal :: normal_vec(THREE_INTEGER), val(THREE_INTEGER)
-  !PetscReal :: ivertex, dimsn
+  PetscReal :: normal_vec(THREE_INTEGER)
 
   res_vec = 0.d0
   !print *, 'res_vec ', res_vec
@@ -1573,7 +1574,9 @@ subroutine GeomechForceApplyTractionBC( local_coordinates, &
   ! principal stress
   ! sigma_xx, sigma_yy, sigma_zz
   boundary_stress = 0.d0
-  boundary_stress(1,1) = 100.d0 ! sigma_xx
+  boundary_stress(1,1) = pri_stress_bc(1) ! sigma_xx
+  boundary_stress(2,2) = pri_stress_bc(2) ! sigma_yy
+  boundary_stress(3,3) = pri_stress_bc(3) ! sigma_zz
 
   ! use abs normal since direction is set by bc description
   normal_vec = abs(tri_face_unitnormal( local_coordinates(1,:), &

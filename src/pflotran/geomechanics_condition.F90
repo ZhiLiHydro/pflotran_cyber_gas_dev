@@ -275,7 +275,7 @@ subroutine GeomechConditionRead(condition,input,option)
   force_x => GeomechSubConditionCreate(ONE_INTEGER)
   force_y => GeomechSubConditionCreate(ONE_INTEGER)
   force_z => GeomechSubConditionCreate(ONE_INTEGER)
-  traction => GeomechSubConditionCreate(ONE_INTEGER)
+  traction => GeomechSubConditionCreate(THREE_INTEGER)
   displacement_x%name = 'displacement_x'
   displacement_y%name = 'displacement_y'
   displacement_z%name = 'displacement_z'
