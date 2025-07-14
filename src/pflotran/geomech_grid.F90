@@ -673,6 +673,7 @@ subroutine CopySubsurfaceGridtoGeomechGrid(ugrid,geomech_grid,option)
   deallocate(int_array2)
 
   ! Initialize the Gauss data structure in each element
+  print *, 'begin gauss node'
   allocate(geomech_grid%gauss_node(geomech_grid%nlmax_elem))
   do local_id = 1, geomech_grid%nlmax_elem
     call GaussInitialize(geomech_grid%gauss_node(local_id))
@@ -684,10 +685,23 @@ subroutine CopySubsurfaceGridtoGeomechGrid(ugrid,geomech_grid,option)
     geomech_grid%gauss_node(local_id)%num_gauss_pts = THREE_INTEGER
     if (geomech_grid%gauss_node(local_id)%element_type == PYR_TYPE) &
       geomech_grid%gauss_node(local_id)%num_gauss_pts = FIVE_INTEGER
-    if (geomech_grid%gauss_node(local_id)%element_type == TET_TYPE) &
+    if (geomech_grid%gauss_node(local_id)%element_type == TET_TYPE) then
       geomech_grid%gauss_node(local_id)%num_gauss_pts = FOUR_INTEGER
+    endif
     call GaussCalculatePoints(geomech_grid%gauss_node(local_id))
   enddo
+  print *, 'end gauss node'
+
+  ! jaa - best to move surf_gauss_node down here
+  ! allocate with size 1 (all surfaces on boundary are using tri surf)
+  print *, 'jaa begin surf_gauss_node'
+  allocate(geomech_grid%surf_gauss_node(1))
+  call GaussInitialize(geomech_grid%surf_gauss_node(1))
+  geomech_grid%surf_gauss_node(1)%element_type = TRI_TYPE
+  geomech_grid%surf_gauss_node(1)%dim = TWO_DIM_GRID
+  geomech_grid%surf_gauss_node(1)%num_gauss_pts = ONE_INTEGER
+  call GaussCalculatePoints(geomech_grid%surf_gauss_node(1))
+  ! end jaa
 
   ! Store petsc ids of the local and ghost nodes in the new re-ordered system on
   ! each rank

@@ -14,6 +14,7 @@ module Gauss_module
   type, public :: gauss_type
     PetscInt :: dim                 ! dimension
     PetscInt :: element_type        ! Element type
+    !PetscInt :: face_type ! jaa testing
     PetscInt :: num_gauss_pts       ! Number of gauss points
     PetscReal, pointer :: r(:,:)    ! location of points
     PetscReal, pointer :: w(:)      ! weights
@@ -37,6 +38,7 @@ subroutine GaussInitialize(gauss)
 
   gauss%dim = 0
   gauss%element_type = 0
+  !gauss%face_type = 0
   gauss%num_gauss_pts = 0
   nullify(gauss%r)
   nullify(gauss%w)
@@ -63,7 +65,11 @@ subroutine GaussCalculatePoints(gauss)
     case(ONE_DIM_GRID)
       call Gauss1D(gauss%element_type,gauss%num_gauss_pts,r,w)
     case(TWO_DIM_GRID)
+      !if (gauss%face_type /= 0) then
+      !  call GaussSurface2D(gauss%face_type,gauss%num_gauss_pts,r,w)
+      !else
       call Gauss2D(gauss%element_type,gauss%num_gauss_pts,r,w)
+      !endif
     case(THREE_DIM_GRID)
       call Gauss3D(gauss%element_type,gauss%num_gauss_pts,r,w)
     case default
@@ -367,9 +373,9 @@ subroutine GaussTriangle(num_gauss_pts,r,w)
     !------------------------------
     ! No of Gauss Points = 1
     !------------------------------
-      r(1,:) = 1.0/3.0*(/1.0,1.0/)
+      r(1,:) = 1.d0/3.d0*(/1.d0,1.d0/)
       !
-      w(1) = 0.5
+      w(1) = 0.5d0
 
     !-------------------------------
     ! No of Gauss Points = 3
@@ -520,6 +526,39 @@ subroutine GaussTriangle(num_gauss_pts,r,w)
 
 
 end subroutine GaussTriangle
+
+! ************************************************************************** !
+
+!subroutine GaussTriFace(num_gauss_pts,r,w)
+!  !
+!  ! Calculates Gauss points for T3 elements
+!  !
+!  ! Author: Satish Karra, LANL
+!  ! Date: 5/17/2013
+!  !
+!
+!  PetscInt :: num_gauss_pts
+!  PetscReal, pointer :: r(:,:)
+!  PetscReal, pointer :: w(:)
+!
+!  allocate(r(num_gauss_pts,2))
+!  allocate(w(num_gauss_pts))
+!
+!  select case(num_gauss_pts)
+!    case(1)
+!
+!    !------------------------------
+!    ! No of Gauss Points = 1
+!    !------------------------------
+!      r(1,:) = 1.0/3.0*(/1.0,1.0/)
+!      !
+!      w(1) = 0.5
+!
+!    !-------------------------------
+!    ! No of Gauss Points = 3
+!    !-------------------------------
+!
+!end subroutine GaussTriFace
 
 ! ************************************************************************** !
 

@@ -566,9 +566,10 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
   PetscInt :: petsc_id, local_id
   PetscReal, pointer :: imech_loc_p(:)
   PetscInt :: size_elenodes
+  PetscInt :: facetype
 
   type(tri_boundary_face_type) :: tri_surface(2)
-  PetscInt :: surf_id
+  PetscInt :: isurf, surf_vertex_num
 
   field => geomech_realization%geomech_field
   geomech_discretization => geomech_realization%geomech_discretization
@@ -657,12 +658,14 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
         GeomechParam%poissons_ratio(nint(imech_loc_p(ghosted_id)))
     enddo
     size_elenodes = size(elenodes)
-    print *, 'jaa elenodes: ', elenodes
+    !print *, 'jaa elenodes: ', elenodes
     call GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
        local_disp,local_press,local_temp,youngs_vec,poissons_vec, &
        density_bulk_vec,beta_vec,alpha_vec,eletype, &
        grid%gauss_node(ielem)%dim,grid%gauss_node(ielem)%r, &
        grid%gauss_node(ielem)%w,res_vec,option)
+    print *, 'ids ', ids
+    print *, 'res_vec ', res_vec
     call VecSetValues(r,size(ids),ids,res_vec,ADD_VALUES,ierr);CHKERRQ(ierr)
 #if 0
     call GeomechForceLocalElemError(size_elenodes,local_coordinates, &
@@ -871,55 +874,138 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
   call VecAssemblyEnd(r,ierr);CHKERRQ(ierr)
 
   ! jaa begin traction part here
-  ! want to use face (mapped to ele id) instead of vertices
-
-  print *, 'jaa testing'
-  ! hardcoded surfaces for now
-  ! eventually want to process region based on vertices and map to ele id's
-  tri_surface(1)%ele_id = 16 ! 9 15 13
-  tri_surface(1)%vertex_ids(1) = 9
-  tri_surface(1)%vertex_ids(2) = 15
-  tri_surface(1)%vertex_ids(3) = 13
-  tri_surface(2)%ele_id = 15 ! 13 15 16
-  tri_surface(2)%vertex_ids(1) = 13
-  tri_surface(2)%vertex_ids(2) = 15
-  tri_surface(2)%vertex_ids(3) = 16
-
   boundary_condition => patch%geomech_boundary_condition_list%first
   do
     if (.not.associated(boundary_condition)) exit
     region => boundary_condition%region
-    do surf_id = 1, 2 ! for 2 faces on boundary
-      print *, 'this works!'
-      !local_id = region%vertex_ids(ivertex)
-      !ghosted_id = grid%nL2G(local_id)
-      !petsc_id = grid%node_ids_ghosted_petsc(ghosted_id)
-      !if (associated(patch%imat)) then
-      !  if (patch%imat(ghosted_id) <= 0) cycle
-      !endif
-      !! jaa -- just checking if we read traction correctly. remove later!
-      !if (associated(boundary_condition%geomech_condition%traction)) then
-      !  select case(boundary_condition%geomech_condition%traction%itype)
-      !    case(DIRICHLET_BC)
-      !      option%io_buffer = 'Dirichlet BC for traction not available.'
-      !      call PrintErrMsg(option)
-      !    case(ZERO_GRADIENT_BC)
-      !     ! do nothing
-      !    case(NEUMANN_BC)
-      !      print *, 'ivertex, local_id, ghosted_id, petsc_id', &
-      !              ivertex, local_id, ghosted_id, petsc_id
-      !      print *, 'yay!'
-      !  end select
-      !endif
+    ! Traction
+    if (associated(boundary_condition%geomech_condition%traction)) then
+      select case(boundary_condition%geomech_condition%traction%itype)
+        case(DIRICHLET_BC)
+          option%io_buffer = 'Dirichlet BC for traction not available.'
+          call PrintErrMsg(option)
+        case(ZERO_GRADIENT_BC)
+         ! do nothing
+        case(NEUMANN_BC)
+          ! assume this is the read faceset
+          tri_surface(1)%ele_id = 16 ! global vertex id's: 9 15 13
+          tri_surface(1)%vertex_ids(1) = 9
+          tri_surface(1)%vertex_ids(2) = 15
+          tri_surface(1)%vertex_ids(3) = 13
+          tri_surface(2)%ele_id = 15 ! global vertex id's: 13 15 16
+          tri_surface(2)%vertex_ids(1) = 13
+          tri_surface(2)%vertex_ids(2) = 15
+          tri_surface(2)%vertex_ids(3) = 16
 
-    enddo ! ivertex
+          !print *, 'val', boundary_condition%geomech_aux_real_var(:,:)
+          !stop
+
+          do isurf = 1, 2 ! change to number of tri faces
+            ielem = tri_surface(isurf)%ele_id
+            ! no need for ele here
+            print *, 'ele, surf vertices', tri_surface(isurf)%ele_id, &
+                                      tri_surface(isurf)%vertex_ids(:)
+            surf_vertex_num = size(tri_surface(isurf)%vertex_ids)
+            allocate(local_coordinates(surf_vertex_num,THREE_INTEGER))
+            allocate(petsc_ids(surf_vertex_num))
+            allocate(ids(surf_vertex_num*option%ngeomechdof))
+            allocate(res_vec(surf_vertex_num*option%ngeomechdof))
+            !facetype = TRI_FACE_TYPE
+            facetype = TRI_TYPE
+            do ivertex = 1, surf_vertex_num
+              ghosted_id = tri_surface(isurf)%vertex_ids(ivertex)
+              local_coordinates(ivertex,GEOMECH_DISP_X_DOF) = grid%nodes(ghosted_id)%x
+              local_coordinates(ivertex,GEOMECH_DISP_Y_DOF) = grid%nodes(ghosted_id)%y
+              local_coordinates(ivertex,GEOMECH_DISP_Z_DOF) = grid%nodes(ghosted_id)%z
+              petsc_ids(ivertex) = grid%node_ids_ghosted_petsc(ghosted_id)
+              do idof = 1, option%ngeomechdof
+                ids(idof + (ivertex-1)*option%ngeomechdof) = &
+                  (petsc_ids(ivertex)-1)*option%ngeomechdof + (idof-1)
+              enddo
+            enddo
+            call GeomechForceApplyTractionBC( local_coordinates, &
+                                              facetype, &
+                                              grid%surf_gauss_node(1)%r, &
+                                              grid%surf_gauss_node(1)%w, &
+                                              res_vec,option)
+            call VecSetValues(r,size(ids),ids,res_vec,ADD_VALUES,ierr);CHKERRQ(ierr)
+            deallocate(local_coordinates)
+            deallocate(petsc_ids)
+            deallocate(ids)
+            deallocate(res_vec)
+          enddo
+      end select
+    endif
+    ! want to use face (mapped to ele id) instead of vertices
+    ! should work without ele id ** fix later
+!    print *, 'jaa testing'
+!
+!    !print *, 'traction', boundary_condition%geomech_condition%traction%dataset
+!    !stop
+!
+!    ! hardcoded surfaces for now
+!    ! eventually want to process region based on vertices mapped to a face
+!    tri_surface(1)%ele_id = 16 ! global vertex id's: 9 15 13
+!    tri_surface(1)%vertex_ids(1) = 9
+!    tri_surface(1)%vertex_ids(2) = 15
+!    tri_surface(1)%vertex_ids(3) = 13
+!    tri_surface(2)%ele_id = 15 ! global vertex id's: 13 15 16
+!    tri_surface(2)%vertex_ids(1) = 13
+!    tri_surface(2)%vertex_ids(2) = 15
+!    tri_surface(2)%vertex_ids(3) = 16
+!
+!    do isurf = 1, 2
+!      ielem = tri_surface(isurf)%ele_id
+!      print *, 'ele, surf vertices', tri_surface(isurf)%ele_id, &
+!                                tri_surface(isurf)%vertex_ids(:)
+!
+!      surf_vertex_num = size(tri_surface(isurf)%vertex_ids)
+!      allocate(local_coordinates(surf_vertex_num,THREE_INTEGER))
+!      allocate(petsc_ids(surf_vertex_num))
+!      allocate(ids(surf_vertex_num*option%ngeomechdof))
+!      allocate(res_vec(surf_vertex_num*option%ngeomechdof))
+!
+!      !facetype = TRI_FACE_TYPE
+!      facetype = TRI_TYPE
+!      do ivertex = 1, surf_vertex_num
+!        ghosted_id = tri_surface(isurf)%vertex_ids(ivertex)
+!        local_coordinates(ivertex,GEOMECH_DISP_X_DOF) = grid%nodes(ghosted_id)%x
+!        local_coordinates(ivertex,GEOMECH_DISP_Y_DOF) = grid%nodes(ghosted_id)%y
+!        local_coordinates(ivertex,GEOMECH_DISP_Z_DOF) = grid%nodes(ghosted_id)%z
+!        petsc_ids(ivertex) = grid%node_ids_ghosted_petsc(ghosted_id)
+!        do idof = 1, option%ngeomechdof
+!          ids(idof + (ivertex-1)*option%ngeomechdof) = &
+!            (petsc_ids(ivertex)-1)*option%ngeomechdof + (idof-1)
+!        enddo
+!        !print *, 'ngeomechdof: ', option%ngeomechdof
+!        !stop
+!      enddo
+!
+!      !print *, 'ids: ', ids
+!
+!      !print *, 'r: ', grid%surf_gauss_node(1)%r
+!      !print *, 'w: ', grid%surf_gauss_node(1)%w
+!
+!      call GeomechForceApplyTractionBC( local_coordinates, &
+!                                        facetype, &
+!                                        grid%surf_gauss_node(1)%r, &
+!                                        grid%surf_gauss_node(1)%w, &
+!                                        res_vec,option)
+!
+!      call VecSetValues(r,size(ids),ids,res_vec,ADD_VALUES,ierr);CHKERRQ(ierr)
+!
+!      deallocate(local_coordinates)
+!      deallocate(petsc_ids)
+!      deallocate(ids)
+!      deallocate(res_vec)
+!    enddo
     boundary_condition => boundary_condition%next
-  enddo ! bc
-  print *, 'stopping ..'; stop
+  enddo
 
   call VecAssemblyBegin(r,ierr);CHKERRQ(ierr)
   call VecAssemblyEnd(r,ierr);CHKERRQ(ierr)
-  ! jee end traction
+  !print *, 'stopping ..'; stop
+  ! jaa end traction
 
 end subroutine GeomechForceResidualPatch
 
@@ -1106,6 +1192,27 @@ end subroutine sort
 
 ! ************************************************************************** !
 
+function tri_face_unitnormal(v1, v2, v3) result(n)
+
+  PetscReal :: v1(THREE_INTEGER), v2(THREE_INTEGER), v3(THREE_INTEGER)
+  PetscReal :: n(THREE_INTEGER)
+
+  PetscReal :: e1(THREE_INTEGER), e2(THREE_INTEGER)
+
+
+  e1 = v2 - v1
+  e2 = v3 - v1
+
+  n = cross_product(e1,e2)
+
+  n = n/sqrt(dot_product(n,n))
+
+  !print *, 'n: ', n
+
+end function tri_face_unitnormal
+
+! ************************************************************************** !
+
 subroutine GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
                                          local_disp, &
                                          local_press,local_temp, &
@@ -1241,6 +1348,9 @@ subroutine GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
     ! Find the inverse of J_map
     call MatInv3(J_map,inv_J_map)
     B = matmul(shapefunction%DN,inv_J_map)
+    !print *, 'DN ', shapefunction%DN
+    !print *, 'inv_J_map ', inv_J_map
+    !print *, 'B ', B
     youngs_mod = dot_product(shapefunction%N,local_youngs)
     poissons_ratio = dot_product(shapefunction%N,local_poissons)
     alpha = dot_product(shapefunction%N,local_alpha)
@@ -1249,13 +1359,15 @@ subroutine GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
     call GeomechGetLambdaMu(lambda,mu,youngs_mod,poissons_ratio)
     call GeomechGetBodyForce(load_type,lambda,mu,x,bf,option)
     call ConvertMatrixToVector(transpose(B),vecB_transpose)
+    !print *, 'vecB_transpose ', vecB_transpose
+    !stop
     Kmat = Kmat + w(igpt)*lambda* &
       matmul(vecB_transpose,transpose(vecB_transpose))*detJ_map
     call Kron(B,identity,kron_B_eye)
     call Kron(transpose(B),identity,kron_B_transpose_eye)
     call Kron(identity,transpose(B),kron_eye_B_transpose)
     N(:,1)= shapefunction%N
-    print *, 'igpt, N(:,1)', igpt, N(:,1)
+    !print *, 'igpt, N(:,1)', igpt, N(:,1)
     !stop
     call Kron(N,identity,kron_N_eye)
     Kmat = Kmat + w(igpt)*mu*matmul(kron_B_eye,kron_B_transpose_eye)*detJ_map
@@ -1280,8 +1392,6 @@ subroutine GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
       vecB_transpose(:,1)*detJ_map
     force = force + w(igpt)*alpha*(3.d0*lambda+2.d0*mu)* &
       dot_product(N(:,1),local_temp)*vecB_transpose(:,1)*detJ_map
-    ! jaa: add traction component here
-    ! for boundary element
 
     call ShapeFunctionDestroy(shapefunction)
     deallocate(N)
@@ -1417,6 +1527,112 @@ subroutine GeomechForceLocalElemError(size_elenodes,local_coordinates, &
 
 end subroutine GeomechForceLocalElemError
 #endif
+
+! ************************************************************************** !
+
+subroutine GeomechForceApplyTractionBC( local_coordinates, &
+                                        facetype,r,w,res_vec,option)
+
+  use Grid_Unstructured_Cell_module
+  use Shape_Function_module
+  use Option_module
+  use Utility_module
+
+  PetscInt :: size_facenodes
+  PetscReal, allocatable :: local_coordinates(:,:)
+  PetscInt :: facetype
+  PetscReal, pointer :: r(:,:), w(:)
+  PetscReal, allocatable :: res_vec(:)
+  type(option_type) :: option
+  PetscReal, allocatable :: B(:,:)
+
+  type(shapefunction_type) :: shapefunction
+  PetscInt :: igpt!, i, j
+  PetscInt :: len_w
+  PetscReal :: x(THREE_INTEGER), J_map(THREE_INTEGER,TWO_INTEGER)
+  !PetscReal :: inv_J_map(THREE_INTEGER,THREE_INTEGER)
+  PetscReal :: xp_J(THREE_INTEGER)
+  PetscReal :: boundary_stress(THREE_INTEGER,THREE_INTEGER)
+  PetscReal :: traction(THREE_INTEGER,ONE_INTEGER)
+  PetscReal :: detJ_map, surf_J, tri_surf_J
+
+  PetscReal, allocatable :: N(:,:), force(:), kron_N_traction(:,:)
+  PetscReal :: normal_vec(THREE_INTEGER), val(THREE_INTEGER)
+  !PetscReal :: ivertex, dimsn
+
+  res_vec = 0.d0
+  !print *, 'res_vec ', res_vec
+  !print *, 'w', w
+  !print *, 'r', r
+  len_w = size(w)
+
+  size_facenodes = THREE_INTEGER
+  allocate(force(size_facenodes*option%ngeomechdof))
+  force = 0.d0
+
+  ! principal stress
+  ! sigma_xx, sigma_yy, sigma_zz
+  boundary_stress = 0.d0
+  boundary_stress(1,1) = 100.d0 ! sigma_xx
+
+  ! use abs normal since direction is set by bc description
+  normal_vec = abs(tri_face_unitnormal( local_coordinates(1,:), &
+                                        local_coordinates(2,:), &
+                                        local_coordinates(3,:)))
+
+  print *, 'abs face normal', normal_vec
+
+  do igpt = 1, len_w
+    shapefunction%element_type = facetype
+    print *, 'eletype', facetype
+    call ShapeFunctionInitialize(shapefunction)
+    shapefunction%zeta = r(igpt,:)
+    call ShapeFunctionCalculate(shapefunction)
+    !print *, 'local_coordinates ', local_coordinates
+    !print *, 'shapefunction%N ', shapefunction%N
+    x = matmul(transpose(local_coordinates),shapefunction%N)
+    !print *, 'x', x ! coord of 3d point on triangular face
+    J_map = matmul(transpose(local_coordinates),shapefunction%DN)
+    !print *, 'tangent vec 1 ', J_map(:,1)
+    !print *, 'tangent vec 2 ', J_map(:,2)
+    !print *, 'shapefunction%DN ', shapefunction%DN
+    allocate(N(size(shapefunction%N),ONE_INTEGER))
+    N(:,1)= shapefunction%N
+
+    xp_J = cross_product(J_map(:,1), J_map(:,2))
+    !print *, 'cross prod: ', xp_J
+    surf_J = sqrt(dot_product(xp_J,xp_J))
+    !print *, 'surf_J ', surf_J
+    if (surf_J <= 0.d0) then
+      option%io_buffer = 'GEOMECHANICS: The surface jacobian has' // &
+                         ' to be positive!'
+      call PrintErrMsg(option)
+    endif
+
+    traction(:,1) = matmul(boundary_stress,normal_vec)
+
+    call Kron(N,traction,kron_N_traction)
+    !print *, 'kron_N_traction ', kron_N_traction
+
+    force = force + w(igpt)*kron_N_traction(:,1)*surf_J
+    !do ivertex = 1, size_facenodes
+    !  do dimsn = 1, option%ngeomechdof
+    !    force(int(3*(ivertex-1)+dimsn)) = w(igpt)*N(ivertex,1)* &
+    !                                      traction(dimsn)*surf_J
+    !  enddo
+    !enddo
+
+    print *, 'force ', force
+
+    call ShapeFunctionDestroy(shapefunction)
+    deallocate(N)
+  enddo
+
+  res_vec = res_vec - force
+
+  deallocate(force)
+
+end subroutine GeomechForceApplyTractionBC
 
 ! ************************************************************************** !
 
