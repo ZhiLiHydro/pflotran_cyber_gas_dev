@@ -313,7 +313,7 @@ subroutine ReactionIsothermTotalSorbKD(rt_auxvar,global_auxvar, &
 
     else
       ! kd_unit = KD_UNIT_KG_M3_BULK
-      kd_kgw_m3b = isotherm_rxn%eqisothermcoeff(irxn)
+      kd_kgw_m3b = isotherm_rxn%eqisothermcoeff(irxn)*material_auxvar%soil_particle_density
     endif
     if (isotherm%eqkdmineral(irxn) > 0) then
       ! NOTE: mineral volume fraction here is solely a scaling factor.  It has
