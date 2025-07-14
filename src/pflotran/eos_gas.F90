@@ -2386,13 +2386,13 @@ subroutine EOSGasDensityCoolProp(T,P,Rho_gas,dRho_dT,dRho_dP,ierr,table_idxs)
   n2 = "P"//CHAR(0)
   fluid = "Air"//CHAR(0)
 
-  Rho_gas = PropsSI(out1, n1, T_K, n2, P, fluid)
+  Rho_gas = PropsSI(out1, n1, T_K, n2, P, fluid)  / fmw_gas ! convert from kg/m^3 to kmol/m^3
 
   out1 = "d(D)/d(T)|P"//CHAR(0)
-  dRho_dT = PropsSI(out1, n1, T_K, n2, P, fluid)
+  dRho_dT = PropsSI(out1, n1, T_K, n2, P, fluid) / fmw_gas
 
   out1 = "d(D)/d(P)|T"//CHAR(0)
-  dRho_dP = PropsSI(out1, n1, T_K, n2, P, fluid)
+  dRho_dP = PropsSI(out1, n1, T_K, n2, P, fluid) / fmw_gas
 
 end subroutine EOSGasDensityCoolProp
 

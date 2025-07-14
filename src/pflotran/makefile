@@ -34,7 +34,7 @@ SRC_DIR = ./
 # make option to search for source files in $SRC_DIR
 VPATH = $(SRC_DIR)
 
-debug = TRUE
+debug = FALSE
 pflotran_src =
 common_src   =
 regression_test_dir = $(SRC_DIR)/../../regression_tests
@@ -43,7 +43,8 @@ unit_test_dir = $(SRC_DIR)/unittests
 # path to CoolProp library
 COOLPROP_LIB_DIR = /usr/local/share/CoolProp/build/gccstatic/
 
-MYFLAGS = -I. -g
+#MYFLAGS = -I. -g
+MYFLAGS = -I.
 
 # Import variables/options/rules from PETSc.
 include ${PETSC_DIR}/lib/petsc/conf/variables
