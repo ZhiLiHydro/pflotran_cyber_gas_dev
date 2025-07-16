@@ -71,6 +71,7 @@ module TH_Aux_module
     PetscReal :: d2sat_dTdp
     PetscReal :: d2den_dTdp
     PetscReal :: d2u_dTdp
+    PetscReal :: pert
     type(th_well_aux_type), pointer :: well
 
     ! for ice

@@ -5908,6 +5908,8 @@ subroutine PMWellBasePerturb(this)
       call PMWellSCO2Perturb(this)
     case (H_MODE)
       call PMWellHydratePerturb(this)
+    case (TH_MODE)
+      call PMWellTHPerturb(this)
   end select
 
 end subroutine PMWellBasePerturb
@@ -6198,6 +6200,150 @@ subroutine PMWellHydratePerturb(pm_well)
     call pm_well%SolveFlow(idof,ierr)
   enddo
 end subroutine PMWellHydratePerturb
+
+! ************************************************************************** !
+
+subroutine PMWellTHPerturb(pm_well)
+  !
+  ! Perturb well variables when using TH flow mode.
+  !
+  ! Author: Julia Camargo
+  ! Date: 07/11/2025
+  !
+
+  use Option_module
+  use TH_Aux_module
+  use Global_Aux_module
+  use Material_Aux_module
+  use Grid_module
+
+  implicit none
+
+  class(pm_well_type) :: pm_well
+
+  type(well_type), pointer :: well
+  type(well_reservoir_type), pointer :: reservoir
+  type(th_auxvar_type), pointer :: th_auxvar
+  type(global_auxvar_type), pointer :: global_auxvar
+  type(material_auxvar_type), pointer :: material_auxvar
+  type(grid_type), pointer :: res_grid
+  type(option_type), pointer :: option
+  PetscInt :: idof, k, i
+  PetscInt :: ghosted_id
+  PetscInt :: lid
+  PetscReal :: pres_bump
+  PetscErrorCode :: ierr
+
+  PetscReal, parameter :: perturbation_tolerance = 1.d-8
+  PetscReal, parameter :: min_perturbation = 1.d-15
+  ! PetscReal :: dpl, dpg
+
+  option => pm_well%option
+  res_grid => pm_well%realization%patch%grid
+
+  lid = option%liquid_phase
+
+  ! Make sure well is actually flowing if injection/production rates
+  ! are specified.
+  pres_bump = 0.d0
+  i = 0
+  well => pm_well%well
+  do
+    call pm_well%SolveFlow(ZERO_INTEGER,ierr)
+    if (any(dabs(well%liq%Q) > 0.d0)) exit
+    if (well%th_ql > 0.d0) then
+      ! Injection well
+      pres_bump = 1.25d0 * (pres_bump + 1.d0)
+    elseif (well%total_rate < 0.d0) then
+      ! Extraction well
+      pres_bump = 1.25d0 * (pres_bump - 1.d0)
+    else
+      ! No need for this
+      exit
+    endif
+    well%bh_p = well%bh_p + pres_bump
+    i = i + 1
+    if (i > 100) then
+      option%io_buffer = "Exceeded maximum number of iterations (100) to &
+                          &recover vanishing well Jacobian."
+      call PrintErrMsg(option)
+    endif
+  enddo
+
+  ! Go up the well: for each well segment that is on-process, update
+  ! perturbed values for reservoir and well variables.
+
+  ! Perturbed fluxes wrt reservoir variables
+  do k = 1,pm_well%well_grid%nsegments
+    ghosted_id = pm_well%well_grid%h_ghosted_id(k)
+
+    do idof = 1,option%nflowdof
+      well => pm_well%well_pert(idof)
+      well%bh_p = pm_well%well%bh_p
+      global_auxvar => &
+        pm_well%realization%patch%aux%global%auxvars(ghosted_id)
+      if (idof == TH_WELL_DOF) then
+        th_auxvar => &
+          pm_well%realization%patch%aux%th%auxvars(ghosted_id)
+        well%bh_p = well%bh_p + pm_well%realization%patch%aux%th% &
+                    auxvars(ghosted_id)%pert
+        if (.not. Initialized(th_auxvar%well%pressure_bump)) then
+          if (k == 1) then
+            th_auxvar%well%pressure_bump = (well%bh_p - &
+                      global_auxvar%pres(lid)) + pres_bump
+          else
+            th_auxvar%well%pressure_bump = 0.d0
+          endif
+        else
+          th_auxvar%well%pressure_bump = pres_bump
+        endif
+      else
+        th_auxvar => &
+          pm_well%realization%patch%aux%th%auxvars(ghosted_id) !check difference in if statement
+        well%bh_p = pm_well%well%bh_p
+      endif
+      reservoir => well%reservoir
+
+      material_auxvar => &
+        pm_well%realization%patch%aux%material%auxvars(ghosted_id)
+
+      reservoir%p_l(k) = global_auxvar%pres(option%liquid_phase)
+      reservoir%s_l(k) = global_auxvar%sat(option%liquid_phase)
+      reservoir%mobility_l(k) = th_auxvar%kvr
+      !reservoir%kr_l(k) = th_auxvar%kr !does not exist in TH mode or Global
+      reservoir%den_l(k) = global_auxvar%den_kg(option%liquid_phase)
+      reservoir%visc_l(k) = th_auxvar%vis
+      reservoir%xmass_liq(k,ONE_INTEGER) = 1.0
+      reservoir%xmass_gas(k,ONE_INTEGER) = 0.0
+      reservoir%e_por(k) = material_auxvar%porosity
+
+      reservoir%p_g(k) = 0.0  ! As th has a single liquid phase
+      reservoir%s_g(k) = 0.0  ! As th has a single liquid phase
+      reservoir%temp(k) = global_auxvar%temp
+      reservoir%H_l(k) = th_auxvar%h
+      reservoir%kx(k) = material_auxvar%permeability(1)
+      reservoir%ky(k) = material_auxvar%permeability(2)
+      reservoir%kz(k) = material_auxvar%permeability(3)
+      reservoir%volume(k) = material_auxvar%volume
+      if (res_grid%itype == STRUCTURED_GRID) then
+        reservoir%dx(k) = res_grid%structured_grid%dx(ghosted_id)
+        reservoir%dy(k) = res_grid%structured_grid%dy(ghosted_id)
+        reservoir%dz(k) = res_grid%structured_grid%dz(ghosted_id)
+      else
+        reservoir%dz(k) = pm_well%well_grid%res_dz(k)
+        reservoir%dx(k) = sqrt(material_auxvar%volume/ &
+                                    reservoir%dz(k))
+        reservoir%dy(k) = reservoir%dx(k)
+      endif
+    enddo
+  enddo
+
+  ! Now update fluxes associated with perturbed values
+  do idof = 1,option%nflowdof
+    call pm_well%SolveFlow(idof,ierr)
+  enddo
+
+end subroutine PMWellTHPerturb
 
 ! ************************************************************************** !
 
@@ -7143,6 +7289,7 @@ subroutine PMWellModifyFlowResHydrostatic(this,residual)
 
   use SCO2_Aux_module, only : sco2_thermal, SCO2_TEMPERATURE_DOF
   use Hydrate_Aux_module, only : HYDRATE_ENERGY_DOF, hydrate_fmw_comp
+  use TH_Aux_module, only : TH_TEMPERATURE_DOF
 
   class(pm_well_hydrostatic_type) :: this
   PetscReal, pointer :: residual(:)
@@ -7251,6 +7398,52 @@ subroutine PMWellModifyFlowResHydrostatic(this,residual)
                   this%well%gas%q(k)* &
                   this%well%gas%H(k))
       enddo
+    case(TH_MODE)
+      if (this%well%well_constraint_type == CONSTANT_RATE) then
+        sum_q = 0.d0
+        do k = 1,this%well_grid%nsegments
+          if (this%well_grid%h_rank_id(k) /= this%option%myrank) &
+              cycle
+          ghosted_id = this%well_grid%h_ghosted_id(k)
+          local_id = this%realization%patch%grid%nG2L(ghosted_id)
+          local_end = local_id * this%option%nflowdof
+          local_start = local_end - this%option%nflowdof + 1
+          if (k == 1) then
+            ! An extra residual is required for the bottom well cell.
+            ! Residual = Q - sum(q)
+            sum_q = sum(this%well%liq%q)
+            if (this%well%th_ql > 0.d0) then
+              Q = -1.d0 * (this%well%th_ql)
+            else if (this%well%total_rate < 0.d0) then
+              Q = -1.d0 * this%well%total_rate
+            else
+              Q = 0
+            endif
+            residual(local_end) = Q - sum_q
+          endif
+          residual(local_start) = residual(local_start) + &
+                                      this%well%liq%q(k)
+          j = TH_TEMPERATURE_DOF - 1
+          residual(local_start + j) = residual(local_start + j) + &
+                  (this%well%liq%q(k)* &
+                  this%well%liq%H(k))
+        enddo
+      elseif (this%well%well_constraint_type == CONSTANT_PRESSURE_HYDROSTATIC) then
+        do k = 1,this%well_grid%nsegments
+          if (this%well_grid%h_rank_id(k) /= this%option%myrank) &
+              cycle
+          ghosted_id = this%well_grid%h_ghosted_id(k)
+          local_id = this%realization%patch%grid%nG2L(ghosted_id)
+          local_end = local_id * this%option%nflowdof
+          local_start = local_end - this%option%nflowdof + 1
+          residual(local_start) = residual(local_start) + &
+                                      this%well%liq%q(k)
+          j = TH_TEMPERATURE_DOF - 1
+          residual(local_start + j) = residual(local_start + j) + &
+                  (this%well%liq%q(k)* &
+                  this%well%liq%H(k))
+        enddo
+      endif
   end select
 
 end subroutine PMWellModifyFlowResHydrostatic
@@ -7411,6 +7604,7 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
   use SCO2_Aux_module, only : SCO2_WELL_DOF, SCO2_TEMPERATURE_DOF, sco2_thermal
   use Hydrate_Aux_module, only : HYDRATE_WELL_DOF, HYDRATE_ENERGY_DOF, &
                                  hydrate_fmw_comp
+  use TH_Aux_module, only : TH_WELL_DOF, TH_TEMPERATURE_DOF
 
   implicit none
 
@@ -7788,6 +7982,147 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
                     well_pert%liq%H(k) + &
                     well_pert%gas%q(k)* &
                     well_pert%gas%H(k)
+        ! Just change 1 column
+        local_row_index = (ghosted_id-1)*option%nflowdof + j
+        local_col_index = this%well_grid%h_ghosted_id(1)* &
+                          option%nflowdof-1
+        J_well = (res_pert - res)/pert
+        if (dabs(J_well) > 0.d0) then
+          call MatSetValuesLocal(Jac,1,local_row_index,1,local_col_index, &
+                                  J_well,ADD_VALUES,ierr);CHKERRQ(ierr)
+        endif
+
+        if (any(dabs(J_block) > 0.d0)) then
+          call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1, &
+                                      J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
+        endif
+      enddo
+    case(TH_MODE)
+      allocate(J_block(option%nflowdof,option%nflowdof))
+      allocate(residual(this%well_grid%nsegments,option%nflowdof))
+
+      J_block = 0.d0
+      residual = 0.d0
+      ! Calculate Jacobian entries wrt reservoir perturbation:
+      ! BHP residual and reservoir source/sink residuals.
+
+      ! Unperturbed residuals
+      well => this%well
+      do k = 1,this%well_grid%nsegments
+        do irow = 1, option%nflowspec
+          residual(k,irow) = well%liq%q(k)
+        enddo
+        if (k==1) then
+          sum_q = 0.d0
+          sum_q = sum(well%liq%q)
+          if (well%total_rate < 0.d0) then
+            Q = -1.d0 * well%total_rate
+          else
+            Q = -1.d0 * well%th_ql
+          endif
+          residual(k,option%nflowdof) = Q - sum_q
+        endif
+        ! Energy residual
+        irow = TH_TEMPERATURE_DOF
+        residual(k,irow) = well%liq%q(k)* &
+                            well%liq%H(k)
+      enddo
+
+      ! Perturbations
+      do k = 1,this%well_grid%nsegments
+        J_block = 0.d0
+        ghosted_id = this%well_grid%h_ghosted_id(k)
+        do idof = 1,option%nflowdof-1
+          well_pert => this%well_pert(idof)
+          pert = this%realization%patch%aux%th% &
+                        auxvars(ghosted_id)%pert
+          ! Compute dRwell / dXres: only in the cell that owns the
+          ! well bottom.
+          if (this%well_grid%h_rank_id(1) == option%myrank) then
+            res_pert = 0.d0
+            res_pert = well_pert%liq%q(k) - &
+                        well%liq%q(k)
+
+            local_row_index = this%well_grid%h_ghosted_id(1)* &
+                              option%nflowdof-1
+            local_col_index = (ghosted_id-1)*option%nflowdof + idof - 1
+            J_well = -(res_pert)/pert
+            if (dabs(J_well) > 0.d0) then
+              call MatSetValuesLocal(Jac,1,local_row_index,1, &
+                                      local_col_index,J_well, &
+                                      ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+
+          endif
+          if (this%well_grid%h_rank_id(k) == option%myrank) then
+            ! Compute dRres / dXres at a given BHP
+            do irow = 1,option%nflowspec
+              res_pert = well_pert%liq%q(k)
+              J_block(irow,idof) = (res_pert - residual(k,irow))/pert
+            enddo
+            irow = TH_TEMPERATURE_DOF
+            res_pert = well_pert%liq%q(k)* &
+                        well_pert%liq%H(k)
+            J_block(irow,idof) = (res_pert - residual(k,irow))/pert
+          endif
+        enddo
+        if (any(dabs(J_block) > 0.d0)) then
+          call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1,&
+                                      J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
+        endif
+
+        !Perturbed rates wrt well perturbation.
+        well_pert => this%well_pert(TH_WELL_DOF)
+
+        if (this%well_grid%h_rank_id(k) /= option%myrank) cycle
+
+        J_block = 0.d0
+
+        ghosted_id = this%well_grid%h_ghosted_id(k)
+        pert = well_pert%bh_p - well%bh_p
+
+        ! Compute dRwell / dPwell
+        if (k == 1) then
+          sum_q = 0.d0
+          sum_q = sum(well%liq%q)
+          if (well%total_rate < 0.d0) then
+            Q = -1.d0 * well%total_rate
+          else
+            Q = -1.d0 * well%th_ql
+          endif
+          res = Q - sum_q
+
+          sum_q = 0.d0
+          sum_q = sum(well_pert%liq%q)
+          if (well_pert%total_rate < 0.d0) then
+            Q = -1.d0 * well_pert%total_rate
+          else
+            Q = -1.d0 * well_pert%th_ql
+          endif
+          res_pert = Q - sum_q
+
+          J_block(option%nflowdof,option%nflowdof) = &
+                  (res_pert - res)/pert
+        endif
+
+        ! Compute dRres / dPwell
+        do j = 0,option%nflowspec-1
+          res = this%well%liq%q(k)
+          res_pert = well_pert%liq%q(k)
+          ! Just change 1 column
+          local_row_index = (ghosted_id-1)*option%nflowdof + j
+          local_col_index = this%well_grid%h_ghosted_id(1)*option%nflowdof-1
+          J_well = (res_pert - res)/pert
+          if (dabs(J_well) > 0.d0) then
+            call MatSetValuesLocal(Jac,1,local_row_index,1,local_col_index, &
+                                    J_well,ADD_VALUES,ierr);CHKERRQ(ierr)
+          endif
+        enddo
+        ! Energy contribution
+        j = TH_TEMPERATURE_DOF - 1
+        res = this%well%liq%q(k)*this%well%liq%H(k)
+        res_pert = well_pert%liq%q(k)* &
+                    well_pert%liq%H(k)
         ! Just change 1 column
         local_row_index = (ghosted_id-1)*option%nflowdof + j
         local_col_index = this%well_grid%h_ghosted_id(1)* &
