@@ -426,6 +426,7 @@ module PM_Waste_Form_class
     PetscBool :: print_mass_balance
     PetscBool :: implicit_solution
     PetscLogDouble :: cumulative_time
+    PetscBool :: chemistry_acknowledgement
   contains
     procedure, public :: SetRealization => PMWFSetRealization
     procedure, public :: Setup => PMWFSetup
@@ -1000,6 +1001,7 @@ function PMWFCreate()
   nullify(PMWFCreate%criticality_mediator)
   PMWFCreate%print_mass_balance = PETSC_FALSE
   PMWFCreate%implicit_solution = PETSC_FALSE
+  PMWFCreate%chemistry_acknowledgement = PETSC_FALSE
   PMWFCreate%cumulative_time = 0.d0
   PMWFCreate%name = 'waste form general'
   PMWFCreate%header = 'WASTE FORM (GENERAL)'
@@ -1079,9 +1081,13 @@ subroutine PMWFReadPMBlock(this,input)
       case('PRINT_MASS_BALANCE')
         this%print_mass_balance = PETSC_TRUE
         cycle
-    !-------------------------------------
+    !-------------------------------------       
       case('IMPLICIT_SOLUTION')
         this%implicit_solution = PETSC_TRUE
+        cycle
+    !-------------------------------------
+      case('ACKNOWLEDGE_CHEMISTRY_AND_UFD')
+        this%chemistry_acknowledgement = PETSC_TRUE
         cycle
     end select
 
@@ -3067,11 +3073,12 @@ end subroutine PMWFSetup
   ! ensure that waste form is not being used with other reactive transport
   ! capability
   if (associated(reaction)) then
-    if (reaction%neqcplx + reaction%nsorb + reaction%ngeneral_rxn + &
+    if ((reaction%neqcplx + reaction%nsorb + reaction%ngeneral_rxn + &
         reaction%microbial%nrxn + reaction%nradiodecay_rxn + &
         reaction%immobile%nimmobile > 0 .or. &
         GasGetCount(reaction%gas,ACTIVE_AND_PASSIVE_GAS) > 0 .or. &
-        associated(rxn_sandbox_list)) then
+        associated(rxn_sandbox_list)) .and. &
+        .not.this%chemistry_acknowledgement) then
       this%option%io_buffer = 'The UFD_DECAY process model may not be used &
         &with other reactive transport capability within PFLOTRAN. &
         &Minerals (and mineral kinetics) are used because their data &
