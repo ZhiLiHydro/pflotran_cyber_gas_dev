@@ -432,8 +432,7 @@ subroutine GeomechConditionRead(condition,input,option)
                                  force_z%dataset, &
                                  force_z%units, &
                                  internal_units)
-      case('STRESS')! jaa: scalar value for now
-                    ! change to a tensor later, and specify xx,yy,zz components
+      case('STRESS')! jaa: vector of principal stress
         internal_units = 'N/m^2'
         call ConditionReadValues(input,option,word, &
                                  traction%dataset, &
@@ -649,8 +648,6 @@ subroutine GeomechConditionPrintSubCondition(subcondition,option)
   write(option%fid_out,100) trim(string)
 
   110 format(6x,a)
-
-  print *, 'jaa'
 
   write(option%fid_out,110) 'Geomech Dataset:'
   if (associated(subcondition%dataset)) then

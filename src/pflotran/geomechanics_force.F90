@@ -1268,9 +1268,6 @@ subroutine GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
     ! Find the inverse of J_map
     call MatInv3(J_map,inv_J_map)
     B = matmul(shapefunction%DN,inv_J_map)
-    !print *, 'DN ', shapefunction%DN
-    !print *, 'inv_J_map ', inv_J_map
-    !print *, 'B ', B
     youngs_mod = dot_product(shapefunction%N,local_youngs)
     poissons_ratio = dot_product(shapefunction%N,local_poissons)
     alpha = dot_product(shapefunction%N,local_alpha)
@@ -1279,16 +1276,12 @@ subroutine GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
     call GeomechGetLambdaMu(lambda,mu,youngs_mod,poissons_ratio)
     call GeomechGetBodyForce(load_type,lambda,mu,x,bf,option)
     call ConvertMatrixToVector(transpose(B),vecB_transpose)
-    !print *, 'vecB_transpose ', vecB_transpose
-    !stop
     Kmat = Kmat + w(igpt)*lambda* &
       matmul(vecB_transpose,transpose(vecB_transpose))*detJ_map
     call Kron(B,identity,kron_B_eye)
     call Kron(transpose(B),identity,kron_B_transpose_eye)
     call Kron(identity,transpose(B),kron_eye_B_transpose)
     N(:,1)= shapefunction%N
-    !print *, 'igpt, N(:,1)', igpt, N(:,1)
-    !stop
     call Kron(N,identity,kron_N_eye)
     Kmat = Kmat + w(igpt)*mu*matmul(kron_B_eye,kron_B_transpose_eye)*detJ_map
     Kmat = Kmat + w(igpt)*mu* &

@@ -14,7 +14,6 @@ module Gauss_module
   type, public :: gauss_type
     PetscInt :: dim                 ! dimension
     PetscInt :: element_type        ! Element type
-    !PetscInt :: face_type ! jaa testing
     PetscInt :: num_gauss_pts       ! Number of gauss points
     PetscReal, pointer :: r(:,:)    ! location of points
     PetscReal, pointer :: w(:)      ! weights
@@ -38,7 +37,6 @@ subroutine GaussInitialize(gauss)
 
   gauss%dim = 0
   gauss%element_type = 0
-  !gauss%face_type = 0
   gauss%num_gauss_pts = 0
   nullify(gauss%r)
   nullify(gauss%w)
@@ -65,11 +63,7 @@ subroutine GaussCalculatePoints(gauss)
     case(ONE_DIM_GRID)
       call Gauss1D(gauss%element_type,gauss%num_gauss_pts,r,w)
     case(TWO_DIM_GRID)
-      !if (gauss%face_type /= 0) then
-      !  call GaussSurface2D(gauss%face_type,gauss%num_gauss_pts,r,w)
-      !else
       call Gauss2D(gauss%element_type,gauss%num_gauss_pts,r,w)
-      !endif
     case(THREE_DIM_GRID)
       call Gauss3D(gauss%element_type,gauss%num_gauss_pts,r,w)
     case default
@@ -118,9 +112,9 @@ subroutine Gauss1D(element_type,num_gauss_pts,r,w)
     ! No of Gauss Points = 1
     !------------------------------
 
-      r(1,1) = 0.0
+      r(1,1) = 0.d0
       !
-      w(1) = 2.0
+      w(1) = 2.d0
 
     !------------------------------
     ! No of Gauss Points = 2
@@ -128,11 +122,11 @@ subroutine Gauss1D(element_type,num_gauss_pts,r,w)
 
     case(2)
 
-      r(1,1) = -1.0/sqrt(3.0)
+      r(1,1) = -1.d0/sqrt(3.d0)
       r(2,1) = -r(1,1)
       !
-      w(1) = 1.0
-      w(2) = 1.0
+      w(1) = 1.d0
+      w(2) = 1.d0
 
     !-------------------------------
     ! No of Gauss Points = 3
@@ -400,7 +394,7 @@ subroutine GaussTriangle(num_gauss_pts,r,w)
       r(3,:) = (/0.200000000000000,0.600000000000000/)
       r(4,:) = (/0.200000000000000,0.200000000000000/)
       !
-      w = 0.5*(/-0.562500000000000, &
+      w = 0.5d0*(/-0.562500000000000, &
                  0.520833333333333, &
                  0.520833333333333, &
                  0.520833333333333/)
@@ -419,7 +413,7 @@ subroutine GaussTriangle(num_gauss_pts,r,w)
       r(6,:) = (/0.059715871789770,0.470142064105115/)
       r(7,:) = (/0.470142064105115,0.470142064105115/)
       !
-      w = 0.5*(/0.225000000000000, &
+      w = 0.5d0*(/0.225000000000000, &
                 0.125939180544827, &
                 0.125939180544827, &
                 0.125939180544827, &
@@ -443,7 +437,7 @@ subroutine GaussTriangle(num_gauss_pts,r,w)
       r(8,:) = (/0.037477420750088,0.797112651860071/)
       r(9,:) = (/0.037477420750088,0.165409927389841/)
 
-      w = 0.5*(/0.205950504760887, &
+      w = 0.5d0*(/0.205950504760887, &
                 0.205950504760887, &
                 0.205950504760887, &
                 0.063691414286223, &
@@ -472,7 +466,7 @@ subroutine GaussTriangle(num_gauss_pts,r,w)
       r(11,:) = (/0.053145049844816,0.636502499121399/)
       r(12,:) = (/0.053145049844816,0.310352451033785/)
 
-      w = 0.5*(/0.050844906370207, &
+      w = 0.5d0*(/0.050844906370207, &
                 0.050844906370207, &
                 0.050844906370207, &
                 0.116786275726379, &
@@ -505,7 +499,7 @@ subroutine GaussTriangle(num_gauss_pts,r,w)
       r(12,:) = (/0.086903154253160,0.638444188569809/)
       r(13,:) = (/0.086903154253160,0.312865496004875/)
 
-      w = 0.5*(/-0.149570044467670, &
+      w = 0.5d0*(/-0.149570044467670, &
                 +0.175615257433204, &
                 +0.175615257433204, &
                 +0.175615257433204, &
@@ -526,39 +520,6 @@ subroutine GaussTriangle(num_gauss_pts,r,w)
 
 
 end subroutine GaussTriangle
-
-! ************************************************************************** !
-
-!subroutine GaussTriFace(num_gauss_pts,r,w)
-!  !
-!  ! Calculates Gauss points for T3 elements
-!  !
-!  ! Author: Satish Karra, LANL
-!  ! Date: 5/17/2013
-!  !
-!
-!  PetscInt :: num_gauss_pts
-!  PetscReal, pointer :: r(:,:)
-!  PetscReal, pointer :: w(:)
-!
-!  allocate(r(num_gauss_pts,2))
-!  allocate(w(num_gauss_pts))
-!
-!  select case(num_gauss_pts)
-!    case(1)
-!
-!    !------------------------------
-!    ! No of Gauss Points = 1
-!    !------------------------------
-!      r(1,:) = 1.0/3.0*(/1.0,1.0/)
-!      !
-!      w(1) = 0.5
-!
-!    !-------------------------------
-!    ! No of Gauss Points = 3
-!    !-------------------------------
-!
-!end subroutine GaussTriFace
 
 ! ************************************************************************** !
 
@@ -585,7 +546,7 @@ subroutine GaussTetrahedra(num_gauss_pts,r,w)
     !------------------------------
     ! No of Gauss Points = 1
     !------------------------------
-      r(1,:) = 1.0/4.0*(/1.0,1.0,1.0/)
+      r(1,:) = 1.d0/4.d0*(/1.d0,1.d0,1.d0/)
       !
       w(1) = 1.d0/6.d0
 
@@ -610,13 +571,13 @@ subroutine GaussTetrahedra(num_gauss_pts,r,w)
 
     case(5)
 
-      r(1,:) = 1.0/4.0*(/1.0,1.0,1.0/)
-      r(2,:) = (/1.0/2.0,1.0/6.0,1.0/6.0/)
-      r(3,:) = (/1.0/6.0,1.0/2.0,1.0/6.0/)
-      r(4,:) = (/1.0/6.0,1.0/6.0,1.0/2.0/)
-      r(5,:) = (/1.0/6.0,1.0/6.0,1.0/6.0/)
+      r(1,:) = 1.d0/4.d0*(/1.d0,1.d0,1.d0/)
+      r(2,:) = (/1.d0/2.d0,1.d0/6.d0,1.d0/6.d0/)
+      r(3,:) = (/1.d0/6.d0,1.d0/2.d0,1.d0/6.d0/)
+      r(4,:) = (/1.d0/6.d0,1.d0/6.d0,1.d0/2.d0/)
+      r(5,:) = (/1.d0/6.d0,1.d0/6.d0,1.d0/6.d0/)
       !
-      w = 1.0/6.0*(/-4.0/5.0,9.0/20.0,9.0/20.0,9.0/20.0,9.0/20.0/)
+      w = 1.d0/6.d0*(/-4.d0/5.d0,9.d0/20.d0,9.d0/20.d0,9.d0/20.d0,9.d0/20.d0/)
 
     !------------------------------------
     ! No of Gauss Points = 11
@@ -718,9 +679,9 @@ subroutine GaussPyramid(num_gauss_pts,r,w)
     !------------------------------
     ! No of Gauss Points = 1
     !------------------------------
-      r(1,:) = (/0.0,0.0,0.25/)
+      r(1,:) = (/0.d0,0.d0,0.25d0/)
       !
-      w(1) = 1.0
+      w(1) = 1.d0
 
     !--------------------------------
     ! No of Gauss Points = 5
@@ -735,11 +696,11 @@ subroutine GaussPyramid(num_gauss_pts,r,w)
       r(4,:) = (/-0.48686449556014765641, 0.48686449556014765641,0.16666666666666666667/)
       r(5,:) = (/ 0.00000000000000000000, 0.00000000000000000000,0.70000000000000000000/)
       !
-      w = (/0.2109375, &
-            0.2109375, &
-            0.2109375, &
-            0.2109375, &
-            0.15625/)
+      w = (/0.2109375d0, &
+            0.2109375d0, &
+            0.2109375d0, &
+            0.2109375d0, &
+            0.15625d0/)
 
     !------------------------------------
     ! No of Gauss Points = 6
