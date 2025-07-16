@@ -779,13 +779,21 @@ subroutine GeomechGridLocalizeRegions(grid,region_list,option)
   do
     if (.not.(associated(region))) exit
 
-    if (.not.(associated(region%vertex_ids))) then
-      option%io_buffer = 'GeomechGridLocalizeRegions: define region only ' // &
-                         'by list of vertices is currently implemented: ' //  &
+    if (.not.(associated(region%vertex_ids)) .and. &
+        .not.(associated(region%sideset))) then
+      option%io_buffer = 'GeomechGridLocalizeRegions: define region ' // &
+                         'by list of vertices or sideset are currently ' // &
+                         'implemented: ' //  &
                           trim(region%name)
       call PrintErrMsg(option)
     else
-      call GeomechGridLocalizeRegFromVertIDs(grid,region,option)
+      if (associated(region%sideset)) then
+        ! jaa skip this for now..
+        ! jaa fix later for multi process runs
+        continue
+      else
+        call GeomechGridLocalizeRegFromVertIDs(grid,region,option)
+      endif
     endif
 
     if (region%num_verts == 0 .and. associated(region%vertex_ids)) then
