@@ -569,7 +569,7 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
   PetscInt :: facetype, nfaces
 
   PetscInt :: iface, num_vertices
-  PetscReal :: principal_stress_bc(THREE_INTEGER)
+  PetscReal :: stress_bc(SIX_INTEGER)
   PetscInt :: face_vertices(THREE_INTEGER)
 
   field => geomech_realization%geomech_field
@@ -884,7 +884,7 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
         case(ZERO_GRADIENT_BC)
          ! do nothing
         case(NEUMANN_BC)
-          principal_stress_bc = boundary_condition%geomech_condition%traction%dataset%rarray
+          stress_bc = boundary_condition%geomech_condition%traction%dataset%rarray
           nfaces = boundary_condition%region%sideset%nfaces
           do iface = 1, nfaces ! change to number of tri faces
             num_vertices = THREE_INTEGER
@@ -894,7 +894,6 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
             allocate(ids(num_vertices*option%ngeomechdof))
             allocate(res_vec(num_vertices*option%ngeomechdof))
             facetype = TRI_TYPE !TRI_FACE_TYPE
-            print *, 'iface, vertices: ', iface, face_vertices
             do ivertex = 1, num_vertices
               ghosted_id = face_vertices(ivertex)
               local_coordinates(ivertex,GEOMECH_DISP_X_DOF) = grid%nodes(ghosted_id)%x
@@ -908,7 +907,7 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
             enddo
             call GeomechForceApplyTractionBC( local_coordinates, &
                                               facetype, &
-                                              principal_stress_bc, &
+                                              stress_bc, &
                                               grid%surf_gauss_node(1)%r, &
                                               grid%surf_gauss_node(1)%w, &
                                               res_vec,option)
@@ -1124,10 +1123,7 @@ function tri_face_unitnormal(v1, v2, v3) result(n)
   e2 = v3 - v1
 
   n = cross_product(e1,e2)
-
   n = n/sqrt(dot_product(n,n))
-
-  !print *, 'n: ', n
 
 end function tri_face_unitnormal
 
@@ -1445,7 +1441,7 @@ end subroutine GeomechForceLocalElemError
 
 subroutine GeomechForceApplyTractionBC( local_coordinates, &
                                         facetype, &
-                                        principal_stress_bc, &
+                                        stress_bc, &
                                         r,w,res_vec,option)
 
   use Grid_Unstructured_Cell_module
@@ -1459,7 +1455,7 @@ subroutine GeomechForceApplyTractionBC( local_coordinates, &
   PetscReal, pointer :: r(:,:), w(:)
   PetscReal, allocatable :: res_vec(:)
   type(option_type) :: option
-  PetscReal :: principal_stress_bc(THREE_INTEGER)
+  PetscReal :: stress_bc(SIX_INTEGER)
 
   type(shapefunction_type) :: shapefunction
   PetscInt :: igpt
@@ -1481,38 +1477,33 @@ subroutine GeomechForceApplyTractionBC( local_coordinates, &
   force = 0.d0
 
   boundary_stress = 0.d0
-  boundary_stress(1,1) = principal_stress_bc(1) ! sigma_xx
-  boundary_stress(2,2) = principal_stress_bc(2) ! sigma_yy
-  boundary_stress(3,3) = principal_stress_bc(3) ! sigma_zz
+  boundary_stress(1,1) = stress_bc(1) ! sigma_xx
+  boundary_stress(2,2) = stress_bc(2) ! sigma_yy
+  boundary_stress(3,3) = stress_bc(3) ! sigma_zz
+  boundary_stress(1,2) = stress_bc(4) ! sigma_xy
+  boundary_stress(2,3) = stress_bc(5) ! sigma_yz
+  boundary_stress(3,1) = stress_bc(6) ! sigma_zx
+  ! symm
+  boundary_stress(1,3) = boundary_stress(3,1) ! sigma_xz
+  boundary_stress(3,2) = boundary_stress(2,3) ! sigma_zy
+  boundary_stress(2,1) = boundary_stress(1,2) ! sigma_yx
 
-  ! use abs normal since direction is set by bc description
-  normal_vec = abs(tri_face_unitnormal( local_coordinates(1,:), &
-                                        local_coordinates(2,:), &
-                                        local_coordinates(3,:)))
-
-  print *, 'abs face normal', normal_vec
+  normal_vec = tri_face_unitnormal(local_coordinates(1,:), &
+                                   local_coordinates(2,:), &
+                                   local_coordinates(3,:))
 
   do igpt = 1, len_w
     shapefunction%element_type = facetype
-    print *, 'eletype', facetype
     call ShapeFunctionInitialize(shapefunction)
     shapefunction%zeta = r(igpt,:)
     call ShapeFunctionCalculate(shapefunction)
-    !print *, 'local_coordinates ', local_coordinates
-    !print *, 'shapefunction%N ', shapefunction%N
     x = matmul(transpose(local_coordinates),shapefunction%N)
-    !print *, 'x', x ! coord of 3d point on triangular face
     J_map = matmul(transpose(local_coordinates),shapefunction%DN)
-    !print *, 'tangent vec 1 ', J_map(:,1)
-    !print *, 'tangent vec 2 ', J_map(:,2)
-    !print *, 'shapefunction%DN ', shapefunction%DN
     allocate(N(size(shapefunction%N),ONE_INTEGER))
     N(:,1)= shapefunction%N
 
     xp_J = cross_product(J_map(:,1), J_map(:,2))
-    !print *, 'cross prod: ', xp_J
     surf_J = sqrt(dot_product(xp_J,xp_J))
-    !print *, 'surf_J ', surf_J
     if (surf_J <= 0.d0) then
       option%io_buffer = 'GEOMECHANICS: The surface jacobian has' // &
                          ' to be positive!'
@@ -1520,9 +1511,7 @@ subroutine GeomechForceApplyTractionBC( local_coordinates, &
     endif
     traction(:,1) = matmul(boundary_stress,normal_vec)
     call Kron(N,traction,kron_N_traction)
-    !print *, 'kron_N_traction ', kron_N_traction
     force = force + w(igpt)*kron_N_traction(:,1)*surf_J
-    print *, 'force ', force
     call ShapeFunctionDestroy(shapefunction)
     deallocate(N)
   enddo

@@ -275,7 +275,7 @@ subroutine GeomechConditionRead(condition,input,option)
   force_x => GeomechSubConditionCreate(ONE_INTEGER)
   force_y => GeomechSubConditionCreate(ONE_INTEGER)
   force_z => GeomechSubConditionCreate(ONE_INTEGER)
-  traction => GeomechSubConditionCreate(THREE_INTEGER)
+  traction => GeomechSubConditionCreate(SIX_INTEGER)
   displacement_x%name = 'displacement_x'
   displacement_y%name = 'displacement_y'
   displacement_z%name = 'displacement_z'
@@ -432,7 +432,7 @@ subroutine GeomechConditionRead(condition,input,option)
                                  force_z%dataset, &
                                  force_z%units, &
                                  internal_units)
-      case('STRESS')! jaa: vector of principal stress
+      case('STRESS_TENSOR')! jaa: vector of principal stress
         internal_units = 'N/m^2'
         call ConditionReadValues(input,option,word, &
                                  traction%dataset, &
