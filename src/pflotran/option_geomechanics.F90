@@ -14,7 +14,8 @@ module Option_Geomechanics_module
 
     PetscBool :: initial_flag
     PetscReal :: time
-    PetscInt :: subsurf_coupling
+    PetscInt :: flow_coupling
+    PetscInt :: geophysics_coupling
     PetscReal :: gravity(3)
     PetscInt :: split_scheme
     PetscBool :: sync_flow_dt
@@ -106,7 +107,8 @@ subroutine OptionGeomechanicsInitRealization(option)
 
   option%initial_flag = PETSC_TRUE
   option%time = 0.d0
-  option%subsurf_coupling = 0
+  option%flow_coupling = 0
+  option%geophysics_coupling = 0
   option%split_scheme = 0
   option%gravity(:) = 0.d0
   option%gravity(3) = -1.d0*EARTH_GRAVITY    ! m/s^2
