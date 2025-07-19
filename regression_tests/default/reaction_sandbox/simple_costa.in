@@ -1,0 +1,157 @@
+#Description: 1D Regression Test for reaction_sandbox_simple.F90
+#
+# This file is simplified for regression tests.  To run a full scale simulation
+# to 25 years at 1m resolution:
+#
+# 1. Increase the number of grid cells in the X direction under the GRID card
+#    to 100.
+
+#==============================================================================
+# DO NOT MODIFY
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_TRANSPORT transport
+      MODE GIRT
+      OPTIONS
+      /
+    /
+  /
+END
+# END DO NOT MODIFY
+#==============================================================================
+
+SUBSURFACE
+
+#=========================== numerical methods ================================
+NUMERICAL_METHODS TRANSPORT
+
+  NEWTON_SOLVER
+    NUMERICAL_JACOBIAN
+  /
+
+  LINEAR_SOLVER
+    SOLVER DIRECT
+  /
+
+END
+
+#=========================== constraints ======================================
+# modify these initial concentration
+CONSTRAINT initial
+  CONCENTRATIONS # [mol/L]
+    Aaq  3.33d-3 F
+    Baq  1.d-10  F
+    Caq  1.d-10  F
+    Daq  1.d-10  F
+    Eaq  1.d-10  F
+    Faq  1.d-10  F
+  /
+  IMMOBILE     # [mol/m^3 bulk]
+    Xim  1.d7
+    Yim  1.d-10
+  /
+END
+
+#==============================================================================
+#==============================================================================
+# DO NOT MODIFY ANYTHING BELOW (unless you know what you are doing)
+#==============================================================================
+#==============================================================================
+
+#=========================== uniform flow =====================================
+REFERENCE_LIQUID_DENSITY 1000.d0
+
+#=========================== chemistry ========================================
+CHEMISTRY
+  PRIMARY_SPECIES
+    Aaq
+    Baq
+    Caq
+    Daq
+    Eaq
+    Faq
+  /
+  IMMOBILE_SPECIES
+    Xim
+    Yim
+  /
+  REACTION_SANDBOX
+    SIMPLE
+  /
+  LOG_FORMULATION
+  ACTIVITY_COEFFICIENTS OFF
+  OUTPUT
+    TOTAL
+    ALL
+  /
+END
+
+#=========================== solver options ===================================
+
+#=========================== discretization ===================================
+GRID
+  TYPE STRUCTURED
+  NXYZ 1 1 1
+  BOUNDS
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 1.d0
+  /
+END
+
+#=========================== fluid properties =================================
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.d-9
+END
+
+#=========================== material properties ==============================
+MATERIAL_PROPERTY soil1
+  ID 1
+  POROSITY 1.
+END
+
+#=========================== output options ===================================
+OUTPUT
+  PERIODIC_OBSERVATION TIMESTEP 1
+END
+
+#=========================== times ============================================
+TIME
+  FINAL_TIME 1388888.0d0 h
+  INITIAL_TIMESTEP_SIZE 1.d0 h
+  MAXIMUM_TIMESTEP_SIZE 1.d3 h
+END
+
+#=========================== regions ==========================================
+REGION all
+  INFINITE
+END
+
+#=========================== observation points ===============================
+OBSERVATION
+  REGION all
+END
+
+#=========================== transport conditions =============================
+TRANSPORT_CONDITION initial
+  TYPE ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 initial
+  /
+END
+
+#=========================== condition couplers ===============================
+# initial condition
+INITIAL_CONDITION
+  TRANSPORT_CONDITION initial
+  REGION all
+END
+
+#=========================== stratigraphy couplers ============================
+STRATA
+  REGION all
+  MATERIAL soil1
+END
+
+
+END_SUBSURFACE

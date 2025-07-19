@@ -117,6 +117,7 @@ subroutine SimpleEvaluate(this,Residual,Jacobian,compute_derivative, &
   use Reactive_Transport_Aux_module
   use Global_Aux_module
   use Material_Aux_module
+  use Reaction_Inhibition_Aux_module
 
   implicit none
 
@@ -145,6 +146,17 @@ subroutine SimpleEvaluate(this,Residual,Jacobian,compute_derivative, &
   PetscReal :: stoichX, stoichY
   PetscReal :: k, kr        ! units are problem specific
   PetscReal :: K_Aaq, K_Baq ! [mol/L water]
+
+  PetscReal :: Aaq_rate_constant
+  PetscReal :: Aaq_half_saturation
+  PetscReal :: Aaq_threshold
+  PetscReal :: Aaq_inhibition
+  PetscReal :: tempreal
+  PetscReal :: Caq_rate_constant
+  PetscReal :: Xim_rate_constant
+  PetscReal :: Xim_decay_rate_constant
+  PetscReal :: common_
+  PetscInt :: inhibition_method
 
   porosity = material_auxvar%porosity               ! [m^3 pore/m^3 bulk volume]
   liquid_saturation = global_auxvar%sat(iphase)     ! [m^3 water/m^3 pore]
@@ -195,106 +207,32 @@ subroutine SimpleEvaluate(this,Residual,Jacobian,compute_derivative, &
   K_Baq = 0.d0
 
   !----------------------------------------------------------------------------
-  ! zero-order (A -> C)
-  ! This rate constant is calculated to deplete a concentration of 1.d-3
-  ! mol/liter in 25 years. The reaction must be run in batch mode (i.e. no
-  ! transport). Increasing the rate constant will result in simulation failure
-  ! unless the run time is reduced.
-  !uncomment: k = 1.26839d-12  ! [mol/L water-sec]
-  !uncomment: stoichA = -1.d0
-  !uncomment: stoichC = 1.d0
-  !uncomment: Rate = k * L_water  ! mol/sec
-  !uncomment: RateA = stoichA * Rate
-  !uncomment: RateC = stoichC * Rate
-
-  !----------------------------------------------------------------------------
-  ! first-order (A -> C)
-  !uncomment: k = 1.d-9  ! [1/sec]
-  !uncomment: stoichA = -1.d0
-  !uncomment: stoichC = 1.d0
-  !uncomment: Rate = k * Aaq * L_water  ! [mol/sec]
-  !uncomment: RateA = stoichA * Rate
-  !uncomment: RateC = stoichC * Rate
-
-  !----------------------------------------------------------------------------
-  ! second-order (A + B -> C)
-  !uncomment: k = 1.d-6  ! [L water/mol-sec]
-  !uncomment: stoichA = -1.d0
-  !uncomment: stoichB = -1.d0
-  !uncomment: stoichC = 1.d0
-  !uncomment: Rate = k * Aaq * Baq * L_water  ! [mol/sec]
-  !uncomment: RateA = stoichA * Rate
-  !uncomment: RateB = stoichB * Rate
-  !uncomment: RateC = stoichC * Rate
-
-  !----------------------------------------------------------------------------
-  ! Monod (A -> C)
-  !uncomment: k = 1.d-12  ! [mol/L water-sec]
-  !uncomment: K_Aaq = 1.d-4  ! [mol/L water]
-  !uncomment: stoichA = -1.d0
-  !uncomment: stoichC = 1.d0
-  !uncomment: Rate = k * Aaq / (K_Aaq + Aaq) * L_water  ! [mol/sec]
-  !uncomment: RateA = stoichA * Rate
-  !uncomment: RateC = stoichC * Rate
-
-  !----------------------------------------------------------------------------
   ! multiplicative Monod w/biomass (A + 2B -> C)
-  !uncomment: k = 1.d-6  ! [mol /mol biomass-sec]
-  !uncomment: K_Aaq = 1.d-4  ! [mol/L water]
-  !uncomment: K_Baq = 5.d-5  ! [mol/L water]
-  !uncomment: stoichA = -1.d0
-  !uncomment: stoichB = -2.d0
-  !uncomment: stoichC = 1.d0
-  !uncomment: Rate = k * Xim * Aaq / (K_Aaq + Aaq) * &
-  !uncomment:                  Baq / (K_Baq + Baq) * volume ! [mol/sec]
-  !uncomment: RateA = stoichA * Rate
-  !uncomment: RateB = stoichB * Rate
-  !uncomment: RateC = stoichC * Rate
+  Aaq_rate_constant = -2.66d-18     ! mol Aaq / mol Xim - sec
+  Aaq_half_saturation = 2.93d-5     ! mol / L water
+  Caq_rate_constant = 2.02d-18      ! mol Caq / mol Xim - sec
+  Xim_rate_constant = 6.01d-6       ! 1 / sec
+  Xim_decay_rate_constant = 1.d-12  ! 1 / sec
 
-  !----------------------------------------------------------------------------
-  ! decay and ingrowth (A -> B -> C)
-  ! first-order rate constants
-  !uncomment: k = 1.d-9  ! [1/sec]
-  !uncomment: k1 = 2.d-9   ! [1/sec]
-  !uncomment: k2 = 1.d-9  ! [1/sec]
-  ! stoichiometries are moles of products generated from a mole of reactant
-  !uncomment: stoichB = 3.d0
-  !uncomment: stoichC = 1.d0
-  !uncomment: stoichD = 2.d0
-  !uncomment: Rate  = k *  Aaq * L_water  ! [mol/sec]
-  !uncomment: Rate1 = k1 * Baq * L_water  ! [mol/sec]
-  !uncomment: Rate2 = k2 * Caq * L_water  ! [mol/sec]
-  !uncomment: RateA =                   - stoichB * Rate
-  !uncomment: RateB =   stoichB * Rate  - stoichC * Rate1
-  !uncomment: RateC =   stoichC * Rate1 - stoichD * Rate2
-  !uncomment: RateD =   stoichD * Rate2
+  common_ = Xim * Aaq / (Aaq_half_saturation + Aaq) * volume ! [mol Xim / sec]
 
-  !----------------------------------------------------------------------------
-  ! first-order forward - reverse (A <-> C)
-  !uncomment: k = 5.d-9   ! [1/sec]
-  !uncomment: kr = 2.5d-9  ! [1/sec]
-  !uncomment: stoichA = -1.d0
-  !uncomment: stoichC = 1.d0
-  !uncomment: Rate = (k * Aaq - kr * Caq) * L_water  ! [mol/sec]
-  !uncomment: RateA = stoichA * Rate
-  !uncomment: RateC = stoichC * Rate
+  Aaq_threshold = 1.d-9
+  inhibition_method = INHIBITION_SMOOTHSTEP
+  select case(inhibition_method)
+    case(INHIBITION_SMOOTHSTEP)
+      call ReactionInhibitionSmoothstep(Aaq,Aaq_threshold,0.1d0,Aaq_inhibition,tempreal)
+    case(INHIBITION_THRESHOLD)
+      call ReactionInhibitionThreshold(Aaq,Aaq_threshold,Aaq_inhibition,tempreal)
+  end select
 
-  !----------------------------------------------------------------------------
-  ! mass transfer between aqueous and immobile phases
-  ! k [1/sec]
-  ! kr [1/sec]
-  ! Baq [mol/L water]
-  ! Yim [mol/m^3 bulk volume]
-  ! volume [m^3 bulk volume]
-  ! L_water [L water]
-  ! Rate [mole/sec]
-  !uncomment: k = 5.d-10
-  !uncomment: kr = 5.d-9
-  !uncomment: stoichB = -5.d0
-  !uncomment: stoichY = 1.d0
-  !uncomment: Rate = k * Baq * L_water - kr * Yim * volume  ! [mol/sec]
-  !uncomment: RateB = stoichB * Rate
-  !uncomment: RateY = stoichY * Rate
+  RateA = Aaq_rate_constant * common_ * Aaq_inhibition       ! mol Aaq / sec
+  RateC = Caq_rate_constant * common_ * Aaq_inhibition       ! mol Caq / sec
+  RateX = Xim_rate_constant * common_ * Aaq_inhibition - &   ! mol Xim / sec
+            Xim_decay_rate_constant * Xim * volume
+
+!  if (.not.compute_derivative) then
+!    print *, RateA, RateC, RateX
+!  endif
 
   ! NOTES
   ! 1. Always subtract contribution from residual
