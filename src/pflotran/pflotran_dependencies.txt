@@ -229,6 +229,7 @@ condition_control.o : \
   pflotran_constants.o \
   reaction.o \
   reaction_aux.o \
+  reaction_mineral.o \
   reaction_mineral_aux.o \
   reactive_transport.o \
   reactive_transport_aux.o \
@@ -970,6 +971,7 @@ geomechanics_region.o : \
   logging.o \
   option.o \
   pflotran_constants.o \
+  region.o \
   string.o \
   utility.o
 geomechanics_regression.o : \
@@ -2079,9 +2081,11 @@ pm_geomechanics_force.o : \
   geomechanics_force.o \
   geomechanics_realization.o \
   global.o \
+  global_aux.o \
   grid.o \
   input_aux.o \
   option.o \
+  parameter.o \
   pflotran_constants.o \
   pm_base.o \
   realization_subsurface.o \
@@ -2694,6 +2698,7 @@ pmc_geomechanics.o : \
   geomechanics_force.o \
   geomechanics_realization.o \
   geomechanics_subsurface_properties.o \
+  global_aux.o \
   grid.o \
   option.o \
   output_geomechanics.o \
@@ -3482,6 +3487,7 @@ richards_common.o : \
   global_aux.o \
   material_aux.o \
   option.o \
+  parameter.o \
   pflotran_constants.o \
   richards_aux.o \
   utility.o
@@ -3688,6 +3694,7 @@ simulation_subsurface.o : \
   string.o \
   timestepper_base.o \
   timestepper_steady.o \
+  utility.o \
   waypoint.o \
   wipp.o
 slatec_pchip.o :
@@ -3839,6 +3846,7 @@ th.o : \
   matrix_zeroing.o \
   option.o \
   output_aux.o \
+  parameter.o \
   patch.o \
   pflotran_constants.o \
   realization_subsurface.o \
@@ -3925,6 +3933,7 @@ timestepper_steady.o : \
   output_ekg.o \
   pflotran_constants.o \
   pm_base.o \
+  pm_geomechanics_force.o \
   pm_subsurface_flow.o \
   solver.o \
   string.o \
