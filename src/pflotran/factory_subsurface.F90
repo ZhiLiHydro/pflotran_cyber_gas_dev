@@ -376,6 +376,8 @@ subroutine FactorySubsurfaceInitSimulation(simulation)
     case(GEOMECH_ERT_COUPLING)
       call RealizationRegisterParameter(realization,'geomechanics_stress')
       call RealizationRegisterParameter(realization,'geomechanics_strain')
+  end select
+  select case(option%geomechanics%flow_coupling)
     case(GEOMECH_TWO_WAY_COUPLED) ! jaa testing
       call RealizationRegisterParameter(realization, &
                                         'geomech_vol_strain_0')

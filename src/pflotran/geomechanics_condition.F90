@@ -109,6 +109,7 @@ function GeomechConditionCreate(option)
   nullify(condition%force_x)
   nullify(condition%force_y)
   nullify(condition%force_z)
+  nullify(condition%traction)
   nullify(condition%sub_condition_ptr)
   nullify(condition%itype)
   nullify(condition%next)
@@ -432,7 +433,7 @@ subroutine GeomechConditionRead(condition,input,option)
                                  force_z%dataset, &
                                  force_z%units, &
                                  internal_units)
-      case('STRESS_TENSOR')! jaa: vector of principal stress
+      case('STRESS_TENSOR')! jaa traction bc
         internal_units = 'N/m^2'
         call ConditionReadValues(input,option,word, &
                                  traction%dataset, &
