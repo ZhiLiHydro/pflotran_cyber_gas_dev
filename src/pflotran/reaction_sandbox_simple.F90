@@ -233,7 +233,7 @@ subroutine SimpleEvaluate(this,Residual,Jacobian,compute_derivative, &
 
   Aaq = Aaq * molarity_to_molality    ! mol / L water -> mol / kg water (if using molality)
   Caq = Caq * molarity_to_molality
-  Xim = Xim * immobile_to_aqueous.    ! mol / m^3 bulk -> mol / L water
+  Xim = Xim * immobile_to_aqueous     ! mol / m^3 bulk -> mol / L water
   Aaq_half_saturation = Aaq_half_saturation * molarity_to_molality
 
   if (aqueous_biomass_units) then
@@ -250,8 +250,8 @@ subroutine SimpleEvaluate(this,Residual,Jacobian,compute_derivative, &
   endif
 
   Aaq_threshold = 1.d-9 * molarity_to_molality
-!  inhibition_method = INHIBITION_SMOOTHSTEP
-  inhibition_method = INHIBITION_THRESHOLD
+  inhibition_method = INHIBITION_SMOOTHSTEP
+!  inhibition_method = INHIBITION_THRESHOLD
   select case(inhibition_method)
     case(INHIBITION_SMOOTHSTEP)
       call ReactionInhibitionSmoothstep(Aaq,Aaq_threshold,0.1d0,Aaq_inhibition,tempreal)
