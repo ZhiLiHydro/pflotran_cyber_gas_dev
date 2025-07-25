@@ -1441,7 +1441,7 @@ subroutine CondControlAssignFlowInitCond(realization)
           initial_condition => initial_condition%next
         enddo
         call VecRestoreArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-        
+
       case default
         ! assign initial conditions values to domain
         call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)

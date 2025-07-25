@@ -8446,8 +8446,8 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
                                       local_col_index,J_well, &
                                       ADD_VALUES,ierr);CHKERRQ(ierr)
             endif
-
           endif
+
           if (this%well_grid%h_rank_id(k) == option%myrank) then
             ! Compute dRres / dXres at a given BHP
             do irow = 1,option%nflowspec
@@ -8738,6 +8738,65 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
                                     temp_real, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
+    case(TH_MODE)
+      allocate(J_block(option%nflowdof,option%nflowdof))
+      J_block = 0.d0
+      
+      do k = 1,this%well_grid%nsegments
+        J_block = 0.d0
+        ghosted_id = this%well_grid%h_ghosted_id(k)
+        do idof = 1,option%nflowdof-1
+          ! Compute dRwell / dXres: only in the cell that owns the well
+          if (this%well_grid%h_rank_id(1) == option%myrank) then
+            local_row_index = this%well_grid%h_ghosted_id(1)* &
+                              option%nflowdof-1
+            local_col_index = (ghosted_id-1)*option%nflowdof + idof - 1
+            J_well = UNINITIALIZED_DOUBLE
+            if (dabs(J_well) > 0.d0) then
+              call MatSetValuesLocal(Jac,1,local_row_index,1, &
+                                      local_col_index,J_well, &
+                                      ADD_VALUES,ierr);CHKERRQ(ierr)
+            endif
+          endif
+          if (this%well_grid%h_rank_id(k) == option%myrank) then
+            ! Compute dRres / dXres at a given P_BHP
+            do irow = 1,option%nflowspec
+              J_block(irow,idof) = UNINITIALIZED_DOUBLE
+            enddo
+          endif
+        enddo
+        if (any(dabs(J_block) > 0.d0)) then
+          call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1,&
+                                      J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
+        endif
+
+        !Perturbed rates wrt well perturbation.
+
+        if (this%well_grid%h_rank_id(k) /= option%myrank) cycle
+        J_block = 0.d0
+        ghosted_id = this%well_grid%h_ghosted_id(k)
+
+        ! Compute dRwell / dPwell
+        if (k == 1) then
+          J_block(option%nflowdof,option%nflowdof) = UNINITIALIZED_DOUBLE
+        endif
+
+        ! Compute dRres / dPwell
+        do j = 0,option%nflowspec-1 !J: Should it be -1 or -2?
+          ! Just change 1 column
+          local_row_index = (ghosted_id-1)*option%nflowdof + j
+          local_col_index = this%well_grid%h_ghosted_id(1)*option%nflowdof-1
+          J_well = UNINITIALIZED_DOUBLE
+          if (dabs(J_well) > 0.d0) then
+            call MatSetValuesLocal(Jac,1,local_row_index,1,local_col_index, &
+                                    J_well,ADD_VALUES,ierr);CHKERRQ(ierr)
+          endif
+        enddo
+        if (any(dabs(J_block) > 0.d0)) then
+          call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1, &
+                                      J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
+        endif
+      enddo
   end select
 
 end subroutine PMWellModifyDummyFlowJacobian
@@ -8999,7 +9058,7 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
       fmw_comp_temp(:) = fmw_comp(:)
     case (H_MODE)
       fmw_comp_temp(:) = hydrate_fmw_comp(:)
-    case (RICHARDS_MODE)
+    case (RICHARDS_MODE, TH_MODE)
       fmw_comp_temp(:) = FMWH2O
   end select
 
@@ -9021,8 +9080,8 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
 
   if (well%well_constraint_type == WELL_CONSTANT_PRESSURE_HYDROSTATIC) then
 
-    if (option%iflowmode /= RICHARDS_MODE) then
-      option%io_buffer = 'WELL_CONSTANT_PRESSURE_HYDROSTATIC only implemented in RICHARDS_MODE.'
+    if (option%iflowmode /= RICHARDS_MODE .and. option%iflowmode /= TH_MODE) then
+      option%io_buffer = 'WELL_CONSTANT_PRESSURE_HYDROSTATIC only implemented in RICHARDS_MODE and TH_MODE.'
       call PrintErrMsg(option)
     endif
 
@@ -9074,8 +9133,8 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
 
 
     select case (option%iflowmode)
-      case (RICHARDS_MODE)
-        aux(1) = 0.0  ! No salt in Richards mode
+      case (RICHARDS_MODE, TH_MODE)
+        aux(1) = 0.0  ! No salt in Richards, TH mode
       case default
         aux(1) = well%liq%xmass(1,option%salt_id)
     end select
@@ -9134,9 +9193,9 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
         ! STOMP doesn't iterate
         exit
 
-        if (option%iflowmode == RICHARDS_MODE) then
+        if (option%iflowmode == RICHARDS_MODE .or. option%iflowmode == TH_MODE) then
           option%io_buffer = 'Hydrostatic iteration not yet implemented &
-                              &in Richards mode.'
+                              &in Richards, TH mode.'
           call PrintErrMsg(option)
         endif
 
@@ -9177,6 +9236,8 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
       call PMWellUpdatePropertiesHydrateFlow(this,well,option)
     case(RICHARDS_MODE)
       call PMWellUpdatePropertiesRichardsFlow(this,well,option)
+    case(TH_MODE)
+      call PMWellUpdatePropertiesTHFlow(this,well,option)
   end select
 
   ! Compute fluxes in/out of well
@@ -9309,18 +9370,21 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
         if (option%iflowmode == RICHARDS_MODE) then
           well%gas%Q(i) = 0.0
         endif
-
-        res_pg_temp = reservoir%p_g(i) + reservoir%den_g(i) * gravity * delta_z
-        mobility = reservoir%kr_g(i)/reservoir%visc_g(i)
-        den_ave = reservoir%den_g(i)
-        ! Flowrate in kg/s
-        if (res_pg_temp > well%pg(i)) then
-          well%liq%Q(i) = well%liq%Q(i) + den_ave*mobility*well%WI(i) * &
-                          (res_pg_temp-well%pg(i)) * &
-                          reservoir%xmass_gas(i,ONE_INTEGER)
-          well%gas%Q(i) = well%gas%Q(i) + den_ave*mobility*well%WI(i) * &
-                          (res_pg_temp-well%pg(i)) * &
-                          reservoir%xmass_gas(i,TWO_INTEGER)
+        if (option%iflowmode == TH_MODE) then
+          well%gas%Q(i) = 0.0
+        else
+          res_pg_temp = reservoir%p_g(i) + reservoir%den_g(i) * gravity * delta_z
+          mobility = reservoir%kr_g(i)/reservoir%visc_g(i)
+          den_ave = reservoir%den_g(i)
+          ! Flowrate in kg/s
+          if (res_pg_temp > well%pg(i)) then
+            well%liq%Q(i) = well%liq%Q(i) + den_ave*mobility*well%WI(i) * &
+                            (res_pg_temp-well%pg(i)) * &
+                            reservoir%xmass_gas(i,ONE_INTEGER)
+            well%gas%Q(i) = well%gas%Q(i) + den_ave*mobility*well%WI(i) * &
+                            (res_pg_temp-well%pg(i)) * &
+                            reservoir%xmass_gas(i,TWO_INTEGER)
+          endif
         endif
       endif
 
@@ -10194,6 +10258,47 @@ subroutine PMWellUpdatePropertiesHydrateFlow(pm_well,well,option)
   enddo
 
 end subroutine PMWellUpdatePropertiesHydrateFlow
+
+! ************************************************************************** !
+subroutine PMWellUpdatePropertiesTHFlow(pm_well,well,option)
+  !
+  ! Updates flow well object properties, when TH mode is the flow mode.
+  !
+  ! Author: Joe Eyles, WSP
+  ! Date: 06/05/2025
+  !
+  use EOS_Water_module
+  use EOS_Gas_module
+  use TH_Aux_module
+  implicit none
+  class(pm_well_type) :: pm_well
+  type(well_type) :: well
+  type(option_type) :: option
+  PetscInt :: i,nsegments
+  PetscReal :: dwmol,dw
+  PetscReal :: sat_pres
+  PetscReal :: visc_liq
+  PetscErrorCode :: ierr
+  if (pm_well%well_comm%comm == MPI_COMM_NULL) return
+  nsegments = pm_well%well_grid%nsegments
+  well%liq%xmass(:,ONE_INTEGER) = 1.0
+  well%gas%xmass(:,ONE_INTEGER) = 0.0
+  if (well%total_rate < 0.d0) then
+    ! Extraction well: use reservoir fluid properties
+    well%liq%den(:) = well%reservoir%den_l(:)
+    well%liq%visc(:) = well%reservoir%visc_l(:)
+    well%liq%H(:) = well%reservoir%h_l(:)
+  else
+    ! Injection well: use internal well properties
+    do i = 1,nsegments
+      call EOSWaterDensity(well%temp(i),well%pl(i),dw,dwmol,ierr)
+      well%liq%den(i) = dw
+      call EOSWaterSaturationPressure(well%temp(i),sat_pres,ierr)
+      call EOSWaterViscosity(well%temp(i),well%pl(i),sat_pres,visc_liq,ierr)
+      well%liq%visc(i) = visc_liq
+    enddo
+  endif
+end subroutine PMWellUpdatePropertiesTHFlow
 
 ! ************************************************************************** !
 
