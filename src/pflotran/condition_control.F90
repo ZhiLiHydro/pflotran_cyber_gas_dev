@@ -1276,6 +1276,9 @@ subroutine CondControlAssignFlowInitCond(realization)
                 dataset =>  initial_condition%flow_condition% &
                               sub_condition_ptr(ONE_INTEGER)%ptr%dataset
               endif
+            else
+                dataset =>  initial_condition%flow_condition% &
+                              sub_condition_ptr(idof)%ptr%dataset
             endif
 
             select type(dataset_ptr => dataset)
