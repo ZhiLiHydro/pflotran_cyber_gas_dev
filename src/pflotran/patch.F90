@@ -6471,12 +6471,12 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
           case(TEMPERATURE)
             do local_id=1,grid%nlmax
               vec_ptr(local_id) = &
-                patch%aux%Global%auxvars(grid%nL2G(local_id))%temp
+                patch%aux%TH%auxvars(grid%nL2G(local_id))%temp
             enddo
           case(LIQUID_PRESSURE,MAXIMUM_PRESSURE)
             do local_id=1,grid%nlmax
               vec_ptr(local_id) = &
-                patch%aux%Global%auxvars(grid%nL2G(local_id))%pres(1)
+                patch%aux%TH%auxvars(grid%nL2G(local_id))%pres
             enddo
           case(LIQUID_SATURATION)
             do local_id=1,grid%nlmax
@@ -8512,9 +8512,9 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
       if (associated(patch%aux%TH)) then
         select case(ivar)
           case(TEMPERATURE)
-            value = patch%aux%Global%auxvars(ghosted_id)%temp
+            value = patch%aux%TH%auxvars(ghosted_id)%temp
           case(LIQUID_PRESSURE,MAXIMUM_PRESSURE)
-            value = patch%aux%Global%auxvars(ghosted_id)%pres(1)
+            value = patch%aux%TH%auxvars(ghosted_id)%pres
           case(LIQUID_SATURATION)
             value = patch%aux%Global%auxvars(ghosted_id)%sat(1)
           case(LIQUID_DENSITY)
@@ -9780,23 +9780,23 @@ subroutine PatchSetVariable(patch,field,option,vec,vec_format,ivar,isubvar)
           case(TEMPERATURE)
             if (vec_format == GLOBAL) then
               do local_id=1,grid%nlmax
-                patch%aux%Global%auxvars(grid%nL2G(local_id))%temp = &
+                patch%aux%TH%auxvars(grid%nL2G(local_id))%temp = &
                   vec_ptr(local_id)
               enddo
             else if (vec_format == LOCAL) then
               do ghosted_id=1,grid%ngmax
-                patch%aux%Global%auxvars(ghosted_id)%temp = vec_ptr(ghosted_id)
+                patch%aux%TH%auxvars(ghosted_id)%temp = vec_ptr(ghosted_id)
               enddo
             endif
           case(LIQUID_PRESSURE)
             if (vec_format == GLOBAL) then
               do local_id=1,grid%nlmax
-                patch%aux%Global%auxvars(grid%nL2G(local_id))%pres = &
+                patch%aux%TH%auxvars(grid%nL2G(local_id))%pres = &
                   vec_ptr(local_id)
               enddo
             else if (vec_format == LOCAL) then
               do ghosted_id=1,grid%ngmax
-                patch%aux%Global%auxvars(ghosted_id)%pres = vec_ptr(ghosted_id)
+                patch%aux%TH%auxvars(ghosted_id)%pres = vec_ptr(ghosted_id)
               enddo
             endif
           case(LIQUID_SATURATION)

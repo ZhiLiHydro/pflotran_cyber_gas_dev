@@ -23,6 +23,8 @@ module TH_Aux_module
   PetscInt, parameter, public :: TH_UPDATE_FOR_FIXED_ACCUM = 0
 
   type, public :: TH_auxvar_type
+    PetscReal :: pres
+    PetscReal :: temp
     PetscReal :: avgmw
     PetscReal :: h
     PetscReal :: u
@@ -60,6 +62,10 @@ module TH_Aux_module
 
     ! for ice
     type(th_ice_type), pointer :: ice
+
+    ! for numerical derivatives
+    PetscReal :: pert
+    type(TH_auxvar_type), pointer :: auxvar_pert(:)
 
 #if defined(CLM_PFLOTRAN) || defined(CLM_OFFLINE)
     PetscReal :: bc_alpha  ! Brooks Corey parameterization: alpha
@@ -175,7 +181,7 @@ end function THAuxCreate
 
 ! ************************************************************************** !
 
-subroutine THAuxVarInit(auxvar,option)
+recursive subroutine THAuxVarInit(auxvar,option)
   !
   ! Initialize auxiliary object
   !
@@ -189,11 +195,16 @@ subroutine THAuxVarInit(auxvar,option)
   implicit none
 
   type(TH_auxvar_type) :: auxvar
+  PetscBool :: allocate_perturbation
   type(option_type) :: option
 
   PetscReal :: uninit_value
-  uninit_value     = UNINITIALIZED_DOUBLE
+  PetscInt :: i
+!  uninit_value     = UNINITIALIZED_DOUBLE
+  uninit_value     = 0.d0 
 
+  auxvar%pres      = uninit_value
+  auxvar%temp      = uninit_value
   auxvar%avgmw     = uninit_value
   auxvar%h         = uninit_value
   auxvar%u         = uninit_value
@@ -254,6 +265,18 @@ subroutine THAuxVarInit(auxvar,option)
   auxvar%bc_lambda     = uninit_value
 #endif
 
+#if 0
+  auxvar%pert = uninit_value
+  if (allocate_perturbation) then
+    allocate(auxvar%auxvar_pert(option%nflowdof))
+    do i = 1, option%nflowdof
+      call THAuxVarInit(auxvar%auxvar_pert(i))
+    enddo
+  else
+    nullify(auxvar%auxvar_pert)
+  endif
+#endif
+
 end subroutine THAuxVarInit
 
 ! ************************************************************************** !
@@ -273,8 +296,8 @@ subroutine THAuxVarCopy(auxvar,auxvar2,option)
   type(TH_auxvar_type) :: auxvar, auxvar2
   type(option_type) :: option
 
-! auxvar2%pres = auxvar%pres
-! auxvar2%temp = auxvar%temp
+  auxvar2%pres = auxvar%pres
+  auxvar2%temp = auxvar%temp
 ! auxvar2%den = auxvar%den
 ! auxvar2%den_kg = auxvar%den_kg
 
@@ -402,16 +425,14 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
   auxvar%kvr = 0.d0
   kr = 0.d0
 
-! auxvar%pres = x(1)
-! auxvar%temp = x(2)
-  global_auxvar%pres = x(1)
-  global_auxvar%temp = x(2)
+  auxvar%pres = x(1)
+  auxvar%temp = x(2)
 
   if (update_porosity) then
-    call MaterialAuxVarCompute(material_auxvar,global_auxvar%pres(1))
+    call MaterialAuxVarCompute(material_auxvar,auxvar%pres)
   endif
 
-  auxvar%pc = min(option%flow%reference_pressure - global_auxvar%pres(1), &
+  auxvar%pc = min(option%flow%reference_pressure - auxvar%pres, &
                   characteristic_curves%saturation_function%pcmax)
 
 !***************  Liquid phase properties **************************
@@ -465,7 +486,7 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
       auxvar%pc = 0.d0
       global_auxvar%sat(1) = 1.d0
       kr = 1.d0
-      pw = global_auxvar%pres(1)
+      pw = auxvar%pres
       dpw_dp = 1.d0
     else
       call characteristic_curves%liq_rel_perm_function% &
@@ -482,20 +503,20 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
     global_auxvar%sat(1) = 1.d0
     kr = 1.d0
 !   pw = auxvar%pres
-    pw = global_auxvar%pres(1)
+    pw = auxvar%pres
     dpw_dp = 1.d0
   endif
 
   ! may need to compute dpsat_dT to pass to VISW
-  call EOSWaterSaturationPressure(global_auxvar%temp,sat_pressure,dpsat_dT,ierr)
-  call EOSWaterEnthalpy(global_auxvar%temp,pw,hw,hw_dp,hw_dT,ierr)
+  call EOSWaterSaturationPressure(auxvar%temp,sat_pressure,dpsat_dT,ierr)
+  call EOSWaterEnthalpy(auxvar%temp,pw,hw,hw_dp,hw_dT,ierr)
   if (.not.option%flow%density_depends_on_salinity) then
-    call EOSWaterDensity(global_auxvar%temp,pw,dw_kg,dw_mol,dw_dp,dw_dT,ierr)
+    call EOSWaterDensity(auxvar%temp,pw,dw_kg,dw_mol,dw_dp,dw_dT,ierr)
     if (ierr /= 0) then
       call PrintMsgByCell(option,natural_id, &
                        'Error in THAuxVarComputeNoFreezing->EOSWaterDensity')
     endif
-    call EOSWaterViscosity(global_auxvar%temp,pw,sat_pressure,dpsat_dT,visl, &
+    call EOSWaterViscosity(auxvar%temp,pw,sat_pressure,dpsat_dT,visl, &
                            dvis_dT,dvis_dp,ierr)
   else
     if (option%iflag == TH_UPDATE_FOR_FIXED_ACCUM) then
@@ -507,13 +528,13 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
       ! the accumulation term
       aux(1) = global_auxvar%m_nacl(1)
     endif
-    call EOSWaterDensityExt(global_auxvar%temp,pw,aux, &
+    call EOSWaterDensityExt(auxvar%temp,pw,aux, &
                             dw_kg,dw_mol,dw_dp,dw_dT,ierr)
     if (ierr /= 0) then
       call PrintMsgByCell(option,natural_id, &
                      'Error in THAuxVarComputeNoFreezing->EOSWaterDensityExt')
     endif
-    call EOSWaterViscosityExt(global_auxvar%temp,pw,sat_pressure,dpsat_dT,aux, &
+    call EOSWaterViscosityExt(auxvar%temp,pw,sat_pressure,dpsat_dT,aux, &
                               visl,dvis_dT,dvis_dp,ierr)
   endif
   ! J/kmol -> whatever units (default of option%scale is 1.e-6)
@@ -572,7 +593,7 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
 
   ! Effective thermal conductivity
   call thermal_cc%thermal_conductivity_function%CalculateTCond( &
-       global_auxvar%sat(1),global_auxvar%temp, &
+       global_auxvar%sat(1),auxvar%temp, &
        material_auxvar%porosity,auxvar%Dk_eff,dk_ds,dk_dT,option)
 
   ! Derivative of soil Kersten number
@@ -673,21 +694,21 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
   auxvar%avgmw = 0.d0
   auxvar%kvr = 0.d0
 
-  global_auxvar%pres = x(1)
-  global_auxvar%temp = x(2)
+  auxvar%pres = x(1)
+  auxvar%temp = x(2)
 
   ! Check if the capillary pressure is less than -100MPa
 
-  if (global_auxvar%pres(1) - &
+  if (auxvar%pres - &
       option%flow%reference_pressure < -1.d8 + 1.d0) then
-    global_auxvar%pres(1) = -1.d8 + option%flow%reference_pressure + 1.d0
+    auxvar%pres = -1.d8 + option%flow%reference_pressure + 1.d0
   endif
 
   if (update_porosity) then
-    call MaterialAuxVarCompute(material_auxvar,global_auxvar%pres(1))
+    call MaterialAuxVarCompute(material_auxvar,auxvar%pres)
   endif
 
-  auxvar%pc = option%flow%reference_pressure - global_auxvar%pres(1)
+  auxvar%pc = option%flow%reference_pressure - auxvar%pres
 
 !***************  Liquid phase properties **************************
   auxvar%avgmw = FMWH2O
@@ -701,7 +722,7 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
   else
     iphase = 1
     auxvar%pc = 0.d0
-    pw = global_auxvar%pres(1)
+    pw = auxvar%pres
     dpw_dp = 1.d0
   endif
 
@@ -730,32 +751,32 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
   select case (th_ice_model)
     case (PAINTER_EXPLICIT)
       ! Model from Painter, Comp. Geosci. (2011)
-      call SatFuncComputeIcePExplicit(global_auxvar%pres(1), &
-                                      global_auxvar%temp, ice_saturation, &
+      call SatFuncComputeIcePExplicit(auxvar%pres, &
+                                      auxvar%temp, ice_saturation, &
                                       global_auxvar%sat(1), gas_saturation, &
                                       kr, ds_dp, dsl_temp, dsg_pl, dsg_temp, &
                                       dsi_pl, dsi_temp, dkr_dp, dkr_dT, &
                                       saturation_function, p_th, option)
     case (PAINTER_KARRA_IMPLICIT)
       ! Implicit model from Painter & Karra, VJZ (2013)
-      call SatFuncComputeIcePKImplicit(global_auxvar%pres(1), &
-                                       global_auxvar%temp, ice_saturation, &
+      call SatFuncComputeIcePKImplicit(auxvar%pres, &
+                                       auxvar%temp, ice_saturation, &
                                        global_auxvar%sat(1), gas_saturation, &
                                        kr, ds_dp, dsl_temp, dsg_pl, dsg_temp, &
                                        dsi_pl, dsi_temp, dkr_dp, dkr_dT, &
                                        saturation_function, p_th, option)
     case (PAINTER_KARRA_EXPLICIT)
       ! Explicit model from Painter & Karra, VJZ (2013)
-      call SatFuncComputeIcePKExplicit(global_auxvar%pres(1), &
-                                       global_auxvar%temp, ice_saturation, &
+      call SatFuncComputeIcePKExplicit(auxvar%pres, &
+                                       auxvar%temp, ice_saturation, &
                                        global_auxvar%sat(1), gas_saturation, &
                                        kr, ds_dp, dsl_temp, dsg_pl, dsg_temp, &
                                        dsi_pl, dsi_temp, dkr_dp, dkr_dT, &
                                        saturation_function, p_th, option)
     case (DALL_AMICO)
       ! Model from Dall'Amico (2010) and Dall' Amico et al. (2011)
-      call SatFuncComputeIceDallAmico(global_auxvar%pres(1), &
-                                      global_auxvar%temp, &
+      call SatFuncComputeIceDallAmico(auxvar%pres, &
+                                      auxvar%temp, &
                                       auxvar%ice%pres_fh2o, &
                                       auxvar%ice%dpres_fh2o_dp, &
                                       auxvar%ice%dpres_fh2o_dT, &
@@ -766,8 +787,8 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
                                       saturation_function, option)
     case (PAINTER_KARRA_EXPLICIT_NOCRYO)
       ! Explicit model from Painter & Karra, VJZ (2013) and removed cryosuction
-      call SatFuncComputeIcePKExplicitNoCryo(global_auxvar%pres(1), &
-                                       global_auxvar%temp, ice_saturation, &
+      call SatFuncComputeIcePKExplicitNoCryo(auxvar%pres, &
+                                       auxvar%temp, ice_saturation, &
                                        global_auxvar%sat(1), gas_saturation, &
                                        kr, ds_dp, dsl_temp, dsg_pl, dsg_temp, &
                                        dsi_pl, dsi_temp, dkr_dp, dkr_dT, &
@@ -777,20 +798,20 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
       call PrintErrMsg(option)
   end select
 
-  call EOSWaterDensity(global_auxvar%temp,pw,dw_kg,dw_mol,dw_dp,dw_dT,ierr)
+  call EOSWaterDensity(auxvar%temp,pw,dw_kg,dw_mol,dw_dp,dw_dT,ierr)
   if (ierr /= 0) then
     call PrintMsgByCell(option,natural_id, &
                         'Error in THAuxVarComputeFreezing->EOSWaterDensity')
   endif
-  call EOSWaterEnthalpy(global_auxvar%temp,pw,hw,hw_dp,hw_dT,ierr)
+  call EOSWaterEnthalpy(auxvar%temp,pw,hw,hw_dp,hw_dT,ierr)
   ! J/kmol -> MJ/kmol
   hw = hw * option%scale
   hw_dp = hw_dp * option%scale
   hw_dT = hw_dT * option%scale
 
-  call EOSWaterSaturationPressure(global_auxvar%temp, sat_pressure, &
+  call EOSWaterSaturationPressure(auxvar%temp, sat_pressure, &
                                   dpsat_dT, ierr)
-  call EOSWaterViscosity(global_auxvar%temp, pw, sat_pressure, dpsat_dT, &
+  call EOSWaterViscosity(auxvar%temp, pw, sat_pressure, dpsat_dT, &
                          visl, dvis_dT,dvis_dp, ierr)
 
   if (iphase == 3) then !kludge since pw is constant in the unsat zone
@@ -829,13 +850,13 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
   auxvar%ice%dsat_gas_dT = dsg_temp
 
   ! Calculate the density, internal energy and derivatives for ice
-  call EOSWaterDensityIce(global_auxvar%temp, global_auxvar%pres(1), &
+  call EOSWaterDensityIce(auxvar%temp, auxvar%pres, &
                           den_ice, dden_ice_dT, dden_ice_dP, ierr)
   if (ierr /= 0) then
     call PrintMsgByCell(option,natural_id, &
                       'Error in THAuxVarComputeFreezing->EOSWaterDensityIce')
   endif
-  call EOSWaterInternalEnergyIce(global_auxvar%temp, u_ice, du_ice_dT, du_ice_dP, ierr)
+  call EOSWaterInternalEnergyIce(auxvar%temp, u_ice, du_ice_dT, du_ice_dP, ierr)
 
   auxvar%ice%den_ice = den_ice
   auxvar%ice%dden_ice_dT = dden_ice_dT
@@ -844,21 +865,21 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
   auxvar%ice%du_ice_dT = du_ice_dT*1.d-3          !kJ/kmol/K --> MJ/kmol/K
 
   ! Calculate the values and derivatives for density and internal energy
-  call EOSWaterSaturationPressure(global_auxvar%temp, p_sat, ierr)
+  call EOSWaterSaturationPressure(auxvar%temp, p_sat, ierr)
 
   p_g            = option%flow%reference_pressure
   auxvar%ice%den_gas = p_g/(IDEAL_GAS_CONSTANT* &
-                         (global_auxvar%temp + T273K))*1.d-3 !in kmol/m3
+                         (auxvar%temp + T273K))*1.d-3 !in kmol/m3
   mol_g          = p_sat/p_g
   C_g            = C_wv*mol_g*FMWH2O + C_a*(1.d0 - mol_g)*FMWAIR ! in MJ/kmol/K
-  auxvar%ice%u_gas   = C_g*(global_auxvar%temp + T273K)       ! in MJ/kmol
+  auxvar%ice%u_gas   = C_g*(auxvar%temp + T273K)       ! in MJ/kmol
   auxvar%ice%mol_gas = mol_g
 
   auxvar%ice%dden_gas_dT = -p_g/(IDEAL_GAS_CONSTANT* &
-                            (global_auxvar%temp + T273K)**2)*1.d-3
+                            (auxvar%temp + T273K)**2)*1.d-3
   dmolg_dT           = dpsat_dT/p_g
   auxvar%ice%du_gas_dT = C_g + (C_wv*dmolg_dT*FMWH2O - C_a*dmolg_dT*FMWAIR)* &
-                       (global_auxvar%temp + T273K)
+                       (auxvar%temp + T273K)
   auxvar%ice%dmol_gas_dT = dmolg_dT
 
   ! Parameters for computation of effective thermal conductivity
@@ -876,7 +897,7 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
 
   ! Effective thermal conductivity
   call thermal_cc%thermal_conductivity_function%CalculateFTCond( &
-       global_auxvar%sat(1),auxvar%ice%sat_ice,global_auxvar%temp, &
+       global_auxvar%sat(1),auxvar%ice%sat_ice,auxvar%temp, &
        material_auxvar%porosity,auxvar%Dk_eff,dk_ds,dK_di,dk_dT,option)
 
   ! Derivative of Kersten number
@@ -958,8 +979,8 @@ subroutine THAuxVarCompute2ndOrderDeriv(TH_auxvar,global_auxvar, &
   call GlobalAuxVarCopy(global_auxvar,global_auxvar_pert,option)
   call MaterialAuxVarCopy(material_auxvar,material_auxvar_pert,option)
 
-  x(1) = global_auxvar%pres(1)
-  x(2) = global_auxvar%temp
+  x(1) = TH_auxvar%pres
+  x(2) = TH_auxvar%temp
 
 !  if (option%use_th_freezing) then
 !    option%io_buffer = 'ERROR: TH_TS MODE not implemented with freezing'
@@ -1068,9 +1089,9 @@ subroutine THPrintAuxVars(file_unit,th_auxvar,global_auxvar, &
   if (len_trim(string) > 0) write(file_unit,*) trim(string)
   write(file_unit,*) '                  cell id: ', natural_id
   write(file_unit,*) '       liquid mass [kmol]: ', liquid_mass
-  write(file_unit,*) '          liquid pressure: ', global_auxvar%pres(1)
+  write(file_unit,*) '          liquid pressure: ', th_auxvar%pres
   write(file_unit,*) '       capillary pressure: ', th_auxvar%pc
-  write(file_unit,*) '          temperature [C]: ', global_auxvar%pres(1)
+  write(file_unit,*) '          temperature [C]: ', th_auxvar%temp
   write(file_unit,*) '          liquid enthalpy: ', th_auxvar%h
   write(file_unit,*) '   liquid internal energy: ', th_auxvar%u
   write(file_unit,*) '         liquid viscosity: ', th_auxvar%vis

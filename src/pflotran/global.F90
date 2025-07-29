@@ -689,7 +689,7 @@ subroutine GlobalWeightAuxVars(realization,weight)
   end select
 
   select case(option%iflowmode)
-    case(G_MODE,H_MODE,SCO2_MODE)
+    case(TH_MODE,G_MODE,H_MODE,SCO2_MODE)
       do ghosted_id = 1, realization%patch%aux%Global%num_aux
         auxvars(ghosted_id)%pres(:) = &
           (weight*auxvars(ghosted_id)%pres_store(:,TIME_TpDT)+ &
@@ -852,10 +852,8 @@ subroutine GlobalSetAuxVarsAtTimeLevel(realization,time_level,time)
       ! fugacity coeff
       call GlobalUpdateSingleAuxVar(realization,SC_FUGA_COEFF,time_level)
     case(TH_MODE,TH_TS_MODE)
-      ! pressure
+      call GlobalUpdateSingleAuxVar(realization,LIQUID_PRESSURE,time_level)
       call GlobalUpdateSingleAuxVar(realization,LIQUID_DENSITY,time_level)
-
-      ! temperature
       call GlobalUpdateSingleAuxVar(realization,TEMPERATURE,time_level)
     case(G_MODE,WF_MODE)
       ! pressure

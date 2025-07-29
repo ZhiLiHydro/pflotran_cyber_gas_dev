@@ -289,13 +289,13 @@ subroutine IFunctionAccumulation(F,realization,ierr)
     istart = iend-option%nflowdof+1
 
     call MaterialAuxVarCompute(material_auxvars(ghosted_id), &
-                               global_auxvars(ghosted_id)%pres(1))
+                               TH_auxvars(ghosted_id)%pres)
     por = material_auxvars(ghosted_id)%porosity
     dpor_dP = material_auxvars(ghosted_id)%dporosity_dp
 
     den = global_auxvars(ghosted_id)%den(1)
     sat = global_auxvars(ghosted_id)%sat(1)
-    temp = global_auxvars(ghosted_id)%temp
+    temp = TH_auxvars(ghosted_id)%temp
     u = TH_auxvars(ghosted_id)%u
     dden_dP = TH_auxvars(ghosted_id)%dden_dp
     dsat_dP = TH_auxvars(ghosted_id)%dsat_dp
@@ -480,13 +480,13 @@ subroutine IJacobianAccumulation(J,shift,realization,ierr)
     istart = iend-option%nflowdof+1
 
     call MaterialAuxVarCompute(material_auxvars(ghosted_id), &
-                               global_auxvars(ghosted_id)%pres(1))
+                               TH_auxvars(ghosted_id)%pres)
     por = material_auxvars(ghosted_id)%porosity
     dpor_dP = material_auxvars(ghosted_id)%dporosity_dp
 
     den = global_auxvars(ghosted_id)%den(1)
     sat = global_auxvars(ghosted_id)%sat(1)
-    temp = global_auxvars(ghosted_id)%temp
+    temp = TH_auxvars(ghosted_id)%temp
     u = TH_auxvars(ghosted_id)%u
     rock_dencpr = th_parameter%dencpr(patch%cct_id(ghosted_id))
     dden_dP = TH_auxvars(ghosted_id)%dden_dp

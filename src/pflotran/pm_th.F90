@@ -1004,7 +1004,7 @@ subroutine PMTHUpdateSolution(this)
   ! Date: 03/90/13
   !
 
-  use TH_module, only : THUpdateSolution
+  use TH_module, only : THUpdateSolution, THMapBCAuxVarsToGlobal
 
   implicit none
 
@@ -1012,6 +1012,7 @@ subroutine PMTHUpdateSolution(this)
 
   call PMSubsurfaceFlowUpdateSolution(this)
   call THUpdateSolution(this%realization)
+  call THMapBCAuxVarsToGlobal(this%realization)
 
 end subroutine PMTHUpdateSolution
 
