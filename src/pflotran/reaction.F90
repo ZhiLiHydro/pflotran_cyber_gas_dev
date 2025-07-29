@@ -4357,6 +4357,8 @@ subroutine RReactionDerivative(Res,Jac,analytical_derivatives, &
     ! since Res is non-zero, add the contribution
     Res = Res + Res_orig
   endif
+!print *, Jac
+!stop
 
 end subroutine RReactionDerivative
 
