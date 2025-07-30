@@ -1807,6 +1807,7 @@ subroutine RealizationAddWaypointsToList(realization,waypoint_list)
         call TimeStorageGetTimes(sub_condition%dataset%time_storage, option, &
                                 final_time, times)
         if (associated(times)) then
+#if 0
           if (size(times) > 20000) then
             option%io_buffer = 'For flow condition "' // &
               trim(cur_flow_condition%name) // &
@@ -1815,6 +1816,7 @@ subroutine RealizationAddWaypointsToList(realization,waypoint_list)
               'with waypoints.'
             call PrintErrMsg(option)
           endif
+#endif
           do itime = 1, size(times)
             waypoint => WaypointCreate()
             waypoint%time = times(itime)
