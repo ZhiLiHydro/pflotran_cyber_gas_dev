@@ -1281,8 +1281,7 @@ subroutine GeomechReadDatasetToVecWithMask(geomech_realization,dataset, &
   type(option_type), pointer :: option
   character(len=MAXSTRINGLENGTH) :: group_name
   character(len=MAXSTRINGLENGTH) :: dataset_name
-  character(len=MAXSTRINGLENGTH) :: filename
-  PetscInt :: local_id, ghosted_id, natural_id
+  PetscInt :: local_id
   PetscErrorCode :: ierr
   PetscReal, pointer :: vec_p(:)
   PetscReal, pointer :: work_p(:)

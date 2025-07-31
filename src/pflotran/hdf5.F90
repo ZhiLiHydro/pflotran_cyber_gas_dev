@@ -1570,12 +1570,10 @@ subroutine HDF5ReadCellIndexedRealArrayGM(geomech_realization,global_vec,filenam
 
   integer(HID_T) :: file_id
   integer(HID_T) :: grp_id
-  integer(HID_T) :: prop_id
 
   PetscLogDouble :: tstart, tend
 
   PetscInt, pointer :: indices(:)
-  PetscReal, allocatable :: real_array(:)
 
   nullify(indices)
 
@@ -1685,7 +1683,6 @@ subroutine HDF5ReadArrayGM(geomech_discretization,geomech_grid, &
   PetscInt :: dataset_size
   integer(HID_T) :: file_id
   PetscInt, pointer :: indices(:)
-  PetscInt :: num_indices
   Vec :: global_vec
   integer(HID_T) :: data_type
 
