@@ -56,9 +56,9 @@ module PM_Well_class
   PetscInt, parameter, public :: WELL_MODEL_COAXIAL = 6
 
   ! Well constraint types
-  PetscInt, parameter, public :: CONSTANT_PRESSURE = 1
-  PetscInt, parameter, public :: CONSTANT_PRESSURE_HYDROSTATIC = 2
-  PetscInt, parameter, public :: CONSTANT_RATE = 3
+  PetscInt, parameter, public :: WELL_CONSTANT_PRESSURE = 1
+  PetscInt, parameter, public :: WELL_CONSTANT_PRESSURE_HYDROSTATIC = 2
+  PetscInt, parameter, public :: WELL_CONSTANT_RATE = 3
 
   ! Well coupling options
   PetscInt, parameter, public :: FULLY_IMPLICIT_WELL = ONE_INTEGER
@@ -4542,13 +4542,13 @@ subroutine PMWellReadWellConstraintType(pm_well,input,option,keyword, &
         select case(trim(word))
         !-----------------------------
           case('CONSTANT_PRESSURE')
-            pm_well%well%well_constraint_type = CONSTANT_PRESSURE
+            pm_well%well%well_constraint_type = WELL_CONSTANT_PRESSURE
         !-----------------------------
           case('CONSTANT_PRESSURE_HYDROSTATIC')
-            pm_well%well%well_constraint_type = CONSTANT_PRESSURE_HYDROSTATIC
+            pm_well%well%well_constraint_type = WELL_CONSTANT_PRESSURE_HYDROSTATIC
         !-----------------------------
           case('CONSTANT_RATE')
-            pm_well%well%well_constraint_type = CONSTANT_RATE
+            pm_well%well%well_constraint_type = WELL_CONSTANT_RATE
         !-----------------------------
           case default
             call InputKeywordUnrecognized(input,word,error_string,option)
@@ -6922,7 +6922,7 @@ subroutine PMWellModifyFlowResHydrostatic(this,residual)
                   this%well%gas%H(k))
       enddo
     case(RICHARDS_MODE)
-      if (this%well%well_constraint_type == CONSTANT_RATE) then
+      if (this%well%well_constraint_type == WELL_CONSTANT_RATE) then
         sum_q = 0.d0
         do k = 1,this%well_grid%nsegments
           if (this%well_grid%h_rank_id(k) /= this%option%myrank) &
@@ -6947,7 +6947,7 @@ subroutine PMWellModifyFlowResHydrostatic(this,residual)
           residual(local_start) = residual(local_start) + &
                                       this%well%liq%q(k)
         enddo
-      elseif (this%well%well_constraint_type == CONSTANT_PRESSURE_HYDROSTATIC) then
+      elseif (this%well%well_constraint_type == WELL_CONSTANT_PRESSURE_HYDROSTATIC) then
         do k = 1,this%well_grid%nsegments
           if (this%well_grid%h_rank_id(k) /= this%option%myrank) &
               cycle
@@ -7417,7 +7417,7 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
 
     case(RICHARDS_MODE)
 
-      if (this%well%well_constraint_type == CONSTANT_RATE) then
+      if (this%well%well_constraint_type == WELL_CONSTANT_RATE) then
         deriv_const_sum = 0
         do k = 1,this%well_grid%nsegments
           deriv = GetConst(this%well, k)
@@ -7461,7 +7461,7 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
                                       deriv_const_sum, &
                                       ADD_VALUES,ierr);CHKERRQ(ierr)
         endif
-      elseif (this%well%well_constraint_type == CONSTANT_PRESSURE_HYDROSTATIC) then
+      elseif (this%well%well_constraint_type == WELL_CONSTANT_PRESSURE_HYDROSTATIC) then
         do k = 1,this%well_grid%nsegments
           deriv = GetConst(this%well, k)
 
@@ -7943,8 +7943,51 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
   well%liq%Q = 0.d0
   well%gas%Q = 0.d0
 
-  if (well%well_constraint_type == CONSTANT_RATE) then
+  if (well%well_constraint_type == WELL_CONSTANT_PRESSURE_HYDROSTATIC) then
 
+    if (option%iflowmode /= RICHARDS_MODE) then
+      option%io_buffer = 'WELL_CONSTANT_PRESSURE_HYDROSTATIC only implemented in RICHARDS_MODE.'
+      call PrintErrMsg(option)
+    endif
+
+    temperature = well%temp(1)
+    ! Start from top hole pressure
+    pl = well%th_p
+
+    aux(1) = 0.0  ! No salt in Richards mode
+    call EOSWaterDensityExt(temperature,pl, &
+                            aux,rho_kg_liq,dummy,ierr)
+
+    pl0 = pl
+
+    ! compute pressures above datum
+    dist_z = 0.d0
+    rho_zero_liq = rho_kg_liq
+
+    do i = 1,this%well_grid%nsegments
+      k = this%well_grid%nsegments - i + 1 ! Top to bottom
+      ! Compute well cell pressures based off of top segment pressure
+      temperature = well%temp(k)
+      call EOSWaterDensityExt(temperature,pl, &
+                                aux,rho_kg_liq,dummy,ierr)
+
+      if (k == this%well_grid%nsegments) then
+        delta_z = this%well_grid%tophole(3) - this%well_grid%h(k)%z
+      else
+        delta_z = this%well_grid%h(k+1)%z - this%well_grid%h(k)%z
+      endif
+
+      pl = pl0 - 0.5d0*(rho_kg_liq+rho_zero_liq) * &
+            gravity * delta_z
+      call EOSWaterDensityExt(temperature,pl,aux,rho_one_liq,dummy,ierr)
+
+      rho_zero_liq = rho_kg_liq
+      well%pl(i) = pl
+      well%liq%den(i) = rho_kg_liq
+      pl0 = pl
+
+    enddo
+  else ! WELL_CONSTANT_RATE
     temperature = well%temp(1)
     ! Start from bottom hole pressure
     pl = well%bh_p
@@ -8048,52 +8091,6 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
         call PrintErrMsg(option)
       endif
     enddo
-
-  elseif (well%well_constraint_type == CONSTANT_PRESSURE_HYDROSTATIC) then
-
-    if (option%iflowmode /= RICHARDS_MODE) then
-      option%io_buffer = 'CONSTANT_PRESSURE_HYDROSTATIC only implemented in RICHARDS_MODE.'
-      call PrintErrMsg(option)
-    endif
-
-    temperature = well%temp(1)
-    ! Start from top hole pressure
-    pl = well%th_p
-
-    aux(1) = 0.0  ! No salt in Richards mode
-    call EOSWaterDensityExt(temperature,pl, &
-                            aux,rho_kg_liq,dummy,ierr)
-
-    pl0 = pl
-
-    ! compute pressures above datum
-    dist_z = 0.d0
-    rho_zero_liq = rho_kg_liq
-
-    do i = 1,this%well_grid%nsegments
-      k = this%well_grid%nsegments - i + 1 ! Top to bottom
-      ! Compute well cell pressures based off of top segment pressure
-      temperature = well%temp(k)
-      call EOSWaterDensityExt(temperature,pl, &
-                                aux,rho_kg_liq,dummy,ierr)
-
-      if (k == this%well_grid%nsegments) then
-        delta_z = this%well_grid%tophole(3) - this%well_grid%h(k)%z
-      else
-        delta_z = this%well_grid%h(k+1)%z - this%well_grid%h(k)%z
-      endif
-
-      pl = pl0 - 0.5d0*(rho_kg_liq+rho_zero_liq) * &
-            gravity * delta_z
-      call EOSWaterDensityExt(temperature,pl,aux,rho_one_liq,dummy,ierr)
-
-      rho_zero_liq = rho_kg_liq
-      well%pl(i) = pl
-      well%liq%den(i) = rho_kg_liq
-      pl0 = pl
-
-    enddo
-
   endif
 
   ! Update well properties based off new pressures
@@ -8115,7 +8112,27 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
 
     res_z = this%well_grid%res_z(i)
     delta_z = res_z - this%well_grid%h(i)%z
-    if (well%well_constraint_type == CONSTANT_RATE) then
+    if (well%well_constraint_type == WELL_CONSTANT_PRESSURE_HYDROSTATIC) then
+      if (option%iflowmode /= RICHARDS_MODE) then
+        option%io_buffer = 'WELL_CONSTANT_PRESSURE_HYDROSTATIC only implemented in RICHARDS_MODE.'
+        call PrintErrMsg(option)
+      endif
+      ! Compute reservoir pressure at well cell center
+      res_pl_temp = reservoir%p_l(i) + reservoir%den_l(i) * gravity * delta_z
+      upwind = res_pl_temp > well%pl(i)
+      if (upwind) then
+        mobility = reservoir%kr_l(i)/reservoir%visc_l(i)
+        den_ave = reservoir%den_l(i)
+        enthalpy = reservoir%H_l(i)
+      else
+        mobility = 1.d0 / well%liq%visc(i)
+        den_ave = well%liq%den(i)
+        enthalpy = well%liq%H(i)
+      endif
+      ! Flowrate in kg/s
+      well%liq%Q(i) = den_ave*mobility*well%WI(i)* &
+                      (res_pl_temp-well%pl(i))
+    else ! WELL_CONSTANT_RATE
       if (well%th_qg > 0.d0 .and. well%th_ql > 0.d0) then
         ! mixture injection: assume constant mass ratio
         mixture_ratio = well%th_ql / well%th_qg
@@ -8231,26 +8248,7 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
         endif
       endif
 
-    elseif (well%well_constraint_type == CONSTANT_PRESSURE_HYDROSTATIC) then
-      if (option%iflowmode /= RICHARDS_MODE) then
-        option%io_buffer = 'CONSTANT_PRESSURE_HYDROSTATIC only implemented in RICHARDS_MODE.'
-        call PrintErrMsg(option)
-      endif
-      ! Compute reservoir pressure at well cell center
-      res_pl_temp = reservoir%p_l(i) + reservoir%den_l(i) * gravity * delta_z
-      upwind = res_pl_temp > well%pl(i)
-      if (upwind) then
-        mobility = reservoir%kr_l(i)/reservoir%visc_l(i)
-        den_ave = reservoir%den_l(i)
-        enthalpy = reservoir%H_l(i)
-      else
-        mobility = 1.d0 / well%liq%visc(i)
-        den_ave = well%liq%den(i)
-        enthalpy = well%liq%H(i)
-      endif
-      ! Flowrate in kg/s
-      well%liq%Q(i) = den_ave*mobility*well%WI(i)* &
-                      (res_pl_temp-well%pl(i))
+
     endif
   enddo
 
