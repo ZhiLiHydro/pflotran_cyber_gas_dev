@@ -1352,7 +1352,7 @@ subroutine HDF5ReadCellIndxIntArrayVamsi(realization,global_vec,filename, &
     option%io_buffer = 'Reading dataset: ' // trim(string)
   endif
   call printMsg(option)   
-  call HDF5ReadIndices(grid,option,grp_id,string,grid%nmax,indices)
+  call HDF5ReadIndices(option,grp_id,string,grid%nmax,indices,grid%nlmax)
   call PetscTime(tend,ierr);CHKERRQ(ierr)
   write(option%io_buffer,'(f6.2," Seconds to set up indices")') tend-tstart
   call printMsg(option)
@@ -1508,7 +1508,7 @@ subroutine HDF5ReadCellIndxRealArrayVamsi(realization,global_vec,filename, &
     option%io_buffer = 'Reading dataset: ' // trim(string)
   endif
   call printMsg(option)   
-  call HDF5ReadIndices(grid,option,grp_id,string,grid%nmax,indices)
+  call HDF5ReadIndices(option,grp_id,string,grid%nmax,indices,grid%nlmax)
   call PetscTime(tend,ierr);CHKERRQ(ierr)
   write(option%io_buffer,'(f6.2," Seconds to set up indices")') tend-tstart
   call printMsg(option)
