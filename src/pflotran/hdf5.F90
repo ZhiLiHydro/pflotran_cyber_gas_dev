@@ -36,7 +36,8 @@ module HDF5_module
             HDF5ReadCellIndexedIntegerArray, &
             HDF5ReadCellIndexedRealArray, &
             HDF5QueryRegionDefinition, &
-            HDF5ReadRegionDefinedByVertex
+            HDF5ReadRegionDefinedByVertex, &
+            HDF5ReadCellIndexedRealArrayGM
 
 contains
 
@@ -330,7 +331,6 @@ subroutine HDF5ReadIndices(option,file_id,dataset_name,dataset_size, &
 
   implicit none
 
-  type(grid_type) :: grid
   type(option_type) :: option
   character(len=MAXWORDLENGTH) :: dataset_name
   character(len=MAXSTRINGLENGTH) :: string

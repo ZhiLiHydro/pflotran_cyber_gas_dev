@@ -91,12 +91,12 @@ subroutine GeomechAuxDestroy(geomech_aux)
     if (associated(geomech_aux%GeomechParam%poissons_ratio)) &
       deallocate(geomech_aux%GeomechParam%poissons_ratio)
     nullify(geomech_aux%GeomechParam%poissons_ratio)
-    if (associated(geomech_aux%GeomechParam%biot_coef)) &
-      deallocate(geomech_aux%GeomechParam%biot_coef)
-    nullify(geomech_aux%GeomechParam%biot_coef)
-    if (associated(geomech_aux%GeomechParam%thermal_exp_coef)) &
-      deallocate(geomech_aux%GeomechParam%thermal_exp_coef)
-    nullify(geomech_aux%GeomechParam%thermal_exp_coef)
+    if (associated(geomech_aux%GeomechParam%biot_coeff)) &
+      deallocate(geomech_aux%GeomechParam%biot_coeff)
+    nullify(geomech_aux%GeomechParam%biot_coeff)
+    if (associated(geomech_aux%GeomechParam%thermal_exp_coeff)) &
+      deallocate(geomech_aux%GeomechParam%thermal_exp_coeff)
+    nullify(geomech_aux%GeomechParam%thermal_exp_coeff)
     if (associated(geomech_aux%GeomechParam%density)) &
       deallocate(geomech_aux%GeomechParam%density)
     nullify(geomech_aux%GeomechParam%density)

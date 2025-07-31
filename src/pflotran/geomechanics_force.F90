@@ -718,31 +718,31 @@ subroutine GeomechForceResidualPatch(snes,xx,r,geomech_realization,ierr)
         alpha_vec(ivertex) = temp_thermal_exp_coeff_p(grid%nG2L(ghosted_id))
       else
         alpha_vec(ivertex) = &
-          GeomechParam%thermal_exp_coeff(int(imech_loc_p(ghosted_id)))
+          GeomechParam%thermal_exp_coeff(nint(imech_loc_p(ghosted_id)))
       endif
       if (GeomechParam%biot_coeff_spatially_varying) then
         beta_vec(ivertex) = temp_biot_coeff_p(grid%nG2L(ghosted_id))
       else
         beta_vec(ivertex) = &
-          GeomechParam%biot_coeff(int(imech_loc_p(ghosted_id)))
+          GeomechParam%biot_coeff(nint(imech_loc_p(ghosted_id)))
       endif
       if (GeomechParam%density_spatially_varying) then
         density_rock_vec(ivertex) = temp_density_p(grid%nG2L(ghosted_id))
       else
         density_rock_vec(ivertex) = &
-          GeomechParam%density(int(imech_loc_p(ghosted_id)))
+          GeomechParam%density(nint(imech_loc_p(ghosted_id)))
       endif
       if (GeomechParam%youngs_modulus_spatially_varying) then
         youngs_vec(ivertex) = temp_youngs_modulus_p(grid%nG2L(ghosted_id))
       else
         youngs_vec(ivertex) = &
-          GeomechParam%youngs_modulus(int(imech_loc_p(ghosted_id)))
+          GeomechParam%youngs_modulus(nint(imech_loc_p(ghosted_id)))
       endif
       if (GeomechParam%poissons_ratio_spatially_varying) then
         poissons_vec(ivertex) = temp_poissons_ratio_p(grid%nG2L(ghosted_id))
       else
         poissons_vec(ivertex) = &
-          GeomechParam%poissons_ratio(int(imech_loc_p(ghosted_id)))
+          GeomechParam%poissons_ratio(nint(imech_loc_p(ghosted_id)))
       endif
       density_fluid_vec(ivertex) = fluid_density(ghosted_id)
       porosity_vec(ivertex) = porosity(ghosted_id)
@@ -2094,13 +2094,13 @@ subroutine GeomechForceAssembleCoeffMatrix(A,geomech_realization)
         youngs_vec(ivertex) = temp_youngs_modulus_p(grid%nG2L(ghosted_id))
       else
         youngs_vec(ivertex) = &
-          GeomechParam%youngs_modulus(int(imech_loc_p(ghosted_id)))
+          GeomechParam%youngs_modulus(nint(imech_loc_p(ghosted_id)))
       endif
       if (GeomechParam%poissons_ratio_spatially_varying) then
         poissons_vec(ivertex) = temp_poissons_ratio_p(grid%nG2L(ghosted_id))
       else
         poissons_vec(ivertex) = &
-          GeomechParam%poissons_ratio(int(imech_loc_p(ghosted_id)))
+          GeomechParam%poissons_ratio(nint(imech_loc_p(ghosted_id)))
       endif
     enddo
     size_elenodes = size(elenodes)
@@ -2663,25 +2663,25 @@ subroutine GeomechForceStressStrain(geomech_realization)
         youngs_vec(ivertex) = temp_youngs_modulus_p(grid%nG2L(ghosted_id))
       else
         youngs_vec(ivertex) = &
-          GeomechParam%youngs_modulus(int(imech_loc_p(ghosted_id)))
+          GeomechParam%youngs_modulus(nint(imech_loc_p(ghosted_id)))
       endif
       if (GeomechParam%poissons_ratio_spatially_varying) then
         poissons_vec(ivertex) = temp_poissons_ratio_p(grid%nG2L(ghosted_id))
       else
         poissons_vec(ivertex) = &
-          GeomechParam%poissons_ratio(int(imech_loc_p(ghosted_id)))
+          GeomechParam%poissons_ratio(nint(imech_loc_p(ghosted_id)))
       endif
       if (GeomechParam%biot_coeff_spatially_varying) then
         beta_vec(ivertex) = temp_biot_coeff_p(grid%nG2L(ghosted_id))
       else
         beta_vec(ivertex) = &
-          GeomechParam%biot_coeff(int(imech_loc_p(ghosted_id)))
+          GeomechParam%biot_coeff(nint(imech_loc_p(ghosted_id)))
       endif
       if (GeomechParam%thermal_exp_coeff_spatially_varying) then
         alpha_vec(ivertex) = temp_thermal_exp_coeff_p(grid%nG2L(ghosted_id))
       else
         alpha_vec(ivertex) = &
-          GeomechParam%thermal_exp_coeff(int(imech_loc_p(ghosted_id)))
+          GeomechParam%thermal_exp_coeff(nint(imech_loc_p(ghosted_id)))
       endif
     enddo
     size_elenodes = size(elenodes)
