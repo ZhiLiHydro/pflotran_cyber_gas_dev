@@ -376,6 +376,7 @@ module PM_Well_class
     PetscBool :: print_well
     PetscBool :: print_output
     PetscBool :: use_well_coupler
+    PetscBool :: allow_wellbore_crossflow
     PetscBool :: pressure_controlled
     PetscReal :: pressure_threshold_min
     PetscReal :: pressure_threshold_max
@@ -579,6 +580,7 @@ subroutine PMWellBaseInit(pm_well)
   pm_well%print_well = PETSC_FALSE
   pm_well%print_output = PETSC_FALSE
   pm_well%use_well_coupler = PETSC_FALSE
+  pm_well%allow_wellbore_crossflow = PETSC_FALSE
   pm_well%pressure_controlled = PETSC_FALSE
   pm_well%pressure_threshold_min = 0.d0
   pm_well%pressure_threshold_max = MAX_DOUBLE
@@ -632,6 +634,7 @@ subroutine PMWellSequentialInit(pm_well)
   pm_well%print_well = PETSC_FALSE
   pm_well%print_output = PETSC_FALSE
   pm_well%use_well_coupler = PETSC_FALSE
+  pm_well%allow_wellbore_crossflow = PETSC_FALSE
 
 end subroutine PMWellSequentialInit
 
@@ -4249,6 +4252,8 @@ subroutine PMWellReadWellBCs(pm_well,input,option,keyword,error_string,found)
       call InputReadDouble(input,option,pm_well%pressure_threshold_max)
     case ('MINIMUM_PRESSURE')
       call InputReadDouble(input,option,pm_well%pressure_threshold_min)
+    case ('ALLOW_WELLBORE_CROSSFLOW')
+      pm_well%allow_wellbore_crossflow = PETSC_TRUE
     case default
       found = PETSC_FALSE
   !-------------------------------------
@@ -8192,15 +8197,24 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
         mobility = reservoir%kr_l(i)/reservoir%visc_l(i)
         den_ave = reservoir%den_l(i)
         ! Flowrate in kg/s
-        well%liq%Q(i) = den_ave*mobility*well%WI(i) * &
-                        (res_pl_temp-well%pl(i)) * &
-                        reservoir%xmass_liq(i,ONE_INTEGER)
-        if (option%iflowmode == RICHARDS_MODE) then
-          well%gas%Q(i) = 0.0
-        else
+        if (this%allow_wellbore_crossflow) then
+          well%liq%Q(i) = den_ave*mobility*well%WI(i) * &
+                          (res_pl_temp-well%pl(i)) * &
+                          reservoir%xmass_liq(i,ONE_INTEGER)
           well%gas%Q(i) = den_ave*mobility*well%WI(i)* &
                           (res_pl_temp-well%pl(i)) * &
                           reservoir%xmass_liq(i,TWO_INTEGER)
+        else if (res_pl_temp > well%pl(i)) then
+          well%liq%Q(i) = den_ave*mobility*well%WI(i) * &
+                          (res_pl_temp-well%pl(i)) * &
+                          reservoir%xmass_liq(i,ONE_INTEGER)
+          well%gas%Q(i) = den_ave*mobility*well%WI(i)* &
+                          (res_pl_temp-well%pl(i)) * &
+                          reservoir%xmass_liq(i,TWO_INTEGER)
+        endif
+
+        if (option%iflowmode == RICHARDS_MODE) then
+          well%gas%Q(i) = 0.0
         endif
 
         res_pg_temp = reservoir%p_g(i) + reservoir%den_g(i) * gravity * delta_z
