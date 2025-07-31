@@ -6528,7 +6528,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
           case(LIQUID_MOBILITY)
             do local_id=1,grid%nlmax
               vec_ptr(local_id) = &
-                  patch%aux%TH%auxvars(grid%nL2G(local_id))%kvr
+                  patch%aux%TH%auxvars(grid%nL2G(local_id))%mobility
             enddo
           case(LIQUID_MOLE_FRACTION)
             call PatchUnsupportedVariable('TH','LIQUID_MOLE_FRACTION',option)
@@ -8040,7 +8040,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
         case(TH_MODE,TH_TS_MODE)
           do local_id=1,grid%nlmax
             vec_ptr(local_id) = &
-              patch%aux%TH%auxvars(grid%nL2G(local_id))%kvr * &
+              patch%aux%TH%auxvars(grid%nL2G(local_id))%mobility * &
               patch%aux%TH%auxvars(grid%nL2G(local_id))%vis
           enddo
         case(G_MODE)
@@ -8522,7 +8522,7 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
           case(LIQUID_VISCOSITY)
             value = patch%aux%TH%auxvars(ghosted_id)%vis
           case(LIQUID_MOBILITY)
-            value = patch%aux%TH%auxvars(ghosted_id)%kvr
+            value = patch%aux%TH%auxvars(ghosted_id)%mobility
           case(GAS_MOLE_FRACTION,GAS_ENERGY,GAS_DENSITY)
             call PatchUnsupportedVariable('TH','GAS_MOLE_FRACTION',option)
           case(GAS_SATURATION)
@@ -9447,7 +9447,7 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
         case(ZFLOW_MODE)
           value = patch%aux%ZFlow%auxvars(ZERO_INTEGER,ghosted_id)%kr
         case(TH_MODE,TH_TS_MODE)
-          value = patch%aux%TH%auxvars(ghosted_id)%kvr / &
+          value = patch%aux%TH%auxvars(ghosted_id)%mobility / &
                   patch%aux%TH%auxvars(ghosted_id)%vis
         case(G_MODE)
           value = patch%aux%General%auxvars(ZERO_INTEGER,ghosted_id)% &

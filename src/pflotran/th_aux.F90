@@ -31,15 +31,15 @@ module TH_Aux_module
     PetscReal :: pc
     PetscReal :: vis
 !    PetscReal :: dvis_dp
-!    PetscReal :: kr
+    PetscReal :: kr
 !    PetscReal :: dkr_dp
-    PetscReal :: kvr
+    PetscReal :: mobility
     PetscReal :: dsat_dp
     PetscReal :: dsat_dT
     PetscReal :: dden_dp
     PetscReal :: dden_dT
-    PetscReal :: dkvr_dp
-    PetscReal :: dkvr_dT
+    PetscReal :: dmobility_dp
+    PetscReal :: dmobility_dT
     PetscReal :: dh_dp
     PetscReal :: dh_dT
     PetscReal :: du_dp
@@ -201,7 +201,7 @@ recursive subroutine THAuxVarInit(auxvar,option)
   PetscReal :: uninit_value
   PetscInt :: i
 !  uninit_value     = UNINITIALIZED_DOUBLE
-  uninit_value     = 0.d0 
+  uninit_value     = 0.d0
 
   auxvar%pres      = uninit_value
   auxvar%temp      = uninit_value
@@ -209,17 +209,17 @@ recursive subroutine THAuxVarInit(auxvar,option)
   auxvar%h         = uninit_value
   auxvar%u         = uninit_value
   auxvar%pc        = uninit_value
-  !auxvar%kr       = uninit_value
+  auxvar%kr        = uninit_value
   !auxvar%dkr_dp   = uninit_value
   auxvar%vis       = uninit_value
   !auxvar%dvis_dp  = uninit_value
-  auxvar%kvr       = uninit_value
+  auxvar%mobility       = uninit_value
   auxvar%dsat_dp   = uninit_value
   auxvar%dsat_dT   = uninit_value
   auxvar%dden_dp   = uninit_value
   auxvar%dden_dT   = uninit_value
-  auxvar%dkvr_dp   = uninit_value
-  auxvar%dkvr_dT   = uninit_value
+  auxvar%dmobility_dp   = uninit_value
+  auxvar%dmobility_dT   = uninit_value
   auxvar%dh_dp     = uninit_value
   auxvar%dh_dT     = uninit_value
   auxvar%du_dp     = uninit_value
@@ -305,17 +305,17 @@ subroutine THAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%h = auxvar%h
   auxvar2%u = auxvar%u
   auxvar2%pc = auxvar%pc
-!  auxvar2%kr = auxvar%kr
+  auxvar2%kr = auxvar%kr
 !  auxvar2%dkr_dp = auxvar%dkr_dp
   auxvar2%vis = auxvar%vis
 !  auxvar2%dvis_dp = auxvar%dvis_dp
-  auxvar2%kvr = auxvar%kvr
+  auxvar2%mobility = auxvar%mobility
   auxvar2%dsat_dp = auxvar%dsat_dp
   auxvar2%dsat_dT = auxvar%dsat_dT
   auxvar2%dden_dp = auxvar%dden_dp
   auxvar2%dden_dT = auxvar%dden_dT
-  auxvar2%dkvr_dp = auxvar%dkvr_dp
-  auxvar2%dkvr_dT = auxvar%dkvr_dT
+  auxvar2%dmobility_dp = auxvar%dmobility_dp
+  auxvar2%dmobility_dT = auxvar%dmobility_dT
   auxvar2%dh_dp = auxvar%dh_dp
   auxvar2%dh_dT = auxvar%dh_dT
   auxvar2%du_dp = auxvar%du_dp
@@ -399,7 +399,7 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
 
   PetscErrorCode :: ierr
   PetscReal :: pw,dw_kg,dw_mol,hw,sat_pressure,visl
-  PetscReal :: kr, ds_dp, dkr_dp
+  PetscReal :: ds_dp, dkr_dp
   PetscReal :: dvis_dT, dvis_dp
   PetscReal :: dw_dp, dw_dT, hw_dp, hw_dT
   PetscReal :: dpw_dp
@@ -422,11 +422,13 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
   auxvar%h = 0.d0
   auxvar%u = 0.d0
   auxvar%avgmw = 0.d0
-  auxvar%kvr = 0.d0
-  kr = 0.d0
+  auxvar%mobility = 0.d0
+  auxvar%kr = 0.d0
 
   auxvar%pres = x(1)
   auxvar%temp = x(2)
+  global_auxvar%pres(1) = UNINITIALIZED_DOUBLE
+  global_auxvar%temp = UNINITIALIZED_DOUBLE
 
   if (update_porosity) then
     call MaterialAuxVarCompute(material_auxvar,auxvar%pres)
@@ -485,12 +487,12 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
       iphase = 1
       auxvar%pc = 0.d0
       global_auxvar%sat(1) = 1.d0
-      kr = 1.d0
+      auxvar%kr = 1.d0
       pw = auxvar%pres
       dpw_dp = 1.d0
     else
       call characteristic_curves%liq_rel_perm_function% &
-             RelativePermeability(global_auxvar%sat(1),kr, &
+             RelativePermeability(global_auxvar%sat(1),auxvar%kr, &
                                   dkr_dsat1,option)
 
       dkr_dp = ds_dp * dkr_dsat1
@@ -501,7 +503,7 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
     iphase = 1
     auxvar%pc = 0.d0
     global_auxvar%sat(1) = 1.d0
-    kr = 1.d0
+    auxvar%kr = 1.d0
 !   pw = auxvar%pres
     pw = auxvar%pres
     dpw_dp = 1.d0
@@ -556,7 +558,7 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
 
   auxvar%h = hw
   auxvar%u = auxvar%h - pw / dw_mol * option%scale
-  auxvar%kvr = kr/visl
+  auxvar%mobility = auxvar%kr/visl
 
   auxvar%vis = visl
 !  auxvar%dvis_dp = dvis_dp
@@ -568,9 +570,9 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
   auxvar%dden_dp = dw_dp
 
 !geh: contribution of dvis_dpsat is now added in EOSWaterViscosity
-!  auxvar%dkvr_dT = -kr/(visl*visl)*(dvis_dT+dvis_dpsat*dpsat_dT)
-  auxvar%dkvr_dT = -kr/(visl*visl)*dvis_dT
-  auxvar%dkvr_dp = dkr_dp/visl - kr/(visl*visl)*dvis_dp
+!  auxvar%dmobility_dT = -kr/(visl*visl)*(dvis_dT+dvis_dpsat*dpsat_dT)
+  auxvar%dmobility_dT = -auxvar%kr/(visl*visl)*dvis_dT
+  auxvar%dmobility_dp = dkr_dp/visl - auxvar%kr/(visl*visl)*dvis_dp
   if (iphase < 3) then !kludge since pw is constant in the unsat zone
     auxvar%dh_dp = hw_dp
     auxvar%du_dp = hw_dp - (dpw_dp/dw_mol-pw/(dw_mol*dw_mol)*dw_dp)*option%scale
@@ -651,7 +653,7 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
 
   PetscErrorCode :: ierr
   PetscReal :: pw, dw_kg, dw_mol, hw, sat_pressure, visl
-  PetscReal :: kr, ds_dp, dkr_dp, dkr_dT
+  PetscReal :: ds_dp, dkr_dp, dkr_dT
   PetscReal :: dvis_dT, dvis_dp
   PetscReal :: dw_dp, dw_dT, hw_dp, hw_dT
   PetscReal :: dpw_dp
@@ -692,7 +694,7 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
   auxvar%h = 0.d0
   auxvar%u = 0.d0
   auxvar%avgmw = 0.d0
-  auxvar%kvr = 0.d0
+  auxvar%mobility = 0.d0
 
   auxvar%pres = x(1)
   auxvar%temp = x(2)
@@ -754,7 +756,8 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
       call SatFuncComputeIcePExplicit(auxvar%pres, &
                                       auxvar%temp, ice_saturation, &
                                       global_auxvar%sat(1), gas_saturation, &
-                                      kr, ds_dp, dsl_temp, dsg_pl, dsg_temp, &
+                                      auxvar%kr, &
+                                      ds_dp, dsl_temp, dsg_pl, dsg_temp, &
                                       dsi_pl, dsi_temp, dkr_dp, dkr_dT, &
                                       saturation_function, p_th, option)
     case (PAINTER_KARRA_IMPLICIT)
@@ -762,7 +765,8 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
       call SatFuncComputeIcePKImplicit(auxvar%pres, &
                                        auxvar%temp, ice_saturation, &
                                        global_auxvar%sat(1), gas_saturation, &
-                                       kr, ds_dp, dsl_temp, dsg_pl, dsg_temp, &
+                                       auxvar%kr, &
+                                       ds_dp, dsl_temp, dsg_pl, dsg_temp, &
                                        dsi_pl, dsi_temp, dkr_dp, dkr_dT, &
                                        saturation_function, p_th, option)
     case (PAINTER_KARRA_EXPLICIT)
@@ -770,7 +774,8 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
       call SatFuncComputeIcePKExplicit(auxvar%pres, &
                                        auxvar%temp, ice_saturation, &
                                        global_auxvar%sat(1), gas_saturation, &
-                                       kr, ds_dp, dsl_temp, dsg_pl, dsg_temp, &
+                                       auxvar%kr, &
+                                       ds_dp, dsl_temp, dsg_pl, dsg_temp, &
                                        dsi_pl, dsi_temp, dkr_dp, dkr_dT, &
                                        saturation_function, p_th, option)
     case (DALL_AMICO)
@@ -782,7 +787,8 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
                                       auxvar%ice%dpres_fh2o_dT, &
                                       ice_saturation, &
                                       global_auxvar%sat(1), gas_saturation, &
-                                      kr, ds_dp, dsl_temp, dsg_pl, dsg_temp, &
+                                      auxvar%kr, &
+                                      ds_dp, dsl_temp, dsg_pl, dsg_temp, &
                                       dsi_pl, dsi_temp, dkr_dp, dkr_dT, &
                                       saturation_function, option)
     case (PAINTER_KARRA_EXPLICIT_NOCRYO)
@@ -790,7 +796,8 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
       call SatFuncComputeIcePKExplicitNoCryo(auxvar%pres, &
                                        auxvar%temp, ice_saturation, &
                                        global_auxvar%sat(1), gas_saturation, &
-                                       kr, ds_dp, dsl_temp, dsg_pl, dsg_temp, &
+                                       auxvar%kr, &
+                                       ds_dp, dsl_temp, dsg_pl, dsg_temp, &
                                        dsi_pl, dsi_temp, dkr_dp, dkr_dT, &
                                        saturation_function, p_th, option)
     case default
@@ -825,16 +832,16 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
 
   auxvar%h = hw
   auxvar%u = auxvar%h - pw / dw_mol * option%scale
-  auxvar%kvr = kr/visl
+  auxvar%mobility = auxvar%kr/visl
   auxvar%vis = visl
   auxvar%dsat_dp = ds_dp
   auxvar%dden_dT = dw_dT
   auxvar%dden_dp = dw_dp
 !geh: contribution of dvis_dpsat is now added in EOSWaterViscosity
-!  auxvar%dkvr_dT = -kr/(visl*visl)*(dvis_dT + dvis_dpsat*dpsat_dT) + &
+!  auxvar%dmobility_dT = -auxvar%kr/(visl*visl)*(dvis_dT + dvis_dpsat*dpsat_dT) + &
 !    dkr_dT/visl
-  auxvar%dkvr_dT = -kr/(visl*visl)*dvis_dT + dkr_dT/visl
-  auxvar%dkvr_dp = dkr_dp/visl - kr/(visl*visl)*dvis_dp
+  auxvar%dmobility_dT = -auxvar%kr/(visl*visl)*dvis_dT + dkr_dT/visl
+  auxvar%dmobility_dp = dkr_dp/visl - auxvar%kr/(visl*visl)*dvis_dp
   auxvar%dh_dp = hw_dp
   auxvar%du_dp = hw_dp - (dpw_dp/dw_mol - pw/(dw_mol*dw_mol)*dw_dp)* &
                   option%scale
@@ -1095,9 +1102,8 @@ subroutine THPrintAuxVars(file_unit,th_auxvar,global_auxvar, &
   write(file_unit,*) '          liquid enthalpy: ', th_auxvar%h
   write(file_unit,*) '   liquid internal energy: ', th_auxvar%u
   write(file_unit,*) '         liquid viscosity: ', th_auxvar%vis
-  write(file_unit,*) '          liquid mobility: ', th_auxvar%kvr
-  write(file_unit,*) '     liquid relative perm: ', th_auxvar%kvr * &
-                                                    th_auxvar%vis
+  write(file_unit,*) '          liquid mobility: ', th_auxvar%mobility
+  write(file_unit,*) '     liquid relative perm: ', th_auxvar%kr
   write(file_unit,*) '    liquid_density [kmol]: ', global_auxvar%den(1)
   write(file_unit,*) '      liquid_density [kg]: ', global_auxvar%den_kg(1)
   write(file_unit,*) 'eff. thermal conductivity: ', th_auxvar%Dk_eff

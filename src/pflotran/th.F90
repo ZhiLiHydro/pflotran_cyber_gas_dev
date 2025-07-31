@@ -1646,8 +1646,8 @@ subroutine THFluxDerivative(auxvar_up,global_auxvar_up, &
       is_flowing = PETSC_TRUE
     endif
   else
-    if (auxvar_up%kvr > eps .or. &
-        auxvar_dn%kvr > eps) then
+    if (auxvar_up%mobility > eps .or. &
+        auxvar_dn%mobility > eps) then
       is_flowing = PETSC_TRUE
     endif
   endif
@@ -1690,31 +1690,31 @@ subroutine THFluxDerivative(auxvar_up,global_auxvar_up, &
     endif
 
     if (dphi>=0.D0) then
-      ukvr = auxvar_up%kvr
-      dukvr_dp_up = auxvar_up%dkvr_dp
-      dukvr_dT_up = auxvar_up%dkvr_dT
+      ukvr = auxvar_up%mobility
+      dukvr_dp_up = auxvar_up%dmobility_dp
+      dukvr_dT_up = auxvar_up%dmobility_dT
 
       uh = auxvar_up%h
       duh_dp_up = auxvar_up%dh_dp
       duh_dT_up = auxvar_up%dh_dT
     else
-      ukvr = auxvar_dn%kvr
-      dukvr_dp_dn = auxvar_dn%dkvr_dp
-      dukvr_dT_dn = auxvar_dn%dkvr_dT
+      ukvr = auxvar_dn%mobility
+      dukvr_dp_dn = auxvar_dn%dmobility_dp
+      dukvr_dT_dn = auxvar_dn%dmobility_dT
 
       uh = auxvar_dn%h
       duh_dp_dn = auxvar_dn%dh_dp
       duh_dT_dn = auxvar_dn%dh_dT
     endif
 
-    call InterfaceApprox(auxvar_up%kvr, auxvar_dn%kvr, &
-                         auxvar_up%dkvr_dp, auxvar_dn%dkvr_dp, &
+    call InterfaceApprox(auxvar_up%mobility, auxvar_dn%mobility, &
+                         auxvar_up%dmobility_dp, auxvar_dn%dmobility_dp, &
                          dphi, &
                          option%flow%rel_perm_aveg, &
                          ukvr, dukvr_dp_up, dukvr_dp_dn)
 
-    call InterfaceApprox(auxvar_up%kvr, auxvar_dn%kvr, &
-                         auxvar_up%dkvr_dT, auxvar_dn%dkvr_dT, &
+    call InterfaceApprox(auxvar_up%mobility, auxvar_dn%mobility, &
+                         auxvar_up%dmobility_dT, auxvar_dn%dmobility_dT, &
                          dphi, &
                          option%flow%rel_perm_aveg, &
                          ukvr, dukvr_dT_up, dukvr_dT_dn)
@@ -2218,8 +2218,8 @@ subroutine THFlux(auxvar_up,global_auxvar_up, &
       is_flowing = PETSC_TRUE
     endif
   else
-    if (auxvar_up%kvr > eps .or. &
-        auxvar_dn%kvr > eps) then
+    if (auxvar_up%mobility > eps .or. &
+        auxvar_dn%mobility > eps) then
       is_flowing = PETSC_TRUE
     endif
   endif
@@ -2244,14 +2244,14 @@ subroutine THFlux(auxvar_up,global_auxvar_up, &
     endif
 
     if (dphi >= 0.D0) then
-      ukvr = auxvar_up%kvr
+      ukvr = auxvar_up%mobility
       uh = auxvar_up%h
     else
-      ukvr = auxvar_dn%kvr
+      ukvr = auxvar_dn%mobility
       uh = auxvar_dn%h
     endif
 
-    call InterfaceApprox(auxvar_up%kvr, auxvar_dn%kvr, dphi, &
+    call InterfaceApprox(auxvar_up%mobility, auxvar_dn%mobility, dphi, &
                          option%flow%rel_perm_aveg, ukvr)
 
     if (ukvr > floweps) then
@@ -2537,8 +2537,8 @@ subroutine THBCFluxDerivative(ibndtype,auxvars, &
           is_flowing = PETSC_TRUE
         endif
       else
-        if (auxvar_up%kvr > eps .or. &
-            auxvar_dn%kvr > eps) then
+        if (auxvar_up%mobility > eps .or. &
+            auxvar_dn%mobility > eps) then
           is_flowing = PETSC_TRUE
         endif
       endif
@@ -2603,14 +2603,14 @@ subroutine THBCFluxDerivative(ibndtype,auxvars, &
 
 
         if (dphi>=0.D0) then
-          ukvr = auxvar_up%kvr
+          ukvr = auxvar_up%mobility
           if (ibndtype(TH_TEMPERATURE_DOF) == ZERO_GRADIENT_BC) then
-            dukvr_dT_dn = auxvar_up%dkvr_dT
+            dukvr_dT_dn = auxvar_up%dmobility_dT
           endif
         else
-          ukvr = auxvar_dn%kvr
-          dukvr_dp_dn = auxvar_dn%dkvr_dp
-          dukvr_dT_dn = auxvar_dn%dkvr_dT
+          ukvr = auxvar_dn%mobility
+          dukvr_dp_dn = auxvar_dn%dmobility_dp
+          dukvr_dT_dn = auxvar_dn%dmobility_dT
         endif
 
         if (ukvr*Dq>floweps) then
@@ -2633,8 +2633,8 @@ subroutine THBCFluxDerivative(ibndtype,auxvars, &
           is_flowing = PETSC_TRUE
         endif
       else
-        if (auxvar_up%kvr > eps .or. &
-            auxvar_dn%kvr > eps) then
+        if (auxvar_up%mobility > eps .or. &
+            auxvar_dn%mobility > eps) then
           is_flowing = PETSC_TRUE
         endif
       endif
@@ -2688,14 +2688,14 @@ subroutine THBCFluxDerivative(ibndtype,auxvars, &
         endif
 
         if (dphi>=0.D0) then
-          ukvr = auxvar_up%kvr
+          ukvr = auxvar_up%mobility
           if (ibndtype(TH_TEMPERATURE_DOF) == ZERO_GRADIENT_BC) then
-            dukvr_dT_dn = auxvar_up%dkvr_dT
+            dukvr_dT_dn = auxvar_up%dmobility_dT
           endif
         else
-          ukvr = auxvar_dn%kvr
-          dukvr_dp_dn = auxvar_dn%dkvr_dp
-          dukvr_dT_dn = auxvar_dn%dkvr_dT
+          ukvr = auxvar_dn%mobility
+          dukvr_dp_dn = auxvar_dn%dmobility_dp
+          dukvr_dT_dn = auxvar_dn%dmobility_dT
         endif
 
         if (ukvr*Dq>floweps) then
@@ -3129,8 +3129,8 @@ subroutine THBCFlux(ibndtype,auxvars,auxvar_up,global_auxvar_up, &
           is_flowing = PETSC_TRUE
         endif
       else
-        if (auxvar_up%kvr > eps .or. &
-            auxvar_dn%kvr > eps) then
+        if (auxvar_up%mobility > eps .or. &
+            auxvar_dn%mobility > eps) then
           is_flowing = PETSC_TRUE
         endif
       endif
@@ -3172,12 +3172,12 @@ subroutine THBCFlux(ibndtype,auxvars,auxvar_up,global_auxvar_up, &
         end select
 
         if (dphi>=0.D0) then
-          ukvr = auxvar_up%kvr
+          ukvr = auxvar_up%mobility
         else
-          ukvr = auxvar_dn%kvr
+          ukvr = auxvar_dn%mobility
         endif
 
-        call InterfaceApprox(auxvar_up%kvr, auxvar_dn%kvr, &
+        call InterfaceApprox(auxvar_up%mobility, auxvar_dn%mobility, &
                              dphi, &
                              option%flow%rel_perm_aveg, &
                              ukvr)
@@ -3198,8 +3198,8 @@ subroutine THBCFlux(ibndtype,auxvars,auxvar_up,global_auxvar_up, &
           is_flowing = PETSC_TRUE
         endif
       else
-        if (auxvar_up%kvr > eps .or. &
-            auxvar_dn%kvr > eps) then
+        if (auxvar_up%mobility > eps .or. &
+            auxvar_dn%mobility > eps) then
           is_flowing = PETSC_TRUE
         endif
       endif
@@ -3230,12 +3230,12 @@ subroutine THBCFlux(ibndtype,auxvars,auxvar_up,global_auxvar_up, &
         endif
 
         if (dphi>=0.D0) then
-          ukvr = auxvar_up%kvr
+          ukvr = auxvar_up%mobility
         else
-          ukvr = auxvar_dn%kvr
+          ukvr = auxvar_dn%mobility
         endif
 
-        call InterfaceApprox(auxvar_up%kvr, auxvar_dn%kvr, &
+        call InterfaceApprox(auxvar_up%mobility, auxvar_dn%mobility, &
              dphi, &
              option%flow%rel_perm_aveg, &
              ukvr)
@@ -4234,7 +4234,7 @@ subroutine THResidualSourceSink(r,realization,ierr)
               Dq = well_factor
               dphi = auxvars(ghosted_id)%pres - pressure_bh
               if (dphi >= 0.d0) then ! outflow only
-                ukvr = auxvars(ghosted_id)%kvr
+                ukvr = auxvars(ghosted_id)%mobility
                 if (ukvr < 1.d-20) ukvr = 0.d0
                 v_darcy = 0.d0
                 if (ukvr*Dq > floweps) then
