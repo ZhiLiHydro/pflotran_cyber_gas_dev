@@ -132,6 +132,10 @@ subroutine SimpleEvaluate(this,Residual,Jacobian,compute_derivative, &
   type(global_auxvar_type) :: global_auxvar
   type(material_auxvar_type) :: material_auxvar
 
+  PetscReal :: dRateA_dAaq, dRateA_dXim
+  PetscReal :: dRateC_dAaq, dRateC_dXim
+  PetscReal :: dRateX_dAaq, dRateX_dXim
+
   PetscInt, parameter :: iphase = 1
   PetscReal :: volume                 ! m^3 bulk volume
   PetscReal :: porosity               ! m^3 pore / m^3 bulk volume
@@ -152,24 +156,18 @@ subroutine SimpleEvaluate(this,Residual,Jacobian,compute_derivative, &
   PetscReal :: Aaq_threshold
   PetscReal :: Aaq_inhibition
   PetscReal :: tempreal
-  PetscReal :: dAaq_inhibition_dAaq
-  PetscReal :: Aaq_monod
-  PetscReal :: dAaq_monod_dAaq
   PetscReal :: Caq_rate_constant
   PetscReal :: Xim_rate_constant
   PetscReal :: Xim_decay_rate_constant
   PetscReal :: common_
+  PetscReal :: dcommon_dAaq,dcommon_dXim
+  PetscReal :: unit_factor
   PetscReal :: kg_water
   PetscInt :: inhibition_method
-  PetscReal :: kw_water_per_L_water
   PetscReal :: molarity_to_molality
   PetscReal :: immobile_to_aqueous
   PetscBool :: aqueous_biomass_units = PETSC_FALSE
   PetscBool :: aqueous_molarity_units = PETSC_TRUE
-  PetscInt :: irow
-  PetscInt :: icol
-  PetscReal :: dcommon_dAaq
-  PetscReal :: dcommon_dXim
 
   porosity = material_auxvar%porosity               ! [m^3 pore/m^3 bulk volume]
   liquid_saturation = global_auxvar%sat(iphase)     ! [m^3 water/m^3 pore]
@@ -177,7 +175,17 @@ subroutine SimpleEvaluate(this,Residual,Jacobian,compute_derivative, &
             ! multiplying by 1.d3 converts m^3 water -> L water
   kg_water = porosity*liquid_saturation*volume*global_auxvar%den_kg(iphase)
   L_water = porosity*liquid_saturation*volume*1.d3
-  kw_water_per_L_water = global_auxvar%den_kg(iphase) * 1.d-3
+
+
+  molarity_to_molality = 1.d0  ! use for molarity
+  if (.not. aqueous_molarity_units) then
+    molarity_to_molality = 1000.d0 / global_auxvar%den_kg(iphase) ! use for molality
+  endif
+  immobile_to_aqueous = 1.d0
+  if (aqueous_biomass_units) then
+    ! mol / m^3 bulk -> mol / L water (or kg water)
+    immobile_to_aqueous = volume / (porosity * liquid_saturation * volume * 1000.d0) * molarity_to_molality
+  endif
 
   Aaq = rt_auxvar%total(this%species_Aaq_id,iphase) ! [mol/L water]
   Baq = rt_auxvar%total(this%species_Baq_id,iphase) ! [mol/L water]
@@ -204,13 +212,13 @@ subroutine SimpleEvaluate(this,Residual,Jacobian,compute_derivative, &
   ! stoichiometries
   ! reactants have negative stoichiometry
   ! products have positive stoichiometry
-  stoichA = 0.d0
+  stoichA = 1.d0
   stoichB = 0.d0
-  stoichC = 0.d0
+  stoichC = 1.d0
   stoichD = 0.d0
   stoichE = 0.d0
   stoichF = 0.d0
-  stoichX = 0.d0
+  stoichX = 1.d0
   stoichY = 0.d0
 
   ! kinetic rate constants
@@ -229,35 +237,58 @@ subroutine SimpleEvaluate(this,Residual,Jacobian,compute_derivative, &
   Xim_rate_constant = 6.01d-6       ! 1 / sec
   Xim_decay_rate_constant = 1.d-12  ! 1 / sec
 
-  tempreal = (Aaq_half_saturation + Aaq)
-  Aaq_monod = Aaq / tempreal
-  dAaq_monod_dAaq = Aaq_half_saturation /(tempreal*tempreal)
+  Aaq = Aaq * molarity_to_molality    ! mol / L water -> mol / kg water (if using molality)
+  Caq = Caq * molarity_to_molality
+  Xim = Xim * immobile_to_aqueous    ! mol / m^3 bulk -> mol / L water
+  Aaq_half_saturation = Aaq_half_saturation * molarity_to_molality
+  
+  if (aqueous_biomass_units) then
+    if (aqueous_molarity_units) then
+      ! Xim [ mol / L water]
+      common_ = Xim * Aaq / (Aaq_half_saturation + Aaq) * L_water ! [mol Xim / sec]
+    else
+      ! Xim [ mol / kg water]
+      common_ = Xim * Aaq / (Aaq_half_saturation + Aaq) * kg_water ! [mol Xim / sec]
+    endif
+  else
+    ! Xim [ mol / m^3 bulk]
+    common_ = Xim * Aaq / (Aaq_half_saturation + Aaq) * volume ! [mol Xim / sec]
+  endif
 
-  Aaq_threshold = 1.d-9
+  Aaq_threshold = 1.d-11 * molarity_to_molality
   inhibition_method = INHIBITION_SMOOTHSTEP
-!  inhibition_method = INHIBITION_THRESHOLD
+  !inhibition_method = INHIBITION_THRESHOLD
   select case(inhibition_method)
     case(INHIBITION_SMOOTHSTEP)
-      call ReactionInhibitionSmoothstep(Aaq,Aaq_threshold,0.1d0, &
-                                        Aaq_inhibition,dAaq_inhibition_dAaq)
+      call ReactionInhibitionSmoothstep(Aaq,Aaq_threshold,0.1d0,Aaq_inhibition,tempreal)
     case(INHIBITION_THRESHOLD)
-      call ReactionInhibitionThreshold(Aaq,Aaq_threshold, &
-                                       Aaq_inhibition,dAaq_inhibition_dAaq)
-    case default
-      Aaq_inhibition = 1.d0
-      dAaq_inhibition_dAaq = 0.d0
+      call ReactionInhibitionThreshold(Aaq,Aaq_threshold,Aaq_inhibition,tempreal)
   end select
+  !Aaq_inhibition = 1.d0
+  !tempreal = 0.d0
+  
+  RateA = Aaq_rate_constant * common_ * Aaq_inhibition       ! mol Aaq / sec
+  RateC = Caq_rate_constant * common_ * Aaq_inhibition       ! mol Caq / sec
+  
+  if (aqueous_biomass_units) then
+    if (aqueous_molarity_units) then
+      ! Xim [ mol / L water]
+         RateX = Xim_rate_constant * common_ * Aaq_inhibition - &  
+                Xim_decay_rate_constant * Xim * L_water ! [mol Xim / sec]
+    else
+      ! Xim [ mol / kg water]
+         RateX = Xim_rate_constant * common_ * Aaq_inhibition - &   
+                Xim_decay_rate_constant * Xim * kg_water ! [mol Xim / sec]
+    endif
+  else
+    ! Xim [ mol / m^3 bulk]
+  RateX = Xim_rate_constant * common_ * Aaq_inhibition - &   
+              Xim_decay_rate_constant * Xim * volume! [mol Xim / sec]
+  endif
 
-  common_ = Xim * Aaq_monod * Aaq_inhibition * volume    ! mol Xim
-  dcommon_dAaq = Xim * &
-                 (dAaq_monod_dAaq * Aaq_inhibition + &
-                  Aaq_monod * dAaq_inhibition_dAaq) * volume
-  dcommon_dXim = Aaq_monod * Aaq_inhibition * volume
-
-  RateA = Aaq_rate_constant * common_        ! mol Aaq / sec
-  RateC = Caq_rate_constant * common_        ! mol Caq / sec
-  RateX = Xim_rate_constant * common_  - &   ! mol Xim / sec
-              Xim_decay_rate_constant * Xim * volume
+!  if (.not.compute_derivative) then
+!    print *, RateA, RateC, RateX
+!  endif
 
   ! NOTES
   ! 1. Always subtract contribution from residual
@@ -274,36 +305,63 @@ subroutine SimpleEvaluate(this,Residual,Jacobian,compute_derivative, &
     Residual(this%species_Yim_id + reaction%offset_immobile) - RateY
 
   if (compute_derivative) then
-    ! dR_Aaq / dAaq
-    irow = this%species_Aaq_id
-    icol = irow
-    Jacobian(irow,icol) = Jacobian(irow,icol) - & ! kg water / sec
-      Aaq_rate_constant * dcommon_dAaq * kw_water_per_L_water
-    ! dR_Aaq / dXim
-    icol = this%species_Xim_id + reaction%offset_immobile
-    Jacobian(irow,icol) = Jacobian(irow,icol) - &
-      Aaq_rate_constant * dcommon_dXim
-    ! dR_Caq / dAaq
-    irow = this%species_Caq_id
-    icol = this%species_Aaq_id
-    Jacobian(irow,icol) = Jacobian(irow,icol) - & ! kg water / sec
-      Caq_rate_constant * dcommon_dAaq * kw_water_per_L_water
-    ! dR_Caq / dXim
-    icol = this%species_Xim_id + reaction%offset_immobile
-    Jacobian(irow,icol) = Jacobian(irow,icol) - &
-      Caq_rate_constant * dcommon_dXim
-    ! dR_Xim / dAaq
-    irow = this%species_Xim_id + reaction%offset_immobile
-    icol = this%species_Aaq_id
-    Jacobian(irow,icol) = Jacobian(irow,icol) - & ! kg water / sec
-      Xim_rate_constant * dcommon_dAaq * kw_water_per_L_water
-    ! dR_Xim / dXim
-    icol = irow
-    Jacobian(irow,icol) = Jacobian(irow,icol) - &
-      (Xim_rate_constant * dcommon_dXim - &
-       Xim_decay_rate_constant * volume)
+
+   if (aqueous_biomass_units) then
+      if (aqueous_molarity_units) then
+        ! Xim [ mol / L water]
+        unit_factor = L_water ! [mol Xim / sec]
+      else
+        ! Xim [ mol / kg water]
+        unit_factor = kg_water ! [mol Xim / sec]
+      endif
+    else
+      ! Xim [ mol / m^3 bulk]
+      unit_factor = volume ! [mol Xim / sec]
+    endif
+
+    dcommon_dAaq = ((Xim * Aaq_half_saturation)/ ( (Aaq + Aaq_half_saturation)**2 )) * unit_factor *molarity_to_molality
+    dcommon_dXim = Aaq / (Aaq_half_saturation + Aaq) * unit_factor *immobile_to_aqueous    
+
+    dRateA_dAaq  = Aaq_rate_constant*(Aaq_inhibition*dcommon_dAaq + common_*tempreal*molarity_to_molality )
+    dRateA_dXim =  Aaq_rate_constant * dcommon_dXim * Aaq_inhibition 
+    
+    dRateC_dAaq = Caq_rate_constant * (dcommon_dAaq * Aaq_inhibition  + common_*tempreal*molarity_to_molality )
+    dRateC_dXim = Caq_rate_constant * dcommon_dXim * Aaq_inhibition  
+
+    dRateX_dAaq  = Xim_rate_constant * ( dcommon_dAaq * Aaq_inhibition + common_*tempreal*molarity_to_molality )
+    dRateX_dXim = Xim_rate_constant * dcommon_dXim * Aaq_inhibition - (Xim_decay_rate_constant *  unit_factor*immobile_to_aqueous)
+              
+
+    ! Jacobian Assembling
+
+    ! Cx
+    Jacobian(this%species_Aaq_id, this%species_Aaq_id ) = &
+              Jacobian(this%species_Aaq_id, this%species_Aaq_id ) - dRateA_dAaq  * stoichA
+    
+    Jacobian(this%species_Aaq_id, &
+            this%species_Xim_id + reaction%offset_immobile) = &
+            Jacobian(this%species_Aaq_id, this%species_Xim_id + reaction%offset_immobile) - dRateA_dXim * stoichA
+
+    ! Cs
+    Jacobian(this%species_Caq_id, this%species_Aaq_id) = &
+            Jacobian(this%species_Caq_id, this%species_Aaq_id) - dRateC_dAaq * stoichC
+    
+    Jacobian(this%species_Caq_id, &
+            this%species_Xim_id + reaction%offset_immobile) = &
+            Jacobian(this%species_Caq_id, this%species_Xim_id + reaction%offset_immobile) - dRateC_dXim * stoichC
+
+    ! Xim
+    Jacobian(this%species_Xim_id + reaction%offset_immobile, &
+            this%species_Aaq_id ) = &
+            Jacobian(this%species_Xim_id + reaction%offset_immobile, this%species_Aaq_id ) -  dRateX_dAaq * stoichX
+    
+    Jacobian(this%species_Xim_id + reaction%offset_immobile, &
+            this%species_Xim_id + reaction%offset_immobile) = &
+                  Jacobian(this%species_Xim_id + reaction%offset_immobile, this%species_Xim_id + reaction%offset_immobile)  -  dRateX_dXim *stoichX
+
   endif
 
 end subroutine SimpleEvaluate
 
 end module Reaction_Sandbox_Simple_class
+
