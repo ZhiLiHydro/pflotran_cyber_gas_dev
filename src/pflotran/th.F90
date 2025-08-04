@@ -491,7 +491,7 @@ subroutine THComputeMassBalance(realization, mass_balance)
 
     mass_balance = mass_balance + &
       TH_auxvars(ghosted_id)%den_kg* &
-      global_auxvars(ghosted_id)%sat* &
+      TH_auxvars(ghosted_id)%sat* &
       material_auxvars(ghosted_id)%porosity* &
       material_auxvars(ghosted_id)%volume
 
@@ -1242,7 +1242,7 @@ subroutine THAccumDerivative(TH_auxvar,global_auxvar, &
   vol = material_auxvar%volume
   pres = TH_auxvar%pres
   temp = TH_auxvar%temp
-  sat = global_auxvar%sat(1)
+  sat = TH_auxvar%sat
   den = TH_auxvar%den
   dden_dp = TH_auxvar%dden_dp
   dden_dT = TH_auxvar%dden_dT
@@ -1449,14 +1449,14 @@ subroutine THAccumulation(auxvar,global_auxvar, &
   porXvol = por*vol
   ! [kmol] = [m^3 water/m^3 por] * [kmol water/m^3 water] * [m^3 pore/m^3 bulk] &
   !           * [m^3 bulk]
-  kmol(1) = global_auxvar%sat(1)*auxvar%den*porXvol
+  kmol(1) = auxvar%sat*auxvar%den*porXvol
 
 ! TechNotes, TH Mode: First term of Equation 9
   ! rock_dencpr [MJ/m^3 rock-K]
   ! [MJ] = [m^3 water/m^3 por] * [kmol water/m^3 water] * [MJ/m^3 water] &
   !        * [m^3 pore/m^3 bulk] * [m^3 bulk] + [m^3 rock/m^3 bulk] * [m^3 bulk] &
   !        * [MJ/m^3 rock-K] * [C]
-  eng = global_auxvar%sat(1) * &
+  eng = auxvar%sat * &
         auxvar%den * &
         auxvar%u * porXvol + &
         (1.d0 - por) * vol * rock_dencpr * auxvar%temp
@@ -1711,8 +1711,8 @@ subroutine THFluxDerivative(auxvar_up,global_auxvar_up, &
   is_flowing = PETSC_FALSE
 
   if (option%flow%th_freezing) then
-    if (global_auxvar_up%sat(1) > sir_up .or. &
-        global_auxvar_dn%sat(1) > sir_dn) then
+    if (auxvar_up%sat > sir_up .or. &
+        auxvar_dn%sat > sir_dn) then
       is_flowing = PETSC_TRUE
     endif
   else
@@ -1723,9 +1723,9 @@ subroutine THFluxDerivative(auxvar_up,global_auxvar_up, &
   endif
 
   if (is_flowing) then
-    if (global_auxvar_up%sat(1) <eps) then
+    if (auxvar_up%sat <eps) then
       upweight=0.d0
-    else if (global_auxvar_dn%sat(1) <eps) then
+    else if (auxvar_dn%sat <eps) then
       upweight=1.d0
     endif
     density_ave = upweight*auxvar_up%den+ &
@@ -1955,13 +1955,13 @@ subroutine THFluxDerivative(auxvar_up,global_auxvar_up, &
     call tcc_up%thermal_conductivity_function% &
          TCondTensorToScalar(dist,option)
     call tcc_up%thermal_conductivity_function%CalculateFTCond( &
-         global_auxvar_up%sat(1),auxvar_up%ice%sat_ice,auxvar_up%temp, &
+         auxvar_up%sat,auxvar_up%ice%sat_ice,auxvar_up%temp, &
          material_auxvar_up%porosity,Dk_eff_up,dk_ds_up,dK_di_up,dk_dT_up,option)
 
     call tcc_dn%thermal_conductivity_function% &
          TCondTensorToScalar(dist,option)
     call tcc_dn%thermal_conductivity_function%CalculateFTCond( &
-         global_auxvar_dn%sat(1),auxvar_dn%ice%sat_ice,auxvar_dn%temp, &
+         auxvar_dn%sat,auxvar_dn%ice%sat_ice,auxvar_dn%temp, &
          material_auxvar_dn%porosity,Dk_eff_dn,dk_ds_dn,dK_di_dn,dk_dT_dn,option)
 
     Ke_fr_up = auxvar_up%ice%Ke_fr
@@ -1978,13 +1978,13 @@ subroutine THFluxDerivative(auxvar_up,global_auxvar_up, &
     call tcc_up%thermal_conductivity_function% &
          TCondTensorToScalar(dist,option)
     call tcc_up%thermal_conductivity_function%CalculateTCond( &
-         global_auxvar_up%sat(1),auxvar_up%temp, &
+         auxvar_up%sat,auxvar_up%temp, &
          material_auxvar_up%porosity,Dk_eff_up,dk_ds_up,dk_dT_up,option)
 
     call tcc_dn%thermal_conductivity_function% &
          TCondTensorToScalar(dist,option)
     call tcc_dn%thermal_conductivity_function%CalculateTCond( &
-         global_auxvar_dn%sat(1),auxvar_dn%temp, &
+         auxvar_dn%sat,auxvar_dn%temp, &
          material_auxvar_dn%porosity,Dk_eff_dn,dk_ds_dn,dk_dT_dn,option)
 
   endif
@@ -2283,8 +2283,8 @@ subroutine THFlux(auxvar_up,global_auxvar_up, &
   is_flowing = PETSC_FALSE
 
   if (option%flow%th_freezing) then
-    if (global_auxvar_up%sat(1) > sir_up .or.  &
-        global_auxvar_dn%sat(1) > sir_dn) then
+    if (auxvar_up%sat > sir_up .or.  &
+        auxvar_dn%sat > sir_dn) then
       is_flowing = PETSC_TRUE
     endif
   else
@@ -2295,9 +2295,9 @@ subroutine THFlux(auxvar_up,global_auxvar_up, &
   endif
 
   if (is_flowing) then
-    if (global_auxvar_up%sat(1) < eps) then
+    if (auxvar_up%sat < eps) then
       upweight=0.d0
-    else if (global_auxvar_dn%sat(1) < eps) then
+    else if (auxvar_dn%sat < eps) then
       upweight=1.d0
     endif
     density_ave = upweight*auxvar_up%den+(1.D0-upweight)* &
@@ -2398,13 +2398,13 @@ subroutine THFlux(auxvar_up,global_auxvar_up, &
     call tcc_up%thermal_conductivity_function% &
          TCondTensorToScalar(dist,option)
     call tcc_up%thermal_conductivity_function%CalculateFTCond( &
-         global_auxvar_up%sat(1),auxvar_up%ice%sat_ice,auxvar_up%temp, &
+         auxvar_up%sat,auxvar_up%ice%sat_ice,auxvar_up%temp, &
          material_auxvar_up%porosity,Dk_eff_up,dk_ds_up,dK_di_up,dk_dT_up,option)
 
     call tcc_dn%thermal_conductivity_function% &
          TCondTensorToScalar(dist,option)
     call tcc_dn%thermal_conductivity_function%CalculateFTCond( &
-         global_auxvar_dn%sat(1),auxvar_dn%ice%sat_ice,auxvar_dn%temp, &
+         auxvar_dn%sat,auxvar_dn%ice%sat_ice,auxvar_dn%temp, &
          material_auxvar_dn%porosity,Dk_eff_dn,dk_ds_dn,dK_di_dn,dk_dT_dn,option)
 
   else
@@ -2412,13 +2412,13 @@ subroutine THFlux(auxvar_up,global_auxvar_up, &
     call tcc_up%thermal_conductivity_function% &
          TCondTensorToScalar(dist,option)
     call tcc_up%thermal_conductivity_function%CalculateTCond( &
-         global_auxvar_up%sat(1),auxvar_up%temp,material_auxvar_up%porosity, &
+         auxvar_up%sat,auxvar_up%temp,material_auxvar_up%porosity, &
          Dk_eff_up,dk_ds_up,dk_dT_up,option)
 
     call tcc_dn%thermal_conductivity_function% &
          TCondTensorToScalar(dist,option)
     call tcc_dn%thermal_conductivity_function%CalculateTCond( &
-         global_auxvar_dn%sat(1),auxvar_dn%temp,material_auxvar_dn%porosity, &
+         auxvar_dn%sat,auxvar_dn%temp,material_auxvar_dn%porosity, &
          Dk_eff_dn,dk_ds_dn,dk_dT_dn,option)
 
   endif
@@ -2630,8 +2630,8 @@ subroutine THBCFluxDerivative(ibndtype,bc_auxvars, &
       is_flowing = PETSC_FALSE
 
       if (option%flow%th_freezing) then
-        if (global_auxvar_up%sat(1) > sir_dn .or.  &
-            global_auxvar_dn%sat(1) > sir_dn) then
+        if (auxvar_up%sat > sir_dn .or.  &
+            auxvar_dn%sat > sir_dn) then
           is_flowing = PETSC_TRUE
         endif
       else
@@ -2643,9 +2643,9 @@ subroutine THBCFluxDerivative(ibndtype,bc_auxvars, &
 
       if (is_flowing) then
         upweight=1.D0
-        if (global_auxvar_up%sat(1) < eps) then
+        if (auxvar_up%sat < eps) then
           upweight=0.d0
-        else if (global_auxvar_dn%sat(1) < eps) then
+        else if (auxvar_dn%sat < eps) then
           upweight=1.d0
         endif
 
@@ -2726,8 +2726,8 @@ subroutine THBCFluxDerivative(ibndtype,bc_auxvars, &
       is_flowing = PETSC_FALSE
 
       if (option%flow%th_freezing) then
-        if (global_auxvar_up%sat(1) > sir_dn .or.  &
-            global_auxvar_dn%sat(1) > sir_dn) then
+        if (auxvar_up%sat > sir_dn .or.  &
+            auxvar_dn%sat > sir_dn) then
           is_flowing = PETSC_TRUE
         endif
       else
@@ -2739,9 +2739,9 @@ subroutine THBCFluxDerivative(ibndtype,bc_auxvars, &
 
       if (is_flowing) then
         upweight=1.D0
-        if (global_auxvar_up%sat(1) < eps) then
+        if (auxvar_up%sat < eps) then
           upweight=0.d0
-        else if (global_auxvar_dn%sat(1) < eps) then
+        else if (auxvar_dn%sat < eps) then
           upweight=1.d0
         endif
 
@@ -2873,7 +2873,7 @@ subroutine THBCFluxDerivative(ibndtype,bc_auxvars, &
           call tcc_dn%thermal_conductivity_function% &
                TCondTensorToScalar(dist,option)
           call tcc_dn%thermal_conductivity_function%CalculateFTCond( &
-               global_auxvar_dn%sat(1),auxvar_dn%ice%sat_ice, &
+               auxvar_dn%sat,auxvar_dn%ice%sat_ice, &
                auxvar_dn%temp,material_auxvar_dn%porosity, &
                Dk_eff_dn,dk_ds_dn,dK_di_dn,dk_dT_dn,option)
 
@@ -2897,7 +2897,7 @@ subroutine THBCFluxDerivative(ibndtype,bc_auxvars, &
           call tcc_dn%thermal_conductivity_function% &
                TCondTensorToScalar(dist,option)
           call tcc_dn%thermal_conductivity_function%CalculateTCond( &
-               global_auxvar_dn%sat(1),auxvar_dn%temp, &
+               auxvar_dn%sat,auxvar_dn%temp, &
                material_auxvar_dn%porosity,Dk_eff_dn,dk_ds_dn,dk_dT_dn,option)
 
           dKe_dp_dn = auxvar_dn%dKe_dp
@@ -3222,8 +3222,8 @@ subroutine THBCFlux(ibndtype,bc_auxvars,auxvar_up,global_auxvar_up, &
       is_flowing = PETSC_FALSE
 
       if (option%flow%th_freezing) then
-        if (global_auxvar_up%sat(1) > sir_dn .or.  &
-            global_auxvar_dn%sat(1) > sir_dn) then
+        if (auxvar_up%sat > sir_dn .or.  &
+            auxvar_dn%sat > sir_dn) then
           is_flowing = PETSC_TRUE
         endif
       else
@@ -3235,9 +3235,9 @@ subroutine THBCFlux(ibndtype,bc_auxvars,auxvar_up,global_auxvar_up, &
 
       if (is_flowing) then
         upweight=1.D0
-        if (global_auxvar_up%sat(1) < eps) then
+        if (auxvar_up%sat < eps) then
           upweight=0.d0
-        else if (global_auxvar_dn%sat(1) < eps) then
+        else if (auxvar_dn%sat < eps) then
           upweight=1.d0
         endif
         density_ave = upweight*auxvar_up%den+ &
@@ -3291,8 +3291,8 @@ subroutine THBCFlux(ibndtype,bc_auxvars,auxvar_up,global_auxvar_up, &
       is_flowing = PETSC_FALSE
 
       if (option%flow%th_freezing) then
-        if (global_auxvar_up%sat(1) > sir_dn .or.  &
-            global_auxvar_dn%sat(1) > sir_dn) then
+        if (auxvar_up%sat > sir_dn .or.  &
+            auxvar_dn%sat > sir_dn) then
           is_flowing = PETSC_TRUE
         endif
       else
@@ -3304,9 +3304,9 @@ subroutine THBCFlux(ibndtype,bc_auxvars,auxvar_up,global_auxvar_up, &
 
       if (is_flowing) then
         upweight=1.D0
-        if (global_auxvar_up%sat(1) < eps) then
+        if (auxvar_up%sat < eps) then
           upweight=0.d0
-        else if (global_auxvar_dn%sat(1) < eps) then
+        else if (auxvar_dn%sat < eps) then
           upweight=1.d0
         endif
         density_ave = upweight*auxvar_up%den+ &
@@ -3388,12 +3388,12 @@ subroutine THBCFlux(ibndtype,bc_auxvars,auxvar_up,global_auxvar_up, &
       TCondTensorToScalar(dist,option)
       if (option%flow%th_freezing) then
         call tcc_dn%thermal_conductivity_function%CalculateFTCond( &
-        global_auxvar_dn%sat(1),auxvar_dn%ice%sat_ice, &
+        auxvar_dn%sat,auxvar_dn%ice%sat_ice, &
         auxvar_dn%temp,material_auxvar_dn%porosity,auxvar_dn%Dk_eff, &
         dk_ds_dn,dK_di_dn,dk_dT_dn,option)
       else
         call tcc_dn%thermal_conductivity_function%CalculateTCond( &
-         global_auxvar_dn%sat(1),auxvar_dn%temp,material_auxvar_dn%porosity, &
+         auxvar_dn%sat,auxvar_dn%temp,material_auxvar_dn%porosity, &
          auxvar_dn%Dk_eff,dk_ds_dn,dk_dT_dn,option)
       endif
 
@@ -5858,6 +5858,7 @@ subroutine THMapBCAuxVarsToGlobal(realization)
   type(global_auxvar_type), pointer :: global_auxvars_bc(:)
 
   PetscInt :: sum_connection, iconn
+  PetscBool :: copy_gas_sat
 
   option => realization%option
   patch => realization%patch
@@ -5866,6 +5867,8 @@ subroutine THMapBCAuxVarsToGlobal(realization)
 
   th_auxvars_bc => patch%aux%TH%auxvars_bc
   global_auxvars_bc => patch%aux%Global%auxvars_bc
+
+  copy_gas_sat = option%transport%nphase > 1
 
   boundary_condition => patch%boundary_condition_list%first
   sum_connection = 0
@@ -5876,11 +5879,15 @@ subroutine THMapBCAuxVarsToGlobal(realization)
       sum_connection = sum_connection + 1
       global_auxvars_bc(sum_connection)%pres(1) = &
         th_auxvars_bc(sum_connection)%pres
-!      global_auxvars_bc(sum_connection)%sat = &
-!        th_auxvars_bc(sum_connection)%sat
-      global_auxvars_bc(sum_connection)%den_kg = &
+      global_auxvars_bc(sum_connection)%sat(1) = &
+        th_auxvars_bc(sum_connection)%sat
+      if (copy_gas_sat) then
+        global_auxvars_bc(sum_connection)%sat(2) = &
+          1.d0 - th_auxvars_bc(sum_connection)%sat
+      endif
+      global_auxvars_bc(sum_connection)%den_kg(1) = &
         th_auxvars_bc(sum_connection)%den_kg
-      global_auxvars_bc(sum_connection)%den = &
+      global_auxvars_bc(sum_connection)%den(1) = &
         th_auxvars_bc(sum_connection)%den
       global_auxvars_bc(sum_connection)%temp = &
         th_auxvars_bc(sum_connection)%temp

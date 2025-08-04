@@ -31,6 +31,7 @@ module TH_Aux_module
   type, public :: TH_auxvar_type
     PetscReal :: pres
     PetscReal :: temp
+    PetscReal :: sat
     PetscReal :: den
     PetscReal :: den_kg
     PetscReal :: avgmw
@@ -215,6 +216,7 @@ recursive subroutine THAuxVarInit(auxvar,option,allocate_perturbation)
 
   auxvar%pres      = uninit_value
   auxvar%temp      = uninit_value
+  auxvar%sat       = uninit_value
   auxvar%den       = uninit_value
   auxvar%den_kg    = uninit_value
   auxvar%avgmw     = uninit_value
@@ -308,6 +310,7 @@ subroutine THAuxVarCopy(auxvar,auxvar2,option)
 
   auxvar2%pres = auxvar%pres
   auxvar2%temp = auxvar%temp
+  auxvar2%sat = auxvar%sat
   auxvar2%den = auxvar%den
   auxvar2%den_kg = auxvar%den_kg
 
@@ -425,8 +428,7 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
   ierr = 0
   auxvar%den = 0.d0
   auxvar%den_kg = 0.d0
-  global_auxvar%sat = 0.d0
-
+  auxvar%sat = 0.d0
   auxvar%h = 0.d0
   auxvar%u = 0.d0
   auxvar%avgmw = 0.d0
@@ -435,10 +437,12 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
 
   auxvar%pres = x(1)
   auxvar%temp = x(2)
+
   global_auxvar%pres(1) = UNINITIALIZED_DOUBLE
   global_auxvar%temp = UNINITIALIZED_DOUBLE
   global_auxvar%den = UNINITIALIZED_DOUBLE
   global_auxvar%den_kg = UNINITIALIZED_DOUBLE
+  global_auxvar%sat = UNINITIALIZED_DOUBLE
 
   if (update_porosity) then
     call MaterialAuxVarCompute(material_auxvar,auxvar%pres)
@@ -490,19 +494,19 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
 #endif
 
     call characteristic_curves%saturation_function% &
-        Saturation(auxvar%pc,global_auxvar%sat(1), &
+        Saturation(auxvar%pc,auxvar%sat, &
                    ds_dp, option)
 
     if (ds_dp < 1.d-40) then
       iphase = 1
       auxvar%pc = 0.d0
-      global_auxvar%sat(1) = 1.d0
+      auxvar%sat = 1.d0
       auxvar%kr = 1.d0
       pw = auxvar%pres
       dpw_dp = 1.d0
     else
       call characteristic_curves%liq_rel_perm_function% &
-             RelativePermeability(global_auxvar%sat(1),auxvar%kr, &
+             RelativePermeability(auxvar%sat,auxvar%kr, &
                                   dkr_dsat1,option)
 
       dkr_dp = ds_dp * dkr_dsat1
@@ -512,7 +516,7 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
   else
     iphase = 1
     auxvar%pc = 0.d0
-    global_auxvar%sat(1) = 1.d0
+    auxvar%sat = 1.d0
     auxvar%kr = 1.d0
 !   pw = auxvar%pres
     pw = auxvar%pres
@@ -598,22 +602,18 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
   Dk_dry = th_parameter%ckdry(icct)
 
   !unfrozen soil Kersten number
-  Ke = (global_auxvar%sat(1) + epsilon)**(alpha)
+  Ke = (auxvar%sat + epsilon)**(alpha)
   auxvar%Ke = Ke
 
   ! Effective thermal conductivity
   call thermal_cc%thermal_conductivity_function%CalculateTCond( &
-       global_auxvar%sat(1),auxvar%temp, &
+       auxvar%sat,auxvar%temp, &
        material_auxvar%porosity,auxvar%Dk_eff,dk_ds,dk_dT,option)
 
   ! Derivative of soil Kersten number
-  auxvar%dKe_dp = alpha*(global_auxvar%sat(1) + epsilon)**(alpha - 1.d0)* &
+  auxvar%dKe_dp = alpha*(auxvar%sat + epsilon)**(alpha - 1.d0)* &
                   auxvar%dsat_dp
   auxvar%dKe_dT = 0.d0
-
-  if (size(global_auxvar%sat) > 1) then
-    global_auxvar%sat(2) = 1.d0 - global_auxvar%sat(1)
-  endif
 
 end subroutine THAuxVarComputeNoFreezing
 
@@ -695,12 +695,13 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
   ierr = 0
   out_of_table_flag = PETSC_FALSE
 
-  global_auxvar%sat = 0.d0
+  global_auxvar%sat = UNINITIALIZED_DOUBLE
   global_auxvar%den = UNINITIALIZED_DOUBLE
   global_auxvar%den_kg = UNINITIALIZED_DOUBLE
 
   auxvar%den = 0.d0
   auxvar%den_kg = 0.d0
+  auxvar%sat = 0.d0
   auxvar%h = 0.d0
   auxvar%u = 0.d0
   auxvar%avgmw = 0.d0
@@ -765,7 +766,7 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
       ! Model from Painter, Comp. Geosci. (2011)
       call SatFuncComputeIcePExplicit(auxvar%pres, &
                                       auxvar%temp, ice_saturation, &
-                                      global_auxvar%sat(1), gas_saturation, &
+                                      auxvar%sat, gas_saturation, &
                                       auxvar%kr, &
                                       ds_dp, dsl_temp, dsg_pl, dsg_temp, &
                                       dsi_pl, dsi_temp, dkr_dp, dkr_dT, &
@@ -774,7 +775,7 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
       ! Implicit model from Painter & Karra, VJZ (2013)
       call SatFuncComputeIcePKImplicit(auxvar%pres, &
                                        auxvar%temp, ice_saturation, &
-                                       global_auxvar%sat(1), gas_saturation, &
+                                       auxvar%sat, gas_saturation, &
                                        auxvar%kr, &
                                        ds_dp, dsl_temp, dsg_pl, dsg_temp, &
                                        dsi_pl, dsi_temp, dkr_dp, dkr_dT, &
@@ -783,7 +784,7 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
       ! Explicit model from Painter & Karra, VJZ (2013)
       call SatFuncComputeIcePKExplicit(auxvar%pres, &
                                        auxvar%temp, ice_saturation, &
-                                       global_auxvar%sat(1), gas_saturation, &
+                                       auxvar%sat, gas_saturation, &
                                        auxvar%kr, &
                                        ds_dp, dsl_temp, dsg_pl, dsg_temp, &
                                        dsi_pl, dsi_temp, dkr_dp, dkr_dT, &
@@ -796,7 +797,7 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
                                       auxvar%ice%dpres_fh2o_dp, &
                                       auxvar%ice%dpres_fh2o_dT, &
                                       ice_saturation, &
-                                      global_auxvar%sat(1), gas_saturation, &
+                                      auxvar%sat, gas_saturation, &
                                       auxvar%kr, &
                                       ds_dp, dsl_temp, dsg_pl, dsg_temp, &
                                       dsi_pl, dsi_temp, dkr_dp, dkr_dT, &
@@ -805,7 +806,7 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
       ! Explicit model from Painter & Karra, VJZ (2013) and removed cryosuction
       call SatFuncComputeIcePKExplicitNoCryo(auxvar%pres, &
                                        auxvar%temp, ice_saturation, &
-                                       global_auxvar%sat(1), gas_saturation, &
+                                       auxvar%sat, gas_saturation, &
                                        auxvar%kr, &
                                        ds_dp, dsl_temp, dsg_pl, dsg_temp, &
                                        dsi_pl, dsi_temp, dkr_dp, dkr_dT, &
@@ -907,20 +908,20 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
   Dk_ice = th_parameter%ckfrozen(icct)
 
   !Soil Kersten number
-  Ke = (global_auxvar%sat(1) + epsilon)**(alpha)
+  Ke = (auxvar%sat + epsilon)**(alpha)
   Ke_fr = (auxvar%ice%sat_ice + epsilon)**(alpha_fr)
   auxvar%Ke = Ke
   auxvar%ice%Ke_fr = Ke_fr
 
   ! Effective thermal conductivity
   call thermal_cc%thermal_conductivity_function%CalculateFTCond( &
-       global_auxvar%sat(1),auxvar%ice%sat_ice,auxvar%temp, &
+       auxvar%sat,auxvar%ice%sat_ice,auxvar%temp, &
        material_auxvar%porosity,auxvar%Dk_eff,dk_ds,dK_di,dk_dT,option)
 
   ! Derivative of Kersten number
-  auxvar%dKe_dp = alpha*(global_auxvar%sat(1) + epsilon)**(alpha - 1.d0)* &
+  auxvar%dKe_dp = alpha*(auxvar%sat + epsilon)**(alpha - 1.d0)* &
                   auxvar%dsat_dp
-  auxvar%dKe_dT = alpha*(global_auxvar%sat(1) + epsilon)**(alpha - 1.d0)* &
+  auxvar%dKe_dT = alpha*(auxvar%sat + epsilon)**(alpha - 1.d0)* &
                   auxvar%dsat_dT
   auxvar%ice%dKe_fr_dT = alpha_fr* &
                          (auxvar%ice%sat_ice + epsilon)**(alpha_fr - 1.d0)* &
@@ -1161,7 +1162,7 @@ subroutine THPrintAuxVars(file_unit,th_auxvar,global_auxvar, &
   PetscReal ::  liquid_mass
 
   liquid_mass = material_auxvar%volume*material_auxvar%porosity* &
-                global_auxvar%sat(1)*th_auxvar%den
+                th_auxvar%sat*th_auxvar%den
 
   write(file_unit,*) '--------------------------------------------------------'
   if (len_trim(string) > 0) write(file_unit,*) trim(string)
@@ -1175,6 +1176,7 @@ subroutine THPrintAuxVars(file_unit,th_auxvar,global_auxvar, &
   write(file_unit,*) '         liquid viscosity: ', th_auxvar%vis
   write(file_unit,*) '          liquid mobility: ', th_auxvar%mobility
   write(file_unit,*) '     liquid relative perm: ', th_auxvar%kr
+  write(file_unit,*) '        liquid saturation: ', th_auxvar%sat
   write(file_unit,*) '    liquid_density [kmol]: ', th_auxvar%den
   write(file_unit,*) '      liquid_density [kg]: ', th_auxvar%den_kg
   write(file_unit,*) 'eff. thermal conductivity: ', th_auxvar%Dk_eff
