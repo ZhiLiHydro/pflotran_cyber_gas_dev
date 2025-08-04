@@ -1243,7 +1243,7 @@ subroutine THAccumDerivative(TH_auxvar,global_auxvar, &
   pres = TH_auxvar%pres
   temp = TH_auxvar%temp
   sat = global_auxvar%sat(1)
-  den = global_auxvar%den(1)
+  den = TH_auxvar%den
   dden_dp = TH_auxvar%dden_dp
   dden_dT = TH_auxvar%dden_dT
   dsat_dp = TH_auxvar%dsat_dp
@@ -1303,7 +1303,7 @@ subroutine THAccumDerivative(TH_auxvar,global_auxvar, &
 
      J(TH_PRESSURE_DOF,TH_TEMPERATURE_DOF) = &
        J(TH_PRESSURE_DOF,TH_TEMPERATURE_DOF) + &
-                            (TH_auxvar%dsat_dT*global_auxvar%den(1) + &
+                            (TH_auxvar%dsat_dT*TH_auxvar%den + &
                              dsatg_dT * den_g    * mol_g            + &
                              sat_g    * ddeng_dT * mol_g            + &
                              sat_g    * den_g    * dmolg_dT         + &
@@ -1320,7 +1320,7 @@ subroutine THAccumDerivative(TH_auxvar,global_auxvar, &
 
      J(TH_TEMPERATURE_DOF,TH_TEMPERATURE_DOF) = &
        J(TH_TEMPERATURE_DOF,TH_TEMPERATURE_DOF) + &
-                (TH_auxvar%dsat_dT*global_auxvar%den(1)*TH_auxvar%u + &
+                (TH_auxvar%dsat_dT*TH_auxvar%den*TH_auxvar%u + &
                   dsatg_dT * den_g    * u_g                         + &
                   sat_g    * ddeng_dT * u_g                         + &
                   sat_g    * den_g    * dug_dT                      + &
@@ -1449,7 +1449,7 @@ subroutine THAccumulation(auxvar,global_auxvar, &
   porXvol = por*vol
   ! [kmol] = [m^3 water/m^3 por] * [kmol water/m^3 water] * [m^3 pore/m^3 bulk] &
   !           * [m^3 bulk]
-  kmol(1) = global_auxvar%sat(1)*global_auxvar%den(1)*porXvol
+  kmol(1) = global_auxvar%sat(1)*auxvar%den*porXvol
 
 ! TechNotes, TH Mode: First term of Equation 9
   ! rock_dencpr [MJ/m^3 rock-K]
@@ -1457,7 +1457,7 @@ subroutine THAccumulation(auxvar,global_auxvar, &
   !        * [m^3 pore/m^3 bulk] * [m^3 bulk] + [m^3 rock/m^3 bulk] * [m^3 bulk] &
   !        * [MJ/m^3 rock-K] * [C]
   eng = global_auxvar%sat(1) * &
-        global_auxvar%den(1) * &
+        auxvar%den * &
         auxvar%u * porXvol + &
         (1.d0 - por) * vol * rock_dencpr * auxvar%temp
 
@@ -1728,15 +1728,15 @@ subroutine THFluxDerivative(auxvar_up,global_auxvar_up, &
     else if (global_auxvar_dn%sat(1) <eps) then
       upweight=1.d0
     endif
-    density_ave = upweight*global_auxvar_up%den(1)+ &
-                  (1.D0-upweight)*global_auxvar_dn%den(1)
+    density_ave = upweight*auxvar_up%den+ &
+                  (1.D0-upweight)*auxvar_dn%den
     dden_ave_dp_up = upweight*auxvar_up%dden_dp
     dden_ave_dp_dn = (1.D0-upweight)*auxvar_dn%dden_dp
     dden_ave_dT_up = upweight*auxvar_up%dden_dT
     dden_ave_dT_dn = (1.D0-upweight)*auxvar_dn%dden_dT
 
-    gravity = (upweight*global_auxvar_up%den(1)*auxvar_up%avgmw + &
-              (1.D0-upweight)*global_auxvar_dn%den(1)*auxvar_dn%avgmw) &
+    gravity = (upweight*auxvar_up%den*auxvar_up%avgmw + &
+              (1.D0-upweight)*auxvar_dn%den*auxvar_dn%avgmw) &
               * dist_gravity
     dgravity_dden_up = upweight*auxvar_up%avgmw*dist_gravity
     dgravity_dden_dn = (1.d0-upweight)*auxvar_dn%avgmw*dist_gravity
@@ -1860,34 +1860,34 @@ subroutine THFluxDerivative(auxvar_up,global_auxvar_up, &
                                       dpsat_dT_dn, ierr)
 
       ! vapor pressure lowering due to capillary pressure
-      fv_up = exp(-auxvar_up%pc/(global_auxvar_up%den(1)* &
+      fv_up = exp(-auxvar_up%pc/(auxvar_up%den* &
            IDEAL_GAS_CONSTANT*(auxvar_up%temp + T273K)))
-      fv_dn = exp(-auxvar_dn%pc/(global_auxvar_dn%den(1)* &
+      fv_dn = exp(-auxvar_dn%pc/(auxvar_dn%den* &
            IDEAL_GAS_CONSTANT*(auxvar_dn%temp + T273K)))
 
       molg_up = psat_up*fv_up/p_g
       molg_dn = psat_dn*fv_dn/p_g
 
       dfv_dT_up = fv_up*(auxvar_up%pc/IDEAL_GAS_CONSTANT/ &
-           (global_auxvar_up%den(1)* &
+           (auxvar_up%den* &
            (auxvar_up%temp + T273K))**2)* &
            (auxvar_up%dden_dT*(auxvar_up%temp + T273K) &
-           + global_auxvar_up%den(1))
+           + auxvar_up%den)
       dfv_dT_dn = fv_dn*(auxvar_dn%pc/IDEAL_GAS_CONSTANT/ &
-           (global_auxvar_dn%den(1)* &
+           (auxvar_dn%den* &
            (auxvar_dn%temp + T273K))**2)* &
            (auxvar_dn%dden_dT*(auxvar_dn%temp + T273K) &
-           + global_auxvar_dn%den(1))
+           + auxvar_dn%den)
 
       dfv_dp_up = fv_up*(auxvar_up%pc/IDEAL_GAS_CONSTANT/ &
-           (global_auxvar_up%den(1))**2/ &
+           (auxvar_up%den)**2/ &
            (auxvar_up%temp + T273K)*auxvar_up%dden_dp &
-           + 1.d0/IDEAL_GAS_CONSTANT/global_auxvar_up%den(1)/ &
+           + 1.d0/IDEAL_GAS_CONSTANT/auxvar_up%den/ &
            (auxvar_up%temp + T273K))
       dfv_dp_dn = fv_dn*(auxvar_dn%pc/IDEAL_GAS_CONSTANT/ &
-           (global_auxvar_dn%den(1))**2/ &
+           (auxvar_dn%den)**2/ &
            (auxvar_dn%temp + T273K)*auxvar_dn%dden_dp &
-           + 1.d0/IDEAL_GAS_CONSTANT/global_auxvar_dn%den(1)/ &
+           + 1.d0/IDEAL_GAS_CONSTANT/auxvar_dn%den/ &
            (auxvar_dn%temp + T273K))
 
       dmolg_dT_up = (1/p_g)*dpsat_dT_up*fv_up + psat_up/p_g*dfv_dT_up
@@ -2300,11 +2300,11 @@ subroutine THFlux(auxvar_up,global_auxvar_up, &
     else if (global_auxvar_dn%sat(1) < eps) then
       upweight=1.d0
     endif
-    density_ave = upweight*global_auxvar_up%den(1)+(1.D0-upweight)* &
-                  global_auxvar_dn%den(1)
+    density_ave = upweight*auxvar_up%den+(1.D0-upweight)* &
+                  auxvar_dn%den
 
-    gravity = (upweight*global_auxvar_up%den(1)*auxvar_up%avgmw + &
-              (1.D0-upweight)*global_auxvar_dn%den(1)*auxvar_dn%avgmw) &
+    gravity = (upweight*auxvar_up%den*auxvar_up%avgmw + &
+              (1.D0-upweight)*auxvar_dn%den*auxvar_dn%avgmw) &
               * dist_gravity
 
     if (th_ice_model /= DALL_AMICO) then
@@ -2366,9 +2366,9 @@ subroutine THFlux(auxvar_up,global_auxvar_up, &
       call EOSWaterSaturationPressure(auxvar_dn%temp, psat_dn, ierr)
 
       ! vapor pressure lowering due to capillary pressure
-      fv_up = exp(-auxvar_up%pc/(global_auxvar_up%den(1)* &
+      fv_up = exp(-auxvar_up%pc/(auxvar_up%den* &
            IDEAL_GAS_CONSTANT*(auxvar_up%temp + T273K)))
-      fv_dn = exp(-auxvar_dn%pc/(global_auxvar_dn%den(1)* &
+      fv_dn = exp(-auxvar_dn%pc/(auxvar_dn%den* &
            IDEAL_GAS_CONSTANT*(auxvar_dn%temp + T273K)))
 
       molg_up = psat_up*fv_up/p_g
@@ -2649,8 +2649,8 @@ subroutine THBCFluxDerivative(ibndtype,bc_auxvars, &
           upweight=1.d0
         endif
 
-        density_ave = upweight*global_auxvar_up%den(1)+ &
-                      (1.D0-upweight)*global_auxvar_dn%den(1)
+        density_ave = upweight*auxvar_up%den+ &
+                      (1.D0-upweight)*auxvar_dn%den
         dden_ave_dp_dn = (1.D0-upweight)*auxvar_dn%dden_dp
         dden_ave_dT_dn = (1.D0-upweight)*auxvar_dn%dden_dT
 
@@ -2658,8 +2658,8 @@ subroutine THBCFluxDerivative(ibndtype,bc_auxvars, &
           dden_ave_dT_dn = dden_ave_dT_dn + upweight*auxvar_up%dden_dT
         endif
 
-        gravity = (upweight*global_auxvar_up%den(1)*auxvar_up%avgmw + &
-                  (1.D0-upweight)*global_auxvar_dn%den(1)*auxvar_dn%avgmw) &
+        gravity = (upweight*auxvar_up%den*auxvar_up%avgmw + &
+                  (1.D0-upweight)*auxvar_dn%den*auxvar_dn%avgmw) &
                   * dist_gravity
         dgravity_dden_dn = (1.d0-upweight)*auxvar_dn%avgmw*dist_gravity
 
@@ -2745,8 +2745,8 @@ subroutine THBCFluxDerivative(ibndtype,bc_auxvars, &
           upweight=1.d0
         endif
 
-        density_ave = upweight*global_auxvar_up%den(1)+ &
-                      (1.D0-upweight)*global_auxvar_dn%den(1)
+        density_ave = upweight*auxvar_up%den+ &
+                      (1.D0-upweight)*auxvar_dn%den
         dden_ave_dp_dn = (1.D0-upweight)*auxvar_dn%dden_dp
         dden_ave_dT_dn = (1.D0-upweight)*auxvar_dn%dden_dT
 
@@ -2754,8 +2754,8 @@ subroutine THBCFluxDerivative(ibndtype,bc_auxvars, &
           dden_ave_dT_dn = dden_ave_dT_dn + upweight*auxvar_up%dden_dT
         endif
 
-        gravity = (upweight*global_auxvar_up%den(1)*auxvar_up%avgmw + &
-                  (1.D0-upweight)*global_auxvar_dn%den(1)*auxvar_dn%avgmw) &
+        gravity = (upweight*auxvar_up%den*auxvar_up%avgmw + &
+                  (1.D0-upweight)*auxvar_dn%den*auxvar_dn%avgmw) &
                   * dist_gravity
         dgravity_dden_dn = (1.d0-upweight)*auxvar_dn%avgmw*dist_gravity
 
@@ -2808,12 +2808,12 @@ subroutine THBCFluxDerivative(ibndtype,bc_auxvars, &
       if (dabs(bc_auxvars(TH_PRESSURE_DOF)) > floweps) then
         v_darcy = bc_auxvars(TH_PRESSURE_DOF)
         if (v_darcy > 0.d0) then
-          density_ave = global_auxvar_up%den(1)
+          density_ave = auxvar_up%den
           if (ibndtype(TH_TEMPERATURE_DOF) == ZERO_GRADIENT_BC) then
             dden_ave_dT_dn = auxvar_up%dden_dT
           endif
         else
-          density_ave = global_auxvar_dn%den(1)
+          density_ave = auxvar_dn%den
           dden_ave_dp_dn = auxvar_dn%dden_dp
           dden_ave_dT_dn = auxvar_dn%dden_dT
         endif
@@ -3240,11 +3240,11 @@ subroutine THBCFlux(ibndtype,bc_auxvars,auxvar_up,global_auxvar_up, &
         else if (global_auxvar_dn%sat(1) < eps) then
           upweight=1.d0
         endif
-        density_ave = upweight*global_auxvar_up%den(1)+ &
-                      (1.D0-upweight)*global_auxvar_dn%den(1)
+        density_ave = upweight*auxvar_up%den+ &
+                      (1.D0-upweight)*auxvar_dn%den
 
-        gravity = (upweight*global_auxvar_up%den(1)*auxvar_up%avgmw + &
-                  (1.D0-upweight)*global_auxvar_dn%den(1)*auxvar_dn%avgmw) &
+        gravity = (upweight*auxvar_up%den*auxvar_up%avgmw + &
+                  (1.D0-upweight)*auxvar_dn%den*auxvar_dn%avgmw) &
                   * dist_gravity
 
         if (th_ice_model /= DALL_AMICO) then
@@ -3309,11 +3309,11 @@ subroutine THBCFlux(ibndtype,bc_auxvars,auxvar_up,global_auxvar_up, &
         else if (global_auxvar_dn%sat(1) < eps) then
           upweight=1.d0
         endif
-        density_ave = upweight*global_auxvar_up%den(1)+ &
-                      (1.D0-upweight)*global_auxvar_dn%den(1)
+        density_ave = upweight*auxvar_up%den+ &
+                      (1.D0-upweight)*auxvar_dn%den
 
-        gravity = (upweight*global_auxvar_up%den(1)*auxvar_up%avgmw + &
-             (1.D0-upweight)*global_auxvar_dn%den(1)*auxvar_dn%avgmw) &
+        gravity = (upweight*auxvar_up%den*auxvar_up%avgmw + &
+             (1.D0-upweight)*auxvar_dn%den*auxvar_dn%avgmw) &
              * dist_gravity
 
         if (th_ice_model /= DALL_AMICO) then
@@ -3347,9 +3347,9 @@ subroutine THBCFlux(ibndtype,bc_auxvars,auxvar_up,global_auxvar_up, &
       if (dabs(bc_auxvars(TH_PRESSURE_DOF)) > floweps) then
         v_darcy = bc_auxvars(TH_PRESSURE_DOF)
         if (v_darcy > 0.d0) then
-          density_ave = global_auxvar_up%den(1)
+          density_ave = auxvar_up%den
         else
-          density_ave = global_auxvar_dn%den(1)
+          density_ave = auxvar_dn%den
         endif
       endif
 
@@ -3436,9 +3436,9 @@ subroutine THBCFlux(ibndtype,bc_auxvars,auxvar_up,global_auxvar_up, &
             call EOSWaterSaturationPressure(auxvar_dn%temp,psat_dn,ierr)
 
             ! vapor pressure lowering due to capillary pressure
-            fv_up = exp(-auxvar_up%pc/(global_auxvar_up%den(1)* &
+            fv_up = exp(-auxvar_up%pc/(auxvar_up%den* &
                  IDEAL_GAS_CONSTANT*(auxvar_up%temp + T273K)))
-            fv_dn = exp(-auxvar_dn%pc/(global_auxvar_dn%den(1)* &
+            fv_dn = exp(-auxvar_dn%pc/(auxvar_dn%den* &
                  IDEAL_GAS_CONSTANT*(auxvar_dn%temp + T273K)))
 
             molg_up = psat_up*fv_up/p_g
@@ -4281,10 +4281,10 @@ subroutine THResidualSourceSink(r,realization,ierr)
             source_sink%flow_aux_real_var(ONE_INTEGER,iconn)
         case(VOLUMETRIC_RATE_SS)  ! assume local density for now
           ! qsrc1 = m^3/sec
-          qsrc_kmol = qsrc1*global_auxvars(ghosted_id)%den(1) ! den = kmol/m^3
+          qsrc_kmol = qsrc1*auxvars(ghosted_id)%den ! den = kmol/m^3
         case(SCALED_VOLUMETRIC_RATE_SS)  ! assume local density for now
           ! qsrc1 = m^3/sec
-          qsrc_kmol = qsrc1*global_auxvars(ghosted_id)%den(1)* & ! den = kmol/m^3
+          qsrc_kmol = qsrc1*auxvars(ghosted_id)%den* & ! den = kmol/m^3
             source_sink%flow_aux_real_var(ONE_INTEGER,iconn)
         case(HET_MASS_RATE_SS)
           qsrc_kmol = source_sink%flow_aux_real_var(ONE_INTEGER,iconn)/FMWH2O
@@ -4338,7 +4338,7 @@ subroutine THResidualSourceSink(r,realization,ierr)
                 if (ukvr*Dq > floweps) then
                   v_darcy = Dq * ukvr * dphi
                   ! store volumetric rate for ss_fluid_fluxes()
-                  qsrc_kmol = -1.d0*v_darcy*global_auxvars(ghosted_id)%den(1)
+                  qsrc_kmol = -1.d0*v_darcy*auxvars(ghosted_id)%den
                 endif
               endif
             endif
@@ -4388,7 +4388,7 @@ subroutine THResidualSourceSink(r,realization,ierr)
       if (associated(patch%ss_flow_vol_fluxes)) then
         ! fluid flux [m^3/sec] = qsrc_kmol [kmol/sec] / den [kmol/m^3]
         patch%ss_flow_vol_fluxes(1,sum_connection) = qsrc_kmol / &
-                                           global_auxvars(ghosted_id)%den(1)
+                                           auxvars(ghosted_id)%den
       endif
       if (associated(patch%ss_flow_fluxes)) then
         patch%ss_flow_fluxes(1,sum_connection) = qsrc_kmol
@@ -4453,10 +4453,10 @@ subroutine THSourceSink()
                       flow_aux_real_var(ONE_INTEGER)
         case(VOLUMETRIC_RATE_SS)  ! assume local density for now
           ! qsrc1 = m^3/sec
-          qsrc_kmol = qsrc1*global_auxvars%den(1) ! den = kmol/m^3
+          qsrc_kmol = qsrc1*auxvars%den ! den = kmol/m^3
         case(SCALED_VOLUMETRIC_RATE_SS)  ! assume local density for now
           ! qsrc1 = m^3/sec
-          qsrc_kmol = qsrc1*global_auxvars%den(1)* & ! den = kmol/m^3
+          qsrc_kmol = qsrc1*auxvars%den* & ! den = kmol/m^3
                       flow_aux_real_var(ONE_INTEGER)
         case(HET_MASS_RATE_SS)
           qsrc_kmol = flow_aux_real_var(ONE_INTEGER)/FMWH2O
@@ -4510,7 +4510,7 @@ subroutine THSourceSink()
                 if (ukvr*Dq > floweps) then
                   v_darcy = Dq * ukvr * dphi
                   ! store volumetric rate for ss_fluid_fluxes()
-                  qsrc_kmol = -1.d0*v_darcy*global_auxvars%den(1)
+                  qsrc_kmol = -1.d0*v_darcy*auxvars%den
                 endif
               endif
             endif
@@ -5271,10 +5271,10 @@ subroutine THJacobianSourceSink(A,realization,ierr)
             source_sink%flow_aux_real_var(ONE_INTEGER,iconn)
         case(VOLUMETRIC_RATE_SS)  ! assume local density for now
           ! qsrc1 = m^3/sec
-          qsrc_kmol = qsrc1*global_auxvars(ghosted_id)%den(1) ! den = kmol/m^3
+          qsrc_kmol = qsrc1*auxvars(ghosted_id)%den ! den = kmol/m^3
         case(SCALED_VOLUMETRIC_RATE_SS)  ! assume local density for now
           ! qsrc1 = m^3/sec
-          qsrc_kmol = qsrc1*global_auxvars(ghosted_id)%den(1)* & ! den = kmol/m^3
+          qsrc_kmol = qsrc1*auxvars(ghosted_id)%den* & ! den = kmol/m^3
                    source_sink%flow_aux_real_var(ONE_INTEGER,iconn)
         case(HET_MASS_RATE_SS)
           qsrc_kmol = source_sink%flow_aux_real_var(ONE_INTEGER,iconn)/FMWH2O
@@ -5463,7 +5463,7 @@ subroutine THResidualToMass(realization)
 
     istart = (ghosted_id-1)*option%nflowdof+1
     mass_balance_p(istart) = mass_balance_p(istart)/ &
-                              global_auxvars(ghosted_id)%den(1)* &
+                              auxvars(ghosted_id)%den* &
                               global_auxvars(ghosted_id)%den_kg(1)
   enddo
 
@@ -5880,6 +5880,8 @@ subroutine THMapBCAuxVarsToGlobal(realization)
 !        th_auxvars_bc(sum_connection)%sat
 !      global_auxvars_bc(sum_connection)%den_kg = &
 !        th_auxvars_bc(sum_connection)%den_kg
+      global_auxvars_bc(sum_connection)%den = &
+        th_auxvars_bc(sum_connection)%den
       global_auxvars_bc(sum_connection)%temp = &
         th_auxvars_bc(sum_connection)%temp
     enddo

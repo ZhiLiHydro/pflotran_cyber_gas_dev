@@ -293,7 +293,7 @@ subroutine IFunctionAccumulation(F,realization,ierr)
     por = material_auxvars(ghosted_id)%porosity
     dpor_dP = material_auxvars(ghosted_id)%dporosity_dp
 
-    den = global_auxvars(ghosted_id)%den(1)
+    den = TH_auxvars(ghosted_id)%den
     sat = global_auxvars(ghosted_id)%sat(1)
     temp = TH_auxvars(ghosted_id)%temp
     u = TH_auxvars(ghosted_id)%u
@@ -484,7 +484,7 @@ subroutine IJacobianAccumulation(J,shift,realization,ierr)
     por = material_auxvars(ghosted_id)%porosity
     dpor_dP = material_auxvars(ghosted_id)%dporosity_dp
 
-    den = global_auxvars(ghosted_id)%den(1)
+    den = TH_auxvars(ghosted_id)%den
     sat = global_auxvars(ghosted_id)%sat(1)
     temp = TH_auxvars(ghosted_id)%temp
     u = TH_auxvars(ghosted_id)%u

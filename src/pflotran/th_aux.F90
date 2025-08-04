@@ -31,6 +31,7 @@ module TH_Aux_module
   type, public :: TH_auxvar_type
     PetscReal :: pres
     PetscReal :: temp
+    PetscReal :: den
     PetscReal :: avgmw
     PetscReal :: h
     PetscReal :: u
@@ -213,6 +214,7 @@ recursive subroutine THAuxVarInit(auxvar,option,allocate_perturbation)
 
   auxvar%pres      = uninit_value
   auxvar%temp      = uninit_value
+  auxvar%den       = uninit_value
   auxvar%avgmw     = uninit_value
   auxvar%h         = uninit_value
   auxvar%u         = uninit_value
@@ -304,7 +306,7 @@ subroutine THAuxVarCopy(auxvar,auxvar2,option)
 
   auxvar2%pres = auxvar%pres
   auxvar2%temp = auxvar%temp
-! auxvar2%den = auxvar%den
+  auxvar2%den = auxvar%den
 ! auxvar2%den_kg = auxvar%den_kg
 
   auxvar2%avgmw = auxvar%avgmw
@@ -419,10 +421,9 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
   PetscReal :: dk_ds, dk_dT
 
   ierr = 0
-! auxvar%den = 0.d0
+  auxvar%den = 0.d0
 ! auxvar%den_kg = 0.d0
   global_auxvar%sat = 0.d0
-  global_auxvar%den = 0.d0
   global_auxvar%den_kg = 0.d0
 
   auxvar%h = 0.d0
@@ -435,6 +436,7 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
   auxvar%temp = x(2)
   global_auxvar%pres(1) = UNINITIALIZED_DOUBLE
   global_auxvar%temp = UNINITIALIZED_DOUBLE
+  global_auxvar%den = UNINITIALIZED_DOUBLE
 
   if (update_porosity) then
     call MaterialAuxVarCompute(material_auxvar,auxvar%pres)
@@ -557,9 +559,8 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
     hw_dp = 0.d0
   endif
 
-! auxvar%den = dw_mol
+  auxvar%den = dw_mol
 ! auxvar%den_kg = dw_kg
-  global_auxvar%den = dw_mol
   global_auxvar%den_kg = dw_kg
 
   auxvar%h = hw
@@ -694,9 +695,10 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
   out_of_table_flag = PETSC_FALSE
 
   global_auxvar%sat = 0.d0
-  global_auxvar%den = 0.d0
+  global_auxvar%den = UNINITIALIZED_DOUBLE
   global_auxvar%den_kg = 0.d0
 
+  auxvar%den = 0.d0
   auxvar%h = 0.d0
   auxvar%u = 0.d0
   auxvar%avgmw = 0.d0
@@ -833,7 +835,7 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
     hw_dp = 0.d0
   endif
 
-  global_auxvar%den = dw_mol
+  auxvar%den = dw_mol
   global_auxvar%den_kg = dw_kg
 
   auxvar%h = hw
@@ -1157,7 +1159,7 @@ subroutine THPrintAuxVars(file_unit,th_auxvar,global_auxvar, &
   PetscReal ::  liquid_mass
 
   liquid_mass = material_auxvar%volume*material_auxvar%porosity* &
-                global_auxvar%sat(1)*global_auxvar%den(1)
+                global_auxvar%sat(1)*th_auxvar%den
 
   write(file_unit,*) '--------------------------------------------------------'
   if (len_trim(string) > 0) write(file_unit,*) trim(string)
@@ -1171,7 +1173,7 @@ subroutine THPrintAuxVars(file_unit,th_auxvar,global_auxvar, &
   write(file_unit,*) '         liquid viscosity: ', th_auxvar%vis
   write(file_unit,*) '          liquid mobility: ', th_auxvar%mobility
   write(file_unit,*) '     liquid relative perm: ', th_auxvar%kr
-  write(file_unit,*) '    liquid_density [kmol]: ', global_auxvar%den(1)
+  write(file_unit,*) '    liquid_density [kmol]: ', th_auxvar%den
   write(file_unit,*) '      liquid_density [kg]: ', global_auxvar%den_kg(1)
   write(file_unit,*) 'eff. thermal conductivity: ', th_auxvar%Dk_eff
   write(file_unit,*) '                porosity : ', material_auxvar%porosity
