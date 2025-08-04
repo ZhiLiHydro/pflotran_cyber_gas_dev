@@ -571,7 +571,7 @@ subroutine PMTHCheckUpdatePre(this,snes,X,dX,changed,ierr)
   type(option_type), pointer :: option
   type(patch_type), pointer :: patch
   type(field_type), pointer :: field
-  type(TH_auxvar_type), pointer :: TH_auxvars(:)
+  type(th_auxvar_type), pointer :: th_auxvars(:)
   type(global_auxvar_type), pointer :: global_auxvars(:)
   PetscInt :: local_id, ghosted_id
   PetscReal :: P0, P1, P_R, delP
@@ -582,7 +582,7 @@ subroutine PMTHCheckUpdatePre(this,snes,X,dX,changed,ierr)
   grid => patch%grid
   option => this%realization%option
   field => this%realization%field
-  TH_auxvars => patch%aux%TH%auxvars
+  th_auxvars => patch%aux%TH%auxvars
   global_auxvars => patch%aux%Global%auxvars
 
   if (Initialized(this%pressure_change_limit)) then

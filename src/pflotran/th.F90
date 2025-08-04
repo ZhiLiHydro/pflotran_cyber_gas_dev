@@ -97,8 +97,8 @@ subroutine THSetup(realization)
   type(patch_type), pointer :: patch
   type(grid_type), pointer :: grid
   type(coupler_type), pointer :: boundary_condition, cur_coupler
-  type(TH_auxvar_type), pointer :: TH_auxvars(:), TH_auxvars_bc(:)
-  type(TH_auxvar_type), pointer :: TH_auxvars_ss(:)
+  type(th_auxvar_type), pointer :: th_auxvars(:), th_auxvars_bc(:)
+  type(th_auxvar_type), pointer :: th_auxvars_ss(:)
   type(fluid_property_type), pointer :: cur_fluid_property
   type(sec_heat_type), pointer :: TH_sec_heat_vars(:)
   type(coupler_type), pointer :: initial_condition
@@ -318,13 +318,13 @@ subroutine THSetup(realization)
   endif
 
   ! allocate auxvar data structures for all grid cells
-  allocate(TH_auxvars(grid%ngmax))
+  allocate(th_auxvars(grid%ngmax))
   if (option%flow%numerical_derivatives .and. &
       .not. option%flow%th_freezing) then
     th_numerical_derivatives = PETSC_TRUE
   endif
   do ghosted_id = 1, grid%ngmax
-    call THAuxVarInit(TH_auxvars(ghosted_id),option,th_numerical_derivatives)
+    call THAuxVarInit(th_auxvars(ghosted_id),option,th_numerical_derivatives)
   enddo
   if (th_numerical_derivatives) then
     allocate(th_min_pert(option%nflowdof))
@@ -353,7 +353,7 @@ subroutine THSetup(realization)
   endif
 
 
-  patch%aux%TH%auxvars => TH_auxvars
+  patch%aux%TH%auxvars => th_auxvars
   patch%aux%TH%num_aux = grid%ngmax
 
   ! count the number of boundary connections and allocate
@@ -369,22 +369,22 @@ subroutine THSetup(realization)
   enddo
 
   if (sum_connection > 0) then
-    allocate(TH_auxvars_bc(sum_connection))
+    allocate(th_auxvars_bc(sum_connection))
     do iconn = 1, sum_connection
-      call THAuxVarInit(TH_auxvars_bc(iconn),option,PETSC_FALSE)
+      call THAuxVarInit(th_auxvars_bc(iconn),option,PETSC_FALSE)
     enddo
-    patch%aux%TH%auxvars_bc => TH_auxvars_bc
+    patch%aux%TH%auxvars_bc => th_auxvars_bc
   endif
   patch%aux%TH%num_aux_bc = sum_connection
 
   ! Create aux vars for source/sink
   sum_connection = CouplerGetNumConnectionsInList(patch%source_sink_list)
   if (sum_connection > 0) then
-    allocate(TH_auxvars_ss(sum_connection))
+    allocate(th_auxvars_ss(sum_connection))
     do iconn = 1, sum_connection
-      call THAuxVarInit(TH_auxvars_ss(iconn),option,PETSC_FALSE)
+      call THAuxVarInit(th_auxvars_ss(iconn),option,PETSC_FALSE)
     enddo
-    patch%aux%TH%auxvars_ss => TH_auxvars_ss
+    patch%aux%TH%auxvars_ss => th_auxvars_ss
   endif
   patch%aux%TH%num_aux_ss = sum_connection
 
@@ -468,7 +468,7 @@ subroutine THComputeMassBalance(realization, mass_balance)
   type(grid_type), pointer :: grid
   type(global_auxvar_type), pointer :: global_auxvars(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
-  type(TH_auxvar_type),pointer :: TH_auxvars(:)
+  type(th_auxvar_type),pointer :: th_auxvars(:)
 
   PetscInt :: local_id
   PetscInt :: ghosted_id
@@ -480,7 +480,7 @@ subroutine THComputeMassBalance(realization, mass_balance)
 
   global_auxvars => patch%aux%Global%auxvars
   material_auxvars => patch%aux%Material%auxvars
-  TH_auxvars => patch%aux%TH%auxvars
+  th_auxvars => patch%aux%TH%auxvars
 
   mass_balance = 0.d0
 
@@ -490,16 +490,16 @@ subroutine THComputeMassBalance(realization, mass_balance)
     ! mass = volume*saturation*density
 
     mass_balance = mass_balance + &
-      TH_auxvars(ghosted_id)%den_kg* &
-      TH_auxvars(ghosted_id)%sat* &
+      th_auxvars(ghosted_id)%den_kg* &
+      th_auxvars(ghosted_id)%sat* &
       material_auxvars(ghosted_id)%porosity* &
       material_auxvars(ghosted_id)%volume
 
     if (option%flow%th_freezing) then
       ! mass = volume*saturation_ice*density_ice
       mass_balance = mass_balance + &
-        TH_auxvars(ghosted_id)%ice%den_ice*FMWH2O* &
-        TH_auxvars(ghosted_id)%ice%sat_ice* &
+        th_auxvars(ghosted_id)%ice%den_ice*FMWH2O* &
+        th_auxvars(ghosted_id)%ice%sat_ice* &
         material_auxvars(ghosted_id)%porosity* &
         material_auxvars(ghosted_id)%volume
     endif
@@ -651,9 +651,9 @@ subroutine THUpdateAuxVars(realization)
   type(coupler_type), pointer :: boundary_condition
   type(coupler_type), pointer :: source_sink
   type(connection_set_type), pointer :: cur_connection_set
-  type(TH_auxvar_type), pointer :: TH_auxvars(:)
-  type(TH_auxvar_type), pointer :: TH_auxvars_bc(:)
-  type(TH_auxvar_type), pointer :: TH_auxvars_ss(:)
+  type(th_auxvar_type), pointer :: th_auxvars(:)
+  type(th_auxvar_type), pointer :: th_auxvars_bc(:)
+  type(th_auxvar_type), pointer :: th_auxvars_ss(:)
   type(global_auxvar_type), pointer :: global_auxvars(:)
   type(global_auxvar_type), pointer :: global_auxvars_bc(:)
   type(global_auxvar_type), pointer :: global_auxvars_ss(:)
@@ -683,9 +683,9 @@ subroutine THUpdateAuxVars(realization)
 !  gradient = 0.d0
   !!
 
-  TH_auxvars => patch%aux%TH%auxvars
-  TH_auxvars_bc => patch%aux%TH%auxvars_bc
-  TH_auxvars_ss => patch%aux%TH%auxvars_ss
+  th_auxvars => patch%aux%TH%auxvars
+  th_auxvars_bc => patch%aux%TH%auxvars_bc
+  th_auxvars_ss => patch%aux%TH%auxvars_ss
   global_auxvars => patch%aux%Global%auxvars
   global_auxvars_bc => patch%aux%Global%auxvars_bc
   global_auxvars_ss => patch%aux%Global%auxvars_ss
@@ -705,7 +705,7 @@ subroutine THUpdateAuxVars(realization)
 
     if (option%flow%th_freezing) then
        call THAuxVarComputeFreezing(xx_loc_p(istart:iend), &
-            TH_auxvars(ghosted_id),global_auxvars(ghosted_id), &
+            th_auxvars(ghosted_id),global_auxvars(ghosted_id), &
             material_auxvars(ghosted_id), &
             iphase, &
             patch%saturation_function_array(patch%cc_id(ghosted_id))%ptr, &
@@ -714,7 +714,7 @@ subroutine THUpdateAuxVars(realization)
             grid%nG2A(ghosted_id),PETSC_TRUE,option)
     else
        call THAuxVarComputeNoFreezing(xx_loc_p(istart:iend), &
-            TH_auxvars(ghosted_id),global_auxvars(ghosted_id), &
+            th_auxvars(ghosted_id),global_auxvars(ghosted_id), &
             material_auxvars(ghosted_id), &
             iphase, &
             patch%characteristic_curves_array(patch%cc_id(ghosted_id))%ptr, &
@@ -763,7 +763,7 @@ subroutine THUpdateAuxVars(realization)
       end select
 
       if (option%flow%th_freezing) then
-         call THAuxVarComputeFreezing(xxbc,TH_auxvars_bc(sum_connection), &
+         call THAuxVarComputeFreezing(xxbc,th_auxvars_bc(sum_connection), &
                                       global_auxvars_bc(sum_connection), &
               material_auxvars(ghosted_id), &
               iphasebc, &
@@ -772,7 +772,7 @@ subroutine THUpdateAuxVars(realization)
               th_parameter, icct, &
               -grid%nG2A(ghosted_id),PETSC_FALSE,option)
       else
-         call THAuxVarComputeNoFreezing(xxbc,TH_auxvars_bc(sum_connection), &
+         call THAuxVarComputeNoFreezing(xxbc,th_auxvars_bc(sum_connection), &
               global_auxvars_bc(sum_connection), &
               material_auxvars(ghosted_id), &
               iphasebc, &
@@ -822,7 +822,7 @@ subroutine THUpdateAuxVars(realization)
 
       if (option%flow%th_freezing) then
          call THAuxVarComputeFreezing(xx, &
-                                      TH_auxvars_ss(sum_connection), &
+                                      th_auxvars_ss(sum_connection), &
                                       global_auxvars_ss(sum_connection), &
                                       material_auxvars(ghosted_id), &
                                       iphase, &
@@ -834,7 +834,7 @@ subroutine THUpdateAuxVars(realization)
                                       -grid%nG2A(ghosted_id),PETSC_FALSE,option)
       else
          call THAuxVarComputeNoFreezing(xx, &
-                                      TH_auxvars_ss(sum_connection), &
+                                      th_auxvars_ss(sum_connection), &
                                       global_auxvars_ss(sum_connection), &
                                       material_auxvars(ghosted_id), &
                                       iphase, &
@@ -903,7 +903,7 @@ subroutine THUpdateSolution(realization)
   type(option_type), pointer :: option
   type(field_type), pointer :: field
   type(th_parameter_type), pointer :: th_parameter
-  type(TH_auxvar_type), pointer :: auxvars(:)
+  type(th_auxvar_type), pointer :: auxvars(:)
   type(global_auxvar_type), pointer :: global_auxvars(:)
   type(sec_heat_type), pointer :: TH_sec_heat_vars(:)
 
@@ -981,7 +981,7 @@ subroutine THUpdateFixedAccumulation(realization)
   type(grid_type), pointer :: grid
   type(field_type), pointer :: field
   type(global_auxvar_type), pointer :: global_auxvars(:)
-  type(TH_auxvar_type), pointer :: TH_auxvars(:)
+  type(th_auxvar_type), pointer :: th_auxvars(:)
   type(th_parameter_type), pointer :: th_parameter
   type(material_auxvar_type), pointer :: material_auxvars(:)
 
@@ -999,7 +999,7 @@ subroutine THUpdateFixedAccumulation(realization)
   grid => patch%grid
 
   th_parameter => patch%aux%TH%th_parameter
-  TH_auxvars => patch%aux%TH%auxvars
+  th_auxvars => patch%aux%TH%auxvars
   global_auxvars => patch%aux%Global%auxvars
   material_auxvars => patch%aux%Material%auxvars
 
@@ -1021,7 +1021,7 @@ subroutine THUpdateFixedAccumulation(realization)
 
     if (option%flow%th_freezing) then
        call THAuxVarComputeFreezing(xx_p(istart:iend), &
-            TH_auxvars(ghosted_id),global_auxvars(ghosted_id), &
+            th_auxvars(ghosted_id),global_auxvars(ghosted_id), &
             material_auxvars(ghosted_id), &
             iphase, &
             patch%saturation_function_array(patch%cc_id(ghosted_id))%ptr, &
@@ -1030,7 +1030,7 @@ subroutine THUpdateFixedAccumulation(realization)
             grid%nG2A(ghosted_id),PETSC_TRUE,option)
     else
        call THAuxVarComputeNoFreezing(xx_p(istart:iend), &
-            TH_auxvars(ghosted_id),global_auxvars(ghosted_id), &
+            th_auxvars(ghosted_id),global_auxvars(ghosted_id), &
             material_auxvars(ghosted_id), &
             iphase, &
             patch%characteristic_curves_array(patch%cc_id(ghosted_id))%ptr, &
@@ -1045,7 +1045,7 @@ subroutine THUpdateFixedAccumulation(realization)
     endif
 
     global_auxvars(ghosted_id)%istate = iphase
-    call THAccumulation(TH_auxvars(ghosted_id),global_auxvars(ghosted_id), &
+    call THAccumulation(th_auxvars(ghosted_id),global_auxvars(ghosted_id), &
                         material_auxvars(ghosted_id), &
                         th_parameter%dencpr(patch%cct_id(ghosted_id)), &
                         option,vol_frac_prim,accum_p(istart:iend))
@@ -1156,7 +1156,7 @@ end subroutine THNumericalJacobianTest
 
 ! ************************************************************************** !
 
-subroutine THAccumDerivative(TH_auxvar,global_auxvar, &
+subroutine THAccumDerivative(th_auxvar,global_auxvar, &
                              material_auxvar, &
                              rock_dencpr, &
                              th_parameter, &
@@ -1182,7 +1182,7 @@ subroutine THAccumDerivative(TH_auxvar,global_auxvar, &
 
   implicit none
 
-  type(TH_auxvar_type) :: TH_auxvar
+  type(th_auxvar_type) :: th_auxvar
   type(global_auxvar_type) :: global_auxvar
   type(material_auxvar_type) :: material_auxvar
   type(option_type) :: option
@@ -1197,7 +1197,7 @@ subroutine THAccumDerivative(TH_auxvar,global_auxvar, &
   PetscReal :: porXvol
 
   PetscInt :: iphase, ideriv
-  type(TH_auxvar_type) :: TH_auxvar_pert
+  type(th_auxvar_type) :: th_auxvar_pert
   type(global_auxvar_type) :: global_auxvar_pert
   ! leave as type
   type(material_auxvar_type) :: material_auxvar_pert
@@ -1240,17 +1240,17 @@ subroutine THAccumDerivative(TH_auxvar,global_auxvar, &
   ! X = {p, T}; R = {R_p, R_T}
 
   vol = material_auxvar%volume
-  pres = TH_auxvar%pres
-  temp = TH_auxvar%temp
-  sat = TH_auxvar%sat
-  den = TH_auxvar%den
-  dden_dp = TH_auxvar%dden_dp
-  dden_dT = TH_auxvar%dden_dT
-  dsat_dp = TH_auxvar%dsat_dp
-  dsat_dT = TH_auxvar%dsat_dT
-  u = TH_auxvar%u
-  du_dT = TH_auxvar%du_dT
-  du_dp = TH_auxvar%du_dp
+  pres = th_auxvar%pres
+  temp = th_auxvar%temp
+  sat = th_auxvar%sat
+  den = th_auxvar%den
+  dden_dp = th_auxvar%dden_dp
+  dden_dT = th_auxvar%dden_dT
+  dsat_dp = th_auxvar%dsat_dp
+  dsat_dT = th_auxvar%dsat_dT
+  u = th_auxvar%u
+  du_dT = th_auxvar%du_dT
+  du_dp = th_auxvar%du_dp
 
   por = material_auxvar%porosity
   dcompressed_porosity_dp = material_auxvar%dporosity_dp
@@ -1273,25 +1273,25 @@ subroutine THAccumDerivative(TH_auxvar,global_auxvar, &
 
   if (option%flow%th_freezing) then
      ! SK, 11/17/11
-     sat_g    = TH_auxvar%ice%sat_gas
-     sat_i    = TH_auxvar%ice%sat_ice
-     dsati_dT = TH_auxvar%ice%dsat_ice_dT
-     dsati_dp = TH_auxvar%ice%dsat_ice_dp
-     dsatg_dp = TH_auxvar%ice%dsat_gas_dp
-     dsatg_dT = TH_auxvar%ice%dsat_gas_dT
+     sat_g    = th_auxvar%ice%sat_gas
+     sat_i    = th_auxvar%ice%sat_ice
+     dsati_dT = th_auxvar%ice%dsat_ice_dT
+     dsati_dp = th_auxvar%ice%dsat_ice_dp
+     dsatg_dp = th_auxvar%ice%dsat_gas_dp
+     dsatg_dT = th_auxvar%ice%dsat_gas_dT
 
-     u_g      = TH_auxvar%ice%u_gas
-     u_i      = TH_auxvar%ice%u_ice
-     dug_dT   = TH_auxvar%ice%du_gas_dT
-     dui_dT   = TH_auxvar%ice%du_ice_dT
+     u_g      = th_auxvar%ice%u_gas
+     u_i      = th_auxvar%ice%u_ice
+     dug_dT   = th_auxvar%ice%du_gas_dT
+     dui_dT   = th_auxvar%ice%du_ice_dT
 
-     den_i    = TH_auxvar%ice%den_ice
-     den_g    = TH_auxvar%ice%den_gas
-     mol_g    = TH_auxvar%ice%mol_gas
-     ddeni_dT = TH_auxvar%ice%dden_ice_dT
-     ddeni_dp = TH_auxvar%ice%dden_ice_dp
-     ddeng_dT = TH_auxvar%ice%dden_gas_dT
-     dmolg_dT = TH_auxvar%ice%dmol_gas_dT
+     den_i    = th_auxvar%ice%den_ice
+     den_g    = th_auxvar%ice%den_gas
+     mol_g    = th_auxvar%ice%mol_gas
+     ddeni_dT = th_auxvar%ice%dden_ice_dT
+     ddeni_dp = th_auxvar%ice%dden_ice_dp
+     ddeng_dT = th_auxvar%ice%dden_gas_dT
+     dmolg_dT = th_auxvar%ice%dmol_gas_dT
 
      J(TH_PRESSURE_DOF,TH_PRESSURE_DOF) = J(TH_PRESSURE_DOF,TH_PRESSURE_DOF) + &
                                           (dsatg_dp*den_g*mol_g + &
@@ -1303,7 +1303,7 @@ subroutine THAccumDerivative(TH_auxvar,global_auxvar, &
 
      J(TH_PRESSURE_DOF,TH_TEMPERATURE_DOF) = &
        J(TH_PRESSURE_DOF,TH_TEMPERATURE_DOF) + &
-                            (TH_auxvar%dsat_dT*TH_auxvar%den + &
+                            (th_auxvar%dsat_dT*th_auxvar%den + &
                              dsatg_dT * den_g    * mol_g            + &
                              sat_g    * ddeng_dT * mol_g            + &
                              sat_g    * den_g    * dmolg_dT         + &
@@ -1320,7 +1320,7 @@ subroutine THAccumDerivative(TH_auxvar,global_auxvar, &
 
      J(TH_TEMPERATURE_DOF,TH_TEMPERATURE_DOF) = &
        J(TH_TEMPERATURE_DOF,TH_TEMPERATURE_DOF) + &
-                (TH_auxvar%dsat_dT*TH_auxvar%den*TH_auxvar%u + &
+                (th_auxvar%dsat_dT*th_auxvar%den*th_auxvar%u + &
                   dsatg_dT * den_g    * u_g                         + &
                   sat_g    * ddeng_dT * u_g                         + &
                   sat_g    * den_g    * dug_dT                      + &
@@ -1345,14 +1345,14 @@ subroutine THAccumDerivative(TH_auxvar,global_auxvar, &
     call GlobalAuxVarInit(global_auxvar_pert,option)
     call MaterialAuxVarInit(material_auxvar_pert,option)
 
-    call THAuxVarCopy(TH_auxvar,TH_auxvar_pert,option)
+    call THAuxVarCopy(th_auxvar,th_auxvar_pert,option)
     call GlobalAuxVarCopy(global_auxvar,global_auxvar_pert,option)
     call MaterialAuxVarCopy(material_auxvar,material_auxvar_pert,option)
 
-    x(1) = TH_auxvar%pres
-    x(2) = TH_auxvar%temp
+    x(1) = th_auxvar%pres
+    x(2) = th_auxvar%temp
 
-    call THAccumulation(TH_auxvar,global_auxvar,material_auxvar, &
+    call THAccumulation(th_auxvar,global_auxvar,material_auxvar, &
                          rock_dencpr,option, &
                          vol_frac_prim,res)
 
@@ -1380,20 +1380,20 @@ subroutine THAccumDerivative(TH_auxvar,global_auxvar, &
       endif
 
       if (option%flow%th_freezing) then
-         call THAuxVarComputeFreezing(x_pert,TH_auxvar_pert, &
+         call THAuxVarComputeFreezing(x_pert,th_auxvar_pert, &
                                  global_auxvar_pert,material_auxvar_pert, &
                                  iphase,sat_func,thermal_cc, &
                                  th_parameter, icct, &
                                  -999,PETSC_TRUE,option)
       else
-         call THAuxVarComputeNoFreezing(x_pert,TH_auxvar_pert,&
+         call THAuxVarComputeNoFreezing(x_pert,th_auxvar_pert,&
                               global_auxvar_pert,material_auxvar_pert,&
                               iphase,characteristic_curves,thermal_cc, &
                               th_parameter,icct, &
                               -999,PETSC_TRUE,option)
       endif
 
-      call THAccumulation(TH_auxvar_pert,global_auxvar_pert, &
+      call THAccumulation(th_auxvar_pert,global_auxvar_pert, &
                           material_auxvar_pert, &
                           rock_dencpr,option,vol_frac_prim, &
                           res_pert)
@@ -1426,7 +1426,7 @@ subroutine THAccumulation(auxvar,global_auxvar, &
 
   implicit none
 
-  type(TH_auxvar_type) :: auxvar
+  type(th_auxvar_type) :: auxvar
   type(global_auxvar_type) :: global_auxvar
   type(material_auxvar_type) :: material_auxvar
   type(option_type) :: option
@@ -1520,7 +1520,7 @@ subroutine THFluxDerivative(auxvar_up,global_auxvar_up, &
 
   implicit none
 
-  type(TH_auxvar_type) :: auxvar_up, auxvar_dn
+  type(th_auxvar_type) :: auxvar_up, auxvar_dn
   type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
   type(material_auxvar_type) :: material_auxvar_up, material_auxvar_dn
   type(option_type) :: option
@@ -1565,7 +1565,7 @@ subroutine THFluxDerivative(auxvar_up,global_auxvar_up, &
   PetscReal :: dDk_dp_up, dDk_dp_dn
 
   PetscInt :: iphase, ideriv
-  type(TH_auxvar_type) :: auxvar_pert_up, auxvar_pert_dn
+  type(th_auxvar_type) :: auxvar_pert_up, auxvar_pert_dn
   type(global_auxvar_type) :: global_auxvar_pert_up, global_auxvar_pert_dn
   PetscReal :: x_up(option%nflowdof), x_dn(option%nflowdof)
   PetscReal :: x_pert_up(option%nflowdof), x_pert_dn(option%nflowdof)
@@ -2221,7 +2221,7 @@ subroutine THFlux(auxvar_up,global_auxvar_up, &
 
   implicit none
 
-  type(TH_auxvar_type) :: auxvar_up, auxvar_dn
+  type(th_auxvar_type) :: auxvar_up, auxvar_dn
   type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
   type(material_auxvar_type) :: material_auxvar_up, material_auxvar_dn
   class(cc_thermal_type), pointer :: tcc_up, tcc_dn
@@ -2475,7 +2475,7 @@ subroutine THBCFluxDerivative(ibndtype,bc_auxvars, &
   implicit none
 
   PetscInt :: ibndtype(:)
-  type(TH_auxvar_type) :: auxvar_up, auxvar_dn
+  type(th_auxvar_type) :: auxvar_up, auxvar_dn
   type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
   type(material_auxvar_type) :: material_auxvar_dn
   type(option_type) :: option
@@ -2520,7 +2520,7 @@ subroutine THBCFluxDerivative(ibndtype,bc_auxvars, &
 
 #if 0
   PetscInt :: iphase, ideriv
-  type(TH_auxvar_type) :: auxvar_pert_dn, auxvar_pert_up
+  type(th_auxvar_type) :: auxvar_pert_dn, auxvar_pert_up
   type(global_auxvar_type) :: global_auxvar_pert_dn, global_auxvar_pert_up
   type(material_auxvar_type), allocatable :: material_auxvar_pert_dn, &
                                               material_auxvar_pert_up
@@ -3146,7 +3146,7 @@ subroutine THBCFlux(ibndtype,bc_auxvars,auxvar_up,global_auxvar_up, &
   implicit none
 
   PetscInt :: ibndtype(:)
-  type(TH_auxvar_type) :: auxvar_up, auxvar_dn
+  type(th_auxvar_type) :: auxvar_up, auxvar_dn
   type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
   type(material_auxvar_type) :: material_auxvar_dn
   class(cc_thermal_type), pointer :: tcc_dn
@@ -3757,7 +3757,7 @@ subroutine THResidualInternalConn(r,realization,ierr)
   type(option_type), pointer :: option
   type(field_type), pointer :: field
   type(th_parameter_type), pointer :: th_parameter
-  type(TH_auxvar_type), pointer :: auxvars(:)
+  type(th_auxvar_type), pointer :: auxvars(:)
   type(global_auxvar_type), pointer :: global_auxvars(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(connection_set_list_type), pointer :: connection_set_list
@@ -3937,8 +3937,8 @@ subroutine THResidualBoundaryConn(r,realization,ierr)
   type(option_type), pointer :: option
   type(field_type), pointer :: field
   type(th_parameter_type), pointer :: th_parameter
-  type(TH_auxvar_type), pointer :: auxvars(:), auxvars_bc(:)
-  type(TH_auxvar_type), pointer :: auxvars_ss(:)
+  type(th_auxvar_type), pointer :: auxvars(:), auxvars_bc(:)
+  type(th_auxvar_type), pointer :: auxvars_ss(:)
   type(global_auxvar_type), pointer :: global_auxvars(:), global_auxvars_bc(:)
   type(global_auxvar_type), pointer :: global_auxvars_ss(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
@@ -4079,7 +4079,7 @@ subroutine THResidualAccumulation(r,realization,ierr)
   type(option_type), pointer :: option
   type(field_type), pointer :: field
   type(th_parameter_type), pointer :: th_parameter
-  type(TH_auxvar_type), pointer :: auxvars(:)
+  type(th_auxvar_type), pointer :: auxvars(:)
   type(global_auxvar_type), pointer :: global_auxvars(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(sec_heat_type), pointer :: TH_sec_heat_vars(:)
@@ -4205,8 +4205,8 @@ subroutine THResidualSourceSink(r,realization,ierr)
   type(option_type), pointer :: option
   type(field_type), pointer :: field
   type(th_parameter_type), pointer :: th_parameter
-  type(TH_auxvar_type), pointer :: auxvars(:), auxvars_bc(:)
-  type(TH_auxvar_type), pointer :: auxvars_ss(:)
+  type(th_auxvar_type), pointer :: auxvars(:), auxvars_bc(:)
+  type(th_auxvar_type), pointer :: auxvars_ss(:)
   type(global_auxvar_type), pointer :: global_auxvars(:), global_auxvars_bc(:)
   type(global_auxvar_type), pointer :: global_auxvars_ss(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
@@ -4692,7 +4692,7 @@ subroutine THJacobianInternalConn(A,realization,ierr)
   type(option_type), pointer :: option
   type(field_type), pointer :: field
   type(th_parameter_type), pointer :: th_parameter
-  type(TH_auxvar_type), pointer :: auxvars(:)
+  type(th_auxvar_type), pointer :: auxvars(:)
   type(global_auxvar_type), pointer :: global_auxvars(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(saturation_function_type), pointer :: sf_up
@@ -4910,7 +4910,7 @@ subroutine THJacobianBoundaryConn(A,realization,ierr)
   type(option_type), pointer :: option
   type(field_type), pointer :: field
   type(th_parameter_type), pointer :: th_parameter
-  type(TH_auxvar_type), pointer :: auxvars_bc(:), auxvars(:)
+  type(th_auxvar_type), pointer :: auxvars_bc(:), auxvars(:)
   type(global_auxvar_type), pointer :: global_auxvars(:), global_auxvars_bc(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(saturation_function_type), pointer :: sf_dn
@@ -5061,7 +5061,7 @@ subroutine THJacobianAccumulation(A,realization,ierr)
   type(option_type), pointer :: option
   type(field_type), pointer :: field
   type(th_parameter_type), pointer :: th_parameter
-  type(TH_auxvar_type), pointer :: auxvars(:)
+  type(th_auxvar_type), pointer :: auxvars(:)
   type(global_auxvar_type), pointer :: global_auxvars(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
 
@@ -5210,7 +5210,7 @@ subroutine THJacobianSourceSink(A,realization,ierr)
   type(option_type), pointer :: option
   type(field_type), pointer :: field
   type(th_parameter_type), pointer :: th_parameter
-  type(TH_auxvar_type), pointer :: auxvars(:), auxvars_ss(:)
+  type(th_auxvar_type), pointer :: auxvars(:), auxvars_ss(:)
   type(global_auxvar_type), pointer :: global_auxvars(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
 
@@ -5441,7 +5441,7 @@ subroutine THResidualToMass(realization)
   type(option_type), pointer :: option
 
   PetscReal, pointer :: mass_balance_p(:)
-  type(TH_auxvar_type), pointer :: auxvars(:)
+  type(th_auxvar_type), pointer :: auxvars(:)
   type(global_auxvar_type), pointer :: global_auxvars(:)
   PetscErrorCode :: ierr
   PetscInt :: local_id, ghosted_id

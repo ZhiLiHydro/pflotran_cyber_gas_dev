@@ -28,7 +28,7 @@ module TH_Aux_module
 
   PetscInt, parameter, public :: TH_UPDATE_FOR_FIXED_ACCUM = 0
 
-  type, public :: TH_auxvar_type
+  type, public :: th_auxvar_type
     PetscReal :: pres
     PetscReal :: temp
     PetscReal :: sat
@@ -74,13 +74,13 @@ module TH_Aux_module
 
     ! for numerical derivatives
     PetscReal :: pert
-    type(TH_auxvar_type), pointer :: auxvar_pert(:)
+    type(th_auxvar_type), pointer :: auxvar_pert(:)
 
 #if defined(CLM_PFLOTRAN) || defined(CLM_OFFLINE)
     PetscReal :: bc_alpha  ! Brooks Corey parameterization: alpha
     PetscReal :: bc_lambda ! Brooks Corey parameterization: lambda
 #endif
-  end type TH_auxvar_type
+  end type th_auxvar_type
 
   type, public :: th_ice_type
     PetscReal :: Ke_fr
@@ -125,9 +125,9 @@ module TH_Aux_module
     PetscBool :: auxvars_up_to_date
     PetscInt :: num_aux, num_aux_bc, num_aux_ss
     type(th_parameter_type), pointer :: th_parameter
-    type(TH_auxvar_type), pointer :: auxvars(:)
-    type(TH_auxvar_type), pointer :: auxvars_bc(:)
-    type(TH_auxvar_type), pointer :: auxvars_ss(:)
+    type(th_auxvar_type), pointer :: auxvars(:)
+    type(th_auxvar_type), pointer :: auxvars_bc(:)
+    type(th_auxvar_type), pointer :: auxvars_ss(:)
     type(matrix_zeroing_type), pointer :: matrix_zeroing
   end type TH_type
 
@@ -205,7 +205,7 @@ recursive subroutine THAuxVarInit(auxvar,option,allocate_perturbation)
 
   implicit none
 
-  type(TH_auxvar_type) :: auxvar
+  type(th_auxvar_type) :: auxvar
   type(option_type) :: option
   PetscBool :: allocate_perturbation
 
@@ -305,7 +305,7 @@ subroutine THAuxVarCopy(auxvar,auxvar2,option)
 
   implicit none
 
-  type(TH_auxvar_type) :: auxvar, auxvar2
+  type(th_auxvar_type) :: auxvar, auxvar2
   type(option_type) :: option
 
   auxvar2%pres = auxvar%pres
@@ -401,7 +401,7 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
   class(characteristic_curves_type) :: characteristic_curves
   class(cc_thermal_type) :: thermal_cc
   PetscReal :: x(option%nflowdof)
-  type(TH_auxvar_type) :: auxvar
+  type(th_auxvar_type) :: auxvar
   type(global_auxvar_type) :: global_auxvar
   PetscInt :: iphase
   type(th_parameter_type) :: th_parameter
@@ -650,7 +650,7 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
   type(saturation_function_type) :: saturation_function
   class(cc_thermal_type) :: thermal_cc
   PetscReal :: x(option%nflowdof)
-  type(TH_auxvar_type) :: auxvar
+  type(th_auxvar_type) :: auxvar
   type(global_auxvar_type) :: global_auxvar
   type(material_auxvar_type) :: material_auxvar
   type(th_parameter_type) :: th_parameter
@@ -952,7 +952,7 @@ subroutine THAuxVarComputeFreezing(x, auxvar, global_auxvar, &
 end subroutine THAuxVarComputeFreezing
 
 ! ************************************************************************** !
-subroutine THAuxVarCompute2ndOrderDeriv(TH_auxvar,global_auxvar, &
+subroutine THAuxVarCompute2ndOrderDeriv(th_auxvar,global_auxvar, &
                                         material_auxvar,th_parameter, &
                                         icct,characteristic_curves,&
                                         thermal_cc,&
@@ -977,14 +977,14 @@ subroutine THAuxVarCompute2ndOrderDeriv(TH_auxvar,global_auxvar, &
   type(option_type) :: option
   class(characteristic_curves_type) :: characteristic_curves
   class(cc_thermal_type) :: thermal_cc
-  type(TH_auxvar_type) :: TH_auxvar
+  type(th_auxvar_type) :: th_auxvar
   type(global_auxvar_type) :: global_auxvar
   type(material_auxvar_type) :: material_auxvar
   PetscInt :: icct
 
   type(th_parameter_type) :: th_parameter
   PetscInt :: iphase, ideriv
-  type(TH_auxvar_type) :: TH_auxvar_pert
+  type(th_auxvar_type) :: th_auxvar_pert
   type(global_auxvar_type) :: global_auxvar_pert
   ! leave as type
   type(material_auxvar_type) :: material_auxvar_pert
@@ -993,30 +993,30 @@ subroutine THAuxVarCompute2ndOrderDeriv(TH_auxvar,global_auxvar, &
   call GlobalAuxVarInit(global_auxvar_pert,option)
   call MaterialAuxVarInit(material_auxvar_pert,option)
 
-  call THAuxVarCopy(TH_auxvar,TH_auxvar_pert,option)
+  call THAuxVarCopy(th_auxvar,th_auxvar_pert,option)
   call GlobalAuxVarCopy(global_auxvar,global_auxvar_pert,option)
   call MaterialAuxVarCopy(material_auxvar,material_auxvar_pert,option)
 
-  x(1) = TH_auxvar%pres
-  x(2) = TH_auxvar%temp
+  x(1) = th_auxvar%pres
+  x(2) = th_auxvar%temp
 
 !  if (option%use_th_freezing) then
 !    option%io_buffer = 'ERROR: TH_TS MODE not implemented with freezing'
 !    call PrintErrMsg(option)
 !  else
-!    call THAuxVarComputeNoFreezing(x,TH_auxvar,&
+!    call THAuxVarComputeNoFreezing(x,th_auxvar,&
 !                      global_auxvar,material_auxvar,&
 !                      iphase,sat_func, &
 !                      th_parameter,icct, &
 !                      -999,option)
 !  endif
 
-  TH_auxvar%d2sat_dp2 = 0.d0
-  TH_auxvar%d2den_dp2 = 0.d0
-  TH_auxvar%d2u_dp2 = 0.d0
-  TH_auxvar%d2sat_dT2 = 0.d0
-  TH_auxvar%d2den_dT2 = 0.d0
-  TH_auxvar%d2u_dT2 = 0.d0
+  th_auxvar%d2sat_dp2 = 0.d0
+  th_auxvar%d2den_dp2 = 0.d0
+  th_auxvar%d2u_dp2 = 0.d0
+  th_auxvar%d2sat_dT2 = 0.d0
+  th_auxvar%d2den_dT2 = 0.d0
+  th_auxvar%d2u_dT2 = 0.d0
 
 
   do ideriv = 1,option%nflowdof
@@ -1046,7 +1046,7 @@ subroutine THAuxVarCompute2ndOrderDeriv(TH_auxvar,global_auxvar, &
       option%io_buffer = 'ERROR: TH_TS MODE not implemented with freezing'
       call PrintErrMsg(option)
     else
-      call THAuxVarComputeNoFreezing(x_pert,TH_auxvar_pert,&
+      call THAuxVarComputeNoFreezing(x_pert,th_auxvar_pert,&
                             global_auxvar_pert,material_auxvar_pert,&
                             iphase,characteristic_curves, &
                             thermal_cc, &
@@ -1056,18 +1056,18 @@ subroutine THAuxVarCompute2ndOrderDeriv(TH_auxvar,global_auxvar, &
 
 
     if (ideriv == 1) then
-      TH_auxvar%d2sat_dp2 = (TH_auxvar_pert%dsat_dp - TH_auxvar%dsat_dp)/pert
-      TH_auxvar%d2sat_dTdp = (TH_auxvar_pert%dsat_dT - TH_auxvar%dsat_dT)/pert
-      TH_auxvar%d2den_dp2 = (TH_auxvar_pert%dden_dp - TH_auxvar%dden_dp)/pert
-      TH_auxvar%d2den_dTdp = (TH_auxvar_pert%dden_dT - TH_auxvar%dden_dT)/pert
-      TH_auxvar%d2u_dp2 = (TH_auxvar_pert%du_dp - TH_auxvar%du_dp)/pert
-      TH_auxvar%d2u_dTdp = (TH_auxvar_pert%du_dT - TH_auxvar%du_dT)/pert
+      th_auxvar%d2sat_dp2 = (th_auxvar_pert%dsat_dp - th_auxvar%dsat_dp)/pert
+      th_auxvar%d2sat_dTdp = (th_auxvar_pert%dsat_dT - th_auxvar%dsat_dT)/pert
+      th_auxvar%d2den_dp2 = (th_auxvar_pert%dden_dp - th_auxvar%dden_dp)/pert
+      th_auxvar%d2den_dTdp = (th_auxvar_pert%dden_dT - th_auxvar%dden_dT)/pert
+      th_auxvar%d2u_dp2 = (th_auxvar_pert%du_dp - th_auxvar%du_dp)/pert
+      th_auxvar%d2u_dTdp = (th_auxvar_pert%du_dT - th_auxvar%du_dT)/pert
     endif
 
     if (ideriv == 2) then
-      TH_auxvar%d2sat_dT2 = (TH_auxvar_pert%dsat_dT - TH_auxvar%dsat_dT)/pert
-      TH_auxvar%d2den_dT2 = (TH_auxvar_pert%dden_dT - TH_auxvar%dden_dT)/pert
-      TH_auxvar%d2u_dT2 = (TH_auxvar_pert%du_dT - TH_auxvar%du_dT)/pert
+      th_auxvar%d2sat_dT2 = (th_auxvar_pert%dsat_dT - th_auxvar%dsat_dT)/pert
+      th_auxvar%d2den_dT2 = (th_auxvar_pert%dden_dT - th_auxvar%dden_dT)/pert
+      th_auxvar%d2u_dT2 = (th_auxvar_pert%du_dT - th_auxvar%du_dT)/pert
     endif
 
   enddo
@@ -1102,7 +1102,7 @@ subroutine THAuxVarPerturb(x,th_auxvar,global_auxvar, &
   class(characteristic_curves_type) :: characteristic_curves
   class(cc_thermal_type) :: thermal_cc
   PetscReal :: x(option%nflowdof)
-  type(TH_auxvar_type) :: th_auxvar
+  type(th_auxvar_type) :: th_auxvar
   type(global_auxvar_type) :: global_auxvar
   PetscInt :: iphase
   type(th_parameter_type) :: th_parameter
@@ -1198,7 +1198,7 @@ subroutine THAuxVarDestroy(auxvar)
 
   implicit none
 
-  type(TH_auxvar_type) :: auxvar
+  type(th_auxvar_type) :: auxvar
 
   if (associated(auxvar%ice)) deallocate(auxvar%ice)
   nullify(auxvar%ice)
