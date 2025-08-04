@@ -135,7 +135,6 @@ subroutine THSetup(realization)
 
   endif
 
-
   !Jitu, 08/04/2010: Check these allocations. Currently assumes only
   !single value in the array <modified pcl 1-13-11>
   num_tcc = size(patch%char_curves_thermal_array)
@@ -320,10 +319,19 @@ subroutine THSetup(realization)
 
   ! allocate auxvar data structures for all grid cells
   allocate(TH_auxvars(grid%ngmax))
+  if (option%flow%numerical_derivatives .and. &
+      .not. option%flow%th_freezing) then
+    th_numerical_derivatives = PETSC_TRUE
+  endif
   do ghosted_id = 1, grid%ngmax
-    call THAuxVarInit(TH_auxvars(ghosted_id),option)
+    call THAuxVarInit(TH_auxvars(ghosted_id),option,th_numerical_derivatives)
   enddo
-
+  if (th_numerical_derivatives) then
+    allocate(th_min_pert(option%nflowdof))
+    th_min_pert = 0.d0
+    th_min_pert(TH_PRESSURE_DOF) = th_pres_min_pert
+    th_min_pert(TH_TEMPERATURE_DOF) = th_temp_min_pert
+  endif
 
   if (option%use_sc) then
     initial_condition => patch%initial_condition_list%first
@@ -363,7 +371,7 @@ subroutine THSetup(realization)
   if (sum_connection > 0) then
     allocate(TH_auxvars_bc(sum_connection))
     do iconn = 1, sum_connection
-      call THAuxVarInit(TH_auxvars_bc(iconn),option)
+      call THAuxVarInit(TH_auxvars_bc(iconn),option,PETSC_FALSE)
     enddo
     patch%aux%TH%auxvars_bc => TH_auxvars_bc
   endif
@@ -374,7 +382,7 @@ subroutine THSetup(realization)
   if (sum_connection > 0) then
     allocate(TH_auxvars_ss(sum_connection))
     do iconn = 1, sum_connection
-      call THAuxVarInit(TH_auxvars_ss(iconn),option)
+      call THAuxVarInit(TH_auxvars_ss(iconn),option,PETSC_FALSE)
     enddo
     patch%aux%TH%auxvars_ss => TH_auxvars_ss
   endif
@@ -1211,7 +1219,23 @@ subroutine THAccumDerivative(TH_auxvar,global_auxvar, &
   PetscReal :: dsati_dp, dsati_dT
   PetscReal :: ddeni_dp, ddeni_dT
   PetscReal :: dui_dT
+  PetscInt :: idof, ieq
 
+  if (th_numerical_derivatives) then
+    J = 0.d0
+    call THAccumulation(th_auxvar,global_auxvar,material_auxvar, &
+                        rock_dencpr,option,vol_frac_prim,res)
+    do idof = 1, option%nflowdof
+      call THAccumulation(th_auxvar%auxvar_pert(idof),global_auxvar, &
+                          material_auxvar, &
+                          rock_dencpr,option,vol_frac_prim,res_pert)
+      do ieq = 1, option%nflowdof
+        J(ieq,idof) = (res_pert(ieq)-res(ieq)) / &
+                      th_auxvar%auxvar_pert(idof)%pert
+      enddo
+    enddo
+    return
+  endif
 
   ! X = {p, T}; R = {R_p, R_T}
 
@@ -1578,6 +1602,52 @@ subroutine THFluxDerivative(auxvar_up,global_auxvar_up, &
   PetscReal :: dfv_dp_up, dfv_dp_dn
   PetscReal :: dmolg_dp_up, dmolg_dp_dn
   PetscBool :: is_flowing
+  PetscInt :: idof, ieq
+
+  if (th_numerical_derivatives) then
+    call THFlux(auxvar_up,global_auxvar_up, &
+                material_auxvar_up,Dk_up,tcc_up, &
+                auxvar_dn,global_auxvar_dn, &
+                material_auxvar_dn,Dk_dn,tcc_dn, &
+                area,dist,upweight,sir_up,sir_dn, &
+                option,v_darcy,Dk_dry_up, &
+                Dk_dry_dn,Dk_ice_up,Dk_ice_dn, &
+                alpha_up,alpha_dn,alpha_fr_up,alpha_fr_dn, &
+                res)
+    Jup = 0.d0
+    do idof = 1, option%nflowdof
+      call THFlux(auxvar_up%auxvar_pert(idof),global_auxvar_up, &
+                  material_auxvar_up,Dk_up,tcc_up, &
+                  auxvar_dn,global_auxvar_dn, &
+                  material_auxvar_dn,Dk_dn,tcc_dn, &
+                  area,dist,upweight,sir_up,sir_dn, &
+                  option,v_darcy,Dk_dry_up, &
+                  Dk_dry_dn,Dk_ice_up,Dk_ice_dn, &
+                  alpha_up,alpha_dn,alpha_fr_up,alpha_fr_dn, &
+                  res_pert_up)
+      do ieq = 1, option%nflowdof
+        Jup(ieq,idof) = (res_pert_up(ieq)-res(ieq)) / &
+                        auxvar_up%auxvar_pert(idof)%pert
+      enddo
+    enddo
+    Jdn = 0.d0
+    do idof = 1, option%nflowdof
+      call THFlux(auxvar_up,global_auxvar_up, &
+                  material_auxvar_up,Dk_up,tcc_up, &
+                  auxvar_dn%auxvar_pert(idof),global_auxvar_dn, &
+                  material_auxvar_dn,Dk_dn,tcc_dn, &
+                  area,dist,upweight,sir_up,sir_dn, &
+                  option,v_darcy,Dk_dry_up, &
+                  Dk_dry_dn,Dk_ice_up,Dk_ice_dn, &
+                  alpha_up,alpha_dn,alpha_fr_up,alpha_fr_dn, &
+                  res_pert_dn)
+      do ieq = 1, option%nflowdof
+        Jdn(ieq,idof) = (res_pert_dn(ieq)-res(ieq)) / &
+                        auxvar_up%auxvar_pert(idof)%pert
+      enddo
+    enddo
+    return
+  endif
 
   call ConnectionCalculateDistances(dist,option%gravity,dd_up,dd_dn, &
                                     dist_gravity,upweight)
@@ -2372,7 +2442,7 @@ end subroutine THFlux
 
 ! ************************************************************************** !
 
-subroutine THBCFluxDerivative(ibndtype,auxvars, &
+subroutine THBCFluxDerivative(ibndtype,bc_auxvars, &
                               auxvar_up,global_auxvar_up, &
                               auxvar_dn,global_auxvar_dn, &
                               material_auxvar_dn, &
@@ -2412,7 +2482,7 @@ subroutine THBCFluxDerivative(ibndtype,auxvars, &
 
   PetscReal :: sir_dn
   PetscBool :: is_flowing
-  PetscReal :: auxvars(:) ! from aux_real_var array in boundary condition
+  PetscReal :: bc_auxvars(:) ! from aux_real_var array in boundary condition
   PetscReal :: por_dn,perm_dn,Dk_dn,tor_dn
   PetscReal :: area
   type(saturation_function_type), pointer :: sf_dn
@@ -2421,6 +2491,8 @@ subroutine THBCFluxDerivative(ibndtype,auxvars, &
 
   PetscReal :: Dk_dry_dn
   PetscReal :: Dk_ice_dn
+  PetscReal :: res(option%nflowdof)
+  PetscReal :: res_pert(option%nflowdof)
   PetscReal :: Jdn(option%nflowdof,option%nflowdof)
   PetscReal :: dist(-1:3)
 
@@ -2444,6 +2516,7 @@ subroutine THBCFluxDerivative(ibndtype,auxvars, &
   PetscReal :: dDk_dT_dn, dDk_dp_dn
   PetscReal :: dKe_dT_dn, dKe_dp_dn
   PetscReal :: dKe_fr_dT_dn, dKe_fr_dp_dn
+  PetscReal :: dummy1, dummy2
 
 #if 0
   PetscInt :: iphase, ideriv
@@ -2480,6 +2553,31 @@ subroutine THBCFluxDerivative(ibndtype,auxvars, &
   PetscErrorCode :: ierr
   PetscReal :: T_th
   PetscBool :: skip_thermal_conduction
+  PetscInt :: idof, ieq
+
+  if (th_numerical_derivatives) then
+    call THBCFlux(ibndtype,bc_auxvars, &
+                  auxvar_up,global_auxvar_up, &
+                  auxvar_dn,global_auxvar_dn, &
+                  material_auxvar_dn, &
+                  Dk_dn,tcc_dn,area,dist,sir_dn, &
+                  option,v_darcy,dummy1,dummy2,res)
+    Jdn = 0.d0
+    do idof = 1, option%nflowdof
+      call THBCFlux(ibndtype,bc_auxvars, &
+                    auxvar_up,global_auxvar_up, &
+                    auxvar_dn%auxvar_pert(idof),global_auxvar_dn, &
+                    material_auxvar_dn, &
+                    Dk_dn,tcc_dn,area,dist,sir_dn, &
+                    option,v_darcy,dummy1,dummy2,res_pert)
+      do ieq = 1, option%nflowdof
+        Jdn(ieq,idof) = (res_pert(ieq)-res(ieq)) / &
+                        auxvar_dn%auxvar_pert(idof)%pert
+      enddo
+    enddo
+    return
+  endif
+
 
   skip_thermal_conduction = PETSC_FALSE
   T_th  = 0.5d0
@@ -2524,7 +2622,7 @@ subroutine THBCFluxDerivative(ibndtype,auxvars, &
       if (ibndtype(TH_PRESSURE_DOF) == DIRICHLET_CONDUCTANCE_BC .or. &
           ibndtype(TH_PRESSURE_DOF) == HYDROSTATIC_CONDUCTANCE_BC .or. &
           ibndtype(TH_PRESSURE_DOF) == HET_HYDROSTATIC_CONDUCTANCE_BC) then
-        Dq = auxvars(TH_CONDUCTANCE_DOF)
+        Dq = bc_auxvars(TH_CONDUCTANCE_DOF)
       else
         Dq = perm_dn / dd_dn
       endif
@@ -2707,8 +2805,8 @@ subroutine THBCFluxDerivative(ibndtype,auxvars, &
       endif
 
     case(NEUMANN_BC)
-      if (dabs(auxvars(TH_PRESSURE_DOF)) > floweps) then
-        v_darcy = auxvars(TH_PRESSURE_DOF)
+      if (dabs(bc_auxvars(TH_PRESSURE_DOF)) > floweps) then
+        v_darcy = bc_auxvars(TH_PRESSURE_DOF)
         if (v_darcy > 0.d0) then
           density_ave = global_auxvar_up%den(1)
           if (ibndtype(TH_TEMPERATURE_DOF) == ZERO_GRADIENT_BC) then
@@ -3023,7 +3121,7 @@ end subroutine THBCFluxDerivative
 
 ! ************************************************************************** !
 
-subroutine THBCFlux(ibndtype,auxvars,auxvar_up,global_auxvar_up, &
+subroutine THBCFlux(ibndtype,bc_auxvars,auxvar_up,global_auxvar_up, &
                     auxvar_dn,global_auxvar_dn, &
                     material_auxvar_dn, &
                     Dk_dn, tcc_dn, &
@@ -3056,7 +3154,7 @@ subroutine THBCFlux(ibndtype,auxvars,auxvar_up,global_auxvar_up, &
   PetscReal :: sir_dn
   PetscBool :: is_flowing
 
-  PetscReal :: auxvars(:) ! from aux_real_var array
+  PetscReal :: bc_auxvars(:) ! from aux_real_var array
   PetscReal :: Dk_dn
   PetscReal :: v_darcy, area
   PetscReal :: Res(1:option%nflowdof)
@@ -3115,7 +3213,7 @@ subroutine THBCFlux(ibndtype,auxvars,auxvar_up,global_auxvar_up, &
       if (ibndtype(TH_PRESSURE_DOF) == DIRICHLET_CONDUCTANCE_BC .or. &
           ibndtype(TH_PRESSURE_DOF) == HYDROSTATIC_CONDUCTANCE_BC .or. &
           ibndtype(TH_PRESSURE_DOF) == HET_HYDROSTATIC_CONDUCTANCE_BC) then
-        Dq = auxvars(TH_CONDUCTANCE_DOF)
+        Dq = bc_auxvars(TH_CONDUCTANCE_DOF)
       else
         Dq = perm_dn / dd_dn
       endif
@@ -3246,8 +3344,8 @@ subroutine THBCFlux(ibndtype,auxvars,auxvar_up,global_auxvar_up, &
       endif
 
     case(NEUMANN_BC)
-      if (dabs(auxvars(TH_PRESSURE_DOF)) > floweps) then
-        v_darcy = auxvars(TH_PRESSURE_DOF)
+      if (dabs(bc_auxvars(TH_PRESSURE_DOF)) > floweps) then
+        v_darcy = bc_auxvars(TH_PRESSURE_DOF)
         if (v_darcy > 0.d0) then
           density_ave = global_auxvar_up%den(1)
         else
@@ -3362,8 +3460,8 @@ subroutine THBCFlux(ibndtype,auxvars,auxvar_up,global_auxvar_up, &
       !geh: default internal energy units are MJ
       !       (option%scale = 1.d-6 is for J->MJ)
       ! added by SK 10/18/11
-      fluxe = fluxe + auxvars(TH_TEMPERATURE_DOF)*area*(1.d6*option%scale)
-      fluxe_cond = auxvars(TH_TEMPERATURE_DOF)*area*(1.d6*option%scale)
+      fluxe = fluxe + bc_auxvars(TH_TEMPERATURE_DOF)*area*(1.d6*option%scale)
+      fluxe_cond = bc_auxvars(TH_TEMPERATURE_DOF)*area*(1.d6*option%scale)
     case(ZERO_GRADIENT_BC)
       ! No change in fluxe
     case default
@@ -4325,6 +4423,137 @@ subroutine THResidualSourceSink(r,realization,ierr)
 
 end subroutine THResidualSourceSink
 
+! ************************************************************************** !
+#if 0
+subroutine THSourceSink()
+  !
+  ! Calculate source/sink term for single grid cell
+  ! Author: Glenn Hammond
+  ! Date: 08/04/25
+
+  use Debug_module
+  use Utility_module, only : Smoothstep
+
+  implicit none
+
+      qsrc1 = 0.d0
+      if (source_sink%flow_condition%rate%itype /= HET_MASS_RATE_SS .and. &
+        source_sink%flow_condition%itype(1) /= WELL_SS) &
+        qsrc1 = source_sink%flow_condition%rate%dataset%rarray(1)
+
+      (itype(:),qsrc1,flow_aux_real_var(:),rate_aux_real(:),global_auxvar)
+
+      Res_src = 0.d0
+      select case (source_sink%flow_condition%rate%itype)
+        case(MASS_RATE_SS)
+          qsrc_kmol = qsrc1 / FMWH2O ! [kg/s -> kmol/s; fmw -> g/mol = kg/kmol]
+        case(SCALED_MASS_RATE_SS)
+          qsrc_kmol = qsrc1 / FMWH2O * &
+                      ! [kg/s -> kmol/s; fmw -> g/mol = kg/kmol]
+                      flow_aux_real_var(ONE_INTEGER)
+        case(VOLUMETRIC_RATE_SS)  ! assume local density for now
+          ! qsrc1 = m^3/sec
+          qsrc_kmol = qsrc1*global_auxvars%den(1) ! den = kmol/m^3
+        case(SCALED_VOLUMETRIC_RATE_SS)  ! assume local density for now
+          ! qsrc1 = m^3/sec
+          qsrc_kmol = qsrc1*global_auxvars%den(1)* & ! den = kmol/m^3
+                      flow_aux_real_var(ONE_INTEGER)
+        case(HET_MASS_RATE_SS)
+          qsrc_kmol = flow_aux_real_var(ONE_INTEGER)/FMWH2O
+        case(PRES_REG_MASS_RATE_SS)
+          threshold_pressure = rate_aux_real(1)
+          inhibit_flow_above_pressure = (threshold_pressure > 0)
+          threshold_pressure = dabs(threshold_pressure)
+          pressure_span = rate_aux_real(2)
+          if (inhibit_flow_above_pressure) then
+            min_pressure = threshold_pressure-pressure_span
+            max_pressure = threshold_pressure
+          else
+            min_pressure = threshold_pressure
+            max_pressure = threshold_pressure+pressure_span
+          endif
+          volume_scale = flow_aux_real_var(ONE_INTEGER)
+          call Smoothstep(auxvars(ghosted_id)%pres, &
+                          min_pressure,max_pressure, &
+                          smoothstep_scale,dummy)
+          if (inhibit_flow_above_pressure) then
+            smoothstep_scale = 1.d0-smoothstep_scale
+          endif
+          !
+          qsrc_kmol = qsrc1/FMWH2O*volume_scale*smoothstep_scale
+        case(WELL_SS) ! production well, Karra 11/10/2015
+          ! if node pessure is lower than the given extraction pressure,
+          ! shut it down
+          !  well parameter explanation
+          !   1. well status. 1 injection; -1 production; 0 shut in!
+          !   2. well factor [m^3],  the effective permeability [m^2/s]
+          !   3. bottomhole pressure:  [Pa]
+          !   4. max pressure: [Pa]
+          !   5. min pressure: [Pa]
+          mmsrc => source_sink%flow_condition%well%dataset%rarray
+
+          well_status = mmsrc(1)
+          well_factor = mmsrc(2)
+          pressure_bh = mmsrc(3)
+          pressure_max = mmsrc(4)
+          pressure_min = mmsrc(5)
+
+          ! production well (well status = -1)
+          if (dabs(well_status + 1.d0) < 1.d-1) then
+            if (auxvars%pres > pressure_min) then
+              Dq = well_factor
+              dphi = auxvars%pres - pressure_bh
+              if (dphi >= 0.d0) then ! outflow only
+                ukvr = auxvars%mobility
+                if (ukvr < 1.d-20) ukvr = 0.d0
+                v_darcy = 0.d0
+                if (ukvr*Dq > floweps) then
+                  v_darcy = Dq * ukvr * dphi
+                  ! store volumetric rate for ss_fluid_fluxes()
+                  qsrc_kmol = -1.d0*v_darcy*global_auxvars%den(1)
+                endif
+              endif
+            endif
+          endif
+
+        case default
+          write(string,*) rate_itype
+          option%io_buffer = &
+            'TH mode rate_itype = ' // &
+            trim(adjustl(string)) // ', not implemented.'
+      end select
+
+      esrc1 = 0.d0
+      ! the unit of *_RATE_SS are J/s
+      select case(itype(TH_TEMPERATURE_DOF))
+        case (ENERGY_RATE_SS)
+          esrc1 = source_sink%flow_condition%energy_rate%dataset%rarray(1)
+        case (SCALED_ENERGY_RATE_SS)
+          esrc1 = source_sink%flow_condition%energy_rate%dataset%rarray(1) * &
+                  source_sink%flow_aux_real_var(ONE_INTEGER,iconn)
+        case (HET_ENERGY_RATE_SS)
+          esrc1 = source_sink%flow_aux_real_var(TWO_INTEGER,iconn)
+      end select
+      ! convert J/s --> MJ/s
+      !geh: default internal energy units are MJ (option%scale = 1.d-6 is for
+      !     J->MJ)
+      Res_src(TH_TEMPERATURE_DOF) = esrc1*1.d6*option%scale
+
+      ! Update residual term associated with T
+      if (qsrc_kmol > 0.d0) then ! injection
+        Res_src(TH_TEMPERATURE_DOF) = Res_src(TH_TEMPERATURE_DOF) + &
+          qsrc_kmol*auxvars_ss(sum_connection)%h
+      else
+        ! extraction
+        Res_src(TH_TEMPERATURE_DOF) = Res_src(TH_TEMPERATURE_DOF) + &
+          qsrc_kmol*auxvars(ghosted_id)%h
+      endif
+
+
+
+
+end subroutine THSourceSink
+#endif
 ! ************************************************************************** !
 
 subroutine THJacobian(snes,xx,A,B,realization,ierr)

@@ -14,6 +14,12 @@ module TH_Aux_module
   PetscInt, public :: TH_ts_cut_count
   PetscInt, public :: TH_ts_count
 
+  PetscBool, public :: th_numerical_derivatives = PETSC_FALSE
+  PetscReal, public :: th_rel_pert = 1.d-8
+  PetscReal, public :: th_pres_min_pert = 1.d-2
+  PetscReal, public :: th_temp_min_pert = 1.d-6
+  PetscReal, pointer, public :: th_min_pert(:)
+
   PetscInt, public :: th_ice_model
 
   PetscInt, parameter, public :: TH_PRESSURE_DOF = 1
@@ -153,6 +159,8 @@ function THAuxCreate(option)
 
   type(TH_type), pointer :: aux
 
+  nullify(th_min_pert)
+
   ! initialize module variables
   th_ice_model = 0
 
@@ -181,7 +189,7 @@ end function THAuxCreate
 
 ! ************************************************************************** !
 
-recursive subroutine THAuxVarInit(auxvar,option)
+recursive subroutine THAuxVarInit(auxvar,option,allocate_perturbation)
   !
   ! Initialize auxiliary object
   !
@@ -195,8 +203,8 @@ recursive subroutine THAuxVarInit(auxvar,option)
   implicit none
 
   type(TH_auxvar_type) :: auxvar
-  PetscBool :: allocate_perturbation
   type(option_type) :: option
+  PetscBool :: allocate_perturbation
 
   PetscReal :: uninit_value
   PetscInt :: i
@@ -265,17 +273,15 @@ recursive subroutine THAuxVarInit(auxvar,option)
   auxvar%bc_lambda     = uninit_value
 #endif
 
-#if 0
   auxvar%pert = uninit_value
   if (allocate_perturbation) then
     allocate(auxvar%auxvar_pert(option%nflowdof))
     do i = 1, option%nflowdof
-      call THAuxVarInit(auxvar%auxvar_pert(i))
+      call THAuxVarInit(auxvar%auxvar_pert(i),option,PETSC_FALSE)
     enddo
   else
     nullify(auxvar%auxvar_pert)
   endif
-#endif
 
 end subroutine THAuxVarInit
 
@@ -1065,6 +1071,67 @@ end subroutine THAuxVarCompute2ndOrderDeriv
 
 ! ************************************************************************** !
 
+subroutine THAuxVarPerturb(x,th_auxvar,global_auxvar, &
+                           material_auxvar,iphase, &
+                           characteristic_curves, &
+                           thermal_cc,th_parameter,icct, &
+                           natural_id,update_porosity,option)
+  ! Calculates auxiliary variables for perturbed TH system
+  !
+  ! Author: Glenn Hammond
+  ! Date: 08/04/25
+
+
+  use Option_module
+  use Global_Aux_module
+
+  use EOS_Water_module
+  use Characteristic_Curves_module
+  use Characteristic_Curves_Common_module
+  use Characteristic_Curves_Thermal_module
+  use Material_Aux_module
+
+  implicit none
+
+  type(option_type) :: option
+  class(characteristic_curves_type) :: characteristic_curves
+  class(cc_thermal_type) :: thermal_cc
+  PetscReal :: x(option%nflowdof)
+  type(TH_auxvar_type) :: th_auxvar
+  type(global_auxvar_type) :: global_auxvar
+  PetscInt :: iphase
+  type(th_parameter_type) :: th_parameter
+  PetscInt :: icct
+  type(material_auxvar_type) :: material_auxvar
+  PetscInt :: natural_id
+  PetscBool :: update_porosity
+
+  PetscInt :: idof
+  PetscReal :: x_pert(2), pert
+
+  if (update_porosity) then
+    option%io_buffer = 'Update of porosity not supported for numerical &
+      &derivatives in THAuxVarPerturb'
+    call PrintErrMsg(option)
+  endif
+
+  do idof = 1, option%nflowdof
+    pert = x(idof)*th_rel_pert+th_min_pert(idof)
+    th_auxvar%auxvar_pert(idof)%pert = pert
+    x_pert(1:option%nflowdof) = x
+    x_pert(idof) = x(idof) + pert
+    call THAuxVarComputeNoFreezing(x_pert, &
+                                   th_auxvar%auxvar_pert(idof), &
+                                   global_auxvar,material_auxvar,iphase, &
+                                   characteristic_curves, &
+                                   thermal_cc,th_parameter,icct, &
+                                   natural_id,update_porosity,option)
+  enddo
+
+end subroutine THAuxVarPerturb
+
+! ************************************************************************** !
+
 subroutine THPrintAuxVars(file_unit,th_auxvar,global_auxvar, &
                           material_auxvar,natural_id,string,option)
 
@@ -1141,11 +1208,14 @@ subroutine THAuxDestroy(aux)
   ! Author: ???
   ! Date: 02/14/08
   !
+  use Utility_module, only : DeallocateArray
 
   implicit none
 
   type(TH_type), pointer :: aux
   PetscInt :: iaux
+
+  call DeallocateArray(th_min_pert)
 
   if (.not.associated(aux)) return
 
