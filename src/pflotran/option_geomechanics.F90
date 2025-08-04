@@ -19,6 +19,7 @@ module Option_Geomechanics_module
     PetscReal :: gravity(3)
     PetscInt :: split_scheme
     PetscBool :: improve_tet_weighting
+    PetscBool :: update_props_with_tot_strain
 
   end type geomechanics_option_type
 
@@ -102,6 +103,7 @@ subroutine OptionGeomechanicsInitRealization(option)
   option%gravity(:) = 0.d0
   option%gravity(3) = -1.d0*EARTH_GRAVITY    ! m/s^2
   option%improve_tet_weighting = PETSC_FALSE
+  option%update_props_with_tot_strain = PETSC_FALSE
 
 end subroutine OptionGeomechanicsInitRealization
 

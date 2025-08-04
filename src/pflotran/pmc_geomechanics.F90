@@ -350,6 +350,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
   PetscScalar, pointer :: perm0_p(:)
   PetscScalar, pointer :: perm_p(:)
   PetscScalar, pointer :: strain_p(:)
+  PetscScalar, pointer :: strain_total_p(:)
   PetscScalar, pointer :: stress_p(:)
   PetscScalar, pointer :: press_p(:)
   PetscReal, pointer :: vec_ptr(:)
@@ -416,6 +417,17 @@ subroutine PMCGeomechanicsSetAuxData(this)
                            pmc%sim_aux%subsurf_strain,ADD_VALUES, &
                            SCATTER_FORWARD,ierr);CHKERRQ(ierr)
 
+       ! Save strain_total dataset in sim_aux%subsurf_strain_total
+        call VecSet(pmc%sim_aux%subsurf_strain_total,0.d0,ierr);CHKERRQ(ierr)
+        call VecScatterBegin(pmc%sim_aux%geomechanics_to_subsurf, &
+                             pmc%geomech_realization%geomech_field%strain_total, &
+                             pmc%sim_aux%subsurf_strain_total,ADD_VALUES, &
+                             SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+        call VecScatterEnd(pmc%sim_aux%geomechanics_to_subsurf, &
+                           pmc%geomech_realization%geomech_field%strain_total, &
+                           pmc%sim_aux%subsurf_strain_total,ADD_VALUES, &
+                           SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+
 #if GEOMECH_DEBUG
   call PetscViewerASCIIOpen(this%option%mycomm, &
                             'subsurf_strain_vector_before_averaging.out', &
@@ -470,6 +482,8 @@ subroutine PMCGeomechanicsSetAuxData(this)
 
         ! Strain
         call VecGetArrayF90(pmc%sim_aux%subsurf_strain,strain_p, &
+                            ierr);CHKERRQ(ierr)
+        call VecGetArrayF90(pmc%sim_aux%subsurf_strain_total,strain_total_p, &
                             ierr);CHKERRQ(ierr)
         ! Stress
         call VecGetArrayF90(pmc%sim_aux%subsurf_stress,stress_p, &
@@ -555,7 +569,11 @@ subroutine PMCGeomechanicsSetAuxData(this)
           do local_id = 1, grid%nlmax
             do i = 1, SIX_INTEGER
               local_stress(i) = stress_p((local_id - 1)*SIX_INTEGER + i)
-              local_strain(i) = strain_p((local_id - 1)*SIX_INTEGER + i)
+              if (this%option%geomechanics%update_props_with_tot_strain) then
+                local_strain(i) = strain_total_p((local_id - 1)*SIX_INTEGER + i)
+              else
+                local_strain(i) = strain_p((local_id - 1)*SIX_INTEGER + i)
+              endif
             enddo
               local_pressure = press_p(local_id)
             ! Update porosity based on stress/strain
@@ -590,6 +608,8 @@ subroutine PMCGeomechanicsSetAuxData(this)
         call VecRestoreArrayF90(pmc%sim_aux%subsurf_stress,stress_p, &
                                 ierr);CHKERRQ(ierr)
         call VecRestoreArrayF90(pmc%sim_aux%subsurf_strain,strain_p, &
+                                ierr);CHKERRQ(ierr)
+        call VecRestoreArrayF90(pmc%sim_aux%subsurf_strain_total,strain_total_p, &
                                 ierr);CHKERRQ(ierr)
 
         call VecDestroy(geomech_vec,ierr);CHKERRQ(ierr)

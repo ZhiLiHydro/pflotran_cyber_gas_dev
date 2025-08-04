@@ -21,6 +21,7 @@ module Simulation_Aux_module
     Vec :: subsurf_por0
     Vec :: subsurf_por
     Vec :: subsurf_strain
+    Vec :: subsurf_strain_total
     Vec :: subsurf_stress
     Vec :: subsurf_perm0
     Vec :: subsurf_perm
@@ -65,6 +66,7 @@ function SimAuxCreate()
   aux%subsurf_perm0 = PETSC_NULL_VEC
   aux%subsurf_perm = PETSC_NULL_VEC
   aux%subsurf_strain = PETSC_NULL_VEC
+  aux%subsurf_strain_total = PETSC_NULL_VEC
   aux%subsurf_stress = PETSC_NULL_VEC
 
   aux%subsurf_to_geomechanics = PETSC_NULL_VECSCATTER
@@ -150,6 +152,8 @@ subroutine SimAuxCopySubsurfGeomechVec(aux, subsurf_geomech_vec)
                     ierr);CHKERRQ(ierr)
   call VecDuplicate(subsurf_geomech_vec,aux%subsurf_strain, &
                     ierr);CHKERRQ(ierr)
+  call VecDuplicate(subsurf_geomech_vec,aux%subsurf_strain_total, &
+                    ierr);CHKERRQ(ierr)
 
 end subroutine SimAuxCopySubsurfGeomechVec
 
@@ -197,6 +201,9 @@ subroutine SimAuxDestroy(aux)
   endif
   if (aux%subsurf_strain /= PETSC_NULL_VEC) then
     call VecDestroy(aux%subsurf_strain,ierr);CHKERRQ(ierr)
+  endif
+  if (aux%subsurf_strain_total /= PETSC_NULL_VEC) then
+    call VecDestroy(aux%subsurf_strain_total,ierr);CHKERRQ(ierr)
   endif
 
   if (aux%subsurf_to_geomechanics /= PETSC_NULL_VECSCATTER) then

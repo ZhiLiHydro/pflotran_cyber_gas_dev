@@ -638,6 +638,42 @@ subroutine GeomechPatchGetDataset(patch,geomech_field,option,output_option, &
         vec_ptr(local_id) = &
           geom_gl_auxvars(grid%nL2G(local_id))%strain(6)
       enddo
+    case(STRAIN_TOTAL_XX)
+      do local_id=1,grid%nlmax_node
+        vec_ptr(local_id) = &
+          patch%geomech_aux%GeomechGlobal%aux_vars(&
+            grid%nL2G(local_id))%strain_total(1)
+      enddo
+    case(STRAIN_TOTAL_YY)
+      do local_id=1,grid%nlmax_node
+        vec_ptr(local_id) = &
+          patch%geomech_aux%GeomechGlobal%aux_vars(&
+            grid%nL2G(local_id))%strain_total(2)
+      enddo
+    case(STRAIN_TOTAL_ZZ)
+      do local_id=1,grid%nlmax_node
+        vec_ptr(local_id) = &
+          patch%geomech_aux%GeomechGlobal%aux_vars(&
+            grid%nL2G(local_id))%strain_total(3)
+      enddo
+    case(STRAIN_TOTAL_XY)
+      do local_id=1,grid%nlmax_node
+        vec_ptr(local_id) = &
+          patch%geomech_aux%GeomechGlobal%aux_vars(&
+            grid%nL2G(local_id))%strain_total(4)
+      enddo
+    case(STRAIN_TOTAL_YZ)
+      do local_id=1,grid%nlmax_node
+        vec_ptr(local_id) = &
+          patch%geomech_aux%GeomechGlobal%aux_vars(&
+            grid%nL2G(local_id))%strain_total(5)
+      enddo
+    case(STRAIN_TOTAL_ZX)
+      do local_id=1,grid%nlmax_node
+        vec_ptr(local_id) = &
+          patch%geomech_aux%GeomechGlobal%aux_vars(&
+            grid%nL2G(local_id))%strain_total(6)
+      enddo
     case(STRESS_XX)
       do local_id=1,grid%nlmax_node
         vec_ptr(local_id) = &

@@ -341,6 +341,10 @@ subroutine InitSubsurfGeomechReadInput(geomech,geomech_solver, &
         option%geomechanics%improve_tet_weighting = PETSC_TRUE
 
       !.........................................................................
+      case ('GEOMECHANICS_UPDATE_PROPS_WITH_TOT_STRAIN')
+        option%geomechanics%update_props_with_tot_strain = PETSC_TRUE
+
+      !.........................................................................
       case ('END_GEOMECHANICS')
         exit
 

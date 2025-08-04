@@ -24,6 +24,8 @@ module Geomechanics_Field_module
     Vec :: imech_loc
     Vec :: strain
     Vec :: strain_loc
+    Vec :: strain_total
+    Vec :: strain_total_loc
     Vec :: stress
     Vec :: stress_loc
     Vec :: stress_total
@@ -89,6 +91,8 @@ function GeomechFieldCreate()
 
   geomech_field%strain = PETSC_NULL_VEC
   geomech_field%strain_loc = PETSC_NULL_VEC
+  geomech_field%strain_total = PETSC_NULL_VEC
+  geomech_field%strain_total_loc = PETSC_NULL_VEC
   geomech_field%stress = PETSC_NULL_VEC
   geomech_field%stress_loc = PETSC_NULL_VEC
   geomech_field%stress_total = PETSC_NULL_VEC
@@ -180,6 +184,12 @@ subroutine GeomechFieldDestroy(geomech_field)
   endif
   if (geomech_field%strain_loc /= PETSC_NULL_VEC) then
     call VecDestroy(geomech_field%strain_loc,ierr);CHKERRQ(ierr)
+  endif
+  if (geomech_field%strain_total /= PETSC_NULL_VEC) then
+    call VecDestroy(geomech_field%strain_total,ierr);CHKERRQ(ierr)
+  endif
+  if (geomech_field%strain_total_loc /= PETSC_NULL_VEC) then
+    call VecDestroy(geomech_field%strain_total_loc,ierr);CHKERRQ(ierr)
   endif
   if (geomech_field%stress /= PETSC_NULL_VEC) then
     call VecDestroy(geomech_field%stress,ierr);CHKERRQ(ierr)

@@ -318,6 +318,10 @@ subroutine GeomechRealizCreateDiscretization(geomech_realization)
 
   call GeomechDiscretizationDuplicateVector(geomech_discretization, &
                                             geomech_field%strain_loc, &
+                                            geomech_field%strain_total_loc)
+
+  call GeomechDiscretizationDuplicateVector(geomech_discretization, &
+                                            geomech_field%strain_loc, &
                                             geomech_field%stress_loc)
 
   call GeomechDiscretizationDuplicateVector(geomech_discretization, &
@@ -329,6 +333,10 @@ subroutine GeomechRealizCreateDiscretization(geomech_realization)
                                          GLOBAL,option)
 
   call VecSet(geomech_field%strain,0.d0,ierr);CHKERRQ(ierr)
+
+  call GeomechDiscretizationDuplicateVector(geomech_discretization, &
+                                            geomech_field%strain, &
+                                            geomech_field%strain_total)
 
   call GeomechDiscretizationDuplicateVector(geomech_discretization, &
                                             geomech_field%strain, &
