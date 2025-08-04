@@ -490,7 +490,7 @@ subroutine THComputeMassBalance(realization, mass_balance)
     ! mass = volume*saturation*density
 
     mass_balance = mass_balance + &
-      global_auxvars(ghosted_id)%den_kg* &
+      TH_auxvars(ghosted_id)%den_kg* &
       global_auxvars(ghosted_id)%sat* &
       material_auxvars(ghosted_id)%porosity* &
       material_auxvars(ghosted_id)%volume
@@ -5464,7 +5464,7 @@ subroutine THResidualToMass(realization)
     istart = (ghosted_id-1)*option%nflowdof+1
     mass_balance_p(istart) = mass_balance_p(istart)/ &
                               auxvars(ghosted_id)%den* &
-                              global_auxvars(ghosted_id)%den_kg(1)
+                              auxvars(ghosted_id)%den_kg
   enddo
 
   call VecRestoreArrayF90(field%flow_ts_mass_balance,mass_balance_p, &
@@ -5878,8 +5878,8 @@ subroutine THMapBCAuxVarsToGlobal(realization)
         th_auxvars_bc(sum_connection)%pres
 !      global_auxvars_bc(sum_connection)%sat = &
 !        th_auxvars_bc(sum_connection)%sat
-!      global_auxvars_bc(sum_connection)%den_kg = &
-!        th_auxvars_bc(sum_connection)%den_kg
+      global_auxvars_bc(sum_connection)%den_kg = &
+        th_auxvars_bc(sum_connection)%den_kg
       global_auxvars_bc(sum_connection)%den = &
         th_auxvars_bc(sum_connection)%den
       global_auxvars_bc(sum_connection)%temp = &

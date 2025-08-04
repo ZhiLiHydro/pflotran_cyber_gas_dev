@@ -6486,7 +6486,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
           case(LIQUID_DENSITY)
             do local_id=1,grid%nlmax
               vec_ptr(local_id) = &
-                patch%aux%Global%auxvars(grid%nL2G(local_id))%den_kg(1)
+                patch%aux%TH%auxvars(grid%nL2G(local_id))%den_kg
             enddo
           case(GAS_MOLE_FRACTION,GAS_ENERGY,GAS_DENSITY,GAS_VISCOSITY)
             call PatchUnsupportedVariable('TH','for gas phase',option)
@@ -8518,7 +8518,7 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
           case(LIQUID_SATURATION)
             value = patch%aux%Global%auxvars(ghosted_id)%sat(1)
           case(LIQUID_DENSITY)
-            value = patch%aux%Global%auxvars(ghosted_id)%den_kg(1)
+            value = patch%aux%TH%auxvars(ghosted_id)%den_kg
           case(LIQUID_VISCOSITY)
             value = patch%aux%TH%auxvars(ghosted_id)%vis
           case(LIQUID_MOBILITY)
@@ -9813,7 +9813,7 @@ subroutine PatchSetVariable(patch,field,option,vec,vec_format,ivar,isubvar)
           case(LIQUID_DENSITY)
             if (vec_format == GLOBAL) then
               do local_id=1,grid%nlmax
-                patch%aux%Global%auxvars(grid%nL2G(local_id))%den_kg = &
+                patch%aux%TH%auxvars(grid%nL2G(local_id))%den_kg = &
                   vec_ptr(local_id)
               enddo
             else if (vec_format == LOCAL) then
