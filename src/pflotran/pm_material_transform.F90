@@ -470,7 +470,7 @@ subroutine PMMaterialTransformInitializeTS(this)
   class(pm_material_transform_type) :: this
   ! --------------------------------
 
-  
+
   select case(this%option%iflowmode)
     case(TH_MODE)
       call GlobalWeightAuxVars(this%realization,1.d0)
