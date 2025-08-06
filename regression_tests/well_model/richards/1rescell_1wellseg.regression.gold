@@ -5,20 +5,20 @@
 -- DISCRETE: Material ID --
         1:        99
 -- PRESSURE: Well Liq. Pressure --
-        1:  -9.9900000000000E+02
+        1:   8.5057499322152E+06
 -- PRESSURE: Well Gas Pressure --
         1:  -9.9900000000000E+02
 -- RATE: Well Liq. Q --
-        1:  -9.9900000000000E+02
+        1:  -1.0000000000000E+00
 -- RATE: Well Gas Q --
         1:  -9.9900000000000E+02
 -- PRESSURE: Well BHP --
-        1:  -9.9900000000000E+02
+        1:   8.5155599322152E+06
 -- SOLUTION: Flow --
-   Time (seconds):   2.6213990004180E-03
+   Time (seconds):   2.9894019999119E-03
    Time Steps:           10
    Newton Iterations:           18
    Linear Solver Iterations:           36
    Time Step Cuts:            0
-   Solution 2-Norm:   1.1510840061457E+07
+   Solution 2-Norm:   1.1518090899546E+07
    Residual 2-Norm:   1.5700924586838E-15
