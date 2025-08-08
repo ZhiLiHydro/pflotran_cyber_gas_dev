@@ -4283,7 +4283,9 @@ subroutine THResidualSourceSink(r,realization,ierr)
                         material_auxvars(ghosted_id), &
                         source_sink%flow_aux_real_var(:,iconn), &
                         source_sink%flow_condition%rate%aux_real(:), &
-                        Res_src,Jdummy,PETSC_FALSE,option)
+                        Res_src,Jdummy, &
+                        qsrc_kmol, &
+                        PETSC_FALSE,option)
 
 #if 0
       qsrc1 = 0.d0
@@ -5111,7 +5113,8 @@ subroutine THJacobianSourceSink(A,realization,ierr)
   PetscReal :: threshold_pressure, pressure_span, min_pressure, max_pressure
   PetscReal :: volume_scale, smoothstep_scale
   PetscBool :: inhibit_flow_above_pressure
-  PetscReal :: derivative ! rename to dsss_dp smooth step scale
+  PetscReal :: derivative
+  PetscReal :: dummy_real
   PetscReal, pointer :: flow_array(:)
   PetscReal, pointer :: energy_array(:)
 
@@ -5170,7 +5173,9 @@ subroutine THJacobianSourceSink(A,realization,ierr)
                         material_auxvars(ghosted_id), &
                         source_sink%flow_aux_real_var(:,iconn), &
                         source_sink%flow_condition%rate%aux_real(:), &
-                        Rdummy,Jsrc,PETSC_TRUE,option)
+                        Rdummy,Jsrc, &
+                        dummy_real, &
+                        PETSC_TRUE,option)
 
 #if 0
       select case (source_sink%flow_condition%rate%itype)
@@ -5292,7 +5297,7 @@ end subroutine THJacobianSourceSink
 subroutine THSourceSink(itype,iratetype,flow_array,energy_array, &
                         th_auxvar,th_auxvar_ss,material_auxvar, &
                         flow_aux_real_var,rate_aux_real, &
-                        Res,J,calculate_derivatives,option)
+                        Res,J,qsrc_kmol,calculate_derivatives,option)
   !
   ! Computes the jacobian contribution from source sink
   !
@@ -5315,10 +5320,10 @@ subroutine THSourceSink(itype,iratetype,flow_array,energy_array, &
   PetscReal :: rate_aux_real(:)
   PetscReal :: Res(option%nflowdof)
   PetscReal :: J(option%nflowdof,option%nflowdof)
+  PetscReal :: qsrc_kmol
   PetscBool :: calculate_derivatives
 
   PetscReal :: qsrc0
-  PetscReal :: qsrc_kmol
   PetscReal :: esrc
   PetscReal :: threshold_pressure
   PetscReal :: pressure_span
@@ -5337,6 +5342,7 @@ subroutine THSourceSink(itype,iratetype,flow_array,energy_array, &
   PetscReal :: pressure_min
   PetscReal :: Dq, dphi, ukvr, v_darcy
 
+  qsrc_kmol = 0.d0
   qsrc0 = flow_array(1)
   smoothstep_scale = 1.d0
   dsmoothstep_dp = 0.d0
