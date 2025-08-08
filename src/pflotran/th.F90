@@ -4200,6 +4200,7 @@ subroutine THResidualSourceSink(r,realization,ierr)
   PetscReal :: qsrc1, esrc1, qsrc_kmol
 
   PetscReal :: Res_src(realization%option%nflowdof)
+  PetscReal :: Jdummy(realization%option%nflowdof,realization%option%nflowdof)
 
   type(grid_type), pointer :: grid
   type(patch_type), pointer :: patch
@@ -4226,6 +4227,8 @@ subroutine THResidualSourceSink(r,realization,ierr)
   PetscReal :: volume_scale, smoothstep_scale
   PetscBool :: inhibit_flow_above_pressure
   PetscReal :: dummy
+  PetscReal, pointer :: flow_array(:)
+  PetscReal, pointer :: energy_array(:)
 
   PetscInt :: iconn, istart, iend
   PetscInt :: sum_connection
@@ -4259,6 +4262,12 @@ subroutine THResidualSourceSink(r,realization,ierr)
 
     cur_connection_set => source_sink%connection_set
 
+    flow_array => source_sink%flow_condition%rate%dataset%rarray
+    nullify(energy_array)
+    if (associated(source_sink%flow_condition%energy_rate)) then
+      energy_array => source_sink%flow_condition%energy_rate%dataset%rarray
+    endif
+
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
       local_id = cur_connection_set%id_dn(iconn)
@@ -4267,6 +4276,16 @@ subroutine THResidualSourceSink(r,realization,ierr)
       ghosted_id = grid%nL2G(local_id)
       if (patch%imat(ghosted_id) <= 0) cycle
 
+      call THSourceSink(source_sink%flow_condition%itype, &
+                        source_sink%flow_condition%rate%itype, &
+                        flow_array,energy_array, &
+                        th_auxvars(ghosted_id),th_auxvars_ss(iconn), &
+                        material_auxvars(ghosted_id), &
+                        source_sink%flow_aux_real_var(:,iconn), &
+                        source_sink%flow_condition%rate%aux_real(:), &
+                        Res_src,Jdummy,PETSC_FALSE,option)
+
+#if 0
       qsrc1 = 0.d0
       if (source_sink%flow_condition%rate%itype /= HET_MASS_RATE_SS .and. &
         source_sink%flow_condition%itype(1) /= WELL_SS) &
@@ -4379,7 +4398,7 @@ subroutine THResidualSourceSink(r,realization,ierr)
         Res_src(TH_TEMPERATURE_DOF) = Res_src(TH_TEMPERATURE_DOF) + &
           qsrc_kmol*th_auxvars(ghosted_id)%h
       endif
-
+#endif
       r_p(istart:iend) = r_p(istart:iend) - Res_src
 
       if (option%compute_mass_balance_new) then
@@ -4424,137 +4443,6 @@ subroutine THResidualSourceSink(r,realization,ierr)
 
 end subroutine THResidualSourceSink
 
-! ************************************************************************** !
-#if 0
-subroutine THSourceSink()
-  !
-  ! Calculate source/sink term for single grid cell
-  ! Author: Glenn Hammond
-  ! Date: 08/04/25
-
-  use Debug_module
-  use Utility_module, only : Smoothstep
-
-  implicit none
-
-      qsrc1 = 0.d0
-      if (source_sink%flow_condition%rate%itype /= HET_MASS_RATE_SS .and. &
-        source_sink%flow_condition%itype(1) /= WELL_SS) &
-        qsrc1 = source_sink%flow_condition%rate%dataset%rarray(1)
-
-      (itype(:),qsrc1,flow_aux_real_var(:),rate_aux_real(:),global_auxvar)
-
-      Res_src = 0.d0
-      select case (source_sink%flow_condition%rate%itype)
-        case(MASS_RATE_SS)
-          qsrc_kmol = qsrc1 / FMWH2O ! [kg/s -> kmol/s; fmw -> g/mol = kg/kmol]
-        case(SCALED_MASS_RATE_SS)
-          qsrc_kmol = qsrc1 / FMWH2O * &
-                      ! [kg/s -> kmol/s; fmw -> g/mol = kg/kmol]
-                      flow_aux_real_var(ONE_INTEGER)
-        case(VOLUMETRIC_RATE_SS)  ! assume local density for now
-          ! qsrc1 = m^3/sec
-          qsrc_kmol = qsrc1*th_auxvars%den ! den = kmol/m^3
-        case(SCALED_VOLUMETRIC_RATE_SS)  ! assume local density for now
-          ! qsrc1 = m^3/sec
-          qsrc_kmol = qsrc1*th_auxvars%den* & ! den = kmol/m^3
-                      flow_aux_real_var(ONE_INTEGER)
-        case(HET_MASS_RATE_SS)
-          qsrc_kmol = flow_aux_real_var(ONE_INTEGER)/FMWH2O
-        case(PRES_REG_MASS_RATE_SS)
-          threshold_pressure = rate_aux_real(1)
-          inhibit_flow_above_pressure = (threshold_pressure > 0)
-          threshold_pressure = dabs(threshold_pressure)
-          pressure_span = rate_aux_real(2)
-          if (inhibit_flow_above_pressure) then
-            min_pressure = threshold_pressure-pressure_span
-            max_pressure = threshold_pressure
-          else
-            min_pressure = threshold_pressure
-            max_pressure = threshold_pressure+pressure_span
-          endif
-          volume_scale = flow_aux_real_var(ONE_INTEGER)
-          call Smoothstep(th_auxvars(ghosted_id)%pres, &
-                          min_pressure,max_pressure, &
-                          smoothstep_scale,dummy)
-          if (inhibit_flow_above_pressure) then
-            smoothstep_scale = 1.d0-smoothstep_scale
-          endif
-          !
-          qsrc_kmol = qsrc1/FMWH2O*volume_scale*smoothstep_scale
-        case(WELL_SS) ! production well, Karra 11/10/2015
-          ! if node pessure is lower than the given extraction pressure,
-          ! shut it down
-          !  well parameter explanation
-          !   1. well status. 1 injection; -1 production; 0 shut in!
-          !   2. well factor [m^3],  the effective permeability [m^2/s]
-          !   3. bottomhole pressure:  [Pa]
-          !   4. max pressure: [Pa]
-          !   5. min pressure: [Pa]
-          mmsrc => source_sink%flow_condition%well%dataset%rarray
-
-          well_status = mmsrc(1)
-          well_factor = mmsrc(2)
-          pressure_bh = mmsrc(3)
-          pressure_max = mmsrc(4)
-          pressure_min = mmsrc(5)
-
-          ! production well (well status = -1)
-          if (dabs(well_status + 1.d0) < 1.d-1) then
-            if (th_auxvars%pres > pressure_min) then
-              Dq = well_factor
-              dphi = th_auxvars%pres - pressure_bh
-              if (dphi >= 0.d0) then ! outflow only
-                ukvr = th_auxvars%mobility
-                if (ukvr < 1.d-20) ukvr = 0.d0
-                v_darcy = 0.d0
-                if (ukvr*Dq > floweps) then
-                  v_darcy = Dq * ukvr * dphi
-                  ! store volumetric rate for ss_fluid_fluxes()
-                  qsrc_kmol = -1.d0*v_darcy*th_auxvars%den
-                endif
-              endif
-            endif
-          endif
-
-        case default
-          write(string,*) rate_itype
-          option%io_buffer = &
-            'TH mode rate_itype = ' // &
-            trim(adjustl(string)) // ', not implemented.'
-      end select
-
-      esrc1 = 0.d0
-      ! the unit of *_RATE_SS are J/s
-      select case(itype(TH_TEMPERATURE_DOF))
-        case (ENERGY_RATE_SS)
-          esrc1 = source_sink%flow_condition%energy_rate%dataset%rarray(1)
-        case (SCALED_ENERGY_RATE_SS)
-          esrc1 = source_sink%flow_condition%energy_rate%dataset%rarray(1) * &
-                  source_sink%flow_aux_real_var(ONE_INTEGER,iconn)
-        case (HET_ENERGY_RATE_SS)
-          esrc1 = source_sink%flow_aux_real_var(TWO_INTEGER,iconn)
-      end select
-      ! convert J/s --> MJ/s
-      !geh: default internal energy units are MJ (option%scale = 1.d-6 is for
-      !     J->MJ)
-      Res_src(TH_TEMPERATURE_DOF) = esrc1*1.d6*option%scale
-
-      ! Update residual term associated with T
-      if (qsrc_kmol > 0.d0) then ! injection
-        Res_src(TH_TEMPERATURE_DOF) = Res_src(TH_TEMPERATURE_DOF) + &
-          qsrc_kmol*th_auxvars_ss(sum_connection)%h
-      else
-        ! extraction
-        Res_src(TH_TEMPERATURE_DOF) = Res_src(TH_TEMPERATURE_DOF) + &
-          qsrc_kmol*th_auxvars(ghosted_id)%h
-      endif
-
-
-
-
-end subroutine THSourceSink
-#endif
 ! ************************************************************************** !
 
 subroutine THJacobian(snes,xx,A,B,realization,ierr)
@@ -5199,6 +5087,7 @@ subroutine THJacobianSourceSink(A,realization,ierr)
   PetscReal :: qsrc1, qsrc_kmol
   PetscInt :: local_id, ghosted_id
   PetscReal :: Jsrc(realization%option%nflowdof,realization%option%nflowdof)
+  PetscReal :: Rdummy(realization%option%nflowdof)
 
   PetscInt :: istart
 
@@ -5223,6 +5112,8 @@ subroutine THJacobianSourceSink(A,realization,ierr)
   PetscReal :: volume_scale, smoothstep_scale
   PetscBool :: inhibit_flow_above_pressure
   PetscReal :: derivative ! rename to dsss_dp smooth step scale
+  PetscReal, pointer :: flow_array(:)
+  PetscReal, pointer :: energy_array(:)
 
   patch => realization%patch
   grid => patch%grid
@@ -5247,9 +5138,17 @@ subroutine THJacobianSourceSink(A,realization,ierr)
     smoothstep_scale = 1.d0
     derivative = 0.d0
 
+#if 0
     if (source_sink%flow_condition%rate%itype /= HET_MASS_RATE_SS .and. &
       source_sink%flow_condition%itype(1) /= WELL_SS) &
       qsrc1 = source_sink%flow_condition%rate%dataset%rarray(1)
+#endif
+
+    flow_array => source_sink%flow_condition%rate%dataset%rarray
+    nullify(energy_array)
+    if (associated(source_sink%flow_condition%energy_rate)) then
+      energy_array => source_sink%flow_condition%energy_rate%dataset%rarray
+    endif
 
     do iconn = 1, cur_connection_set%num_connections
 
@@ -5259,10 +5158,21 @@ subroutine THJacobianSourceSink(A,realization,ierr)
 
       if (patch%imat(ghosted_id) <= 0) cycle
 
+
       if (source_sink%flow_condition%rate%itype /= HET_MASS_RATE_SS .and. &
         source_sink%flow_condition%itype(1) /= WELL_SS) &
         qsrc1 = source_sink%flow_condition%rate%dataset%rarray(1)
 
+      call THSourceSink(source_sink%flow_condition%itype, &
+                        source_sink%flow_condition%rate%itype, &
+                        flow_array,energy_array, &
+                        th_auxvars(ghosted_id),th_auxvars_ss(iconn), &
+                        material_auxvars(ghosted_id), &
+                        source_sink%flow_aux_real_var(:,iconn), &
+                        source_sink%flow_condition%rate%aux_real(:), &
+                        Rdummy,Jsrc,PETSC_TRUE,option)
+
+#if 0
       select case (source_sink%flow_condition%rate%itype)
         case(MASS_RATE_SS)
           qsrc_kmol = qsrc1 / FMWH2O ! [kg/s -> kmol/s; fmw -> g/mol = kg/kmol]
@@ -5332,6 +5242,7 @@ subroutine THJacobianSourceSink(A,realization,ierr)
 
       ! scale by the volume of the cell
       Jsrc = Jsrc/material_auxvars(ghosted_id)%volume
+#endif
 
       call MatSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jsrc, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
@@ -5375,6 +5286,192 @@ subroutine THJacobianSourceSink(A,realization,ierr)
 #endif
 
 end subroutine THJacobianSourceSink
+
+! ************************************************************************** !
+
+subroutine THSourceSink(itype,iratetype,flow_array,energy_array, &
+                        th_auxvar,th_auxvar_ss,material_auxvar, &
+                        flow_aux_real_var,rate_aux_real, &
+                        Res,J,calculate_derivatives,option)
+  !
+  ! Computes the jacobian contribution from source sink
+  !
+  ! Author: Glenn Hammond
+  ! Date: 08/08/25
+
+  use Option_module
+  use String_module
+  use Utility_module, only : Smoothstep
+
+  type(option_type) :: option
+  PetscInt :: itype(:)
+  PetscInt :: iratetype
+  PetscReal :: flow_array(:)
+  PetscReal :: energy_array(:)
+  type(th_auxvar_type) :: th_auxvar
+  type(th_auxvar_type) :: th_auxvar_ss
+  type(material_auxvar_type) :: material_auxvar
+  PetscReal :: flow_aux_real_var(:)
+  PetscReal :: rate_aux_real(:)
+  PetscReal :: Res(option%nflowdof)
+  PetscReal :: J(option%nflowdof,option%nflowdof)
+  PetscBool :: calculate_derivatives
+
+  PetscReal :: qsrc0
+  PetscReal :: qsrc_kmol
+  PetscReal :: esrc
+  PetscReal :: threshold_pressure
+  PetscReal :: pressure_span
+  PetscBool :: inhibit_flow_above_pressure
+  PetscReal :: max_pressure
+  PetscReal :: min_pressure
+  PetscReal :: smoothstep_scale
+  PetscReal :: dsmoothstep_dp
+  PetscReal :: dqsrc_kmol_dsmoothstep
+  PetscReal :: volume_scale
+
+  PetscReal :: well_status
+  PetscReal :: well_factor
+  PetscReal :: pressure_bh
+  PetscReal :: pressure_max
+  PetscReal :: pressure_min
+  PetscReal :: Dq, dphi, ukvr, v_darcy
+
+  qsrc0 = flow_array(1)
+  smoothstep_scale = 1.d0
+  dsmoothstep_dp = 0.d0
+  dqsrc_kmol_dsmoothstep = 0.d0
+
+  select case (iratetype)
+    case(MASS_RATE_SS)
+      qsrc_kmol = qsrc0 / FMWH2O ! [kg/s -> kmol/s; fmw -> g/mol = kg/kmol]
+    case(SCALED_MASS_RATE_SS)
+      qsrc_kmol = qsrc0 / FMWH2O * &
+            ! [kg/s -> kmol/s; fmw -> g/mol = kg/kmol]
+        flow_aux_real_var(ONE_INTEGER)
+    case(VOLUMETRIC_RATE_SS)  ! assume local density for now
+      ! qsrc = m^3/sec
+      qsrc_kmol = qsrc0*th_auxvar%den ! den = kmol/m^3
+    case(SCALED_VOLUMETRIC_RATE_SS)  ! assume local density for now
+      ! qsrc = m^3/sec
+      qsrc_kmol = qsrc0*th_auxvar%den* & ! den = kmol/m^3
+                  flow_aux_real_var(ONE_INTEGER)
+    case(HET_MASS_RATE_SS)
+      qsrc_kmol = flow_aux_real_var(ONE_INTEGER)/FMWH2O
+    case(PRES_REG_MASS_RATE_SS)
+      threshold_pressure = rate_aux_real(1)
+      inhibit_flow_above_pressure = (threshold_pressure > 0)
+      threshold_pressure = dabs(threshold_pressure)
+      pressure_span = rate_aux_real(2)
+      if (inhibit_flow_above_pressure) then
+        min_pressure = threshold_pressure-pressure_span
+        max_pressure = threshold_pressure
+      else
+        min_pressure = threshold_pressure
+        max_pressure = threshold_pressure+pressure_span
+      endif
+      volume_scale = flow_aux_real_var(ONE_INTEGER)
+      call Smoothstep(th_auxvar%pres, &
+                      min_pressure,max_pressure, &
+                      smoothstep_scale,dsmoothstep_dp)
+      if (inhibit_flow_above_pressure) then
+        smoothstep_scale = 1.d0-smoothstep_scale
+        dsmoothstep_dp = -1.d0 * dsmoothstep_dp
+      endif
+      dqsrc_kmol_dsmoothstep = qsrc0/FMWH2O*volume_scale
+      qsrc_kmol = dqsrc_kmol_dsmoothstep*smoothstep_scale
+    case(WELL_SS) ! production well, Karra 11/10/2015
+      ! if node pessure is lower than the given extraction pressure,
+      ! shut it down
+      !  well parameter explanation
+      !   1. well status. 1 injection; -1 production; 0 shut in!
+      !   2. well factor [m^3],  the effective permeability [m^2/s]
+      !   3. bottomhole pressure:  [Pa]
+      !   4. max pressure: [Pa]
+      !   5. min pressure: [Pa]
+      well_status = energy_array(1)
+      well_factor = energy_array(2)
+      pressure_bh = energy_array(3)
+      pressure_max = energy_array(4)
+      pressure_min = energy_array(5)
+
+      ! production well (well status = -1)
+      if (dabs(well_status + 1.d0) < 1.d-1) then
+        if (th_auxvar%pres > pressure_min) then
+          Dq = well_factor
+          dphi = th_auxvar%pres - pressure_bh
+          if (dphi >= 0.d0) then ! outflow only
+            ukvr = th_auxvar%mobility
+            if (ukvr < 1.d-20) ukvr = 0.d0
+            v_darcy = 0.d0
+            if (ukvr*Dq > floweps) then
+              v_darcy = Dq * ukvr * dphi
+              ! store volumetric rate for ss_fluid_fluxes()
+              qsrc_kmol = -1.d0*v_darcy*th_auxvar%den
+            endif
+          endif
+        endif
+      endif
+
+    case default
+      call PrintErrMsg(option,'TH mode source/sink '//StringWrite(itype)// &
+                       ' not implemented.')
+  end select
+
+  Res(TH_PRESSURE_DOF) = qsrc_kmol
+
+  esrc = 0.d0
+  ! the unit of *_RATE_SS are J/s
+  select case(itype(2))
+    case (ENERGY_RATE_SS)
+      esrc = energy_array(1)
+    case (SCALED_ENERGY_RATE_SS)
+      esrc = energy_array(1) * flow_aux_real_var(ONE_INTEGER)
+    case (HET_ENERGY_RATE_SS)
+      esrc = flow_aux_real_var(TWO_INTEGER)
+  end select
+  ! convert J/s --> MJ/s
+  !geh: default internal energy units are MJ (option%scale = 1.d-6 is for
+  !     J->MJ)
+  Res(TH_TEMPERATURE_DOF) = esrc*1.d6*option%scale
+
+  ! Update residual term associated with T
+  if (qsrc_kmol > 0.d0) then ! injection
+    Res(TH_TEMPERATURE_DOF) = Res(TH_TEMPERATURE_DOF) + &
+      qsrc_kmol*th_auxvar_ss%h
+  else
+    ! extraction
+    Res(TH_TEMPERATURE_DOF) = Res(TH_TEMPERATURE_DOF) + &
+      qsrc_kmol*th_auxvar%h
+  endif
+
+  if (calculate_derivatives) then
+
+    J = 0.d0
+
+    if (qsrc0 > 0.d0) then ! injection
+      J(TH_PRESSURE_DOF,TH_PRESSURE_DOF) = -dqsrc_kmol_dsmoothstep*dsmoothstep_dp
+      J(TH_TEMPERATURE_DOF,TH_PRESSURE_DOF) = &
+        - qsrc_kmol*(th_auxvar_ss%dh_dp*smoothstep_scale + &
+                      th_auxvar_ss%h*dsmoothstep_dp)
+      ! since tsrc1 is prescribed, there is no derivative
+      ! dresT_dT = -qsrc1*hw_dT
+    else
+      ! extraction
+      J(TH_PRESSURE_DOF,TH_PRESSURE_DOF) = -dqsrc_kmol_dsmoothstep*dsmoothstep_dp
+      J(TH_TEMPERATURE_DOF,TH_PRESSURE_DOF) = &
+        - qsrc_kmol*(th_auxvar%dh_dp*smoothstep_scale + &
+                     th_auxvar%h*dsmoothstep_dp)
+      J(TH_TEMPERATURE_DOF,TH_TEMPERATURE_DOF) = &
+        -qsrc_kmol*th_auxvar%dh_dT*smoothstep_scale
+    endif
+
+    ! scale by the volume of the cell
+    J = J/material_auxvar%volume
+
+  endif
+
+end subroutine THSourceSink
 
 ! ************************************************************************** !
 
