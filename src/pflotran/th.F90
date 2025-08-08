@@ -5341,6 +5341,7 @@ subroutine THSourceSink(itype,iratetype,flow_array,energy_array, &
   PetscReal :: pressure_max
   PetscReal :: pressure_min
   PetscReal :: Dq, dphi, ukvr, v_darcy
+  PetscReal :: dqsrc_dp
 
   qsrc_kmol = 0.d0
   qsrc0 = flow_array(1)
@@ -5451,30 +5452,34 @@ subroutine THSourceSink(itype,iratetype,flow_array,energy_array, &
       qsrc_kmol*th_auxvar%h
   endif
 
+!  if (.not.calculate_derivatives) then
+!    print *, Res
+!  endif
   if (calculate_derivatives) then
 
     J = 0.d0
 
-    if (qsrc0 > 0.d0) then ! injection
-      J(TH_PRESSURE_DOF,TH_PRESSURE_DOF) = -dqsrc_kmol_dsmoothstep*dsmoothstep_dp
+    dqsrc_dp = dqsrc_kmol_dsmoothstep*dsmoothstep_dp
+    if (qsrc_kmol > 0.d0) then ! injection
+      J(TH_PRESSURE_DOF,TH_PRESSURE_DOF) = -dqsrc_dp
       J(TH_TEMPERATURE_DOF,TH_PRESSURE_DOF) = &
-        - qsrc_kmol*(th_auxvar_ss%dh_dp*smoothstep_scale + &
-                      th_auxvar_ss%h*dsmoothstep_dp)
+        - qsrc_kmol*th_auxvar_ss%dh_dp + &
+        - th_auxvar_ss%h*dqsrc_dp
       ! since tsrc1 is prescribed, there is no derivative
       ! dresT_dT = -qsrc1*hw_dT
     else
       ! extraction
-      J(TH_PRESSURE_DOF,TH_PRESSURE_DOF) = -dqsrc_kmol_dsmoothstep*dsmoothstep_dp
+      J(TH_PRESSURE_DOF,TH_PRESSURE_DOF) = -dqsrc_dp
       J(TH_TEMPERATURE_DOF,TH_PRESSURE_DOF) = &
-        - qsrc_kmol*(th_auxvar%dh_dp*smoothstep_scale + &
-                     th_auxvar%h*dsmoothstep_dp)
+        - qsrc_kmol*th_auxvar%dh_dp + &
+        - th_auxvar%h*dqsrc_dp
       J(TH_TEMPERATURE_DOF,TH_TEMPERATURE_DOF) = &
-        -qsrc_kmol*th_auxvar%dh_dT*smoothstep_scale
+        -qsrc_kmol*th_auxvar%dh_dT
     endif
 
     ! scale by the volume of the cell
     J = J/material_auxvar%volume
-
+!print *, J
   endif
 
 end subroutine THSourceSink
