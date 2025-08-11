@@ -134,10 +134,14 @@ module TH_Aux_module
   PetscReal, parameter :: epsilon = 1.d-6
   PetscReal, parameter :: perturbation_tolerance = 1.d-8
 
-  public :: THAuxCreate, THAuxDestroy, &
-            THAuxVarComputeNoFreezing, THAuxVarInit, &
-            THAuxVarCopy, THAuxVarDestroy, &
-            THAuxVarCompute2ndOrderDeriv
+  public :: THAuxCreate, &
+            THAuxDestroy, &
+            THAuxVarComputeNoFreezing, &
+            THAuxVarInit, &
+            THAuxVarCopy, &
+            THAuxVarCompute2ndOrderDeriv, &
+            THAuxVarPerturb, &
+            THAuxVarDestroy
 
   public :: THAuxVarComputeFreezing
 
@@ -1076,7 +1080,7 @@ end subroutine THAuxVarCompute2ndOrderDeriv
 
 ! ************************************************************************** !
 
-subroutine THAuxVarPerturb(x,th_auxvar,global_auxvar, &
+subroutine THAuxVarPerturb(th_auxvar,global_auxvar, &
                            material_auxvar,iphase, &
                            characteristic_curves, &
                            thermal_cc,th_parameter,icct, &
@@ -1101,7 +1105,6 @@ subroutine THAuxVarPerturb(x,th_auxvar,global_auxvar, &
   type(option_type) :: option
   class(characteristic_curves_type) :: characteristic_curves
   class(cc_thermal_type) :: thermal_cc
-  PetscReal :: x(option%nflowdof)
   type(th_auxvar_type) :: th_auxvar
   type(global_auxvar_type) :: global_auxvar
   PetscInt :: iphase
@@ -1112,7 +1115,9 @@ subroutine THAuxVarPerturb(x,th_auxvar,global_auxvar, &
   PetscBool :: update_porosity
 
   PetscInt :: idof
-  PetscReal :: x_pert(2), pert
+  PetscReal :: x(2)
+  PetscReal :: x_pert(2)
+  PetscReal :: pert
 
   if (update_porosity) then
     option%io_buffer = 'Update of porosity not supported for numerical &
@@ -1120,6 +1125,8 @@ subroutine THAuxVarPerturb(x,th_auxvar,global_auxvar, &
     call PrintErrMsg(option)
   endif
 
+  x(TH_PRESSURE_DOF) = th_auxvar%pres
+  x(TH_TEMPERATURE_DOF) = th_auxvar%temp
   do idof = 1, option%nflowdof
     pert = x(idof)*th_rel_pert+th_min_pert(idof)
     th_auxvar%auxvar_pert(idof)%pert = pert
