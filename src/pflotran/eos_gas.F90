@@ -35,6 +35,8 @@ module EOS_Gas_module
   PetscReal :: exponent_reference_pressure
   PetscReal :: exponent_gas_compressibility
 
+
+
   ! Error
   PetscInt, parameter, public :: EOS_GAS_TEMP_BOUND_EXCEEDED = 71
 
@@ -1825,7 +1827,7 @@ subroutine EOSGasHenry_air(T,Psat,Hc,calculate_derivative, &
     ! the critical point
     if ( TK > Tcw .or. TK < 0.0d0 ) then
       Hc = SUPERCRITICAL_HENRY_COEFF
-      print *, "Supercritical or invalid temperature detected. Using pseudo Henry's constant."
+      !print *, "Supercritical or invalid temperature detected. Using pseudo Henry's constant."
       if (calculate_derivative) then
         Hc_P = 0.0
         Hc_T = 0.0

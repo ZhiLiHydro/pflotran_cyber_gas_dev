@@ -2,6 +2,7 @@ module EOS_Water_module
 
 #include "petsc/finclude/petscsys.h"
   use petscsys
+  use iso_c_binding, only: c_char, C_NULL_CHAR
   use PFLOTRAN_Constants_module
   use Geometry_module
   use EOS_Database_module
@@ -51,6 +52,21 @@ module EOS_Water_module
   ! halite saturated brine
   PetscBool :: halite_saturated_brine
 
+  ! CoolProp variables
+  character(LEN=32, KIND=c_char) :: fluid
+  CHARACTER(100) mesgbfr
+  integer(C_long) errcode, bfrlen
+  ! density variables
+  integer(C_long) dens_handle, dens_PT_INPUTS, dens_iP, dens_iT, dens_iDmass
+  ! enthalpy variables
+  integer(C_long) H_handle, H_PT_INPUTS, H_iP, H_iT, H_iH
+  ! viscosity variables
+  integer(C_long) visc_handle, visc_PT_INPUTS, visc_iP, visc_iT, visc_iV
+  ! steam density and enthalpy variables
+  integer(C_long) steam_dens_handle, steam_H_handle, steam_dens_PT_INPUTS, steam_H_PT_INPUTS
+  integer(C_long) steam_dens_iP, steam_H_iP, steam_dens_iT, steam_H_iT, steam_dens_iDmass, steam_H_iH
+
+  
   ! PVT tables - eos_tables
   class(eos_table_type), pointer :: pvt_table => null()
 
@@ -319,6 +335,11 @@ subroutine EOSWaterInit()
   quadratic_wat_compressibility = UNINITIALIZED_DOUBLE
   halite_saturated_brine = PETSC_FALSE
 
+  ! Initialize CoolProp variables
+  errcode = 0
+  bfrlen = 100  ! Length of mesgbfr
+  mesgbfr = ' '  ! Initialize message buffer
+
   ! standard versions
   EOSWaterDensityPtr => EOSWaterDensityIFC67
   EOSWaterEnthalpyPtr => EOSWaterEnthalpyIFC67
@@ -507,7 +528,15 @@ subroutine EOSWaterSetDensity(keyword,aux)
     case('DRIESNER')
       EOSWaterDensityExtPtr => EOSWaterDensityDriesnerExt
     case('COOLPROP')
+      fluid = "Water"//C_NULL_CHAR
       EOSWaterDensityPtr => EOSWaterDensityCoolProp
+      dens_PT_INPUTS = get_input_pair_index(C_CHAR_"PT_INPUTS"//C_NULL_CHAR)
+      dens_iDmass = get_param_index(C_CHAR_"Dmass"//C_NULL_CHAR)
+      dens_iP = get_param_index(C_CHAR_"P"//C_NULL_CHAR)
+      dens_iT = get_param_index(C_CHAR_"T"//C_NULL_CHAR)
+      !dens_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
+      !dens_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,C_CHAR_"Water"//C_NULL_CHAR,errcode,mesgbfr,bfrlen)
+      dens_handle = AbstractState_factory(C_CHAR_"HEOS"//C_NULL_CHAR,C_CHAR_"Water"//C_NULL_CHAR,errcode,mesgbfr,bfrlen)
     case default
       print *, 'Unknown pointer type "' // trim(keyword) // &
         '" in EOSWaterSetDensity().'
@@ -573,7 +602,13 @@ subroutine EOSWaterSetEnthalpy(keyword,aux)
     case('DRIESNER')
       EOSWaterEnthalpyExtPtr => EOSWaterEnthalpyDriesnerExt
     case('COOLPROP')
+      fluid = "Water"//C_NULL_CHAR
       EOSWaterEnthalpyPtr => EOSWaterEnthalpyCoolProp
+      H_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
+      H_PT_INPUTS = get_input_pair_index(C_CHAR_"PT_INPUTS"//C_NULL_CHAR)
+      H_iP = get_param_index(C_CHAR_"P"//C_NULL_CHAR)
+      H_iT = get_param_index(C_CHAR_"T"//C_NULL_CHAR)
+      H_iH = get_param_index(C_CHAR_"H"//C_NULL_CHAR)
     case default
       print *, 'Unknown pointer type "' // trim(keyword) // &
         '" in EOSWaterSetEnthalpy().'
@@ -607,7 +642,13 @@ subroutine EOSWaterSetViscosity(keyword,aux)
     case('GRABOWSKI')
       EOSWaterViscosityPtr => EOSWaterViscosityGrabowski
     case('COOLPROP')
+      fluid = "Water"//C_NULL_CHAR
       EOSWaterViscosityPtr => EOSWaterViscosityCoolProp
+      visc_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
+      visc_PT_INPUTS = get_input_pair_index(C_CHAR_"PT_INPUTS"//C_NULL_CHAR)
+      visc_iP = get_param_index(C_CHAR_"P"//C_NULL_CHAR)
+      visc_iT = get_param_index(C_CHAR_"T"//C_NULL_CHAR)
+      visc_iV = get_param_index(C_CHAR_"V"//C_NULL_CHAR)
     case default
       print *, 'Unknown pointer type "' // trim(keyword) // &
         '" in EOSWaterSetViscosity().'
@@ -638,8 +679,6 @@ subroutine EOSWaterSetSaturationPressure(keyword,aux)
       EOSWaterSaturationPressureExtPtr => EOSWaterSatPressSparrowExt
     case('HUANG-ICE','ICE')
       EOSWaterSaturationPressurePtr => EOSWaterSaturationPressureIce
-    case('COOLPROP')
-      EOSWaterSaturationPressurePtr => EOSWaterSatPresCoolProp
     case default
       print *, 'Unknown pointer type "' // trim(keyword) // &
         '" in EOSWaterSetSaturationPressure().'
@@ -669,7 +708,13 @@ subroutine EOSWaterSetSteamDensity(keyword,aux)
     case('IF97')
       EOSWaterSteamDensityEnthalpyPtr => EOSWaterSteamDensityEnthalpyIF97
     case('COOLPROP')
+      fluid = "Water"//C_NULL_CHAR
       EOSWaterSteamDensityEnthalpyPtr => EOSWaterSteamDensityEnthalpyCoolProp
+      steam_dens_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
+      steam_dens_PT_INPUTS = get_input_pair_index(C_CHAR_"PT_INPUTS"//C_NULL_CHAR)
+      steam_dens_iP = get_param_index(C_CHAR_"P"//C_NULL_CHAR)
+      steam_dens_iT = get_param_index(C_CHAR_"T"//C_NULL_CHAR)
+      steam_dens_iDmass = get_param_index(C_CHAR_"Dmass"//C_NULL_CHAR)
     case default
       print *, 'Unknown pointer type "' // trim(keyword) // &
         '" in EOSWaterSetSteamDensity().'
@@ -699,7 +744,13 @@ subroutine EOSWaterSetSteamEnthalpy(keyword,aux)
     case('IF97')
       EOSWaterSteamDensityEnthalpyPtr => EOSWaterSteamDensityEnthalpyIF97
     case('COOLPROP')
+      fluid = "Water"//C_NULL_CHAR
       EOSWaterSteamDensityEnthalpyPtr => EOSWaterSteamDensityEnthalpyCoolProp
+      steam_H_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
+      steam_H_PT_INPUTS = get_input_pair_index(C_CHAR_"PT_INPUTS"//C_NULL_CHAR)
+      steam_H_iP = get_param_index(C_CHAR_"P"//C_NULL_CHAR)
+      steam_H_iT = get_param_index(C_CHAR_"T"//C_NULL_CHAR)
+      steam_H_iH = get_param_index(C_CHAR_"H"//C_NULL_CHAR)
     case default
       print *, 'Unknown pointer type "' // trim(keyword) // &
         '" in EOSWaterSetSteamEnthalpy().'
@@ -6262,19 +6313,34 @@ subroutine EOSWaterDensityCoolProp(T,P,calculate_derivatives,dw,dwmol, &
   PetscReal :: T_K
 
   T_K = T + T273K
-  out1 = "D"//CHAR(0)
-  n1 = "T"//CHAR(0)
-  n2 = "P"//CHAR(0)
-  fluid = "Water"//CHAR(0)
-
-  dw = PropsSI(out1, n1, T_K, n2, P, fluid)
+  if (P>6.9e6) then
+    Print *,"In EOSWaterDensityCoolProp call 0. P= ", P, " T= ", T_K
+  endif
+  call AbstractState_update(dens_handle,dens_PT_INPUTS, P, T_K, errcode,mesgbfr,bfrlen)
+  if (errcode .ne. 0) then
+      Print *,"In EOSWaterDensityCoolProp call 1 ", errcode, mesgbfr
+      Print *,"P= ",P," T= ",T_K
+      call exit()
+  endif
+  dw = AbstractState_keyed_output(dens_handle,dens_iDmass,errcode,mesgbfr,bfrlen)
+  if (errcode .ne. 0) then
+      Print *,"In EOSWaterDensityCoolProp call 2", errcode, mesgbfr
+      Print *,"P= ",P," T= ",T_K
+      call exit()
+  endif
   dwmol = dw/FMWH2O
 
   if (calculate_derivatives) then
-    out1 = "d(D)/d(T)|P"//CHAR(0)
-    dwt = PropsSI(out1, n1, T_K, n2, P, fluid)
-    out1 = "d(D)/d(P)|T"//CHAR(0)
-    dwp = PropsSI(out1, n1, T_K, n2, P, fluid)
+    !out1 = "d(D)/d(T)|P"//CHAR(0)
+    !dwt = PropsSI(out1, n1, T_K, n2, P, fluid)
+    !out1 = "d(D)/d(P)|T"//CHAR(0)
+    !dwp = PropsSI(out1, n1, T_K, n2, P, fluid)
+    dwt = AbstractState_first_partial_deriv(dens_handle, &
+                                  dens_iDmass, dens_iT, dens_iP, errcode, mesgbfr, bfrlen)
+    dwt = dwt/FMWH2O
+    dwp = AbstractState_first_partial_deriv(dens_handle, &
+                                  dens_iDmass, dens_iP, dens_iT, errcode, mesgbfr, bfrlen)
+    dwp = dwp/FMWH2O
   else
     dwt = UNINITIALIZED_DOUBLE
     dwp = UNINITIALIZED_DOUBLE
@@ -6295,18 +6361,24 @@ subroutine EOSWaterEnthalpyCoolProp(t,p,calculate_derivatives,hw, &
   PetscReal :: T_K
 
   T_K = T + T273K
-  out1 = "H"//CHAR(0)
-  n1 = "T"//CHAR(0)
-  n2 = "P"//CHAR(0)
-  fluid = "Water"//CHAR(0)
+  !out1 = "H"//CHAR(0)
+  !n1 = "T"//CHAR(0)
+  !n2 = "P"//CHAR(0)
+  !fluid = "Water"//CHAR(0)
 
-  hw = PropsSI(out1, n1, T_K, n2, P, fluid)
+  !hw = PropsSI(out1, n1, T_K, n2, P, fluid)
+  call AbstractState_update(H_handle,H_PT_INPUTS, p, T_K, errcode, mesgbfr, bfrlen)
+  hw = AbstractState_keyed_output(H_handle,H_iH, errcode,mesgbfr,bfrlen)
 
   if (calculate_derivatives) then
-    out1 = "d(H)/d(T)|P"//CHAR(0)
-    hwt = PropsSI(out1, n1, T_K, n2, P, fluid)
-    out1 = "d(H)/d(P)|T"//CHAR(0)
-    hwp = PropsSI(out1, n1, T_K, n2, P, fluid)
+    !out1 = "d(H)/d(T)|P"//CHAR(0)
+    !hwt = PropsSI(out1, n1, T_K, n2, P, fluid)
+    !out1 = "d(H)/d(P)|T"//CHAR(0)
+    !hwp = PropsSI(out1, n1, T_K, n2, P, fluid)
+    hwt = AbstractState_first_partial_deriv(H_handle, &
+                                  H_iH, H_iT, H_iP, errcode, mesgbfr, bfrlen)
+    hwp = AbstractState_first_partial_deriv(H_handle, &
+                                  H_iH, H_iP, H_iT, errcode, mesgbfr, bfrlen)
   else
     hwt = UNINITIALIZED_DOUBLE
     hwp = UNINITIALIZED_DOUBLE
@@ -6333,58 +6405,27 @@ subroutine EOSWaterViscosityCoolProp(T, P, PS, dPS_dT, &
   PetscReal :: T_K
 
   T_K = T + T273K
-  out1 = "V"//CHAR(0)
-  n1 = "T"//CHAR(0)
-  n2 = "P"//CHAR(0)
-  fluid = "Water"//CHAR(0)
+  !out1 = "V"//CHAR(0)
+  !n1 = "T"//CHAR(0)
+  !n2 = "P"//CHAR(0)
+  !fluid = "Water"//CHAR(0)
 
-  VW = PropsSI(out1, n1, T_K, n2, P, fluid)
+  !VW = PropsSI(out1, n1, T_K, n2, P, fluid)
+  call AbstractState_update(visc_handle,visc_PT_INPUTS, P, T_K, errcode, mesgbfr, bfrlen)
+  VW = AbstractState_keyed_output(visc_handle,visc_iV,errcode,mesgbfr,bfrlen)
 
   if (calculate_derivatives) then
-    out1 = "d(V)/d(T)|P"//CHAR(0)
-    dVW_dT = PropsSI(out1, n1, T_K, n2, P, fluid)
-    out1 = "d(V)/d(P)|T"//CHAR(0)
-    dVW_dP = PropsSI(out1, n1, T_K, n2, P, fluid)
+    !out1 = "d(V)/d(T)|P"//CHAR(0)
+    !dVW_dT = PropsSI(out1, n1, T_K, n2, P, fluid)
+    !out1 = "d(V)/d(P)|T"//CHAR(0)
+    !dVW_dP = PropsSI(out1, n1, T_K, n2, P, fluid)
+    dVW_dT = AbstractState_first_partial_deriv(visc_handle, &
+                                  visc_iV, visc_iT, visc_iP, errcode, mesgbfr, bfrlen)
+    dVW_dP = AbstractState_first_partial_deriv(visc_handle, &
+                                  visc_iV, visc_iP, visc_iT, errcode, mesgbfr, bfrlen)
   else
     dVW_dT = UNINITIALIZED_DOUBLE
     dVW_dP = UNINITIALIZED_DOUBLE
-  endif
-end subroutine
-
-subroutine EOSWaterSatPresCoolProp(T, calculate_derivatives, &
-                                   PS, dPS_dT, ierr)
-  
-  implicit none
-
-  PetscReal, intent(in) :: T ! temperature
-  PetscBool, intent(in) :: calculate_derivatives
-  PetscReal, intent(out) :: PS, dPS_dT ! Saturation pres. and derivative
-  PetscErrorCode, intent(inout) :: ierr
-
-  character(LEN=32) fluid, out1, n1, n2
-  PetscReal :: T_K, Q
-
-  ierr = 0
-
-  if (T>374.0d0) then
-    print *, 'saturation pressure of water is undefined under supercritical temperatures (>=374 C) '
-    ierr = 1
-  endif
-
-  Q = 1.0
-  T_K = T + T273K
-  out1 = "P"//CHAR(0)
-  n1 = "T"//CHAR(0)
-  n2 = "Q"//CHAR(0)
-  fluid = "Water"//CHAR(0)
-
-  PS = PropsSI(out1, n1, T_K, n2, Q, fluid)
-
-  if (calculate_derivatives) then
-    out1 = "d(P)/d(T)|P"//CHAR(0)
-    dPS_dT = PropsSI(out1, n1, T_K, n2, Q, fluid)
-  else
-    dPS_dT = UNINITIALIZED_DOUBLE
   endif
 end subroutine
 
@@ -6405,26 +6446,41 @@ subroutine EOSWaterSteamDensityEnthalpyCoolProp(t,pv,calculate_derivatives, &
   PetscReal :: T_K
 
   T_K = T + T273K
-  out1 = "D"//CHAR(0)
-  n1 = "T"//CHAR(0)
-  n2 = "P"//CHAR(0)
-  fluid = "Water"//CHAR(0)
+  !out1 = "D"//CHAR(0)
+  !n1 = "T"//CHAR(0)
+  !n2 = "P"//CHAR(0)
+  !fluid = "Water"//CHAR(0)
 
-  dg = PropsSI(out1, n1, T_K, n2, pv, fluid)
+  !dg = PropsSI(out1, n1, T_K, n2, pv, fluid)
+  call AbstractState_update(steam_dens_handle,steam_dens_PT_INPUTS, pv, T_K, errcode, mesgbfr, bfrlen)
+  dg = AbstractState_keyed_output(steam_dens_handle, steam_dens_iDmass, errcode, mesgbfr, bfrlen)
   dgmol = dg/FMWH2O
 
-  out1 = "H"//CHAR(0)
-  hg = PropsSI(out1, n1, T_K, n2, pv, fluid)
-
+  !out1 = "H"//CHAR(0)
+  !hg = PropsSI(out1, n1, T_K, n2, pv, fluid)
+  call AbstractState_update(steam_H_handle,steam_H_PT_INPUTS, pv, T_K, errcode, mesgbfr, bfrlen)
+  hg = AbstractState_keyed_output(steam_H_handle, &
+                                  steam_H_iH, errcode, mesgbfr, bfrlen)
   if (calculate_derivatives) then
-    out1 = "d(D)/d(P)|T"//CHAR(0)
-    dgp = PropsSI(out1, n1, T_K, n2, pv, fluid)
-    out1 = "d(D)/d(T)|P"//CHAR(0)
-    dgt = PropsSI(out1, n1, T_K, n2, pv, fluid)
-    out1 = "d(H)/d(P)|T"//CHAR(0)
-    hgp = PropsSI(out1, n1, T_K, n2, pv, fluid)
-    out1 = "d(H)/d(T)|P"//CHAR(0)
-    hgt = PropsSI(out1, n1, T_K, n2, pv, fluid)
+    !out1 = "d(D)/d(P)|T"//CHAR(0)
+    !dgp = PropsSI(out1, n1, T_K, n2, pv, fluid)
+    !out1 = "d(D)/d(T)|P"//CHAR(0)
+    !dgt = PropsSI(out1, n1, T_K, n2, pv, fluid)
+    !out1 = "d(H)/d(P)|T"//CHAR(0)
+    !hgp = PropsSI(out1, n1, T_K, n2, pv, fluid)
+    !out1 = "d(H)/d(T)|P"//CHAR(0)
+    !hgt = PropsSI(out1, n1, T_K, n2, pv, fluid)
+    ! JEFF check to see if these should be derivatives of molar density instead of mass density
+    dgp = AbstractState_first_partial_deriv(steam_dens_handle, &
+                                  steam_dens_iDmass, steam_dens_iP, steam_dens_iT, errcode, mesgbfr, bfrlen)
+    dgp = dgp/FMWH2O
+    dgt = AbstractState_first_partial_deriv(steam_dens_handle, &
+                                  steam_dens_iDmass, steam_dens_iT, steam_dens_iP, errcode, mesgbfr, bfrlen)
+    dgt = dgt/FMWH2O
+    hgp = AbstractState_first_partial_deriv(steam_H_handle, &
+                                  steam_H_iH, steam_H_iP, steam_H_iT, errcode, mesgbfr, bfrlen)
+    hgt = AbstractState_first_partial_deriv(steam_H_handle, &
+                                  steam_H_iH, steam_H_iT, steam_H_iP, errcode, mesgbfr, bfrlen)
   else
     dgp = UNINITIALIZED_DOUBLE
     dgt = UNINITIALIZED_DOUBLE

@@ -41,7 +41,7 @@ regression_test_dir = $(SRC_DIR)/../../regression_tests
 unit_test_dir = $(SRC_DIR)/unittests
 
 # path to CoolProp library
-COOLPROP_LIB_DIR = /usr/local/share/CoolProp/build/gccstatic/
+COOLPROP_LIB_DIR = /usr/local/share/CoolProp/build-release
 
 #MYFLAGS = -I. -g
 MYFLAGS = -I.
