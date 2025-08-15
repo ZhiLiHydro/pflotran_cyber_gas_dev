@@ -1285,7 +1285,11 @@ subroutine SCO2AuxVarCompute(x,sco2_auxvar,global_auxvar,material_auxvar, &
 
       ! Primary Variables
       sco2_auxvar%pres(lid) = x(SCO2_LIQUID_PRESSURE_DOF)
-      sco2_auxvar%xmass(co2_id,lid) = x(SCO2_CO2_MASS_FRAC_DOF)
+      if (sco2_immiscible) then
+        sco2_auxvar%xmass(co2_id,lid) = SCO2_IMMISCIBLE_MINVAL
+      else
+        sco2_auxvar%xmass(co2_id,lid) = x(SCO2_CO2_MASS_FRAC_DOF)
+      endif
       if (sco2_thermal) then
         sco2_auxvar%temp = x(SCO2_TEMPERATURE_DOF)
       else
@@ -1346,8 +1350,12 @@ subroutine SCO2AuxVarCompute(x,sco2_auxvar,global_auxvar,material_auxvar, &
       sco2_auxvar%sat(gid) = 0.d0
 
       ! Populate all pressures, even though gas phase is not present.
-      sco2_auxvar%pres(gid) = sco2_auxvar%pres(lid) + Pc_entry/beta_gl
-      sco2_auxvar%pres(gid) = max(sco2_auxvar%pres(gid),SCO2_REFERENCE_PRESSURE)
+      if (sco2_immiscible) then
+        sco2_auxvar%pres(gid) = sco2_auxvar%pres(lid)
+      else
+        sco2_auxvar%pres(gid) = sco2_auxvar%pres(lid) + Pc_entry/beta_gl
+        sco2_auxvar%pres(gid) = max(sco2_auxvar%pres(gid),SCO2_REFERENCE_PRESSURE)
+      endif
       sco2_auxvar%xmass(co2_id,gid) = 1.d0
 
       ! Update the liquid mole fractions

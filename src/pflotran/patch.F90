@@ -4702,10 +4702,10 @@ subroutine PatchUpdateCouplerAuxVarsSCO2(patch,coupler,option)
 
   if (sco2_immiscible) then
     select case(flow_condition%iphase)
-      case(SCO2_LIQUID_GAS_STATE,SCO2_ANY_STATE)
+      case(SCO2_LIQUID_GAS_STATE,SCO2_LIQUID_STATE,SCO2_ANY_STATE)
       case default
         option%io_buffer = 'Immiscible SCO2 only supports LIQUID multiphase &
-          &flow conditions.'
+          &flow conditions (' // StringWrite(flow_condition%iphase) // ').'
         call PrintErrMsg(option)
     end select
   endif

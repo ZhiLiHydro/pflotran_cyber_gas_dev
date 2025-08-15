@@ -1213,6 +1213,21 @@ subroutine CondControlAssignFlowInitCond(realization)
               endif
               patch%aux%Global%auxvars(ghosted_id)%istate = &
                 initial_condition%flow_condition%iphase
+
+              if (sco2_immiscible) then
+                select case(istate)
+                  case(SCO2_LIQUID_GAS_STATE)
+                    ! leave alone
+                  case(SCO2_LIQUID_STATE)
+                    xx_p(offset+2) = xx_p(offset+1)
+                  case default
+                    option%io_buffer = 'Mishandled state for IMMISCIBLE SCO2'
+                    call PrintErrMsg(option)
+                end select
+                patch%aux%Global%auxvars(ghosted_id)%istate = &
+                  SCO2_LIQUID_GAS_STATE
+              endif
+
             enddo
           else
             do iconn=1,initial_condition%connection_set%num_connections
@@ -1235,6 +1250,7 @@ subroutine CondControlAssignFlowInitCond(realization)
                       initial_condition%flow_aux_mapping( &
                       sco2_dof_to_primary_variable(idof,istate)),iconn)
                   else
+                    ! ONE_INTEGER is the pressure dof
                     xx_p(offset+idof) = &
                       initial_condition%flow_aux_real_var( &
                       initial_condition%flow_aux_mapping( &
@@ -1248,6 +1264,21 @@ subroutine CondControlAssignFlowInitCond(realization)
                 endif
               enddo
               patch%aux%Global%auxvars(ghosted_id)%istate = istate
+
+              if (sco2_immiscible) then
+                select case(istate)
+                  case(SCO2_LIQUID_GAS_STATE)
+                    ! leave alone
+                  case(SCO2_LIQUID_STATE)
+                    xx_p(offset+2) = xx_p(offset+1)
+                  case default
+                    option%io_buffer = 'Mishandled state for IMMISCIBLE SCO2'
+                    call PrintErrMsg(option)
+                end select
+                patch%aux%Global%auxvars(ghosted_id)%istate = &
+                  SCO2_LIQUID_GAS_STATE
+              endif
+
             enddo
           endif
           initial_condition => initial_condition%next
