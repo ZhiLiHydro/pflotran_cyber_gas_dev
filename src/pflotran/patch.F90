@@ -4700,6 +4700,16 @@ subroutine PatchUpdateCouplerAuxVarsSCO2(patch,coupler,option)
     coupler%flow_aux_mapping(SCO2_ENERGY_FLUX_INDEX) = 4
   endif
 
+  if (sco2_immiscible) then
+    select case(flow_condition%iphase)
+      case(SCO2_LIQUID_GAS_STATE,SCO2_ANY_STATE)
+      case default
+        option%io_buffer = 'Immiscible SCO2 only supports LIQUID multiphase &
+          &flow conditions.'
+        call PrintErrMsg(option)
+    end select
+  endif
+
   !MAN: need to test all of this
   select case(flow_condition%iphase)
     case(MULTI_STATE)

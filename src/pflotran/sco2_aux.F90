@@ -47,6 +47,7 @@ module SCO2_Aux_module
   PetscBool, public :: sco2_stomp_fluxes = PETSC_TRUE
   PetscBool, public :: sco2_update_surface_tension = PETSC_FALSE
   PetscBool, public :: sco2_zero_rxn_source_w_no_gas = PETSC_FALSE
+  PetscBool, public :: sco2_immiscible = PETSC_FALSE
 
   ! Output Control
   PetscBool, public :: sco2_print_state_transition = PETSC_TRUE
@@ -142,6 +143,9 @@ module SCO2_Aux_module
   PetscInt, parameter, public :: SCO2_FULLY_IMPLICIT_WELL = ONE_INTEGER
   PetscInt, parameter, public :: SCO2_QUASI_IMPLICIT_WELL = TWO_INTEGER
   PetscInt, parameter, public :: SCO2_SEQUENTIAL_WELL = THREE_INTEGER
+
+  ! immisicble
+  PetscReal, parameter :: SCO2_IMMISCIBLE_MINVAL = 1.d-10
 
   type, public :: sco2_well_aux_type
     ! These are useful for printing
@@ -779,7 +783,7 @@ subroutine SCO2AuxVarUpdateState(x, sco2_auxvar, global_auxvar, &
   vpid = option%vapor_pressure_id
   rvpid = option%reduced_vapor_pressure_id
 
-  if (sco2_auxvar%istatechng) return
+  if (sco2_immiscible .or. sco2_auxvar%istatechng) return
 
   call SCO2SaltSolubility(sco2_auxvar%temp, salt_solubility)
   if (global_auxvar%istate == SCO2_GAS_STATE) then
@@ -1550,8 +1554,8 @@ subroutine SCO2AuxVarCompute(x,sco2_auxvar,global_auxvar,material_auxvar, &
       ! Dissolved salt mass fraction
       x_salt_dissolved = min(sco2_auxvar%m_salt(1),salt_solubility)
       call SCO2BrineSaturationPressure(sco2_auxvar%temp, &
-                                         x_salt_dissolved, &
-                                         sco2_auxvar%pres(spid))
+                                        x_salt_dissolved, &
+                                        sco2_auxvar%pres(spid))
       cell_pressure = max(sco2_auxvar%pres(gid),sco2_auxvar%pres(spid))
       ! Brine density
       call SCO2BrineDensity(sco2_auxvar%temp, cell_pressure, &
@@ -2040,6 +2044,9 @@ subroutine SCO2Equilibrate(T,P,p_co2,p_vap,p_sat,p_vap_brine, &
 
     ! mole fraction of CO2 in the liquid phase
     xmolco2l = pva * Hc
+    if (sco2_immiscible) then
+      xmolco2l = SCO2_IMMISCIBLE_MINVAL
+    endif
     xmolco2l = max(min(xmolco2l,1.d0),0.d0)
     xmolsl = (1.d0 - xmolco2l)*xmolsl
     xmolwl = 1.d0 - xmolco2l - xmolsl
@@ -2134,6 +2141,9 @@ subroutine SCO2Equilibrate(T,P,p_co2,p_vap,p_sat,p_vap_brine, &
     xmolwg = (1.d0 - coeff_b) * xmolwl / (((1.d0/coeff_a)-coeff_b)* &
           (xmol_na + xmol_cl + xmolwl) + (xmol_na + xmol_cl)*coeff_b)
     xmolco2l = coeff_b * (1.d0 - xmolwg)
+    if (sco2_immiscible) then
+      xmolco2l = SCO2_IMMISCIBLE_MINVAL
+    endif
     xmolsl = (1.d0 - xmolco2l)*xmolsl
     xmolwl = 1.d0 - xmolco2l - xmolsl
 
@@ -2346,6 +2356,9 @@ subroutine SCO2WaterSaturationPressure(T,P_sat)
   P_sat = P_sat / ((1.d0 + k(6) * T_rx + k(7) * (T_rx **2)) * T_r)
   P_sat = P_sat - T_rx / (k(8) * (T_rx ** 2) + k(9))
   P_sat = exp(P_sat) * P_c
+  if (sco2_immiscible) then
+    P_sat = SCO2_IMMISCIBLE_MINVAL
+  endif
 
 end subroutine SCO2WaterSaturationPressure
 
@@ -2394,6 +2407,7 @@ subroutine SCO2BrineSaturationPressure(T, x_salt, P_sat)
   call SCO2WaterSaturationPressure(T_eq, P_sat)
 
   end subroutine SCO2BrineSaturationPressure
+
 ! ************************************************************************** !
 
 subroutine SCO2WaterSubregion(T,P,isubr)

@@ -315,193 +315,197 @@ subroutine SCO2Flux(sco2_auxvar_up,global_auxvar_up, &
         endif
       endif
 
-      ! Diffusion
+      if (.not.sco2_immiscible) then
 
-      ! Compute mole flux for CO2, mass flux for NaCl
+        ! Diffusion
 
-      ! Harmonic diffusion coefficient
+        ! Compute mole flux for CO2, mass flux for NaCl
 
-      if (sco2_harmonic_diff_density) then
-          density_ave = 1.d0
-          den_up = sco2_auxvar_up%den(iphase)
-          den_dn = sco2_auxvar_dn%den(iphase)
-          den_kg_up = sco2_auxvar_up%den_kg(iphase)
-          den_kg_dn = sco2_auxvar_dn%den_kg(iphase)
-      else
-        den_up = 1.d0
-        den_dn = 1.d0
-        den_kg_up = 1.d0
-        den_kg_dn = 1.d0
-        ! use upstream weighting when iphase is not equal, otherwise
-        ! arithmetic with 50/50 weighting
-        density_ave = SCO2AverageDensity(iphase, &
-                                          global_auxvar_up%istate, &
-                                          global_auxvar_dn%istate, &
-                                          sco2_auxvar_up%den, &
-                                          sco2_auxvar_dn%den)
-        density_kg_ave = SCO2AverageDensity(iphase, &
-                                          global_auxvar_up%istate, &
-                                          global_auxvar_dn%istate, &
-                                          sco2_auxvar_up%den_kg, &
-                                          sco2_auxvar_dn%den_kg)
-      endif
+        ! Harmonic diffusion coefficient
 
-      if (iphase == LIQUID_PHASE) then
-        ! CO2 Mole Flux in the aqueous phase
+        if (sco2_harmonic_diff_density) then
+            density_ave = 1.d0
+            den_up = sco2_auxvar_up%den(iphase)
+            den_dn = sco2_auxvar_dn%den(iphase)
+            den_kg_up = sco2_auxvar_up%den_kg(iphase)
+            den_kg_dn = sco2_auxvar_dn%den_kg(iphase)
+        else
+          den_up = 1.d0
+          den_dn = 1.d0
+          den_kg_up = 1.d0
+          den_kg_dn = 1.d0
+          ! use upstream weighting when iphase is not equal, otherwise
+          ! arithmetic with 50/50 weighting
+          density_ave = SCO2AverageDensity(iphase, &
+                                            global_auxvar_up%istate, &
+                                            global_auxvar_dn%istate, &
+                                            sco2_auxvar_up%den, &
+                                            sco2_auxvar_dn%den)
+          density_kg_ave = SCO2AverageDensity(iphase, &
+                                            global_auxvar_up%istate, &
+                                            global_auxvar_dn%istate, &
+                                            sco2_auxvar_up%den_kg, &
+                                            sco2_auxvar_dn%den_kg)
+        endif
+
+        if (iphase == LIQUID_PHASE) then
+          ! CO2 Mole Flux in the aqueous phase
+          ! Include diffusion and longitudinal dispersion
+          stpd_up = (sco2_auxvar_up%effective_diffusion_coeff(co2_id,iphase) + &
+                    sco2_auxvar_up%dispersivity(co2_id,iphase) * &
+                    v_darcy(iphase))
+          stpd_dn = (sco2_auxvar_dn%effective_diffusion_coeff(co2_id,iphase) + &
+                    sco2_auxvar_dn%dispersivity(co2_id,iphase) * &
+                    v_darcy(iphase))
+
+          ! units = [kg/m^2/s bulk]
+          stpd_ave_over_dist = stpd_up*stpd_dn / &
+                              (stpd_up*dist_dn + stpd_dn*dist_up)
+
+          ! units = kg/sec
+          dtot_mole_flux_ddeltaX = stpd_ave_over_dist * area
+
+          delta_xmol = sco2_auxvar_up%xmol(co2_id,iphase) * den_up - &
+                      sco2_auxvar_dn%xmol(co2_id,iphase) * den_dn
+
+          co2_mole_flux = dtot_mole_flux_ddeltaX * delta_xmol
+        else
+          ! Vapor Mole Flux in the gas phase
+          ! Include diffusion and longitudinal dispersion
+          stpd_up = (sco2_auxvar_up%effective_diffusion_coeff(wid,iphase) + &
+                    sco2_auxvar_up%dispersivity(wid,iphase) * &
+                    v_darcy(iphase))
+          stpd_dn = (sco2_auxvar_dn%effective_diffusion_coeff(wid,iphase) + &
+                    sco2_auxvar_dn%dispersivity(wid,iphase) * &
+                    v_darcy(iphase))
+
+          ! units = [kg/m^2/s bulk]
+          stpd_ave_over_dist = stpd_up*stpd_dn / &
+                              (stpd_up*dist_dn + stpd_dn*dist_up)
+
+          ! units = kg/sec
+          dtot_mole_flux_ddeltaX = stpd_ave_over_dist * area
+
+          delta_xmol = sco2_auxvar_up%xmol(wid,iphase) * den_up - &
+                      sco2_auxvar_dn%xmol(wid,iphase) * den_dn
+
+          co2_mole_flux = -dtot_mole_flux_ddeltaX * delta_xmol
+        endif
+
+        ! Salt mass flux
+        ! Patankar salt transport
         ! Include diffusion and longitudinal dispersion
-        stpd_up = (sco2_auxvar_up%effective_diffusion_coeff(co2_id,iphase) + &
-                  sco2_auxvar_up%dispersivity(co2_id,iphase) * &
+        stpd_up = (sco2_auxvar_up%effective_diffusion_coeff(sid,iphase) + &
+                  sco2_auxvar_up%dispersivity(sid,iphase) * &
                   v_darcy(iphase))
-        stpd_dn = (sco2_auxvar_dn%effective_diffusion_coeff(co2_id,iphase) + &
-                  sco2_auxvar_dn%dispersivity(co2_id,iphase) * &
+        stpd_dn = (sco2_auxvar_dn%effective_diffusion_coeff(sid,iphase) + &
+                  sco2_auxvar_dn%dispersivity(sid,iphase) * &
                   v_darcy(iphase))
 
-        ! units = [kg/m^2/s bulk]
-        stpd_ave_over_dist = stpd_up*stpd_dn / &
-                            (stpd_up*dist_dn + stpd_dn*dist_up)
+        tempreal = stpd_up*dist_up+stpd_dn*dist_dn
+        if (tempreal > 0.d0) then
+          stpd_ave_over_dist = stpd_up*stpd_dn / &
+                              (stpd_up*dist_dn + stpd_dn*dist_up)
+        else
+          stpd_ave_over_dist = 0.d0
+        endif
 
+        al = max(v_darcy(iphase),0.d0) + stpd_ave_over_dist * max((1.d0 - &
+            (1.d-1 * dabs(v_darcy(iphase))/(stpd_ave_over_dist + &
+            epsilon))) ** 5, 0.d0)
+        alp = max(-v_darcy(iphase),0.d0) + stpd_ave_over_dist * max((1.d0 - &
+            (1.d-1 * dabs(v_darcy(iphase))/(stpd_ave_over_dist + &
+            epsilon))) ** 5, 0.d0)
+
+        salt_mass_flux = (al * sco2_auxvar_up%xmass(sid,iphase) * &
+                              sco2_auxvar_up%den_kg(iphase) - &
+                              alp * sco2_auxvar_dn%xmass(sid,iphase) * &
+                              sco2_auxvar_dn%den_kg(iphase)) * area
+
+        ! Diffusive component of salt flux
         ! units = kg/sec
-        dtot_mole_flux_ddeltaX = stpd_ave_over_dist * area
+        dsalt_mass_flux_ddeltaX = stpd_ave_over_dist * area
 
-        delta_xmol = sco2_auxvar_up%xmol(co2_id,iphase) * den_up - &
-                    sco2_auxvar_dn%xmol(co2_id,iphase) * den_dn
+        delta_xmass =  sco2_auxvar_up%xmass(sid,iphase) * &
+                      sco2_auxvar_up%den_kg(iphase) - &
+                      sco2_auxvar_dn%xmass(sid,iphase) * &
+                      sco2_auxvar_dn%den_kg(iphase)
 
-        co2_mole_flux = dtot_mole_flux_ddeltaX * delta_xmol
-      else
-        ! Vapor Mole Flux in the gas phase
-        ! Include diffusion and longitudinal dispersion
-        stpd_up = (sco2_auxvar_up%effective_diffusion_coeff(wid,iphase) + &
-                  sco2_auxvar_up%dispersivity(wid,iphase) * &
-                  v_darcy(iphase))
-        stpd_dn = (sco2_auxvar_dn%effective_diffusion_coeff(wid,iphase) + &
-                  sco2_auxvar_dn%dispersivity(wid,iphase) * &
-                  v_darcy(iphase))
+        salt_diff_flux = dsalt_mass_flux_ddeltaX * delta_xmass
 
-        ! units = [kg/m^2/s bulk]
-        stpd_ave_over_dist = stpd_up*stpd_dn / &
-                            (stpd_up*dist_dn + stpd_dn*dist_up)
+        if (iphase == ONE_INTEGER) then
+            water_mass_flux = -1.d0 * fmw_comp(1) * &
+                          (co2_mole_flux  + salt_diff_flux / fmw_comp(3))
+        else
+            water_mass_flux = -1.d0 * fmw_comp(1) * co2_mole_flux
+        endif
 
-        ! units = kg/sec
-        dtot_mole_flux_ddeltaX = stpd_ave_over_dist * area
+        co2_mass_flux = co2_mole_flux * fmw_comp(2)
 
-        delta_xmol = sco2_auxvar_up%xmol(wid,iphase) * den_up - &
-                    sco2_auxvar_dn%xmol(wid,iphase) * den_dn
+        ! Diffusive Contributions
+        Res(SCO2_WATER_EQUATION_INDEX) = Res(SCO2_WATER_EQUATION_INDEX) + &
+                                        water_mass_flux
+        Res(SCO2_CO2_EQUATION_INDEX) = Res(SCO2_CO2_EQUATION_INDEX) + &
+                                      co2_mass_flux
+        Res(SCO2_SALT_EQUATION_INDEX) = Res(SCO2_SALT_EQUATION_INDEX) + &
+                                        salt_mass_flux
 
-        co2_mole_flux = -dtot_mole_flux_ddeltaX * delta_xmol
-      endif
+        ! ! MAN: an effective multiphase diffusion coefficient approach:
+        ! ! For CO2:
+        ! do iphase = 1 , option%nphase - 1
+        !   stpd_up = (sco2_auxvar_up%effective_diffusion_coeff(co2_id,iphase) + &
+        !              sco2_auxvar_up%dispersivity(co2_id,iphase) * &
+        !              v_darcy(iphase))
+        !   stpd_dn = (sco2_auxvar_dn%effective_diffusion_coeff(co2_id,iphase) + &
+        !              sco2_auxvar_dn%dispersivity(co2_id,iphase) * &
+        !              v_darcy(iphase))
 
-      ! Salt mass flux
-      ! Patankar salt transport
-      ! Include diffusion and longitudinal dispersion
-      stpd_up = (sco2_auxvar_up%effective_diffusion_coeff(sid,iphase) + &
-                sco2_auxvar_up%dispersivity(sid,iphase) * &
-                v_darcy(iphase))
-      stpd_dn = (sco2_auxvar_dn%effective_diffusion_coeff(sid,iphase) + &
-                sco2_auxvar_dn%dispersivity(sid,iphase) * &
-                v_darcy(iphase))
+        !   ! Take the harmonic mean / dist:
+        !   stpd_ave_over_dist = stpd_up*stpd_dn / &
+        !                        (stpd_up*dist_dn + stpd_dn*dist_up)
 
-      tempreal = stpd_up*dist_up+stpd_dn*dist_dn
-      if (tempreal > 0.d0) then
-        stpd_ave_over_dist = stpd_up*stpd_dn / &
-                            (stpd_up*dist_dn + stpd_dn*dist_up)
-      else
-        stpd_ave_over_dist = 0.d0
-      endif
+        !   sigma(iphase) = stpd_ave_over_dist * area
+        ! enddo
 
-      al = max(v_darcy(iphase),0.d0) + stpd_ave_over_dist * max((1.d0 - &
-          (1.d-1 * dabs(v_darcy(iphase))/(stpd_ave_over_dist + &
-           epsilon))) ** 5, 0.d0)
-      alp = max(-v_darcy(iphase),0.d0) + stpd_ave_over_dist * max((1.d0 - &
-          (1.d-1 * dabs(v_darcy(iphase))/(stpd_ave_over_dist + &
-           epsilon))) ** 5, 0.d0)
+        ! multiphase_grad =(sco2_auxvar_up%xmol(co2_id,option%gas_phase) * den_up - &
+        !               sco2_auxvar_dn%xmol(co2_id,option%gas_phase) * den_dn) / &
+        !               (sco2_auxvar_up%xmol(co2_id,option%liquid_phase) * den_up - &
+        !               sco2_auxvar_dn%xmol(co2_id,option%liquid_phase) * den_dn)
+        ! co2_mole_flux = (sigma(ONE_INTEGER) + &
+        !               sigma(TWO_INTEGER) * multiphase_grad) * &
+        !               (sco2_auxvar_up%xmol(co2_id,option%liquid_phase) * den_up - &
+        !               sco2_auxvar_dn%xmol(co2_id,option%liquid_phase) * den_dn)
 
-      salt_mass_flux = (al * sco2_auxvar_up%xmass(sid,iphase) * &
-                            sco2_auxvar_up%den_kg(iphase) - &
-                            alp * sco2_auxvar_dn%xmass(sid,iphase) * &
-                            sco2_auxvar_dn%den_kg(iphase)) * area
+        ! ! For salt:
+        ! do iphase = 1 , option%nphase - 1
+        !   stpd_up = (sco2_auxvar_up%effective_diffusion_coeff(sid,iphase) + &
+        !              sco2_auxvar_up%dispersivity(sid,iphase) * &
+        !              v_darcy(iphase))
+        !   stpd_dn = (sco2_auxvar_dn%effective_diffusion_coeff(sid,iphase) + &
+        !              sco2_auxvar_dn%dispersivity(sid,iphase) * &
+        !              v_darcy(iphase))
 
-      ! Diffusive component of salt flux
-      ! units = kg/sec
-      dsalt_mass_flux_ddeltaX = stpd_ave_over_dist * area
+        !   ! Take the harmonic mean / dist:
+        !   stpd_ave_over_dist = stpd_up*stpd_dn / &
+        !                        (stpd_up*dist_dn + stpd_dn*dist_up)
 
-      delta_xmass =  sco2_auxvar_up%xmass(sid,iphase) * &
-                    sco2_auxvar_up%den_kg(iphase) - &
-                    sco2_auxvar_dn%xmass(sid,iphase) * &
-                    sco2_auxvar_dn%den_kg(iphase)
+        !   sigma(iphase) = stpd_ave_over_dist * area
+        ! enddo
 
-      salt_diff_flux = dsalt_mass_flux_ddeltaX * delta_xmass
-
-      if (iphase == ONE_INTEGER) then
-          water_mass_flux = -1.d0 * fmw_comp(1) * &
-                        (co2_mole_flux  + salt_diff_flux / fmw_comp(3))
-      else
-          water_mass_flux = -1.d0 * fmw_comp(1) * co2_mole_flux
-      endif
-
-      co2_mass_flux = co2_mole_flux * fmw_comp(2)
-
-      ! Diffusive Contributions
-      Res(SCO2_WATER_EQUATION_INDEX) = Res(SCO2_WATER_EQUATION_INDEX) + &
-                                      water_mass_flux
-      Res(SCO2_CO2_EQUATION_INDEX) = Res(SCO2_CO2_EQUATION_INDEX) + &
-                                    co2_mass_flux
-      Res(SCO2_SALT_EQUATION_INDEX) = Res(SCO2_SALT_EQUATION_INDEX) + &
-                                      salt_mass_flux
-
-      ! ! MAN: an effective multiphase diffusion coefficient approach:
-      ! ! For CO2:
-      ! do iphase = 1 , option%nphase - 1
-      !   stpd_up = (sco2_auxvar_up%effective_diffusion_coeff(co2_id,iphase) + &
-      !              sco2_auxvar_up%dispersivity(co2_id,iphase) * &
-      !              v_darcy(iphase))
-      !   stpd_dn = (sco2_auxvar_dn%effective_diffusion_coeff(co2_id,iphase) + &
-      !              sco2_auxvar_dn%dispersivity(co2_id,iphase) * &
-      !              v_darcy(iphase))
-
-      !   ! Take the harmonic mean / dist:
-      !   stpd_ave_over_dist = stpd_up*stpd_dn / &
-      !                        (stpd_up*dist_dn + stpd_dn*dist_up)
-
-      !   sigma(iphase) = stpd_ave_over_dist * area
-      ! enddo
-
-      ! multiphase_grad =(sco2_auxvar_up%xmol(co2_id,option%gas_phase) * den_up - &
-      !               sco2_auxvar_dn%xmol(co2_id,option%gas_phase) * den_dn) / &
-      !               (sco2_auxvar_up%xmol(co2_id,option%liquid_phase) * den_up - &
-      !               sco2_auxvar_dn%xmol(co2_id,option%liquid_phase) * den_dn)
-      ! co2_mole_flux = (sigma(ONE_INTEGER) + &
-      !               sigma(TWO_INTEGER) * multiphase_grad) * &
-      !               (sco2_auxvar_up%xmol(co2_id,option%liquid_phase) * den_up - &
-      !               sco2_auxvar_dn%xmol(co2_id,option%liquid_phase) * den_dn)
-
-      ! ! For salt:
-      ! do iphase = 1 , option%nphase - 1
-      !   stpd_up = (sco2_auxvar_up%effective_diffusion_coeff(sid,iphase) + &
-      !              sco2_auxvar_up%dispersivity(sid,iphase) * &
-      !              v_darcy(iphase))
-      !   stpd_dn = (sco2_auxvar_dn%effective_diffusion_coeff(sid,iphase) + &
-      !              sco2_auxvar_dn%dispersivity(sid,iphase) * &
-      !              v_darcy(iphase))
-
-      !   ! Take the harmonic mean / dist:
-      !   stpd_ave_over_dist = stpd_up*stpd_dn / &
-      !                        (stpd_up*dist_dn + stpd_dn*dist_up)
-
-      !   sigma(iphase) = stpd_ave_over_dist * area
-      ! enddo
-
-      ! multiphase_grad =(sco2_auxvar_up%xmol(sid,option%gas_phase) * den_up - &
-      !               sco2_auxvar_dn%xmol(sid,option%gas_phase) * den_dn) / &
-      !               (sco2_auxvar_up%xmol(sid,option%liquid_phase) * den_up - &
-      !               sco2_auxvar_dn%xmol(sid,option%liquid_phase) * den_dn)
-      ! salt_mole_flux = (sigma(ONE_INTEGER) + &
-      !               sigma(TWO_INTEGER) * multiphase_grad) * &
-      !               (sco2_auxvar_up%xmol(sid,option%liquid_phase) * den_up - &
-      !               sco2_auxvar_dn%xmol(sid,option%liquid_phase) * den_dn)
+        ! multiphase_grad =(sco2_auxvar_up%xmol(sid,option%gas_phase) * den_up - &
+        !               sco2_auxvar_dn%xmol(sid,option%gas_phase) * den_dn) / &
+        !               (sco2_auxvar_up%xmol(sid,option%liquid_phase) * den_up - &
+        !               sco2_auxvar_dn%xmol(sid,option%liquid_phase) * den_dn)
+        ! salt_mole_flux = (sigma(ONE_INTEGER) + &
+        !               sigma(TWO_INTEGER) * multiphase_grad) * &
+        !               (sco2_auxvar_up%xmol(sid,option%liquid_phase) * den_up - &
+        !               sco2_auxvar_dn%xmol(sid,option%liquid_phase) * den_dn)
 
 
-      ! water_mass_flux = -1.d0 * fmw_comp(1) * &
-      !                   (co2_mole_flux + salt_mole_flux)
+        ! water_mass_flux = -1.d0 * fmw_comp(1) * &
+        !                   (co2_mole_flux + salt_mole_flux)
+
+      endif ! .not.sco2_immiscible
 
     enddo
 
@@ -712,212 +716,216 @@ subroutine SCO2Flux(sco2_auxvar_up,global_auxvar_up, &
       endif
     endif
 
-    iphase = LIQUID_PHASE
-    sat_up = sco2_auxvar_up%sat(iphase)
-    sat_dn = sco2_auxvar_dn%sat(iphase)
-    dsatup = 1.d0
-    dsatdn = 1.d0
-    ! by changing #if 1 -> 0, gas component is allowed to diffuse in liquid
-    ! phase even if the phase does not exist.
-  ! #if 1
-    if (sqrt(sat_up*sat_dn) > eps) then
-  ! #else
-  !   if (sat_up > eps .or. sat_dn > eps) then
-  !     ! for now, if liquid state neighboring gas, we allow for minute
-  !     ! diffusion in liquid phase.
-  !     if (iphase == option%liquid_phase) then
-  !       if ((sat_up > eps .or. sat_dn > eps)) then
-  !         ! sat_up = max(sat_up,eps)
-  !         if (sat_up < eps) then
-  !           sat_up = eps
-  !           dsatup = 0.d0
-  !         endif
-  !         ! sat_dn = max(sat_dn,eps)
-  !         if (sat_dn < eps) then
-  !           sat_dn = eps
-  !           dsatdn = 0.d0
-  !         endif
-  !       endif
-  !     endif
-  !   endif
-  ! #endif
-    if (sco2_harmonic_diff_density) then
-      ! density_ave in this case is not used.
-      density_ave = 1.d0
-      density_kg_ave = 1.d0
-      den_up = sco2_auxvar_up%den(iphase)
-      den_dn = sco2_auxvar_dn%den(iphase)
-      ddensity_ave_dden_up = 0.d0
-      ddensity_ave_dden_dn = 0.d0
-      tempreal = 1.d0
-    else
-      ! den_up and den_dn are not used in this case
-      den_up = 1.d0
-      den_dn = 1.d0
-      ! we use upstream weighting when iphase is not equal, otherwise
-      ! arithmetic with 50/50 weighting
-      density_ave = SCO2AverageDensity(iphase, &
-                                      global_auxvar_up%istate, &
-                                      global_auxvar_dn%istate, &
-                                      sco2_auxvar_up%den, &
-                                      sco2_auxvar_dn%den)
-      density_kg_ave = SCO2AverageDensity(iphase, &
-                                      global_auxvar_up%istate, &
-                                      global_auxvar_dn%istate, &
-                                      sco2_auxvar_up%den_kg, &
-                                      sco2_auxvar_dn%den_kg)
-      ! used to zero out derivative below
-      tempreal = 0.d0
-    endif
+    if (.not.sco2_immiscible) then
 
-    ! CO2
-    stpd_up = sat_up*material_auxvar_up%tortuosity* &
-              sco2_auxvar_up%effective_porosity*den_up * &
-              sco2_auxvar_up%effective_diffusion_coeff(co2_id,iphase)
-    stpd_dn = sat_dn*material_auxvar_dn%tortuosity* &
-              sco2_auxvar_dn%effective_porosity*den_dn * &
-              sco2_auxvar_dn%effective_diffusion_coeff(co2_id,iphase)
-
-    dstpd_up_dporup = stpd_up / sco2_auxvar_up%effective_porosity
-    dstpd_dn_dpordn = stpd_dn / sco2_auxvar_dn%effective_porosity
-    dstpd_up_dsatup = stpd_up / sat_up
-    dstpd_dn_dsatdn = stpd_dn / sat_dn
-    dstpd_up_ddenup = tempreal * stpd_up / den_up
-    dstpd_dn_ddendn = tempreal * stpd_dn / den_dn
-    ! units = [mole/m^4 bulk]
-    tempreal = stpd_up*dist_dn+stpd_dn*dist_up
-    stpd_ave_over_dist = stpd_up*stpd_dn/tempreal
-    dstpd_ave_over_dist_dstpd_up = (stpd_dn-stpd_ave_over_dist*dist_dn)/ &
-                                   tempreal
-    dstpd_ave_over_dist_dstpd_dn = (stpd_up-stpd_ave_over_dist*dist_up)/ &
-                                   tempreal
-
-    ! delta of mole fraction
-    delta_xmol = sco2_auxvar_up%xmol(co2_id,iphase) - &
-                  sco2_auxvar_dn%xmol(co2_id,iphase)
-    delta_X_whatever = delta_xmol
-    delta_X_whatever_dxmolup = 1.d0
-    delta_X_whatever_dxmoldn = -1.d0
-
-    ! units = mole/sec
-    dtot_mole_flux_ddeltaX = density_ave * stpd_ave_over_dist * &
-                              area
-    co2_mole_flux = dtot_mole_flux_ddeltaX * delta_X_whatever
-
-    ! NaCl is mass based
-    stpd_up = sat_up*material_auxvar_up%tortuosity* &
-              sco2_auxvar_up%effective_porosity*den_up * &
-              sco2_auxvar_up%effective_diffusion_coeff(sid,iphase)
-    stpd_dn = sat_dn*material_auxvar_dn%tortuosity* &
-              sco2_auxvar_dn%effective_porosity*den_dn * &
-              sco2_auxvar_dn%effective_diffusion_coeff(sid,iphase)
-
-    dstpd_up_dporup = stpd_up / sco2_auxvar_up%effective_porosity
-    dstpd_dn_dpordn = stpd_dn / sco2_auxvar_dn%effective_porosity
-    dstpd_up_dsatup = stpd_up / sat_up
-    dstpd_dn_dsatdn = stpd_dn / sat_dn
-    dstpd_up_ddenup = tempreal * stpd_up / den_up
-    dstpd_dn_ddendn = tempreal * stpd_dn / den_dn
-    ! units = [kg/m^4 bulk]
-    tempreal = stpd_up*dist_dn+stpd_dn*dist_up
-    stpd_ave_over_dist = stpd_up*stpd_dn/tempreal
-    dstpd_ave_over_dist_dstpd_up = (stpd_dn-stpd_ave_over_dist*dist_dn)/ &
-                                   tempreal
-    dstpd_ave_over_dist_dstpd_dn = (stpd_up-stpd_ave_over_dist*dist_up)/ &
-                                   tempreal
-    delta_xmass = sco2_auxvar_up%xmass(sid,iphase) - &
-                  sco2_auxvar_dn%xmass(sid,iphase)
-    delta_X_whatever = delta_xmass
-    dtot_mass_flux_ddeltaX = density_kg_ave * stpd_ave_over_dist * &
-                              area
-    salt_mass_flux = dtot_mass_flux_ddeltaX * delta_X_whatever
-
-    tot_mole_flux = (co2_mole_flux + salt_mass_flux / fmw_comp(THREE_INTEGER))
-
-    Res(SCO2_WATER_EQUATION_INDEX) = Res(SCO2_WATER_EQUATION_INDEX) - &
-                                     tot_mole_flux * fmw_comp(ONE_INTEGER)
-    Res(SCO2_CO2_EQUATION_INDEX) = Res(SCO2_CO2_EQUATION_INDEX) + &
-                                     co2_mole_flux * fmw_comp(TWO_INTEGER)
-    Res(SCO2_SALT_EQUATION_INDEX) = Res(SCO2_SALT_EQUATION_INDEX) + &
-                                     salt_mass_flux
-    endif
-
-    iphase = GAS_PHASE
-    sat_up = sco2_auxvar_up%sat(iphase)
-    sat_dn = sco2_auxvar_dn%sat(iphase)
-
-    !geh: i am not sure why both of these conditionals were included.  seems
-    !     like the latter would never be false.
-    if (sqrt(sat_up*sat_dn) > eps) then
+      iphase = LIQUID_PHASE
+      sat_up = sco2_auxvar_up%sat(iphase)
+      sat_dn = sco2_auxvar_dn%sat(iphase)
       dsatup = 1.d0
       dsatdn = 1.d0
-      if (sco2_harmonic_diff_density) then
-        ! density_ave in this case is not used.
-        density_ave = 1.d0
-        den_up = sco2_auxvar_up%den(iphase)
-        den_dn = sco2_auxvar_dn%den(iphase)
-        ddensity_ave_dden_up = 0.d0
-        ddensity_ave_dden_dn = 0.d0
-        tempreal = 1.d0
-      else
-        ! den_up and den_dn are not used in this case
-        den_up = 1.d0
-        den_dn = 1.d0
-        ! we use upstream weighting when iphase is not equal, otherwise
-        ! arithmetic with 50/50 weighting
-        density_ave = SCO2AverageDensity(iphase, &
-                                        global_auxvar_up%istate, &
-                                        global_auxvar_dn%istate, &
-                                        sco2_auxvar_up%den, &
-                                        sco2_auxvar_dn%den)
-        ! used to zero out derivative below
-        tempreal = 0.d0
-      endif
-      stpd_up = sat_up*material_auxvar_up%tortuosity* &
-                sco2_auxvar_up%effective_porosity*den_up * &
-                sco2_auxvar_up%effective_diffusion_coeff(co2_id,iphase)
-      stpd_dn = sat_dn*material_auxvar_dn%tortuosity* &
-                sco2_auxvar_dn%effective_porosity*den_dn * &
-                sco2_auxvar_dn%effective_diffusion_coeff(co2_id,iphase)
+      ! by changing #if 1 -> 0, gas component is allowed to diffuse in liquid
+      ! phase even if the phase does not exist.
+    ! #if 1
+      if (sqrt(sat_up*sat_dn) > eps) then
+    ! #else
+    !   if (sat_up > eps .or. sat_dn > eps) then
+    !     ! for now, if liquid state neighboring gas, we allow for minute
+    !     ! diffusion in liquid phase.
+    !     if (iphase == option%liquid_phase) then
+    !       if ((sat_up > eps .or. sat_dn > eps)) then
+    !         ! sat_up = max(sat_up,eps)
+    !         if (sat_up < eps) then
+    !           sat_up = eps
+    !           dsatup = 0.d0
+    !         endif
+    !         ! sat_dn = max(sat_dn,eps)
+    !         if (sat_dn < eps) then
+    !           sat_dn = eps
+    !           dsatdn = 0.d0
+    !         endif
+    !       endif
+    !     endif
+    !   endif
+    ! #endif
+        if (sco2_harmonic_diff_density) then
+          ! density_ave in this case is not used.
+          density_ave = 1.d0
+          density_kg_ave = 1.d0
+          den_up = sco2_auxvar_up%den(iphase)
+          den_dn = sco2_auxvar_dn%den(iphase)
+          ddensity_ave_dden_up = 0.d0
+          ddensity_ave_dden_dn = 0.d0
+          tempreal = 1.d0
+        else
+          ! den_up and den_dn are not used in this case
+          den_up = 1.d0
+          den_dn = 1.d0
+          ! we use upstream weighting when iphase is not equal, otherwise
+          ! arithmetic with 50/50 weighting
+          density_ave = SCO2AverageDensity(iphase, &
+                                          global_auxvar_up%istate, &
+                                          global_auxvar_dn%istate, &
+                                          sco2_auxvar_up%den, &
+                                          sco2_auxvar_dn%den)
+          density_kg_ave = SCO2AverageDensity(iphase, &
+                                          global_auxvar_up%istate, &
+                                          global_auxvar_dn%istate, &
+                                          sco2_auxvar_up%den_kg, &
+                                          sco2_auxvar_dn%den_kg)
+          ! used to zero out derivative below
+          tempreal = 0.d0
+        endif
 
-      dstpd_up_dporup = stpd_up / sco2_auxvar_up%effective_porosity
-      dstpd_dn_dpordn = stpd_dn / sco2_auxvar_dn%effective_porosity
-      dstpd_up_dsatup = stpd_up / sat_up
-      dstpd_dn_dsatdn = stpd_dn / sat_dn
-      dstpd_up_ddenup = tempreal * stpd_up / den_up
-      dstpd_dn_ddendn = tempreal * stpd_dn / den_dn
-      ! units = [mole/m^4 bulk]
-      tempreal = stpd_up*dist_dn+stpd_dn*dist_up
-      stpd_ave_over_dist = stpd_up*stpd_dn/tempreal
-      dstpd_ave_over_dist_dstpd_up = (stpd_dn-stpd_ave_over_dist*dist_dn)/ &
-                                     tempreal
-      dstpd_ave_over_dist_dstpd_dn = (stpd_up-stpd_ave_over_dist*dist_up)/ &
-                                     tempreal
+        ! CO2
+        stpd_up = sat_up*material_auxvar_up%tortuosity* &
+                  sco2_auxvar_up%effective_porosity*den_up * &
+                  sco2_auxvar_up%effective_diffusion_coeff(co2_id,iphase)
+        stpd_dn = sat_dn*material_auxvar_dn%tortuosity* &
+                  sco2_auxvar_dn%effective_porosity*den_dn * &
+                  sco2_auxvar_dn%effective_diffusion_coeff(co2_id,iphase)
 
-      delta_xmol = sco2_auxvar_up%xmol(co2_id,iphase) - &
-                  sco2_auxvar_dn%xmol(co2_id,iphase)
-      delta_X_whatever = delta_xmol
-      delta_X_whatever_dxmolup = 1.d0
-      delta_X_whatever_dxmoldn = -1.d0
+        dstpd_up_dporup = stpd_up / sco2_auxvar_up%effective_porosity
+        dstpd_dn_dpordn = stpd_dn / sco2_auxvar_dn%effective_porosity
+        dstpd_up_dsatup = stpd_up / sat_up
+        dstpd_dn_dsatdn = stpd_dn / sat_dn
+        dstpd_up_ddenup = tempreal * stpd_up / den_up
+        dstpd_dn_ddendn = tempreal * stpd_dn / den_dn
+        ! units = [mole/m^4 bulk]
+        tempreal = stpd_up*dist_dn+stpd_dn*dist_up
+        stpd_ave_over_dist = stpd_up*stpd_dn/tempreal
+        dstpd_ave_over_dist_dstpd_up = (stpd_dn-stpd_ave_over_dist*dist_dn)/ &
+                                      tempreal
+        dstpd_ave_over_dist_dstpd_dn = (stpd_up-stpd_ave_over_dist*dist_up)/ &
+                                      tempreal
 
-      diffusion_scale = 1.d0
-      ddiffusion_coef_dTup = 0.d0
-      ddiffusion_coef_dTdn = 0.d0
-      ddiffusion_coef_dpup = 0.d0
-      ddiffusion_coef_dpdn = 0.d0
-      ! units = mole/sec
-      dtot_mole_flux_ddeltaX = density_ave * stpd_ave_over_dist * &
-                              diffusion_scale * &
-                              area
-      tot_mole_flux = dtot_mole_flux_ddeltaX * delta_X_whatever
-      dtot_mole_flux_dstpd = tot_mole_flux / stpd_ave_over_dist
-      dtot_mole_flux_ddiffusion_coef = tot_mole_flux / diffusion_scale
-      dtot_mole_flux_ddenave = tot_mole_flux / density_ave
-      Res(SCO2_WATER_EQUATION_INDEX) = Res(SCO2_WATER_EQUATION_INDEX) - &
-                                       tot_mole_flux * fmw_comp(ONE_INTEGER)
-      Res(SCO2_CO2_EQUATION_INDEX) = Res(SCO2_CO2_EQUATION_INDEX) + &
-                                       tot_mole_flux * fmw_comp(TWO_INTEGER)
-    endif
+        ! delta of mole fraction
+        delta_xmol = sco2_auxvar_up%xmol(co2_id,iphase) - &
+                      sco2_auxvar_dn%xmol(co2_id,iphase)
+        delta_X_whatever = delta_xmol
+        delta_X_whatever_dxmolup = 1.d0
+        delta_X_whatever_dxmoldn = -1.d0
+
+        ! units = mole/sec
+        dtot_mole_flux_ddeltaX = density_ave * stpd_ave_over_dist * &
+                                  area
+        co2_mole_flux = dtot_mole_flux_ddeltaX * delta_X_whatever
+
+        ! NaCl is mass based
+        stpd_up = sat_up*material_auxvar_up%tortuosity* &
+                  sco2_auxvar_up%effective_porosity*den_up * &
+                  sco2_auxvar_up%effective_diffusion_coeff(sid,iphase)
+        stpd_dn = sat_dn*material_auxvar_dn%tortuosity* &
+                  sco2_auxvar_dn%effective_porosity*den_dn * &
+                  sco2_auxvar_dn%effective_diffusion_coeff(sid,iphase)
+
+        dstpd_up_dporup = stpd_up / sco2_auxvar_up%effective_porosity
+        dstpd_dn_dpordn = stpd_dn / sco2_auxvar_dn%effective_porosity
+        dstpd_up_dsatup = stpd_up / sat_up
+        dstpd_dn_dsatdn = stpd_dn / sat_dn
+        dstpd_up_ddenup = tempreal * stpd_up / den_up
+        dstpd_dn_ddendn = tempreal * stpd_dn / den_dn
+        ! units = [kg/m^4 bulk]
+        tempreal = stpd_up*dist_dn+stpd_dn*dist_up
+        stpd_ave_over_dist = stpd_up*stpd_dn/tempreal
+        dstpd_ave_over_dist_dstpd_up = (stpd_dn-stpd_ave_over_dist*dist_dn)/ &
+                                      tempreal
+        dstpd_ave_over_dist_dstpd_dn = (stpd_up-stpd_ave_over_dist*dist_up)/ &
+                                      tempreal
+        delta_xmass = sco2_auxvar_up%xmass(sid,iphase) - &
+                      sco2_auxvar_dn%xmass(sid,iphase)
+        delta_X_whatever = delta_xmass
+        dtot_mass_flux_ddeltaX = density_kg_ave * stpd_ave_over_dist * &
+                                  area
+        salt_mass_flux = dtot_mass_flux_ddeltaX * delta_X_whatever
+
+        tot_mole_flux = (co2_mole_flux + salt_mass_flux / &
+                                         fmw_comp(THREE_INTEGER))
+
+        Res(SCO2_WATER_EQUATION_INDEX) = Res(SCO2_WATER_EQUATION_INDEX) - &
+                                        tot_mole_flux * fmw_comp(ONE_INTEGER)
+        Res(SCO2_CO2_EQUATION_INDEX) = Res(SCO2_CO2_EQUATION_INDEX) + &
+                                        co2_mole_flux * fmw_comp(TWO_INTEGER)
+        Res(SCO2_SALT_EQUATION_INDEX) = Res(SCO2_SALT_EQUATION_INDEX) + &
+                                        salt_mass_flux
+      endif ! sqrt(sat_up*sat_dn) > eps
+
+      iphase = GAS_PHASE
+      sat_up = sco2_auxvar_up%sat(iphase)
+      sat_dn = sco2_auxvar_dn%sat(iphase)
+
+      !geh: i am not sure why both of these conditionals were included.  seems
+      !     like the latter would never be false.
+      if (sqrt(sat_up*sat_dn) > eps) then
+        dsatup = 1.d0
+        dsatdn = 1.d0
+        if (sco2_harmonic_diff_density) then
+          ! density_ave in this case is not used.
+          density_ave = 1.d0
+          den_up = sco2_auxvar_up%den(iphase)
+          den_dn = sco2_auxvar_dn%den(iphase)
+          ddensity_ave_dden_up = 0.d0
+          ddensity_ave_dden_dn = 0.d0
+          tempreal = 1.d0
+        else
+          ! den_up and den_dn are not used in this case
+          den_up = 1.d0
+          den_dn = 1.d0
+          ! we use upstream weighting when iphase is not equal, otherwise
+          ! arithmetic with 50/50 weighting
+          density_ave = SCO2AverageDensity(iphase, &
+                                          global_auxvar_up%istate, &
+                                          global_auxvar_dn%istate, &
+                                          sco2_auxvar_up%den, &
+                                          sco2_auxvar_dn%den)
+          ! used to zero out derivative below
+          tempreal = 0.d0
+        endif
+        stpd_up = sat_up*material_auxvar_up%tortuosity* &
+                  sco2_auxvar_up%effective_porosity*den_up * &
+                  sco2_auxvar_up%effective_diffusion_coeff(co2_id,iphase)
+        stpd_dn = sat_dn*material_auxvar_dn%tortuosity* &
+                  sco2_auxvar_dn%effective_porosity*den_dn * &
+                  sco2_auxvar_dn%effective_diffusion_coeff(co2_id,iphase)
+
+        dstpd_up_dporup = stpd_up / sco2_auxvar_up%effective_porosity
+        dstpd_dn_dpordn = stpd_dn / sco2_auxvar_dn%effective_porosity
+        dstpd_up_dsatup = stpd_up / sat_up
+        dstpd_dn_dsatdn = stpd_dn / sat_dn
+        dstpd_up_ddenup = tempreal * stpd_up / den_up
+        dstpd_dn_ddendn = tempreal * stpd_dn / den_dn
+        ! units = [mole/m^4 bulk]
+        tempreal = stpd_up*dist_dn+stpd_dn*dist_up
+        stpd_ave_over_dist = stpd_up*stpd_dn/tempreal
+        dstpd_ave_over_dist_dstpd_up = (stpd_dn-stpd_ave_over_dist*dist_dn)/ &
+                                      tempreal
+        dstpd_ave_over_dist_dstpd_dn = (stpd_up-stpd_ave_over_dist*dist_up)/ &
+                                      tempreal
+
+        delta_xmol = sco2_auxvar_up%xmol(co2_id,iphase) - &
+                    sco2_auxvar_dn%xmol(co2_id,iphase)
+        delta_X_whatever = delta_xmol
+        delta_X_whatever_dxmolup = 1.d0
+        delta_X_whatever_dxmoldn = -1.d0
+
+        diffusion_scale = 1.d0
+        ddiffusion_coef_dTup = 0.d0
+        ddiffusion_coef_dTdn = 0.d0
+        ddiffusion_coef_dpup = 0.d0
+        ddiffusion_coef_dpdn = 0.d0
+        ! units = mole/sec
+        dtot_mole_flux_ddeltaX = density_ave * stpd_ave_over_dist * &
+                                diffusion_scale * &
+                                area
+        tot_mole_flux = dtot_mole_flux_ddeltaX * delta_X_whatever
+        dtot_mole_flux_dstpd = tot_mole_flux / stpd_ave_over_dist
+        dtot_mole_flux_ddiffusion_coef = tot_mole_flux / diffusion_scale
+        dtot_mole_flux_ddenave = tot_mole_flux / density_ave
+        Res(SCO2_WATER_EQUATION_INDEX) = Res(SCO2_WATER_EQUATION_INDEX) - &
+                                        tot_mole_flux * fmw_comp(ONE_INTEGER)
+        Res(SCO2_CO2_EQUATION_INDEX) = Res(SCO2_CO2_EQUATION_INDEX) + &
+                                        tot_mole_flux * fmw_comp(TWO_INTEGER)
+      endif ! sqrt(sat_up*sat_dn) > eps
+    endif ! .not.sco2_immiscible
 
     if (sco2_thermal) then
       ! add heat conduction flux
@@ -966,6 +974,7 @@ subroutine SCO2Flux(sco2_auxvar_up,global_auxvar_up, &
       Res(SCO2_ENERGY_EQUATION_INDEX) = Res(SCO2_ENERGY_EQUATION_INDEX) + &
                                         heat_flux
     endif
+
   endif
 
 end subroutine SCO2Flux
@@ -1244,122 +1253,126 @@ subroutine SCO2BCFlux(ibndtype, auxvar_mapping, auxvars, sco2_auxvar_up, &
         endif
       endif
 
+      if (.not.sco2_immiscible) then
 
-      ! Diffusion
+        ! Diffusion
 
-      sat_dn = sco2_auxvar_dn%sat(iphase)
-      if ((sat_dn > eps .and. ibndtype(iphase) /= NEUMANN_BC)) then
-      ! Compute mole flux for CO2, mass flux for NaCl
-      ! Harmonic diffusion coefficient
-      den_up = sco2_auxvar_up%den(iphase)
-      den_dn = sco2_auxvar_dn%den(iphase)
-      den_kg_up = sco2_auxvar_up%den_kg(iphase)
-      den_kg_dn = sco2_auxvar_dn%den_kg(iphase)
+        sat_dn = sco2_auxvar_dn%sat(iphase)
+        if ((sat_dn > eps .and. ibndtype(iphase) /= NEUMANN_BC)) then
+        ! Compute mole flux for CO2, mass flux for NaCl
+        ! Harmonic diffusion coefficient
+        den_up = sco2_auxvar_up%den(iphase)
+        den_dn = sco2_auxvar_dn%den(iphase)
+        den_kg_up = sco2_auxvar_up%den_kg(iphase)
+        den_kg_dn = sco2_auxvar_dn%den_kg(iphase)
 
-      dist_up = dist(0)
-      dist_dn = dist(0)
-
-      if (iphase == LIQUID_PHASE) then
-        ! CO2 Mole Flux in the aqueous phase
-        ! Include diffusion and longitudinal dispersion
-        stpd_up = (sco2_auxvar_up%effective_diffusion_coeff(co2_id,iphase) + &
-                  sco2_auxvar_up%dispersivity(co2_id,iphase) * &
-                  v_darcy(iphase))
-        stpd_dn = (sco2_auxvar_dn%effective_diffusion_coeff(co2_id,iphase) + &
-                  sco2_auxvar_dn%dispersivity(co2_id,iphase) * &
-                  v_darcy(iphase))
-
-        ! Harmonic mean for diffusivity
-        ! units = [kg/m^2/s bulk]
-        stpd_ave_over_dist = stpd_up*stpd_dn / &
-                            (5.d-1 * (stpd_up*dist_dn + stpd_dn*dist_up))
-
-        ! units = kg/sec
-        dtot_mole_flux_ddeltaX = stpd_ave_over_dist * area
-
-        delta_xmol = sco2_auxvar_up%xmol(co2_id,iphase) * den_up - &
-                    sco2_auxvar_dn%xmol(co2_id,iphase) * den_dn
-
-        co2_mole_flux = dtot_mole_flux_ddeltaX * delta_xmol
-      else
-        ! Vapor Mole Flux in the gas phase
-        ! Include diffusion and longitudinal dispersion
-        stpd_up = (sco2_auxvar_up%effective_diffusion_coeff(wid,iphase) + &
-                  sco2_auxvar_up%dispersivity(wid,iphase) * &
-                  v_darcy(iphase))
-        stpd_dn = (sco2_auxvar_dn%effective_diffusion_coeff(wid,iphase) + &
-                  sco2_auxvar_dn%dispersivity(wid,iphase) * &
-                  v_darcy(iphase))
-
-        ! units = [kg/m^2/s bulk]
-        stpd_ave_over_dist = stpd_up*stpd_dn / &
-                            (5.d-1 * (stpd_up*dist_dn + stpd_dn*dist_up))
-
-        ! units = kg/sec
-        dtot_mole_flux_ddeltaX = stpd_ave_over_dist * area
-
-        delta_xmol = sco2_auxvar_up%xmol(wid,iphase) * den_up - &
-                    sco2_auxvar_dn%xmol(wid,iphase) * den_dn
-
-        co2_mole_flux = -dtot_mole_flux_ddeltaX * delta_xmol
-      endif
-
-      ! Salt mass flux
-      ! Patankar salt transport
-      ! Include diffusion and longitudinal dispersion
-      stpd_up = (sco2_auxvar_up%effective_diffusion_coeff(sid,iphase) + &
-                sco2_auxvar_up%dispersivity(sid,iphase) * &
-                v_darcy(iphase))
-      stpd_dn = (sco2_auxvar_dn%effective_diffusion_coeff(sid,iphase) + &
-                sco2_auxvar_dn%dispersivity(sid,iphase) * &
-                v_darcy(iphase))
-
-      tempreal = stpd_up*dist_up+stpd_dn*dist_dn
-      if (tempreal > 0.d0) then
-        stpd_ave_over_dist = stpd_up*stpd_dn / &
-                            (5.d-1 * (stpd_up*dist_dn + stpd_dn*dist_up))
-      else
-        stpd_ave_over_dist = 0.d0
-      endif
-
-      al = max(-v_darcy(iphase),0.d0) + stpd_ave_over_dist * max((1.d0 - &
-            (1.d-1 * dabs(v_darcy(iphase))/(stpd_ave_over_dist + &
-            epsilon))) ** 5, 0.d0)
-      alp = max(v_darcy(iphase),0.d0) + stpd_ave_over_dist * max((1.d0 - &
-              (1.d-1 * dabs(v_darcy(iphase))/(stpd_ave_over_dist + &
-              epsilon))) ** 5, 0.d0)
-
-      salt_mass_flux = (alp * sco2_auxvar_up%xmass(sid,iphase) * &
-                            sco2_auxvar_up%den_kg(iphase) - &
-                            al * sco2_auxvar_dn%xmass(sid,iphase) * &
-                            sco2_auxvar_dn%den_kg(iphase)) * area
-      ! Diffusive component of salt flux
-      ! units = kg/sec
-      dsalt_mass_flux_ddeltaX = stpd_ave_over_dist * area
-
-      delta_xmass =  sco2_auxvar_up%xmass(sid,iphase) * &
-                    sco2_auxvar_up%den_kg(iphase) - &
-                    sco2_auxvar_dn%xmass(sid,iphase) * &
-                    sco2_auxvar_dn%den_kg(iphase)
-
-      salt_diff_flux = dsalt_mass_flux_ddeltaX * delta_xmass
+        dist_up = dist(0)
+        dist_dn = dist(0)
 
         if (iphase == LIQUID_PHASE) then
-            water_mass_flux = -1.d0 * fmw_comp(1) * &
-                    (co2_mole_flux + salt_diff_flux / fmw_comp(3))
+          ! CO2 Mole Flux in the aqueous phase
+          ! Include diffusion and longitudinal dispersion
+          stpd_up = (sco2_auxvar_up%effective_diffusion_coeff(co2_id,iphase) + &
+                    sco2_auxvar_up%dispersivity(co2_id,iphase) * &
+                    v_darcy(iphase))
+          stpd_dn = (sco2_auxvar_dn%effective_diffusion_coeff(co2_id,iphase) + &
+                    sco2_auxvar_dn%dispersivity(co2_id,iphase) * &
+                    v_darcy(iphase))
+
+          ! Harmonic mean for diffusivity
+          ! units = [kg/m^2/s bulk]
+          stpd_ave_over_dist = stpd_up*stpd_dn / &
+                              (5.d-1 * (stpd_up*dist_dn + stpd_dn*dist_up))
+
+          ! units = kg/sec
+          dtot_mole_flux_ddeltaX = stpd_ave_over_dist * area
+
+          delta_xmol = sco2_auxvar_up%xmol(co2_id,iphase) * den_up - &
+                      sco2_auxvar_dn%xmol(co2_id,iphase) * den_dn
+
+          co2_mole_flux = dtot_mole_flux_ddeltaX * delta_xmol
         else
-            water_mass_flux = -1.d0 * fmw_comp(1) * co2_mole_flux
+          ! Vapor Mole Flux in the gas phase
+          ! Include diffusion and longitudinal dispersion
+          stpd_up = (sco2_auxvar_up%effective_diffusion_coeff(wid,iphase) + &
+                    sco2_auxvar_up%dispersivity(wid,iphase) * &
+                    v_darcy(iphase))
+          stpd_dn = (sco2_auxvar_dn%effective_diffusion_coeff(wid,iphase) + &
+                    sco2_auxvar_dn%dispersivity(wid,iphase) * &
+                    v_darcy(iphase))
+
+          ! units = [kg/m^2/s bulk]
+          stpd_ave_over_dist = stpd_up*stpd_dn / &
+                              (5.d-1 * (stpd_up*dist_dn + stpd_dn*dist_up))
+
+          ! units = kg/sec
+          dtot_mole_flux_ddeltaX = stpd_ave_over_dist * area
+
+          delta_xmol = sco2_auxvar_up%xmol(wid,iphase) * den_up - &
+                      sco2_auxvar_dn%xmol(wid,iphase) * den_dn
+
+          co2_mole_flux = -dtot_mole_flux_ddeltaX * delta_xmol
         endif
 
-        co2_mass_flux = fmw_comp(2) * co2_mole_flux
+        ! Salt mass flux
+        ! Patankar salt transport
+        ! Include diffusion and longitudinal dispersion
+        stpd_up = (sco2_auxvar_up%effective_diffusion_coeff(sid,iphase) + &
+                  sco2_auxvar_up%dispersivity(sid,iphase) * &
+                  v_darcy(iphase))
+        stpd_dn = (sco2_auxvar_dn%effective_diffusion_coeff(sid,iphase) + &
+                  sco2_auxvar_dn%dispersivity(sid,iphase) * &
+                  v_darcy(iphase))
 
-        Res(SCO2_WATER_EQUATION_INDEX) = Res(SCO2_WATER_EQUATION_INDEX) + &
-                                        water_mass_flux
-        Res(SCO2_CO2_EQUATION_INDEX) = Res(SCO2_CO2_EQUATION_INDEX) + &
-                                      co2_mass_flux
-        Res(SCO2_SALT_EQUATION_INDEX) = Res(SCO2_SALT_EQUATION_INDEX) + &
-                                        salt_mass_flux
-      endif
+        tempreal = stpd_up*dist_up+stpd_dn*dist_dn
+        if (tempreal > 0.d0) then
+          stpd_ave_over_dist = stpd_up*stpd_dn / &
+                              (5.d-1 * (stpd_up*dist_dn + stpd_dn*dist_up))
+        else
+          stpd_ave_over_dist = 0.d0
+        endif
+
+        al = max(-v_darcy(iphase),0.d0) + stpd_ave_over_dist * max((1.d0 - &
+              (1.d-1 * dabs(v_darcy(iphase))/(stpd_ave_over_dist + &
+              epsilon))) ** 5, 0.d0)
+        alp = max(v_darcy(iphase),0.d0) + stpd_ave_over_dist * max((1.d0 - &
+                (1.d-1 * dabs(v_darcy(iphase))/(stpd_ave_over_dist + &
+                epsilon))) ** 5, 0.d0)
+
+        salt_mass_flux = (alp * sco2_auxvar_up%xmass(sid,iphase) * &
+                              sco2_auxvar_up%den_kg(iphase) - &
+                              al * sco2_auxvar_dn%xmass(sid,iphase) * &
+                              sco2_auxvar_dn%den_kg(iphase)) * area
+        ! Diffusive component of salt flux
+        ! units = kg/sec
+        dsalt_mass_flux_ddeltaX = stpd_ave_over_dist * area
+
+        delta_xmass =  sco2_auxvar_up%xmass(sid,iphase) * &
+                      sco2_auxvar_up%den_kg(iphase) - &
+                      sco2_auxvar_dn%xmass(sid,iphase) * &
+                      sco2_auxvar_dn%den_kg(iphase)
+
+        salt_diff_flux = dsalt_mass_flux_ddeltaX * delta_xmass
+
+          if (iphase == LIQUID_PHASE) then
+              water_mass_flux = -1.d0 * fmw_comp(1) * &
+                      (co2_mole_flux + salt_diff_flux / fmw_comp(3))
+          else
+              water_mass_flux = -1.d0 * fmw_comp(1) * co2_mole_flux
+          endif
+
+          co2_mass_flux = fmw_comp(2) * co2_mole_flux
+
+          Res(SCO2_WATER_EQUATION_INDEX) = Res(SCO2_WATER_EQUATION_INDEX) + &
+                                          water_mass_flux
+          Res(SCO2_CO2_EQUATION_INDEX) = Res(SCO2_CO2_EQUATION_INDEX) + &
+                                        co2_mass_flux
+          Res(SCO2_SALT_EQUATION_INDEX) = Res(SCO2_SALT_EQUATION_INDEX) + &
+                                          salt_mass_flux
+        endif
+
+      endif ! .not.sco2_immiscible
+
     enddo
 
     ! Conduction
@@ -1744,157 +1757,162 @@ subroutine SCO2BCFlux(ibndtype, auxvar_mapping, auxvars, sco2_auxvar_up, &
       endif
     endif
 
-    iphase = LIQUID_PHASE
-    dsatdn = 1.d0
-    ! diffusion all depends upon the downwind cell.  phase diffusion only
-    ! occurs if a phase exists in both auxvars (boundary and internal) or
-    ! a liquid phase exists in the internal cell. so, one could say that
-    ! liquid diffusion always exists as the internal cell has a liquid phase,
-    ! but gas phase diffusion only occurs if the internal cell has a gas
-    ! phase.
+    if (.not.sco2_immiscible) then
 
-    ! This checks for a dirichlet condition on either solute
-    if (ibndtype(SCO2_CO2_MASS_FRAC_DOF)==DIRICHLET_BC) then
-        dirichlet_solute = PETSC_TRUE
-    endif
-    sat_dn = sco2_auxvar_dn%sat(iphase)
-    if ((sat_dn > eps .and. ibndtype(iphase) /= NEUMANN_BC) &
-        .or. (ibndtype(iphase)==NEUMANN_BC .and. dirichlet_solute)) then
-      if (sco2_harmonic_diff_density) then
-        ! density_ave in this case is not used.
-        density_ave = 1.d0
-        den_kg_ave = 1.d0
-        den_dn = sco2_auxvar_dn%den(iphase)
-        ddensity_ave_dden_dn = 0.d0
-        tempreal = 1.d0
-      else
-        ! den_up and den_dn are not used in this case
-        den_dn = 1.d0
-        ! we use upstream weighting when iphase is not equal, otherwise
-        ! arithmetic with 50/50 weighting
-        density_ave = SCO2AverageDensity(iphase, &
-                                        global_auxvar_up%istate, &
-                                        global_auxvar_dn%istate, &
-                                        sco2_auxvar_up%den, &
-                                        sco2_auxvar_dn%den)
-        den_kg_ave = SCO2AverageDensity(iphase, &
-                                        global_auxvar_up%istate, &
-                                        global_auxvar_dn%istate, &
-                                        sco2_auxvar_up%den_kg, &
-                                        sco2_auxvar_dn%den_kg)
-        ddensity_ave_dden_up = 0.d0
-        ! used to zero out derivative below
-        tempreal = 0.d0
-      endif
-
-      ! CO2 is mole-based
-      stpd_dn = sat_dn*material_auxvar_dn%tortuosity* &
-                sco2_auxvar_dn%effective_porosity*den_dn * &
-                sco2_auxvar_dn%effective_diffusion_coeff(co2_id,iphase)
-
-      ! units = [mole/m^4 bulk]
-      dstpd_ave_over_dist_dstpd_dn = 1.d0 / dist(0)
-      stpd_ave_over_dist = stpd_dn * dstpd_ave_over_dist_dstpd_dn
-
-      delta_xmol = sco2_auxvar_up%xmol(co2_id,iphase) - &
-                    sco2_auxvar_dn%xmol(co2_id,iphase)
-      delta_X_whatever = delta_xmol
-
-      ! units = mole/sec
-      dtot_mole_flux_ddeltaX = density_ave * stpd_ave_over_dist * &
-                                area
-
-      co2_mole_flux = dtot_mole_flux_ddeltaX * delta_X_whatever
-
-      ! NaCl is mass-based
-      stpd_dn = sat_dn*material_auxvar_dn%tortuosity* &
-                sco2_auxvar_dn%effective_porosity*den_dn * &
-                sco2_auxvar_dn%effective_diffusion_coeff(sid,iphase)
-
-      ! units = [kd/m^4 bulk]
-      dstpd_ave_over_dist_dstpd_dn = 1.d0 / dist(0)
-      stpd_ave_over_dist = stpd_dn * dstpd_ave_over_dist_dstpd_dn
-
-      delta_xmass = sco2_auxvar_up%xmass(sid,iphase) - &
-                    sco2_auxvar_dn%xmass(sid,iphase)
-      delta_X_whatever = delta_xmass
-
-      ! units = kg/sec
-      dtot_mass_flux_ddeltaX = density_kg_ave * stpd_ave_over_dist * &
-                                area
-
-      salt_mass_flux = dtot_mass_flux_ddeltaX * delta_X_whatever
-
-      tot_mole_flux = (co2_mole_flux + salt_mass_flux / &
-                       fmw_comp(THREE_INTEGER))
-
-      Res(SCO2_WATER_EQUATION_INDEX) = Res(SCO2_WATER_EQUATION_INDEX) - &
-                                        tot_mole_flux * fmw_comp(ONE_INTEGER)
-      Res(SCO2_CO2_EQUATION_INDEX) = Res(SCO2_CO2_EQUATION_INDEX) + &
-                                      co2_mole_flux * fmw_comp(TWO_INTEGER)
-      Res(SCO2_SALT_EQUATION_INDEX) = Res(SCO2_SALT_EQUATION_INDEX) + &
-                                      salt_mass_flux
-    endif
-    iphase = GAS_PHASE
-    sat_dn = sco2_auxvar_dn%sat(iphase)
-    !geh: i am not sure why both of these conditionals were included.  seems
-    !     like the latter would never be false.
-    if (sat_dn > eps .and. ibndtype(iphase) /= NEUMANN_BC) then
+      iphase = LIQUID_PHASE
       dsatdn = 1.d0
-      if (sco2_harmonic_diff_density) then
-        ! density_ave in this case is not used.
-        density_ave = 1.d0
-        den_dn = sco2_auxvar_dn%den(iphase)
-        ddensity_ave_dden_dn = 0.d0
-        tempreal = 1.d0
-      else
-        ! den_up and den_dn are not used in this case
-        den_dn = 1.d0
-        ! we use upstream weighting when iphase is not equal, otherwise
-        ! arithmetic with 50/50 weighting
-        !TODO(geh): why are we averaging density here?
-        density_ave = SCO2AverageDensity(iphase, &
-                                        global_auxvar_up%istate, &
-                                        global_auxvar_dn%istate, &
-                                        sco2_auxvar_up%den, &
-                                        sco2_auxvar_dn%den)
-        ddensity_ave_dden_up = 0.d0
-        ! used to zero out derivative below
-        tempreal = 0.d0
+      ! diffusion all depends upon the downwind cell.  phase diffusion only
+      ! occurs if a phase exists in both auxvars (boundary and internal) or
+      ! a liquid phase exists in the internal cell. so, one could say that
+      ! liquid diffusion always exists as the internal cell has a liquid phase,
+      ! but gas phase diffusion only occurs if the internal cell has a gas
+      ! phase.
+
+      ! This checks for a dirichlet condition on either solute
+      if (ibndtype(SCO2_CO2_MASS_FRAC_DOF)==DIRICHLET_BC) then
+          dirichlet_solute = PETSC_TRUE
       endif
-      stpd_dn = sat_dn*material_auxvar_dn%tortuosity* &
-                sco2_auxvar_dn%effective_porosity*den_dn * &
-                sco2_auxvar_dn%effective_diffusion_coeff(co2_id,iphase)
+      sat_dn = sco2_auxvar_dn%sat(iphase)
+      if ((sat_dn > eps .and. ibndtype(iphase) /= NEUMANN_BC) &
+          .or. (ibndtype(iphase)==NEUMANN_BC .and. dirichlet_solute)) then
+        if (sco2_harmonic_diff_density) then
+          ! density_ave in this case is not used.
+          density_ave = 1.d0
+          den_kg_ave = 1.d0
+          den_dn = sco2_auxvar_dn%den(iphase)
+          ddensity_ave_dden_dn = 0.d0
+          tempreal = 1.d0
+        else
+          ! den_up and den_dn are not used in this case
+          den_dn = 1.d0
+          ! we use upstream weighting when iphase is not equal, otherwise
+          ! arithmetic with 50/50 weighting
+          density_ave = SCO2AverageDensity(iphase, &
+                                          global_auxvar_up%istate, &
+                                          global_auxvar_dn%istate, &
+                                          sco2_auxvar_up%den, &
+                                          sco2_auxvar_dn%den)
+          den_kg_ave = SCO2AverageDensity(iphase, &
+                                          global_auxvar_up%istate, &
+                                          global_auxvar_dn%istate, &
+                                          sco2_auxvar_up%den_kg, &
+                                          sco2_auxvar_dn%den_kg)
+          ddensity_ave_dden_up = 0.d0
+          ! used to zero out derivative below
+          tempreal = 0.d0
+        endif
 
-      dstpd_dn_dpordn = stpd_dn / sco2_auxvar_dn%effective_porosity
-      dstpd_dn_dsatdn = stpd_dn / sat_dn
-      dstpd_dn_ddendn = tempreal * stpd_dn / den_dn
-      ! units = [mole/m^4 bulk]
-      dstpd_ave_over_dist_dstpd_dn = 1.d0 / dist(0)
-      stpd_ave_over_dist = stpd_dn * dstpd_ave_over_dist_dstpd_dn
+        ! CO2 is mole-based
+        stpd_dn = sat_dn*material_auxvar_dn%tortuosity* &
+                  sco2_auxvar_dn%effective_porosity*den_dn * &
+                  sco2_auxvar_dn%effective_diffusion_coeff(co2_id,iphase)
 
-      delta_xmol = sco2_auxvar_up%xmol(co2_id,iphase) - &
-                    sco2_auxvar_dn%xmol(co2_id,iphase)
-      delta_X_whatever = delta_xmol
-      delta_X_whatever_dxmoldn = -1.d0
-      ! need to account for multiple phases
-      ! Eq. 1.9b.  The gas density is added below
-      diffusion_scale = 1.d0
-      ddiffusion_coef_dTdn = 0.d0
-      ddiffusion_coef_dpdn = 0.d0
-      ! units = mole/sec
-      dtot_mole_flux_ddeltaX = density_ave * stpd_ave_over_dist * &
-                                diffusion_scale * &
-                                area
-      tot_mole_flux = dtot_mole_flux_ddeltaX * delta_X_whatever
-      dtot_mole_flux_dstpd = tot_mole_flux / stpd_ave_over_dist
-      dtot_mole_flux_ddiffusion_coef = tot_mole_flux / diffusion_scale
-      dtot_mole_flux_ddenave = tot_mole_flux / density_ave
-      Res(SCO2_WATER_EQUATION_INDEX) = Res(SCO2_WATER_EQUATION_INDEX) - &
-                                        tot_mole_flux * fmw_comp(ONE_INTEGER)
-      Res(SCO2_CO2_EQUATION_INDEX) = Res(SCO2_CO2_EQUATION_INDEX) + &
-                                        tot_mole_flux * fmw_comp(TWO_INTEGER)
-    endif
+        ! units = [mole/m^4 bulk]
+        dstpd_ave_over_dist_dstpd_dn = 1.d0 / dist(0)
+        stpd_ave_over_dist = stpd_dn * dstpd_ave_over_dist_dstpd_dn
+
+        delta_xmol = sco2_auxvar_up%xmol(co2_id,iphase) - &
+                      sco2_auxvar_dn%xmol(co2_id,iphase)
+        delta_X_whatever = delta_xmol
+
+        ! units = mole/sec
+        dtot_mole_flux_ddeltaX = density_ave * stpd_ave_over_dist * &
+                                  area
+
+        co2_mole_flux = dtot_mole_flux_ddeltaX * delta_X_whatever
+
+        ! NaCl is mass-based
+        stpd_dn = sat_dn*material_auxvar_dn%tortuosity* &
+                  sco2_auxvar_dn%effective_porosity*den_dn * &
+                  sco2_auxvar_dn%effective_diffusion_coeff(sid,iphase)
+
+        ! units = [kd/m^4 bulk]
+        dstpd_ave_over_dist_dstpd_dn = 1.d0 / dist(0)
+        stpd_ave_over_dist = stpd_dn * dstpd_ave_over_dist_dstpd_dn
+
+        delta_xmass = sco2_auxvar_up%xmass(sid,iphase) - &
+                      sco2_auxvar_dn%xmass(sid,iphase)
+        delta_X_whatever = delta_xmass
+
+        ! units = kg/sec
+        dtot_mass_flux_ddeltaX = density_kg_ave * stpd_ave_over_dist * &
+                                  area
+
+        salt_mass_flux = dtot_mass_flux_ddeltaX * delta_X_whatever
+
+        tot_mole_flux = (co2_mole_flux + salt_mass_flux / &
+                        fmw_comp(THREE_INTEGER))
+
+        Res(SCO2_WATER_EQUATION_INDEX) = Res(SCO2_WATER_EQUATION_INDEX) - &
+                                          tot_mole_flux * fmw_comp(ONE_INTEGER)
+        Res(SCO2_CO2_EQUATION_INDEX) = Res(SCO2_CO2_EQUATION_INDEX) + &
+                                        co2_mole_flux * fmw_comp(TWO_INTEGER)
+        Res(SCO2_SALT_EQUATION_INDEX) = Res(SCO2_SALT_EQUATION_INDEX) + &
+                                        salt_mass_flux
+      endif
+
+      iphase = GAS_PHASE
+      sat_dn = sco2_auxvar_dn%sat(iphase)
+      !geh: i am not sure why both of these conditionals were included.  seems
+      !     like the latter would never be false.
+      if (sat_dn > eps .and. ibndtype(iphase) /= NEUMANN_BC) then
+        dsatdn = 1.d0
+        if (sco2_harmonic_diff_density) then
+          ! density_ave in this case is not used.
+          density_ave = 1.d0
+          den_dn = sco2_auxvar_dn%den(iphase)
+          ddensity_ave_dden_dn = 0.d0
+          tempreal = 1.d0
+        else
+          ! den_up and den_dn are not used in this case
+          den_dn = 1.d0
+          ! we use upstream weighting when iphase is not equal, otherwise
+          ! arithmetic with 50/50 weighting
+          !TODO(geh): why are we averaging density here?
+          density_ave = SCO2AverageDensity(iphase, &
+                                          global_auxvar_up%istate, &
+                                          global_auxvar_dn%istate, &
+                                          sco2_auxvar_up%den, &
+                                          sco2_auxvar_dn%den)
+          ddensity_ave_dden_up = 0.d0
+          ! used to zero out derivative below
+          tempreal = 0.d0
+        endif
+        stpd_dn = sat_dn*material_auxvar_dn%tortuosity* &
+                  sco2_auxvar_dn%effective_porosity*den_dn * &
+                  sco2_auxvar_dn%effective_diffusion_coeff(co2_id,iphase)
+
+        dstpd_dn_dpordn = stpd_dn / sco2_auxvar_dn%effective_porosity
+        dstpd_dn_dsatdn = stpd_dn / sat_dn
+        dstpd_dn_ddendn = tempreal * stpd_dn / den_dn
+        ! units = [mole/m^4 bulk]
+        dstpd_ave_over_dist_dstpd_dn = 1.d0 / dist(0)
+        stpd_ave_over_dist = stpd_dn * dstpd_ave_over_dist_dstpd_dn
+
+        delta_xmol = sco2_auxvar_up%xmol(co2_id,iphase) - &
+                      sco2_auxvar_dn%xmol(co2_id,iphase)
+        delta_X_whatever = delta_xmol
+        delta_X_whatever_dxmoldn = -1.d0
+        ! need to account for multiple phases
+        ! Eq. 1.9b.  The gas density is added below
+        diffusion_scale = 1.d0
+        ddiffusion_coef_dTdn = 0.d0
+        ddiffusion_coef_dpdn = 0.d0
+        ! units = mole/sec
+        dtot_mole_flux_ddeltaX = density_ave * stpd_ave_over_dist * &
+                                  diffusion_scale * &
+                                  area
+        tot_mole_flux = dtot_mole_flux_ddeltaX * delta_X_whatever
+        dtot_mole_flux_dstpd = tot_mole_flux / stpd_ave_over_dist
+        dtot_mole_flux_ddiffusion_coef = tot_mole_flux / diffusion_scale
+        dtot_mole_flux_ddenave = tot_mole_flux / density_ave
+        Res(SCO2_WATER_EQUATION_INDEX) = Res(SCO2_WATER_EQUATION_INDEX) - &
+                                         tot_mole_flux * fmw_comp(ONE_INTEGER)
+        Res(SCO2_CO2_EQUATION_INDEX) = Res(SCO2_CO2_EQUATION_INDEX) + &
+                                       tot_mole_flux * fmw_comp(TWO_INTEGER)
+      endif
+
+    endif ! .not.sco2_immiscible
 
     if (sco2_thermal) then
       ! add heat conduction flux

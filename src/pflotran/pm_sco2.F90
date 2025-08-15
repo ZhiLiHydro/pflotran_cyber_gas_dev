@@ -366,6 +366,8 @@ subroutine PMSCO2ReadSimOptionsBlock(this,input)
         sco2_zero_rxn_source_w_no_gas = PETSC_TRUE
       case('UPDATE_SURFACE_TENSION')
         sco2_update_surface_tension = PETSC_TRUE
+      case('IMMISCIBLE')
+        sco2_immiscible = PETSC_TRUE
       case default
         call InputKeywordUnrecognized(input,keyword,'SCO2 Mode',option)
     end select
