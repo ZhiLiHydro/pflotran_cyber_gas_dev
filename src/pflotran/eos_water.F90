@@ -3246,7 +3246,7 @@ subroutine EOSWaterEnthalpyIF97(T,P,calculate_derivatives,hw, &
   pi = P/p_ref
   tao = T_ref/T_temp
 
-  if (Tf <= 623.15d0) then
+  if (T_temp <= 623.15d0) then
     ! Region 1: Valid from 273.15 K to 623.15 K, Ps(T) to 100MPa
     g_tao = sum((n_i*(7.1d0-pi)**(I_i))*J_i*(tao-1.222d0)**(J_i-1))
 
@@ -4529,7 +4529,7 @@ subroutine EOSWaterSteamDensityEnthalpyIF97(T, Pv, calculate_derivatives, &
     gamma_r_tao = sum(n_i*pi**(I_i)*J_i*(tao-0.5)**(J_i-1))
     dg = R*T_temp/Pv * pi * (gamma_0_pi + gamma_r_pi) *1.d3
     hg = R*T_temp * tao * (gamma_0_tao + gamma_r_tao)
-
+    hg = hg * FMWH2O * 1.d3 ! convert to J/kmol
     dg = 1/dg
     dgmol = dg/FMWH2O
 
@@ -4552,7 +4552,6 @@ subroutine EOSWaterSteamDensityEnthalpyIF97(T, Pv, calculate_derivatives, &
       hgt = UNINITIALIZED_DOUBLE
       hgp = UNINITIALIZED_DOUBLE
     endif
-    hg = hg*FMWH2O * 1.d3
   else if (T_temp <= T273K) then
     ! region 5: table 40
     gamma_0_pi = 1.d0/pi
@@ -4562,7 +4561,7 @@ subroutine EOSWaterSteamDensityEnthalpyIF97(T, Pv, calculate_derivatives, &
     gamma_r_tao = sum(n5_i*pi**(I5_i)*J5_i*tao**(J5_i-1))
     dg = R*T_temp/Pv * pi * (gamma_0_pi + gamma_r_pi) * 1.d3
     hg = R*T_temp * tao * (gamma_0_tao + gamma_r_tao)
-
+    hg = hg * FMWH2O * 1.d3 ! convert to J/kmol
     dg = 1/dg
     dgmol = dg/FMWH2O
     if (calculate_derivatives) then
@@ -4577,7 +4576,7 @@ subroutine EOSWaterSteamDensityEnthalpyIF97(T, Pv, calculate_derivatives, &
     !stop 'wow. much hotness.'
   end if
 
-end subroutine EOSWaterSteamDensityEnthalpyIF97
+
 
 ! ************************************************************************** !
 
@@ -6369,7 +6368,7 @@ subroutine EOSWaterEnthalpyCoolProp(t,p,calculate_derivatives,hw, &
   !hw = PropsSI(out1, n1, T_K, n2, P, fluid)
   call AbstractState_update(H_handle,H_PT_INPUTS, p, T_K, errcode, mesgbfr, bfrlen)
   hw = AbstractState_keyed_output(H_handle,H_iH, errcode,mesgbfr,bfrlen)
-
+  hw = hw * FMWH2O ! convert to J/kmol
   if (calculate_derivatives) then
     !out1 = "d(H)/d(T)|P"//CHAR(0)
     !hwt = PropsSI(out1, n1, T_K, n2, P, fluid)
@@ -6377,8 +6376,10 @@ subroutine EOSWaterEnthalpyCoolProp(t,p,calculate_derivatives,hw, &
     !hwp = PropsSI(out1, n1, T_K, n2, P, fluid)
     hwt = AbstractState_first_partial_deriv(H_handle, &
                                   H_iH, H_iT, H_iP, errcode, mesgbfr, bfrlen)
+    hwt = hwt * FMWH2O ! convert to J/kmol/C
     hwp = AbstractState_first_partial_deriv(H_handle, &
                                   H_iH, H_iP, H_iT, errcode, mesgbfr, bfrlen)
+    hwp = hwp * FMWH2O ! convert to J/kmol/Pa
   else
     hwt = UNINITIALIZED_DOUBLE
     hwp = UNINITIALIZED_DOUBLE
@@ -6439,7 +6440,7 @@ subroutine EOSWaterSteamDensityEnthalpyCoolProp(t,pv,calculate_derivatives, &
   PetscReal, intent(in) :: pv  ! Vapor Pressure in Pascals.
   PetscBool, intent(in) :: calculate_derivatives
   PetscReal, intent(out) :: dg,dgmol,dgp,dgt
-  PetscReal, intent(out) :: hg,hgp,hgt
+  PetscReal, intent(out) :: hg,hgp,hgt ! in J/kmol
   PetscErrorCode, intent(inout) :: ierr
   
   character(LEN=32) fluid, out1, n1, n2
@@ -6461,6 +6462,7 @@ subroutine EOSWaterSteamDensityEnthalpyCoolProp(t,pv,calculate_derivatives, &
   call AbstractState_update(steam_H_handle,steam_H_PT_INPUTS, pv, T_K, errcode, mesgbfr, bfrlen)
   hg = AbstractState_keyed_output(steam_H_handle, &
                                   steam_H_iH, errcode, mesgbfr, bfrlen)
+  hg = hg * FMWH2O ! convert to J/kmol
   if (calculate_derivatives) then
     !out1 = "d(D)/d(P)|T"//CHAR(0)
     !dgp = PropsSI(out1, n1, T_K, n2, pv, fluid)
@@ -6479,8 +6481,10 @@ subroutine EOSWaterSteamDensityEnthalpyCoolProp(t,pv,calculate_derivatives, &
     dgt = dgt/FMWH2O
     hgp = AbstractState_first_partial_deriv(steam_H_handle, &
                                   steam_H_iH, steam_H_iP, steam_H_iT, errcode, mesgbfr, bfrlen)
+    hgp = hgp * FMWH2O ! convert to J/kmol/Pa
     hgt = AbstractState_first_partial_deriv(steam_H_handle, &
                                   steam_H_iH, steam_H_iT, steam_H_iP, errcode, mesgbfr, bfrlen)
+    hgt = hgt * FMWH2O ! convert to J/kmol/C
   else
     dgp = UNINITIALIZED_DOUBLE
     dgt = UNINITIALIZED_DOUBLE
