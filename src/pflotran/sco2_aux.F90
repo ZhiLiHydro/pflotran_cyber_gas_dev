@@ -2059,7 +2059,11 @@ subroutine SCO2Equilibrate(T,P,p_co2,p_vap,p_sat,p_vap_brine, &
     xmolsl = (1.d0 - xmolco2l)*xmolsl
     xmolwl = 1.d0 - xmolco2l - xmolsl
 
-    xmolwg = xmolwg * p_vap_brine / p_sat
+    if (sco2_immiscible) then
+      xmolwg = SCO2_IMMISCIBLE_MINVAL
+    else
+      xmolwg = xmolwg * p_vap_brine / p_sat
+    endif
     xmolco2g = 1.d0 - xmolwg
 
 
