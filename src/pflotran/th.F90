@@ -876,14 +876,13 @@ subroutine THUpdateAuxVars(realization,pm_well)
             endif
             cur_well%well%th_ql = 0.d0
           else
-            cur_well%well%th_ql = well_flow_condition%rate%dataset% &
-                                  rarray(1)
+            cur_well%well%th_ql = well_flow_condition%rate%dataset% rarray(1)
             !why not this:
             ! cur_well%well%th_ql = 0.d0
             ! cur_well%well%th_ql = cur_well%well%th_ql + &
             !                        well_flow_condition%rate%dataset% &
             !                        rarray(1)
-            cur_well%well%total_rate = UNINITIALIZED_DOUBLE
+            cur_well%well%total_rate = 999.d0
           endif
         endif
         if (Initialized(cur_well%well%bh_p)) then
