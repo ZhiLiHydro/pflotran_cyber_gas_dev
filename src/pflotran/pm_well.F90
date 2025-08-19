@@ -5919,6 +5919,13 @@ subroutine PMWellBasePerturb(this)
       call PMWellSCO2Perturb(this)
     case (H_MODE)
       call PMWellHydratePerturb(this)
+    case (TH_MODE)
+      call PMWellTHPerturb(this)
+    case (RICHARDS_MODE)
+      call PMWellRichardsPerturb(this)
+      ! this%option%io_buffer = "The Jacobian for a Wellbore coupled to &
+      !   &Richard's mode is solved analytically, so cannot be perturbed."
+      ! call PrintErrMsg(this%option)
   end select
 
 end subroutine PMWellBasePerturb
@@ -6209,6 +6216,204 @@ subroutine PMWellHydratePerturb(pm_well)
     call pm_well%SolveFlow(idof,ierr)
   enddo
 end subroutine PMWellHydratePerturb
+
+! ************************************************************************** !
+
+subroutine PMWellRichardsPerturb(pm_well)
+  !
+  ! Perturb well variables when using Richards flow mode.
+  !
+  ! Author: Joe Eyles, WSP
+  ! Date: 17/06/2025
+  !
+
+  use Option_module
+
+  implicit none
+
+  class(pm_well_type) :: pm_well
+
+  type(well_type), pointer :: well
+  type(option_type), pointer :: option
+  PetscInt :: i
+  PetscReal :: pres_bump
+  PetscErrorCode :: ierr
+
+  option => pm_well%option
+
+  ! Make sure well is actually flowing if injection/production rates
+  ! are specified.
+  pres_bump = 0.d0
+  i = 0
+  well => pm_well%well
+  do
+    call pm_well%SolveFlow(ZERO_INTEGER,ierr)
+    if (any(dabs(well%liq%Q) > 0.d0)) exit
+    if (well%th_ql > 0.d0) then
+      ! Injection well
+      pres_bump = 1.25d0 * (pres_bump + 1.d0)
+    elseif (well%total_rate < 0.d0) then
+      ! Extraction well
+      pres_bump = 1.25d0 * (pres_bump - 1.d0)
+    else
+      ! No need for this
+      exit
+    endif
+    well%bh_p = well%bh_p + pres_bump
+    i = i + 1
+    if (i > 100) then
+      option%io_buffer = "Exceeded maximum number of iterations (100) to &
+                          &recover vanishing well Jacobian."
+      call PrintErrMsg(option)
+    endif
+  enddo
+  call pm_well%SolveFlow(ZERO_INTEGER,ierr)
+
+end subroutine PMWellRichardsPerturb
+
+ !************************************************************************** !
+
+subroutine PMWellTHPerturb(pm_well)
+  !
+  ! Perturb well variables when using TH flow mode.
+  !
+  ! Author: Julia Camargo
+  ! Date: 07/11/2025
+  !
+
+  use Option_module
+  use TH_Aux_module
+  use Global_Aux_module
+  use Material_Aux_module
+  use Grid_module
+
+  implicit none
+
+  class(pm_well_type) :: pm_well
+
+  type(well_type), pointer :: well
+  type(well_reservoir_type), pointer :: reservoir
+  type(th_auxvar_type), pointer :: th_auxvar
+  type(global_auxvar_type), pointer :: global_auxvar
+  type(material_auxvar_type), pointer :: material_auxvar
+  type(grid_type), pointer :: res_grid
+  type(option_type), pointer :: option
+  PetscInt :: idof, k, i
+  PetscInt :: ghosted_id
+  PetscInt :: lid
+  PetscReal :: pres_bump
+  PetscErrorCode :: ierr
+
+  PetscReal, parameter :: perturbation_tolerance = 1.d-8
+  PetscReal, parameter :: min_perturbation = 1.d-15
+  ! PetscReal :: dpl, dpg
+
+  option => pm_well%option
+  res_grid => pm_well%realization%patch%grid
+
+  lid = option%liquid_phase
+
+  ! Make sure well is actually flowing if injection/production rates
+  ! are specified.
+  pres_bump = 0.d0
+  i = 0
+  well => pm_well%well
+  do
+    call pm_well%SolveFlow(ZERO_INTEGER,ierr)
+    if (any(dabs(well%liq%Q) > 0.d0)) exit
+    if (well%th_ql > 0.d0) then
+      ! Injection well
+      pres_bump = 1.25d0 * (pres_bump + 1.d0)
+    elseif (well%total_rate < 0.d0) then
+      ! Extraction well
+      pres_bump = 1.25d0 * (pres_bump - 1.d0)
+    else
+      ! No need for this
+      exit
+    endif
+    well%bh_p = well%bh_p + pres_bump
+    i = i + 1
+    if (i > 100) then
+      option%io_buffer = "Exceeded maximum number of iterations (100) to &
+                          &recover vanishing well Jacobian."
+      call PrintErrMsg(option)
+    endif
+  enddo
+
+  ! Go up the well: for each well segment that is on-process, update
+  ! perturbed values for reservoir and well variables.
+
+  ! Perturbed fluxes wrt reservoir variables
+  do k = 1,pm_well%well_grid%nsegments
+    ghosted_id = pm_well%well_grid%h_ghosted_id(k)
+
+    do idof = 1,option%nflowdof
+      well => pm_well%well_pert(idof)
+      well%bh_p = pm_well%well%bh_p
+      global_auxvar => &
+        pm_well%realization%patch%aux%global%auxvars(ghosted_id)
+      if (idof == TH_WELL_DOF) then
+        th_auxvar => &
+          pm_well%realization%patch%aux%th%auxvars(ghosted_id)
+        well%bh_p = well%bh_p + pm_well%realization%patch%aux%th% &
+                    auxvars(ghosted_id)%pert
+        if (.not. Initialized(th_auxvar%well%pressure_bump)) then
+          if (k == 1) then
+            th_auxvar%well%pressure_bump = (well%bh_p - &
+                      global_auxvar%pres(lid)) + pres_bump
+          else
+            th_auxvar%well%pressure_bump = 0.d0
+          endif
+        else
+          th_auxvar%well%pressure_bump = pres_bump
+        endif
+      else
+        th_auxvar => &
+          pm_well%realization%patch%aux%th%auxvars(ghosted_id) !check difference in if statement
+        well%bh_p = pm_well%well%bh_p
+      endif
+      reservoir => well%reservoir
+
+      material_auxvar => &
+        pm_well%realization%patch%aux%material%auxvars(ghosted_id)
+
+      reservoir%p_l(k) = global_auxvar%pres(option%liquid_phase)
+      reservoir%s_l(k) = global_auxvar%sat(option%liquid_phase)
+      reservoir%mobility_l(k) = th_auxvar%mobility
+      !reservoir%kr_l(k) = th_auxvar%kr !does not exist in TH mode or Global
+      reservoir%den_l(k) = global_auxvar%den_kg(option%liquid_phase)
+      reservoir%visc_l(k) = th_auxvar%vis
+      reservoir%xmass_liq(k,ONE_INTEGER) = 1.0
+      reservoir%xmass_gas(k,ONE_INTEGER) = 0.0
+      reservoir%e_por(k) = material_auxvar%porosity
+
+      reservoir%p_g(k) = 0.0  ! As th has a single liquid phase
+      reservoir%s_g(k) = 0.0  ! As th has a single liquid phase
+      reservoir%temp(k) = global_auxvar%temp
+      reservoir%H_l(k) = th_auxvar%h
+      reservoir%kx(k) = material_auxvar%permeability(1)
+      reservoir%ky(k) = material_auxvar%permeability(2)
+      reservoir%kz(k) = material_auxvar%permeability(3)
+      reservoir%volume(k) = material_auxvar%volume
+      if (res_grid%itype == STRUCTURED_GRID) then
+        reservoir%dx(k) = res_grid%structured_grid%dx(ghosted_id)
+        reservoir%dy(k) = res_grid%structured_grid%dy(ghosted_id)
+        reservoir%dz(k) = res_grid%structured_grid%dz(ghosted_id)
+      else
+        reservoir%dz(k) = pm_well%well_grid%res_dz(k)
+        reservoir%dx(k) = sqrt(material_auxvar%volume/ &
+                                    reservoir%dz(k))
+        reservoir%dy(k) = reservoir%dx(k)
+      endif
+    enddo
+  enddo
+
+  ! Now update fluxes associated with perturbed values
+  do idof = 1,option%nflowdof
+    call pm_well%SolveFlow(idof,ierr)
+  enddo
+
+end subroutine PMWellTHPerturb
 
 ! ************************************************************************** !
 
