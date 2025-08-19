@@ -261,6 +261,7 @@ recursive subroutine THAuxVarInit(auxvar,option,allocate_perturbation)
   auxvar%Ke        = uninit_value
   auxvar%dKe_dp    = uninit_value
   auxvar%dKe_dT    = uninit_value
+  auxvar%pert = 0.d0
  if (option%flow%th_freezing) then
     allocate(auxvar%ice)
     auxvar%ice%Ke_fr     = uninit_value
@@ -367,6 +368,9 @@ subroutine THAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%Ke = auxvar%Ke
   auxvar2%dKe_dp = auxvar%dKe_dp
   auxvar2%dKe_dT = auxvar%dKe_dT
+  auxvar2%pert = auxvar%pert
+  if (th_well_coupling > ZERO_INTEGER) auxvar2%well = auxvar%well
+
   if (associated(auxvar%ice)) then
     auxvar2%ice%Ke_fr = auxvar%ice%Ke_fr
     auxvar2%ice%dKe_fr_dp = auxvar%ice%dKe_fr_dp
