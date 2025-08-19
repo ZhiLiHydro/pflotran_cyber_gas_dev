@@ -7320,6 +7320,7 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
   use SCO2_Aux_module, only : SCO2_WELL_DOF, SCO2_TEMPERATURE_DOF, sco2_thermal
   use Hydrate_Aux_module, only : HYDRATE_WELL_DOF, HYDRATE_ENERGY_DOF, &
                                  hydrate_fmw_comp
+  use TH_Aux_module, only : TH_WELL_DOF, TH_TEMPERATURE_DOF
 
   implicit none
 
@@ -7762,10 +7763,10 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
             local_row_index = this%well_grid%h_ghosted_id(1)* &
                               option%nflowdof-1
             local_col_index = (ghosted_id-1)*option%nflowdof + idof - 1
-            J_well = -(res_pert)/pert
-            if (dabs(J_well) > 0.d0) then
+            P_well = -(res_pert)/pert
+            if (dabs(P_well) > 0.d0) then
               call MatSetValuesLocal(Jac,1,local_row_index,1, &
-                                      local_col_index,J_well, &
+                                      local_col_index,P_well, &
                                       ADD_VALUES,ierr);CHKERRQ(ierr)
             endif
           endif
@@ -7828,10 +7829,10 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
           ! Just change 1 column
           local_row_index = (ghosted_id-1)*option%nflowdof + j
           local_col_index = this%well_grid%h_ghosted_id(1)*option%nflowdof-1
-          J_well = (res_pert - res)/pert
-          if (dabs(J_well) > 0.d0) then
+          P_well = (res_pert - res)/pert
+          if (dabs(P_well) > 0.d0) then
             call MatSetValuesLocal(Jac,1,local_row_index,1,local_col_index, &
-                                    J_well,ADD_VALUES,ierr);CHKERRQ(ierr)
+                                    P_well,ADD_VALUES,ierr);CHKERRQ(ierr)
           endif
         enddo
         ! Energy contribution
@@ -7843,10 +7844,10 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
         local_row_index = (ghosted_id-1)*option%nflowdof + j
         local_col_index = this%well_grid%h_ghosted_id(1)* &
                           option%nflowdof-1
-        J_well = (res_pert - res)/pert
-        if (dabs(J_well) > 0.d0) then
+        P_well = (res_pert - res)/pert
+        if (dabs(P_well) > 0.d0) then
           call MatSetValuesLocal(Jac,1,local_row_index,1,local_col_index, &
-                                  J_well,ADD_VALUES,ierr);CHKERRQ(ierr)
+                                  P_well,ADD_VALUES,ierr);CHKERRQ(ierr)
         endif
 
         if (any(dabs(J_block) > 0.d0)) then
@@ -8091,10 +8092,10 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
             local_row_index = this%well_grid%h_ghosted_id(1)* &
                               option%nflowdof-1
             local_col_index = (ghosted_id-1)*option%nflowdof + idof - 1
-            J_well = UNINITIALIZED_DOUBLE
-            if (dabs(J_well) > 0.d0) then
+            P_well = UNINITIALIZED_DOUBLE
+            if (dabs(P_well) > 0.d0) then
               call MatSetValuesLocal(Jac,1,local_row_index,1, &
-                                      local_col_index,J_well, &
+                                      local_col_index,P_well, &
                                       ADD_VALUES,ierr);CHKERRQ(ierr)
             endif
           endif
@@ -8126,10 +8127,10 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
           ! Just change 1 column
           local_row_index = (ghosted_id-1)*option%nflowdof + j
           local_col_index = this%well_grid%h_ghosted_id(1)*option%nflowdof-1
-          J_well = UNINITIALIZED_DOUBLE
-          if (dabs(J_well) > 0.d0) then
+          P_well = UNINITIALIZED_DOUBLE
+          if (dabs(P_well) > 0.d0) then
             call MatSetValuesLocal(Jac,1,local_row_index,1,local_col_index, &
-                                    J_well,ADD_VALUES,ierr);CHKERRQ(ierr)
+                                    P_well,ADD_VALUES,ierr);CHKERRQ(ierr)
           endif
         enddo
         if (any(dabs(J_block) > 0.d0)) then
@@ -9654,6 +9655,103 @@ subroutine PMWellUpdatePropertiesHydrateFlow(pm_well,well,option)
   enddo
 
 end subroutine PMWellUpdatePropertiesHydrateFlow
+
+! ************************************************************************** !
+
+subroutine PMWellUpdatePropertiesRichardsFlow(pm_well,well,option)
+  !
+  ! Updates flow well object properties, when Richards mode is the flow mode.
+  !
+  ! Author: Joe Eyles, WSP
+  ! Date: 06/05/2025
+  !
+
+  use EOS_Water_module
+  use EOS_Gas_module
+  use Richards_Aux_module
+
+  implicit none
+
+  class(pm_well_type) :: pm_well
+  type(well_type) :: well
+  type(option_type) :: option
+
+  PetscInt :: i,nsegments
+  PetscReal :: dwmol,dw
+  PetscReal :: sat_pres
+
+  PetscReal :: visc_liq
+  PetscErrorCode :: ierr
+
+  if (pm_well%well_comm%comm == MPI_COMM_NULL) return
+
+  nsegments = pm_well%well_grid%nsegments
+
+  well%liq%xmass(:,ONE_INTEGER) = 1.0
+  well%gas%xmass(:,ONE_INTEGER) = 0.0
+
+  if (well%total_rate < 0.d0) then
+    ! Extraction well: use reservoir fluid properties
+
+    well%liq%den(:) = well%reservoir%den_l(:)
+    well%liq%visc(:) = well%reservoir%visc_l(:)
+  else
+    ! Injection well: use internal well properties
+
+    do i = 1,nsegments
+
+      call EOSWaterDensity(well%temp(i),well%pl(i),dw,dwmol,ierr)
+      well%liq%den(i) = dw
+
+      call EOSWaterSaturationPressure(well%temp(i),sat_pres,ierr)
+      call EOSWaterViscosity(well%temp(i),well%pl(i),sat_pres,visc_liq,ierr)
+      well%liq%visc(i) = visc_liq
+
+    enddo
+  endif
+
+end subroutine PMWellUpdatePropertiesRichardsFlow
+
+! ************************************************************************** !
+subroutine PMWellUpdatePropertiesTHFlow(pm_well,well,option)
+  !
+  ! Updates flow well object properties, when TH mode is the flow mode.
+  !
+  ! Author: Joe Eyles, WSP
+  ! Date: 06/05/2025
+  !
+  use EOS_Water_module
+  use EOS_Gas_module
+  use TH_Aux_module
+  implicit none
+  class(pm_well_type) :: pm_well
+  type(well_type) :: well
+  type(option_type) :: option
+  PetscInt :: i,nsegments
+  PetscReal :: dwmol,dw
+  PetscReal :: sat_pres
+  PetscReal :: visc_liq
+  PetscErrorCode :: ierr
+  if (pm_well%well_comm%comm == MPI_COMM_NULL) return
+  nsegments = pm_well%well_grid%nsegments
+  well%liq%xmass(:,ONE_INTEGER) = 1.0
+  well%gas%xmass(:,ONE_INTEGER) = 0.0
+  if (well%total_rate < 0.d0) then
+    ! Extraction well: use reservoir fluid properties
+    well%liq%den(:) = well%reservoir%den_l(:)
+    well%liq%visc(:) = well%reservoir%visc_l(:)
+    well%liq%H(:) = well%reservoir%h_l(:)
+  else
+    ! Injection well: use internal well properties
+    do i = 1,nsegments
+      call EOSWaterDensity(well%temp(i),well%pl(i),dw,dwmol,ierr)
+      well%liq%den(i) = dw
+      call EOSWaterSaturationPressure(well%temp(i),sat_pres,ierr)
+      call EOSWaterViscosity(well%temp(i),well%pl(i),sat_pres,visc_liq,ierr)
+      well%liq%visc(i) = visc_liq
+    enddo
+  endif
+end subroutine PMWellUpdatePropertiesTHFlow
 
 ! ************************************************************************** !
 

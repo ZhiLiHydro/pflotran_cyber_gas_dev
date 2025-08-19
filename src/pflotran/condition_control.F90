@@ -55,11 +55,8 @@ subroutine CondControlAssignFlowInitCond(realization)
   use WIPP_Flow_Aux_module, wf_dof_to_primary_variable => dof_to_primary_variable
   use Hydrate_Aux_module, hyd_dof_to_primary_variable => dof_to_primary_variable
   use SCO2_Aux_module, sco2_dof_to_primary_variable => dof_to_primary_variable
-<<<<<<< HEAD
   use TH_Aux_module
-=======
   use Richards_Aux_module
->>>>>>> origin
 
   implicit none
 

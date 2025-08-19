@@ -42,7 +42,6 @@ module TH_Aux_module
     PetscReal :: pressure_bump ! pressure change for initialization  ! TODO: JOE: Can I remove this as I am not creating a numerical jacobian?
   end type th_well_aux_type
 
-  type, public :: TH_auxvar_type
   type, public :: th_auxvar_type
     PetscReal :: pres
     PetscReal :: temp
@@ -83,7 +82,6 @@ module TH_Aux_module
     PetscReal :: d2sat_dTdp
     PetscReal :: d2den_dTdp
     PetscReal :: d2u_dTdp
-    PetscReal :: pert
     type(th_well_aux_type), pointer :: well
 
     ! for ice
