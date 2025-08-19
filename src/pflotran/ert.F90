@@ -524,6 +524,7 @@ end subroutine ERTCalculateMatrix
 
 subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
                                            cond_c,empirical_law,cond, &
+                                           temp_dependence, scaled_temp_diff, &
                                            drho_geomech, cond_baseline, &
                                            tracer_scale,dcond_dsat, &
                                            dcond_dconc,dcond_dpor,option)
@@ -544,6 +545,7 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
   PetscReal :: por, sat  ! porosity and saturation
 
   PetscInt :: empirical_law
+  PetscInt :: temp_dependence
 
   ! Archie's law parameters
   PetscReal :: a        ! Tortuosity factor constant
@@ -551,6 +553,7 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
   PetscReal :: n        ! Saturation exponent
   PetscReal :: cond_w   ! Water conductivity
   PetscReal :: cond_s   ! surface conductivity
+  PetscReal :: scaled_temp_diff ! for temp dependent fluid cond
 
   ! Waxman-Smits additional paramters
   PetscReal :: cond_c   ! Clay conductivity
@@ -571,14 +574,31 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
   PetscReal :: cond_ws
 
   ! local variables
-  PetscReal :: rho
+  PetscReal :: rho, dcond_geomech, cond_min, cond_max, rho_min
   PetscBool :: use_flow, use_trans, use_geomech
 
   use_flow    = (option%iflowmode   /= NULL_MODE)
   use_trans   = (option%itranmode  /= NULL_MODE)
   use_geomech = (option%igeommode   /= NULL_MODE)
 
+  ! Minimum allowable conductivity/resistivity
+  cond_min = 1.d-5
+  cond_max = 1.d2
+
   if (use_flow .or. use_trans) then
+
+    if (use_flow .and. .not. option%flow%isothermal) then
+      if (temp_dependence == LINEAR) then
+        cond_w = cond_w * (1 + scaled_temp_diff)
+      elseif (temp_dependence == EXPONENTIAL) then
+        cond_w = cond_w * exp(scaled_temp_diff)
+      else
+        option%io_buffer = 'ERTConductivityFromEmpiricalEqs: ' // &
+          'Unknown temperature dependence for conductivity.'
+        call PrintErrMsg(option)
+      endif
+    endif
+
     ! Archie's law
     cond = cond_w * (por**m) * (sat**n) / a
 
@@ -608,16 +628,34 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
     if (use_geomech .and. cond > 1d-12) then
       ! Geomechanics coupling
       ! get updated resistivity
+      rho_min = 1.d0 / cond_max
       rho = 1.d0 / cond + drho_geomech
-      cond = 1.d0 / rho
+      if (rho > rho_min) then
+        ! get conductivity from resistivity
+        cond = 1.d0 / rho
+      else
+        ! resistivity is too low/negative, use linearized approx for Brace eq.
+        dcond_geomech = - drho_geomech * cond * cond
+        cond = cond + dcond_geomech
+      endif
     endif
 
   elseif (.not. use_flow .and. .not. use_trans .and. use_geomech .and. &
           cond_baseline > 1e-12) then
     ! get updated resistivity
+    rho_min = 1.d0 / cond_max
     rho = 1.d0 / cond_baseline + drho_geomech
-    cond = 1.d0 / rho
+    if (rho > rho_min) then
+      ! get conductivity from resistivity
+      cond = 1.d0 / rho
+    else
+      ! resistivity is too low/negative, use linearized approx for Brace eq.
+      dcond_geomech = - drho_geomech * cond_baseline * cond_baseline
+      cond = cond_baseline + dcond_geomech
+    endif
   endif
+
+  cond = min(max(cond, cond_min), cond_max)
 
 end subroutine ERTConductivityFromEmpiricalEqs
 

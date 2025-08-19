@@ -55,7 +55,11 @@ subroutine CondControlAssignFlowInitCond(realization)
   use WIPP_Flow_Aux_module, wf_dof_to_primary_variable => dof_to_primary_variable
   use Hydrate_Aux_module, hyd_dof_to_primary_variable => dof_to_primary_variable
   use SCO2_Aux_module, sco2_dof_to_primary_variable => dof_to_primary_variable
+<<<<<<< HEAD
   use TH_Aux_module
+=======
+  use Richards_Aux_module
+>>>>>>> origin
 
   implicit none
 
@@ -1358,7 +1362,88 @@ subroutine CondControlAssignFlowInitCond(realization)
           initial_condition => initial_condition%next
         enddo
         call VecRestoreArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+      
+      case(RICHARDS_MODE)
+          ! assign initial conditions values to domain
+        call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
 
+        xx_p = UNINITIALIZED_DOUBLE
+
+        initial_condition => patch%initial_condition_list%first
+        do
+
+          if (.not.associated(initial_condition)) exit
+
+          dataset_flag = PETSC_FALSE
+          dataset =>  initial_condition%flow_condition% &
+                            sub_condition_ptr(RICHARDS_PRESSURE_DOF)%ptr%dataset
+          select type(dataset_ptr => dataset)
+            class is(dataset_gridded_hdf5_type)
+              ! already mapped to flow_aux_real_var
+              if (.not.associated(initial_condition%flow_aux_real_var)) then
+                option%io_buffer = 'A gridded dataset is being &
+                  &used with ' // trim(option%flowmode) // &
+                  ', yet flow_aux_real_var is not allocated.'
+                call PrintErrMsgToDev(option,'')
+              endif
+            class is(dataset_common_hdf5_type)
+              dataset_flag(RICHARDS_PRESSURE_DOF) = PETSC_TRUE
+              call VecRestoreArrayF90(field%flow_xx,xx_p, &
+                                      ierr);CHKERRQ(ierr)
+              do idof = 1, option%nflowdof
+                call ConditionControlMapDatasetToVec(realization, &
+                        initial_condition%flow_condition% &
+                        sub_condition_ptr(RICHARDS_PRESSURE_DOF)%ptr%dataset, &
+                        idof,field%flow_xx,GLOBAL)
+              enddo
+              call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+          end select
+
+          if (.not.associated(initial_condition%flow_aux_real_var) .and. &
+              .not.associated(initial_condition%flow_condition)) then
+            option%io_buffer = 'Flow condition is NULL in initial condition'
+            call PrintErrMsg(option)
+          endif
+          if (associated(initial_condition%flow_aux_real_var)) then
+            num_connections = &
+              initial_condition%connection_set%num_connections
+            conn_id_ptr => initial_condition%connection_set%id_dn
+          else
+            num_connections = initial_condition%region%num_cells
+            conn_id_ptr => initial_condition%region%cell_ids
+          endif
+          do iconn=1, num_connections
+            local_id = conn_id_ptr(iconn)
+            ghosted_id = grid%nL2G(local_id)
+            iend = local_id*option%nflowdof
+            ibegin = iend-option%nflowdof+1
+            if (patch%imat(ghosted_id) <= 0) then
+              xx_p(ibegin:iend) = 0.d0
+              patch%aux%Global%auxvars(ghosted_id)%istate = 0
+              cycle
+            endif
+            if (associated(initial_condition%flow_aux_real_var)) then
+              do idof = 1, option%nflowdof
+                if (.not.dataset_flag(RICHARDS_PRESSURE_DOF)) then
+                  xx_p(ibegin+idof-1) =  &
+                    initial_condition%flow_aux_real_var(RICHARDS_PRESSURE_DOF,iconn)
+                endif
+              enddo
+            else
+              do idof = 1, option%nflowdof
+                if (.not.dataset_flag(RICHARDS_PRESSURE_DOF)) then
+                  xx_p(ibegin+idof-1) = &
+                    initial_condition%flow_condition% &
+                      sub_condition_ptr(RICHARDS_PRESSURE_DOF)%ptr%dataset%rarray(1)
+                endif
+              enddo
+            endif
+            patch%aux%Global%auxvars(ghosted_id)%istate = &
+              initial_condition%flow_condition%iphase
+          enddo
+          initial_condition => initial_condition%next
+        enddo
+        call VecRestoreArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
       case default
         ! assign initial conditions values to domain
         call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
@@ -1498,6 +1583,7 @@ subroutine CondControlAssignRTTranInitCond(realization)
   use Global_Aux_module
   use Material_Aux_module
   use Reaction_module
+  use Reaction_Mineral_module
   use HDF5_module
   use Secondary_Continuum_Aux_module
 
@@ -1686,20 +1772,17 @@ subroutine CondControlAssignRTTranInitCond(realization)
                               constraint%minerals%constraint_vol_frac(imnrl), &
                               ierr);CHKERRQ(ierr)
               endif
-              call DiscretizationLocalToGlobal(discretization,vec1_loc, &
-                                               field%work,ONEDOF)
-              call VecMin(field%work,PETSC_NULL_INTEGER,tempreal, &
-                          ierr);CHKERRQ(ierr)
-              if (tempreal < epsilon) then
-                option%io_buffer = 'A zero volume fraction assigned to &
-                  &mineral "' // &
-                  trim(reaction%mineral%kinmnrl_names(imnrl)) // &
-                  '" in constraint "' // trim(constraint%name) // &
-                  '" prevents the use of a mass-based surface area in the &
-                  &constraint.'
-                call PrintErrMsg(option)
-              endif
             endif
+
+            call DiscretizationLocalToGlobal(discretization,vec1_loc, &
+                                             field%work,ONEDOF)
+            call VecMin(field%work,PETSC_NULL_INTEGER,tempreal, &
+                        ierr);CHKERRQ(ierr)
+            call ReactionMnrlReportZeroSurfArea(imnrl,tempreal, &
+                                                reaction%mineral, &
+                                                constraint%name, &
+                                                constraint%minerals,option)
+
             ! vec1_loc holds mineral volume fraction [m^3 mnrl / m^3 bulk]
             call VecGetArrayF90(vec1_loc,vec_p,ierr);CHKERRQ(ierr)
             do icell=1,initial_condition%region%num_cells

@@ -1288,13 +1288,13 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
       local_id_dn = grid%nG2L(ghosted_id_dn)
 
       do iface_up = 1,MAX_FACE_PER_CELL
-        if (face_id==ugrid%cell_to_face_ghosted(iface_up,local_id_up)) exit
+        if (face_id==ugrid%cell_to_face_ghosted(iface_up,ghosted_id_up)) exit
       enddo
 
       iface_dn=-1
       if (local_id_dn>0) then
         do iface_dn = 1,MAX_FACE_PER_CELL
-          if (face_id==ugrid%cell_to_face_ghosted(iface_dn,local_id_dn)) exit
+          if (face_id==ugrid%cell_to_face_ghosted(iface_dn,ghosted_id_dn)) exit
         enddo
       endif
 
@@ -1336,7 +1336,7 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
       local_id_dn = cur_connection_set%id_dn(iconn)
       ghosted_id_dn = grid%nL2G(local_id_dn)
       do iface_dn = 1,MAX_FACE_PER_CELL
-        if (face_id==ugrid%cell_to_face_ghosted(iface_dn,local_id_dn)) exit
+        if (face_id==ugrid%cell_to_face_ghosted(iface_dn,ghosted_id_dn)) exit
       enddo
 
       do dof=1,option%nflowdof
@@ -1660,7 +1660,7 @@ subroutine OutputGetExplicitAuxVars(realization_base,count,vec_proc,density)
   type(connection_set_type), pointer :: cur_connection_set
   type(global_auxvar_type), pointer :: global_auxvar(:)
   type(material_parameter_type), pointer :: material_parameter
-  type(TH_auxvar_type), pointer :: th_auxvars(:)
+  type(th_auxvar_type), pointer :: th_auxvars(:)
   type(richards_auxvar_type), pointer :: rich_auxvars(:)
 
   PetscReal, pointer :: vec_proc_ptr(:)
@@ -1707,8 +1707,8 @@ subroutine OutputGetExplicitAuxVars(realization_base,count,vec_proc,density)
         select case (option%iflowmode)
           case(TH_MODE,TH_TS_MODE)
             th_auxvars => patch%aux%TH%auxvars
-            if (th_auxvars(ghosted_id_up)%kvr > eps .or. &
-                th_auxvars(ghosted_id_dn)%kvr > eps ) then
+            if (th_auxvars(ghosted_id_up)%mobility > eps .or. &
+                th_auxvars(ghosted_id_dn)%mobility > eps ) then
               is_flowing = PETSC_TRUE
             endif
           case(RICHARDS_MODE, RICHARDS_TS_MODE)

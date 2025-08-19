@@ -39,6 +39,7 @@ module Transport_Constraint_RT_module
     type(mineral_constraint_type), pointer :: minerals
     type(srfcplx_constraint_type), pointer :: surface_complexes
     type(immobile_constraint_type), pointer :: immobile_species
+    PetscBool :: dampen_oscillation
   contains
     procedure, public :: Strip => TranConstraintRTStrip
   end type tran_constraint_rt_type
@@ -86,6 +87,7 @@ function TranConstraintRTCreate(option)
   nullify(constraint%minerals)
   nullify(constraint%surface_complexes)
   nullify(constraint%immobile_species)
+  constraint%dampen_oscillation = PETSC_FALSE
 
   TranConstraintRTCreate => constraint
 
@@ -236,6 +238,7 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
   PetscErrorCode :: ierr
   PetscReal :: tempreal
   PetscBool :: found
+  PetscBool :: acknowledge_zero_surface_area
 
   call PetscLogEventBegin(logging%event_tran_constraint_read, &
                           ierr);CHKERRQ(ierr)
@@ -245,6 +248,7 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
       &CHEMISTRY block being defined in the input file.'
     call PrintErrMsg(option)
   endif
+  acknowledge_zero_surface_area = PETSC_FALSE
 
   ! read the constraint
   input%ierr = INPUT_ERROR_NONE
@@ -747,6 +751,10 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
         endif
         constraint%immobile_species => immobile_constraint
 
+      case('ACKNOWLEDGE_ZERO_SURFACE_AREA')
+        acknowledge_zero_surface_area = PETSC_TRUE
+      case('DAMPEN_OSCILLATION')
+        constraint%dampen_oscillation = PETSC_TRUE
       case default
         call InputKeywordUnrecognized(input,word,'CONSTRAINT',option)
     end select
@@ -759,6 +767,11 @@ subroutine TranConstraintRTRead(constraint,reaction,input,option)
     option%io_buffer = 'A CONCENTRATION block is missing in constraint "' // &
       trim(constraint%name) // '".'
     call PrintErrMsg(option)
+  endif
+
+  if (acknowledge_zero_surface_area .and. &
+      associated(constraint%minerals)) then
+    constraint%minerals%acknowledge_zero_surface_area = PETSC_TRUE
   endif
 
   call PetscLogEventEnd(logging%event_tran_constraint_read, &

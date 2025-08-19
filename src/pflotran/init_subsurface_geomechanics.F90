@@ -170,6 +170,9 @@ subroutine InitSubsurfGeomechReadInput(geomech,geomech_solver, &
                                 geomech_realization%geomech_material_properties)
         nullify(geomech_material_property)
 
+      case ('GEOMECHANICS_SET_REF_P_T_TO_IC')
+        option%geomechanics%set_ref_pres_and_temp_to_IC = PETSC_TRUE
+
       !.........................................................................
       case ('GEOMECHANICS_REGION')
         region => GeomechRegionCreate()
@@ -210,23 +213,9 @@ subroutine InitSubsurfGeomechReadInput(geomech,geomech_solver, &
         call GeomechRealizAddGeomechCoupler(geomech_realization,coupler)
         nullify(coupler)
 
-      !.........................................................................
-      case('NEWTON_SOLVER')
-        call InputReadCard(input,option,word,PETSC_FALSE)
-        call StringToUpper(word)
-        select case(word)
-          case('GEOMECHANICS')
-            call SolverReadNewton(geomech_solver,input,option)
-        end select
-
      !....................
-      case ('LINEAR_SOLVER')
-        call InputReadCard(input,option,word,PETSC_FALSE)
-        call StringToUpper(word)
-        select case(word)
-          case('GEOMECHANICS')
-            call SolverReadLinear(geomech_solver,input,option)
-        end select
+      case ('GEOMECHANICS_LINEAR_SOLVER')
+        call SolverReadLinear(geomech_solver,input,option)
 
       !.....................
       case ('GEOMECHANICS_REGRESSION')
@@ -335,6 +324,11 @@ subroutine InitSubsurfGeomechReadInput(geomech,geomech_solver, &
         call GeomechStrataRead(strata,input,option)
         call GeomechRealizAddStrata(geomech_realization,strata)
         nullify(strata)
+
+      !.........................................................................
+      case ('GEOMECHANICS_IMPROVE_TET_WEIGHT')
+        option%geomechanics%improve_tet_weighting = PETSC_TRUE
+
       !.........................................................................
       case ('END_GEOMECHANICS')
         exit
@@ -362,7 +356,7 @@ subroutine InitSubsurfGeomechJumpStart(geomech)
 
   use Geomechanics_Realization_class
   use Option_module
-  use Timestepper_Steady_class
+  use Timestepper_KSP_class
   use Output_Aux_module
   use Output_module, only : Output, OutputPrintCouplers
   use Output_Geomechanics_module
@@ -378,7 +372,7 @@ subroutine InitSubsurfGeomechJumpStart(geomech)
 
   class(realization_geomech_type), pointer :: geomech_realization
   class(pmc_geomechanics_type), pointer :: geomech_pmc
-  class(timestepper_steady_type), pointer :: geomech_timestepper
+  class(timestepper_ksp_type), pointer :: geomech_timestepper
 
   PetscBool :: snapshot_plot_flag,observation_plot_flag,massbal_plot_flag
   PetscBool :: geomech_read
@@ -387,7 +381,7 @@ subroutine InitSubsurfGeomechJumpStart(geomech)
 
   geomech_realization => geomech%realization
   geomech_pmc => geomech%process_model_coupler
-  geomech_timestepper => TimestepperSteadyCast(geomech_pmc%timestepper)
+  geomech_timestepper => TimestepperKSPCast(geomech_pmc%timestepper)
 
   call PetscOptionsHasName(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER, &
                            "-vecload_block_size",failure,ierr);CHKERRQ(ierr)
@@ -543,7 +537,8 @@ subroutine InitSubsurfGeomechSetupRealization(subsurf_realization, &
 
   call GeomechRealizCreateDiscretization(geomech_realization)
 
-  if (option%geomechanics%subsurf_coupling /= 0) then
+  if (option%geomechanics%flow_coupling /= 0 .or. &
+      option%geomechanics%geophysics_coupling /= 0) then
     call GeomechCreateGeomechSubsurfVec(subsurf_realization, &
                                         geomech_realization)
     call GeomechCreateSubsurfStressStrainVec(subsurf_realization, &
@@ -751,7 +746,7 @@ subroutine InitSubsurfGeomechInitSimulation(simulation, pm_geomech)
   use Simulation_Aux_module
   use Realization_Subsurface_class
   use Realization_Base_class
-  use Timestepper_Steady_class
+  use Timestepper_KSP_class
   use Logging_module
   use Output_Aux_module
   use Waypoint_module
@@ -765,17 +760,22 @@ subroutine InitSubsurfGeomechInitSimulation(simulation, pm_geomech)
   class(realization_subsurface_type), pointer :: subsurf_realization
   class(realization_geomech_type), pointer :: geomech_realization
   class(pmc_base_type), pointer :: cur_process_model_coupler
+  class(pmc_base_type), pointer :: pmc_dummy
   type(gmdm_ptr_type), pointer :: dm_ptr
   class(pmc_geomechanics_type), pointer :: pmc_geomech
-  class(timestepper_steady_type), pointer :: timestepper
+  class(timestepper_ksp_type), pointer :: timestepper
   type(geomechanics_regression_type), pointer :: geomech_regression
   PetscErrorCode :: ierr
 
   if (.not. associated(pm_geomech)) return
 
+  nullify(pmc_dummy)
+
   option => simulation%option
   geomech_realization => simulation%geomech%realization
   subsurf_realization => simulation%realization
+  pmc_geomech => simulation%geomech%process_model_coupler
+  timestepper => TimestepperKSPCast(pmc_geomech%timestepper)
 
   geomech_regression => simulation%geomech%regression
 
@@ -787,8 +787,6 @@ subroutine InitSubsurfGeomechInitSimulation(simulation, pm_geomech)
                                                subsurf_realization)
   call pm_geomech%Setup()
 
-  pmc_geomech => simulation%geomech%process_model_coupler
-  timestepper => TimestepperSteadyCast(pmc_geomech%timestepper)
   call pmc_geomech%SetupSolvers()
 
   ! Here I first calculate the linear part of the jacobian and store it
@@ -798,7 +796,7 @@ subroutine InitSubsurfGeomechInitSimulation(simulation, pm_geomech)
   ! re-uses the linear Jacobian at all iterations and times
   call MatSetOption(timestepper%solver%M,MAT_NEW_NONZERO_ALLOCATION_ERR, &
                     PETSC_FALSE,ierr);CHKERRQ(ierr)
-  call GeomechForceJacobianLinearPart(timestepper%solver%M, &
+  call GeomechForceAssembleCoeffMatrix(timestepper%solver%M, &
                                       geomech_realization)
   call MatSetOption(timestepper%solver%M,MAT_NEW_NONZERO_ALLOCATION_ERR, &
                     PETSC_TRUE,ierr);CHKERRQ(ierr)
@@ -846,24 +844,25 @@ subroutine InitSubsurfGeomechInitSimulation(simulation, pm_geomech)
     simulation%flow_process_model_coupler
   ! link subsurface flow as peer
   ! jaa: set geomech as a child
-  simulation%process_model_coupler_list%child => &
-    pmc_geomech
+!  simulation%process_model_coupler_list%child => &
+!    pmc_geomech
+  call PMCBaseSetChildPeerPtr(pmc_geomech%CastToBase(),PM_CHILD, &
+                    simulation%flow_process_model_coupler%CastToBase(), &
+                    pmc_dummy,PM_APPEND)
 
   call InitSubsurfGeomechChkInactiveCells(geomech_realization, &
                                           subsurf_realization)
 
   ! Set data in sim_aux
   cur_process_model_coupler => simulation%process_model_coupler_list
-  call cur_process_model_coupler%SetAuxData()
-  if (associated(cur_process_model_coupler%child)) then
-    cur_process_model_coupler => cur_process_model_coupler%child
-    call cur_process_model_coupler%GetAuxData()
-    call cur_process_model_coupler%SetAuxData()
-    select type(pmc => cur_process_model_coupler)
-      class is(pmc_geomechanics_type)
-        call GeomechStoreInitialPressTemp(pmc%geomech_realization)
-    end select
-  endif
+  call simulation%flow_process_model_coupler%SetAuxData()
+  call simulation%geomech%process_model_coupler%GetAuxData()
+  call simulation%geomech%process_model_coupler%SetAuxData()
+  ! this is solely for casting to pmc geomech
+  select type(pmc => simulation%geomech%process_model_coupler)
+    class is(pmc_geomechanics_type)
+      call GeomechStoreInitialPressTemp(pmc%geomech_realization)
+  end select
 
   call InitSubsurfGeomechJumpStart(simulation%geomech)
 
@@ -995,7 +994,7 @@ subroutine InitSubsurfGeomechSetupPMC(simulation,pm_geomech, &
   use Input_Aux_module
   use PM_Geomechanics_Force_class
   use Geomechanics_Realization_class
-  use Timestepper_Steady_class
+  use Timestepper_KSP_class
   use PMC_Geomechanics_class
   use Output_Aux_module
   use Waypoint_module
@@ -1014,7 +1013,7 @@ subroutine InitSubsurfGeomechSetupPMC(simulation,pm_geomech, &
 
   class(pmc_geomechanics_type), pointer :: pmc_geomech
   class(realization_geomech_type), pointer :: geomech_realization
-  class(timestepper_steady_type), pointer :: timestepper
+  class(timestepper_ksp_type), pointer :: timestepper
 
   subsurf_realization => simulation%realization
   option => subsurf_realization%option
@@ -1039,7 +1038,7 @@ subroutine InitSubsurfGeomechSetupPMC(simulation,pm_geomech, &
   pm_geomech%subsurf_realization => simulation%realization
 
   ! add time integrator
-  timestepper => TimestepperSteadyCreate()
+  timestepper => TimestepperKSPCreate()
   pmc_geomech%timestepper => timestepper
 
   ! add solver

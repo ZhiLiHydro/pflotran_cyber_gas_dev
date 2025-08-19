@@ -229,11 +229,13 @@ condition_control.o : \
   pflotran_constants.o \
   reaction.o \
   reaction_aux.o \
+  reaction_mineral.o \
   reaction_mineral_aux.o \
   reactive_transport.o \
   reactive_transport_aux.o \
   realization_subsurface.o \
   region.o \
+  richards_aux.o \
   sco2_aux.o \
   secondary_continuum_aux.o \
   transport_constraint_base.o \
@@ -496,7 +498,7 @@ factory_geomechanics.o : \
   simulation_base.o \
   simulation_geomechanics.o \
   simulation_subsurface.o \
-  timestepper_steady.o \
+  timestepper_KSP.o \
   waypoint.o
 factory_pflotran.o : \
   communicator_aux.o \
@@ -610,6 +612,7 @@ factory_subsurface_linkage.o : \
   pm_parameter.o \
   pm_pnf.o \
   pm_ponded_water.o \
+  pm_richards.o \
   pm_richards_ts.o \
   pm_rt.o \
   pm_sco2.o \
@@ -982,7 +985,7 @@ geomechanics_regression.o : \
   output_geomechanics.o \
   pflotran_constants.o \
   string.o \
-  timestepper_steady.o \
+  timestepper_KSP.o \
   utility.o
 geomechanics_strata.o : \
   geomechanics_material.o \
@@ -1310,7 +1313,7 @@ init_subsurface_geomechanics.o : \
   simulation_subsurface.o \
   solver.o \
   string.o \
-  timestepper_steady.o \
+  timestepper_KSP.o \
   units.o \
   utility.o \
   waypoint.o
@@ -2073,7 +2076,6 @@ pm_geomechanics_force.o : \
   communicator_base.o \
   communicator_structured.o \
   communicator_unstructured.o \
-  convergence.o \
   geomechanics_condition.o \
   geomechanics_discretization.o \
   geomechanics_force.o \
@@ -2280,6 +2282,8 @@ pm_richards.o : \
   pflotran_constants.o \
   pm_base.o \
   pm_subsurface_flow.o \
+  pm_well.o \
+  realization_base.o \
   realization_subsurface.o \
   richards.o \
   richards_aux.o \
@@ -2565,6 +2569,7 @@ pm_well.o : \
   pm_base.o \
   reactive_transport_aux.o \
   realization_subsurface.o \
+  richards_aux.o \
   sco2_aux.o \
   strata.o \
   string.o \
@@ -2688,7 +2693,6 @@ pmc_general.o : \
   pmc_base.o \
   timestepper_base.o
 pmc_geomechanics.o : \
-  convergence.o \
   discretization.o \
   geomechanics_discretization.o \
   geomechanics_force.o \
@@ -2704,8 +2708,8 @@ pmc_geomechanics.o : \
   pmc_base.o \
   realization_subsurface.o \
   solver.o \
-  timestepper_base.o \
-  timestepper_steady.o
+  timestepper_KSP.o \
+  timestepper_base.o
 pmc_geophysics.o : \
   hdf5_aux.o \
   option.o \
@@ -3434,6 +3438,7 @@ regression.o : \
   timestepper_base.o \
   utility.o
 richards.o : \
+  condition.o \
   connection.o \
   coupler.o \
   debug.o \
@@ -3452,6 +3457,7 @@ richards.o : \
   output_aux.o \
   patch.o \
   pflotran_constants.o \
+  pm_well.o \
   realization_base.o \
   realization_subsurface.o \
   region.o \
@@ -3615,8 +3621,8 @@ simulation_geomechanics.o : \
   realization_subsurface.o \
   simulation_aux.o \
   simulation_subsurface.o \
+  timestepper_KSP.o \
   timestepper_base.o \
-  timestepper_steady.o \
   utility.o \
   waypoint.o
 simulation_inverse.o : \
@@ -3686,8 +3692,9 @@ simulation_subsurface.o : \
   srcsink_sandbox.o \
   strata.o \
   string.o \
+  timestepper_KSP.o \
   timestepper_base.o \
-  timestepper_steady.o \
+  utility.o \
   waypoint.o \
   wipp.o
 slatec_pchip.o :

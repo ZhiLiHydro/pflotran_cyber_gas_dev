@@ -16,7 +16,7 @@ module Global_module
          GlobalGetAuxVarVecLoc, &
          GlobalWeightAuxVars, &
          GlobalUpdateState, &
-         GlobalUpdateAuxVars
+         GlobalSetAuxVarsAtTimeLevel
 
 contains
 
@@ -689,7 +689,7 @@ subroutine GlobalWeightAuxVars(realization,weight)
   end select
 
   select case(option%iflowmode)
-    case(G_MODE,H_MODE,SCO2_MODE)
+    case(TH_MODE,G_MODE,H_MODE,SCO2_MODE)
       do ghosted_id = 1, realization%patch%aux%Global%num_aux
         auxvars(ghosted_id)%pres(:) = &
           (weight*auxvars(ghosted_id)%pres_store(:,TIME_TpDT)+ &
@@ -754,10 +754,9 @@ end subroutine GlobalUpdateState
 
 ! ************************************************************************** !
 
-subroutine GlobalUpdateAuxVars(realization,time_level,time)
+subroutine GlobalSetAuxVarsAtTimeLevel(realization,time_level,time)
   !
-  ! Updates global aux var variables for use in
-  ! reactive transport
+  ! Updates global aux var variables for use in reactive transport
   !
   ! Author: Glenn Hammond
   ! Date: 01/14/09
@@ -804,18 +803,19 @@ subroutine GlobalUpdateAuxVars(realization,time_level,time)
       realization%patch%aux%Global%time_t = time
     case(TIME_TpDT)
       realization%patch%aux%Global%time_tpdt = time
+    case(TIME_NULL)
+    case default
+      option%io_buffer = 'Unknown time level in GlobalSetAuxVarsAtTimeLevel'
+      call PrintErrMsg(option)
   end select
 
-  ! liquid density
   select case(option%iflowmode)
     case(ZFLOW_MODE)
       call GlobalSetAuxVarScalar(realization,zflow_density_kg,LIQUID_DENSITY)
     case default
-      ! liquid density
       call GlobalUpdateSingleAuxVar(realization,LIQUID_DENSITY,time_level)
   end select
 
-  ! liquid saturation
   call GlobalUpdateSingleAuxVar(realization,LIQUID_SATURATION,time_level)
 
   ! gas saturation
@@ -833,51 +833,32 @@ subroutine GlobalUpdateAuxVars(realization,time_level,time)
 
   select case(option%iflowmode)
     case(MPH_MODE)
-      ! Gas density
       call GlobalUpdateSingleAuxVar(realization,GAS_DENSITY,time_level)
       call GlobalUpdateSingleAuxVar(realization,GAS_DENSITY_MOL,time_level)
-
-      ! liquid pressure
       call GlobalUpdateSingleAuxVar(realization,LIQUID_PRESSURE,time_level)
-
-      ! gas pressure
       call GlobalUpdateSingleAuxVar(realization,GAS_PRESSURE,time_level)
-
-      ! temperature
       call GlobalUpdateSingleAuxVar(realization,TEMPERATURE,time_level)
-
-      ! fugacity coeff
       call GlobalUpdateSingleAuxVar(realization,SC_FUGA_COEFF,time_level)
     case(TH_MODE,TH_TS_MODE)
-      ! pressure
+      call GlobalUpdateSingleAuxVar(realization,LIQUID_PRESSURE,time_level)
       call GlobalUpdateSingleAuxVar(realization,LIQUID_DENSITY,time_level)
-
-      ! temperature
       call GlobalUpdateSingleAuxVar(realization,TEMPERATURE,time_level)
     case(G_MODE,WF_MODE)
-      ! pressure
       call GlobalUpdateSingleAuxVar(realization,LIQUID_DENSITY,time_level)
       if (option%iflowmode == G_MODE) then
-        ! temperature
         call GlobalUpdateSingleAuxVar(realization,TEMPERATURE,time_level)
       endif
-      ! Gas pressure
-      call GlobalUpdateSingleAuxVar(realization,GAS_DENSITY,time_level)
-      ! Gas density
+      call GlobalUpdateSingleAuxVar(realization,GAS_PRESSURE,time_level)
       call GlobalUpdateSingleAuxVar(realization,GAS_DENSITY,time_level)
     case(SCO2_MODE)
-      if (option%ntrandof > 0 .or. option%flow%store_state_variables_in_global) then
+      if (option%ntrandof > 0 .or. &
+          option%flow%store_state_variables_in_global) then
         call GlobalUpdateSingleAuxVar(realization,LIQUID_DENSITY,time_level)
-        ! Gas density
         call GlobalUpdateSingleAuxVar(realization,GAS_DENSITY,time_level)
         call GlobalUpdateSingleAuxVar(realization,GAS_DENSITY_MOL,time_level)
-        ! liquid pressure
         call GlobalUpdateSingleAuxVar(realization,LIQUID_PRESSURE,time_level)
-        ! gas pressure
         call GlobalUpdateSingleAuxVar(realization,GAS_PRESSURE,time_level)
-        ! temperature
         call GlobalUpdateSingleAuxVar(realization,TEMPERATURE,time_level)
-        ! fugacity coeff
         call GlobalUpdateSingleAuxVar(realization,SC_FUGA_COEFF,time_level)
       endif
   end select
@@ -935,7 +916,7 @@ subroutine GlobalUpdateAuxVars(realization,time_level,time)
   end if
   ! darcy velocity (end)
 
-end subroutine GlobalUpdateAuxVars
+end subroutine GlobalSetAuxVarsAtTimeLevel
 
 ! ************************************************************************** !
 

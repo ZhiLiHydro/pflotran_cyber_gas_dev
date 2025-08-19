@@ -143,7 +143,7 @@ subroutine FactorySubsurfaceInitPostPetsc(simulation)
   ! FactorySubsurfaceInitSimulation() must be called after pmc linkages
   ! are set above.
   call FactorySubsurfaceInitSimulation(simulation)
-  call InitSubsurfGeomechInitSimulation(simulation, pm_geomech)
+  call InitSubsurfGeomechInitSimulation(simulation,pm_geomech)
 
   ! set first process model coupler as the master
   simulation%process_model_coupler_list%is_master = PETSC_TRUE
@@ -217,11 +217,7 @@ subroutine FactorySubsurfaceSetFlowMode(pm_flow,pm_well,option)
       option%water_id = 1
       option%air_id = 2
     class is (pm_richards_type)
-      option%iflowmode = RICHARDS_MODE
-      option%nphase = 1
-      option%nflowdof = 1
-      option%nflowspec = 1
-      option%flow%isothermal = PETSC_TRUE
+      call PMRichardsSetFlowMode(pm_well,option)
     class is (pm_zflow_type)
       option%iflowmode = ZFLOW_MODE
       option%nphase = 1
@@ -367,7 +363,7 @@ subroutine FactorySubsurfaceInitSimulation(simulation)
   option => realization%option
 
   ! for coupling between geomechanics and ert
-  select case(option%geomechanics%subsurf_coupling)
+  select case(option%geomechanics%geophysics_coupling)
     case(GEOMECH_ERT_COUPLING)
       call RealizationRegisterParameter(realization,'geomechanics_stress')
       call RealizationRegisterParameter(realization,'geomechanics_strain')
