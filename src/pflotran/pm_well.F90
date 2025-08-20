@@ -5817,6 +5817,7 @@ subroutine PMWellInitializeWellFlow(pm_well)
   type(sco2_auxvar_type), pointer :: sco2_auxvar
   type(hydrate_auxvar_type), pointer :: hyd_auxvar
   type(th_auxvar_type), pointer :: th_auxvar
+  type(global_auxvar_type), pointer :: global_auxvar
   type(option_type), pointer :: option
   PetscInt :: k, ghosted_id
   !PetscReal :: depth_from_seg_above
@@ -5879,7 +5880,8 @@ subroutine PMWellInitializeWellFlow(pm_well)
       ghosted_id = pm_well%well_grid%h_ghosted_id(1)
       th_auxvar => &
         pm_well%realization%patch%aux%th%auxvars(ghosted_id)
-        pm_well%well%bh_p = -1.0 * pm_well%well%liq%den(1) * &
+      pm_well%well%bh_p = th_auxvar%pres - &
+                            pm_well%well%liq%den(1) * &
                             pm_well%option%gravity(Z_DIRECTION) * &
                             pm_well%well_grid%dh(1)/2.d0
   end select
@@ -6436,8 +6438,8 @@ subroutine PMWellTHPerturb(pm_well)
 
       reservoir%p_l(k) = global_auxvar%pres(option%liquid_phase)
       reservoir%s_l(k) = global_auxvar%sat(option%liquid_phase)
-      reservoir%mobility_l(k) = th_auxvar%kvr
-      !reservoir%kr_l(k) = th_auxvar%kr !does not exist in TH mode or Global
+      reservoir%mobility_l(k) = th_auxvar%mobility
+      reservoir%kr_l(k) = th_auxvar%kr
       reservoir%den_l(k) = global_auxvar%den_kg(option%liquid_phase)
       reservoir%visc_l(k) = th_auxvar%vis
       reservoir%xmass_liq(k,ONE_INTEGER) = 1.0
@@ -6910,7 +6912,7 @@ subroutine PMWellUpdateReservoirRichards(pm_well,update_index,segment_index)
 
 end subroutine PMWellUpdateReservoirRichards
 
- ************************************************************************** !
+!************************************************************************** !
 
 subroutine PMWellUpdateReservoirTH(pm_well,update_index,segment_index)
   !
@@ -6966,8 +6968,8 @@ subroutine PMWellUpdateReservoirTH(pm_well,update_index,segment_index)
 
     reservoir%p_l(k) = global_auxvar%pres(option%liquid_phase)
     reservoir%s_l(k) = global_auxvar%sat(option%liquid_phase)
-    reservoir%mobility_l(k) = th_auxvar%kvr
-    !reservoir%kr_l(k) = th_auxvar%kr !does not exist in TH mode or Global
+    reservoir%mobility_l(k) = th_auxvar%mobility
+    reservoir%kr_l(k) = th_auxvar%kr
     reservoir%den_l(k) = global_auxvar%den_kg(option%liquid_phase)
     reservoir%visc_l(k) = th_auxvar%vis
     reservoir%xmass_liq(k,ONE_INTEGER) = 1.0
@@ -7703,7 +7705,7 @@ subroutine PMWellModifyFlowResHydrostatic(this,residual)
         enddo
       endif
     case(TH_MODE)
-      if (this%well%well_constraint_type == CONSTANT_RATE) then
+      if (this%well%well_constraint_type == WELL_CONSTANT_RATE) then
         sum_q = 0.d0
         do k = 1,this%well_grid%nsegments
           if (this%well_grid%h_rank_id(k) /= this%option%myrank) &
@@ -7732,7 +7734,7 @@ subroutine PMWellModifyFlowResHydrostatic(this,residual)
                   (this%well%liq%q(k)* &
                   this%well%liq%H(k))
         enddo
-      elseif (this%well%well_constraint_type == CONSTANT_PRESSURE_HYDROSTATIC) then
+      elseif (this%well%well_constraint_type == WELL_CONSTANT_PRESSURE_HYDROSTATIC) then
         do k = 1,this%well_grid%nsegments
           if (this%well_grid%h_rank_id(k) /= this%option%myrank) &
               cycle
@@ -8440,10 +8442,10 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
             local_row_index = this%well_grid%h_ghosted_id(1)* &
                               option%nflowdof-1
             local_col_index = (ghosted_id-1)*option%nflowdof + idof - 1
-            J_well = -(res_pert)/pert
-            if (dabs(J_well) > 0.d0) then
+            P_well = -(res_pert)/pert
+            if (dabs(P_well) > 0.d0) then
               call MatSetValuesLocal(Jac,1,local_row_index,1, &
-                                      local_col_index,J_well, &
+                                      local_col_index,P_well, &
                                       ADD_VALUES,ierr);CHKERRQ(ierr)
             endif
           endif
@@ -8506,10 +8508,10 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
           ! Just change 1 column
           local_row_index = (ghosted_id-1)*option%nflowdof + j
           local_col_index = this%well_grid%h_ghosted_id(1)*option%nflowdof-1
-          J_well = (res_pert - res)/pert
-          if (dabs(J_well) > 0.d0) then
+          P_well = (res_pert - res)/pert
+          if (dabs(P_well) > 0.d0) then
             call MatSetValuesLocal(Jac,1,local_row_index,1,local_col_index, &
-                                    J_well,ADD_VALUES,ierr);CHKERRQ(ierr)
+                                    P_well,ADD_VALUES,ierr);CHKERRQ(ierr)
           endif
         enddo
         ! Energy contribution
@@ -8521,10 +8523,10 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
         local_row_index = (ghosted_id-1)*option%nflowdof + j
         local_col_index = this%well_grid%h_ghosted_id(1)* &
                           option%nflowdof-1
-        J_well = (res_pert - res)/pert
-        if (dabs(J_well) > 0.d0) then
+        P_well = (res_pert - res)/pert
+        if (dabs(P_well) > 0.d0) then
           call MatSetValuesLocal(Jac,1,local_row_index,1,local_col_index, &
-                                  J_well,ADD_VALUES,ierr);CHKERRQ(ierr)
+                                  P_well,ADD_VALUES,ierr);CHKERRQ(ierr)
         endif
 
         if (any(dabs(J_block) > 0.d0)) then
@@ -8751,10 +8753,10 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
             local_row_index = this%well_grid%h_ghosted_id(1)* &
                               option%nflowdof-1
             local_col_index = (ghosted_id-1)*option%nflowdof + idof - 1
-            J_well = UNINITIALIZED_DOUBLE
-            if (dabs(J_well) > 0.d0) then
+            P_well = UNINITIALIZED_DOUBLE
+            if (dabs(P_well) > 0.d0) then
               call MatSetValuesLocal(Jac,1,local_row_index,1, &
-                                      local_col_index,J_well, &
+                                      local_col_index,P_well, &
                                       ADD_VALUES,ierr);CHKERRQ(ierr)
             endif
           endif
@@ -8786,10 +8788,10 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
           ! Just change 1 column
           local_row_index = (ghosted_id-1)*option%nflowdof + j
           local_col_index = this%well_grid%h_ghosted_id(1)*option%nflowdof-1
-          J_well = UNINITIALIZED_DOUBLE
-          if (dabs(J_well) > 0.d0) then
+          P_well = UNINITIALIZED_DOUBLE
+          if (dabs(P_well) > 0.d0) then
             call MatSetValuesLocal(Jac,1,local_row_index,1,local_col_index, &
-                                    J_well,ADD_VALUES,ierr);CHKERRQ(ierr)
+                                    P_well,ADD_VALUES,ierr);CHKERRQ(ierr)
           endif
         enddo
         if (any(dabs(J_block) > 0.d0)) then

@@ -88,7 +88,6 @@ module TH_Aux_module
     type(th_ice_type), pointer :: ice
 
     ! for numerical derivatives
-    PetscReal :: pert
     type(th_auxvar_type), pointer :: auxvar_pert(:)
 
 #if defined(CLM_PFLOTRAN) || defined(CLM_OFFLINE)
