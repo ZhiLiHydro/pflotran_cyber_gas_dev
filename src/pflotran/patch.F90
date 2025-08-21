@@ -2462,7 +2462,7 @@ subroutine PatchUpdateCouplerAuxVarsG(patch,coupler,option)
             select case(general%mole_fraction%itype)
               case(DIRICHLET_BC)
                 call PatchGetCouplerValueFromDataset(coupler,option, &
-                       patch%grid,general%gas_pressure%dataset,iconn,mole_fraction)
+                       patch%grid,general%mole_fraction%dataset,iconn,mole_fraction)
                 coupler%flow_aux_real_var(THREE_INTEGER,iconn) = mole_fraction
                 dof3 = PETSC_TRUE
                 coupler%flow_bc_type(GENERAL_GAS_EQUATION_INDEX) = DIRICHLET_BC
