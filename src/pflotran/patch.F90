@@ -1604,7 +1604,7 @@ subroutine PatchUpdateCouplerAuxVarsG(patch,coupler,option)
   PetscReal :: temperature, p_sat, p_cap, s_liq, xmol, xmol2
   PetscReal :: relative_humidity
   PetscReal :: gas_sat, air_pressure, gas_pressure, liq_pressure, &
-               precipitate_sat
+               precipitate_sat, mole_fraction
   PetscBool :: error_flag
 
   PetscReal :: dummy_real
@@ -2441,6 +2441,39 @@ subroutine PatchUpdateCouplerAuxVarsG(patch,coupler,option)
 
       ! ---------------------------------------------------------------------- !
         case(ANY_STATE)
+          ! gas pressure; 1st dof ------------------------ !
+          if (associated(general%gas_pressure)) then
+            select case(general%gas_pressure%itype)
+              case(DIRICHLET_BC)
+                call PatchGetCouplerValueFromDataset(coupler,option, &
+                       patch%grid,general%gas_pressure%dataset,iconn,gas_pressure)
+                coupler%flow_aux_real_var(THREE_INTEGER,iconn) = gas_pressure
+                dof3 = PETSC_TRUE
+                coupler%flow_bc_type(GENERAL_GAS_EQUATION_INDEX) = DIRICHLET_BC
+              case default
+                string = FlowSubConditionGetType(general%gas_pressure%itype)
+                option%io_buffer = &
+                     FlowConditionUnknownItype(coupler%flow_condition, &
+                     'GENERAL_MODE two phase state gas pressure ',string)
+                call PrintErrMsg(option)
+            end select
+          endif
+          if (associated(general%mole_fraction)) then
+            select case(general%mole_fraction%itype)
+              case(DIRICHLET_BC)
+                call PatchGetCouplerValueFromDataset(coupler,option, &
+                       patch%grid,general%gas_pressure%dataset,iconn,mole_fraction)
+                coupler%flow_aux_real_var(THREE_INTEGER,iconn) = mole_fraction
+                dof3 = PETSC_TRUE
+                coupler%flow_bc_type(GENERAL_GAS_EQUATION_INDEX) = DIRICHLET_BC
+              case default
+                string = FlowSubConditionGetType(general%mole_fraction%itype)
+                option%io_buffer = &
+                     FlowConditionUnknownItype(coupler%flow_condition, &
+                     'GENERAL_MODE two phase state mole fraction ',string)
+                call PrintErrMsg(option)
+            end select
+          endif
           ! temperature; 2nd dof ------------------------- !
           if (associated(general%temperature)) then
             select case(general%temperature%itype)

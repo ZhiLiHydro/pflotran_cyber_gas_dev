@@ -865,8 +865,17 @@ subroutine GeneralUpdateAuxVars(realization,update_state,update_state_bc)
                     real_index = boundary_condition%flow_aux_mapping(dof_to_primary_variable(idof,istate))
                     xxbc(idof) = boundary_condition%flow_aux_real_var(real_index,iconn)
                   endif
+                case(NEUMANN_BC)
+                  ! if flow_bc_type(GENERAL_GAS_EQUATION_INDEX) = DIRICHLET (gas pressure)
+                  !   set xxbc(1) = gas pressure
+                  !   all others are the same.
+                  ! endif
+                  if (boundary_condition%flow_bc_type(GENERAL_GAS_EQUATION_INDEX) == DIRICHLET_BC) then
+                    !xxbc(ONE_INTEGER) = boundary_condition%flow_aux_real_var(THREE_INTEGER,iconn)
+                  endif
               end select
             enddo
+
           case(TWO_PHASE_STATE,LGP_STATE)
             do idof = 1, option%nflowdof
               select case(boundary_condition%flow_bc_type(idof))
@@ -922,14 +931,18 @@ subroutine GeneralUpdateAuxVars(realization,update_state,update_state_bc)
                     ! for gas saturation dof
                     case(GENERAL_GAS_SATURATION_INDEX)
                       real_index = boundary_condition%flow_aux_mapping(variable)
-                      if (real_index /= 0) then
-                        xxbc(idof) = boundary_condition%flow_aux_real_var(real_index,iconn)
+                      if (boundary_condition%flow_bc_type(GENERAL_LIQUID_EQUATION_INDEX) == NEUMANN_BC) then
+                        ! xxbc(2) stays at gas saturation                       
                       else
-!geh: should be able to use the saturation within the cell
-!                        option%io_buffer = 'Mixed FLOW_CONDITION "' // &
-!                          trim(boundary_condition%flow_condition%name) // &
-!                          '" needs saturation defined.'
-!                        call PrintErrMsg(option)
+                        if (real_index /= 0) then
+                          xxbc(idof) = boundary_condition%flow_aux_real_var(real_index,iconn)
+                        else
+  !geh: should be able to use the saturation within the cell
+  !                        option%io_buffer = 'Mixed FLOW_CONDITION "' // &
+  !                          trim(boundary_condition%flow_condition%name) // &
+  !                          '" needs saturation defined.'
+  !                        call PrintErrMsg(option)
+                        endif
                       endif
                     case(GENERAL_TEMPERATURE_INDEX)
                       real_index = boundary_condition%flow_aux_mapping(variable)
@@ -950,6 +963,9 @@ subroutine GeneralUpdateAuxVars(realization,update_state,update_state_bc)
                     xxbc(idof) = boundary_condition%flow_aux_real_var(real_index,iconn)
                   endif
                 case(NEUMANN_BC)
+                  if (boundary_condition%flow_bc_type(GENERAL_GAS_EQUATION_INDEX) == DIRICHLET_BC) then
+                    xxbc(ONE_INTEGER) = boundary_condition%flow_aux_real_var(THREE_INTEGER,iconn)
+                  endif
                 case default
                   if (material_is_soluble) then
                     continue

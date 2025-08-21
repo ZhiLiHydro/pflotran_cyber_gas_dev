@@ -2397,6 +2397,12 @@ subroutine FlowConditionGeneralRead(condition,input,option)
              associated(general%energy_flux) .or. &
              associated(general%temperature))) then
       condition%iphase = ANY_STATE
+    elseif (associated(general%liquid_flux) .and. &
+           (associated(general%gas_pressure) .or.&
+            associated(general%mole_fraction)) .and. &
+           (associated(general%energy_flux) .or. &
+            associated(general%temperature))) then
+      condition%iphase = ANY_STATE
     else
       ! some sort of dirichlet-based pressure, temperature, etc.
       if (option%iflowmode == G_MODE) then
