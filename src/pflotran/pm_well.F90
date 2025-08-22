@@ -6353,7 +6353,6 @@ subroutine PMWellTHPerturb(pm_well)
   type(well_type), pointer :: well
   type(well_reservoir_type), pointer :: reservoir
   type(th_auxvar_type), pointer :: th_auxvar
-  type(global_auxvar_type), pointer :: global_auxvar
   type(material_auxvar_type), pointer :: material_auxvar
   type(grid_type), pointer :: res_grid
   type(option_type), pointer :: option
@@ -6409,8 +6408,6 @@ subroutine PMWellTHPerturb(pm_well)
     do idof = 1,option%nflowdof
       well => pm_well%well_pert(idof)
       well%bh_p = pm_well%well%bh_p
-      global_auxvar => &
-        pm_well%realization%patch%aux%global%auxvars(ghosted_id)
       if (idof == TH_WELL_DOF) then
         th_auxvar => &
           pm_well%realization%patch%aux%th%auxvars(ghosted_id)
@@ -6419,7 +6416,7 @@ subroutine PMWellTHPerturb(pm_well)
         if (.not. Initialized(th_auxvar%well%pressure_bump)) then
           if (k == 1) then
             th_auxvar%well%pressure_bump = (well%bh_p - &
-                      global_auxvar%pres(lid)) + pres_bump
+                      th_auxvar%pres) + pres_bump
           else
             th_auxvar%well%pressure_bump = 0.d0
           endif
@@ -6436,11 +6433,11 @@ subroutine PMWellTHPerturb(pm_well)
       material_auxvar => &
         pm_well%realization%patch%aux%material%auxvars(ghosted_id)
 
-      reservoir%p_l(k) = global_auxvar%pres(option%liquid_phase)
-      reservoir%s_l(k) = global_auxvar%sat(option%liquid_phase)
+      reservoir%p_l(k) = th_auxvar%pres
+      reservoir%s_l(k) = th_auxvar%sat
       reservoir%mobility_l(k) = th_auxvar%mobility
       reservoir%kr_l(k) = th_auxvar%kr
-      reservoir%den_l(k) = global_auxvar%den_kg(option%liquid_phase)
+      reservoir%den_l(k) = th_auxvar%den_kg
       reservoir%visc_l(k) = th_auxvar%vis
       reservoir%xmass_liq(k,ONE_INTEGER) = 1.0
       reservoir%xmass_gas(k,ONE_INTEGER) = 0.0
@@ -6448,7 +6445,7 @@ subroutine PMWellTHPerturb(pm_well)
 
       reservoir%p_g(k) = 0.0  ! As th has a single liquid phase
       reservoir%s_g(k) = 0.0  ! As th has a single liquid phase
-      reservoir%temp(k) = global_auxvar%temp
+      reservoir%temp(k) = th_auxvar%temp
       reservoir%H_l(k) = th_auxvar%h
       reservoir%kx(k) = material_auxvar%permeability(1)
       reservoir%ky(k) = material_auxvar%permeability(2)
@@ -6934,7 +6931,6 @@ subroutine PMWellUpdateReservoirTH(pm_well,update_index,segment_index)
   type(well_reservoir_type), pointer :: reservoir
   type(TH_auxvar_type), pointer :: th_auxvar
   type(material_auxvar_type), pointer :: material_auxvar
-  type(global_auxvar_type), pointer :: global_auxvar
   type(grid_type), pointer :: res_grid
   type(option_type), pointer :: option
   type(well_comm_type), pointer :: well_comm
@@ -6963,14 +6959,12 @@ subroutine PMWellUpdateReservoirTH(pm_well,update_index,segment_index)
     endif
     material_auxvar => &
       pm_well%realization%patch%aux%material%auxvars(ghosted_id)
-    global_auxvar => &
-      pm_well%realization%patch%aux%global%auxvars(ghosted_id)
 
-    reservoir%p_l(k) = global_auxvar%pres(option%liquid_phase)
-    reservoir%s_l(k) = global_auxvar%sat(option%liquid_phase)
+    reservoir%p_l(k) = th_auxvar%pres
+    reservoir%s_l(k) = th_auxvar%sat
     reservoir%mobility_l(k) = th_auxvar%mobility
     reservoir%kr_l(k) = th_auxvar%kr
-    reservoir%den_l(k) = global_auxvar%den_kg(option%liquid_phase)
+    reservoir%den_l(k) = th_auxvar%den_kg
     reservoir%visc_l(k) = th_auxvar%vis
     reservoir%xmass_liq(k,ONE_INTEGER) = 1.0
     reservoir%xmass_gas(k,ONE_INTEGER) = 0.0
@@ -6978,7 +6972,7 @@ subroutine PMWellUpdateReservoirTH(pm_well,update_index,segment_index)
 
     reservoir%p_g(k) = 0.0  ! As th has a single liquid phase
     reservoir%s_g(k) = 0.0  ! As th has a single liquid phase
-    reservoir%temp(k) = global_auxvar%temp
+    reservoir%temp(k) = th_auxvar%temp
     reservoir%H_l(k) = th_auxvar%h
     reservoir%kx(k) = material_auxvar%permeability(1)
     reservoir%ky(k) = material_auxvar%permeability(2)
