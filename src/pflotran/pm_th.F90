@@ -56,8 +56,9 @@ module PM_TH_class
   end type pm_th_type
 
   public :: PMTHCreate, &
-            PMTHDestroy, &
-            PMTHCheckConvergence
+            PMTHSetFlowMode, &
+            PMTHCheckConvergence, &
+            PMTHDestroy
 
 contains
 
