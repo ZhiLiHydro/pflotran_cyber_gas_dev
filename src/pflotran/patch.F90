@@ -1023,7 +1023,7 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
                 coupler%flow_aux_int_var = 0
 
               case(TH_MODE,TH_TS_MODE)
-                temp_int = 2
+                temp_int = option%nflowdof
                 select case(coupler%flow_condition%pressure%itype)
                   case(HYDROSTATIC_CONDUCTANCE_BC, &
                        DIRICHLET_CONDUCTANCE_BC, &
