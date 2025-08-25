@@ -4120,7 +4120,7 @@ subroutine PatchUpdateCouplerAuxVarsTH(patch,coupler,option)
         end select
         select case(flow_condition%pressure%itype)
           case(DIRICHLET_CONDUCTANCE_BC)
-            coupler%flow_aux_real_var(TH_CONDUCTANCE_DOF, &
+            coupler%flow_aux_real_var(th_conductance_dof, &
                                       1:num_connections) = &
                                            flow_condition%pressure%aux_real(1)
         end select
@@ -4132,7 +4132,7 @@ subroutine PatchUpdateCouplerAuxVarsTH(patch,coupler,option)
                 flow_condition%pressure%dataset,TH_PRESSURE_DOF,option)
         if (flow_condition%pressure%itype == &
             HET_HYDROSTATIC_CONDUCTANCE_BC) then
-          coupler%flow_aux_real_var(TH_CONDUCTANCE_DOF,1:num_connections) = &
+          coupler%flow_aux_real_var(th_conductance_dof,1:num_connections) = &
             flow_condition%pressure%aux_real(1)
         endif
       case default

@@ -9,6 +9,7 @@ module PM_TH_class
   use Realization_Subsurface_class
   use Communicator_Base_class
   use Option_module
+  use PM_Well_class
 
   use PFLOTRAN_Constants_module
 
@@ -31,6 +32,7 @@ module PM_TH_class
     PetscReal :: residual_scaled_inf_tol(2)
     PetscReal :: abs_update_inf_tol(2)
     PetscReal :: rel_update_inf_tol(2)
+    class(pm_well_type), pointer :: pmwell_ptr
   contains
     procedure, public :: Setup => PMTHSetup
     procedure, public :: ReadSimulationOptionsBlock => PMTHReadSimOptionsBlock
@@ -103,9 +105,56 @@ function PMTHCreate()
   this%abs_update_inf_tol = abs_update_inf_tol
   this%rel_update_inf_tol = rel_update_inf_tol
 
+  nullify(this%pmwell_ptr)
+
   PMTHCreate => this
 
 end function PMTHCreate
+
+! ************************************************************************** !
+
+subroutine PMTHSetFlowMode(this,pm_well,option)
+  !
+  ! Reads input file parameters associated with the TH process model
+  !
+  ! Author: Glenn Hammond
+  ! Date: 01/29/15
+
+  use Option_module
+  use TH_Aux_module
+
+  implicit none
+
+  class(pm_th_type) :: this
+  class(pm_well_type), pointer :: pm_well
+  type(option_type) :: option
+
+  option%iflowmode = TH_MODE
+  option%nphase = 1
+  option%nflowdof = 2
+  option%nflowspec = 1
+  option%flow%isothermal = PETSC_FALSE
+  option%flow%store_fluxes = PETSC_TRUE
+
+  if (associated(pm_well)) then
+    if (pm_well%flow_coupling == FULLY_IMPLICIT_WELL) then
+      if (pm_well%well%well_model_type /= WELL_MODEL_HYDROSTATIC) then
+        option%io_buffer = 'Currently, TH mode can only be &
+                  &used with the HYDROSTATIC well model.'
+        call PrintErrMsg(option)
+      endif
+      option%nflowdof = option%nflowdof + 1
+      option%coupled_well = PETSC_TRUE
+      th_well_dof = option%nflowdof
+      th_conductance_dof = th_well_dof + 1
+    else
+      option%io_buffer = 'Currently, only FULLY_IMPLICIT &
+                  &wellbore coupling is implemented for TH Mode.'
+      call PrintErrMsg(option)
+    endif
+  endif
+
+end subroutine PMTHSetFlowMode
 
 ! ************************************************************************** !
 
@@ -348,6 +397,54 @@ subroutine PMTHSetup(this)
   call this%commN%SetDM(this%realization%discretization%dm_nflowdof)
 
 end subroutine PMTHSetup
+
+! ************************************************************************** !
+
+recursive subroutine PMTHInitializeRun(this)
+  !
+  ! Initializes the simulation prior to time stepping
+  !
+  ! Author: Glenn Hammond
+  ! Date: 08/18/25
+
+  implicit none
+
+  class(pm_th_type) :: this
+
+  class(pm_well_type), pointer :: pm_well
+  PetscErrorCode :: ierr
+
+  call PMSubsurfaceFlowInitializeRun(this)
+
+  ! setup coupling in jacobian matrix for the well model
+  if (this%option%coupled_well .and. associated(this%pmwell_ptr)) then
+    call MatSetOption(this%solver%M,MAT_NEW_NONZERO_LOCATIONS,PETSC_TRUE, &
+                      ierr);CHKERRQ(ierr)
+    call MatSetOption(this%solver%Mpre,MAT_NEW_NONZERO_LOCATIONS,PETSC_TRUE, &
+                      ierr);CHKERRQ(ierr)
+    pm_well => this%pmwell_ptr
+    do
+      if (.not. associated(pm_well)) exit
+      if (any(pm_well%well_grid%h_rank_id == pm_well%option%myrank)) then
+        call PMWellModifyDummyFlowJacobian(pm_well,this%solver%M,ierr)
+        if (this%solver%M /= this%solver%Mpre) then
+          call PMWellModifyDummyFlowJacobian(pm_well,this%solver%Mpre,ierr)
+        endif
+      endif
+      pm_well => pm_well%next_well
+    enddo
+    call MatAssemblyBegin(this%solver%M,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+    call MatAssemblyEnd(this%solver%M,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+    call MatSetOption(this%solver%M,MAT_NEW_NONZERO_LOCATIONS,PETSC_FALSE, &
+                      ierr);CHKERRQ(ierr)
+    call MatAssemblyBegin(this%solver%Mpre,MAT_FINAL_ASSEMBLY,ierr); &
+                         CHKERRQ(ierr)
+    call MatAssemblyEnd(this%solver%Mpre,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+    call MatSetOption(this%solver%Mpre,MAT_NEW_NONZERO_LOCATIONS,PETSC_FALSE, &
+                      ierr);CHKERRQ(ierr)
+  endif
+
+end subroutine PMTHInitializeRun
 
 ! ************************************************************************** !
 

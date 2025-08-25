@@ -55,6 +55,7 @@ module PM_Well_class
   PetscInt, parameter, public :: WELL_MODEL_HYDROSTATIC = 4
   PetscInt, parameter, public :: WELL_MODEL_U_SHAPE = 5
   PetscInt, parameter, public :: WELL_MODEL_COAXIAL = 6
+  PetscInt, parameter, public :: WELL_MODEL_PIPE_FLOW = 7
 
   ! Well constraint types
   PetscInt, parameter, public :: WELL_CONSTANT_PRESSURE = 1
@@ -7865,9 +7866,9 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
   ! Author: Michael Nole
   ! Date: 04/12/2024
   !
-
   use Option_module
   use Petsc_Utility_module, only : PUMSetValuesLocal, PUMSetValuesBlockedLocal
+  use String_module
 
   implicit none
 
@@ -7880,7 +7881,7 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
   PetscReal, allocatable :: J_block(:,:)
   PetscInt :: j,k,idof,irow
   PetscInt :: local_row_index, local_col_index
-  PetscReal :: P_well, temp_real
+  PetscReal :: P_well, temp_real(1)
 
   option => this%option
 
@@ -8073,6 +8074,19 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
                                     temp_real, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
+
+    case(TH_MODE)
+      select case(this%well%well_model_type)
+        case(WELL_MODEL_PIPE_FLOW)
+          ! expanded stencil already accommodates heat
+          ! convection/conduction in the pipe
+        case default
+          option%io_buffer = 'Well model ' // &
+            StringWrite(this%well%well_model_type) // &
+            'not supported in PMWellModifyDummyFlowJacobian.'
+          call PrintErrMsg(option)
+      end select
+
   end select
 
 end subroutine PMWellModifyDummyFlowJacobian

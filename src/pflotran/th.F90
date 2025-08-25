@@ -2623,7 +2623,7 @@ subroutine THBCFluxDerivative(ibndtype,bc_auxvars, &
       if (ibndtype(TH_PRESSURE_DOF) == DIRICHLET_CONDUCTANCE_BC .or. &
           ibndtype(TH_PRESSURE_DOF) == HYDROSTATIC_CONDUCTANCE_BC .or. &
           ibndtype(TH_PRESSURE_DOF) == HET_HYDROSTATIC_CONDUCTANCE_BC) then
-        Dq = bc_auxvars(TH_CONDUCTANCE_DOF)
+        Dq = bc_auxvars(th_conductance_dof)
       else
         Dq = perm_dn / dd_dn
       endif
@@ -3215,7 +3215,7 @@ subroutine THBCFlux(ibndtype,bc_auxvars, &
       if (ibndtype(TH_PRESSURE_DOF) == DIRICHLET_CONDUCTANCE_BC .or. &
           ibndtype(TH_PRESSURE_DOF) == HYDROSTATIC_CONDUCTANCE_BC .or. &
           ibndtype(TH_PRESSURE_DOF) == HET_HYDROSTATIC_CONDUCTANCE_BC) then
-        Dq = bc_auxvars(TH_CONDUCTANCE_DOF)
+        Dq = bc_auxvars(th_conductance_dof)
       else
         Dq = perm_dn / dd_dn
       endif
