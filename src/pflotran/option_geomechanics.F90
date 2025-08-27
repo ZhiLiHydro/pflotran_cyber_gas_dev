@@ -29,6 +29,9 @@ module Option_Geomechanics_module
     PetscReal :: poissons_ratio(100)
     PetscReal :: youngs_modulus(100)
     PetscReal :: biot_coefficient(100)
+    ! move later
+    PetscReal :: porosity_initial(100)
+    PetscReal :: fluid_compressibility(3)
     PetscBool :: improve_tet_weighting
 
   end type geomechanics_option_type

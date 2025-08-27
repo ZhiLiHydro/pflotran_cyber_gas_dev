@@ -470,6 +470,8 @@ subroutine MaterialPropertyRead(material_property,input,option)
         call DatasetReadDoubleOrDataset(input,material_property%porosity, &
                                         material_property%porosity_dataset, &
                                         keyword,error_str,option)
+      ! jaa testing
+      option%geomechanics%porosity_initial(1) = material_property%porosity
       case('TORTUOSITY')
         tort_iso_read = PETSC_TRUE
         call DatasetReadDoubleOrDataset(input, &

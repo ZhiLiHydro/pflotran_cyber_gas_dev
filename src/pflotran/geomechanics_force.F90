@@ -1269,7 +1269,7 @@ subroutine GeomechForceLocalElemResidual(size_elenodes,local_coordinates, &
     alpha = dot_product(shapefunction%N,local_alpha)
     beta = dot_product(shapefunction%N,local_beta)
     density = dot_product(shapefunction%N,local_density)
-    call GeomechGetLambdaMu(lambda,mu,youngs_mod,poissons_ratio)
+    call GeomechGetLambdaMu(lambda,mu,youngs_mod,poissons_ratio,option)
     call GeomechGetBodyForce(load_type,lambda,mu,x,bf,option)
     call ConvertMatrixToVector(transpose(B),vecB_transpose)
     Kmat = Kmat + w(igpt)*lambda* &
@@ -1413,7 +1413,7 @@ subroutine GeomechForceLocalElemError(size_elenodes,local_coordinates, &
     call MatInv3(J_map,inv_J_map)
     B = matmul(shapefunction%DN,inv_J_map)
     grad_u = matmul(transpose(local_disp),B)
-    call GeomechGetLambdaMu(lambda,mu,x)
+    call GeomechGetLambdaMu(lambda,mu,x,option)
     load_type = 2 ! Need to change
     call GeomechGetBodyForce(load_type,lambda,mu,x,bf,option)
     call GetAnalytical(load_type,lambda,mu,x,u_exact,grad_u_exact)
@@ -1643,7 +1643,7 @@ subroutine GeomechForceLocalElemJacobian(size_elenodes,local_coordinates, &
     B = matmul(shapefunction%DN,inv_J_map)
     youngs_mod = dot_product(shapefunction%N,local_youngs)
     poissons_ratio = dot_product(shapefunction%N,local_poissons)
-    call GeomechGetLambdaMu(lambda,mu,youngs_mod,poissons_ratio)
+    call GeomechGetLambdaMu(lambda,mu,youngs_mod,poissons_ratio,option)
     call ConvertMatrixToVector(transpose(B),vecB_transpose)
     Kmat = Kmat + w(igpt)*lambda* &
       matmul(vecB_transpose,transpose(vecB_transpose))*detJ_map
@@ -1672,7 +1672,7 @@ end subroutine GeomechForceLocalElemJacobian
 
 ! ************************************************************************** !
 
-subroutine GeomechGetLambdaMu(lambda,mu,E,nu)
+subroutine GeomechGetLambdaMu(lambda,mu,E,nu,option)
   !
   ! Gets the material properties given the position
   ! of the point
@@ -1681,12 +1681,58 @@ subroutine GeomechGetLambdaMu(lambda,mu,E,nu)
   ! Date: 06/24/13
   !
 
+  use Option_module
+
   PetscReal :: lambda, mu
   PetscReal :: E, nu
 
-  lambda = E*nu/(1.d0+nu)/(1.d0-2.d0*nu)
-  mu = E/2.d0/(1.d0+nu)
+  PetscReal :: nu_ud ! undrained poissons ratio
+  PetscReal :: inv_B_mod, B_mod ! biot modulus
+  PetscReal :: biot_coeff,porosity_0,comp_fluid
+  PetscReal :: dr_bulk_modulus,comp_solid,K_ud
+  PetscReal :: E_ud
 
+  type(option_type) :: option
+
+  ! Lame modulus
+  lambda = E*nu/(1.d0+nu)/(1.d0-2.d0*nu)
+  ! shear modulus
+  mu = E/2.d0/(1.d0+nu)
+  !print *, 'original lambda, mu', lambda, mu
+
+  if (option%geomechanics%split_scheme == GEOMECH_UNDRAINED_SPLIT) then
+    !print *, 'working on this'
+    ! calculate lambda undrained here (nu_ud)
+    ! mu (shear modulus) is unchanged.. should be ok approximation
+    ! (b_coeff - poro_0)/K_s + (poro_0*fluid_comp)
+    ! for region id 1
+    biot_coeff = option%geomechanics%biot_coefficient(1)
+    porosity_0 = option%geomechanics%porosity_initial(1)
+    comp_fluid = option%geomechanics%fluid_compressibility(1)
+    dr_bulk_modulus = ((3.d0*lambda)+(2.d0*mu))/3.d0
+    !print *, 'biot coeff: ', biot_coeff
+    if (dabs(biot_coeff - 1.d0) < 1.d-12) then
+      ! incompressible solid grain
+      ! ks -> inf
+      inv_B_mod = porosity_0*comp_fluid
+      !print *, 'inf solid comp'
+    else
+      comp_solid = dr_bulk_modulus/(1.d0 - biot_coeff)
+      inv_B_mod = (porosity_0*comp_fluid) + ((biot_coeff-porosity_0)/comp_solid)
+    endif
+    !print *, 'comp_solid, inv_B_mod', comp_solid, inv_B_mod
+    B_mod = 1.d0/inv_B_mod
+    ! undrained bulk modulus
+    K_ud = dr_bulk_modulus + ((biot_coeff**2.d0)*B_mod)
+    ! undrained poissons ratio
+    nu_ud = ((3.d0*K_ud)-(2.d0*mu))/(2.d0*((3.d0*K_ud)+mu))
+    !print *, 'poissons ratio dr, ud', nu, nu_ud
+    E_ud = 2.d0*mu*(1.d0 + nu_ud)
+    lambda = E_ud*nu_ud/(1.d0+nu_ud)/(1.d0-2.d0*nu_ud)
+    !print *, 'k dr, un', dr_bulk_modulus, K_ud
+    !print *, 'after undrained changes lambda,mu', lambda, mu
+    !stop
+  endif
 
 end subroutine GeomechGetLambdaMu
 
@@ -2669,7 +2715,7 @@ subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
     poissons_ratio = dot_product(shapefunction%N,local_poissons)
     alpha = dot_product(shapefunction%N,local_alpha)
     beta = dot_product(shapefunction%N,local_beta)
-    call GeomechGetLambdaMu(lambda,mu,youngs_mod,poissons_ratio)
+    call GeomechGetLambdaMu(lambda,mu,youngs_mod,poissons_ratio,option)
     call Kron(B,identity,kron_B_eye)
     call Kron(transpose(B),identity,kron_B_transpose_eye)
     call Kron(identity,transpose(B),kron_eye_B_transpose)
