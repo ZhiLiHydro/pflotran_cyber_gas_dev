@@ -779,7 +779,7 @@ subroutine UGridDecompose(unstructured_grid,option)
 
   ! second argument of ZERO_INTEGER means to use 0-based indexing
   ! MagGetRowIJF90 returns row and column pointers for compressed matrix data
-  call PUMGetRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,num_rows, &
+  call MatGetRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,num_rows, &
                       ia_ptr,ja_ptr,success,ierr);CHKERRQ(ierr)
 
   if (.not.success .or. num_rows /= num_cells_local_old) then
@@ -809,7 +809,7 @@ subroutine UGridDecompose(unstructured_grid,option)
 #endif
 
   if (unstructured_grid%max_ndual_per_cell > 0) then
-    call PUMRestoreRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
+    call MatRestoreRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
                             num_rows,ia_ptr,ja_ptr,success, &
                             ierr);CHKERRQ(ierr)
   endif
@@ -847,7 +847,7 @@ subroutine UGridDecompose(unstructured_grid,option)
 
   ! 0 = 0-based indexing
   ! MagGetRowIJF90 returns row and column pointers for compressed matrix data
-  call PUMGetRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,num_rows, &
+  call MatGetRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,num_rows, &
                       ia_ptr,ja_ptr,success,ierr);CHKERRQ(ierr)
 
   call VecGetArray(elements_old,vec_ptr,ierr);CHKERRQ(ierr)
@@ -899,7 +899,7 @@ subroutine UGridDecompose(unstructured_grid,option)
   call VecRestoreArray(elements_old,vec_ptr,ierr);CHKERRQ(ierr)
 
   if (unstructured_grid%max_ndual_per_cell > 0) then
-    call PUMRestoreRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
+    call MatRestoreRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
                             num_rows,ia_ptr,ja_ptr,success, &
                             ierr);CHKERRQ(ierr)
   endif
@@ -2653,7 +2653,7 @@ subroutine UGridMapSideSet(unstructured_grid,face_vertices,n_ss_faces, &
           int_array4_0(ivertex) = &
             unstructured_grid%vertex_ids_natural(vertex_id_local)-1
         enddo
-        call PUMSetValues(Mat_vert_to_face,1,boundary_face_count-1+offset, &
+        call MatSetValues(Mat_vert_to_face,1,[boundary_face_count-1+offset], &
                           nvertices,int_array4_0,real_array4,INSERT_VALUES, &
                           ierr);CHKERRQ(ierr)
       endif
@@ -2877,6 +2877,7 @@ subroutine UGridMapSideSet2(unstructured_grid,face_vertices,n_ss_faces, &
   use petscmat
   use Option_module
   use String_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -3086,16 +3087,16 @@ subroutine UGridMapSideSet2(unstructured_grid,face_vertices,n_ss_faces, &
     call MatMPIAIJGetLocalMat(Mat_face,MAT_INITIAL_MATRIX,Mat_face_loc, &
                               ierr);CHKERRQ(ierr)
     ! Get i and j indices of the local-matrix
-    call PUMGetRowIJ(Mat_face_loc,ONE_INTEGER,PETSC_FALSE,PETSC_FALSE,nrow, &
+    call MatGetRowIJ(Mat_face_loc,ONE_INTEGER,PETSC_FALSE,PETSC_FALSE,nrow, &
                         ia_p,ja_p,done,ierr);CHKERRQ(ierr)
     ! Get values stored in the local-matrix
-    call PUMSeqAIJGetArray(Mat_face_loc,aa_v,ierr);CHKERRQ(ierr)
+    call MatSeqAIJGetArray(Mat_face_loc,aa_v,ierr);CHKERRQ(ierr)
   else
     ! Get i and j indices of the local-matrix
-    call PUMGetRowIJ(Mat_face,ONE_INTEGER,PETSC_FALSE,PETSC_FALSE,nrow, &
+    call MatGetRowIJ(Mat_face,ONE_INTEGER,PETSC_FALSE,PETSC_FALSE,nrow, &
                         ia_p,ja_p,done,ierr);CHKERRQ(ierr)
     ! Get values stored in the local-matrix
-    call PUMSeqAIJGetArray(Mat_face,aa_v,ierr);CHKERRQ(ierr)
+    call MatSeqAIJGetArray(Mat_face,aa_v,ierr);CHKERRQ(ierr)
   endif
 
   min_nverts = 3
@@ -3140,10 +3141,10 @@ subroutine UGridMapSideSet2(unstructured_grid,face_vertices,n_ss_faces, &
   enddo
 
   if (option%comm%size>1) then
-    call PUMSeqAIJRestoreArray(Mat_face_loc,aa_v,ierr);CHKERRQ(ierr)
+    call MatSeqAIJRestoreArray(Mat_face_loc,aa_v,ierr);CHKERRQ(ierr)
     call MatDestroy(Mat_face_loc,ierr);CHKERRQ(ierr)
   else
-    call PUMSeqAIJRestoreArray(Mat_face,aa_v,ierr);CHKERRQ(ierr)
+    call MatSeqAIJRestoreArray(Mat_face,aa_v,ierr);CHKERRQ(ierr)
   endif
 
   call MatDestroy(Mat_vert_to_face,ierr);CHKERRQ(ierr)

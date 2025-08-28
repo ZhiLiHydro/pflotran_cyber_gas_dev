@@ -2072,9 +2072,9 @@ subroutine MphaseVarSwitchPatch(xx, realization, icri, ichange)
 #endif
 
 ! mphase code need assemble
-  call VecLockPop(xx,ierr);CHKERRQ(ierr)
+  call VecLockReadPop(xx,ierr);CHKERRQ(ierr)
   call VecGetArray(xx,xx_p,ierr);CHKERRQ(ierr)
-  call VecLockPush(xx,ierr);CHKERRQ(ierr)
+  call VecLockReadPush(xx,ierr);CHKERRQ(ierr)
   call VecGetArray(field%flow_yy,yy_p,ierr);CHKERRQ(ierr)
 
   ichange = 0
@@ -3037,6 +3037,7 @@ subroutine MphaseJacobianPatch(snes,xx,A,B,realization,ierr)
   use Material_Aux_module
   use Secondary_Continuum_module
   use Matrix_Zeroing_module
+  use Petsc_Utility_module
 
   implicit none
 

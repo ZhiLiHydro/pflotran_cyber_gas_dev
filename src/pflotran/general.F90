@@ -406,6 +406,7 @@ subroutine GeneralNumericalJacobianTest(xx,realization,B)
   use Option_module
   use Grid_module
   use Field_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -1431,10 +1432,10 @@ subroutine GeneralResidual(snes,xx,r,realization,ierr)
   patch%aux%General%auxvars_up_to_date = PETSC_FALSE
 
   ! always assume variables have been swapped; therefore, must copy back
-  call VecLockPop(xx,ierr);CHKERRQ(ierr)
+  call VecLockReadPop(xx,ierr);CHKERRQ(ierr)
   call DiscretizationLocalToGlobal(discretization,field%flow_xx_loc,xx, &
                                    NFLOWDOF)
-  call VecLockPush(xx,ierr);CHKERRQ(ierr)
+  call VecLockReadPush(xx,ierr);CHKERRQ(ierr)
 
   if (option%compute_mass_balance_new) then
     call GeneralZeroMassBalanceDelta(realization)
@@ -1763,6 +1764,7 @@ subroutine GeneralJacobian(snes,xx,A,B,realization,ierr)
   use Material_module
   use Upwind_Direction_module
   use Matrix_Zeroing_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -2458,6 +2460,7 @@ subroutine GeneralSSSandbox(residual,Jacobian,compute_derivative, &
   use Material_Aux_module, only: material_auxvar_type
   use SrcSink_Sandbox_module
   use SrcSink_Sandbox_Base_class
+  use Petsc_Utility_module
 
   implicit none
 

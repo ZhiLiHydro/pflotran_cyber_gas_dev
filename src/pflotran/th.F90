@@ -4483,6 +4483,7 @@ subroutine THJacobianInternalConn(A,realization,ierr)
   use Saturation_Function_module
   use Characteristic_Curves_module
   use Characteristic_Curves_Thermal_module
+  use Petsc_Utility_module
 
   Mat :: A
   class(realization_subsurface_type) :: realization
@@ -4707,6 +4708,7 @@ subroutine THJacobianBoundaryConn(A,realization,ierr)
   use Saturation_Function_module
   use Characteristic_Curves_module
   use Characteristic_Curves_Thermal_module
+  use Petsc_Utility_module
 
   Mat :: A
   class(realization_subsurface_type) :: realization
@@ -4868,6 +4870,7 @@ subroutine THJacobianAccumulation(A,realization,ierr)
   use Saturation_Function_module
   use Characteristic_Curves_module
   use Characteristic_Curves_Thermal_module
+  use Petsc_Utility_module
 
   Mat :: A
   class(realization_subsurface_type) :: realization
@@ -5013,6 +5016,7 @@ subroutine THJacobianSourceSink(A,realization,ierr)
   use Debug_module
   use Secondary_Continuum_Aux_module
   use Utility_module, only : Smoothstep
+  use Petsc_Utility_module
 
   Mat :: A
   class(realization_subsurface_type) :: realization

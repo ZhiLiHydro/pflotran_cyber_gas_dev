@@ -1538,6 +1538,7 @@ subroutine PMERTBuildCoupledJacobian(this)
   use Units_module
   use Utility_module
   use ZFlow_Aux_module
+  use Petsc_Utility_module
 
   implicit none
 

@@ -321,6 +321,7 @@ subroutine PMPNFSetupLinearSystem(this,A,solution,right_hand_side,ierr)
   use Coupler_module
   use Connection_module
   use Option_module
+  use Petsc_Utility_module, only : PUMSetValuesLocal
 
   implicit none
 

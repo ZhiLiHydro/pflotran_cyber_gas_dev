@@ -274,6 +274,7 @@ subroutine MatrixBufferSetValuesHypre(A,matrix_buffer)
   ! Author: Glenn Hammond
   ! Date: 05/13/09
   !
+  use Petsc_Utility_module, only : PUMSetValuesLocal
 
   implicit none
 
@@ -299,6 +300,7 @@ subroutine MatrixBufferSetValuesAij(A,matrix_buffer)
   ! Author: Glenn Hammond
   ! Date: 05/13/09
   !
+  use Petsc_Utility_module, only : PUMSetValuesLocal
 
   implicit none
 

@@ -1664,6 +1664,7 @@ subroutine RTCalculateTransportMatrix(realization,T)
   use Connection_module
   use Debug_module
   use Matrix_Zeroing_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -2059,6 +2060,7 @@ subroutine RTNumericalJacobianTest(realization,xx)
   use Option_module
   use Grid_module
   use Field_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -2108,13 +2110,13 @@ subroutine RTNumericalJacobianTest(realization,xx)
     call VecGetArray(xx_pert,vec_p,ierr);CHKERRQ(ierr)
     perturbation = vec_p(idof)*perturbation_tolerance
     vec_p(idof) = vec_p(idof)+perturbation
-    call vecrestorearrayf90(xx_pert,vec_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(xx_pert,vec_p,ierr);CHKERRQ(ierr)
     call RTResidual(PETSC_NULL_SNES,xx_pert,res_pert,realization,ierr)
-    call vecgetarrayf90(res_pert,vec_p,ierr);CHKERRQ(ierr)
+    call VecGetArray(res_pert,vec_p,ierr);CHKERRQ(ierr)
     do idof2 = 1, grid%nlmax*option%ntrandof
       derivative = (vec_p(idof2)-vec2_p(idof2))/perturbation
       if (dabs(derivative) > 1.d-30) then
-        call matsetvalue(a,idof2-1,idof-1,derivative,insert_values, &
+        call PUMSetValue(a,idof2-1,idof-1,derivative,insert_values, &
                          ierr);CHKERRQ(ierr)
       endif
     enddo
@@ -3043,6 +3045,7 @@ subroutine RTJacobianFlux(snes,xx,A,B,realization,ierr)
   use Debug_module
   use Logging_module
   use Secondary_Continuum_Aux_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -3235,7 +3238,7 @@ subroutine RTJacobianNonFlux(snes,xx,A,B,realization,ierr)
   use Debug_module
   use Logging_module
   use Secondary_Continuum_Aux_module
-
+  use Petsc_Utility_module
 
   implicit none
 

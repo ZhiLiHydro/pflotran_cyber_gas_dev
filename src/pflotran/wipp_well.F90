@@ -863,6 +863,7 @@ subroutine PMWellModifyFlowJacWIPPQI(this,Jac,ierr)
   !
 
   use Option_module
+  use Petsc_Utility_module
 
   implicit none
 

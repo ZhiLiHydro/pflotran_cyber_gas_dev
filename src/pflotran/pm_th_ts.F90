@@ -429,6 +429,7 @@ subroutine IJacobianAccumulation(J,shift,realization,ierr)
   use Option_module
   use Material_Aux_module
   use Field_module
+  use Petsc_Utility_module, only : PUMSetValuesBlockedLocal
 
   implicit none
 
@@ -684,10 +685,8 @@ subroutine IJacobianAccumulation(J,shift,realization,ierr)
                    d2energy_dPdt*th_auxvars(ghosted_id)%dpres_dtime)* &
                    material_auxvars(ghosted_id)%volume
 
-    call PUMSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1,Jlocal, &
-                                  ADD_VALUES,ierr);CHKERRQ(ierr)
-
-
+    call PUMSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1, &
+                                  Jlocal,ADD_VALUES,ierr);CHKERRQ(ierr)
   enddo
 
   call MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)

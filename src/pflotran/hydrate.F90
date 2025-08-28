@@ -348,6 +348,7 @@ subroutine HydrateNumericalJacobianTest(xx,realization,pm_well,B)
   use Grid_module
   use Field_module
   use PM_Well_class
+  use Petsc_Utility_module
 
   implicit none
 
@@ -1336,10 +1337,10 @@ subroutine HydrateResidual(snes,xx,r,realization,pm_well,ierr)
   patch%aux%Hydrate%auxvars_up_to_date = PETSC_FALSE
 
   ! always assume variables have been swapped; therefore, must copy back
-  call VecLockPop(xx,ierr);CHKERRQ(ierr)
+  call VecLockReadPop(xx,ierr);CHKERRQ(ierr)
   call DiscretizationLocalToGlobal(discretization,field%flow_xx_loc,xx, &
                                    NFLOWDOF)
-  call VecLockPush(xx,ierr);CHKERRQ(ierr)
+  call VecLockReadPush(xx,ierr);CHKERRQ(ierr)
 
   if (option%compute_mass_balance_new) then
     call HydrateZeroMassBalanceDelta(realization)
@@ -1699,6 +1700,7 @@ subroutine HydrateJacobian(snes,xx,A,B,realization,pm_well,ierr)
   use Hydrate_Aux_module
   use PM_Well_class
   use Matrix_Zeroing_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -2404,6 +2406,7 @@ subroutine HydrateSSSandbox(residual,Jacobian,compute_derivative, &
   use Material_Aux_module, only: material_auxvar_type
   use SrcSink_Sandbox_module
   use SrcSink_Sandbox_Base_class
+  use Petsc_Utility_module
 
   implicit none
 

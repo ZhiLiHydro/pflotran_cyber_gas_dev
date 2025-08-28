@@ -678,13 +678,13 @@ subroutine GeomechRealizMapSubsurfGeomechGrid(realization, &
 
   ! Geomech to subsurf scatter
 
-  call PUIGetIndices(is_geomech_petsc,int_ptr,ierr);CHKERRQ(ierr)
+  call ISGetIndices(is_geomech_petsc,int_ptr,ierr);CHKERRQ(ierr)
   size_int_ptr = size(int_ptr)
   allocate(int_array(size_int_ptr))
   do local_id = 1, size_int_ptr
     int_array(local_id) = int_ptr(local_id)
   enddo
-  call PUIRestoreIndices(is_geomech_petsc,int_ptr,ierr);CHKERRQ(ierr)
+  call ISRestoreIndices(is_geomech_petsc,int_ptr,ierr);CHKERRQ(ierr)
   call ISCreateBlock(option%mycomm,SIX_INTEGER,size_int_ptr,int_array, &
                      PETSC_COPY_VALUES,is_geomech_petsc_block, &
                      ierr);CHKERRQ(ierr)
@@ -698,13 +698,13 @@ subroutine GeomechRealizMapSubsurfGeomechGrid(realization, &
   call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
 #endif
 
-  call PUIGetIndices(is_subsurf,int_ptr,ierr);CHKERRQ(ierr)
+  call ISGetIndices(is_subsurf,int_ptr,ierr);CHKERRQ(ierr)
   size_int_ptr = size(int_ptr)
   allocate(int_array(size_int_ptr))
   do local_id = 1, size_int_ptr
     int_array(local_id) = int_ptr(local_id)
   enddo
-  call PUIRestoreIndices(is_subsurf,int_ptr,ierr);CHKERRQ(ierr)
+  call ISRestoreIndices(is_subsurf,int_ptr,ierr);CHKERRQ(ierr)
   call ISCreateBlock(option%mycomm,SIX_INTEGER,size_int_ptr,int_array, &
                      PETSC_COPY_VALUES,is_subsurf_petsc_block, &
                      ierr);CHKERRQ(ierr)

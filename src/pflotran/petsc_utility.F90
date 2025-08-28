@@ -22,6 +22,18 @@ module Petsc_Utility_module
     module procedure PetUtilUnloadVecReal
   end interface
 
+  interface PUMSetValues
+    module procedure PUMSetValues1
+    module procedure PUMSetValues2
+    module procedure PUMSetValues3
+  end interface
+
+  interface PUMSetValuesLocal
+    module procedure PUMSetValuesLocal1
+    module procedure PUMSetValuesLocal2
+    module procedure PUMSetValuesLocal3
+  end interface
+
   public :: PetUtilMatSVBL, &
             PetUtilVecSVBL, &
             PetUtilLoadVec, &
@@ -29,6 +41,12 @@ module Petsc_Utility_module
             PetscUtilCompareMatrices
 
   !TODO(geh324): clean up the below, potentially eliminating many
+  public :: PUMSetValue, &
+            PUMSetValues, &
+            PUMSetValuesLocal, &
+            PUMSetValuesBlocked, &
+            PUMSetValuesBlockedLocal
+
   public :: PUVGetArray, &
             PUVRestoreArray, &
             PUVGetArrayRead, &
@@ -41,8 +59,8 @@ module Petsc_Utility_module
             PUIGetIndices, &
             PUIRestoreIndices, &
             PUVDuplicateVecs, &
-            PUVDestroyVecs!, &
-!            PetscTestFile, &
+            PUVDestroyVecs, &
+            PetscTestFile!, &
 !            PetscTime
 
 contains
@@ -121,9 +139,9 @@ subroutine PetUtilLoadVecInt(vec,iarray)
   PetscReal, pointer :: vec_ptr(:)
   PetscErrorCode :: ierr
 
-  call VecGetArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
   vec_ptr(:) = iarray(:)
-  call VecRestoreArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine PetUtilLoadVecInt
 
@@ -144,9 +162,9 @@ subroutine PetUtilLoadVecReal(vec,rarray)
   PetscReal, pointer :: vec_ptr(:)
   PetscErrorCode :: ierr
 
-  call VecGetArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
   vec_ptr(:) = rarray(:)
-  call VecRestoreArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine PetUtilLoadVecReal
 
@@ -167,9 +185,9 @@ subroutine PetUtilUnloadVecInt(vec,iarray)
   PetscReal, pointer :: vec_ptr(:)
   PetscErrorCode :: ierr
 
-  call VecGetArrayReadF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(vec,vec_ptr,ierr);CHKERRQ(ierr)
   iarray(:) = nint(vec_ptr(:))
-  call VecRestoreArrayReadF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine PetUtilUnloadVecInt
 
@@ -190,9 +208,9 @@ subroutine PetUtilUnloadVecReal(vec,rarray)
   PetscReal, pointer :: vec_ptr(:)
   PetscErrorCode :: ierr
 
-  call VecGetArrayReadF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(vec,vec_ptr,ierr);CHKERRQ(ierr)
   rarray(:) = vec_ptr(:)
-  call VecRestoreArrayReadF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine PetUtilUnloadVecReal
 
@@ -231,8 +249,8 @@ subroutine PetscUtilCompareMatrices(A,B,nL2G,nG2A,rtol,row_rtol,option)
   PetscInt :: block_size
   PetscErrorCode :: ierr
 
-  call MatGetRowIJF90(A,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
-                      nrow,irow_ptr,icol_ptr,success,ierr);CHKERRQ(ierr)
+  call MatGetRowIJ(A,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
+                   nrow,irow_ptr,icol_ptr,success,ierr);CHKERRQ(ierr)
   if (.not.success) then
     option%io_buffer = 'Error returned from MatGetRowIJF90() in &
       &PetscUtilCompareMatrices. I believe that the type of matrix A is not &
@@ -276,8 +294,8 @@ subroutine PetscUtilCompareMatrices(A,B,nL2G,nG2A,rtol,row_rtol,option)
       endif
     enddo
   enddo
-  call MatRestoreRowIJF90(A,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
-                          nrow,irow_ptr,icol_ptr,success,ierr);CHKERRQ(ierr)
+  call MatRestoreRowIJ(A,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
+                       nrow,irow_ptr,icol_ptr,success,ierr);CHKERRQ(ierr)
 
 end subroutine PetscUtilCompareMatrices
 
@@ -975,7 +993,6 @@ subroutine PUMGetValuesLocal(A,nrow,irow,ncol,icol,values,ierr)
 
 end subroutine PUMGetValuesLocal
 
-#if 0
 ! ************************************************************************** !
 
 subroutine PetscTestFile(filename,char,flag,ierr)
@@ -992,6 +1009,7 @@ subroutine PetscTestFile(filename,char,flag,ierr)
 
 end subroutine PetscTestFile
 
+#if 0
 ! ************************************************************************** !
 
 subroutine PetscTime(time,ierr)

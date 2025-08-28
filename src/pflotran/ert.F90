@@ -248,6 +248,7 @@ subroutine ERTCalculateMatrix(realization,M,compute_delM)
   use Connection_module
   use Debug_module
   use Matrix_Zeroing_module
+  use Petsc_Utility_module
 
   implicit none
 

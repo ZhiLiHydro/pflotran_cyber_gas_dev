@@ -331,6 +331,7 @@ subroutine IJacobianAccumulation(J,shift,realization,ierr)
   use Patch_module
   use Option_module
   use Material_Aux_module
+  use Petsc_Utility_module
 
   implicit none
 

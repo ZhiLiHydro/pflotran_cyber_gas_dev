@@ -248,6 +248,7 @@ subroutine SSSandbox(residual,Jacobian,compute_derivative, &
   use Option_module
   use Grid_module
   use Material_Aux_module, only: material_auxvar_type
+  use Petsc_Utility_module
 
   implicit none
 
@@ -286,7 +287,8 @@ subroutine SSSandbox(residual,Jacobian,compute_derivative, &
                                 material_auxvars(ghosted_id), &
                                 aux_real,option)
       if (compute_derivative) then
-        call PUMSetValuesBlockedLocal(Jacobian,1,ghosted_id-1,1,ghosted_id-1, &
+        call PUMSetValuesBlockedLocal(Jacobian,1,ghosted_id-1, &
+                                      1,ghosted_id-1, &
                                       Jac,ADD_VALUES,ierr);CHKERRQ(ierr)
       else
         iend = local_id*option%nflowdof
