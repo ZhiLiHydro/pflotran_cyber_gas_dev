@@ -920,7 +920,7 @@ subroutine PMWellModifyFlowJacWIPPQI(this,Jac,ierr)
     call WIPPFloConvertUnitsToBRAGFlo(J_block,this%realization%patch%aux% &
                                   Material%auxvars(ghosted_id),this%option)
 
-    call MatSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1, &
+    call PUMSetValuesBlockedLocal(Jac,1,ghosted_id-1,1,ghosted_id-1, &
                                   J_block,ADD_VALUES,ierr);CHKERRQ(ierr)
   enddo
 

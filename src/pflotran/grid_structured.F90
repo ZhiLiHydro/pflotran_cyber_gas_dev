@@ -217,7 +217,7 @@ subroutine StructGridCreateDM(structured_grid,da,ndof,stencil_width, &
   DM :: da
   PetscInt :: ndof
   PetscInt :: stencil_width
-  PetscEnum :: stencil_type
+  DMDAStencilType :: stencil_type
 
   PetscErrorCode :: ierr
 
@@ -225,20 +225,22 @@ subroutine StructGridCreateDM(structured_grid,da,ndof,stencil_width, &
   ! Generate the DM object that will manage communication.
   !-----------------------------------------------------------------------
   ! This code is for the DMDACreate3D() interface in PETSc versions >= 3.2 --RTM
-  call DMDACreate3D(option%mycomm,DM_BOUNDARY_NONE,DM_BOUNDARY_NONE, &
+  call DMDACreate3d(option%mycomm,DM_BOUNDARY_NONE,DM_BOUNDARY_NONE, &
                     DM_BOUNDARY_NONE,stencil_type,structured_grid%nx, &
                     structured_grid%ny,structured_grid%nz,structured_grid%npx, &
                     structured_grid%npy,structured_grid%npz,ndof, &
-                    stencil_width,PETSC_NULL_INTEGER,PETSC_NULL_INTEGER, &
-                    PETSC_NULL_INTEGER,da,ierr);CHKERRQ(ierr)
+                    stencil_width,PETSC_NULL_INTEGER_ARRAY, &
+                    PETSC_NULL_INTEGER_ARRAY,PETSC_NULL_INTEGER_ARRAY, &
+                    da,ierr);CHKERRQ(ierr)
   call DMSetFromOptions(da,ierr);CHKERRQ(ierr)
   call DMSetup(da,ierr);CHKERRQ(ierr)
   call DMDAGetInfo(da,PETSC_NULL_INTEGER,PETSC_NULL_INTEGER, &
                    PETSC_NULL_INTEGER,PETSC_NULL_INTEGER, &
                    structured_grid%npx_final,structured_grid%npy_final, &
-                   structured_grid%npz_final,PETSC_NULL_INTEGER, &
-                   PETSC_NULL_INTEGER,PETSC_NULL_INTEGER,PETSC_NULL_INTEGER, &
-                   PETSC_NULL_INTEGER,PETSC_NULL_INTEGER,PETSC_NULL_INTEGER, &
+                   structured_grid%npz_final, &
+                   PETSC_NULL_INTEGER,PETSC_NULL_INTEGER, &
+                   PETSC_NULL_DMBOUNDARYTYPE,PETSC_NULL_DMBOUNDARYTYPE, &
+                   PETSC_NULL_DMBOUNDARYTYPE,PETSC_NULL_DMDASTENCILTYPE, &
                    ierr);CHKERRQ(ierr)
 
 end subroutine StructGridCreateDM
@@ -1328,7 +1330,7 @@ subroutine StructGridComputeVolumes(radius,structured_grid,option,nL2G,volume)
   PetscReal :: r1, r2
   PetscErrorCode :: ierr
 
-  call VecGetArrayF90(volume,volume_p,ierr);CHKERRQ(ierr)
+  call PUVGetArray(volume,volume_p,ierr);CHKERRQ(ierr)
 
   select case(structured_grid%itype)
     case(CARTESIAN_GRID)
@@ -1357,7 +1359,7 @@ subroutine StructGridComputeVolumes(radius,structured_grid,option,nL2G,volume)
       enddo
   end select
 
-  call VecRestoreArrayF90(volume,volume_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(volume,volume_p,ierr);CHKERRQ(ierr)
 
   if (option%comm%size > 1 .and. option%comm%size <= 16) then
     call PrintMsg(option,NL//'Process Decomposition')
@@ -1401,7 +1403,7 @@ subroutine StructGridMapIndices(structured_grid,stencil_type, &
   implicit none
 
   type(grid_structured_type) :: structured_grid
-  PetscEnum :: stencil_type
+  DMDAStencilType :: stencil_type
   PetscInt, pointer :: nG2L(:), nL2G(:), nG2A(:)
   type(option_type) :: option
 
@@ -1523,7 +1525,7 @@ subroutine StructGridGetGhostedNeighbors(structured_grid,ghosted_id, &
   type(grid_structured_type) :: structured_grid
   type(option_type) :: option
   PetscInt :: ghosted_id
-  PetscEnum :: stencil_type
+  DMDAStencilType :: stencil_type
   PetscInt :: stencil_width_i
   PetscInt :: stencil_width_j
   PetscInt :: stencil_width_k
@@ -1542,8 +1544,8 @@ subroutine StructGridGetGhostedNeighbors(structured_grid,ghosted_id, &
   y_count = 0
   z_count = 0
   icount = 0
-  select case(stencil_type)
-    case(DMDA_STENCIL_STAR)
+  select case(stencil_type%v)
+    PetscEnumCase(DMDA_STENCIL_STAR)
       do ii = max(i-stencil_width_i,1), min(i+stencil_width_i,structured_grid%ngx)
         if (ii /= i) then
           icount = icount + 1
@@ -1568,7 +1570,7 @@ subroutine StructGridGetGhostedNeighbors(structured_grid,ghosted_id, &
             StructGridGetGhostedIDFromIJK(structured_grid,i,j,kk)
         endif
       enddo
-    case(DMDA_STENCIL_BOX)
+    PetscEnumCase(DMDA_STENCIL_BOX)
       option%io_buffer = 'DMDA_STENCIL_BOX not yet supported in ' // &
         'StructGridGetNeighbors.'
       call PrintErrMsg(option)
@@ -1594,14 +1596,14 @@ subroutine StructGridGetGhostedNeighborsCorners(structured_grid,ghosted_id, &
   !
 
   use Option_module
+  use petscdmda
 
   implicit none
-#include "petsc/finclude/petscdmda.h"
 
   type(grid_structured_type) :: structured_grid
   type(option_type) :: option
   PetscInt :: ghosted_id
-  PetscEnum :: stencil_type
+  DMDAStencilType :: stencil_type
   PetscInt :: stencil_width_i
   PetscInt :: stencil_width_j
   PetscInt :: stencil_width_k

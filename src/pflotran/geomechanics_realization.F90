@@ -489,7 +489,9 @@ subroutine GeomechRealizMapSubsurfGeomechGrid(realization, &
   !
 
 #include "petsc/finclude/petscdm.h"
+#include "petsc/finclude/petscao.h"
   use petscdm
+  use petscao
   use Option_module
   use Geomechanics_Grid_Aux_module
   use Realization_Subsurface_class
@@ -676,13 +678,13 @@ subroutine GeomechRealizMapSubsurfGeomechGrid(realization, &
 
   ! Geomech to subsurf scatter
 
-  call ISGetIndicesF90(is_geomech_petsc,int_ptr,ierr);CHKERRQ(ierr)
+  call PUIGetIndices(is_geomech_petsc,int_ptr,ierr);CHKERRQ(ierr)
   size_int_ptr = size(int_ptr)
   allocate(int_array(size_int_ptr))
   do local_id = 1, size_int_ptr
     int_array(local_id) = int_ptr(local_id)
   enddo
-  call ISRestoreIndicesF90(is_geomech_petsc,int_ptr,ierr);CHKERRQ(ierr)
+  call PUIRestoreIndices(is_geomech_petsc,int_ptr,ierr);CHKERRQ(ierr)
   call ISCreateBlock(option%mycomm,SIX_INTEGER,size_int_ptr,int_array, &
                      PETSC_COPY_VALUES,is_geomech_petsc_block, &
                      ierr);CHKERRQ(ierr)
@@ -696,13 +698,13 @@ subroutine GeomechRealizMapSubsurfGeomechGrid(realization, &
   call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
 #endif
 
-  call ISGetIndicesF90(is_subsurf,int_ptr,ierr);CHKERRQ(ierr)
+  call PUIGetIndices(is_subsurf,int_ptr,ierr);CHKERRQ(ierr)
   size_int_ptr = size(int_ptr)
   allocate(int_array(size_int_ptr))
   do local_id = 1, size_int_ptr
     int_array(local_id) = int_ptr(local_id)
   enddo
-  call ISRestoreIndicesF90(is_subsurf,int_ptr,ierr);CHKERRQ(ierr)
+  call PUIRestoreIndices(is_subsurf,int_ptr,ierr);CHKERRQ(ierr)
   call ISCreateBlock(option%mycomm,SIX_INTEGER,size_int_ptr,int_array, &
                      PETSC_COPY_VALUES,is_subsurf_petsc_block, &
                      ierr);CHKERRQ(ierr)
@@ -792,7 +794,7 @@ subroutine GeomechGridElemSharedByNodes(geomech_realization,option)
 
   grid => geomech_realization%geomech_discretization%grid
 
-  call VecGetArrayF90(grid%no_elems_sharing_node_loc,elem_sharing_node_loc_p, &
+  call PUVGetArray(grid%no_elems_sharing_node_loc,elem_sharing_node_loc_p, &
                       ierr);CHKERRQ(ierr)
 
   ! Calculate the common elements to a node on a process
@@ -806,7 +808,7 @@ subroutine GeomechGridElemSharedByNodes(geomech_realization,option)
     enddo
   enddo
 
-  call VecRestoreArrayF90(grid%no_elems_sharing_node_loc, &
+  call PUVRestoreArray(grid%no_elems_sharing_node_loc, &
                           elem_sharing_node_loc_p,ierr);CHKERRQ(ierr)
 
   ! Local to global scatter

@@ -271,7 +271,7 @@ subroutine SSSandbox(residual,Jacobian,compute_derivative, &
   call PrintErrMsg(option)
 
   if (.not.compute_derivative) then
-    call VecGetArrayF90(residual,r_p,ierr);CHKERRQ(ierr)
+    call PUVGetArray(residual,r_p,ierr);CHKERRQ(ierr)
   endif
 
   cur_srcsink => ss_sandbox_list
@@ -286,7 +286,7 @@ subroutine SSSandbox(residual,Jacobian,compute_derivative, &
                                 material_auxvars(ghosted_id), &
                                 aux_real,option)
       if (compute_derivative) then
-        call MatSetValuesBlockedLocal(Jacobian,1,ghosted_id-1,1,ghosted_id-1, &
+        call PUMSetValuesBlockedLocal(Jacobian,1,ghosted_id-1,1,ghosted_id-1, &
                                       Jac,ADD_VALUES,ierr);CHKERRQ(ierr)
       else
         iend = local_id*option%nflowdof
@@ -298,7 +298,7 @@ subroutine SSSandbox(residual,Jacobian,compute_derivative, &
   enddo
 
   if (.not.compute_derivative) then
-    call VecRestoreArrayF90(residual,r_p,ierr);CHKERRQ(ierr)
+    call PUVRestoreArray(residual,r_p,ierr);CHKERRQ(ierr)
   endif
 
 end subroutine SSSandbox

@@ -562,8 +562,8 @@ subroutine MPhaseUpdateReasonPatch(reason,realization)
   re = 1
 
 ! if (re > 0) then
-    call VecGetArrayReadF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-    call VecGetArrayF90(field%flow_yy,yy_p,ierr);CHKERRQ(ierr)
+    call PUVGetArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+    call PUVGetArray(field%flow_yy,yy_p,ierr);CHKERRQ(ierr)
 
     do n = 1,grid%nlmax
 !**** clu-Ignore inactive cells with inactive materials **************
@@ -630,8 +630,8 @@ subroutine MPhaseUpdateReasonPatch(reason,realization)
     end do
 
 !   if (re <= 0) print *,'Sat or Con out of Region at: ',n,iipha,xx_p(n0+1:n0+3)
-    call VecRestoreArrayReadF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-    call VecRestoreArrayF90(field%flow_yy,yy_p,ierr);CHKERRQ(ierr)
+    call PUVRestoreArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+    call PUVRestoreArray(field%flow_yy,yy_p,ierr);CHKERRQ(ierr)
 
 ! endif
   ! print *,' update reason', grid%myrank, re,n,grid%nlmax
@@ -710,7 +710,7 @@ end subroutine MPhaseUpdateReason
     option => realization%option
     field => realization%field
 
-    call VecGetArrayReadF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+    call PUVGetArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
 
     ipass=1
     do local_id = 1, grid%nlmax
@@ -735,7 +735,7 @@ end subroutine MPhaseUpdateReason
       endif
     enddo
 
-    call VecRestoreArrayReadF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+    call PUVRestoreArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
 
     MphaseInitGuessCheckPatch = ipass
 
@@ -820,7 +820,7 @@ subroutine MphaseUpdateAuxVarsPatch(realization)
   global_auxvars_bc => patch%aux%Global%auxvars_bc
   global_auxvars_ss => patch%aux%Global%auxvars_ss
 
-  call VecGetArrayF90(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call PUVGetArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
   do ghosted_id = 1, grid%ngmax
     if (grid%nG2L(ghosted_id) < 0) cycle ! bypass ghosted corner cells
@@ -975,7 +975,7 @@ subroutine MphaseUpdateAuxVarsPatch(realization)
     source_sink => source_sink%next
   enddo
 
-  call VecRestoreArrayF90(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
   patch%aux%Mphase%auxvars_up_to_date = PETSC_TRUE
 
@@ -1192,8 +1192,8 @@ subroutine MphaseUpdateFixedAccumPatch(realization)
   global_auxvars => patch%aux%Global%auxvars
   material_auxvars => patch%aux%Material%auxvars
 
-  call VecGetArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call PUVGetArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+  call PUVGetArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
   vol_frac_prim = 1.d0
 
@@ -1221,9 +1221,9 @@ subroutine MphaseUpdateFixedAccumPatch(realization)
                               accum_p(istart:iend))
   enddo
 
-  call VecRestoreArrayF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
 
-  call VecRestoreArrayF90(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
 #if 0
 !  call MphaseNumericalJacobianTest(field%flow_xx,realization)
@@ -2073,9 +2073,9 @@ subroutine MphaseVarSwitchPatch(xx, realization, icri, ichange)
 
 ! mphase code need assemble
   call VecLockPop(xx,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(xx,xx_p,ierr);CHKERRQ(ierr)
+  call PUVGetArray(xx,xx_p,ierr);CHKERRQ(ierr)
   call VecLockPush(xx,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(field%flow_yy,yy_p,ierr);CHKERRQ(ierr)
+  call PUVGetArray(field%flow_yy,yy_p,ierr);CHKERRQ(ierr)
 
   ichange = 0
   do local_id = 1,grid%nlmax
@@ -2310,8 +2310,8 @@ subroutine MphaseVarSwitchPatch(xx, realization, icri, ichange)
     end select
   enddo
 
-  call VecRestoreArrayReadF90(xx,xx_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(field%flow_yy,yy_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArrayRead(xx,xx_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(field%flow_yy,yy_p,ierr);CHKERRQ(ierr)
 
 end subroutine MphaseVarSwitchPatch
 
@@ -2428,9 +2428,9 @@ subroutine MphaseResidualPatch(snes,xx,r,realization,ierr)
   endif
 
 ! now assign access pointer to local variables
-  call VecGetArrayF90(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(r,r_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call PUVGetArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call PUVGetArray(r,r_p,ierr);CHKERRQ(ierr)
+  call PUVGetArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
 ! call VecGetArrayF90(field%flow_yy,yy_p,ierr)
 
@@ -2929,10 +2929,10 @@ subroutine MphaseResidualPatch(snes,xx,r,realization,ierr)
   endif
   !call VecRestoreArrayF90(r, r_p, ierr)
 
-  call VecRestoreArrayF90(r,r_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 ! call VecRestoreArrayF90(field%flow_yy, yy_p, ierr)
-  call VecRestoreArrayF90(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
   call MatrixZeroingZeroVecEntries(mphase%matrix_zeroing,r)
 
@@ -3138,7 +3138,7 @@ subroutine MphaseJacobianPatch(snes,xx,A,B,realization,ierr)
 #endif
 
  ! print *,'*********** In Jacobian ********************** '
-  call VecGetArrayF90(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call PUVGetArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
   ResInc = 0.D0
   vol_frac_prim = 1.d0
@@ -3390,7 +3390,7 @@ subroutine MphaseJacobianPatch(snes,xx,A,B,realization,ierr)
       Jup = Jup / material_auxvars(ghosted_id)%volume
 
      ! if (n==1) print *,  blkmat11, volume_p(n), ra
-    call MatSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jup, &
+    call PUMSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jup, &
                                   ADD_VALUES,ierr);CHKERRQ(ierr)
   end do
 
@@ -3509,9 +3509,9 @@ subroutine MphaseJacobianPatch(snes,xx,A,B,realization,ierr)
         Jdn(:,1:option%nflowdof)= &
           ra(:,1 + option%nflowdof:2 * option%nflowdof)*voltemp !12
 
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_up-1, &
+        call PUMSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_up-1, &
                                       Jup,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_dn-1, &
+        call PUMSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_dn-1, &
                                       Jdn,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
       if (local_id_dn > 0) then
@@ -3522,9 +3522,9 @@ subroutine MphaseJacobianPatch(snes,xx,A,B,realization,ierr)
         Jup(:,1:option%nflowdof) = -ra(:,1:option%nflowdof)*voltemp !21
         Jdn(:,1:option%nflowdof) = -ra(:, 1 + option%nflowdof:2 * option%nflowdof)*voltemp !22
 
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_dn-1, &
+        call PUMSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_dn-1, &
                                       Jdn,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_up-1, &
+        call PUMSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_up-1, &
                                       Jup,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
     enddo
@@ -3551,7 +3551,7 @@ subroutine MphaseJacobianPatch(snes,xx,A,B,realization,ierr)
   endif
 #endif
 
-  call VecRestoreArrayF90(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
  !print *,'end jac'
   call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
@@ -3575,7 +3575,7 @@ subroutine MphaseJacobianPatch(snes,xx,A,B,realization,ierr)
     else
       ip2 = ip1
     endif
-    call MatSetValuesLocal(A,1,ip1,1,ip2,1.d0,INSERT_VALUES, &
+    call PUMSetValuesLocal(A,1,ip1,1,ip2,1.d0,INSERT_VALUES, &
                            ierr);CHKERRQ(ierr)
   enddo
 
@@ -3674,8 +3674,8 @@ subroutine MphaseMaxChangePatch(realization,  max_c, max_s)
   max_c=0.D0
   max_s=0.D0
 
-  call VecGetArrayReadF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(field%flow_yy,yy_p,ierr);CHKERRQ(ierr)
+  call PUVGetArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+  call PUVGetArray(field%flow_yy,yy_p,ierr);CHKERRQ(ierr)
 
   do local_id =1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
@@ -3696,8 +3696,8 @@ subroutine MphaseMaxChangePatch(realization,  max_c, max_s)
    end if
   end do
 
-  call VecRestoreArrayReadF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(field%flow_yy,yy_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(field%flow_yy,yy_p,ierr);CHKERRQ(ierr)
 
 end subroutine MphaseMaxChangePatch
 

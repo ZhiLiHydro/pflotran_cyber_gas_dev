@@ -770,7 +770,7 @@ recursive subroutine PMGeneralInitializeRun(this)
   PetscErrorCode :: ierr
 
   ! need to allocate vectors for max change
-  call VecDuplicateVecsF90(this%realization%field%work,max_change_index, &
+  call PUVDuplicateVecs(this%realization%field%work,max_change_index, &
                            this%realization%field%max_change_vecs, &
                            ierr);CHKERRQ(ierr)
   ! set initial values
@@ -1069,8 +1069,8 @@ subroutine PMGeneralCheckUpdatePre(this,snes,X,dX,changed,ierr)
   PetscReal, parameter :: initial_scale = 1.d0
   PetscInt :: newton_iteration
 
-  call VecGetArrayF90(dX,dX_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayReadF90(X,X_p,ierr);CHKERRQ(ierr)
+  call PUVGetArray(dX,dX_p,ierr);CHKERRQ(ierr)
+  call PUVGetArrayRead(X,X_p,ierr);CHKERRQ(ierr)
 
   grid => this%realization%patch%grid
   patch => this%realization%patch
@@ -1304,8 +1304,8 @@ subroutine PMGeneralCheckUpdatePre(this,snes,X,dX,changed,ierr)
     endif
   endif
 
-  call VecRestoreArrayF90(dX,dX_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayReadF90(X,X_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(dX,dX_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArrayRead(X,X_p,ierr);CHKERRQ(ierr)
 
 end subroutine PMGeneralCheckUpdatePre
 
@@ -1375,8 +1375,8 @@ subroutine PMGeneralCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
   dX_changed = PETSC_FALSE
   X1_changed = PETSC_FALSE
 
-  call VecGetArrayReadF90(dX,dX_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayReadF90(X0,X0_p,ierr);CHKERRQ(ierr)
+  call PUVGetArrayRead(dX,dX_p,ierr);CHKERRQ(ierr)
+  call PUVGetArrayRead(X0,X0_p,ierr);CHKERRQ(ierr)
   converged_abs_update_flag = PETSC_TRUE
   converged_rel_update_flag = PETSC_TRUE
   converged_abs_update_cell = ZERO_INTEGER
@@ -1427,8 +1427,8 @@ subroutine PMGeneralCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
       endif
     enddo
   enddo
-  call VecRestoreArrayReadF90(dX,dX_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayReadF90(X0,X0_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArrayRead(dX,dX_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArrayRead(X0,X0_p,ierr);CHKERRQ(ierr)
 
   this%converged_flag(:,:,ABS_UPDATE_INDEX) = converged_abs_update_flag(:,:)
   this%converged_flag(:,:,REL_UPDATE_INDEX) = converged_rel_update_flag(:,:)
@@ -1562,8 +1562,8 @@ subroutine PMGeneralCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
     general_newtontrdc_prev_iter_num = it
   endif
   if (this%check_post_convergence) then
-    call VecGetArrayReadF90(field%flow_r,r_p,ierr);CHKERRQ(ierr)
-    call VecGetArrayReadF90(field%flow_accum2,accum2_p,ierr);CHKERRQ(ierr)
+    call PUVGetArrayRead(field%flow_r,r_p,ierr);CHKERRQ(ierr)
+    call PUVGetArrayRead(field%flow_accum2,accum2_p,ierr);CHKERRQ(ierr)
     converged_abs_residual_flag = PETSC_TRUE
     converged_abs_residual_real = 0.d0
     converged_abs_residual_cell = ZERO_INTEGER
@@ -1618,8 +1618,8 @@ subroutine PMGeneralCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
         endif
       enddo
     enddo
-    call VecRestoreArrayReadF90(field%flow_r,r_p,ierr);CHKERRQ(ierr)
-    call VecRestoreArrayReadF90(field%flow_accum2,accum2_p, &
+    call PUVRestoreArrayRead(field%flow_r,r_p,ierr);CHKERRQ(ierr)
+    call PUVRestoreArrayRead(field%flow_accum2,accum2_p, &
                                 ierr);CHKERRQ(ierr)
 
     this%converged_flag(:,:,RESIDUAL_INDEX) = converged_abs_residual_flag(:,:)
@@ -1892,8 +1892,8 @@ subroutine PMGeneralMaxChange(this)
                                 this%max_change_isubvar(i))
     ! yes, we could use VecWAXPY and a norm here, but we need the ability
     ! to customize
-    call VecGetArrayF90(field%work,vec_ptr,ierr);CHKERRQ(ierr)
-    call VecGetArrayF90(field%max_change_vecs(i),vec_ptr2,ierr);CHKERRQ(ierr)
+    call PUVGetArray(field%work,vec_ptr,ierr);CHKERRQ(ierr)
+    call PUVGetArray(field%max_change_vecs(i),vec_ptr2,ierr);CHKERRQ(ierr)
     max_change = 0.d0
     if (i==1 .and. gen_chk_max_dpl_liq_state_only) then
       do j = 1,grid%nlmax
@@ -1913,8 +1913,8 @@ subroutine PMGeneralMaxChange(this)
     enddo
 
     max_change_global(i) = max_change
-    call VecRestoreArrayF90(field%work,vec_ptr,ierr);CHKERRQ(ierr)
-    call VecRestoreArrayF90(field%max_change_vecs(i),vec_ptr2, &
+    call PUVRestoreArray(field%work,vec_ptr,ierr);CHKERRQ(ierr)
+    call PUVRestoreArray(field%max_change_vecs(i),vec_ptr2, &
                             ierr);CHKERRQ(ierr)
     call VecCopy(field%work,field%max_change_vecs(i),ierr);CHKERRQ(ierr)
   enddo

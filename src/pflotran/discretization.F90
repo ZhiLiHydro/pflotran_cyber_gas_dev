@@ -37,7 +37,7 @@ module Discretization_module
     VecScatter :: tvd_ghost_scatter
 
     PetscInt :: stencil_width
-    PetscEnum :: stencil_type
+    DMDAStencilType :: stencil_type
 
   end type discretization_type
 
@@ -785,7 +785,7 @@ subroutine DiscretizationCreateDM(discretization,dm_ptr,ndof,stencil_width, &
   type(dm_ptr_type), pointer :: dm_ptr
   PetscInt :: ndof
   PetscInt :: stencil_width
-  PetscEnum :: stencil_type
+  DMDAStencilType :: stencil_type
   type(option_type) :: option
 
   select case(discretization%itype)

@@ -1214,7 +1214,7 @@ subroutine HDF5WriteStructDataSetFromVec(name,realization_base,vec,file_id,data_
   grid => patch%grid
   option => realization_base%option
 
-  call VecGetArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call PUVGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
 !GEH - Structured Grid Dependence - Begin
   call HDF5WriteStructuredDataSet(trim(name), &
                                  vec_ptr,file_id,data_type,option, &
@@ -1228,7 +1228,7 @@ subroutine HDF5WriteStructDataSetFromVec(name,realization_base,vec,file_id,data_
                                   grid%structured_grid%lys, &
                                   grid%structured_grid%lzs)
 !GEH - Structured Grid Dependence - End
-  call VecRestoreArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine HDF5WriteStructDataSetFromVec
 
@@ -1332,11 +1332,11 @@ subroutine HDF5WriteDataSetFromVec(name,option,vec,file_id,data_type)
 
   if (data_type == H5T_NATIVE_DOUBLE) then
     allocate(double_array(local_size))
-    call VecGetArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+    call PUVGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
     do i=1,local_size
       double_array(i) = vec_ptr(i)
     enddo
-    call VecRestoreArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+    call PUVRestoreArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
     call PetscLogEventBegin(logging%event_h5dwrite_f,ierr);CHKERRQ(ierr)
     call h5dwrite_f(data_set_id,data_type,double_array,dims, &
@@ -1349,11 +1349,11 @@ subroutine HDF5WriteDataSetFromVec(name,option,vec,file_id,data_type)
 
   if (data_type == H5T_NATIVE_REAL) then
     allocate(real_array(local_size))
-    call VecGetArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+    call PUVGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
     do i=1,local_size
       real_array(i) = real(vec_ptr(i))
     enddo
-    call VecRestoreArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+    call PUVRestoreArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
     call PetscLogEventBegin(logging%event_h5dwrite_f,ierr);CHKERRQ(ierr)
     call h5dwrite_f(data_set_id,data_type,real_array,dims, &
@@ -1367,11 +1367,11 @@ subroutine HDF5WriteDataSetFromVec(name,option,vec,file_id,data_type)
 
   if (data_type == H5T_NATIVE_INTEGER) then
     allocate(int_array(local_size))
-    call VecGetArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+    call PUVGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
     do i=1,local_size
       int_array(i) = int(vec_ptr(i))
     enddo
-    call VecRestoreArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+    call PUVRestoreArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
     call PetscLogEventBegin(logging%event_h5dwrite_f,ierr);CHKERRQ(ierr)
     call h5dwrite_f(data_set_id,data_type,int_array,dims, &
@@ -1492,11 +1492,11 @@ subroutine HDF5ReadDataSetInVec(name, option, vec, file_id, data_type)
                     hdf5_err,memory_space_id,file_space_id,prop_id)
     call PetscLogEventEnd(logging%event_h5dwrite_f,ierr);CHKERRQ(ierr)
 
-    call VecGetArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+    call PUVGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
     do i=1,local_size
       vec_ptr(i) = double_array(i)
     enddo
-    call VecRestoreArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+    call PUVRestoreArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
     call DeallocateArray(double_array)
     call h5pclose_f(prop_id,hdf5_err)
@@ -1510,11 +1510,11 @@ subroutine HDF5ReadDataSetInVec(name, option, vec, file_id, data_type)
                     hdf5_err,memory_space_id,file_space_id,prop_id)
     call PetscLogEventEnd(logging%event_h5dwrite_f,ierr);CHKERRQ(ierr)
 
-    call VecGetArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+    call PUVGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
     do i=1,local_size
       vec_ptr(i) = real(int_array(i))
     enddo
-    call VecRestoreArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+    call PUVRestoreArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
     ! cannot use DeallocateArray since int_array_i4 may not be PetscInt
     deallocate(int_array)

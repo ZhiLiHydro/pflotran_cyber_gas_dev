@@ -284,7 +284,7 @@ subroutine MatrixBufferSetValuesHypre(A,matrix_buffer)
   PetscErrorCode :: ierr
 
   do icol = 1, 7
-    call MatSetValuesLocal(A,1,0,1,icol-1,matrix_buffer%values(icol,1), &
+    call PUMSetValuesLocal(A,1,0,1,icol-1,matrix_buffer%values(icol,1), &
                            INSERT_VALUES,ierr);CHKERRQ(ierr)
   enddo
 
@@ -310,7 +310,7 @@ subroutine MatrixBufferSetValuesAij(A,matrix_buffer)
 
   do local_id = 1, matrix_buffer%grid%nlmax
     ghosted_id = matrix_buffer%grid%nL2G(local_id)
-    call MatSetValuesLocal(A,1,matrix_buffer%icol(4,ghosted_id), &
+    call PUMSetValuesLocal(A,1,matrix_buffer%icol(4,ghosted_id), &
                            size(matrix_buffer%icol,1), &
                            matrix_buffer%icol(:,ghosted_id), &
                            matrix_buffer%values(:,ghosted_id),INSERT_VALUES, &

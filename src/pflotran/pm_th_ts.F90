@@ -143,8 +143,8 @@ subroutine PMTHTSUpdateAuxVarsPatch(realization)
 
   ! 2. Update auxvars based on new value of dpressure_dtime, mass, and
   !    dmass_dtime
-  call VecGetArrayReadF90(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayReadF90(field%flow_xxdot_loc,xxdot_loc_p, &
+  call PUVGetArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call PUVGetArrayRead(field%flow_xxdot_loc,xxdot_loc_p, &
                           ierr);CHKERRQ(ierr)
 
 
@@ -170,8 +170,8 @@ subroutine PMTHTSUpdateAuxVarsPatch(realization)
                                   option)
   enddo
 
-  call VecRestoreArrayReadF90(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayReadF90(field%flow_xxdot_loc,xxdot_loc_p, &
+  call PUVRestoreArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArrayRead(field%flow_xxdot_loc,xxdot_loc_p, &
                               ierr);CHKERRQ(ierr)
 
 
@@ -279,7 +279,7 @@ subroutine IFunctionAccumulation(F,realization,ierr)
   material_auxvars => patch%aux%Material%auxvars
   th_parameter => patch%aux%TH%th_parameter
 
-  call VecGetArrayF90(F,f_p,ierr);CHKERRQ(ierr)
+  call PUVGetArray(F,f_p,ierr);CHKERRQ(ierr)
 
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
@@ -347,7 +347,7 @@ subroutine IFunctionAccumulation(F,realization,ierr)
 
   enddo
 
-  call VecRestoreArrayF90(F,f_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(F,f_p,ierr);CHKERRQ(ierr)
 
 end subroutine IFunctionAccumulation
 
@@ -684,7 +684,7 @@ subroutine IJacobianAccumulation(J,shift,realization,ierr)
                    d2energy_dPdt*th_auxvars(ghosted_id)%dpres_dtime)* &
                    material_auxvars(ghosted_id)%volume
 
-    call MatSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1,Jlocal, &
+    call PUMSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1,Jlocal, &
                                   ADD_VALUES,ierr);CHKERRQ(ierr)
 
 
