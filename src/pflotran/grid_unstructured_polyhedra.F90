@@ -1245,19 +1245,6 @@ subroutine UGridPolyhedraDecompose(ugrid, option)
   call VecSetBlockSize(vertices_new,3,ierr);CHKERRQ(ierr)
   call VecSetFromOptions(vertices_new,ierr);CHKERRQ(ierr)
 
-  call VecCreate(option%mycomm,vertices_old,ierr);CHKERRQ(ierr)
-  call VecSetSizes(vertices_old,ugrid%num_vertices_local*3,PETSC_DECIDE, &
-                   ierr);CHKERRQ(ierr)
-  call VecSetBlockSize(vertices_old,3,ierr);CHKERRQ(ierr)
-  call VecSetFromOptions(vertices_old,ierr);CHKERRQ(ierr)
-
-  ! create serial petsc vector with a stride of 3
-  call VecCreate(PETSC_COMM_SELF,vertices_new,ierr);CHKERRQ(ierr)
-  call VecSetSizes(vertices_new,vertex_count*3,PETSC_DECIDE, &
-                   ierr);CHKERRQ(ierr)
-  call VecSetBlockSize(vertices_new,3,ierr);CHKERRQ(ierr)
-  call VecSetFromOptions(vertices_new,ierr);CHKERRQ(ierr)
-
   ! load up the coordinates
   call VecGetArray(vertices_old,vec_ptr,ierr);CHKERRQ(ierr)
   do ivertex = 1, pgrid%num_vertices_local
