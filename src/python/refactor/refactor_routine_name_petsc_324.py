@@ -97,7 +97,7 @@ def main():
         filename_list = ['test']
     else:
         filename_list = get_source_file_roots()
-        filename_list.remove('pflotran_constants')
+        filename_list.remove('petsc_utility')
     print(filename_list)
     for filename in filename_list:
         filename += '.F90'
