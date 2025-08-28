@@ -1957,7 +1957,7 @@ subroutine SCO2Residual(snes,xx,r,realization,pm_well,ierr)
   call MatrixZeroingZeroVecEntries(patch%aux%SCO2%matrix_zeroing,r)
 
   ! Mass Transfer
-  if (field%flow_mass_transfer /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(field%flow_mass_transfer)) then
     ! scale by -1.d0 for contribution to residual.  A negative contribution
     ! indicates mass being added to system.
     call VecAXPY(r,-1.d0,field%flow_mass_transfer,ierr);CHKERRQ(ierr)

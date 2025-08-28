@@ -230,7 +230,7 @@ subroutine DatasetGlobalHDF5ReadData(this,option,data_type)
 
   call PetscLogEventBegin(logging%event_read_array_hdf5,ierr);CHKERRQ(ierr)
 
-  if (this%dm_wrapper%dm /= PETSC_NULL_DM) then
+  if (.not.PetscObjectIsNull(this%dm_wrapper%dm)) then
     call DMCreateGlobalVector(this%dm_wrapper%dm,global_vec, &
                               ierr);CHKERRQ(ierr)
     call DMDACreateNaturalVector(this%dm_wrapper%dm,natural_vec, &

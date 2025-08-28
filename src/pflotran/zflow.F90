@@ -844,7 +844,7 @@ subroutine ZFlowResidual(snes,xx,r,A,realization,ierr)
 
   ndof = realization%option%nflowdof
 
-  MatdResdparam = PETSC_NULL_MAT
+  PetscObjectNullify(MatdResdparam)
   dResdparamup = UNINITIALIZED_DOUBLE  ! to catch bugs
   dResdparamdn = UNINITIALIZED_DOUBLE
   dResdparam = UNINITIALIZED_DOUBLE
@@ -865,12 +865,12 @@ subroutine ZFlowResidual(snes,xx,r,A,realization,ierr)
   material_auxvars_pert => patch%aux%ZFlow%material_auxvars_pert
 
   store_adjoint = PETSC_FALSE
-  MatdResdparam = PETSC_NULL_MAT
+  PetscObjectNullify(MatdResdparam)
   call MatZeroEntries(A,ierr);CHKERRQ(ierr)
   if (associated(patch%aux%inversion_aux)) then
     if (patch%aux%inversion_aux%store_adjoint) then
       MatdResdparam = patch%aux%inversion_aux%last_forward_ts_aux%dResdparam
-      if (MatdResdparam /= PETSC_NULL_MAT) then
+      if (.not.PetscObjectIsNull(MatdResdparam)) then
         store_adjoint = PETSC_TRUE
         call MatZeroEntries(MatdResdparam,ierr);CHKERRQ(ierr)
       endif
@@ -1153,7 +1153,7 @@ subroutine ZFlowResidual(snes,xx,r,A,realization,ierr)
   endif
 
   ! Mass Transfer
-  if (field%flow_mass_transfer /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(field%flow_mass_transfer)) then
     ! scale by -1.d0 for contribution to residual.  A negative contribution
     ! indicates mass being added to system.
     call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)

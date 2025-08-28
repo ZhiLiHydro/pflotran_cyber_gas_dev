@@ -90,7 +90,7 @@ subroutine PMPNFInitObject(this)
   this%name = 'PN Flow'
   this%header = 'PN FLOW'
 
-  this%max_pressure_change_vec = PETSC_NULL_VEC
+  PetscObjectNullify(this%max_pressure_change_vec)
   this%use_darcy = PETSC_FALSE
 
   array(1) = pnf_density_kg ! dist is the aux array

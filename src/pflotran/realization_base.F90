@@ -210,7 +210,7 @@ subroutine RealizCreateFlowMassTransferVec(this)
 
   PetscInt :: ierr
 
-  if (this%field%flow_mass_transfer == PETSC_NULL_VEC) then
+  if (PetscObjectIsNull(this%field%flow_mass_transfer)) then
     call VecDuplicate(this%field%flow_xx,this%field%flow_mass_transfer, &
                       ierr);CHKERRQ(ierr)
   endif
@@ -235,7 +235,7 @@ subroutine RealizCreateTranMassTransferVec(this)
 
   PetscInt :: ierr
 
-  if (this%field%tran_mass_transfer == PETSC_NULL_VEC) then
+  if (PetscObjectIsNull(this%field%tran_mass_transfer)) then
     call VecDuplicate(this%field%tran_xx,this%field%tran_mass_transfer, &
                       ierr);CHKERRQ(ierr)
   endif

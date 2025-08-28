@@ -1825,7 +1825,7 @@ subroutine PMRTCheckpointBinary(this,viewer)
   grid => realization%patch%grid
   patch => realization%patch
 
-  global_vec = PETSC_NULL_VEC
+  PetscObjectNullify(global_vec)
 
   bagsize = size(transfer(dummy_header,dummy_char))
 
@@ -1854,7 +1854,7 @@ subroutine PMRTCheckpointBinary(this,viewer)
   if (option%ntrandof > 0) then
     call VecView(field%tran_xx,viewer,ierr);CHKERRQ(ierr)
     ! create a global vec for writing below
-    if (global_vec == PETSC_NULL_VEC) then
+    if (PetscObjectIsNull(global_vec)) then
       call DiscretizationCreateVector(realization%discretization,ONEDOF, &
                                       global_vec,GLOBAL,option)
     endif
@@ -1939,7 +1939,7 @@ subroutine PMRTCheckpointBinary(this,viewer)
     endif
   endif
 
-  if (global_vec /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(global_vec)) then
     call VecDestroy(global_vec,ierr);CHKERRQ(ierr)
   endif
 
@@ -2013,8 +2013,8 @@ subroutine PMRTRestartBinary(this,viewer)
   grid => realization%patch%grid
   patch => realization%patch
 
-  global_vec = PETSC_NULL_VEC
-  local_vec = PETSC_NULL_VEC
+  PetscObjectNullify(global_vec)
+  PetscObjectNullify(local_vec)
 
   bagsize = size(transfer(dummy_header,dummy_char))
 
@@ -2031,7 +2031,7 @@ subroutine PMRTRestartBinary(this,viewer)
                                     field%tran_xx_loc,NTRANDOF)
   call VecCopy(field%tran_xx,field%tran_yy,ierr);CHKERRQ(ierr)
 
-  if (global_vec == PETSC_NULL_VEC) then
+  if (PetscObjectIsNull(global_vec)) then
     call DiscretizationCreateVector(realization%discretization,ONEDOF, &
                                     global_vec,GLOBAL,option)
   endif
@@ -2125,10 +2125,10 @@ subroutine PMRTRestartBinary(this,viewer)
   endif
 
   ! We are finished, so clean up.
-  if (global_vec /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(global_vec)) then
     call VecDestroy(global_vec,ierr);CHKERRQ(ierr)
   endif
-  if (local_vec /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(local_vec)) then
     call VecDestroy(local_vec,ierr);CHKERRQ(ierr)
   endif
 

@@ -900,7 +900,7 @@ subroutine PMMTransformCheckpointHDF5(this, pm_grp_id)
   enddo
 
   if (check_il) then
-    global_vec = PETSC_NULL_VEC
+    PetscObjectNullify(global_vec)
     call DiscretizationCreateVector(this%realization%discretization, ONEDOF, &
                                     global_vec, GLOBAL, option)
     call DiscretizationCreateVector(this%realization%discretization, ONEDOF, &
@@ -1111,7 +1111,7 @@ subroutine PMMaterialTransformRestartHDF5(this, pm_grp_id)
   enddo
 
   if (check_il) then
-    global_vec = PETSC_NULL_VEC
+    PetscObjectNullify(global_vec)
     call DiscretizationCreateVector(this%realization%discretization, ONEDOF, &
                                     global_vec, GLOBAL, option)
     call DiscretizationCreateVector(this%realization%discretization, ONEDOF, &
@@ -1329,7 +1329,7 @@ subroutine PMMTransformCheckpointBinary(this, viewer)
   enddo
 
   if (check_il) then
-    global_vec = PETSC_NULL_VEC
+    PetscObjectNullify(global_vec)
     call DiscretizationCreateVector(this%realization%discretization, ONEDOF, &
                                     global_vec, GLOBAL, option)
     call MTransformGetAuxVarVecLoc(this%realization%patch%aux%MTransform, &
@@ -1525,7 +1525,7 @@ subroutine PMMTransformRestartBinary(this, viewer)
   enddo
 
   if (check_il) then
-    global_vec = PETSC_NULL_VEC
+    PetscObjectNullify(global_vec)
     call DiscretizationCreateVector(this%realization%discretization, ONEDOF, &
                                     global_vec, GLOBAL, option)
     call VecLoad(global_vec,viewer,ierr);CHKERRQ(ierr)

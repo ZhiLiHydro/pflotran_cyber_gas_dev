@@ -569,7 +569,7 @@ subroutine PMSubsurfaceFlowSetSoilRefPres(realization)
   material_property_array => patch%material_property_array
   material_auxvars => patch%aux%Material%auxvars
 
-  dataset_vec = PETSC_NULL_VEC
+  PetscObjectNullify(dataset_vec)
 
   if (option%iflowmode == PNF_MODE) return
 
@@ -595,7 +595,7 @@ subroutine PMSubsurfaceFlowSetSoilRefPres(realization)
             patch%material_property_array(material_id)%ptr
     if (.not.associated(material_property)) cycle
     if (associated(material_property%soil_reference_pressure_dataset)) then
-      if (dataset_vec == PETSC_NULL_VEC) then
+      if (PetscObjectIsNull(dataset_vec)) then
         call DiscretizationDuplicateVector(realization%discretization, &
                                            realization%field%work_loc, &
                                            dataset_vec)
@@ -650,7 +650,7 @@ subroutine PMSubsurfaceFlowSetSoilRefPres(realization)
     call PrintErrMsg(option)
   endif
 
-  if (dataset_vec /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(dataset_vec)) then
     call VecDestroy(dataset_vec,ierr);CHKERRQ(ierr)
   endif
 
