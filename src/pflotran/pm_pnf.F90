@@ -366,13 +366,13 @@ subroutine PMPNFSetupLinearSystem(this,A,solution,right_hand_side,ierr)
   call MatZeroEntries(A,ierr);CHKERRQ(ierr)
   call VecZeroEntries(right_hand_side,ierr);CHKERRQ(ierr)
 
-  call VecGetArrayF90(right_hand_side,rhs_ptr,ierr);CHKERRQ(ierr)
+  call PUVGetArray(right_hand_side,rhs_ptr,ierr);CHKERRQ(ierr)
 #if 0
   do local_id = 1, grid%nlmax  ! For each local node do...
     ghosted_id = grid%nL2G(local_id)
     tempreal = pnf_density_kg * material_auxvars(ghosted_id)%volume / &
                option%flow_dt
-    call MatSetValuesLocal(A,1,ghosted_id-1,1,ghosted_id-1,tempreal, &
+    call PUMSetValuesLocal(A,1,ghosted_id-1,1,ghosted_id-1,tempreal, &
                            ADD_VALUES,ierr);CHKERRQ(ierr)
     rhs_ptr(local_id) = tempreal(1,1)
   enddo
@@ -400,15 +400,15 @@ subroutine PMPNFSetupLinearSystem(this,A,solution,right_hand_side,ierr)
                   cur_connection_set%dist(0,iconn)
       endif
       if (local_id_up > 0) then
-        call MatSetValuesLocal(A,1,ghosted_id_up-1,1,ghosted_id_up-1,tempreal, &
+        call PUMSetValuesLocal(A,1,ghosted_id_up-1,1,ghosted_id_up-1,tempreal, &
                                ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesLocal(A,1,ghosted_id_up-1,1,ghosted_id_dn-1, &
+        call PUMSetValuesLocal(A,1,ghosted_id_up-1,1,ghosted_id_dn-1, &
                                -tempreal,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
       if (local_id_dn > 0) then
-        call MatSetValuesLocal(A,1,ghosted_id_dn-1,1,ghosted_id_dn-1,tempreal, &
+        call PUMSetValuesLocal(A,1,ghosted_id_dn-1,1,ghosted_id_dn-1,tempreal, &
                                ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesLocal(A,1,ghosted_id_dn-1,1,ghosted_id_up-1, &
+        call PUMSetValuesLocal(A,1,ghosted_id_dn-1,1,ghosted_id_up-1, &
                                -tempreal,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
     enddo
@@ -439,7 +439,7 @@ subroutine PMPNFSetupLinearSystem(this,A,solution,right_hand_side,ierr)
             tempreal = g_sup_h_constant * area**2 / &  ! w^3*b
                       cur_connection_set%dist(0,iconn)
           endif
-          call MatSetValuesLocal(A,1,ghosted_id-1,1,ghosted_id-1,tempreal, &
+          call PUMSetValuesLocal(A,1,ghosted_id-1,1,ghosted_id-1,tempreal, &
                                  ADD_VALUES,ierr);CHKERRQ(ierr)
           tempreal = tempreal * rvalue
         case(NEUMANN_BC)
@@ -490,7 +490,7 @@ subroutine PMPNFSetupLinearSystem(this,A,solution,right_hand_side,ierr)
     source_sink => source_sink%next
   enddo
 
-  call VecRestoreArrayF90(right_hand_side,rhs_ptr,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(right_hand_side,rhs_ptr,ierr);CHKERRQ(ierr)
   call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
   call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
 
@@ -560,7 +560,7 @@ subroutine PMPNFCalculateVelocities(this)
 
   material_auxvars => patch%aux%Material%auxvars
 
-  call VecGetArrayReadF90(this%realization%field%flow_xx_loc,vec_loc_ptr, &
+  call PUVGetArrayRead(this%realization%field%flow_xx_loc,vec_loc_ptr, &
                           ierr);CHKERRQ(ierr)
 
   ! Interior Flux Terms -----------------------------------
@@ -620,7 +620,7 @@ subroutine PMPNFCalculateVelocities(this)
     boundary_condition => boundary_condition%next
   enddo
 
-  call VecRestoreArrayReadF90(this%realization%field%flow_xx_loc,vec_loc_ptr, &
+  call PUVRestoreArrayRead(this%realization%field%flow_xx_loc,vec_loc_ptr, &
                               ierr);CHKERRQ(ierr)
 
 end subroutine PMPNFCalculateVelocities
@@ -792,8 +792,8 @@ subroutine PMPNFMaxChange(this)
                               LIQUID_PRESSURE,ZERO_INTEGER)
   ! yes, we could use VecWAXPY and a norm here, but we need the ability
   ! to customize
-  call VecGetArrayF90(field%work,vec_new_ptr,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(this%max_pressure_change_vec,vec_old_ptr, &
+  call PUVGetArray(field%work,vec_new_ptr,ierr);CHKERRQ(ierr)
+  call PUVGetArray(this%max_pressure_change_vec,vec_old_ptr, &
                       ierr);CHKERRQ(ierr)
   max_change = 0.d0
   do j = 1, grid%nlmax
@@ -801,8 +801,8 @@ subroutine PMPNFMaxChange(this)
     max_change = max(max_change,change)
   enddo
   max_change_local(1) = max_change
-  call VecRestoreArrayF90(field%work,vec_new_ptr,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(this%max_pressure_change_vec,vec_old_ptr, &
+  call PUVRestoreArray(field%work,vec_new_ptr,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(this%max_pressure_change_vec,vec_old_ptr, &
                           ierr);CHKERRQ(ierr)
   call VecCopy(field%work,this%max_pressure_change_vec,ierr);CHKERRQ(ierr)
   call MPI_Allreduce(max_change_local,max_change_global,ONE_INTEGER, &

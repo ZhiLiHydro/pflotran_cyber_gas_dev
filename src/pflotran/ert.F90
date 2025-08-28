@@ -359,9 +359,9 @@ subroutine ERTCalculateMatrix(realization,M,compute_delM)
 
       if (local_id_up > 0) then
         ! set matrix coefficients for the upwind cell
-        call MatSetValuesLocal(M,1,ghosted_id_up-1,1,ghosted_id_up-1,coef_up, &
+        call PUMSetValuesLocal(M,1,ghosted_id_up-1,1,ghosted_id_up-1,coef_up, &
                                ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesLocal(M,1,ghosted_id_up-1,1,ghosted_id_dn-1,coef_dn, &
+        call PUMSetValuesLocal(M,1,ghosted_id_up-1,1,ghosted_id_dn-1,coef_dn, &
                                ADD_VALUES,ierr);CHKERRQ(ierr)
 
         if (compute_delM) then
@@ -387,9 +387,9 @@ subroutine ERTCalculateMatrix(realization,M,compute_delM)
         dcoef_up =   dcond_avg_dn * area
         dcoef_dn = - dcoef_up               ! - dcond_avg_dn * area
 
-        call MatSetValuesLocal(M,1,ghosted_id_dn-1,1,ghosted_id_dn-1,coef_dn, &
+        call PUMSetValuesLocal(M,1,ghosted_id_dn-1,1,ghosted_id_dn-1,coef_dn, &
                                ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesLocal(M,1,ghosted_id_dn-1,1,ghosted_id_up-1,coef_up, &
+        call PUMSetValuesLocal(M,1,ghosted_id_dn-1,1,ghosted_id_up-1,coef_up, &
                                ADD_VALUES,ierr);CHKERRQ(ierr)
 
         if (compute_delM) then
@@ -447,7 +447,7 @@ subroutine ERTCalculateMatrix(realization,M,compute_delM)
         ! We need matrix coeff only for down cell so
         coef_dn = - coef_dn
 
-        call MatSetValuesLocal(M,1,ghosted_id-1,1,ghosted_id-1,coef_dn, &
+        call PUMSetValuesLocal(M,1,ghosted_id-1,1,ghosted_id-1,coef_dn, &
                                ADD_VALUES,ierr);CHKERRQ(ierr)
 
       enddo

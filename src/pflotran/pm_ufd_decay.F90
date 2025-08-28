@@ -1683,7 +1683,7 @@ subroutine PMUFDDecaySolve(this,time,ierr)
   dt = option%tran_dt
   one_over_dt = 1.d0 / dt
 !  epsilon = 1.d0
-  call VecGetArrayF90(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
+  call PUVGetArray(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
 
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
@@ -1735,7 +1735,7 @@ subroutine PMUFDDecaySolve(this,time,ierr)
                            local_id,imat,this%element_Kd,1)
   enddo
 
-  call VecRestoreArrayF90(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
   if (associated(reaction)) then
     if (reaction%use_log_formulation) then
       call VecCopy(field%tran_xx,field%tran_log_xx,ierr);CHKERRQ(ierr)

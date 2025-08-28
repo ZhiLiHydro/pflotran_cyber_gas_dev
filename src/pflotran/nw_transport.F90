@@ -393,7 +393,7 @@ subroutine NWTUpdateAuxVars(realization,update_cells,update_bcs)
   global_auxvars_bc => patch%aux%Global%auxvars_bc
 
 
-  call VecGetArrayReadF90(field%tran_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call PUVGetArrayRead(field%tran_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
   if (update_cells) then
 
@@ -532,7 +532,7 @@ subroutine NWTUpdateAuxVars(realization,update_cells,update_bcs)
 
   endif
 
-  call VecRestoreArrayReadF90(field%tran_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArrayRead(field%tran_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
   icall = icall+ 1
 
 end subroutine NWTUpdateAuxVars
@@ -711,11 +711,11 @@ subroutine NWTResidual(snes,xx,r,realization,pmwell_ptr,ierr)
   ! Communication -----------------------------------------
   if (reaction_nw%use_log_formulation) then
     ! have to convert the log concentration to non-log form
-    call VecGetArrayF90(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
-    call VecGetArrayReadF90(xx,log_xx_p,ierr);CHKERRQ(ierr)
+    call PUVGetArray(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
+    call PUVGetArrayRead(xx,log_xx_p,ierr);CHKERRQ(ierr)
     xx_p(:) = exp(log_xx_p(:))
-    call VecRestoreArrayF90(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
-    call VecRestoreArrayReadF90(xx,log_xx_p,ierr);CHKERRQ(ierr)
+    call PUVRestoreArray(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
+    call PUVRestoreArrayRead(xx,log_xx_p,ierr);CHKERRQ(ierr)
     call DiscretizationGlobalToLocal(discretization,field%tran_xx, &
                                      field%tran_xx_loc,NTRANDOF)
   else
@@ -724,8 +724,8 @@ subroutine NWTResidual(snes,xx,r,realization,pmwell_ptr,ierr)
   endif
 
   ! Get pointer to residual Vector data
-  call VecGetArrayF90(r,r_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(field%tran_accum,fixed_accum_p,ierr);CHKERRQ(ierr)
+  call PUVGetArray(r,r_p,ierr);CHKERRQ(ierr)
+  call PUVGetArray(field%tran_accum,fixed_accum_p,ierr);CHKERRQ(ierr)
 
   ! Zero out the residual pointer
   r_p(:) = 0.d0
@@ -1035,8 +1035,8 @@ subroutine NWTResidual(snes,xx,r,realization,pmwell_ptr,ierr)
   !WRITE(*,*)  '       r_p(6) = ', r_p(:)
 
   ! Restore residual Vector data
-  call VecRestoreArrayF90(field%tran_accum,fixed_accum_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(r,r_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(field%tran_accum,fixed_accum_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 
   ! Mass Transfer (Adds mass from the waste form process model)
   if (field%tran_mass_transfer /= PETSC_NULL_VEC) then
@@ -1103,9 +1103,9 @@ subroutine NWTUpdateFixedAccumulation(realization)
   reaction_nw => realization%reaction_nw
 
   ! cannot use tran_xx_loc vector here as it has not yet been updated.
-  call VecGetArrayReadF90(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
+  call PUVGetArrayRead(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
 
-  call VecGetArrayF90(field%tran_accum,fixed_accum_p,ierr);CHKERRQ(ierr)
+  call PUVGetArray(field%tran_accum,fixed_accum_p,ierr);CHKERRQ(ierr)
 
 ! Do not use NWTUpdateAuxVars() as it loops over ghosted ids
 
@@ -1134,8 +1134,8 @@ subroutine NWTUpdateFixedAccumulation(realization)
                           reaction_nw,fixed_accum_p(istart:iend))
   enddo
 
-  call VecRestoreArrayReadF90(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(field%tran_accum,fixed_accum_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArrayRead(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(field%tran_accum,fixed_accum_p,ierr);CHKERRQ(ierr)
 
 end subroutine NWTUpdateFixedAccumulation
 
@@ -1633,7 +1633,7 @@ subroutine NWTJacobian(snes,xx,A,B,realization,ierr)
                             reaction_nw,option,Jac_accum)
 
       ! PETSc uses 0-based indexing so the position must be (ghosted_id-1)
-      call MatSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1,Jac_accum, &
+      call PUMSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1,Jac_accum, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
     enddo
   endif
@@ -1660,7 +1660,7 @@ subroutine NWTJacobian(snes,xx,A,B,realization,ierr)
       !WRITE(*,*)  '   JacSrcSink = ', Jac(:,:)
 
       ! PETSc uses 0-based indexing so the position must be (ghosted_id-1)
-      call MatSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1, &
+      call PUMSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1, &
                                     Jac_srcsink,ADD_VALUES, &
                                     ierr);CHKERRQ(ierr)
     enddo
@@ -1678,7 +1678,7 @@ subroutine NWTJacobian(snes,xx,A,B,realization,ierr)
                        reaction_nw,Jac_rxn)
 
     ! PETSc uses 0-based indexing so the position must be (ghosted_id-1)
-    call MatSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1,Jac_rxn, &
+    call PUMSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1,Jac_rxn, &
                                   ADD_VALUES,ierr);CHKERRQ(ierr)
   enddo
 
@@ -1722,9 +1722,9 @@ subroutine NWTJacobian(snes,xx,A,B,realization,ierr)
 
       if (local_id_up>0) then
         ! PETSc uses 0-based indexing so the position must be (ghosted_id-1)
-        call MatSetValuesBlockedLocal(J,1,ghosted_id_up-1,1,ghosted_id_up-1, &
+        call PUMSetValuesBlockedLocal(J,1,ghosted_id_up-1,1,ghosted_id_up-1, &
                                       JacUp,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesBlockedLocal(J,1,ghosted_id_up-1,1,ghosted_id_dn-1, &
+        call PUMSetValuesBlockedLocal(J,1,ghosted_id_up-1,1,ghosted_id_dn-1, &
                                       JacDn,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
 
@@ -1732,9 +1732,9 @@ subroutine NWTJacobian(snes,xx,A,B,realization,ierr)
         JacUp = -JacUp
         JacDn = -JacDn
         ! PETSc uses 0-based indexing so the position must be (ghosted_id-1)
-        call MatSetValuesBlockedLocal(J,1,ghosted_id_dn-1,1,ghosted_id_dn-1, &
+        call PUMSetValuesBlockedLocal(J,1,ghosted_id_dn-1,1,ghosted_id_dn-1, &
                                       JacDn,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call MatSetValuesBlockedLocal(J,1,ghosted_id_dn-1,1,ghosted_id_up-1, &
+        call PUMSetValuesBlockedLocal(J,1,ghosted_id_dn-1,1,ghosted_id_up-1, &
                                       JacUp,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
 
@@ -1774,7 +1774,7 @@ subroutine NWTJacobian(snes,xx,A,B,realization,ierr)
 
       JacDn = -JacDn
       ! PETSc uses 0-based indexing so the position must be (ghosted_id-1)
-      call MatSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1,JacDn, &
+      call PUMSetValuesBlockedLocal(J,1,ghosted_id-1,1,ghosted_id-1,JacDn, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
       ! note: Don't need to worry about JacUp because that is outside of
       ! the domain, and doesn't have a place in J.
@@ -1788,7 +1788,7 @@ subroutine NWTJacobian(snes,xx,A,B,realization,ierr)
   call MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
 
   if (reaction_nw%use_log_formulation) then
-    call VecGetArrayF90(realization%field%tran_work_loc,work_loc_p, &
+    call PUVGetArray(realization%field%tran_work_loc,work_loc_p, &
                         ierr);CHKERRQ(ierr)
     do ghosted_id = 1, grid%ngmax
       offset = (ghosted_id-1)*reaction_nw%params%ncomp
@@ -1801,7 +1801,7 @@ subroutine NWTJacobian(snes,xx,A,B,realization,ierr)
         work_loc_p(istart:iend) = nwt_auxvars(ghosted_id)%total_bulk_conc(:)
       endif
     enddo
-    call VecRestoreArrayF90(realization%field%tran_work_loc,work_loc_p, &
+    call PUVRestoreArray(realization%field%tran_work_loc,work_loc_p, &
                             ierr);CHKERRQ(ierr)
   endif
 

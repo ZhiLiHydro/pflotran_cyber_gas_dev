@@ -69,8 +69,9 @@ subroutine PetUtilMatSVBL(A,irow,icol,matrix_block,ndof)
 
   ndof_mat = matrix_block(1:ndof,1:ndof)
 
-  call MatSetValuesBlockedLocal(A,1,irow-1,1,icol-1,ndof_mat,ADD_VALUES, &
-                                ierr);CHKERRQ(ierr)
+  call MatSetValuesBlockedLocal(A,1,[irow-1],1,[icol-1], &
+                                reshape(ndof_mat,(/size(ndof_mat)/)), &
+                                ADD_VALUES,ierr);CHKERRQ(ierr)
 
 end subroutine PetUtilMatSVBL
 
@@ -218,7 +219,7 @@ subroutine PetscUtilCompareMatrices(A,B,nL2G,nG2A,rtol,row_rtol,option)
 
   PetscInt :: nrow, ncol
   PetscInt, pointer :: irow_ptr(:), icol_ptr(:)
-  PetscReal :: values_a(1,1000), values_b(1,1000)
+  PetscReal :: values_a(1000), values_b(1000)
   PetscReal :: value_a, value_b, scale, row_scale
   PetscBool :: success
   PetscInt :: i, j
@@ -247,17 +248,17 @@ subroutine PetscUtilCompareMatrices(A,B,nL2G,nG2A,rtol,row_rtol,option)
     row_cell_natural = nG2A(nL2G(irow_cell_local))
     irow_natural = (row_cell_natural-1)*block_size+mod(i-1,block_size)+1
     ncol = irow_ptr(i+1)-irow_ptr(i)
-    call MatGetValuesLocal(A,ONE_INTEGER,irow,ncol, &
+    call MatGetValuesLocal(A,ONE_INTEGER,[irow],ncol, &
                            icol_ptr(irow_ptr(i)+1:irow_ptr(i+1)), &
                            values_a,ierr);CHKERRQ(ierr)
-    call MatGetValuesLocal(B,ONE_INTEGER,irow,ncol, &
+    call MatGetValuesLocal(B,ONE_INTEGER,[irow],ncol, &
                            icol_ptr(irow_ptr(i)+1:irow_ptr(i+1)), &
                            values_b,ierr);CHKERRQ(ierr)
     do j = 1, ncol
-      value_a = values_a(1,j)
-      value_b = values_b(1,j)
-      row_scale = max(maxval(dabs(values_a(1,1:ncol))), &
-                      maxval(dabs(values_b(1,1:ncol))))
+      value_a = values_a(j)
+      value_b = values_b(j)
+      row_scale = max(maxval(dabs(values_a(1:ncol))), &
+                      maxval(dabs(values_b(1:ncol))))
       scale = max(dabs(value_a),dabs(value_b))
       if (scale > 0.d0) then
         if (dabs(value_a - value_b)/scale > rtol .and. &

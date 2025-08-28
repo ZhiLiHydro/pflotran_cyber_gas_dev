@@ -687,7 +687,7 @@ subroutine InitMatPropToGeomechRegions(geomech_realization)
   ! set cell by cell material properties
   ! create null material property for inactive cells
   null_geomech_material_property => GeomechanicsMaterialPropertyCreate()
-  call VecGetArrayF90(field%imech_loc,imech_loc_p,ierr);CHKERRQ(ierr)
+  call PUVGetArray(field%imech_loc,imech_loc_p,ierr);CHKERRQ(ierr)
   do local_id = 1, grid%nlmax_node
     ghosted_id = grid%nL2G(local_id)
     geomech_material_id = patch%imat(ghosted_id)
@@ -725,7 +725,7 @@ subroutine InitMatPropToGeomechRegions(geomech_realization)
     endif
     imech_loc_p(ghosted_id) = geomech_material_property%id
   enddo ! local_id - loop
-  call VecRestoreArrayF90(field%imech_loc,imech_loc_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(field%imech_loc,imech_loc_p,ierr);CHKERRQ(ierr)
 
   ! read in any user-defined geomech property fields
   call GeomechDiscretizationDuplicateVector(geomech_discretization, &
@@ -743,13 +743,13 @@ subroutine InitMatPropToGeomechRegions(geomech_realization)
             geomech_material_property%id,PETSC_FALSE,field%youngs_modulus,temp_vec)
     else
       ! Set the value of field%youngs_modulus for this material to the constant value
-      call VecGetArrayF90(field%youngs_modulus,temp_vec_p,ierr);CHKERRQ(ierr)
+      call PUVGetArray(field%youngs_modulus,temp_vec_p,ierr);CHKERRQ(ierr)
       do local_id = 1, grid%nlmax_node
         if (patch%imat(grid%nL2G(local_id)) == geomech_material_property%id) then
           temp_vec_p(local_id) = geomech_material_property%youngs_modulus
         endif
       enddo
-      call VecRestoreArrayF90(field%youngs_modulus,temp_vec_p,ierr);CHKERRQ(ierr)
+      call PUVRestoreArray(field%youngs_modulus,temp_vec_p,ierr);CHKERRQ(ierr)
     endif
     ! Poisson's ratio
     if (associated(geomech_material_property%poissons_ratio_dataset)) then
@@ -759,13 +759,13 @@ subroutine InitMatPropToGeomechRegions(geomech_realization)
             geomech_material_property%id,PETSC_FALSE,field%poissons_ratio,temp_vec)
     else
       ! Set the value of field%poissons_ratio for this material to the constant value
-      call VecGetArrayF90(field%poissons_ratio,temp_vec_p,ierr);CHKERRQ(ierr)
+      call PUVGetArray(field%poissons_ratio,temp_vec_p,ierr);CHKERRQ(ierr)
       do local_id = 1, grid%nlmax_node
         if (patch%imat(grid%nL2G(local_id)) == geomech_material_property%id) then
           temp_vec_p(local_id) = geomech_material_property%poissons_ratio
         endif
       enddo
-      call VecRestoreArrayF90(field%poissons_ratio,temp_vec_p,ierr);CHKERRQ(ierr)
+      call PUVRestoreArray(field%poissons_ratio,temp_vec_p,ierr);CHKERRQ(ierr)
     endif
     ! Density
     if (associated(geomech_material_property%density_dataset)) then
@@ -775,13 +775,13 @@ subroutine InitMatPropToGeomechRegions(geomech_realization)
             geomech_material_property%id,PETSC_FALSE,field%density,temp_vec)
     else
       ! Set the value of field%density for this material to the constant value
-      call VecGetArrayF90(field%density,temp_vec_p,ierr);CHKERRQ(ierr)
+      call PUVGetArray(field%density,temp_vec_p,ierr);CHKERRQ(ierr)
       do local_id = 1, grid%nlmax_node
         if (patch%imat(grid%nL2G(local_id)) == geomech_material_property%id) then
           temp_vec_p(local_id) = geomech_material_property%density
         endif
       enddo
-      call VecRestoreArrayF90(field%density,temp_vec_p,ierr);CHKERRQ(ierr)
+      call PUVRestoreArray(field%density,temp_vec_p,ierr);CHKERRQ(ierr)
     endif
     ! Biot's coefficient
     if (associated(geomech_material_property%biot_coeff_dataset)) then
@@ -791,13 +791,13 @@ subroutine InitMatPropToGeomechRegions(geomech_realization)
             geomech_material_property%id,PETSC_FALSE,field%biot_coeff,temp_vec)
     else
       ! Set the value of field%biot_coeff for this material to the constant value
-      call VecGetArrayF90(field%biot_coeff,temp_vec_p,ierr);CHKERRQ(ierr)
+      call PUVGetArray(field%biot_coeff,temp_vec_p,ierr);CHKERRQ(ierr)
       do local_id = 1, grid%nlmax_node
         if (patch%imat(grid%nL2G(local_id)) == geomech_material_property%id) then
           temp_vec_p(local_id) = geomech_material_property%biot_coeff
         endif
       enddo
-      call VecRestoreArrayF90(field%biot_coeff,temp_vec_p,ierr);CHKERRQ(ierr)
+      call PUVRestoreArray(field%biot_coeff,temp_vec_p,ierr);CHKERRQ(ierr)
     endif
     ! Thermal expansion coefficient
     if (associated(geomech_material_property%thermal_exp_coeff_dataset)) then
@@ -807,13 +807,13 @@ subroutine InitMatPropToGeomechRegions(geomech_realization)
             geomech_material_property%id,PETSC_FALSE,field%thermal_exp_coeff,temp_vec)
     else
       ! Set the value of field%thermal_exp_coeff for this material to the constant value
-      call VecGetArrayF90(field%thermal_exp_coeff,temp_vec_p,ierr);CHKERRQ(ierr)
+      call PUVGetArray(field%thermal_exp_coeff,temp_vec_p,ierr);CHKERRQ(ierr)
       do local_id = 1, grid%nlmax_node
         if (patch%imat(grid%nL2G(local_id)) == geomech_material_property%id) then
           temp_vec_p(local_id) = geomech_material_property%thermal_exp_coeff
         endif
       enddo
-      call VecRestoreArrayF90(field%thermal_exp_coeff,temp_vec_p,ierr);CHKERRQ(ierr)
+      call PUVRestoreArray(field%thermal_exp_coeff,temp_vec_p,ierr);CHKERRQ(ierr)
     endif
   enddo
   call VecDestroy(temp_vec,ierr);CHKERRQ(ierr)
@@ -1049,14 +1049,14 @@ subroutine InitSubsurfGeomechChkInactiveCells(geomech_realization, &
               ierr);CHKERRQ(ierr)
   call VecSet(geomech_realization%geomech_field%press,-888.d0, &
               ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(geomech_realization%geomech_field%subsurf_vec_1dof, &
+  call PUVGetArray(geomech_realization%geomech_field%subsurf_vec_1dof, &
               subsurf_vec_1dof,ierr);CHKERRQ(ierr)
   do subsurf_local_id = 1, subsurf_realization%patch%grid%nlmax
     subsurf_ghosted_id = subsurf_realization%patch%grid%nL2G(subsurf_local_id)
     subsurf_vec_1dof(subsurf_local_id) = subsurf_realization%patch%imat( &
                                                   subsurf_ghosted_id)
   enddo
-  call VecRestoreArrayF90(geomech_realization%geomech_field%subsurf_vec_1dof, &
+  call PUVRestoreArray(geomech_realization%geomech_field%subsurf_vec_1dof, &
                           subsurf_vec_1dof,ierr);CHKERRQ(ierr)
   ! Scatter the data
   call VecScatterBegin(dm_ptr%gmdm%scatter_subsurf_to_geomech_ndof, &
@@ -1067,7 +1067,7 @@ subroutine InitSubsurfGeomechChkInactiveCells(geomech_realization, &
                      geomech_realization%geomech_field%subsurf_vec_1dof, &
                      geomech_realization%geomech_field%press, &
                      INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(geomech_realization%geomech_field%press, &
+  call PUVGetArray(geomech_realization%geomech_field%press, &
                       subsurf_vec_1dof, ierr);CHKERRQ(ierr)
   do geomech_local_id = 1, geomech_realization%geomech_patch%geomech_grid% &
                            nlmax_node
@@ -1291,7 +1291,7 @@ subroutine GeomechReadDatasetToVecWithMask(geomech_realization,dataset, &
   grid => patch%geomech_grid
   option => geomech_realization%option
 
-  call VecGetArrayF90(vec,vec_p,ierr);CHKERRQ(ierr)
+  call PUVGetArray(vec,vec_p,ierr);CHKERRQ(ierr)
   if (index(dataset%filename,'.h5') > 0) then
     group_name = ''
     dataset_name = dataset%name
@@ -1304,7 +1304,7 @@ subroutine GeomechReadDatasetToVecWithMask(geomech_realization,dataset, &
                                         dataset%filename, &
                                         group_name,dataset_name, &
                                         dataset%realization_dependent)
-      call VecGetArrayF90(temp_vec,work_p,ierr);CHKERRQ(ierr)
+      call PUVGetArray(temp_vec,work_p,ierr);CHKERRQ(ierr)
       if (read_all_values) then
         do local_id = 1, grid%nlmax_node
           vec_p(local_id) = work_p(local_id)
@@ -1316,14 +1316,14 @@ subroutine GeomechReadDatasetToVecWithMask(geomech_realization,dataset, &
           endif
         enddo
       endif
-      call VecRestoreArrayF90(temp_vec,work_p,ierr);CHKERRQ(ierr)
+      call PUVRestoreArray(temp_vec,work_p,ierr);CHKERRQ(ierr)
     class default
         option%io_buffer = 'Dataset "' // trim(dataset%name) // '" is of the &
           &wrong type for GeomechReadDatasetToVecWithMask()'
         call PrintErrMsg(option)
     end select
   endif
-  call VecRestoreArrayF90(vec,vec_p,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(vec,vec_p,ierr);CHKERRQ(ierr)
 
   end subroutine GeomechReadDatasetToVecWithMask
 

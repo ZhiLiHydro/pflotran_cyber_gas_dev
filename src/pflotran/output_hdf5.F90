@@ -1601,9 +1601,9 @@ subroutine WriteHDF5CoordinatesUGrid(grid,option,file_id)
   call OutputGetVertexCoordinates(grid, global_y_vertex_vec,Y_COORDINATE,option)
   call OutputGetVertexCoordinates(grid, global_z_vertex_vec,Z_COORDINATE,option)
 
-  call VecGetArrayF90(global_x_vertex_vec,vec_x_ptr,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(global_y_vertex_vec,vec_y_ptr,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(global_z_vertex_vec,vec_z_ptr,ierr);CHKERRQ(ierr)
+  call PUVGetArray(global_x_vertex_vec,vec_x_ptr,ierr);CHKERRQ(ierr)
+  call PUVGetArray(global_y_vertex_vec,vec_y_ptr,ierr);CHKERRQ(ierr)
+  call PUVGetArray(global_z_vertex_vec,vec_z_ptr,ierr);CHKERRQ(ierr)
 
   ! memory space which is a 1D vector
   rank_mpi = 1
@@ -1681,9 +1681,9 @@ subroutine WriteHDF5CoordinatesUGrid(grid,option,file_id)
   call HDF5DatasetClose(data_set_id,option)
   call h5sclose_f(file_space_id,hdf5_err)
 
-  call VecRestoreArrayF90(global_x_vertex_vec,vec_x_ptr,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(global_y_vertex_vec,vec_y_ptr,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(global_z_vertex_vec,vec_z_ptr,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(global_x_vertex_vec,vec_x_ptr,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(global_y_vertex_vec,vec_y_ptr,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(global_z_vertex_vec,vec_z_ptr,ierr);CHKERRQ(ierr)
 
 
   call VecDestroy(global_x_vertex_vec,ierr);CHKERRQ(ierr)
@@ -1704,7 +1704,7 @@ subroutine WriteHDF5CoordinatesUGrid(grid,option,file_id)
                        INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
   call VecScatterEnd(ugdm_element%scatter_gton,global_vec,natural_vec, &
                      INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(natural_vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call PUVGetArray(natural_vec,vec_ptr,ierr);CHKERRQ(ierr)
 
   local_size = grid%unstructured_grid%nlmax
 
@@ -1793,7 +1793,7 @@ subroutine WriteHDF5CoordinatesUGrid(grid,option,file_id)
   call HDF5DatasetClose(data_set_id,option)
   call h5sclose_f(file_space_id,hdf5_err)
 
-  call VecRestoreArrayF90(natural_vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(natural_vec,vec_ptr,ierr);CHKERRQ(ierr)
   call VecDestroy(global_vec,ierr);CHKERRQ(ierr)
   call VecDestroy(natural_vec,ierr);CHKERRQ(ierr)
   call UGridDMDestroy(ugdm_element)
@@ -1882,9 +1882,9 @@ subroutine WriteHDF5CoordinatesUGridXDMF(realization_base,option,file_id)
   call OutputGetVertexCoordinates(grid, global_y_vertex_vec,Y_COORDINATE,option)
   call OutputGetVertexCoordinates(grid, global_z_vertex_vec,Z_COORDINATE,option)
 
-  call VecGetArrayF90(global_x_vertex_vec,vec_x_ptr,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(global_y_vertex_vec,vec_y_ptr,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(global_z_vertex_vec,vec_z_ptr,ierr);CHKERRQ(ierr)
+  call PUVGetArray(global_x_vertex_vec,vec_x_ptr,ierr);CHKERRQ(ierr)
+  call PUVGetArray(global_y_vertex_vec,vec_y_ptr,ierr);CHKERRQ(ierr)
+  call PUVGetArray(global_z_vertex_vec,vec_z_ptr,ierr);CHKERRQ(ierr)
 
   ! memory space which is a 1D vector
   rank_mpi = 1
@@ -1956,9 +1956,9 @@ subroutine WriteHDF5CoordinatesUGridXDMF(realization_base,option,file_id)
   call HDF5DatasetClose(data_set_id,option)
   call h5sclose_f(file_space_id,hdf5_err)
 
-  call VecRestoreArrayF90(global_x_vertex_vec,vec_x_ptr,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(global_y_vertex_vec,vec_y_ptr,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(global_z_vertex_vec,vec_z_ptr,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(global_x_vertex_vec,vec_x_ptr,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(global_y_vertex_vec,vec_y_ptr,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(global_z_vertex_vec,vec_z_ptr,ierr);CHKERRQ(ierr)
 
 
   call VecDestroy(global_x_vertex_vec,ierr);CHKERRQ(ierr)
@@ -1978,7 +1978,7 @@ subroutine WriteHDF5CoordinatesUGridXDMF(realization_base,option,file_id)
                        INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
   call VecScatterEnd(ugdm_element%scatter_gton,global_vec,natural_vec, &
                      INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(natural_vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call PUVGetArray(natural_vec,vec_ptr,ierr);CHKERRQ(ierr)
 
   local_size = grid%unstructured_grid%nlmax
 
@@ -2077,7 +2077,7 @@ subroutine WriteHDF5CoordinatesUGridXDMF(realization_base,option,file_id)
   call HDF5DatasetClose(data_set_id,option)
   call h5sclose_f(file_space_id,hdf5_err)
 
-  call VecRestoreArrayF90(natural_vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(natural_vec,vec_ptr,ierr);CHKERRQ(ierr)
   call VecDestroy(global_vec,ierr);CHKERRQ(ierr)
   call VecDestroy(natural_vec,ierr);CHKERRQ(ierr)
   call UGridDMDestroy(ugdm_element)
@@ -2124,9 +2124,9 @@ subroutine WriteHDF5CoordinatesUGridXDMF(realization_base,option,file_id)
                      natural_z_cell_vec,INSERT_VALUES,SCATTER_FORWARD, &
                      ierr);CHKERRQ(ierr)
 
-  call VecGetArrayF90(natural_x_cell_vec,vec_x_ptr,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(natural_y_cell_vec,vec_y_ptr,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(natural_z_cell_vec,vec_z_ptr,ierr);CHKERRQ(ierr)
+  call PUVGetArray(natural_x_cell_vec,vec_x_ptr,ierr);CHKERRQ(ierr)
+  call PUVGetArray(natural_y_cell_vec,vec_y_ptr,ierr);CHKERRQ(ierr)
+  call PUVGetArray(natural_z_cell_vec,vec_z_ptr,ierr);CHKERRQ(ierr)
   local_size = grid%unstructured_grid%nlmax
 
   ! XC
@@ -2298,9 +2298,9 @@ subroutine WriteHDF5CoordinatesUGridXDMF(realization_base,option,file_id)
   call h5sclose_f(file_space_id,hdf5_err)
 
 
-  call VecRestoreArrayF90(natural_x_cell_vec,vec_x_ptr,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(natural_y_cell_vec,vec_y_ptr,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(natural_z_cell_vec,vec_z_ptr,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(natural_x_cell_vec,vec_x_ptr,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(natural_y_cell_vec,vec_y_ptr,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(natural_z_cell_vec,vec_z_ptr,ierr);CHKERRQ(ierr)
 
   call VecDestroy(global_x_cell_vec,ierr);CHKERRQ(ierr)
   call VecDestroy(global_y_cell_vec,ierr);CHKERRQ(ierr)
@@ -2362,13 +2362,13 @@ subroutine DetermineNumVertices(realization_base,option)
 
   local_size = grid%unstructured_grid%nlmax
 
-  call VecGetArrayF90(natural_vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call PUVGetArray(natural_vec,vec_ptr,ierr);CHKERRQ(ierr)
   vert_count=0
   do i=1,local_size*EIGHT_INTEGER
     if (int(vec_ptr(i)) >0 ) vert_count=vert_count+1
   enddo
   vert_count=vert_count+grid%nlmax
-  call VecRestoreArrayF90(natural_vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(natural_vec,vec_ptr,ierr);CHKERRQ(ierr)
 
   call MPI_Allreduce(vert_count,temp_int,ONE_INTEGER_MPI,MPIU_INTEGER,MPI_SUM, &
                      option%mycomm,ierr);CHKERRQ(ierr)
@@ -2536,7 +2536,7 @@ subroutine WriteHDF5CoordinatesUGridXDMFExplicit(realization_base,option, &
   call VecSetFromOptions(natural_vec,ierr);CHKERRQ(ierr)
 
   call OutputGetCellVerticesExplicit(grid,natural_vec)
-  call VecGetArrayF90(natural_vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call PUVGetArray(natural_vec,vec_ptr,ierr);CHKERRQ(ierr)
 
   vert_count=0
 
@@ -2630,7 +2630,7 @@ subroutine WriteHDF5CoordinatesUGridXDMFExplicit(realization_base,option, &
   call HDF5DatasetClose(data_set_id,option)
   call h5sclose_f(file_space_id,hdf5_err)
 
-  call VecRestoreArrayF90(natural_vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(natural_vec,vec_ptr,ierr);CHKERRQ(ierr)
   call VecDestroy(natural_vec,ierr);CHKERRQ(ierr)
 
 end subroutine WriteHDF5CoordinatesUGridXDMFExplicit
@@ -2733,12 +2733,12 @@ subroutine WriteHDF5FlowratesUGrid(realization_base,option,file_id, &
 
   select case (var_list_type)
     case (INSTANTANEOUS_VARS)
-      call VecGetArrayF90(field%flowrate_inst,vec_ptr1,ierr);CHKERRQ(ierr)
+      call PUVGetArray(field%flowrate_inst,vec_ptr1,ierr);CHKERRQ(ierr)
       mass_flowrate = output_option%print_hdf5_mass_flowrate
       energy_flowrate = output_option%print_hdf5_energy_flowrate
     case (AVERAGED_VARS)
-      call VecGetArrayF90(field%flowrate_inst,vec_ptr1,ierr);CHKERRQ(ierr)
-      call VecGetArrayF90(field%flowrate_aveg,vec_ptr2,ierr);CHKERRQ(ierr)
+      call PUVGetArray(field%flowrate_inst,vec_ptr1,ierr);CHKERRQ(ierr)
+      call PUVGetArray(field%flowrate_aveg,vec_ptr2,ierr);CHKERRQ(ierr)
       mass_flowrate = output_option%print_hdf5_aveg_mass_flowrate
       energy_flowrate = output_option%print_hdf5_aveg_energy_flowrate
   end select
@@ -2955,13 +2955,13 @@ subroutine WriteHDF5FaceVelUGrid(realization_base,option,file_id, &
     select case (idir)
       case (1)
         string_dir = 'X'
-        call VecGetArrayF90(field%vx_face_inst,vec_ptr1,ierr);CHKERRQ(ierr)
+        call PUVGetArray(field%vx_face_inst,vec_ptr1,ierr);CHKERRQ(ierr)
       case (2)
         string_dir = 'Y'
-        call VecGetArrayF90(field%vy_face_inst,vec_ptr1,ierr);CHKERRQ(ierr)
+        call PUVGetArray(field%vy_face_inst,vec_ptr1,ierr);CHKERRQ(ierr)
       case (3)
         string_dir = 'Z'
-        call VecGetArrayF90(field%vz_face_inst,vec_ptr1,ierr);CHKERRQ(ierr)
+        call PUVGetArray(field%vz_face_inst,vec_ptr1,ierr);CHKERRQ(ierr)
     end select
 
     do iphase = 1,option%nphase
@@ -3056,13 +3056,13 @@ subroutine WriteHDF5FaceVelUGrid(realization_base,option,file_id, &
 
     select case (idir)
       case (1)
-        call VecRestoreArrayF90(field%vx_face_inst,vec_ptr1, &
+        call PUVRestoreArray(field%vx_face_inst,vec_ptr1, &
                                 ierr);CHKERRQ(ierr)
       case (2)
-        call VecRestoreArrayF90(field%vy_face_inst,vec_ptr1, &
+        call PUVRestoreArray(field%vy_face_inst,vec_ptr1, &
                                 ierr);CHKERRQ(ierr)
       case (3)
-        call VecRestoreArrayF90(field%vz_face_inst,vec_ptr1, &
+        call PUVRestoreArray(field%vz_face_inst,vec_ptr1, &
                                 ierr);CHKERRQ(ierr)
     end select
 
@@ -3469,11 +3469,11 @@ subroutine OutputHDF5PrintRegionsStructured(realization_base)
   do
     if (.not.associated(cur_region)) exit
     call VecZeroEntries(field%work,ierr);CHKERRQ(ierr)
-    call VecGetArrayF90(field%work,vec_ptr,ierr);CHKERRQ(ierr)
+    call PUVGetArray(field%work,vec_ptr,ierr);CHKERRQ(ierr)
     do i = 1, cur_region%num_cells
       vec_ptr(cur_region%cell_ids(i)) = vec_ptr(cur_region%cell_ids(i)) + 1.d0
     enddo
-    call VecRestoreArrayF90(field%work,vec_ptr,ierr);CHKERRQ(ierr)
+    call PUVRestoreArray(field%work,vec_ptr,ierr);CHKERRQ(ierr)
     string = 'region_' // trim(cur_region%name)
     call HDF5WriteStructDataSetFromVec(string,realization_base, &
                                        field%work,grp_id, &
@@ -3592,11 +3592,11 @@ subroutine OutputHDF5PrintRegionsXMF(realization_base)
   do
     if (.not.associated(cur_region)) exit
     call VecZeroEntries(one_vec,ierr);CHKERRQ(ierr)
-    call VecGetArrayF90(one_vec,one_ptr,ierr);CHKERRQ(ierr)
+    call PUVGetArray(one_vec,one_ptr,ierr);CHKERRQ(ierr)
     do i = 1, cur_region%num_cells
       one_ptr(cur_region%cell_ids(i)) = one_ptr(cur_region%cell_ids(i)) + 1.d0
     enddo
-    call VecRestoreArrayF90(one_vec,one_ptr,ierr);CHKERRQ(ierr)
+    call PUVRestoreArray(one_vec,one_ptr,ierr);CHKERRQ(ierr)
     call VecAXPY(all_vec,1.d0,one_vec,ierr);CHKERRQ(ierr)
 
     string = cur_region%name
@@ -3614,8 +3614,8 @@ subroutine OutputHDF5PrintRegionsXMF(realization_base)
     endif
     cur_region => cur_region%next
   enddo
-  call VecGetArrayF90(all_vec,one_ptr,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(all_vec,one_ptr,ierr);CHKERRQ(ierr)
+  call PUVGetArray(all_vec,one_ptr,ierr);CHKERRQ(ierr)
+  call PUVRestoreArray(all_vec,one_ptr,ierr);CHKERRQ(ierr)
   call DiscretizationGlobalToNatural(discretization,all_vec, &
                                      natural_vec,ONEDOF)
   string = 'All Regions'

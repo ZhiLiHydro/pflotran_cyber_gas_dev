@@ -43,9 +43,10 @@ module Timestepper_KSP_class
 
   interface PetscBagGetData
     subroutine PetscBagGetData(bag,header,ierr)
+#include "petsc/finclude/petscbag.h"
+      use petscbag
       import :: stepper_KSP_header_type
       implicit none
-#include "petsc/finclude/petscbag.h"
       PetscBag :: bag
       class(stepper_KSP_header_type), pointer :: header
       PetscErrorCode :: ierr
@@ -53,7 +54,7 @@ module Timestepper_KSP_class
   end interface PetscBagGetData
 
   public :: TimestepperKSPCreate, &
-            TimeStepperKSPCast, &
+            TimestepperKSPCast, &
             TimestepperKSPPrintInfo, &
             TimestepperKSPInit
 
@@ -283,8 +284,8 @@ subroutine TimestepperKSPStepDT(this,process_model,stop_flag)
   do
 
     ! these pointers are set within SetupLinearSystem()
-    solution = PETSC_NULL_VEC
-    rhs = PETSC_NULL_VEC
+    PetscObjectNullify(solution)
+    PetscObjectNullify(rhs)
     call process_model%SetupLinearSystem(solver%M,solution,rhs,ierr)
 
     call PetscTime(log_start_time,ierr);CHKERRQ(ierr)
@@ -304,13 +305,13 @@ subroutine TimestepperKSPStepDT(this,process_model,stop_flag)
 
     sum_linear_iterations = sum_linear_iterations + num_linear_iterations
 
-    if (ksp_reason <= 0 .or. .not. process_model%AcceptSolution()) then
+    if (ksp_reason%v <= 0 .or. .not. process_model%AcceptSolution()) then
       sum_wasted_linear_iterations = sum_wasted_linear_iterations + &
            num_linear_iterations
       ! The linear solver diverged, so try reducing the time step.
       call this%CutDT(process_model,icut,stop_flag,'ksp', &
-                      ksp_reason,option)
-      if (ksp_reason < 0) then
+                      ksp_reason%v,option)
+      if (ksp_reason%v < 0) then
         call SolverLinearPrintFailedReason(solver,option)
         if (solver%verbose_logging) then
           ! add any verbose logging (see timestepper_BE)
@@ -341,7 +342,7 @@ subroutine TimestepperKSPStepDT(this,process_model,stop_flag)
   call process_model%PostSolve()
 
   call TimestepperBasePrintStepInfo(this,process_model%output_option, &
-                                    ksp_reason,option)
+                                    ksp_reason%v,option)
   write(option%io_buffer,'("  linear = ",i5, &
                          &" [",i10,"]"," cuts = ",i2," [",i4,"]")') &
            sum_linear_iterations,this%cumulative_linear_iterations, &
@@ -373,12 +374,13 @@ subroutine TimestepperKSPCheckpointBinary(this,viewer,option)
   ! Author: Glenn Hammond
   ! Date: 12/06/19
   !
+#include "petsc/finclude/petscviewer.h"
+#include "petsc/finclude/petscbag.h"
+  use petscbag
+
   use Option_module
 
   implicit none
-
-#include "petsc/finclude/petscviewer.h"
-#include "petsc/finclude/petscbag.h"
 
   class(timestepper_KSP_type) :: this
   PetscViewer :: viewer
@@ -411,13 +413,13 @@ subroutine TimestepperKSPRegisterHeader(this,bag,header)
   ! Author: Glenn Hammond
   ! Date: 12/06/19
   !
+#include "petsc/finclude/petscviewer.h"
+#include "petsc/finclude/petscbag.h"
+  use petscbag
 
   use Option_module
 
   implicit none
-
-#include "petsc/finclude/petscviewer.h"
-#include "petsc/finclude/petscbag.h"
 
   class(timestepper_KSP_type) :: this
   class(stepper_KSP_header_type) :: header
@@ -443,13 +445,13 @@ subroutine TimestepperKSPSetHeader(this,bag,header)
   ! Author: Glenn Hammond
   ! Date: 12/06/19
   !
+#include "petsc/finclude/petscviewer.h"
+#include "petsc/finclude/petscbag.h"
+  use petscbag
 
   use Option_module
 
   implicit none
-
-#include "petsc/finclude/petscviewer.h"
-#include "petsc/finclude/petscbag.h"
 
   class(timestepper_KSP_type) :: this
   class(stepper_KSP_header_type) :: header
@@ -471,13 +473,13 @@ subroutine TimestepperKSPRestartBinary(this,viewer,option)
   ! Author: Glenn Hammond
   ! Date: 12/06/19
   !
+#include "petsc/finclude/petscviewer.h"
+#include "petsc/finclude/petscbag.h"
+  use petscbag
 
   use Option_module
 
   implicit none
-
-#include "petsc/finclude/petscviewer.h"
-#include "petsc/finclude/petscbag.h"
 
   class(timestepper_KSP_type) :: this
   PetscViewer :: viewer

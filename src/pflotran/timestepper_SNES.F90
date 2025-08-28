@@ -63,9 +63,10 @@ module Timestepper_SNES_class
 
   interface PetscBagGetData
     subroutine PetscBagGetData(bag,header,ierr)
+#include "petsc/finclude/petscbag.h"
+      use petscbag
       import :: stepper_SNES_header_type
       implicit none
-#include "petsc/finclude/petscbag.h"
       PetscBag :: bag
       class(stepper_SNES_header_type), pointer :: header
       PetscErrorCode :: ierr
@@ -399,19 +400,19 @@ subroutine TimestepperSNESStepDT(this,process_model,stop_flag)
     sum_newton_iterations = sum_newton_iterations + num_newton_iterations
     sum_linear_iterations = sum_linear_iterations + num_linear_iterations
 
-    if (snes_reason <= 0 .or. .not. process_model%AcceptSolution()) then
+    if (snes_reason%v <= 0 .or. .not. process_model%AcceptSolution()) then
       sum_wasted_linear_iterations = sum_wasted_linear_iterations + &
            num_linear_iterations
       sum_wasted_newton_iterations = sum_wasted_newton_iterations + &
            num_newton_iterations
       ! The Newton solver diverged, so try reducing the time step.
       call this%CutDT(process_model,icut,stop_flag,'snes', &
-                      snes_reason,option)
-      if (snes_reason < SNES_CONVERGED_ITERATING) then
+                      snes_reason%v,option)
+      if (snes_reason%v < SNES_CONVERGED_ITERATING%v) then
         call SolverNewtonPrintFailedReason(solver,option)
         if (solver%verbose_logging) then
-          select case(snes_reason)
-            case(SNES_DIVERGED_FNORM_NAN)
+          select case(snes_reason%v)
+            PetscEnumCase(SNES_DIVERGED_FNORM_NAN)
               ! attempt to find cells with NaNs.
               call SNESGetFunction(solver%snes,residual_vec, &
                                    PETSC_NULL_FUNCTION,PETSC_NULL_INTEGER, &
@@ -456,7 +457,7 @@ subroutine TimestepperSNESStepDT(this,process_model,stop_flag)
   call VecNorm(residual_vec,NORM_INFINITY,inorm,ierr);CHKERRQ(ierr)
 
   call TimestepperBasePrintStepInfo(this,process_model%output_option, &
-                                    snes_reason,option)
+                                    snes_reason%v,option)
   write(option%io_buffer,'("  newton = ",i3," [",i8,"]", " linear = ",i5, &
                          &" [",i10,"]"," cuts = ",i2," [",i4,"]")') &
            sum_newton_iterations,this%cumulative_newton_iterations, &
@@ -508,12 +509,13 @@ subroutine TimestepperSNESCheckpointBinary(this,viewer,option)
   ! Author: Glenn Hammond
   ! Date: 07/25/13
   !
+#include "petsc/finclude/petscviewer.h"
+#include "petsc/finclude/petscbag.h"
+  use petscbag
+
   use Option_module
 
   implicit none
-
-#include "petsc/finclude/petscviewer.h"
-#include "petsc/finclude/petscbag.h"
 
   class(timestepper_SNES_type) :: this
   PetscViewer :: viewer
@@ -546,13 +548,13 @@ subroutine TimestepperSNESRegisterHeader(this,bag,header)
   ! Author: Glenn Hammond
   ! Date: 07/30/13
   !
+#include "petsc/finclude/petscviewer.h"
+#include "petsc/finclude/petscbag.h"
+  use petscbag
 
   use Option_module
 
   implicit none
-
-#include "petsc/finclude/petscviewer.h"
-#include "petsc/finclude/petscbag.h"
 
   class(timestepper_SNES_type) :: this
   class(stepper_SNES_header_type) :: header
@@ -583,13 +585,14 @@ subroutine TimestepperSNESSetHeader(this,bag,header)
   ! Author: Glenn Hammond
   ! Date: 07/25/13
   !
+#include "petsc/finclude/petscviewer.h"
+#include "petsc/finclude/petscbag.h"
+  use petscbag
 
   use Option_module
 
   implicit none
 
-#include "petsc/finclude/petscviewer.h"
-#include "petsc/finclude/petscbag.h"
 
   class(timestepper_SNES_type) :: this
   class(stepper_SNES_header_type) :: header
@@ -613,13 +616,13 @@ subroutine TimestepperSNESRestartBinary(this,viewer,option)
   ! Author: Glenn Hammond
   ! Date: 07/25/13
   !
+#include "petsc/finclude/petscviewer.h"
+#include "petsc/finclude/petscbag.h"
+  use petscbag
 
   use Option_module
 
   implicit none
-
-#include "petsc/finclude/petscviewer.h"
-#include "petsc/finclude/petscbag.h"
 
   class(timestepper_SNES_type) :: this
   PetscViewer :: viewer

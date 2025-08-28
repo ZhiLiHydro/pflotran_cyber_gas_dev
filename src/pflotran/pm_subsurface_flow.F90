@@ -585,7 +585,7 @@ subroutine PMSubsurfaceFlowSetSoilRefPres(realization)
                                    realization%field%work, &
                                    realization%field%work_loc, &
                                    ONEDOF)
-  call VecGetArrayReadF90(realization%field%work_loc,vec_loc_p, &
+  call PUVGetArrayRead(realization%field%work_loc,vec_loc_p, &
                           ierr);CHKERRQ(ierr)
 
   ref_pres_set_by_initial = PETSC_FALSE
@@ -629,7 +629,7 @@ subroutine PMSubsurfaceFlowSetSoilRefPres(realization)
     else
       cycle
     endif
-    call VecGetArrayReadF90(vec_int_ptr,vec_loc_p,ierr);CHKERRQ(ierr)
+    call PUVGetArrayRead(vec_int_ptr,vec_loc_p,ierr);CHKERRQ(ierr)
     do ghosted_id = 1, grid%ngmax
       if (patch%imat(ghosted_id) /= material_property%internal_id) cycle
       if (associated(material_auxvars(ghosted_id)%fracture)) then
@@ -640,7 +640,7 @@ subroutine PMSubsurfaceFlowSetSoilRefPres(realization)
                                   SOIL_REFERENCE_PRESSURE, &
                                   vec_loc_p(ghosted_id))
     enddo
-    call VecRestoreArrayReadF90(vec_int_ptr,vec_loc_p,ierr);CHKERRQ(ierr)
+    call PUVRestoreArrayRead(vec_int_ptr,vec_loc_p,ierr);CHKERRQ(ierr)
   enddo
 
   if (ref_pres_set_by_initial .and. option%time > 0.d0) then
