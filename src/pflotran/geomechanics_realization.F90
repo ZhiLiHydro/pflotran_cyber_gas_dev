@@ -794,7 +794,7 @@ subroutine GeomechGridElemSharedByNodes(geomech_realization,option)
 
   grid => geomech_realization%geomech_discretization%grid
 
-  call PUVGetArray(grid%no_elems_sharing_node_loc,elem_sharing_node_loc_p, &
+  call VecGetArray(grid%no_elems_sharing_node_loc,elem_sharing_node_loc_p, &
                       ierr);CHKERRQ(ierr)
 
   ! Calculate the common elements to a node on a process
@@ -808,7 +808,7 @@ subroutine GeomechGridElemSharedByNodes(geomech_realization,option)
     enddo
   enddo
 
-  call PUVRestoreArray(grid%no_elems_sharing_node_loc, &
+  call VecRestoreArray(grid%no_elems_sharing_node_loc, &
                           elem_sharing_node_loc_p,ierr);CHKERRQ(ierr)
 
   ! Local to global scatter

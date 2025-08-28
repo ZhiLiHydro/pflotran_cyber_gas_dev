@@ -364,13 +364,13 @@ subroutine GeomechanicsRegressionCreateMapping(geomechanics_regression, &
     call VecSetFromOptions(temp_vec,ierr);CHKERRQ(ierr)
 
     ! calculate interval
-    call PUVGetArray(temp_vec,vec_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(temp_vec,vec_ptr,ierr);CHKERRQ(ierr)
     temp_int = grid%nlmax_node / &
                geomechanics_regression%num_vertices_per_process
     do i = 1, geomechanics_regression%num_vertices_per_process
       vec_ptr(i) = temp_int*(i-1) + 1 + grid%global_offset
     enddo
-    call PUVRestoreArray(temp_vec,vec_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(temp_vec,vec_ptr,ierr);CHKERRQ(ierr)
 
     ! create temporary scatter to transfer values to io_rank
     if (OptionIsIORank(option)) then
@@ -409,12 +409,12 @@ subroutine GeomechanicsRegressionCreateMapping(geomechanics_regression, &
     if (OptionIsIORank(option)) then
       count = option%comm%size* &
               geomechanics_regression%num_vertices_per_process
-      call PUVGetArray(geomechanics_regression%vertices_per_process_vec, &
+      call VecGetArray(geomechanics_regression%vertices_per_process_vec, &
                           vec_ptr,ierr);CHKERRQ(ierr)
       do i = 1, count
         int_array(i) = nint(vec_ptr(i)) ! tolerance to ensure int value
       enddo
-      call PUVRestoreArray(geomechanics_regression% &
+      call VecRestoreArray(geomechanics_regression% &
                                 vertices_per_process_vec, &
                               vec_ptr,ierr);CHKERRQ(ierr)
       ! convert to zero based
@@ -459,12 +459,12 @@ subroutine GeomechanicsRegressionCreateMapping(geomechanics_regression, &
                option%comm%size))
     endif
 
-    call PUVGetArray(geomechanics_realization%geomech_field%press,vec_ptr, &
+    call VecGetArray(geomechanics_realization%geomech_field%press,vec_ptr, &
                         ierr);CHKERRQ(ierr)
     do local_id = 1, grid%nlmax_node
       vec_ptr(local_id) = grid%nG2A(grid%nL2G(local_id))
     enddo
-    call PUVRestoreArray(geomechanics_realization%geomech_field%press, &
+    call VecRestoreArray(geomechanics_realization%geomech_field%press, &
                             vec_ptr,ierr);CHKERRQ(ierr)
 
     call VecScatterBegin(geomechanics_regression% &
@@ -479,11 +479,11 @@ subroutine GeomechanicsRegressionCreateMapping(geomechanics_regression, &
                        INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
 
     if (OptionIsIORank(option)) then
-      call PUVGetArray(geomechanics_regression%vertices_per_process_vec, &
+      call VecGetArray(geomechanics_regression%vertices_per_process_vec, &
                           vec_ptr,ierr);CHKERRQ(ierr)
       geomechanics_regression%vertices_per_process_natural_ids(:) = &
                                                         nint(vec_ptr(:))
-      call PUVRestoreArray(geomechanics_regression% &
+      call VecRestoreArray(geomechanics_regression% &
                                 vertices_per_process_vec, &
                               vec_ptr,ierr);CHKERRQ(ierr)
     endif
@@ -614,7 +614,7 @@ subroutine GeomechRegressionOutputData(fid_out,geomechanics_regression, &
         ! natural vertex ids
         if (associated(geomechanics_regression%natural_vertex_ids)) then
           if (size(geomechanics_regression%natural_vertex_ids) > 0) then
-            call PUVGetArray(geomechanics_regression% &
+            call VecGetArray(geomechanics_regression% &
                                   natural_vertex_id_vec, &
                                 vec_ptr,ierr);CHKERRQ(ierr)
             if (cur_variable%iformat == 0) then
@@ -628,7 +628,7 @@ subroutine GeomechRegressionOutputData(fid_out,geomechanics_regression, &
                   geomechanics_regression%natural_vertex_ids(i),nint(vec_ptr(i))
               enddo
             endif
-            call PUVRestoreArray(geomechanics_regression% &
+            call VecRestoreArray(geomechanics_regression% &
                                       natural_vertex_id_vec, &
                                     vec_ptr,ierr);CHKERRQ(ierr)
           endif
@@ -636,7 +636,7 @@ subroutine GeomechRegressionOutputData(fid_out,geomechanics_regression, &
 
         ! vertex ids per process
         if (geomechanics_regression%num_vertices_per_process > 0) then
-          call PUVGetArray(geomechanics_regression% &
+          call VecGetArray(geomechanics_regression% &
                                 vertices_per_process_vec, &
                               vec_ptr,ierr);CHKERRQ(ierr)
           if (cur_variable%iformat == 0) then
@@ -650,7 +650,7 @@ subroutine GeomechRegressionOutputData(fid_out,geomechanics_regression, &
                 geomechanics_regression%vertices_per_process_natural_ids(i),nint(vec_ptr(i))
             enddo
           endif
-          call PUVRestoreArray(geomechanics_regression% &
+          call VecRestoreArray(geomechanics_regression% &
                                     vertices_per_process_vec, &
                                   vec_ptr,ierr);CHKERRQ(ierr)
         endif

@@ -366,7 +366,7 @@ subroutine PMPNFSetupLinearSystem(this,A,solution,right_hand_side,ierr)
   call MatZeroEntries(A,ierr);CHKERRQ(ierr)
   call VecZeroEntries(right_hand_side,ierr);CHKERRQ(ierr)
 
-  call PUVGetArray(right_hand_side,rhs_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(right_hand_side,rhs_ptr,ierr);CHKERRQ(ierr)
 #if 0
   do local_id = 1, grid%nlmax  ! For each local node do...
     ghosted_id = grid%nL2G(local_id)
@@ -490,7 +490,7 @@ subroutine PMPNFSetupLinearSystem(this,A,solution,right_hand_side,ierr)
     source_sink => source_sink%next
   enddo
 
-  call PUVRestoreArray(right_hand_side,rhs_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(right_hand_side,rhs_ptr,ierr);CHKERRQ(ierr)
   call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
   call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
 
@@ -560,7 +560,7 @@ subroutine PMPNFCalculateVelocities(this)
 
   material_auxvars => patch%aux%Material%auxvars
 
-  call PUVGetArrayRead(this%realization%field%flow_xx_loc,vec_loc_ptr, &
+  call VecGetArrayRead(this%realization%field%flow_xx_loc,vec_loc_ptr, &
                           ierr);CHKERRQ(ierr)
 
   ! Interior Flux Terms -----------------------------------
@@ -620,7 +620,7 @@ subroutine PMPNFCalculateVelocities(this)
     boundary_condition => boundary_condition%next
   enddo
 
-  call PUVRestoreArrayRead(this%realization%field%flow_xx_loc,vec_loc_ptr, &
+  call VecRestoreArrayRead(this%realization%field%flow_xx_loc,vec_loc_ptr, &
                               ierr);CHKERRQ(ierr)
 
 end subroutine PMPNFCalculateVelocities
@@ -792,8 +792,8 @@ subroutine PMPNFMaxChange(this)
                               LIQUID_PRESSURE,ZERO_INTEGER)
   ! yes, we could use VecWAXPY and a norm here, but we need the ability
   ! to customize
-  call PUVGetArray(field%work,vec_new_ptr,ierr);CHKERRQ(ierr)
-  call PUVGetArray(this%max_pressure_change_vec,vec_old_ptr, &
+  call VecGetArray(field%work,vec_new_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(this%max_pressure_change_vec,vec_old_ptr, &
                       ierr);CHKERRQ(ierr)
   max_change = 0.d0
   do j = 1, grid%nlmax
@@ -801,8 +801,8 @@ subroutine PMPNFMaxChange(this)
     max_change = max(max_change,change)
   enddo
   max_change_local(1) = max_change
-  call PUVRestoreArray(field%work,vec_new_ptr,ierr);CHKERRQ(ierr)
-  call PUVRestoreArray(this%max_pressure_change_vec,vec_old_ptr, &
+  call VecRestoreArray(field%work,vec_new_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(this%max_pressure_change_vec,vec_old_ptr, &
                           ierr);CHKERRQ(ierr)
   call VecCopy(field%work,this%max_pressure_change_vec,ierr);CHKERRQ(ierr)
   call MPI_Allreduce(max_change_local,max_change_global,ONE_INTEGER, &

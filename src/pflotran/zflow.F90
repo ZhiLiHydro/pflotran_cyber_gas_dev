@@ -542,7 +542,7 @@ subroutine ZFlowUpdateAuxVars(realization)
   global_auxvars_ss => patch%aux%Global%auxvars_ss
   material_auxvars => patch%aux%Material%auxvars
 
-  call PUVGetArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
   do ghosted_id = 1, grid%ngmax
     if (grid%nG2L(ghosted_id) < 0) cycle ! bypass ghosted corner cells
@@ -658,7 +658,7 @@ subroutine ZFlowUpdateAuxVars(realization)
     source_sink => source_sink%next
   enddo
 
-  call PUVRestoreArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
   patch%aux%ZFlow%auxvars_up_to_date = PETSC_TRUE
 
@@ -721,8 +721,8 @@ subroutine ZFlowUpdateFixedAccum(realization)
   material_auxvars => patch%aux%Material%auxvars
   material_parameter => patch%aux%Material%material_parameter
 
-  call PUVGetArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-  call PUVGetArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
@@ -755,8 +755,8 @@ subroutine ZFlowUpdateFixedAccum(realization)
     endif
   enddo
 
-  call PUVRestoreArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-  call PUVRestoreArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
 end subroutine ZFlowUpdateFixedAccum
 
@@ -887,7 +887,7 @@ subroutine ZFlowResidual(snes,xx,r,A,realization,ierr)
 
   if (zflow_numerical_derivatives) then
     ! Perturb aux vars
-    call PUVGetArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
     do ghosted_id = 1, grid%ngmax  ! For each local node do...
       if (patch%imat(ghosted_id) <= 0) cycle
       iend = ghosted_id*ndof
@@ -901,7 +901,7 @@ subroutine ZFlowResidual(snes,xx,r,A,realization,ierr)
                                 patch%cc_id(ghosted_id))%ptr, &
                               grid%nG2A(ghosted_id),option)
     enddo
-    call PUVRestoreArrayRead(field%flow_xx_loc,xx_loc_p, &
+    call VecRestoreArrayRead(field%flow_xx_loc,xx_loc_p, &
                                 ierr);CHKERRQ(ierr)
   endif
 
@@ -911,17 +911,17 @@ subroutine ZFlowResidual(snes,xx,r,A,realization,ierr)
 
   option%iflag = 1
   ! now assign access pointer to local variables
-  call PUVGetArray(r,r_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
 
   ! Accumulation terms ------------------------------------
   ! accumulation at t(k) (doesn't change during Newton iteration)
   if (zflow_calc_accum) then
-    call PUVGetArrayRead(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
     r_p = -accum_p
-    call PUVRestoreArrayRead(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
     ! accumulation at t(k+1)
-    call PUVGetArray(field%flow_accum2,accum_p2,ierr);CHKERRQ(ierr)
+    call VecGetArray(field%flow_accum2,accum_p2,ierr);CHKERRQ(ierr)
     do local_id = 1, grid%nlmax  ! For each local node do...
       ghosted_id = grid%nL2G(local_id)
       !geh - Ignore inactive cells with inactive materials
@@ -940,7 +940,7 @@ subroutine ZFlowResidual(snes,xx,r,A,realization,ierr)
                             dResdparam,ndof)
       endif
     enddo
-    call PUVRestoreArray(field%flow_accum2,accum_p2,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(field%flow_accum2,accum_p2,ierr);CHKERRQ(ierr)
   else
     r_p = 0.d0
   endif
@@ -1123,7 +1123,7 @@ subroutine ZFlowResidual(snes,xx,r,A,realization,ierr)
     source_sink => source_sink%next
   enddo
 
-  call PUVRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 
   call MatrixZeroingZeroVecEntries(patch%aux%ZFlow%matrix_zeroing,r)
 
@@ -1156,8 +1156,8 @@ subroutine ZFlowResidual(snes,xx,r,A,realization,ierr)
   if (field%flow_mass_transfer /= PETSC_NULL_VEC) then
     ! scale by -1.d0 for contribution to residual.  A negative contribution
     ! indicates mass being added to system.
-    call PUVGetArray(r,r_p,ierr);CHKERRQ(ierr)
-    call PUVGetArray(field%flow_mass_transfer,vec_p,ierr);CHKERRQ(ierr)
+    call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
+    call VecGetArray(field%flow_mass_transfer,vec_p,ierr);CHKERRQ(ierr)
     ! geh: leave in expanded do loop form instead of VecAXPY for flexibility
     !      in the future
     do local_id = 1, grid%nlmax  ! For each local node do...
@@ -1166,8 +1166,8 @@ subroutine ZFlowResidual(snes,xx,r,A,realization,ierr)
       if (imat <= 0) cycle
       r_p(local_id) = r_p(local_id) - vec_p(local_id)
     enddo
-    call PUVRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
-    call PUVRestoreArray(field%flow_mass_transfer,vec_p, &
+    call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(field%flow_mass_transfer,vec_p, &
                             ierr);CHKERRQ(ierr)
 !geh: due to the potential for units conversion, cannot VecAXPY
 !    call VecAXPY(r,-1.d0,field%flow_mass_transfer,ierr);CHKERRQ(ierr)

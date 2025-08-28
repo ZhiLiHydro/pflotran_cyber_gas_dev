@@ -1213,7 +1213,7 @@ subroutine UGridExplicitDecompose(ugrid,option)
     call PrintErrMsgByRank(option)
   endif
 
-  call PUVGetArray(cells_old,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(cells_old,vec_ptr,ierr);CHKERRQ(ierr)
   count = 0
   do icell = 1, num_cells_local_old
     count = count + 1
@@ -1280,7 +1280,7 @@ subroutine UGridExplicitDecompose(ugrid,option)
     count = count + 1
     vec_ptr(count) = -999999  ! help differentiate
   enddo
-  call PUVRestoreArray(cells_old,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(cells_old,vec_ptr,ierr);CHKERRQ(ierr)
 
   ! pointers to Dual mat
   call PUMRestoreRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
@@ -1314,7 +1314,7 @@ subroutine UGridExplicitDecompose(ugrid,option)
                    ierr);CHKERRQ(ierr)
   call VecSetFromOptions(connections_old,ierr);CHKERRQ(ierr)
 
-  call PUVGetArray(connections_old,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(connections_old,vec_ptr,ierr);CHKERRQ(ierr)
   do iconn = 1, num_connections_local_old
     offset = (iconn-1)*connection_stride
     vec_ptr(offset+1) = explicit_grid%connections(1,iconn)
@@ -1326,7 +1326,7 @@ subroutine UGridExplicitDecompose(ugrid,option)
     vec_ptr(offset+7) = 1.d0 ! flag for local connections
     vec_ptr(offset+8) = -888.d0
   enddo
-  call PUVRestoreArray(connections_old,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(connections_old,vec_ptr,ierr);CHKERRQ(ierr)
 
 
 #if UGRID_DEBUG
@@ -1337,7 +1337,7 @@ subroutine UGridExplicitDecompose(ugrid,option)
 #endif
 
   ! count the number of cells and their duals
-  call PUVGetArray(cells_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(cells_local,vec_ptr,ierr);CHKERRQ(ierr)
   count = 0
   do ghosted_id=1, ugrid%ngmax
     do iconn = 1, ugrid%max_ndual_per_cell
@@ -1359,7 +1359,7 @@ subroutine UGridExplicitDecompose(ugrid,option)
       int_array(count) = conn_id
     enddo
   enddo
-  call PUVRestoreArray(cells_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(cells_local,vec_ptr,ierr);CHKERRQ(ierr)
 
   allocate(int_array2(num_connections_total))
   do iconn = 1, num_connections_total
@@ -1397,7 +1397,7 @@ subroutine UGridExplicitDecompose(ugrid,option)
 
   ! replace original connections ids (naturally numbered) with locally
   ! numbered connection ids (int_array4)
-  call PUVGetArray(cells_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(cells_local,vec_ptr,ierr);CHKERRQ(ierr)
   count = 0
   do ghosted_id=1, ugrid%ngmax
     do iconn = 1, ugrid%max_ndual_per_cell
@@ -1409,7 +1409,7 @@ subroutine UGridExplicitDecompose(ugrid,option)
     enddo
   enddo
   deallocate(int_array4)
-  call PUVRestoreArray(cells_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(cells_local,vec_ptr,ierr);CHKERRQ(ierr)
 
   ! check to ensure that the number before/after are consistent
   if (count /= num_connections_total) then
@@ -1475,7 +1475,7 @@ subroutine UGridExplicitDecompose(ugrid,option)
   ! loop over cells and change the natural ids in the duals to local ids
   allocate(int_array2d(2,num_connections_local))
   int_array2d = UNINITIALIZED_INTEGER
-  call PUVGetArray(cells_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(cells_local,vec_ptr,ierr);CHKERRQ(ierr)
   do ghosted_id=1, ugrid%ngmax
     do iconn = 1, ugrid%max_ndual_per_cell
       ! this connection id is now local
@@ -1495,12 +1495,12 @@ subroutine UGridExplicitDecompose(ugrid,option)
       enddo
     enddo
   enddo
-  call PUVRestoreArray(cells_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(cells_local,vec_ptr,ierr);CHKERRQ(ierr)
 
   ! map natural ids in connections to local ids
   ! negate connection ids as a flag
   int_array2d = -1*int_array2d
-  call PUVGetArray(connections_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(connections_local,vec_ptr,ierr);CHKERRQ(ierr)
   do iconn = 1, num_connections_local
     offset = connection_stride*(iconn-1)
     ! all values should be negative at this point, unless uninitialized
@@ -1553,7 +1553,7 @@ subroutine UGridExplicitDecompose(ugrid,option)
       vec_ptr(offset+7) = 0.d0
     endif
   enddo
-  call PUVRestoreArray(connections_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(connections_local,vec_ptr,ierr);CHKERRQ(ierr)
   deallocate(int_array2d)
 
 #if UGRID_DEBUG
@@ -1581,7 +1581,7 @@ subroutine UGridExplicitDecompose(ugrid,option)
     explicit_grid%cell_centroids(icell)%z = UNINITIALIZED_DOUBLE
   enddo
 
-  call PUVGetArray(cells_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(cells_local,vec_ptr,ierr);CHKERRQ(ierr)
   do ghosted_id=1, ugrid%ngmax
     offset = cell_stride*(ghosted_id-1)
     explicit_grid%cell_ids(ghosted_id) = int(vec_ptr(offset + 2))
@@ -1590,7 +1590,7 @@ subroutine UGridExplicitDecompose(ugrid,option)
     explicit_grid%cell_centroids(ghosted_id)%z = vec_ptr(offset + 5)
     explicit_grid%cell_volumes(ghosted_id) = vec_ptr(offset + 6)
   enddo
-  call PUVRestoreArray(cells_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(cells_local,vec_ptr,ierr);CHKERRQ(ierr)
 
 #if UGRID_DEBUG
   write(string,*) option%myrank
@@ -1612,12 +1612,12 @@ subroutine UGridExplicitDecompose(ugrid,option)
   deallocate(explicit_grid%face_centroids)
 
   count = 0
-  call PUVGetArray(connections_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(connections_local,vec_ptr,ierr);CHKERRQ(ierr)
   do iconn = 1, num_connections_local
     offset = connection_stride*(iconn-1)
     if (vec_ptr(offset+7) > 0.1d0) count = count + 1
   enddo
-  call PUVRestoreArray(connections_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(connections_local,vec_ptr,ierr);CHKERRQ(ierr)
 
   allocate(explicit_grid%connections(2,count))
   explicit_grid%connections = 0
@@ -1629,7 +1629,7 @@ subroutine UGridExplicitDecompose(ugrid,option)
     explicit_grid%face_centroids(iconn)%y = 0.d0
     explicit_grid%face_centroids(iconn)%z = 0.d0
   enddo
-  call PUVGetArray(connections_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(connections_local,vec_ptr,ierr);CHKERRQ(ierr)
   count = 0
   do iconn = 1, num_connections_local
     offset = connection_stride*(iconn-1)
@@ -1643,7 +1643,7 @@ subroutine UGridExplicitDecompose(ugrid,option)
       explicit_grid%face_areas(count) = vec_ptr(offset+6)
     endif
   enddo
-  call PUVRestoreArray(connections_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(connections_local,vec_ptr,ierr);CHKERRQ(ierr)
   num_connections_local = count
 
 #if UGRID_DEBUG
@@ -1800,11 +1800,11 @@ subroutine UGridExplicitComputeVolumes(ugrid,option,volume)
 
   explicit_grid => ugrid%explicit_grid
 
-  call PUVGetArray(volume,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(volume,vec_ptr,ierr);CHKERRQ(ierr)
   do icell = 1, ugrid%nlmax
     vec_ptr(icell) = explicit_grid%cell_volumes(icell)
   enddo
-  call PUVRestoreArray(volume,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(volume,vec_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine UGridExplicitComputeVolumes
 
@@ -2085,7 +2085,7 @@ subroutine UGridExplicitExpandGhostCells(ugrid,scatter_gtol,global_vec,local_vec
                         SCATTER_FORWARD,ierr);CHKERRQ(ierr)
     call VecScatterEnd(scatter_gtol,global_vec,local_vec,INSERT_VALUES, &
                       SCATTER_FORWARD,ierr);CHKERRQ(ierr)
-    call PUVGetArrayRead(local_vec,vec_loc_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(local_vec,vec_loc_ptr,ierr);CHKERRQ(ierr)
     do ghosted_id = 1, ugrid%ngmax
       select case(i)
         case(1)
@@ -2096,7 +2096,7 @@ subroutine UGridExplicitExpandGhostCells(ugrid,scatter_gtol,global_vec,local_vec
           cell_centroids_ghosted_new(ghosted_id)%z = vec_loc_ptr(ghosted_id)
       end select
     enddo
-    call PUVRestoreArrayRead(local_vec,vec_loc_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(local_vec,vec_loc_ptr,ierr);CHKERRQ(ierr)
   enddo
   deallocate(real_array)
 

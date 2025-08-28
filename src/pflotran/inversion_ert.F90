@@ -1102,7 +1102,7 @@ subroutine InversionERTCalculateUpdate(this)
     call InversionERTCGLSSolve(this)
 
     ! Get updated conductivity as m_new = m_old + del_m (where m = log(sigma))
-    call PUVGetArray(this%quantity_of_interest,vec_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(this%quantity_of_interest,vec_ptr,ierr);CHKERRQ(ierr)
     do local_id=1,grid%nlmax
       ghosted_id = grid%nL2G(local_id)
       if (patch%imat(ghosted_id) <= 0) cycle
@@ -1110,7 +1110,7 @@ subroutine InversionERTCalculateUpdate(this)
       if (vec_ptr(local_id) > this%maxcond) vec_ptr(local_id) = this%maxcond
       if (vec_ptr(local_id) < this%mincond) vec_ptr(local_id) = this%mincond
     enddo
-    call PUVRestoreArray(this%quantity_of_interest,vec_ptr, &
+    call VecRestoreArray(this%quantity_of_interest,vec_ptr, &
                             ierr);CHKERRQ(ierr)
     call InversionERTDeallocateWorkArrays(this)
   endif
@@ -1697,7 +1697,7 @@ subroutine InversionERTComputeMatVecProductJp(this)
   this%q = 0.d0
 
   ! Data part
-  call PUVGetArray(field%work,pvec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%work,pvec_ptr,ierr);CHKERRQ(ierr)
   pvec_ptr = 0.d0
 
   do idata=1,survey%num_measurement
@@ -1715,13 +1715,13 @@ subroutine InversionERTComputeMatVecProductJp(this)
                        ierr);CHKERRQ(ierr)
   enddo
 
-  call PUVRestoreArray(field%work,pvec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%work,pvec_ptr,ierr);CHKERRQ(ierr)
 
   ! Model part
   ! Get local this%p to ghosted in pvec_ptr
   call DiscretizationGlobalToLocal(discretization,field%work, &
                                    field%work_loc,ONEDOF)
-  call PUVGetArray(field%work_loc,pvec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%work_loc,pvec_ptr,ierr);CHKERRQ(ierr)
 
   num_measurement = survey%num_measurement
   beta = this%beta
@@ -1745,7 +1745,7 @@ subroutine InversionERTComputeMatVecProductJp(this)
     endif
   enddo
 
-  call PUVRestoreArray(field%work_loc,pvec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%work_loc,pvec_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine InversionERTComputeMatVecProductJp
 
@@ -1799,7 +1799,7 @@ subroutine InversionERTComputeMatVecProductJtr(this)
   this%s = 0.0d0
 
   ! Model part
-  call PUVGetArray(field%work_loc,svec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%work_loc,svec_ptr,ierr);CHKERRQ(ierr)
   svec_ptr = 0.d0
 
   num_measurement = survey%num_measurement
@@ -1826,14 +1826,14 @@ subroutine InversionERTComputeMatVecProductJtr(this)
     endif
   enddo
 
-  call PUVRestoreArray(field%work_loc,svec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%work_loc,svec_ptr,ierr);CHKERRQ(ierr)
 
   ! Data part
   call VecZeroEntries(field%work,ierr);CHKERRQ(ierr)
   call DiscretizationLocalToGlobalAdd(discretization,field%work_loc, &
                                    field%work,ONEDOF)
 
-  call PUVGetArray(field%work,svec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%work,svec_ptr,ierr);CHKERRQ(ierr)
 
   do local_id=1,grid%nlmax
     ghosted_id = grid%nL2G(local_id)
@@ -1846,7 +1846,7 @@ subroutine InversionERTComputeMatVecProductJtr(this)
     this%s(local_id) = svec_ptr(local_id)
   enddo
 
-  call PUVRestoreArray(field%work,svec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%work,svec_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine InversionERTComputeMatVecProductJtr
 

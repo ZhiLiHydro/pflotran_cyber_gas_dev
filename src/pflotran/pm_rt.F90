@@ -1104,7 +1104,7 @@ subroutine PMRTCheckUpdatePre(this,snes,X,dX,changed,ierr)
   grid => this%realization%patch%grid
   reaction => this%realization%reaction
 
-  call PUVGetArray(dX,dC_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(dX,dC_p,ierr);CHKERRQ(ierr)
 
   if (reaction%use_log_formulation) then
     if (this%dampen_update) then
@@ -1118,25 +1118,25 @@ subroutine PMRTCheckUpdatePre(this,snes,X,dX,changed,ierr)
     ! time checking for changes and performing an allreduce for log
     ! formulation.
     if (Initialized(reaction%truncated_concentration)) then
-      call PUVGetArrayRead(X,C_p,ierr);CHKERRQ(ierr)
+      call VecGetArrayRead(X,C_p,ierr);CHKERRQ(ierr)
       dC_p = min(C_p-log(reaction%truncated_concentration),dC_p)
-      call PUVRestoreArrayRead(X,C_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArrayRead(X,C_p,ierr);CHKERRQ(ierr)
     endif
     if (this%debug_update) then
-      call PUVGetArrayRead(X,C_p,ierr);CHKERRQ(ierr)
+      call VecGetArrayRead(X,C_p,ierr);CHKERRQ(ierr)
       write(*,'("C: ",10es15.6)') exp(C_p(:))
       write(*,'("dC: ",10es15.6)') exp(C_p(:)-dC_p(:))-exp(C_p(:))
       write(*,'("dlnC: ",10es15.6)') -dC_p(:)
       write(*,'("dC/C: ",10es15.6)') &
         (exp(C_p(:)-dC_p(:))-exp(C_p(:)))/exp(C_p(:))
-      call PUVRestoreArrayRead(X,C_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArrayRead(X,C_p,ierr);CHKERRQ(ierr)
     endif
   else
     if (this%dampen_update) then
       dC_p(:) = this%dampening_factor*dC_p(:)
     endif
     call VecGetLocalSize(X,n,ierr);CHKERRQ(ierr)
-    call PUVGetArrayRead(X,C_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(X,C_p,ierr);CHKERRQ(ierr)
     if (Initialized(reaction%truncated_concentration)) then
       dC_p = min(dC_p,C_p-reaction%truncated_concentration)
     else
@@ -1190,10 +1190,10 @@ subroutine PMRTCheckUpdatePre(this,snes,X,dX,changed,ierr)
         write(*,'("dC/C: ",10es15.6)') -dC_p(:)/C_p(:)
       endif
     endif
-    call PUVRestoreArrayRead(X,C_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(X,C_p,ierr);CHKERRQ(ierr)
   endif
 
-  call PUVRestoreArray(dX,dC_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(dX,dC_p,ierr);CHKERRQ(ierr)
 
 end subroutine PMRTCheckUpdatePre
 
@@ -1259,10 +1259,10 @@ subroutine PMRTCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
   if (this%check_post_convergence .or. this%print_ekg) then
     relative_change = 0.d0
     scaled_residual = 0.d0
-    call PUVGetArrayRead(dX,dC_p,ierr);CHKERRQ(ierr)
-    call PUVGetArrayRead(X0,C0_p,ierr);CHKERRQ(ierr)
-    call PUVGetArrayRead(field%tran_r,r_p,ierr);CHKERRQ(ierr)
-    call PUVGetArrayRead(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(dX,dC_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(X0,C0_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(field%tran_r,r_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
     do local_id = 1, grid%nlmax
       offset = (local_id-1)*option%ntrandof
       natural_id = grid%nG2A(grid%nL2G(local_id))
@@ -1294,10 +1294,10 @@ subroutine PMRTCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
         endif
       enddo
     enddo
-    call PUVRestoreArrayRead(dX,dC_p,ierr);CHKERRQ(ierr)
-    call PUVRestoreArrayRead(X0,C0_p,ierr);CHKERRQ(ierr)
-    call PUVRestoreArrayRead(field%tran_r,r_p,ierr);CHKERRQ(ierr)
-    call PUVRestoreArrayRead(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(dX,dC_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(X0,C0_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(field%tran_r,r_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
     mpi_int = option%ntrandof
     call MPI_Allreduce(MPI_IN_PLACE,this%converged_real,mpi_int, &
                        MPI_DOUBLE_PRECISION,MPI_MAX, &

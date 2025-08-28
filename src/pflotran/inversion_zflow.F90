@@ -1169,9 +1169,9 @@ subroutine InversionZFlowCalculateUpdate(this)
   ! get inversion%del_param
   call InversionZFlowCGLSSolve(this)
 
-  call PUVGetArray(dist_del_param_vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(dist_del_param_vec,vec_ptr,ierr);CHKERRQ(ierr)
   vec_ptr(:) = this%del_param(:)
-  call PUVRestoreArray(dist_del_param_vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(dist_del_param_vec,vec_ptr,ierr);CHKERRQ(ierr)
 
   if (this%inversion_aux%qoi_is_full_vector) then
     ! have to copy values to global work vecs in order to loop over
@@ -1191,8 +1191,8 @@ subroutine InversionZFlowCalculateUpdate(this)
                                      INVAUX_SCATREVERSE)
 
     ! Get updated parameter as m_new = m_old + del_m (where m = log(param))
-    call PUVGetArray(work_dup,vec_ptr,ierr);CHKERRQ(ierr)
-    call PUVGetArray(this%realization%field%work,vec2_ptr, &
+    call VecGetArray(work_dup,vec_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(this%realization%field%work,vec2_ptr, &
                         ierr);CHKERRQ(ierr)
     do iparameter = 1, this%num_parameters_local
       if (this%inversion_aux%qoi_is_full_vector) then
@@ -1204,8 +1204,8 @@ subroutine InversionZFlowCalculateUpdate(this)
                                             new_value)
       vec_ptr(iparameter) = new_value
     enddo
-    call PUVRestoreArray(work_dup,vec_ptr,ierr);CHKERRQ(ierr)
-    call PUVRestoreArray(this%realization%field%work,vec2_ptr, &
+    call VecRestoreArray(work_dup,vec_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(this%realization%field%work,vec2_ptr, &
                             ierr);CHKERRQ(ierr)
     call InversionZFlowDeallocateWorkArrays(this)
 
@@ -1216,9 +1216,9 @@ subroutine InversionZFlowCalculateUpdate(this)
                                      INVAUX_SCATFORWARD)
     call VecDestroy(work_dup,ierr);CHKERRQ(ierr)
   else
-    call PUVGetArray(this%inversion_aux%dist_parameter_vec, &
+    call VecGetArray(this%inversion_aux%dist_parameter_vec, &
                         vec_ptr,ierr);CHKERRQ(ierr)
-    call PUVGetArray(dist_del_param_vec,vec2_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(dist_del_param_vec,vec2_ptr,ierr);CHKERRQ(ierr)
     do iparameter = 1, this%num_parameters_local
       new_value = exp(log(vec_ptr(iparameter)) + vec2_ptr(iparameter))
       call InversionParameterBoundParameter(this%inversion_aux% &
@@ -1228,9 +1228,9 @@ subroutine InversionZFlowCalculateUpdate(this)
       vec2_ptr(iparameter) = new_value - vec_ptr(iparameter)
       vec_ptr(iparameter) = new_value
     enddo
-    call PUVRestoreArray(this%inversion_aux%dist_parameter_vec,vec_ptr, &
+    call VecRestoreArray(this%inversion_aux%dist_parameter_vec,vec_ptr, &
                             ierr);CHKERRQ(ierr)
-    call PUVRestoreArray(dist_del_param_vec,vec2_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(dist_del_param_vec,vec2_ptr,ierr);CHKERRQ(ierr)
 
     call InvAuxScatParamToDistParam(this%inversion_aux, &
                                     this%inversion_aux%parameter_vec, &
@@ -2078,9 +2078,9 @@ subroutine InversionZFlowComputeMatVecProductJp(this)
                     ierr);CHKERRQ(ierr)
   call VecDuplicate(this%inversion_aux%measurement_vec,q1,ierr);CHKERRQ(ierr)
 
-  call PUVGetArray(p1,pvec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(p1,pvec_ptr,ierr);CHKERRQ(ierr)
   pvec_ptr = this%p
-  call PUVRestoreArray(p1,pvec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(p1,pvec_ptr,ierr);CHKERRQ(ierr)
 
   ! q = Jp -> data part
   call MatMultTranspose(inversion_aux%JsensitivityT,p1,q1_dist, &
@@ -2091,9 +2091,9 @@ subroutine InversionZFlowComputeMatVecProductJp(this)
                                 q1_dist, &
                                 INVAUX_SCATREVERSE)
 
-  call PUVGetArray(q1,q1vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(q1,q1vec_ptr,ierr);CHKERRQ(ierr)
   this%q(1:num_measurement) = q1vec_ptr
-  call PUVRestoreArray(q1,q1vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(q1,q1vec_ptr,ierr);CHKERRQ(ierr)
 
   ! Model part -> q2
   beta = this%beta
@@ -2106,7 +2106,7 @@ subroutine InversionZFlowComputeMatVecProductJp(this)
                                      INVAUX_SCATREVERSE)
     call DiscretizationGlobalToLocal(discretization,field%work, &
                                     field%work_loc,ONEDOF)
-    call PUVGetArray(field%work_loc,pvec_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(field%work_loc,pvec_ptr,ierr);CHKERRQ(ierr)
 
     do iconst=1,this%num_constraints_local
       if (this%Wm(iconst) == 0) cycle
@@ -2128,7 +2128,7 @@ subroutine InversionZFlowComputeMatVecProductJp(this)
       endif
     enddo
 
-    call PUVRestoreArray(field%work_loc,pvec_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(field%work_loc,pvec_ptr,ierr);CHKERRQ(ierr)
 
   else
 
@@ -2138,7 +2138,7 @@ subroutine InversionZFlowComputeMatVecProductJp(this)
                                     p1, &
                                     INVAUX_SCATREVERSE)
 
-    call PUVGetArray(this%parameter_tmp_vec,pvec_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(this%parameter_tmp_vec,pvec_ptr,ierr);CHKERRQ(ierr)
 
     do iconst=1,this%num_constraints_local
       if (this%Wm(iconst) == 0) cycle
@@ -2163,7 +2163,7 @@ subroutine InversionZFlowComputeMatVecProductJp(this)
       endif
     enddo
 
-    call PUVRestoreArray(this%parameter_tmp_vec,pvec_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(this%parameter_tmp_vec,pvec_ptr,ierr);CHKERRQ(ierr)
 
   endif
 
@@ -2234,7 +2234,7 @@ subroutine InversionZFlowComputeMatVecProductJtr(this)
 
   if (this%inversion_aux%qoi_is_full_vector) then
 
-    call PUVGetArray(field%work_loc,s2vec_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(field%work_loc,s2vec_ptr,ierr);CHKERRQ(ierr)
     s2vec_ptr = 0.d0
 
     do iconst=1,this%num_constraints_local
@@ -2259,7 +2259,7 @@ subroutine InversionZFlowComputeMatVecProductJtr(this)
       endif
     enddo
 
-    call PUVRestoreArray(field%work_loc,s2vec_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(field%work_loc,s2vec_ptr,ierr);CHKERRQ(ierr)
 
     ! s2 in field%work
     call VecZeroEntries(field%work,ierr);CHKERRQ(ierr)
@@ -2273,7 +2273,7 @@ subroutine InversionZFlowComputeMatVecProductJtr(this)
   else
 
     call VecZeroEntries(this%parameter_tmp_vec,ierr);CHKERRQ(ierr)
-    call PUVGetArray(this%parameter_tmp_vec,s2vec_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(this%parameter_tmp_vec,s2vec_ptr,ierr);CHKERRQ(ierr)
     s2vec_ptr = 0.d0
 
     do iconst=1,this%num_constraints_local
@@ -2301,7 +2301,7 @@ subroutine InversionZFlowComputeMatVecProductJtr(this)
       endif
     enddo
 
-    call PUVRestoreArray(this%parameter_tmp_vec,s2vec_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(this%parameter_tmp_vec,s2vec_ptr,ierr);CHKERRQ(ierr)
 
     call InvAuxScatParamToDistParam(this%inversion_aux, &
                                     this%parameter_tmp_vec, &
@@ -2313,28 +2313,28 @@ subroutine InversionZFlowComputeMatVecProductJtr(this)
   call VecDuplicate(this%inversion_aux%measurement_vec,r1,ierr);CHKERRQ(ierr)
   call VecDuplicate(this%dist_parameter_tmp_vec,s1,ierr);CHKERRQ(ierr)
 
-  call PUVGetArray(r1,r1vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(r1,r1vec_ptr,ierr);CHKERRQ(ierr)
   r1vec_ptr = this%r(1:num_measurement)
-  call PUVRestoreArray(r1,r1vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(r1,r1vec_ptr,ierr);CHKERRQ(ierr)
   call InvAuxScatMeasToDistMeas(this%inversion_aux, &
                                 r1, &
                                 this%inversion_aux%dist_measurement_vec, &
                                 INVAUX_SCATFORWARD)
-  call PUVGetArray(this%inversion_aux%dist_measurement_vec,r1vec_ptr, &
+  call VecGetArray(this%inversion_aux%dist_measurement_vec,r1vec_ptr, &
                       ierr);CHKERRQ(ierr)
-  call PUVRestoreArray(this%inversion_aux%dist_measurement_vec,r1vec_ptr, &
+  call VecRestoreArray(this%inversion_aux%dist_measurement_vec,r1vec_ptr, &
                           ierr);CHKERRQ(ierr)
 
   ! s = J^T*r -> data part
   call MatMult(inversion_aux%JsensitivityT, &
                this%inversion_aux%dist_measurement_vec,s1,ierr);CHKERRQ(ierr)
 
-  call PUVGetArray(s1,s1vec_ptr,ierr);CHKERRQ(ierr)
-  call PUVGetArray(this%dist_parameter_tmp_vec,s2vec_ptr, &
+  call VecGetArray(s1,s1vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(this%dist_parameter_tmp_vec,s2vec_ptr, &
                       ierr);CHKERRQ(ierr)
   this%s = s1vec_ptr + s2vec_ptr
-  call PUVRestoreArray(s1,s1vec_ptr,ierr);CHKERRQ(ierr)
-  call PUVRestoreArray(this%dist_parameter_tmp_vec,s2vec_ptr, &
+  call VecRestoreArray(s1,s1vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(this%dist_parameter_tmp_vec,s2vec_ptr, &
                           ierr);CHKERRQ(ierr)
 
   call VecDestroy(r1,ierr);CHKERRQ(ierr)
@@ -2601,11 +2601,11 @@ subroutine InversionZFlowScaleSensitivity(this)
   call VecDuplicate(this%inversion_aux%measurement_vec,wd_vec, &
                     ierr);CHKERRQ(ierr)
   call VecZeroEntries(wd_vec,ierr);CHKERRQ(ierr)
-  call PUVGetArray(wd_vec,wdvec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(wd_vec,wdvec_ptr,ierr);CHKERRQ(ierr)
   do idata = 1, num_measurement
     wdvec_ptr(idata) = this%inversion_aux%measurements(idata)%weight
   enddo
-  call PUVRestoreArray(wd_vec,wdvec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(wd_vec,wdvec_ptr,ierr);CHKERRQ(ierr)
   call InvAuxScatMeasToDistMeas(this%inversion_aux, &
                                 wd_vec, &
                                 this%inversion_aux%dist_measurement_vec, &
@@ -2663,15 +2663,15 @@ subroutine InversionZFlowCheckpoint(this)
                           this%phi_data,this%driver)
   call HDF5AttributeWrite(grp_id,H5T_NATIVE_DOUBLE,'Phi Model', &
                           this%phi_model,this%driver)
-  call PUVGetArrayRead(this%inversion_aux%parameter_vec,vec_ptr, &
+  call VecGetArrayRead(this%inversion_aux%parameter_vec,vec_ptr, &
                           ierr);CHKERRQ(ierr)
   call HDF5DatasetWrite(grp_id,'Parameter Values',vec_ptr,this%driver)
-  call PUVRestoreArrayRead(this%inversion_aux%parameter_vec,vec_ptr, &
+  call VecRestoreArrayRead(this%inversion_aux%parameter_vec,vec_ptr, &
                               ierr);CHKERRQ(ierr)
-  call PUVGetArrayRead(this%inversion_aux%measurement_vec,vec_ptr, &
+  call VecGetArrayRead(this%inversion_aux%measurement_vec,vec_ptr, &
                           ierr);CHKERRQ(ierr)
   call HDF5DatasetWrite(grp_id,'Measurement Values',vec_ptr,this%driver)
-  call PUVRestoreArrayRead(this%inversion_aux%measurement_vec,vec_ptr, &
+  call VecRestoreArrayRead(this%inversion_aux%measurement_vec,vec_ptr, &
                               ierr);CHKERRQ(ierr)
   call HDF5GroupClose(grp_id,this%driver)
   call HDF5FileClose(file_id,this%driver)
@@ -2725,10 +2725,10 @@ subroutine InversionZFlowRestartReadData(this)
                          this%phi_data,this%driver)
   call HDF5AttributeRead(grp_id,H5T_NATIVE_DOUBLE,'Phi Model', &
                          this%phi_model,this%driver)
-  call PUVGetArrayRead(this%inversion_aux%parameter_vec,vec_ptr, &
+  call VecGetArrayRead(this%inversion_aux%parameter_vec,vec_ptr, &
                           ierr);CHKERRQ(ierr)
   call HDF5DatasetRead(grp_id,'Parameter Values',vec_ptr,this%driver)
-  call PUVRestoreArrayRead(this%inversion_aux%parameter_vec,vec_ptr, &
+  call VecRestoreArrayRead(this%inversion_aux%parameter_vec,vec_ptr, &
                               ierr);CHKERRQ(ierr)
   call HDF5GroupClose(grp_id,this%driver)
   call HDF5FileClose(file_id,this%driver)

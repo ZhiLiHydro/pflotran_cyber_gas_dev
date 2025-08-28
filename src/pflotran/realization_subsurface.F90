@@ -2001,7 +2001,7 @@ subroutine RealizationUpdatePropertiesTS(realization)
 
   if (reaction%mineral%update_surface_area) then
     nullify(porosity0_p)
-    call PUVGetArrayRead(field%porosity0,porosity0_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(field%porosity0,porosity0_p,ierr);CHKERRQ(ierr)
 
     temp_porosity = UNINITIALIZED_DOUBLE
     do local_id = 1, grid%nlmax
@@ -2014,7 +2014,7 @@ subroutine RealizationUpdatePropertiesTS(realization)
                                           temp_porosity,option)
     enddo
 
-    call PUVRestoreArrayRead(field%porosity0,porosity0_p, &
+    call VecRestoreArrayRead(field%porosity0,porosity0_p, &
                                 ierr);CHKERRQ(ierr)
 
 !geh:remove
@@ -2027,9 +2027,9 @@ subroutine RealizationUpdatePropertiesTS(realization)
   endif
 
   if (reaction%update_tortuosity) then
-    call PUVGetArrayRead(field%tortuosity0,tortuosity0_p, &
+    call VecGetArrayRead(field%tortuosity0,tortuosity0_p, &
                             ierr);CHKERRQ(ierr)
-    call PUVGetArrayRead(field%porosity0,porosity0_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(field%porosity0,porosity0_p,ierr);CHKERRQ(ierr)
     do local_id = 1, grid%nlmax
       ghosted_id = grid%nL2G(local_id)
       scale = (material_auxvars(ghosted_id)%porosity_base / &
@@ -2038,9 +2038,9 @@ subroutine RealizationUpdatePropertiesTS(realization)
       material_auxvars(ghosted_id)%tortuosity = &
         tortuosity0_p(local_id)*scale
     enddo
-    call PUVRestoreArrayRead(field%tortuosity0,tortuosity0_p, &
+    call VecRestoreArrayRead(field%tortuosity0,tortuosity0_p, &
                                 ierr);CHKERRQ(ierr)
-    call PUVRestoreArrayRead(field%porosity0,porosity0_p, &
+    call VecRestoreArrayRead(field%porosity0,porosity0_p, &
                                 ierr);CHKERRQ(ierr)
     call MaterialGetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
                                  TORTUOSITY,ZERO_INTEGER)
@@ -2051,15 +2051,15 @@ subroutine RealizationUpdatePropertiesTS(realization)
   endif
 
   if (reaction%update_permeability) then
-    call PUVGetArrayRead(field%perm0_xx,perm0_xx_p,ierr);CHKERRQ(ierr)
-    call PUVGetArrayRead(field%perm0_zz,perm0_zz_p,ierr);CHKERRQ(ierr)
-    call PUVGetArrayRead(field%perm0_yy,perm0_yy_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(field%perm0_xx,perm0_xx_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(field%perm0_zz,perm0_zz_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(field%perm0_yy,perm0_yy_p,ierr);CHKERRQ(ierr)
     if (option%flow%full_perm_tensor) then
-      call PUVGetArrayRead(field%perm0_xy,perm0_xy_p,ierr);CHKERRQ(ierr)
-      call PUVGetArrayRead(field%perm0_xz,perm0_xz_p,ierr);CHKERRQ(ierr)
-      call PUVGetArrayRead(field%perm0_yz,perm0_yz_p,ierr);CHKERRQ(ierr)
+      call VecGetArrayRead(field%perm0_xy,perm0_xy_p,ierr);CHKERRQ(ierr)
+      call VecGetArrayRead(field%perm0_xz,perm0_xz_p,ierr);CHKERRQ(ierr)
+      call VecGetArrayRead(field%perm0_yz,perm0_yz_p,ierr);CHKERRQ(ierr)
     endif
-    call PUVGetArrayRead(field%porosity0,porosity0_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(field%porosity0,porosity0_p,ierr);CHKERRQ(ierr)
     do local_id = 1, grid%nlmax
       ghosted_id = grid%nL2G(local_id)
       imat = patch%imat(ghosted_id)
@@ -2090,18 +2090,18 @@ subroutine RealizationUpdatePropertiesTS(realization)
           perm0_yz_p(local_id)*scale
       endif
     enddo
-    call PUVRestoreArrayRead(field%perm0_xx,perm0_xx_p,ierr);CHKERRQ(ierr)
-    call PUVRestoreArrayRead(field%perm0_zz,perm0_zz_p,ierr);CHKERRQ(ierr)
-    call PUVRestoreArrayRead(field%perm0_yy,perm0_yy_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(field%perm0_xx,perm0_xx_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(field%perm0_zz,perm0_zz_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(field%perm0_yy,perm0_yy_p,ierr);CHKERRQ(ierr)
     if (option%flow%full_perm_tensor) then
-      call PUVRestoreArrayRead(field%perm0_xy,perm0_xy_p, &
+      call VecRestoreArrayRead(field%perm0_xy,perm0_xy_p, &
                                   ierr);CHKERRQ(ierr)
-      call PUVRestoreArrayRead(field%perm0_xz,perm0_xz_p, &
+      call VecRestoreArrayRead(field%perm0_xz,perm0_xz_p, &
                                   ierr);CHKERRQ(ierr)
-      call PUVRestoreArrayRead(field%perm0_yz,perm0_yz_p, &
+      call VecRestoreArrayRead(field%perm0_yz,perm0_yz_p, &
                                   ierr);CHKERRQ(ierr)
     endif
-    call PUVRestoreArrayRead(field%porosity0,porosity0_p, &
+    call VecRestoreArrayRead(field%porosity0,porosity0_p, &
                                 ierr);CHKERRQ(ierr)
 
     call MaterialGetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
@@ -2687,12 +2687,12 @@ subroutine RealizUnInitializedVar1(realization,ivar,var_name)
   call RealizationGetVariable(realization,realization%field%work, &
                               ivar,ZERO_INTEGER)
   ! apply mask to filter inactive cells
-  call PUVGetArray(field%work,vec_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%work,vec_p,ierr);CHKERRQ(ierr)
   do local_id = 1, grid%nlmax
     ! if inactive, set to 1.d-40
     if (patch%imat(grid%nL2G(local_id)) <= 0) vec_p(local_id) = 1.d-40
   enddo
-  call PUVRestoreArray(field%work,vec_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%work,vec_p,ierr);CHKERRQ(ierr)
   call VecMin(field%work,imin,rmin,ierr);CHKERRQ(ierr)
   if (Uninitialized(rmin)) then
     write(word,*) imin+1 ! zero to one based indexing

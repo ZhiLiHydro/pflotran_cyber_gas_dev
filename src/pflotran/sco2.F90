@@ -875,7 +875,7 @@ subroutine SCO2UpdateAuxVars(realization,pm_well,update_state,update_state_bc)
   gid = option%gas_phase
   co2_pressure_id = option%co2_pressure_id
 
-  call PUVGetArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
   do ghosted_id = 1, grid%ngmax
     if (grid%nG2L(ghosted_id) < 0) cycle ! bypass ghosted corner cells
@@ -1354,7 +1354,7 @@ subroutine SCO2UpdateAuxVars(realization,pm_well,update_state,update_state_bc)
       cur_well => cur_well%next_well
     enddo
   endif
-  call PUVRestoreArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
   patch%aux%SCO2%auxvars_up_to_date = PETSC_TRUE
 
@@ -1409,8 +1409,8 @@ subroutine SCO2UpdateFixedAccum(realization)
   material_auxvars => patch%aux%Material%auxvars
   material_parameter => patch%aux%Material%material_parameter
 
-  call PUVGetArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-  call PUVGetArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
@@ -1439,8 +1439,8 @@ subroutine SCO2UpdateFixedAccum(realization)
   enddo
 
 
-  call PUVRestoreArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-  call PUVRestoreArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
 end subroutine SCO2UpdateFixedAccum
 
@@ -1469,14 +1469,14 @@ subroutine SCO2GetSlminVecLoc(SCO2, grid, vec_loc)
 
   sco2_auxvars => SCO2%auxvars
 
-  call PUVGetArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
     vec_loc_p(ghosted_id) = sco2_auxvars(ZERO_INTEGER,ghosted_id)%sl_min(1)
   enddo
 
-  call PUVRestoreArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
 end subroutine SCO2GetSlminVecLoc
 
@@ -1505,7 +1505,7 @@ subroutine SCO2SetSlminVecLoc(SCO2, grid, vec_loc)
 
   sco2_auxvars => SCO2%auxvars
 
-  call PUVGetArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
@@ -1514,7 +1514,7 @@ subroutine SCO2SetSlminVecLoc(SCO2, grid, vec_loc)
                             sco2_auxvars(ZERO_INTEGER,ghosted_id)%sl_min(1)
   enddo
 
-  call PUVRestoreArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
 end subroutine SCO2SetSlminVecLoc
 
@@ -1654,16 +1654,16 @@ subroutine SCO2Residual(snes,xx,r,realization,pm_well,ierr)
 
   option%iflag = SCO2_UPDATE_FOR_ACCUM
   ! now assign access pointer to local variables
-  call PUVGetArray(r,r_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
 
   ! Accumulation terms ------------------------------------
   ! accumulation at t(k) (doesn't change during Newton iteration)
-  call PUVGetArrayRead(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
   r_p = -accum_p
-  call PUVRestoreArrayRead(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
   ! accumulation at t(k+1)
-  call PUVGetArray(field%flow_accum2,accum_p2,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%flow_accum2,accum_p2,ierr);CHKERRQ(ierr)
   do local_id = 1, grid%nlmax  ! For each local node do...
     ghosted_id = grid%nL2G(local_id)
     imat = patch%imat(ghosted_id)
@@ -1700,7 +1700,7 @@ subroutine SCO2Residual(snes,xx,r,realization,pm_well,ierr)
       enddo
     endif
   endif
-  call PUVRestoreArray(field%flow_accum2, accum_p2, ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%flow_accum2, accum_p2, ierr);CHKERRQ(ierr)
 
   ! Interior Flux Terms -----------------------------------
   connection_set_list => grid%internal_connection_set_list
@@ -1952,7 +1952,7 @@ subroutine SCO2Residual(snes,xx,r,realization,pm_well,ierr)
     source_sink => source_sink%next
   enddo
 
-  call PUVRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 
   call MatrixZeroingZeroVecEntries(patch%aux%SCO2%matrix_zeroing,r)
 

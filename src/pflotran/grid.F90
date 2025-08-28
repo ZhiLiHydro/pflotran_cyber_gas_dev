@@ -912,7 +912,7 @@ subroutine GridLocalizeRegionsFromCellIDs(grid, region, option)
                      SCATTER_FORWARD,ierr);CHKERRQ(ierr)
   call VecScatterDestroy(vec_scat,ierr);CHKERRQ(ierr)
 
-  call PUVGetArray(vec_cell_ids_loc,v_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(vec_cell_ids_loc,v_loc_p,ierr);CHKERRQ(ierr)
   count = 0
   setup_faces = PETSC_FALSE
   do local_id=1, grid%nlmax
@@ -973,7 +973,7 @@ subroutine GridLocalizeRegionsFromCellIDs(grid, region, option)
     enddo
   endif
 
-  call PUVRestoreArray(vec_cell_ids_loc,v_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(vec_cell_ids_loc,v_loc_p,ierr);CHKERRQ(ierr)
 
   call VecDestroy(vec_cell_ids,ierr);CHKERRQ(ierr)
   call VecDestroy(vec_cell_ids_loc,ierr);CHKERRQ(ierr)

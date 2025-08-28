@@ -2161,7 +2161,7 @@ subroutine SecondaryRTGetVariable(realization, vec, ivar, isubvar, mc_layer)
   patch => realization%patch
   grid => patch%grid
 
-  call PUVGetArray(vec,vec_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(vec,vec_p,ierr);CHKERRQ(ierr)
 
   select case(ivar)
     case(SECONDARY_CONTINUUM_UPDATED_CONC)
@@ -2221,7 +2221,7 @@ subroutine SecondaryRTGetVariable(realization, vec, ivar, isubvar, mc_layer)
       enddo
   end select
 
-  call PUVRestoreArray(vec,vec_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(vec,vec_p,ierr);CHKERRQ(ierr)
 
 end subroutine SecondaryRTGetVariable
 
@@ -2264,7 +2264,7 @@ subroutine SecondaryRTSetVariable(realization, vec, vec_format, ivar, isubvar, m
                       &SecondaryRTSetVariable')
   endif
 
-  call PUVGetArray(vec,vec_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(vec,vec_p,ierr);CHKERRQ(ierr)
 
   select case(ivar)
     case(SECONDARY_CONTINUUM_UPDATED_CONC)
@@ -2304,7 +2304,7 @@ subroutine SecondaryRTSetVariable(realization, vec, vec_format, ivar, isubvar, m
       enddo
   end select
 
-  call PUVRestoreArray(vec,vec_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(vec,vec_p,ierr);CHKERRQ(ierr)
 
 end subroutine SecondaryRTSetVariable
 

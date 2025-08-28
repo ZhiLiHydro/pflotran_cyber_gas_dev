@@ -143,8 +143,8 @@ subroutine PMTHTSUpdateAuxVarsPatch(realization)
 
   ! 2. Update auxvars based on new value of dpressure_dtime, mass, and
   !    dmass_dtime
-  call PUVGetArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
-  call PUVGetArrayRead(field%flow_xxdot_loc,xxdot_loc_p, &
+  call VecGetArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%flow_xxdot_loc,xxdot_loc_p, &
                           ierr);CHKERRQ(ierr)
 
 
@@ -170,8 +170,8 @@ subroutine PMTHTSUpdateAuxVarsPatch(realization)
                                   option)
   enddo
 
-  call PUVRestoreArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
-  call PUVRestoreArrayRead(field%flow_xxdot_loc,xxdot_loc_p, &
+  call VecRestoreArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(field%flow_xxdot_loc,xxdot_loc_p, &
                               ierr);CHKERRQ(ierr)
 
 
@@ -279,7 +279,7 @@ subroutine IFunctionAccumulation(F,realization,ierr)
   material_auxvars => patch%aux%Material%auxvars
   th_parameter => patch%aux%TH%th_parameter
 
-  call PUVGetArray(F,f_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(F,f_p,ierr);CHKERRQ(ierr)
 
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
@@ -347,7 +347,7 @@ subroutine IFunctionAccumulation(F,realization,ierr)
 
   enddo
 
-  call PUVRestoreArray(F,f_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(F,f_p,ierr);CHKERRQ(ierr)
 
 end subroutine IFunctionAccumulation
 

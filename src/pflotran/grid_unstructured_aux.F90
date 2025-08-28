@@ -1307,7 +1307,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
 
   ! store the natural grid cell id for each local cell as read from the grid
   ! file
-  call PUVGetArray(elements_natural,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(elements_natural,vec_ptr,ierr);CHKERRQ(ierr)
   do local_id = 1, num_cells_local_new
     ! Cell id read from explicit grid input file is second entry in block
     ! It may match the first entry (the calculated natural id based on the
@@ -1315,7 +1315,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
     ugrid%cell_ids_natural(local_id) = &
       int(abs(vec_ptr((local_id-1)*stride+natural_id_offset)))
   enddo
-  call PUVRestoreArray(elements_natural,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(elements_natural,vec_ptr,ierr);CHKERRQ(ierr)
 
 #if UGRID_DEBUG
   write(string,*) option%myrank
@@ -1360,7 +1360,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
   ! to petsc ordering
 
   ! count the number of cells and their duals
-  call PUVGetArray(elements_natural,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(elements_natural,vec_ptr,ierr);CHKERRQ(ierr)
   count = 0
   do local_id=1, num_cells_local_new
     count = count + 1
@@ -1384,7 +1384,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
       int_array(count) = dual_id
     enddo
   enddo
-  call PUVRestoreArray(elements_natural,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(elements_natural,vec_ptr,ierr);CHKERRQ(ierr)
 
 #if UGRID_DEBUG
   call PrintMsg(option,'Application ordering')
@@ -1403,7 +1403,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
   ! load mapped petsc-ordered dual ids back into duplicated vector
   ! exactly the opposite operation of when we loaded the temporary int_array
   ! vector
-  call PUVGetArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
 !geh: do not believe that we need elements_natural here
 !  call VecGetArrayF90(elements_natural,vec_ptr2,ierr)
   allocate(ugrid%cell_ids_petsc(num_cells_local_new))
@@ -1423,7 +1423,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
       vec_ptr(idual + dual_offset + (local_id-1)*stride) = int_array(count)
     enddo
   enddo
-  call PUVRestoreArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
 !geh  call VecRestoreArrayF90(elements_natural,vec_ptr2,ierr)
   deallocate(int_array)
 
@@ -1444,7 +1444,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
   call PrintMsg(option,'Renumbering ghost ids to petsc numbering')
 #endif
 
-  call PUVGetArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
   ghost_cell_count = 0
   ! allocate a temporarily-sized array
   ! geh: this assumes that the number of ghost cells will not exceed the number
@@ -1479,7 +1479,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
       endif
     enddo
   enddo
-  call PUVRestoreArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
 
 #if UGRID_DEBUG
   if (ugrid%grid_type == THREE_DIM_GRID) then
@@ -1550,7 +1550,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
 #endif
 
     ! remap of duals of ghost cells
-    call PUVGetArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
     do local_id=1, num_cells_local_new
       do idual = 1, ugrid%max_ndual_per_cell
         ! dual_id is now the negative of the local unsorted ghost cell id
@@ -1564,7 +1564,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
         endif
       enddo
     enddo
-    call PUVRestoreArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
 
     deallocate(int_array2)
     deallocate(int_array3)
@@ -1603,8 +1603,8 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
   ugrid%cell_ids_natural(:) = UNINITIALIZED_INTEGER
   ugrid%cell_ids_natural(1:ugrid%nlmax) = int_array(:)
   deallocate(int_array)
-  call PUVGetArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
-  call PUVGetArray(elements_natural,vec_ptr2,ierr);CHKERRQ(ierr)
+  call VecGetArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(elements_natural,vec_ptr2,ierr);CHKERRQ(ierr)
   do local_id=1, ugrid%nlmax
     do idual = 1, ugrid%max_ndual_per_cell
       dual_id = int(vec_ptr(idual + dual_offset + (local_id-1)*stride))
@@ -1620,8 +1620,8 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
     option%io_buffer = 'Negative natural id: ' // trim(adjustl(string))
     call PrintErrMsgByRank(option)
   endif
-  call PUVRestoreArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
-  call PUVRestoreArray(elements_natural,vec_ptr2,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(elements_natural,vec_ptr2,ierr);CHKERRQ(ierr)
   call VecDestroy(elements_natural,ierr);CHKERRQ(ierr)
 
   ! NOW START ON GHOSTING CELLS
@@ -1635,7 +1635,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
   allocate(ugrid%cell_neighbors_local_ghosted( &
            0:ugrid%max_ndual_per_cell,ugrid%nlmax))
   ugrid%cell_neighbors_local_ghosted = 0
-  call PUVGetArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
   do local_id=1, ugrid%nlmax
     count = 0
     do idual = 1, ugrid%max_ndual_per_cell
@@ -1651,7 +1651,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
     ! set the # of duals in for the cell
     ugrid%cell_neighbors_local_ghosted(0,local_id) = count
   enddo
-  call PUVRestoreArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
 
   ! need to create a local ghosted vector in which we can collect element info
   ! including ghost cells
@@ -1770,7 +1770,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
     !                   global_num_cells*stride, &
     !                   MPI_DOUBLE_PRECISION,option%mycomm,ierr)
 
-    call PUVGetArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
 
     !Garther elements_petsc strided arrays into
     send_size_mpi = ugrid%nlmax*stride
@@ -1782,7 +1782,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
     deallocate(rcv_sizes_mpi)
     deallocate(disp_mpi)
 
-    call PUVGetArray(elements_local,vec_ptr2,ierr);CHKERRQ(ierr)
+    call VecGetArray(elements_local,vec_ptr2,ierr);CHKERRQ(ierr)
     !copy local portion of array first - no off-proc ghost here
     vec_ptr2(1:ugrid%nlmax*stride) = vec_ptr(1:ugrid%nlmax*stride)
     !copy ghost cell information from elements_global_petsc
@@ -1803,22 +1803,22 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
     !end do
     !close(IUNIT_TEMP)
 
-    call PUVRestoreArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
     deallocate(elements_global_petsc)
-    call PUVRestoreArray(elements_local,vec_ptr2,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(elements_local,vec_ptr2,ierr);CHKERRQ(ierr)
     !end of Method 2
 #endif
 #ifdef MPI_SCATTER_GHOST_ONLY
     !Method 3 - pass ghost cell info only
     !load non-ghosted cells
-    call PUVGetArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
-    call PUVGetArray(elements_local,vec_ptr2,ierr);CHKERRQ(ierr)
+    call VecGetArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(elements_local,vec_ptr2,ierr);CHKERRQ(ierr)
     !copy local portion of array first - no off-proc ghost here
     do temp_int = 1,ugrid%nlmax*stride
       vec_ptr2(temp_int) = vec_ptr(temp_int)
     end do
-    call PUVRestoreArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
-    call PUVRestoreArray(elements_local,vec_ptr2,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(elements_local,vec_ptr2,ierr);CHKERRQ(ierr)
     !compute global number of ghosted cells
     global_num_g_cells = 0
     call MPI_Allreduce(ugrid%num_ghost_cells,global_num_g_cells, &
@@ -1894,7 +1894,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
       allocate(ele_g_lc_petsc_to_rank(lc_g_count))
       ele_g_lc_petsc_to_rank = 0
 
-      call PUVGetArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
+      call VecGetArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
 
       lc_g_count = 0
       do ghosted_id = 1,global_num_g_cells
@@ -1911,7 +1911,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
         end if
       end do
 
-      call PUVRestoreArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(elements_petsc,vec_ptr,ierr);CHKERRQ(ierr)
       deallocate(ele_g_glb_petsc_ids)
 
       !scattering = assembling of:
@@ -1978,7 +1978,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
       deallocate(ele_g_glb_rank_to_petsc)
       deallocate(ele_g_glb_petsc_to_rank)
       !load ghosted cells
-      call PUVGetArray(elements_local,vec_ptr2,ierr);CHKERRQ(ierr)
+      call VecGetArray(elements_local,vec_ptr2,ierr);CHKERRQ(ierr)
       do ghosted_id =1,ugrid%num_ghost_cells
         istart1 = ugrid%nlmax*stride + (ghosted_id-1)*stride + 1
         iend1 = ugrid%nlmax*stride + ghosted_id*stride
@@ -1996,7 +1996,7 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
       !  write(IUNIT_TEMP,*) vec_ptr2(local_id)
       !end do
       !close(IUNIT_TEMP)
-      call PUVRestoreArray(elements_local,vec_ptr2,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(elements_local,vec_ptr2,ierr);CHKERRQ(ierr)
     end if
   !end of Method 3 - pass ghost cell info only
 #endif

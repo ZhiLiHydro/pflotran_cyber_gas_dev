@@ -841,7 +841,7 @@ subroutine PMNWTInitializeTimestep(this)
           ! flag zero_out_borehole to FALSE.
           ! NOTE: Will this work if there are two intrusions? No!
 
-          call PUVGetArrayRead(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
+          call VecGetArrayRead(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
           ! compute offset in solution vector for first dof in grid cell
           offset = (local_id-1)*this%params%nspecies
           do idof = 1, this%params%nspecies
@@ -852,7 +852,7 @@ subroutine PMNWTInitializeTimestep(this)
           istart = offset + 1
           iend = offset + this%params%nspecies
           nwt_auxvars(ghosted_id)%total_bulk_conc = xx_p(istart:iend)
-          call PUVRestoreArrayRead(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
+          call VecRestoreArrayRead(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
 
           write(this%option%io_buffer,*) local_id
           this%option%io_buffer = "All NWT mass zero'd at cell " // &
@@ -879,7 +879,7 @@ subroutine PMNWTInitializeTimestep(this)
       do i = 1, size(this%params%dirichlet_material_ids)
         if (patch%imat(ghosted_id) == this%params%dirichlet_material_ids(i)) then
           ! Means the current grid cell is one of the dirichlet materials
-          call PUVGetArrayRead(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
+          call VecGetArrayRead(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
           ! compute offset in solution vector for first dof in grid cell
           offset = (local_id-1)*this%params%nspecies
           do idof = 1, this%params%nspecies
@@ -890,7 +890,7 @@ subroutine PMNWTInitializeTimestep(this)
           istart = offset + 1
           iend = offset + this%params%nspecies
           nwt_auxvars(ghosted_id)%total_bulk_conc = xx_p(istart:iend)
-          call PUVRestoreArrayRead(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
+          call VecRestoreArrayRead(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
         endif
       enddo
     enddo
@@ -931,7 +931,7 @@ subroutine PMNWTInitializeTimestep(this)
           this%option%time < this%params%wm_end_time) then
         if (patch%imat(ghosted_id) == material_property%internal_id) then
           ! Means the current grid cell is in BH_OPEN_UPPER
-          call PUVGetArrayRead(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
+          call VecGetArrayRead(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
           ! compute offset in solution vector for first dof in grid cell
           offset = (local_id-1)*this%params%nspecies
           do idof = 1, this%params%nspecies
@@ -942,7 +942,7 @@ subroutine PMNWTInitializeTimestep(this)
           istart = offset + 1
           iend = offset + this%params%nspecies
           nwt_auxvars(ghosted_id)%total_bulk_conc = xx_p(istart:iend)
-          call PUVRestoreArrayRead(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
+          call VecRestoreArrayRead(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
         endif
       endif
     enddo
@@ -1027,7 +1027,7 @@ subroutine PMNWTFinalizeTimestep(this)
       do i = 1, size(this%params%dirichlet_material_ids)
         if (patch%imat(ghosted_id) == this%params%dirichlet_material_ids(i)) then
           ! Means the current grid cell is one of the dirichlet materials
-          call PUVGetArrayRead(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
+          call VecGetArrayRead(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
           ! compute offset in solution vector for first dof in grid cell
           offset = (local_id-1)*this%params%nspecies
           do idof = 1, this%params%nspecies
@@ -1038,7 +1038,7 @@ subroutine PMNWTFinalizeTimestep(this)
           istart = offset + 1
           iend = offset + this%params%nspecies
           nwt_auxvars(ghosted_id)%total_bulk_conc = xx_p(istart:iend)
-          call PUVRestoreArrayRead(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
+          call VecRestoreArrayRead(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
         endif
       enddo
     enddo
@@ -1371,11 +1371,11 @@ subroutine PMNWTCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
   ierr = 0
   call SNESGetSolutionUpdate(this%solver%snes,dX,ierr);CHKERRQ(ierr)
 
-  call PUVGetArrayRead(dX,dX_p,ierr);CHKERRQ(ierr)
-  call PUVGetArrayRead(field%tran_yy,X0_p,ierr);CHKERRQ(ierr)
-  call PUVGetArrayRead(field%tran_xx,X1_p,ierr);CHKERRQ(ierr)
-  call PUVGetArrayRead(field%tran_r,r_p,ierr);CHKERRQ(ierr)
-  call PUVGetArrayRead(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(dX,dX_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%tran_yy,X0_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%tran_xx,X1_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%tran_r,r_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
 
   max_relative_change = maxval(dabs(dX_p(:)/X0_p(:)))
   max_absolute_change = maxval(dabs(dX_p(:)))
@@ -1433,11 +1433,11 @@ subroutine PMNWTCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
     enddo
   enddo
 
-  call PUVRestoreArrayRead(dX,dX_p,ierr);CHKERRQ(ierr)
-  call PUVRestoreArrayRead(field%tran_yy,X0_p,ierr);CHKERRQ(ierr)
-  call PUVRestoreArrayRead(field%tran_xx,X1_p,ierr);CHKERRQ(ierr)
-  call PUVRestoreArrayRead(field%tran_r,r_p,ierr);CHKERRQ(ierr)
-  call PUVRestoreArrayRead(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(dX,dX_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(field%tran_yy,X0_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(field%tran_xx,X1_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(field%tran_r,r_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
 
 
   do idof = 1, option%ntrandof
@@ -1616,8 +1616,8 @@ subroutine PMNWTCheckUpdatePre(this,snes,X,dX,changed,ierr)
 
   changed = PETSC_FALSE
 
-  call PUVGetArray(X,X_p,ierr);CHKERRQ(ierr)
-  call PUVGetArray(dX,dX_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(X,X_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(dX,dX_p,ierr);CHKERRQ(ierr)
 
   if (Initialized(reaction_nw%params%truncated_concentration)) then
     do k = 1,size(X_p)
@@ -1631,8 +1631,8 @@ subroutine PMNWTCheckUpdatePre(this,snes,X,dX,changed,ierr)
     enddo
   endif
 
-  call PUVRestoreArray(X,X_p,ierr);CHKERRQ(ierr)
-  call PUVRestoreArray(dX,dX_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(X,X_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(dX,dX_p,ierr);CHKERRQ(ierr)
 
 end subroutine PMNWTCheckUpdatePre
 

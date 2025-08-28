@@ -136,13 +136,13 @@ subroutine InvCoupledAllocateSolnVecs(aux,onedof_vec,num_parameters)
     endif
     allocate(aux%solutions(i)%dsaturation_dparameter(num_parameters))
     PetscObjectNullify(aux%solutions(i)%dsaturation_dparameter(:))
-    call PUVDuplicateVecs(onedof_vec,num_parameters, &
+    call VecDuplicateVecs(onedof_vec,num_parameters, &
                              aux%solutions(i)%dsaturation_dparameter, &
                              ierr);CHKERRQ(ierr)
     if (Initialized(zflow_sol_tran_eq)) then
       allocate(aux%solutions(i)%dsolute_dparameter(num_parameters))
       PetscObjectNullify(aux%solutions(i)%dsolute_dparameter(:))
-      call PUVDuplicateVecs(onedof_vec,num_parameters, &
+      call VecDuplicateVecs(onedof_vec,num_parameters, &
                               aux%solutions(i)%dsolute_dparameter, &
                               ierr);CHKERRQ(ierr)
     endif
