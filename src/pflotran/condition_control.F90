@@ -1530,8 +1530,8 @@ subroutine CondControlAssignRTTranInitCond(realization)
   reaction => realization%reaction
 
   iphase = 1
-  vec1_loc = PETSC_NULL_VEC
-  vec2_loc = PETSC_NULL_VEC
+  PetscObjectNullify(vec1_loc)
+  PetscObjectNullify(vec2_loc)
 
   ! TODO(geh) fix indentation after 7/1/24
 
@@ -1598,7 +1598,7 @@ subroutine CondControlAssignRTTranInitCond(realization)
                           constraint%minerals% &
                             constraint_vol_frac_string(imnrl), &
                           string,option)
-            if (vec1_loc == PETSC_NULL_VEC) then
+            if (PetscObjectIsNull(vec1_loc)) then
               ! cannot use field%work_loc as it is used within ConditionCo...
               call VecDuplicate(field%work_loc,vec1_loc,ierr);CHKERRQ(ierr)
             endif
@@ -1627,7 +1627,7 @@ subroutine CondControlAssignRTTranInitCond(realization)
                           constraint%minerals% &
                           constraint_area_string(imnrl), &
                           string,option)
-            if (vec1_loc == PETSC_NULL_VEC) then
+            if (PetscObjectIsNull(vec1_loc)) then
               ! cannot use field%work_loc as it is used within ConditionCo...
               call VecDuplicate(field%work_loc,vec1_loc,ierr);CHKERRQ(ierr)
             endif
@@ -1651,7 +1651,7 @@ subroutine CondControlAssignRTTranInitCond(realization)
                               constraint%minerals% &
                                 constraint_vol_frac_string(imnrl), &
                               string,option)
-                if (vec2_loc == PETSC_NULL_VEC) then
+                if (PetscObjectIsNull(vec2_loc)) then
                   call VecDuplicate(vec1_loc,vec2_loc,ierr);CHKERRQ(ierr)
                 endif
                 idof = ONE_INTEGER
@@ -1697,7 +1697,7 @@ subroutine CondControlAssignRTTranInitCond(realization)
             dataset => DatasetBaseGetPointer(realization%datasets, &
                 constraint%immobile_species%constraint_aux_string(iimmobile), &
                 string,option)
-            if (vec1_loc == PETSC_NULL_VEC) then
+            if (PetscObjectIsNull(vec1_loc)) then
               ! cannot use field%work_loc as it is used within ConditionCo...
               call VecDuplicate(field%work_loc,vec1_loc,ierr);CHKERRQ(ierr)
             endif
@@ -1963,10 +1963,10 @@ subroutine CondControlAssignRTTranInitCond(realization)
     call RTUpdateAuxVars(realization,PETSC_TRUE,PETSC_FALSE,PETSC_TRUE)
   endif
 
-  if (vec1_loc /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(vec1_loc)) then
     call VecDestroy(vec1_loc,ierr);CHKERRQ(ierr)
   endif
-  if (vec2_loc /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(vec2_loc)) then
     call VecDestroy(vec2_loc,ierr);CHKERRQ(ierr)
   endif
 
@@ -2036,8 +2036,8 @@ subroutine CondControlAssignNWTranInitCond(realization)
   grid => patch%grid
 
   iphase = 1
-  vec1_loc = PETSC_NULL_VEC
-  vec2_loc = PETSC_NULL_VEC
+  PetscObjectNullify(vec1_loc)
+  PetscObjectNullify(vec2_loc)
 
   !TODO(jenn) Do not allow MPH_MODE with NW Transport.
 
@@ -2139,10 +2139,10 @@ subroutine CondControlAssignNWTranInitCond(realization)
 
   call NWTUpdateAuxVars(realization,PETSC_TRUE,PETSC_FALSE)
 
-  if (vec1_loc /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(vec1_loc)) then
     call VecDestroy(vec1_loc,ierr);CHKERRQ(ierr)
   endif
-  if (vec2_loc /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(vec2_loc)) then
     call VecDestroy(vec2_loc,ierr);CHKERRQ(ierr)
   endif
 

@@ -120,10 +120,10 @@ subroutine PMERTInit(pm_ert)
 
   pm_ert%linear_iterations_in_step = 0
   pm_ert%ksp_time = 0.d0
-  pm_ert%rhs = PETSC_NULL_VEC
-  pm_ert%dconductivity_dsaturation = PETSC_NULL_VEC
-  pm_ert%dconductivity_dconcentration = PETSC_NULL_VEC
-  pm_ert%dconductivity_dporosity = PETSC_NULL_VEC
+  PetscObjectNullify(pm_ert%rhs)
+  PetscObjectNullify(pm_ert%dconductivity_dsaturation)
+  PetscObjectNullify(pm_ert%dconductivity_dconcentration)
+  PetscObjectNullify(pm_ert%dconductivity_dporosity)
 
   ! Archie and Waxman-Smits default values
   pm_ert%conductivity_mapping_law = ARCHIE
@@ -1874,16 +1874,16 @@ subroutine PMERTStrip(this)
   call WaypointListDestroy(this%waypoint_list)
 
   call DeallocateArray(this%species_conductivity_coef)
-  if (this%rhs /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(this%rhs)) then
     call VecDestroy(this%rhs,ierr);CHKERRQ(ierr)
   endif
-  if (this%dconductivity_dsaturation /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(this%dconductivity_dsaturation)) then
     call VecDestroy(this%dconductivity_dsaturation,ierr);CHKERRQ(ierr)
   endif
-  if (this%dconductivity_dconcentration /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(this%dconductivity_dconcentration)) then
     call VecDestroy(this%dconductivity_dconcentration,ierr);CHKERRQ(ierr)
   endif
-  if (this%dconductivity_dporosity /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(this%dconductivity_dporosity)) then
     call VecDestroy(this%dconductivity_dporosity,ierr);CHKERRQ(ierr)
   endif
 

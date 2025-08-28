@@ -356,8 +356,8 @@ subroutine InitSubsurfAssignMatProperties(realization)
   patch => realization%patch
   grid => patch%grid
 
-  tort_yy = PETSC_NULL_VEC
-  tort_zz = PETSC_NULL_VEC
+  PetscObjectNullify(tort_yy)
+  PetscObjectNullify(tort_zz)
 
   ! set cell by cell material properties
   ! create null material property for inactive cells
@@ -580,7 +580,7 @@ subroutine InitSubsurfAssignMatProperties(realization)
                                     field%porosity0)
         ! if tortuosity is a function of porosity, we must calculate the
         ! the tortuosity on a cell to cell basis.
-        if (field%tortuosity0 /= PETSC_NULL_VEC .and. &
+        if (.not.PetscObjectIsNull(field%tortuosity0) .and. &
             material_property%tortuosity_function_of_porosity) then
           call VecGetArray(field%porosity0,por0_p,ierr);CHKERRQ(ierr)
           call VecGetArray(field%tortuosity0,tor0_p,ierr);CHKERRQ(ierr)

@@ -69,9 +69,9 @@ function GeomechDiscretizationCreate()
   allocate(geomech_discretization%dm_1dof)
   allocate(geomech_discretization%dm_ngeodof)
   allocate(geomech_discretization%dm_n_stress_strain_dof)
-  geomech_discretization%dm_1dof%dm = PETSC_NULL_DM
-  geomech_discretization%dm_ngeodof%dm = PETSC_NULL_DM
-  geomech_discretization%dm_n_stress_strain_dof%dm = PETSC_NULL_DM
+  PetscObjectNullify(geomech_discretization%dm_1dof%dm)
+  PetscObjectNullify(geomech_discretization%dm_ngeodof%dm)
+  PetscObjectNullify(geomech_discretization%dm_n_stress_strain_dof%dm)
   nullify(geomech_discretization%dm_1dof%gmdm)
   nullify(geomech_discretization%dm_ngeodof%gmdm)
   nullify(geomech_discretization%dm_n_stress_strain_dof%gmdm)

@@ -1039,7 +1039,7 @@ subroutine NWTResidual(snes,xx,r,realization,pmwell_ptr,ierr)
   call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 
   ! Mass Transfer (Adds mass from the waste form process model)
-  if (field%tran_mass_transfer /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(field%tran_mass_transfer)) then
     ! scale by -1.d0 for contribution to residual.  A negative contribution
     ! indicates mass being added to system.
     call VecAXPY(r,-1.d0,field%tran_mass_transfer,ierr);CHKERRQ(ierr)

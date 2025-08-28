@@ -56,10 +56,10 @@ function GeomechanicsRegressionCreate()
   nullify(geomechanics_regression%natural_vertex_ids)
   geomechanics_regression%num_vertices_per_process = 0
   nullify(geomechanics_regression%vertices_per_process_natural_ids)
-  geomechanics_regression%natural_vertex_id_vec = PETSC_NULL_VEC
-  geomechanics_regression%vertices_per_process_vec = PETSC_NULL_VEC
-  geomechanics_regression%scatter_natural_vertex_id_gtos = PETSC_NULL_VECSCATTER
-  geomechanics_regression%scatter_vertices_per_process_gtos = PETSC_NULL_VECSCATTER
+  PetscObjectNullify(geomechanics_regression%natural_vertex_id_vec)
+  PetscObjectNullify(geomechanics_regression%vertices_per_process_vec)
+  PetscObjectNullify(geomechanics_regression%scatter_natural_vertex_id_gtos)
+  PetscObjectNullify(geomechanics_regression%scatter_vertices_per_process_gtos)
   nullify(geomechanics_regression%next)
   GeomechanicsRegressionCreate => geomechanics_regression
 
@@ -763,20 +763,20 @@ subroutine GeomechanicsRegressionDestroy(geomechanics_regression)
   geomechanics_regression%num_vertices_per_process = 0
   call DeallocateArray( &
                 geomechanics_regression%vertices_per_process_natural_ids)
-  if (geomechanics_regression%natural_vertex_id_vec /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(geomechanics_regression%natural_vertex_id_vec)) then
     call VecDestroy(geomechanics_regression%natural_vertex_id_vec, &
                     ierr);CHKERRQ(ierr)
   endif
-  if (geomechanics_regression%vertices_per_process_vec /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(geomechanics_regression%vertices_per_process_vec)) then
     call VecDestroy(geomechanics_regression%vertices_per_process_vec, &
                     ierr);CHKERRQ(ierr)
   endif
-  if (geomechanics_regression%scatter_natural_vertex_id_gtos /= PETSC_NULL_VECSCATTER) then
+  if (.not.PetscObjectIsNull(geomechanics_regression%scatter_natural_vertex_id_gtos)) then
     call VecScatterDestroy(geomechanics_regression% &
                              scatter_natural_vertex_id_gtos, &
                            ierr);CHKERRQ(ierr)
   endif
-  if (geomechanics_regression%scatter_vertices_per_process_gtos /= PETSC_NULL_VECSCATTER) then
+  if (.not.PetscObjectIsNull(geomechanics_regression%scatter_vertices_per_process_gtos)) then
     call VecScatterDestroy(geomechanics_regression% &
                              scatter_vertices_per_process_gtos, &
                            ierr);CHKERRQ(ierr)

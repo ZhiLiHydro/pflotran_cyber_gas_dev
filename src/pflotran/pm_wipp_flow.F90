@@ -191,7 +191,7 @@ subroutine PMWIPPFloInitObject(this)
   this%liq_pres_change_ts_governor = 5.d5    ! [Pa]
   this%gas_sat_gov_switch_abs_to_rel = 0.01d0   ! [-]
   this%minimum_timestep_size = 8.64d-4  ! [sec]
-  this%stored_residual_vec = PETSC_NULL_VEC
+  PetscObjectNullify(this%stored_residual_vec)
   this%alpha_dataset_name = ''
   this%elevation_dataset_name = ''
   this%rotation_angle = UNINITIALIZED_DOUBLE
@@ -209,7 +209,7 @@ subroutine PMWIPPFloInitObject(this)
   this%scale_linear_system = PETSC_FALSE
   this%newtontrdc_inner_iter_num = 0
   this%newtontrdc_prev_iter_num = 0
-  this%scaling_vec = PETSC_NULL_VEC
+  PetscObjectNullify(this%scaling_vec)
   nullify(this%dirichlet_dofs_ghosted)
   nullify(this%dirichlet_dofs_ints)
   nullify(this%dirichlet_dofs_local)
@@ -1968,7 +1968,7 @@ subroutine PMWIPPFloCheckConvergence(this,snes,it,xnorm,unorm, &
   endif
 
   ! check residual terms
-  if (this%stored_residual_vec == PETSC_NULL_VEC) then
+  if (PetscObjectIsNull(this%stored_residual_vec)) then
     residual_vec = field%flow_r
   else
     ! this vector is to be used if linear system scaling is employed when
@@ -2742,10 +2742,10 @@ subroutine PMWIPPFloDestroy(this)
   call DeallocateArray(this%max_change_ivar)
   call DeallocateArray(this%rotation_region_names)
   call DeallocateArray(this%auto_pressure_material_ids)
-  if (this%stored_residual_vec /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(this%stored_residual_vec)) then
     call VecDestroy(this%stored_residual_vec,ierr);CHKERRQ(ierr)
   endif
-  if (this%scaling_vec /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(this%scaling_vec)) then
     call VecDestroy(this%scaling_vec,ierr);CHKERRQ(ierr)
   endif
   if (associated(this%dirichlet_dofs_ghosted)) then

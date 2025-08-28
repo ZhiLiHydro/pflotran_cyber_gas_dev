@@ -1047,7 +1047,7 @@ recursive subroutine PMCBaseCheckpointBinary(this,viewer,append_name)
 
   if (this%is_master) then
     call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
-    viewer = PETSC_NULL_VIEWER
+    PetscObjectNullify(viewer)
     call PetscTime(tend,ierr);CHKERRQ(ierr)
     write(this%option%io_buffer, &
           '(6x,"Seconds to write to checkpoint file: ", f10.2)') &

@@ -1637,7 +1637,7 @@ subroutine RTCalculateRHS_t1(realization,rhs_vec)
   call VecRestoreArray(rhs_vec,rhs_p,ierr);CHKERRQ(ierr)
 
   ! Mass Transfer
-  if (field%tran_mass_transfer /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(field%tran_mass_transfer)) then
     ! scale by -1.d0 for contribution to residual.  A negative contribution
     ! indicates mass being added to system.
     call VecAXPY(rhs_vec,-1.d0,field%tran_mass_transfer,ierr);CHKERRQ(ierr)
@@ -2840,7 +2840,7 @@ subroutine RTResidualNonFlux(snes,xx,r,realization,ierr)
   call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 
   ! Mass Transfer
-  if (field%tran_mass_transfer /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(field%tran_mass_transfer)) then
     ! scale by -1.d0 for contribution to residual.  A negative contribution
     ! indicates mass being added to system.
     call VecGetArray(field%tran_mass_transfer,vec_p,ierr);CHKERRQ(ierr)
