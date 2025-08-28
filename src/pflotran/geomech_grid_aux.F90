@@ -469,10 +469,10 @@ subroutine GMCreateGMDM(geomech_grid,gmdm,ndof,option)
   ! Create local to local scatter.  Essentially remap the global to local as
   ! PETSc does in daltol.c
   call VecScatterCopy(gmdm%scatter_gtol,gmdm%scatter_ltol,ierr);CHKERRQ(ierr)
-  call PUIGetIndices(gmdm%is_local_local,int_ptr,ierr);CHKERRQ(ierr)
+  call ISGetIndices(gmdm%is_local_local,int_ptr,ierr);CHKERRQ(ierr)
   call VecScatterRemap(gmdm%scatter_ltol,int_ptr,PETSC_NULL_INTEGER_ARRAY, &
                        ierr);CHKERRQ(ierr)
-  call PUIRestoreIndices(gmdm%is_local_local,int_ptr,ierr);CHKERRQ(ierr)
+  call ISRestoreIndices(gmdm%is_local_local,int_ptr,ierr);CHKERRQ(ierr)
 
 #if GEOMECH_DEBUG
   string = 'geomech_scatter_ltol' // trim(ndof_word) // '.out'
@@ -494,11 +494,11 @@ subroutine GMCreateGMDM(geomech_grid,gmdm,ndof,option)
                               ierr);CHKERRQ(ierr)
 
   allocate(int_array(geomech_grid%nlmax_node))
-  call PUIGetIndices(is_tmp,int_ptr,ierr);CHKERRQ(ierr)
+  call ISGetIndices(is_tmp,int_ptr,ierr);CHKERRQ(ierr)
   do local_id = 1, geomech_grid%nlmax_node
     int_array(local_id) = int_ptr(local_id)
   enddo
-  call PUIRestoreIndices(is_tmp,int_ptr,ierr);CHKERRQ(ierr)
+  call ISRestoreIndices(is_tmp,int_ptr,ierr);CHKERRQ(ierr)
   call ISDestroy(is_tmp,ierr);CHKERRQ(ierr)
   call ISCreateBlock(option%mycomm,ndof,geomech_grid%nlmax_node,int_array, &
                      PETSC_COPY_VALUES,gmdm%is_local_natural, &
@@ -545,11 +545,11 @@ subroutine GMCreateGMDM(geomech_grid,gmdm,ndof,option)
   call AOPetscToApplicationIS(geomech_grid%ao_natural_to_petsc,is_tmp_petsc, &
                               ierr);CHKERRQ(ierr)
   allocate(int_array2(geomech_grid%nlmax_elem))
-  call PUIGetIndices(is_tmp_petsc,int_ptr,ierr);CHKERRQ(ierr)
+  call ISGetIndices(is_tmp_petsc,int_ptr,ierr);CHKERRQ(ierr)
   do local_id = 1, geomech_grid%nlmax_elem
     int_array2(local_id) = int_ptr(local_id)
   enddo
-  call PUIRestoreIndices(is_tmp_petsc,int_ptr,ierr);CHKERRQ(ierr)
+  call ISRestoreIndices(is_tmp_petsc,int_ptr,ierr);CHKERRQ(ierr)
   call ISDestroy(is_tmp_petsc,ierr);CHKERRQ(ierr)
 
   call ISCreateBlock(option%mycomm,ndof,geomech_grid%nlmax_elem,int_array, &
@@ -805,11 +805,11 @@ subroutine GMGridMapIndices(geomech_grid,gmdm,nG2L,nL2G,nG2A,option)
     nG2L(local_id) = local_id
   enddo
 
-  call PUIGetIndices(gmdm%is_ghosted_petsc,int_ptr,ierr);CHKERRQ(ierr)
+  call ISGetIndices(gmdm%is_ghosted_petsc,int_ptr,ierr);CHKERRQ(ierr)
   do ghosted_id = 1, geomech_grid%ngmax_node
     nG2A(ghosted_id) = int_ptr(ghosted_id)
   enddo
-  call PUIRestoreIndices(gmdm%is_ghosted_petsc,int_ptr,ierr);CHKERRQ(ierr)
+  call ISRestoreIndices(gmdm%is_ghosted_petsc,int_ptr,ierr);CHKERRQ(ierr)
   call AOPetscToApplication(geomech_grid%ao_natural_to_petsc_nodes, &
                             geomech_grid%ngmax_node,nG2A,ierr);CHKERRQ(ierr)
   nG2A = nG2A + 1 ! 1-based

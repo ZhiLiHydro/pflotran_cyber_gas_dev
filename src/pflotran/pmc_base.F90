@@ -1131,6 +1131,7 @@ recursive subroutine PMCBaseRestartBinary(this,viewer)
 
   use Logging_module
   use Checkpoint_module, only : CheckPointReadCompatibilityBinary
+  use Petsc_Utility_module, only : PetscTestFile
 
   implicit none
 

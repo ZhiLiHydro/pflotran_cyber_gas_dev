@@ -761,7 +761,7 @@ subroutine UGridPolyhedraDecompose(ugrid, option)
 
   ! second argument of ZERO_INTEGER means to use 0-based indexing
   ! MagGetRowIJF90 returns row and column pointers for compressed matrix data
-  call PUMGetRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,num_rows, &
+  call MatGetRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,num_rows, &
                       ia_ptr,ja_ptr,success,ierr);CHKERRQ(ierr)
 
   if (.not.success .or. num_rows /= num_cells_local_old) then
@@ -797,7 +797,7 @@ subroutine UGridPolyhedraDecompose(ugrid, option)
   call PrintMsg(option)
 #endif
 
-  call PUMRestoreRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
+  call MatRestoreRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
                           num_rows,ia_ptr,ja_ptr,success,ierr);CHKERRQ(ierr)
 
   ! in order to redistributed vertex/cell data among ranks, I package it
@@ -870,7 +870,7 @@ subroutine UGridPolyhedraDecompose(ugrid, option)
 
   ! 0 = 0-based indexing
   ! MagGetRowIJF90 returns row and column pointers for compressed matrix data
-  call PUMGetRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,num_rows, &
+  call MatGetRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,num_rows, &
                       ia_ptr,ja_ptr,success,ierr);CHKERRQ(ierr)
 
   call VecGetArray(elements_old,vec_ptr,ierr);CHKERRQ(ierr)
@@ -991,7 +991,7 @@ subroutine UGridPolyhedraDecompose(ugrid, option)
   enddo
   call VecRestoreArray(elements_old,vec_ptr,ierr);CHKERRQ(ierr)
 
-  call PUMRestoreRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
+  call MatRestoreRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
                           num_rows,ia_ptr,ja_ptr,success,ierr);CHKERRQ(ierr)
   call MatDestroy(Dual_mat,ierr);CHKERRQ(ierr)
 

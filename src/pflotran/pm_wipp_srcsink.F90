@@ -4462,6 +4462,7 @@ subroutine PMWSSCalcJacobianValues(this,A,ierr)
   use petscsnes
   use WIPP_Flow_Aux_module
   use Material_Aux_module
+  use Petsc_Utility_module, only : PUMSetValuesBlockedLocal
 
   implicit none
 

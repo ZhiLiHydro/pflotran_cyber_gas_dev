@@ -1643,10 +1643,10 @@ subroutine SCO2Residual(snes,xx,r,realization,pm_well,ierr)
   patch%aux%SCO2%auxvars_up_to_date = PETSC_FALSE
 
   ! always assume variables have been swapped; therefore, must copy back
-  call VecLockPop(xx,ierr);CHKERRQ(ierr)
+  call VecLockReadPop(xx,ierr);CHKERRQ(ierr)
   call DiscretizationLocalToGlobal(discretization,field%flow_xx_loc,xx, &
                                    NFLOWDOF)
-  call VecLockPush(xx,ierr);CHKERRQ(ierr)
+  call VecLockReadPush(xx,ierr);CHKERRQ(ierr)
 
   if (option%compute_mass_balance_new) then
     call SCO2ZeroMassBalanceDelta(realization)
@@ -2006,6 +2006,7 @@ subroutine SCO2Jacobian(snes,xx,A,B,realization,pm_well,ierr)
   use Upwind_Direction_module
   use PM_Well_class
   use Matrix_Zeroing_module
+  use Petsc_Utility_module
 
   implicit none
 

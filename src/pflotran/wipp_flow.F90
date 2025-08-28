@@ -692,6 +692,7 @@ subroutine WIPPFloNumericalJacobianTest(xx,B,realization,pmwss_ptr,pmwell_ptr)
   use Field_module
   use PM_WIPP_SrcSink_class
   use PM_Well_class
+  use Petsc_Utility_module
 
   implicit none
 
@@ -1384,6 +1385,7 @@ subroutine WIPPFloJacobian(snes,xx,A,B,realization,pmwss_ptr,pmwell_ptr,ierr)
   use Upwind_Direction_module
   use Debug_module
   use Matrix_Zeroing_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -1913,6 +1915,7 @@ subroutine WIPPFloSSSandbox(residual,Jacobian,compute_derivative, &
   use Material_Aux_module, only: material_auxvar_type
   use SrcSink_Sandbox_module
   use SrcSink_Sandbox_Base_class
+  use Petsc_Utility_module
 
   implicit none
 

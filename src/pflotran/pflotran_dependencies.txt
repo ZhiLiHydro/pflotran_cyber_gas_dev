@@ -1548,6 +1548,7 @@ matrix_block_aux.o : \
 matrix_buffer.o : \
   grid.o \
   grid_structured.o \
+  petsc_utility.o \
   pflotran_constants.o
 matrix_zeroing.o : \
   pflotran_constants.o \
@@ -2257,6 +2258,7 @@ pm_pnf.o : \
   material_aux.o \
   option.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   pm_subsurface_flow.o \
   pnf.o \
@@ -2579,6 +2581,7 @@ pm_well.o : \
   nw_transport_aux.o \
   option.o \
   output_aux.o \
+  petsc_utility.o \
   pflotran_constants.o \
   pm_base.o \
   reactive_transport_aux.o \
@@ -2843,8 +2846,10 @@ pnf_aux.o : \
   utility.o
 preconditioner_cpr.o : \
   option.o \
+  petsc_utility.o \
   pflotran_constants.o \
-  string.o
+  string.o \
+  utility.o
 print.o : \
   communicator_aux.o \
   pflotran_constants.o \

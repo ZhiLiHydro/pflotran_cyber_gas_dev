@@ -898,6 +898,7 @@ subroutine UGridExplicitDecompose(ugrid,option)
   use Option_module
   use Utility_module, only: ReallocateArray, SearchOrderedArray
   use String_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -1037,10 +1038,10 @@ subroutine UGridExplicitDecompose(ugrid,option)
   if (option%comm%size>1) then
     call MatMPIAIJGetLocalMat(M_mat,MAT_INITIAL_MATRIX,M_mat_loc, &
                               ierr);CHKERRQ(ierr)
-    call PUMGetRowIJ(M_mat_loc,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
+    call MatGetRowIJ(M_mat_loc,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
                         num_rows,ia_ptr,ja_ptr,success,ierr);CHKERRQ(ierr)
   else
-    call PUMGetRowIJ(M_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,num_rows, &
+    call MatGetRowIJ(M_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,num_rows, &
                         ia_ptr,ja_ptr,success,ierr);CHKERRQ(ierr)
   endif
 
@@ -1062,11 +1063,11 @@ subroutine UGridExplicitDecompose(ugrid,option)
                        ierr);CHKERRQ(ierr)
 
   if (option%comm%size>1) then
-    call PUMRestoreRowIJ(M_mat_loc,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
+    call MatRestoreRowIJ(M_mat_loc,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
                             num_rows,ia_ptr,ja_ptr,success, &
                             ierr);CHKERRQ(ierr)
   else
-    call PUMRestoreRowIJ(M_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
+    call MatRestoreRowIJ(M_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
                             num_rows,ia_ptr,ja_ptr,success, &
                             ierr);CHKERRQ(ierr)
   endif
@@ -1104,10 +1105,10 @@ subroutine UGridExplicitDecompose(ugrid,option)
   if (option%comm%size>1) then
     call MatMPIAIJGetLocalMat(M_mat,MAT_INITIAL_MATRIX,M_mat_loc, &
                               ierr);CHKERRQ(ierr)
-    call PUMGetRowIJ(M_mat_loc,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
+    call MatGetRowIJ(M_mat_loc,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
                         num_rows,ia_ptr,ja_ptr,success,ierr);CHKERRQ(ierr)
   else
-    call PUMGetRowIJ(M_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,num_rows, &
+    call MatGetRowIJ(M_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,num_rows, &
                         ia_ptr,ja_ptr,success,ierr);CHKERRQ(ierr)
   endif
 
@@ -1128,11 +1129,11 @@ subroutine UGridExplicitDecompose(ugrid,option)
                        PETSC_NULL_INTEGER_ARRAY,Dual_mat,ierr);CHKERRQ(ierr)
 
   if (option%comm%size>1) then
-    call PUMRestoreRowIJ(M_mat_loc,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
+    call MatRestoreRowIJ(M_mat_loc,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
                             num_rows,ia_ptr,ja_ptr,success, &
                             ierr);CHKERRQ(ierr)
   else
-    call PUMRestoreRowIJ(M_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
+    call MatRestoreRowIJ(M_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
                             num_rows,ia_ptr,ja_ptr,success, &
                             ierr);CHKERRQ(ierr)
   endif
@@ -1150,7 +1151,7 @@ subroutine UGridExplicitDecompose(ugrid,option)
 
   ! second argument of ZERO_INTEGER means to use 0-based indexing
   ! MagGetRowIJF90 returns row and column pointers for compressed matrix data
-  call PUMGetRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,num_rows, &
+  call MatGetRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,num_rows, &
                       ia_ptr,ja_ptr,success,ierr);CHKERRQ(ierr)
 
   if (.not.success .or. num_rows /= num_cells_local_old) then
@@ -1159,7 +1160,7 @@ subroutine UGridExplicitDecompose(ugrid,option)
     call PrintErrMsg(option)
   endif
 
-  call PUMRestoreRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
+  call MatRestoreRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
                           num_rows,ia_ptr,ja_ptr,success,ierr);CHKERRQ(ierr)
 
   ! in order to redistributed cell/connection data among ranks, I package it
@@ -1200,10 +1201,10 @@ subroutine UGridExplicitDecompose(ugrid,option)
   ! 0 = 0-based indexing
   ! MagGetRowIJF90 returns row and column pointers for compressed matrix data
   ! pointers to Dual mat
-  call PUMGetRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,num_rows, &
+  call MatGetRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,num_rows, &
                       ia_ptr,ja_ptr,success,ierr);CHKERRQ(ierr)
   ! pointers to Adj mat
-  call PUMGetRowIJ(Adj_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,temp_int, &
+  call MatGetRowIJ(Adj_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,temp_int, &
                       ia_ptr2,ja_ptr2,success,ierr);CHKERRQ(ierr)
 
   if (num_rows /= temp_int) then
@@ -1283,10 +1284,10 @@ subroutine UGridExplicitDecompose(ugrid,option)
   call VecRestoreArray(cells_old,vec_ptr,ierr);CHKERRQ(ierr)
 
   ! pointers to Dual mat
-  call PUMRestoreRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
+  call MatRestoreRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
                           num_rows,ia_ptr,ja_ptr,success,ierr);CHKERRQ(ierr)
   ! pointers to Adj mat
-  call PUMRestoreRowIJ(Adj_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
+  call MatRestoreRowIJ(Adj_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
                           temp_int,ia_ptr2,ja_ptr2,success, &
                           ierr);CHKERRQ(ierr)
   call MatDestroy(Dual_mat,ierr);CHKERRQ(ierr)

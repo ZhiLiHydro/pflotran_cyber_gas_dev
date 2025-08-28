@@ -1355,6 +1355,7 @@ subroutine PMWIPPFloJacobian(this,snes,xx,A,B,ierr)
   use Debug_module
   use Option_module
   use Field_module
+  use Petsc_Utility_module
 
   implicit none
 

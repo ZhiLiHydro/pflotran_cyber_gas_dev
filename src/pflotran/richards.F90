@@ -1229,6 +1229,7 @@ subroutine RichardsNumericalJacTest(xx,realization,pm_well)
   use Option_module
   use Grid_module
   use Field_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -1275,17 +1276,17 @@ subroutine RichardsNumericalJacTest(xx,realization,pm_well)
     if (patch%imat(grid%nL2G(icell)) <= 0) cycle
      idof = icell
 !    do idof = (icell-1)*option%nflowdof+1,icell*option%nflowdof
-      call veccopy(xx,xx_pert,ierr);CHKERRQ(ierr)
-      call vecgetarrayf90(xx_pert,vec_p,ierr);CHKERRQ(ierr)
+      call VecCopy(xx,xx_pert,ierr);CHKERRQ(ierr)
+      call VecGetArray(xx_pert,vec_p,ierr);CHKERRQ(ierr)
       perturbation = vec_p(idof)*perturbation_tolerance
       vec_p(idof) = vec_p(idof)+perturbation
-      call vecrestorearrayf90(xx_pert,vec_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(xx_pert,vec_p,ierr);CHKERRQ(ierr)
       call RichardsResidual(PETSC_NULL_SNES,xx_pert,res_pert,realization,pm_well,ierr)
-      call vecgetarrayf90(res_pert,vec_p,ierr);CHKERRQ(ierr)
+      call VecGetArray(res_pert,vec_p,ierr);CHKERRQ(ierr)
       do idof2 = 1, grid%nlmax*option%nflowdof
         derivative = (vec_p(idof2)-vec2_p(idof2))/perturbation
         if (dabs(derivative) > 1.d-30) then
-          call matsetvalue(a,idof2-1,idof-1,derivative,insert_values, &
+          call MatSetValue(a,idof2-1,idof-1,derivative,insert_values, &
                            ierr);CHKERRQ(ierr)
         endif
       enddo
@@ -2416,6 +2417,7 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
   use Debug_module
   use Material_Aux_module
   use Region_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -2651,6 +2653,7 @@ subroutine RichardsJacobianBoundaryConn(A,realization,ierr)
   use Debug_module
   use Material_Aux_module
   use Region_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -2831,6 +2834,7 @@ subroutine RichardsJacobianAccumulation(A,realization,ierr)
   use Coupler_module
   use Debug_module
   use Region_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -2949,6 +2953,7 @@ subroutine RichardsJacobianSourceSink(A,realization,pm_well,ierr)
   use Debug_module
   use Utility_module, only : Smoothstep
   use Matrix_Zeroing_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -3362,6 +3367,7 @@ subroutine RichardsSSSandbox(residual,Jacobian,compute_derivative, &
   use Material_Aux_module, only: material_auxvar_type
   use SrcSink_Sandbox_module
   use SrcSink_Sandbox_Base_class
+  use Petsc_Utility_module
 
   implicit none
 

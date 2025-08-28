@@ -364,7 +364,7 @@ subroutine GeomechanicsForceInitialGuess(geomech_realization)
   patch => geomech_realization%geomech_patch
   grid => patch%geomech_grid
 
-  call VecGetArrayf90(field%disp_xx,xx_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%disp_xx,xx_p,ierr);CHKERRQ(ierr)
 
   boundary_condition => patch%geomech_boundary_condition_list%first
   total_verts = 0
@@ -416,7 +416,7 @@ subroutine GeomechanicsForceInitialGuess(geomech_realization)
     boundary_condition => boundary_condition%next
   enddo
 
-  call VecRestoreArrayf90(field%disp_xx,xx_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%disp_xx,xx_p,ierr);CHKERRQ(ierr)
 
 end subroutine GeomechanicsForceInitialGuess
 
@@ -2458,6 +2458,7 @@ subroutine GeomechForceAssembleCoeffMatrix(A,geomech_realization)
   use Grid_Unstructured_Cell_module
   use Geomechanics_Region_module
   use Geomechanics_Auxiliary_module
+  use Petsc_Utility_module
 
   implicit none
 

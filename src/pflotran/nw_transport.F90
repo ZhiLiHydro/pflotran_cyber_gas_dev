@@ -1538,6 +1538,7 @@ subroutine NWTJacobian(snes,xx,A,B,realization,ierr)
   use Connection_module
   use Coupler_module
   use WIPP_Flow_Aux_module
+  use Petsc_Utility_module
 
   implicit none
 

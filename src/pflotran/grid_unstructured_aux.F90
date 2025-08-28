@@ -649,10 +649,10 @@ subroutine UGridCreateUGDM(unstructured_grid,ugdm,ndof,option)
   ! Create local to local scatter.  Essentially remap the global to local as
   ! PETSc does in daltol.c
   call VecScatterCopy(ugdm%scatter_gtol,ugdm%scatter_ltol,ierr);CHKERRQ(ierr)
-  call PUIGetIndices(ugdm%is_local_local,int_ptr,ierr);CHKERRQ(ierr)
+  call ISGetIndices(ugdm%is_local_local,int_ptr,ierr);CHKERRQ(ierr)
   call VecScatterRemap(ugdm%scatter_ltol,int_ptr,PETSC_NULL_INTEGER_ARRAY, &
                        ierr);CHKERRQ(ierr)
-  call PUIRestoreIndices(ugdm%is_local_local,int_ptr,ierr);CHKERRQ(ierr)
+  call ISRestoreIndices(ugdm%is_local_local,int_ptr,ierr);CHKERRQ(ierr)
 
 #if UGRID_DEBUG
   string = 'scatter_ltol' // trim(ndof_word) // '.out'
@@ -681,11 +681,11 @@ subroutine UGridCreateUGDM(unstructured_grid,ugdm,ndof,option)
   ! remap for ndof > 1  !geh: no longer need to accommodate ndof > 1, but leave
   ! alone for now.
   allocate(int_array(unstructured_grid%nlmax))
-  call PUIGetIndices(is_tmp,int_ptr,ierr);CHKERRQ(ierr)
+  call ISGetIndices(is_tmp,int_ptr,ierr);CHKERRQ(ierr)
   do local_id = 1, unstructured_grid%nlmax
     int_array(local_id) = int_ptr(local_id)
   enddo
-  call PUIRestoreIndices(is_tmp,int_ptr,ierr);CHKERRQ(ierr)
+  call ISRestoreIndices(is_tmp,int_ptr,ierr);CHKERRQ(ierr)
   call ISDestroy(is_tmp,ierr);CHKERRQ(ierr)
   call ISCreateBlock(option%mycomm,ndof,unstructured_grid%nlmax,int_array, &
                      PETSC_COPY_VALUES,ugdm%is_local_natural, &
@@ -799,6 +799,7 @@ subroutine UGridDMCreateMatrix(unstructured_grid,ugdm,mat_type,J,option)
   use petscmat
 
   use Option_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -1020,11 +1021,11 @@ subroutine UGridMapIndices(unstructured_grid,ugdm,nG2L,nL2G,nG2A,option)
     nG2L(local_id) = local_id
   enddo
 
-  call PUIGetIndices(ugdm%is_ghosted_petsc,int_ptr,ierr);CHKERRQ(ierr)
+  call ISGetIndices(ugdm%is_ghosted_petsc,int_ptr,ierr);CHKERRQ(ierr)
   do ghosted_id = 1, unstructured_grid%ngmax
     nG2A(ghosted_id) = int_ptr(ghosted_id)+1
   enddo
-  call PUIRestoreIndices(ugdm%is_ghosted_petsc,int_ptr,ierr);CHKERRQ(ierr)
+  call ISRestoreIndices(ugdm%is_ghosted_petsc,int_ptr,ierr);CHKERRQ(ierr)
   nG2A = nG2A - 1
   call AOPetscToApplication(unstructured_grid%ao_natural_to_petsc, &
                             unstructured_grid%ngmax,nG2A,ierr);CHKERRQ(ierr)
@@ -1151,13 +1152,13 @@ subroutine UGridCreateOldVec(ugrid,option,elements_old, &
   ! based on the partitioning. - petsc
   call ISPartitioningToNumbering(is_new,is_num,ierr);CHKERRQ(ierr)
   call ISDestroy(is_new,ierr);CHKERRQ(ierr)
-  call PUIGetIndices(is_num,index_ptr,ierr);CHKERRQ(ierr)
+  call ISGetIndices(is_num,index_ptr,ierr);CHKERRQ(ierr)
 
   ! Create a mapping of local indices to global strided (use block ids, not
   ! indices)
   call ISCreateBlock(option%mycomm,stride,num_cells_local_old,index_ptr, &
                      PETSC_COPY_VALUES,is_scatter,ierr);CHKERRQ(ierr)
-  call PUIRestoreIndices(is_num,index_ptr,ierr);CHKERRQ(ierr)
+  call ISRestoreIndices(is_num,index_ptr,ierr);CHKERRQ(ierr)
   call ISDestroy(is_num,ierr);CHKERRQ(ierr)
 
 #if UGRID_DEBUG

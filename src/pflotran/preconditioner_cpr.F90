@@ -946,9 +946,9 @@ subroutine MatGetSubABFImmiscible(A, App, Ass, factors1Vec,  &
   ! [j_pp j_ps]
   ! [j_sp j_ss]
 
+  use Petsc_Utility_module
 
   implicit none
-
 
   Mat :: A, App, Ass
   Vec :: factors1Vec, factors3Vec
@@ -1136,10 +1136,9 @@ subroutine MatGetSubQIMPESImmiscible(A, App, Ass, factors1Vec, &
   ! applies to 2x2 blocks ONLY (composed of Jacobian element, j)
   ! [j_pp j_ps]
   ! [j_sp j_ss]
-
+  use Petsc_Utility_module, only : PUMSetValues
 
   implicit none
-
 
   Mat :: A, App, Ass
   Vec :: factors1Vec, factors3Vec
@@ -1316,8 +1315,9 @@ subroutine MatGetSubABFMiscible(a, ap, factors1Vec,  ierr, ctx)
 
   ! 3x3 blocks ONLY
 
-  implicit none
+  use Petsc_Utility_module
 
+  implicit none
 
   Mat :: a, ap
   Vec :: factors1Vec
@@ -1469,6 +1469,8 @@ subroutine MatGetSubABFGeneric(a, ap, factors1Vec,  ierr, &
   !
 
   ! for arbitrary block size b
+
+  use Petsc_Utility_module
 
   implicit none
 

@@ -45,6 +45,7 @@ subroutine CopySubsurfaceGridtoGeomechGrid(ugrid,geomech_grid,option)
   use Geometry_module
   use String_module
   use Utility_module, only : DeallocateArray
+  use Petsc_Utility_module
 
   implicit none
 
@@ -460,11 +461,11 @@ subroutine CopySubsurfaceGridtoGeomechGrid(ugrid,geomech_grid,option)
 
   ! Get the local indices (natural) and store them
   allocate(geomech_grid%node_ids_local_natural(geomech_grid%nlmax_node))
-  call PUIGetIndices(is_natural,int_ptr,ierr);CHKERRQ(ierr)
+  call ISGetIndices(is_natural,int_ptr,ierr);CHKERRQ(ierr)
   do local_id = 1, geomech_grid%nlmax_node
     geomech_grid%node_ids_local_natural(local_id) = int_ptr(local_id)
   enddo
-  call PUIRestoreIndices(is_natural,int_ptr,ierr);CHKERRQ(ierr)
+  call ISRestoreIndices(is_natural,int_ptr,ierr);CHKERRQ(ierr)
   call ISDestroy(is_natural,ierr);CHKERRQ(ierr)
 
   ! Changing to 1-based
@@ -556,11 +557,11 @@ subroutine CopySubsurfaceGridtoGeomechGrid(ugrid,geomech_grid,option)
   ! Store the petsc indices for ghost nodes
   if (geomech_grid%num_ghost_nodes  > 0) then
     allocate(geomech_grid%ghosted_node_ids_petsc(geomech_grid%num_ghost_nodes))
-    call PUIGetIndices(is_ghost_petsc,int_ptr,ierr);CHKERRQ(ierr)
+    call ISGetIndices(is_ghost_petsc,int_ptr,ierr);CHKERRQ(ierr)
     do ghosted_id = 1, geomech_grid%num_ghost_nodes
       geomech_grid%ghosted_node_ids_petsc(ghosted_id) = int_ptr(ghosted_id)
     enddo
-    call PUIRestoreIndices(is_ghost_petsc,int_ptr,ierr);CHKERRQ(ierr)
+    call ISRestoreIndices(is_ghost_petsc,int_ptr,ierr);CHKERRQ(ierr)
   endif
   call ISDestroy(is_ghost_petsc,ierr);CHKERRQ(ierr)
 

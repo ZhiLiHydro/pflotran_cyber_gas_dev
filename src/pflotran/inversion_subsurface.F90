@@ -1790,6 +1790,7 @@ subroutine InvSubsurfAdjAddSensitivities(this)
   use Units_module
   use Utility_module
   use Variables_module
+  use Petsc_Utility_module
 
   class(inversion_subsurface_type) :: this
 
@@ -2187,6 +2188,7 @@ subroutine InvSubsurfPerturbationFillRow(this,my_dof)
   use Inversion_Measurement_Aux_module
   use Realization_Base_class
   use String_module
+  use Petsc_Utility_module
 
   class(inversion_subsurface_type) :: this
   PetscInt :: my_dof

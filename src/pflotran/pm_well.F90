@@ -7372,6 +7372,7 @@ subroutine PMWellModifyFlowJacHydrostatic(this,Jac,ierr)
   use Hydrate_Aux_module, only : HYDRATE_WELL_DOF, HYDRATE_ENERGY_DOF, &
                                  hydrate_fmw_comp
   use Richards_Aux_module, only: RICHARDS_FULLY_IMPLICIT_WELL
+  use Petsc_Utility_module, only : PUMSetValuesLocal, PUMSetValuesBlockedLocal
 
   implicit none
 
@@ -7865,6 +7866,7 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
   !
 
   use Option_module
+  use Petsc_Utility_module, only : PUMSetValuesLocal, PUMSetValuesBlockedLocal
 
   implicit none
 
