@@ -262,7 +262,7 @@ subroutine PMCSubsurfaceOSRTStepDT(this,stop_flag)
   call process_model%InitializeTimestep()
 
   ! Calculate RHS portion of accumulation term at k
-  call PUVGetArray(process_model%fixed_accum,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(process_model%fixed_accum,vec_ptr,ierr);CHKERRQ(ierr)
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
     if (patch%imat(ghosted_id) <= 0) cycle
@@ -275,7 +275,7 @@ subroutine PMCSubsurfaceOSRTStepDT(this,stop_flag)
                            material_auxvars(ghosted_id)%volume* &
                            rt_auxvars(ghosted_id)%total(:,iphase)
   enddo
-  call PUVRestoreArray(process_model%fixed_accum,vec_ptr, &
+  call VecRestoreArray(process_model%fixed_accum,vec_ptr, &
                           ierr);CHKERRQ(ierr)
 
   do
@@ -323,13 +323,13 @@ subroutine PMCSubsurfaceOSRTStepDT(this,stop_flag)
       timestepper%cumulative_solver_time = &
         timestepper%cumulative_solver_time + (log_end_time - log_ksp_start_time)
 
-      call PUVGetArray(field%work,vec_ptr,ierr);CHKERRQ(ierr)
+      call VecGetArray(field%work,vec_ptr,ierr);CHKERRQ(ierr)
       do local_id = 1, grid%nlmax
         ghosted_id = grid%nL2G(local_id)
         if (patch%imat(ghosted_id) <= 0) cycle
         rt_auxvars(ghosted_id)%total(idof,iphase) = vec_ptr(local_id)
       enddo
-      call PUVRestoreArray(field%work,vec_ptr,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(field%work,vec_ptr,ierr);CHKERRQ(ierr)
       call KSPGetIterationNumber(solver%ksp,num_linear_iterations, &
                                  ierr);CHKERRQ(ierr)
       call KSPGetConvergedReason(solver%ksp,ksp_reason,ierr);CHKERRQ(ierr)
@@ -350,7 +350,7 @@ subroutine PMCSubsurfaceOSRTStepDT(this,stop_flag)
 
     ! react all chemical components
     max_num_kinetic_state_updates = 0
-    call PUVGetArray(field%tran_xx,tran_xx_p,ierr);CHKERRQ(ierr)
+    call VecGetArray(field%tran_xx,tran_xx_p,ierr);CHKERRQ(ierr)
     do local_id = 1, grid%nlmax
       ghosted_id = grid%nL2G(local_id)
       if (patch%imat(ghosted_id) <= 0) cycle
@@ -381,7 +381,7 @@ subroutine PMCSubsurfaceOSRTStepDT(this,stop_flag)
         tran_xx_p(tempint:tempint+nimmobile-1) = rt_auxvars(ghosted_id)%immobile
       endif
     enddo
-    call PUVRestoreArray(field%tran_xx,tran_xx_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(field%tran_xx,tran_xx_p,ierr);CHKERRQ(ierr)
 
     int_array = [rstep_error,sum_newton_iterations]
     call MPI_Allreduce(MPI_IN_PLACE,int_array,TWO_INTEGER_MPI,MPI_INTEGER, &

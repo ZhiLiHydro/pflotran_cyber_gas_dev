@@ -461,15 +461,15 @@ subroutine GeneralNumericalJacobianTest(xx,realization,B)
   call VecView(res,viewer,ierr);CHKERRQ(ierr)
   call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
 #endif
-  call PUVGetArray(res,vec2_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(res,vec2_p,ierr);CHKERRQ(ierr)
   do icell = 1,grid%nlmax
     if (patch%imat(grid%nL2G(icell)) <= 0) cycle
     do idof = (icell-1)*option%nflowdof+1,icell*option%nflowdof
       call VecCopy(xx,xx_pert,ierr);CHKERRQ(ierr)
-      call PUVGetArray(xx_pert,vec_p,ierr);CHKERRQ(ierr)
+      call VecGetArray(xx_pert,vec_p,ierr);CHKERRQ(ierr)
       perturbation = vec_p(idof)*perturbation_tolerance
       vec_p(idof) = vec_p(idof)+perturbation
-      call PUVRestoreArray(xx_pert,vec_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(xx_pert,vec_p,ierr);CHKERRQ(ierr)
       call VecZeroEntries(res_pert,ierr);CHKERRQ(ierr)
       call GeneralResidual(PETSC_NULL_SNES,xx_pert,res_pert,realization,ierr)
 #if 0
@@ -479,7 +479,7 @@ subroutine GeneralNumericalJacobianTest(xx,realization,B)
       call VecView(res_pert,viewer,ierr);CHKERRQ(ierr)
       call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
 #endif
-      call PUVGetArray(res_pert,vec_p,ierr);CHKERRQ(ierr)
+      call VecGetArray(res_pert,vec_p,ierr);CHKERRQ(ierr)
       do idof2 = 1, grid%nlmax*option%nflowdof
         derivative = (vec_p(idof2)-vec2_p(idof2))/perturbation
         if (dabs(derivative) > 1.d-30) then
@@ -487,10 +487,10 @@ subroutine GeneralNumericalJacobianTest(xx,realization,B)
                            ierr);CHKERRQ(ierr)
         endif
       enddo
-      call PUVRestoreArray(res_pert,vec_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(res_pert,vec_p,ierr);CHKERRQ(ierr)
     enddo
   enddo
-  call PUVRestoreArray(res,vec2_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(res,vec2_p,ierr);CHKERRQ(ierr)
 
   call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
   call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
@@ -762,7 +762,7 @@ subroutine GeneralUpdateAuxVars(realization,update_state,update_state_bc)
   material_property_array => patch%material_property_array
   material_parameter => patch%aux%Material%material_parameter
 
-  call PUVGetArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
 #ifdef DEBUG_AUXVARS
   icall = icall + 1
@@ -1177,7 +1177,7 @@ subroutine GeneralUpdateAuxVars(realization,update_state,update_state_bc)
     enddo
     source_sink => source_sink%next
   enddo
-  call PUVRestoreArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
   patch%aux%General%auxvars_up_to_date = PETSC_TRUE
 
@@ -1238,8 +1238,8 @@ subroutine GeneralUpdateFixedAccum(realization)
   material_parameter => patch%aux%Material%material_parameter
   material_property_array => patch%material_property_array
 
-  call PUVGetArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-  call PUVGetArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
@@ -1282,8 +1282,8 @@ subroutine GeneralUpdateFixedAccum(realization)
   enddo
 
 
-  call PUVRestoreArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-  call PUVRestoreArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
 end subroutine GeneralUpdateFixedAccum
 
@@ -1442,16 +1442,16 @@ subroutine GeneralResidual(snes,xx,r,realization,ierr)
 
   option%iflag = GENERAL_UPDATE_FOR_ACCUM
   ! now assign access pointer to local variables
-  call PUVGetArray(r,r_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
 
   ! Accumulation terms ------------------------------------
   ! accumulation at t(k) (doesn't change during Newton iteration)
-  call PUVGetArrayRead(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
   r_p = -accum_p
-  call PUVRestoreArrayRead(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
   ! accumulation at t(k+1)
-  call PUVGetArray(field%flow_accum2,accum_p2,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%flow_accum2,accum_p2,ierr);CHKERRQ(ierr)
   do local_id = 1, grid%nlmax  ! For each local node do...
     ghosted_id = grid%nL2G(local_id)
     !geh - Ignore inactive cells with inactive materials
@@ -1471,7 +1471,7 @@ subroutine GeneralResidual(snes,xx,r,realization,ierr)
     r_p(local_start:local_end) =  r_p(local_start:local_end) + Res(:)
     accum_p2(local_start:local_end) = Res(:)
   enddo
-  call PUVRestoreArray(field%flow_accum2, accum_p2, ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%flow_accum2, accum_p2, ierr);CHKERRQ(ierr)
 
   ! Interior Flux Terms -----------------------------------
   connection_set_list => grid%internal_connection_set_list
@@ -1677,7 +1677,7 @@ subroutine GeneralResidual(snes,xx,r,realization,ierr)
     r_p(:) = MAX_DOUBLE
   endif
 
-  call PUVRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 
   call MatrixZeroingZeroVecEntries(patch%aux%General%matrix_zeroing,r)
 
@@ -1694,30 +1694,30 @@ subroutine GeneralResidual(snes,xx,r,realization,ierr)
   endif
 
   if (Initialized(general_debug_cell_id)) then
-    call PUVGetArrayRead(r,r_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(r,r_p,ierr);CHKERRQ(ierr)
     do local_id = general_debug_cell_id-1, general_debug_cell_id+1
       write(*,'(''  residual   : '',i2,10es12.4)') local_id, &
         r_p((local_id-1)*option%nflowdof+1:(local_id-1)*option%nflowdof+2), &
         r_p(local_id*option%nflowdof)*1.d6
     enddo
-    call PUVRestoreArrayRead(r,r_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(r,r_p,ierr);CHKERRQ(ierr)
   endif
 
   if (option%flow%isothermal) then
-    call PUVGetArray(r,r_p,ierr);CHKERRQ(ierr)
+    call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
     ! zero energy residual
     do local_id = 1, grid%nlmax
       r_p((local_id-1)*option%nflowdof+GENERAL_ENERGY_EQUATION_INDEX) =  0.d0
     enddo
-    call PUVRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
   endif
   if (general_no_air) then
-    call PUVGetArray(r,r_p,ierr);CHKERRQ(ierr)
+    call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
     ! zero energy residual
     do local_id = 1, grid%nlmax
       r_p((local_id-1)*option%nflowdof+GENERAL_GAS_EQUATION_INDEX) =  0.d0
     enddo
-    call PUVRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
   endif
 
   if (realization%debug%vecview_residual) then
@@ -2480,7 +2480,7 @@ subroutine GeneralSSSandbox(residual,Jacobian,compute_derivative, &
   PetscErrorCode :: ierr
 
   if (.not.compute_derivative) then
-    call PUVGetArray(residual,r_p,ierr);CHKERRQ(ierr)
+    call VecGetArray(residual,r_p,ierr);CHKERRQ(ierr)
   endif
 
   cur_srcsink => ss_sandbox_list
@@ -2530,7 +2530,7 @@ subroutine GeneralSSSandbox(residual,Jacobian,compute_derivative, &
   enddo
 
   if (.not.compute_derivative) then
-    call PUVRestoreArray(residual,r_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(residual,r_p,ierr);CHKERRQ(ierr)
   endif
 
 end subroutine GeneralSSSandbox

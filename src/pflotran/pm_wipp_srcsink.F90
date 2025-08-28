@@ -5544,7 +5544,7 @@ subroutine PMWSSReadVariableHDF5(this,pm_grp_id,variable,stride,n_wp_local,n_wp_
                      SCATTER_FORWARD,ierr);CHKERRQ(ierr)
 
   !Convert the data to a Fortran array
-  call PUVGetArray(local_wp_vec,local_wp_array,ierr);CHKERRQ(ierr)
+  call VecGetArray(local_wp_vec,local_wp_array,ierr);CHKERRQ(ierr)
 
   cwp => this%waste_panel_list
   j = 0
@@ -5596,7 +5596,7 @@ subroutine PMWSSReadVariableHDF5(this,pm_grp_id,variable,stride,n_wp_local,n_wp_
     cwp => cwp%next
   enddo
 
-  call PUVRestoreArray(local_wp_vec,local_wp_array,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(local_wp_vec,local_wp_array,ierr);CHKERRQ(ierr)
   call VecScatterDestroy(scatter_ctx,ierr);CHKERRQ(ierr)
   call ISDestroy(is,ierr);CHKERRQ(ierr)
   call VecDestroy(global_wp_vec,ierr);CHKERRQ(ierr)
@@ -5953,7 +5953,7 @@ subroutine PMWSSReadVariableBinary(this,viewer,variable,stride,n_wp_local,n_wp_g
                      SCATTER_FORWARD,ierr);CHKERRQ(ierr)
 
   !Convert the data to a Fortran array
-  call PUVGetArray(local_wp_vec,local_wp_array,ierr);CHKERRQ(ierr)
+  call VecGetArray(local_wp_vec,local_wp_array,ierr);CHKERRQ(ierr)
 
   cwp => this%waste_panel_list
   j = 0
@@ -6005,7 +6005,7 @@ subroutine PMWSSReadVariableBinary(this,viewer,variable,stride,n_wp_local,n_wp_g
     cwp => cwp%next
   enddo
 
-  call PUVRestoreArray(local_wp_vec,local_wp_array,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(local_wp_vec,local_wp_array,ierr);CHKERRQ(ierr)
   call VecScatterDestroy(scatter_ctx,ierr);CHKERRQ(ierr)
   call ISDestroy(is,ierr);CHKERRQ(ierr)
   call VecDestroy(global_wp_vec,ierr);CHKERRQ(ierr)

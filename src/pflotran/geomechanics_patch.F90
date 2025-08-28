@@ -580,7 +580,7 @@ subroutine GeomechPatchGetDataset(patch,geomech_field,option,output_option, &
   grid => patch%geomech_grid
   geom_gl_auxvars => patch%geomech_aux%GeomechGlobal%aux_vars
 
-  call PUVGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
   iphase = 1
 
@@ -729,7 +729,7 @@ subroutine GeomechPatchGetDataset(patch,geomech_field,option,output_option, &
       call PrintErrMsg(option)
   end select
 
-  call PUVRestoreArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine GeomechPatchGetDataset
 

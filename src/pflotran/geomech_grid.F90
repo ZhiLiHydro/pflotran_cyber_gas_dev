@@ -1207,7 +1207,7 @@ subroutine GeomechGridLocalizeRegFromVertIDs(geomech_grid,geomech_region, &
     call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
 #endif
 
-  call PUVGetArray(vec_vertex_ids_loc,v_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(vec_vertex_ids_loc,v_loc_p,ierr);CHKERRQ(ierr)
   count = 0
   do ii = 1,geomech_grid%nlmax_node
     if (v_loc_p(ii) == 1) count = count + 1
@@ -1242,7 +1242,7 @@ subroutine GeomechGridLocalizeRegFromVertIDs(geomech_grid,geomech_region, &
   close(86)
 #endif
 
-  call PUVRestoreArray(vec_vertex_ids_loc,v_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(vec_vertex_ids_loc,v_loc_p,ierr);CHKERRQ(ierr)
 
   call VecDestroy(vec_vertex_ids,ierr);CHKERRQ(ierr)
   call VecDestroy(vec_vertex_ids_loc,ierr);CHKERRQ(ierr)

@@ -1278,7 +1278,7 @@ subroutine InvSubsurfConnectToForwardRun(this)
       ! at this point, only the parameter_vec has the most up-to-date
       ! values. do not call InvAuxMaterialToParamVec() as it will
       ! overwrite parameter_vec
-      call PUVGetArray(this%inversion_aux%parameter_vec,vec_ptr, &
+      call VecGetArray(this%inversion_aux%parameter_vec,vec_ptr, &
                           ierr);CHKERRQ(ierr)
       mpi_int = size(this%inversion_aux%parameters)
       ! could bcast from driver%comm%rank == 0, but this is more
@@ -1295,7 +1295,7 @@ subroutine InvSubsurfConnectToForwardRun(this)
       call MPI_Bcast(vec_ptr,mpi_int,MPI_DOUBLE_PRECISION,ZERO_INTEGER_MPI, &
                     this%inversion_option%forcomm%communicator, &
                     ierr);CHKERRQ(ierr)
-      call PUVRestoreArray(this%inversion_aux%parameter_vec,vec_ptr, &
+      call VecRestoreArray(this%inversion_aux%parameter_vec,vec_ptr, &
                               ierr);CHKERRQ(ierr)
       call InvAuxParamVecToMaterial(this%inversion_aux)
     endif
@@ -1571,14 +1571,14 @@ subroutine InvSubsurfPostProcMeasurements(this)
   else
     ! forward runs without invcomm still need to copy the values into
     ! measurement_vec
-    call PUVGetArray(this%inversion_aux%measurement_vec,vec_ptr2, &
+    call VecGetArray(this%inversion_aux%measurement_vec,vec_ptr2, &
                         ierr);CHKERRQ(ierr)
-    call PUVGetArray(this%inversion_aux%dist_measurement_vec,vec_ptr, &
+    call VecGetArray(this%inversion_aux%dist_measurement_vec,vec_ptr, &
                         ierr);CHKERRQ(ierr)
     if (this%inversion_option%forcomm%rank == 0) then
       vec_ptr2(:) = vec_ptr(:)
     endif
-    call PUVRestoreArray(this%inversion_aux%dist_measurement_vec, &
+    call VecRestoreArray(this%inversion_aux%dist_measurement_vec, &
                             vec_ptr,ierr);CHKERRQ(ierr)
     ! broadcast to perturbation ranks > 0 in forcomm
     mpi_int = 0
@@ -1587,7 +1587,7 @@ subroutine InvSubsurfPostProcMeasurements(this)
     call MPI_Bcast(vec_ptr2,num_measurements,MPI_DOUBLE_PRECISION,mpi_int, &
                    this%inversion_option%forcomm%communicator, &
                    ierr);CHKERRQ(ierr)
-    call PUVRestoreArray(this%inversion_aux%measurement_vec, &
+    call VecRestoreArray(this%inversion_aux%measurement_vec, &
                             vec_ptr2,ierr);CHKERRQ(ierr)
   endif
   call InvAuxCopyMeasToFromMeasVec(this%inversion_aux,INVAUX_COPY_FROM_VEC)
@@ -1643,16 +1643,16 @@ subroutine InvSubsurfPostProcMeasurements(this)
                                   dobs_dparam_vec, &
                                   dist_dobs_dparam_vec, &
                                   INVAUX_SCATREVERSE)
-    call PUVGetArray(dobs_dunknown_vec,vec_ptr,ierr);CHKERRQ(ierr)
-    call PUVGetArray(dobs_dparam_vec,vec_ptr2,ierr);CHKERRQ(ierr)
+    call VecGetArray(dobs_dunknown_vec,vec_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(dobs_dparam_vec,vec_ptr2,ierr);CHKERRQ(ierr)
     do imeasurement = 1, num_measurements
       this%inversion_aux%measurements(imeasurement)%dobs_dunknown = &
         vec_ptr(imeasurement)
       this%inversion_aux%measurements(imeasurement)%dobs_dparam = &
         vec_ptr2(imeasurement)
     enddo
-    call PUVRestoreArray(dobs_dunknown_vec,vec_ptr,ierr);CHKERRQ(ierr)
-    call PUVRestoreArray(dobs_dparam_vec,vec_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(dobs_dunknown_vec,vec_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(dobs_dparam_vec,vec_ptr,ierr);CHKERRQ(ierr)
     call VecDestroy(dist_dobs_dunknown_vec,ierr);CHKERRQ(ierr)
     call VecDestroy(dobs_dunknown_vec,ierr);CHKERRQ(ierr)
     call VecDestroy(dist_dobs_dparam_vec,ierr);CHKERRQ(ierr)
@@ -1868,7 +1868,7 @@ subroutine InvSubsurfAdjAddSensitivities(this)
   call DiscretizationCreateVector(discretization,ONEDOF, &
                                   natural_vec,NATURAL,option)
 
-  call PUVDuplicateVecs(ndof_vec,size(measurements),lambda, &
+  call VecDuplicateVecs(ndof_vec,size(measurements),lambda, &
                            ierr);CHKERRQ(ierr)
   do i = 1, size(lambda)
     call VecZeroEntries(lambda(i),ierr);CHKERRQ(ierr)
@@ -1959,8 +1959,8 @@ subroutine InvSubsurfAdjAddSensitivities(this)
       else
         call VecZeroEntries(p_,ierr);CHKERRQ(ierr)
         call VecZeroEntries(dReskp1_duk_lambdak,ierr);CHKERRQ(ierr)
-        call PUVGetArray(dReskp1_duk_lambdak,vec_ptr,ierr);CHKERRQ(ierr)
-        call PUVGetArray(lambda(imeasurement),vec_ptr2,ierr);CHKERRQ(ierr)
+        call VecGetArray(dReskp1_duk_lambdak,vec_ptr,ierr);CHKERRQ(ierr)
+        call VecGetArray(lambda(imeasurement),vec_ptr2,ierr);CHKERRQ(ierr)
         do local_id = 1, grid%nlmax
           offset = (local_id-1)*ndof
           do i = 1, ndof
@@ -1974,8 +1974,8 @@ subroutine InvSubsurfAdjAddSensitivities(this)
             vec_ptr(offset+i) = tempreal
           enddo
         enddo
-        call PUVRestoreArray(dReskp1_duk_lambdak,vec_ptr,ierr);CHKERRQ(ierr)
-        call PUVRestoreArray(lambda(imeasurement), &
+        call VecRestoreArray(dReskp1_duk_lambdak,vec_ptr,ierr);CHKERRQ(ierr)
+        call VecRestoreArray(lambda(imeasurement), &
                                 vec_ptr2,ierr);CHKERRQ(ierr)
       endif
       call VecWAXPY(rhs,-1.d0,dReskp1_duk_lambdak,p_,ierr);CHKERRQ(ierr)
@@ -1987,7 +1987,7 @@ subroutine InvSubsurfAdjAddSensitivities(this)
         call MatMultTranspose(inversion_forward_ts_aux%dResdparam, &
                               lambda(imeasurement), &
                               dResdKLambda,ierr);CHKERRQ(ierr)
-        call PUVGetArray(dResdKLambda,vec_ptr,ierr);CHKERRQ(ierr)
+        call VecGetArray(dResdKLambda,vec_ptr,ierr);CHKERRQ(ierr)
         do iparameter = 1, grid%nlmax
           natural_id_ = grid%nG2A(grid%nL2G(iparameter))
           offset = (iparameter-1)*option%nflowdof
@@ -1995,11 +1995,11 @@ subroutine InvSubsurfAdjAddSensitivities(this)
                            imeasurement-1,vec_ptr(offset+1),ADD_VALUES, &
                            ierr);CHKERRQ(ierr)
         enddo
-        call PUVRestoreArray(dResdKLambda,vec_ptr,ierr);CHKERRQ(ierr)
+        call VecRestoreArray(dResdKLambda,vec_ptr,ierr);CHKERRQ(ierr)
       else
         do iparameter = 1, size(this%inversion_aux%parameters)
           call VecZeroEntries(ndof_vec1,ierr);CHKERRQ(ierr)
-          call PUVGetArray(ndof_vec1,vec_ptr,ierr);CHKERRQ(ierr)
+          call VecGetArray(ndof_vec1,vec_ptr,ierr);CHKERRQ(ierr)
           do local_id = 1, grid%nlmax
             if (patch%imat(grid%nL2G(local_id)) == &
                 this%inversion_aux%parameters(iparameter)%imat) then
@@ -2007,7 +2007,7 @@ subroutine InvSubsurfAdjAddSensitivities(this)
               vec_ptr(offset+1:offset+option%nflowdof) = 1.d0
             endif
           enddo
-          call PUVRestoreArray(ndof_vec1,vec_ptr,ierr);CHKERRQ(ierr)
+          call VecRestoreArray(ndof_vec1,vec_ptr,ierr);CHKERRQ(ierr)
           call MatMult(inversion_forward_ts_aux%dResdparam,ndof_vec1, &
                        ndof_vec2,ierr);CHKERRQ(ierr)
           call VecDot(ndof_vec2,lambda(imeasurement), &
@@ -2216,7 +2216,7 @@ subroutine InvSubsurfPerturbationFillRow(this,my_dof)
   if (my_dof == 0) then
     ! if parallel perturbation runs, need to broadcast the base measurement
     if (associated(this%inversion_option%forcomm_i)) then
-      call PUVGetArray(this%inversion_aux%measurement_vec, &
+      call VecGetArray(this%inversion_aux%measurement_vec, &
                           vec_ptr,ierr);CHKERRQ(ierr)
       if (this%inversion_option%forcomm%rank == 0) then
         mpi_int = 0
@@ -2236,33 +2236,33 @@ subroutine InvSubsurfPerturbationFillRow(this,my_dof)
                        this%inversion_option%forcomm%communicator, &
                        ierr);CHKERRQ(ierr)
       endif
-      call PUVRestoreArray(this%inversion_aux%measurement_vec, &
+      call VecRestoreArray(this%inversion_aux%measurement_vec, &
                               vec_ptr,ierr);CHKERRQ(ierr)
     endif
     call VecCopy(this%inversion_aux%measurement_vec, &
                  this%inversion_aux%perturbation%base_measurement_vec, &
                  ierr);CHKERRQ(ierr)
-    call PUVGetArray(this%inversion_aux%perturbation%base_measurement_vec, &
+    call VecGetArray(this%inversion_aux%perturbation%base_measurement_vec, &
                         vec_ptr,ierr);CHKERRQ(ierr)
 !    print *, 'gehbvec: ', inversion_option%forcomm%group_id, vec_ptr
-    call PUVRestoreArray(this%inversion_aux%perturbation%base_measurement_vec, &
+    call VecRestoreArray(this%inversion_aux%perturbation%base_measurement_vec, &
                             vec_ptr,ierr);CHKERRQ(ierr)
     if (associated(this%inversion_option%invcomm)) then
       call MatZeroEntries(this%inversion_aux%JsensitivityT, &
                           ierr);CHKERRQ(ierr)
     endif
   else
-    call PUVGetArray(this%inversion_aux%measurement_vec, &
+    call VecGetArray(this%inversion_aux%measurement_vec, &
                         vec_ptr,ierr);CHKERRQ(ierr)
 !    print *, 'gehmvec: ', inversion_option%forcomm%rank, &
 !                           inversion_option%forcomm%group_id, vec_ptr
-    call PUVRestoreArray(this%inversion_aux%measurement_vec, &
+    call VecRestoreArray(this%inversion_aux%measurement_vec, &
                             vec_ptr,ierr);CHKERRQ(ierr)
-    call PUVGetArray(this%inversion_aux%perturbation%base_measurement_vec, &
+    call VecGetArray(this%inversion_aux%perturbation%base_measurement_vec, &
                         vec_ptr,ierr);CHKERRQ(ierr)
 !    print *, 'gehbvec: ', inversion_option%forcomm%rank, &
 !                           inversion_option%forcomm%group_id, vec_ptr
-    call PUVRestoreArray(this%inversion_aux%perturbation%base_measurement_vec, &
+    call VecRestoreArray(this%inversion_aux%perturbation%base_measurement_vec, &
                             vec_ptr,ierr);CHKERRQ(ierr)
 !    print *, 'gehpert: ', inversion_option%forcomm%rank, &
 !                           inversion_option%forcomm%group_id, this%inversion_aux%perturbation%pert
@@ -2285,7 +2285,7 @@ subroutine InvSubsurfPerturbationFillRow(this,my_dof)
       if (igroup > 1) then
 !        if (this%inversion_option%forcomm_i%rank == 0) then
           ! receive derivatives from each groups process 0
-          call PUVGetArray(this%inversion_aux%measurement_vec, &
+          call VecGetArray(this%inversion_aux%measurement_vec, &
                               vec_ptr,ierr);CHKERRQ(ierr)
           call MPI_Probe(MPI_ANY_SOURCE,MPI_ANY_TAG, &
                          this%inversion_option%forcomm_i%communicator, &
@@ -2297,7 +2297,7 @@ subroutine InvSubsurfPerturbationFillRow(this,my_dof)
                         MPI_STATUS_IGNORE,ierr);CHKERRQ(ierr)
 !          print *, 'recv: ', inversion_option%forcomm%rank, &
 !                             inversion_option%forcomm%group_id,vec_ptr
-          call PUVRestoreArray(this%inversion_aux%measurement_vec, &
+          call VecRestoreArray(this%inversion_aux%measurement_vec, &
                                   vec_ptr,ierr);CHKERRQ(ierr)
 !        endif
       else
@@ -2313,7 +2313,7 @@ subroutine InvSubsurfPerturbationFillRow(this,my_dof)
                                     this%inversion_aux%measurement_vec, &
                                     this%inversion_aux%dist_measurement_vec, &
                                     INVAUX_SCATFORWARD)
-      call PUVGetArray(this%inversion_aux%dist_measurement_vec,vec_ptr, &
+      call VecGetArray(this%inversion_aux%dist_measurement_vec,vec_ptr, &
                           ierr);CHKERRQ(ierr)
       do i = 1, size(vec_ptr)
 !        print *, 'gehmat: ', inversion_option%forcomm%group_id,iparameter, &
@@ -2323,7 +2323,7 @@ subroutine InvSubsurfPerturbationFillRow(this,my_dof)
                         this%dist_measurement_offset+i-1,vec_ptr(i), &
                         INSERT_VALUES,ierr);CHKERRQ(ierr)
       enddo
-      call PUVRestoreArray(this%inversion_aux%dist_measurement_vec,vec_ptr, &
+      call VecRestoreArray(this%inversion_aux%dist_measurement_vec,vec_ptr, &
                               ierr);CHKERRQ(ierr)
     enddo
 
@@ -2331,7 +2331,7 @@ subroutine InvSubsurfPerturbationFillRow(this,my_dof)
 !    if (this%inversion_option%forcomm_i%group_id == 1) then
       ! send derivatives to process 0 on group 1
       if (my_dof <= this%inversion_aux%perturbation%ndof) then
-        call PUVGetArray(this%inversion_aux%measurement_vec, &
+        call VecGetArray(this%inversion_aux%measurement_vec, &
                             vec_ptr,ierr);CHKERRQ(ierr)
         mpi_int = 0
         call MPI_Send(vec_ptr,num_measurements,MPI_DOUBLE_PRECISION, &
@@ -2340,7 +2340,7 @@ subroutine InvSubsurfPerturbationFillRow(this,my_dof)
                       ierr);CHKERRQ(ierr)
 !        print *, 'send: ', inversion_option%forcomm%rank, &
 !                            inversion_option%forcomm%group_id,vec_ptr
-        call PUVRestoreArray(this%inversion_aux%measurement_vec, &
+        call VecRestoreArray(this%inversion_aux%measurement_vec, &
                                 vec_ptr,ierr);CHKERRQ(ierr)
       endif
  !   endif
@@ -2475,23 +2475,23 @@ subroutine InvSubsurfFVCalcPartialJs(this,idof_pert)
 !                       MPI_STATUS_IGNORE,ierr);CHKERRQ(ierr)
         do i = 1, size(solutions)
           idof_pert_recv = idof_pert + icomm
-          call PUVGetArray(solutions(i)% &
+          call VecGetArray(solutions(i)% &
                                 dsaturation_dparameter(idof_pert_recv), &
                               vec_ptr,ierr);CHKERRQ(ierr)
           call MPI_Recv(vec_ptr,vec_size,MPI_DOUBLE_PRECISION, &
                         recv_rank,MPI_ANY_TAG,comm%communicator, &
                         MPI_STATUS_IGNORE,ierr);CHKERRQ(ierr)
-          call PUVRestoreArray(solutions(i)% &
+          call VecRestoreArray(solutions(i)% &
                                     dsaturation_dparameter(idof_pert_recv), &
                                   vec_ptr,ierr);CHKERRQ(ierr)
           if (.not.PetscObjectIsNull(solutions(i)%perturbed_solute_solution)) then
-            call PUVGetArray(solutions(i)% &
+            call VecGetArray(solutions(i)% &
                                   dsolute_dparameter(idof_pert_recv), &
                                 vec_ptr,ierr);CHKERRQ(ierr)
             call MPI_Recv(vec_ptr,vec_size,MPI_DOUBLE_PRECISION, &
                           recv_rank,MPI_ANY_TAG,comm%communicator, &
                           MPI_STATUS_IGNORE,ierr);CHKERRQ(ierr)
-            call PUVRestoreArray(solutions(i)% &
+            call VecRestoreArray(solutions(i)% &
                                       dsolute_dparameter(idof_pert_recv), &
                                     vec_ptr,ierr);CHKERRQ(ierr)
           endif
@@ -2499,20 +2499,20 @@ subroutine InvSubsurfFVCalcPartialJs(this,idof_pert)
       enddo
     else
       do i = 1, size(solutions)
-        call PUVGetArray(solutions(i)%dsaturation_dparameter(idof_pert), &
+        call VecGetArray(solutions(i)%dsaturation_dparameter(idof_pert), &
                             vec_ptr,ierr);CHKERRQ(ierr)
         call MPI_Send(vec_ptr,vec_size,MPI_DOUBLE_PRECISION,ZERO_INTEGER_MPI, &
                       idof_pert,comm%communicator,ierr);CHKERRQ(ierr)
-        call PUVRestoreArray(solutions(i)% &
+        call VecRestoreArray(solutions(i)% &
                                   dsaturation_dparameter(idof_pert), &
                                 vec_ptr,ierr);CHKERRQ(ierr)
         if (.not.PetscObjectIsNull(solutions(i)%perturbed_solute_solution)) then
-          call PUVGetArray(solutions(i)%dsolute_dparameter(idof_pert), &
+          call VecGetArray(solutions(i)%dsolute_dparameter(idof_pert), &
                               vec_ptr,ierr);CHKERRQ(ierr)
           call MPI_Send(vec_ptr,vec_size,MPI_DOUBLE_PRECISION, &
                         ZERO_INTEGER_MPI,idof_pert,comm%communicator, &
                         ierr);CHKERRQ(ierr)
-          call PUVGetArray(solutions(i)%dsolute_dparameter(idof_pert), &
+          call VecGetArray(solutions(i)%dsolute_dparameter(idof_pert), &
                               vec_ptr,ierr);CHKERRQ(ierr)
         endif
       enddo

@@ -97,7 +97,7 @@ subroutine InitCommonVerifyCoupler(realization,coupler_list)
     if (.not.associated(coupler)) exit
 
     call VecZeroEntries(global_vec,ierr);CHKERRQ(ierr)
-    call PUVGetArray(global_vec,vec_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(global_vec,vec_ptr,ierr);CHKERRQ(ierr)
     if (associated(coupler%connection_set)) then
       do iconn = 1, coupler%connection_set%num_connections
         local_id = coupler%connection_set%id_dn(iconn)
@@ -114,7 +114,7 @@ subroutine InitCommonVerifyCoupler(realization,coupler_list)
         enddo
       endif
     endif
-    call PUVRestoreArray(global_vec,vec_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(global_vec,vec_ptr,ierr);CHKERRQ(ierr)
     if (len_trim(coupler%flow_condition_name) > 0) then
       dataset_name = coupler%flow_condition_name
     else if (len_trim(coupler%tran_condition_name) > 0) then
@@ -277,7 +277,7 @@ subroutine InitCommonReadVelocityField(realization)
                                       group_name,dataset_name,PETSC_FALSE)
     call DiscretizationGlobalToLocal(discretization,field%work,field%work_loc, &
                                      ONEDOF)
-    call PUVGetArray(field%work_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+    call VecGetArray(field%work_loc,vec_loc_p,ierr);CHKERRQ(ierr)
     connection_set_list => grid%internal_connection_set_list
     cur_connection_set => connection_set_list%first
     sum_connection = 0
@@ -292,7 +292,7 @@ subroutine InitCommonReadVelocityField(realization)
       enddo
       cur_connection_set => cur_connection_set%next
     enddo
-    call PUVRestoreArray(field%work_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(field%work_loc,vec_loc_p,ierr);CHKERRQ(ierr)
   enddo
 
   boundary_condition => patch%boundary_condition_list%first
@@ -308,14 +308,14 @@ subroutine InitCommonReadVelocityField(realization)
     endif
     call HDF5ReadCellIndexedRealArray(realization,field%work,filename, &
                                       group_name,dataset_name,PETSC_FALSE)
-    call PUVGetArray(field%work,vec_p,ierr);CHKERRQ(ierr)
+    call VecGetArray(field%work,vec_p,ierr);CHKERRQ(ierr)
     cur_connection_set => boundary_condition%connection_set
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
       local_id = cur_connection_set%id_dn(iconn)
       patch%boundary_velocities(1,sum_connection) = vec_p(local_id)
     enddo
-    call PUVRestoreArray(field%work,vec_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(field%work,vec_p,ierr);CHKERRQ(ierr)
     boundary_condition => boundary_condition%next
   enddo
 

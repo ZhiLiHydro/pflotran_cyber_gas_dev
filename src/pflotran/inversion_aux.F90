@@ -453,7 +453,7 @@ subroutine InvAuxCopyParamToFromParamVec(aux,itype,idirection)
 
   select case(itype)
     case(INVAUX_PARAMETER_VALUE)
-      call PUVGetArray(aux%parameter_vec,vec_ptr,ierr);CHKERRQ(ierr)
+      call VecGetArray(aux%parameter_vec,vec_ptr,ierr);CHKERRQ(ierr)
       select case(idirection)
         case(INVAUX_COPY_FROM_VEC)
           do i = 1, size(aux%parameters)
@@ -466,9 +466,9 @@ subroutine InvAuxCopyParamToFromParamVec(aux,itype,idirection)
         case default
           stop 'Error: idirection in InvAuxCopyParamToFromParamVec,Value'
       end select
-      call PUVRestoreArray(aux%parameter_vec,vec_ptr,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(aux%parameter_vec,vec_ptr,ierr);CHKERRQ(ierr)
     case(INVAUX_PARAMETER_UPDATE)
-      call PUVGetArray(aux%del_parameter_vec,vec_ptr,ierr);CHKERRQ(ierr)
+      call VecGetArray(aux%del_parameter_vec,vec_ptr,ierr);CHKERRQ(ierr)
       select case(idirection)
         case(INVAUX_COPY_FROM_VEC)
           do i = 1, size(aux%parameters)
@@ -481,7 +481,7 @@ subroutine InvAuxCopyParamToFromParamVec(aux,itype,idirection)
         case default
           stop 'Error: idirection in InvAuxCopyParamToFromParamVec,Update'
       end select
-      call PUVRestoreArray(aux%del_parameter_vec,vec_ptr,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(aux%del_parameter_vec,vec_ptr,ierr);CHKERRQ(ierr)
     case default
       stop 'Error: itype in InvAuxCopyParamToFromParamVec'
   end select
@@ -749,7 +749,7 @@ subroutine InvAuxCopyMeasToFromMeasVec(aux,idirection)
   PetscInt :: i
   PetscErrorCode :: ierr
 
-  call PUVGetArray(aux%measurement_vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(aux%measurement_vec,vec_ptr,ierr);CHKERRQ(ierr)
   select case(idirection)
     case(INVAUX_COPY_FROM_VEC)
       do i = 1, size(aux%measurements)
@@ -762,7 +762,7 @@ subroutine InvAuxCopyMeasToFromMeasVec(aux,idirection)
     case default
       stop 'Error: idirection in InvAuxCopyMeasToFromMeasVec,Update'
   end select
-  call PUVRestoreArray(aux%measurement_vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(aux%measurement_vec,vec_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine InvAuxCopyMeasToFromMeasVec
 
@@ -784,10 +784,10 @@ subroutine InvAuxBCastVecForCommI(comm,vec,driver)
   PetscErrorCode :: ierr
 
   call VecGetLocalSize(vec,vec_size,ierr);CHKERRQ(ierr)
-  call PUVGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
   call MPI_Bcast(vec_ptr,vec_size,MPI_DOUBLE_PRECISION,ZERO_INTEGER_MPI, &
                  comm%communicator,ierr);CHKERRQ(ierr)
-  call PUVGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine InvAuxBCastVecForCommI
 

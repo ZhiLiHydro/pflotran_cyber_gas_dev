@@ -1330,7 +1330,7 @@ subroutine StructGridComputeVolumes(radius,structured_grid,option,nL2G,volume)
   PetscReal :: r1, r2
   PetscErrorCode :: ierr
 
-  call PUVGetArray(volume,volume_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(volume,volume_p,ierr);CHKERRQ(ierr)
 
   select case(structured_grid%itype)
     case(CARTESIAN_GRID)
@@ -1359,7 +1359,7 @@ subroutine StructGridComputeVolumes(radius,structured_grid,option,nL2G,volume)
       enddo
   end select
 
-  call PUVRestoreArray(volume,volume_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(volume,volume_p,ierr);CHKERRQ(ierr)
 
   if (option%comm%size > 1 .and. option%comm%size <= 16) then
     call PrintMsg(option,NL//'Process Decomposition')

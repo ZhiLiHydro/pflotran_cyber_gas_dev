@@ -66,7 +66,7 @@ subroutine InitSubsurfFlowReadInitCond(realization,filename)
   endif
 
     ! assign initial conditions values to domain
-  call PUVGetArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
 
   ! Pressure for all modes
   offset = 1
@@ -75,7 +75,7 @@ subroutine InitSubsurfFlowReadInitCond(realization,filename)
   call HDF5ReadCellIndexedRealArray(realization,field%work, &
                                     filename,group_name, &
                                     dataset_name,option%id>0)
-  call PUVGetArray(field%work,vec_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%work,vec_p,ierr);CHKERRQ(ierr)
   do local_id=1, grid%nlmax
     if (patch%imat(grid%nL2G(local_id)) <= 0) cycle
     if (dabs(vec_p(local_id)) < 1.d-40) then
@@ -85,9 +85,9 @@ subroutine InitSubsurfFlowReadInitCond(realization,filename)
     idx = (local_id-1)*option%nflowdof + offset
     xx_p(idx) = vec_p(local_id)
   enddo
-  call PUVRestoreArray(field%work,vec_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%work,vec_p,ierr);CHKERRQ(ierr)
 
-  call PUVRestoreArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
 
   ! update dependent vectors
   call DiscretizationGlobalToLocal(discretization,field%flow_xx, &

@@ -873,7 +873,7 @@ subroutine UGridPolyhedraDecompose(ugrid, option)
   call PUMGetRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,num_rows, &
                       ia_ptr,ja_ptr,success,ierr);CHKERRQ(ierr)
 
-  call PUVGetArray(elements_old,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(elements_old,vec_ptr,ierr);CHKERRQ(ierr)
   count =  0
   face_count = 0
   do local_id = 1, num_cells_local_old
@@ -989,7 +989,7 @@ subroutine UGridPolyhedraDecompose(ugrid, option)
     vec_ptr(count) = -999999  ! help differentiate
 
   enddo
-  call PUVRestoreArray(elements_old,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(elements_old,vec_ptr,ierr);CHKERRQ(ierr)
 
   call PUMRestoreRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
                           num_rows,ia_ptr,ja_ptr,success,ierr);CHKERRQ(ierr)
@@ -1007,7 +1007,7 @@ subroutine UGridPolyhedraDecompose(ugrid, option)
   vertex_count = 0
   ! yep - load them all into a petsc vector
   ! note that the vertices are still in natural numbering
-  call PUVGetArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
   do ghosted_id=1, ugrid%ngmax
     do ivertex = 1, ugrid%max_nvert_per_cell
       vertex_id = int(vec_ptr(ivertex + vertex_ids_offset + (ghosted_id-1)*cell_stride))
@@ -1020,7 +1020,7 @@ subroutine UGridPolyhedraDecompose(ugrid, option)
       int_array_pointer(vertex_count) = vertex_id
     enddo
   enddo
-  call PUVRestoreArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
 
   ! sort the vertex ids
   allocate(int_array(vertex_count))
@@ -1073,7 +1073,7 @@ subroutine UGridPolyhedraDecompose(ugrid, option)
   ! permute the local ids calculated earlier in the int_array4
   allocate(vert_n2g(ugrid%max_nvert_per_cell,2))
 
-  call PUVGetArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
   do ghosted_id = 1, ugrid%ngmax
      vert_n2g = 0
     do ivertex = 1, ugrid%max_nvert_per_cell
@@ -1110,7 +1110,7 @@ subroutine UGridPolyhedraDecompose(ugrid, option)
     enddo
 
   enddo
-  call PUVRestoreArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
   deallocate(int_array)
   deallocate(int_array2)
   deallocate(int_array3)
@@ -1154,7 +1154,7 @@ subroutine UGridPolyhedraDecompose(ugrid, option)
   pgrid%cell_faceids = 0
   pgrid%cell_vertids = 0
 
-  call PUVGetArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
 
   num_faces_local = 0
   do ghosted_id = 1, ugrid%ngmax
@@ -1210,7 +1210,7 @@ subroutine UGridPolyhedraDecompose(ugrid, option)
     enddo
   enddo
 
-  call PUVRestoreArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
 
   call VecDestroy(elements_local,ierr);CHKERRQ(ierr)
 
@@ -1259,13 +1259,13 @@ subroutine UGridPolyhedraDecompose(ugrid, option)
   call VecSetFromOptions(vertices_new,ierr);CHKERRQ(ierr)
 
   ! load up the coordinates
-  call PUVGetArray(vertices_old,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(vertices_old,vec_ptr,ierr);CHKERRQ(ierr)
   do ivertex = 1, pgrid%num_vertices_local
     vec_ptr((ivertex-1)*3+1) = pgrid%vertex_coordinates(ivertex)%x
     vec_ptr((ivertex-1)*3+2) = pgrid%vertex_coordinates(ivertex)%y
     vec_ptr((ivertex-1)*3+3) = pgrid%vertex_coordinates(ivertex)%z
   enddo
-  call PUVRestoreArray(vertices_old,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(vertices_old,vec_ptr,ierr);CHKERRQ(ierr)
   deallocate(pgrid%vertex_coordinates)
   nullify(pgrid%vertex_coordinates)
 
@@ -1343,7 +1343,7 @@ subroutine UGridPolyhedraDecompose(ugrid, option)
 #endif
   call VecDestroy(vertices_old,ierr);CHKERRQ(ierr)
 
-  call PUVGetArray(vertices_new,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(vertices_new,vec_ptr,ierr);CHKERRQ(ierr)
   do ivertex = 1, ugrid%num_vertices_local
     ugrid%vertices(ivertex)%id = needed_vertices_petsc(ivertex)
     ugrid%vertices(ivertex)%x = vec_ptr((ivertex-1)*3+1)
@@ -1353,7 +1353,7 @@ subroutine UGridPolyhedraDecompose(ugrid, option)
     pgrid%vertex_coordinates(ivertex)%y = vec_ptr((ivertex-1)*3+2)
     pgrid%vertex_coordinates(ivertex)%z = vec_ptr((ivertex-1)*3+3)
   enddo
-  call PUVRestoreArray(vertices_new,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(vertices_new,vec_ptr,ierr);CHKERRQ(ierr)
 
 #if UGRID_DEBUG
   write(string,*) option%myrank
@@ -2051,11 +2051,11 @@ subroutine UGridPolyhedraComputeVolumes(ugrid, option, volume)
 
   pgrid => ugrid%polyhedra_grid
 
-  call PUVGetArray(volume,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(volume,vec_ptr,ierr);CHKERRQ(ierr)
   do icell = 1, ugrid%nlmax
     vec_ptr(icell) = pgrid%cell_volumes(icell)
   enddo
-  call PUVRestoreArray(volume,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(volume,vec_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine UGridPolyhedraComputeVolumes
 
@@ -2392,7 +2392,7 @@ subroutine UGridPolyhedraComputeOutputInfo(ugrid, nL2G, nG2L, nG2A, option)
   pgrid%uface_left_natcellids = -1
   pgrid%uface_right_natcellids = -1
 
-  call PUVGetArray(ghosted_cv_proc_rank,v_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(ghosted_cv_proc_rank,v_loc_p,ierr);CHKERRQ(ierr)
   pgrid%num_ufaces_local = 0
   pgrid%uface_nverts = 0
   do iface = 1, pgrid%ugrid_num_faces_local
@@ -2432,7 +2432,7 @@ subroutine UGridPolyhedraComputeOutputInfo(ugrid, nL2G, nG2L, nG2A, option)
       endif
     endif
   enddo
-  call PUVRestoreArray(ghosted_cv_proc_rank,v_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(ghosted_cv_proc_rank,v_loc_p,ierr);CHKERRQ(ierr)
 
   call VecDestroy(ghosted_cv_proc_rank,ierr);CHKERRQ(ierr)
 

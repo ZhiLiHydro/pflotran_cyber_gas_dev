@@ -284,7 +284,7 @@ subroutine GlobalSetAuxVarVecLoc(realization,vec_loc,ivar,time_level)
 
   auxvars => patch%aux%Global%auxvars
 
-  call PUVGetArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
   select case(ivar)
     case(LIQUID_PRESSURE)
@@ -465,7 +465,7 @@ subroutine GlobalSetAuxVarVecLoc(realization,vec_loc,ivar,time_level)
       stop
   end select
 
-  call PUVRestoreArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
 end subroutine GlobalSetAuxVarVecLoc
 
@@ -505,7 +505,7 @@ subroutine GlobalGetAuxVarVecLoc(realization,vec_loc,ivar)
   grid => patch%grid
   option => realization%option
 
-  call PUVGetArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
   select case(ivar)
     case(STATE)
@@ -518,7 +518,7 @@ subroutine GlobalGetAuxVarVecLoc(realization,vec_loc,ivar)
       call PrintErrMsg(option)
   end select
 
-  call PUVRestoreArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
 end subroutine GlobalGetAuxVarVecLoc
 
@@ -636,11 +636,11 @@ subroutine GlobalSetParameterVecLoc(realization,vec_loc,iparameter)
 
   auxvars => realization%patch%aux%Global%auxvars
 
-  call PUVGetArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
   do ghosted_id = 1, realization%patch%grid%ngmax
     auxvars(ghosted_id)%parameters(iparameter) = vec_loc_p(ghosted_id)
   enddo
-  call PUVRestoreArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
 end subroutine GlobalSetParameterVecLoc
 
@@ -878,10 +878,10 @@ subroutine GlobalSetAuxVarsAtTimeLevel(realization,time_level,time)
                                          LIQUID_PHASE)
 
     ! open the vectors
-    call PUVGetArray(vec_x,vec_x_ptr,ierr);CHKERRQ(ierr)
-    call PUVGetArray(vec_y,vec_y_ptr,ierr);CHKERRQ(ierr)
-    call PUVGetArray(vec_z,vec_z_ptr,ierr);CHKERRQ(ierr)
-    call PUVGetArray(vec_calc,vec_calc_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(vec_x,vec_x_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(vec_y,vec_y_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(vec_z,vec_z_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(vec_calc,vec_calc_ptr,ierr);CHKERRQ(ierr)
 
     ! the local size of the velocity vector
     ! local size = the number of cells calculated on the processor
@@ -896,10 +896,10 @@ subroutine GlobalSetAuxVarsAtTimeLevel(realization,time_level,time)
     enddo
 
     ! close the vectors
-    call PUVRestoreArray(vec_calc,vec_calc_ptr,ierr);CHKERRQ(ierr)
-    call PUVRestoreArray(vec_x,vec_x_ptr,ierr);CHKERRQ(ierr)
-    call PUVRestoreArray(vec_y,vec_y_ptr,ierr);CHKERRQ(ierr)
-    call PUVRestoreArray(vec_z,vec_z_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(vec_calc,vec_calc_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(vec_x,vec_x_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(vec_y,vec_y_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(vec_z,vec_z_ptr,ierr);CHKERRQ(ierr)
 
     ! Set the auxvar variable for the DARCY_VELOCITY
     call realization%comm1%GlobalToLocal(vec_calc,field%work_loc)

@@ -347,7 +347,7 @@ subroutine FieldDestroy(field)
   if (associated(field%max_change_vecs)) then
     !geh: kludge as the compiler returns i4 in 64-bit
     num_vecs = size(field%max_change_vecs)
-    call PUVDestroyVecs(num_vecs,field%max_change_vecs,ierr);CHKERRQ(ierr)
+    call VecDestroyVecs(num_vecs,field%max_change_vecs,ierr);CHKERRQ(ierr)
   endif
 
   deallocate(field)

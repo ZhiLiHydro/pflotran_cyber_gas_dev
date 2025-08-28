@@ -480,7 +480,7 @@ subroutine WIPPFloUpdateAuxVars(realization)
   global_auxvars_bc => patch%aux%Global%auxvars_bc
   material_auxvars => patch%aux%Material%auxvars
 
-  call PUVGetArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
   do ghosted_id = 1, grid%ngmax
     if (grid%nG2L(ghosted_id) < 0) cycle ! bypass ghosted corner cells
@@ -586,7 +586,7 @@ subroutine WIPPFloUpdateAuxVars(realization)
     boundary_condition => boundary_condition%next
   enddo
 
-  call PUVRestoreArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
   patch%aux%WIPPFlo%auxvars_up_to_date = PETSC_TRUE
 
@@ -640,8 +640,8 @@ subroutine WIPPFloUpdateFixedAccum(realization)
   material_auxvars => patch%aux%Material%auxvars
   material_parameter => patch%aux%Material%material_parameter
 
-  call PUVGetArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-  call PUVGetArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
@@ -670,8 +670,8 @@ subroutine WIPPFloUpdateFixedAccum(realization)
                                       material_auxvars(ghosted_id),option)
   enddo
 
-  call PUVRestoreArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-  call PUVRestoreArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
 end subroutine WIPPFloUpdateFixedAccum
 
@@ -750,14 +750,14 @@ subroutine WIPPFloNumericalJacobianTest(xx,B,realization,pmwss_ptr,pmwell_ptr)
   call VecView(res,viewer,ierr);CHKERRQ(ierr)
   call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
 #endif
-  call PUVGetArray(res,vec2_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(res,vec2_p,ierr);CHKERRQ(ierr)
   print *, 'Perturbed Residual'
   do icell = 1,grid%nlmax
     if (patch%imat(grid%nL2G(icell)) <= 0) cycle
     do idof = (icell-1)*option%nflowdof+1,icell*option%nflowdof
 
       call VecCopy(xx,xx_pert,ierr);CHKERRQ(ierr)
-      call PUVGetArray(xx_pert,vec_p,ierr);CHKERRQ(ierr)
+      call VecGetArray(xx_pert,vec_p,ierr);CHKERRQ(ierr)
       if (mod(idof,2) == 1) then ! liquid pressure
         perturbation = max(wippflo_pres_rel_pert * vec_p(idof), &
                            wippflo_pres_min_pert)
@@ -779,7 +779,7 @@ subroutine WIPPFloNumericalJacobianTest(xx,B,realization,pmwss_ptr,pmwell_ptr)
         endif
       endif
       vec_p(idof) = vec_p(idof) + perturbation
-      call PUVRestoreArray(xx_pert,vec_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(xx_pert,vec_p,ierr);CHKERRQ(ierr)
 
       call VecZeroEntries(res_pert,ierr);CHKERRQ(ierr)
       write(*,'("icell: ",i4," idof: ",i2," overall dof: ",i4,&
@@ -794,7 +794,7 @@ subroutine WIPPFloNumericalJacobianTest(xx,B,realization,pmwss_ptr,pmwell_ptr)
       call VecView(res_pert,viewer,ierr);CHKERRQ(ierr)
       call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
 #endif
-      call PUVGetArray(res_pert,vec_p,ierr);CHKERRQ(ierr)
+      call VecGetArray(res_pert,vec_p,ierr);CHKERRQ(ierr)
       do idof2 = 1, grid%nlmax*option%nflowdof
         derivative = (vec_p(idof2)-vec2_p(idof2))/perturbation
         if (dabs(derivative) > 1.d-40) then
@@ -806,10 +806,10 @@ subroutine WIPPFloNumericalJacobianTest(xx,B,realization,pmwss_ptr,pmwell_ptr)
                            ierr);CHKERRQ(ierr)
         endif
       enddo
-      call PUVRestoreArray(res_pert,vec_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(res_pert,vec_p,ierr);CHKERRQ(ierr)
     enddo
   enddo
-  call PUVRestoreArray(res,vec2_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(res,vec2_p,ierr);CHKERRQ(ierr)
 
   call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
   call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
@@ -946,14 +946,14 @@ subroutine WIPPFloResidual(snes,xx,r,realization,pmwss_ptr,pmwell_ptr,ierr)
   ! must be called before WIPPFloUpdateAuxVars()
   if (option%flow%scale_all_pressure) then
     ! have to convert the log concentration to non-log form
-    call PUVGetArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-    call PUVGetArrayRead(xx,scaled_xx_p,ierr);CHKERRQ(ierr)
+    call VecGetArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(xx,scaled_xx_p,ierr);CHKERRQ(ierr)
     do irow = 1, size(xx_p), 2
       xx_p(irow) = scaled_xx_p(irow) * option%flow%pressure_scaling_factor
       xx_p(irow+1) = scaled_xx_p(irow+1)
     enddo
-    call PUVRestoreArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-    call PUVRestoreArrayRead(xx,scaled_xx_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(xx,scaled_xx_p,ierr);CHKERRQ(ierr)
     call DiscretizationGlobalToLocal(discretization,field%flow_xx, &
                                      field%flow_xx_loc,NFLOWDOF)
   else
@@ -972,12 +972,12 @@ subroutine WIPPFloResidual(snes,xx,r,realization,pmwss_ptr,pmwell_ptr,ierr)
 
   option%iflag = 1
   ! now assign access pointer to local variables
-  call PUVGetArray(r,r_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
 
   ! Accumulation terms ------------------------------------
   ! accumulation at t(k) (doesn't change during Newton iteration)
   if (wippflo_calc_accum) then
-  call PUVGetArrayRead(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
   r_p = -accum_p
   if (wippflo_residual_test .and. &
       wippflo_residual_test_cell  > 0) then
@@ -987,10 +987,10 @@ subroutine WIPPFloResidual(snes,xx,r,realization,pmwss_ptr,pmwell_ptr,ierr)
       -1.d0*r_p(local_start:local_end)/option%flow_dt, &
       wippflo_residual_test_cell
   endif
-  call PUVRestoreArrayRead(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
   ! accumulation at t(k+1)
-  call PUVGetArray(field%flow_accum2,accum_p2,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%flow_accum2,accum_p2,ierr);CHKERRQ(ierr)
   do local_id = 1, grid%nlmax  ! For each local node do...
     ghosted_id = grid%nL2G(local_id)
     !geh - Ignore inactive cells with inactive materials
@@ -1019,7 +1019,7 @@ subroutine WIPPFloResidual(snes,xx,r,realization,pmwss_ptr,pmwell_ptr,ierr)
         Res(:)/option%flow_dt, wippflo_residual_test_cell
     endif
   enddo
-  call PUVRestoreArray(field%flow_accum2,accum_p2,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%flow_accum2,accum_p2,ierr);CHKERRQ(ierr)
   else
     r_p = 0.d0
   endif
@@ -1310,7 +1310,7 @@ subroutine WIPPFloResidual(snes,xx,r,realization,pmwss_ptr,pmwell_ptr,ierr)
     end select
   endif
 
-  call PUVRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 
   call MatrixZeroingZeroVecEntries(patch%aux%WIPPFlo%matrix_zeroing,r)
 
@@ -1321,8 +1321,8 @@ subroutine WIPPFloResidual(snes,xx,r,realization,pmwss_ptr,pmwell_ptr,ierr)
   if (field%flow_mass_transfer /= PETSC_NULL_VEC) then
     ! scale by -1.d0 for contribution to residual.  A negative contribution
     ! indicates mass being added to system.
-    call PUVGetArray(r,r_p,ierr);CHKERRQ(ierr)
-    call PUVGetArray(field%flow_mass_transfer,vec_p,ierr);CHKERRQ(ierr)
+    call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
+    call VecGetArray(field%flow_mass_transfer,vec_p,ierr);CHKERRQ(ierr)
     do local_id = 1, grid%nlmax  ! For each local node do...
       ghosted_id = grid%nL2G(local_id)
       imat = patch%imat(ghosted_id)
@@ -1333,8 +1333,8 @@ subroutine WIPPFloResidual(snes,xx,r,realization,pmwss_ptr,pmwell_ptr,ierr)
       call WIPPFloConvertUnitsToBRAGFlo(Res,material_auxvars(ghosted_id),option)
       r_p(local_start:local_end) = r_p(local_start:local_end) - Res
     enddo
-    call PUVRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
-    call PUVRestoreArray(field%flow_mass_transfer,vec_p, &
+    call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(field%flow_mass_transfer,vec_p, &
                             ierr);CHKERRQ(ierr)
 !geh: due to the potential for units conversion, cannot VecAXPY
 !    call VecAXPY(r,-1.d0,field%flow_mass_transfer,ierr);CHKERRQ(ierr)
@@ -1935,7 +1935,7 @@ subroutine WIPPFloSSSandbox(residual,Jacobian,compute_derivative, &
   PetscErrorCode :: ierr
 
   if (.not.compute_derivative) then
-    call PUVGetArray(residual,r_p,ierr);CHKERRQ(ierr)
+    call VecGetArray(residual,r_p,ierr);CHKERRQ(ierr)
   endif
 
   cur_srcsink => ss_sandbox_list
@@ -1977,7 +1977,7 @@ subroutine WIPPFloSSSandbox(residual,Jacobian,compute_derivative, &
   enddo
 
   if (.not.compute_derivative) then
-    call PUVRestoreArray(residual,r_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(residual,r_p,ierr);CHKERRQ(ierr)
   endif
 
 end subroutine WIPPFloSSSandbox

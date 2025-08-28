@@ -850,7 +850,7 @@ subroutine UGridDecompose(unstructured_grid,option)
   call PUMGetRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE,num_rows, &
                       ia_ptr,ja_ptr,success,ierr);CHKERRQ(ierr)
 
-  call PUVGetArray(elements_old,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(elements_old,vec_ptr,ierr);CHKERRQ(ierr)
   count = 0
   vertex_count = 0
   do local_id = 1, num_cells_local_old
@@ -896,7 +896,7 @@ subroutine UGridDecompose(unstructured_grid,option)
     ! final separator
     vec_ptr(count) = -999999  ! help differentiate
   enddo
-  call PUVRestoreArray(elements_old,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(elements_old,vec_ptr,ierr);CHKERRQ(ierr)
 
   if (unstructured_grid%max_ndual_per_cell > 0) then
     call PUMRestoreRowIJ(Dual_mat,ZERO_INTEGER,PETSC_FALSE,PETSC_FALSE, &
@@ -918,7 +918,7 @@ subroutine UGridDecompose(unstructured_grid,option)
   vertex_count = 0
   ! yep - load them all into a petsc vector
   ! note that the vertices are still in natural numbering
-  call PUVGetArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
   do local_id=1, unstructured_grid%ngmax
     do ivertex = 1, unstructured_grid%max_nvert_per_cell
       vertex_id = int(vec_ptr(ivertex + vertex_ids_offset + (local_id-1)*stride))
@@ -931,7 +931,7 @@ subroutine UGridDecompose(unstructured_grid,option)
       int_array_pointer(vertex_count) = vertex_id
     enddo
   enddo
-  call PUVRestoreArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
 
   ! sort the vertex ids
   allocate(int_array(vertex_count))
@@ -983,7 +983,7 @@ subroutine UGridDecompose(unstructured_grid,option)
   unstructured_grid%cell_vertices = 0
 
   ! permute the local ids calculated earlier in the int_array4
-  call PUVGetArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
   do ghosted_id = 1, unstructured_grid%ngmax
     do ivertex = 1, unstructured_grid%max_nvert_per_cell
       ! extract the original vertex id
@@ -998,7 +998,7 @@ subroutine UGridDecompose(unstructured_grid,option)
         int_array4(vertex_id)
     enddo
   enddo
-  call PUVRestoreArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(elements_local,vec_ptr,ierr);CHKERRQ(ierr)
   deallocate(int_array2)
   deallocate(int_array3)
   deallocate(int_array4)
@@ -1059,13 +1059,13 @@ subroutine UGridDecompose(unstructured_grid,option)
 !                   3*unstructured_grid%num_vertices_local,PETSC_DECIDE,ierr)
 !  call VecSetFromOptions(vertices_old,ierr)
 ! load up the coordinates
-  call PUVGetArray(vertices_old,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(vertices_old,vec_ptr,ierr);CHKERRQ(ierr)
   do ivertex = 1, unstructured_grid%num_vertices_local
     vec_ptr((ivertex-1)*3+1) = unstructured_grid%vertices(ivertex)%x
     vec_ptr((ivertex-1)*3+2) = unstructured_grid%vertices(ivertex)%y
     vec_ptr((ivertex-1)*3+3) = unstructured_grid%vertices(ivertex)%z
   enddo
-  call PUVRestoreArray(vertices_old,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(vertices_old,vec_ptr,ierr);CHKERRQ(ierr)
   deallocate(unstructured_grid%vertices)
   nullify(unstructured_grid%vertices)
 
@@ -1138,14 +1138,14 @@ subroutine UGridDecompose(unstructured_grid,option)
   call VecDestroy(vertices_old,ierr);CHKERRQ(ierr)
 
 
-  call PUVGetArray(vertices_new,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(vertices_new,vec_ptr,ierr);CHKERRQ(ierr)
   do ivertex = 1, unstructured_grid%num_vertices_local
     unstructured_grid%vertices(ivertex)%id = needed_vertices_petsc(ivertex)
     unstructured_grid%vertices(ivertex)%x = vec_ptr((ivertex-1)*3+1)
     unstructured_grid%vertices(ivertex)%y = vec_ptr((ivertex-1)*3+2)
     unstructured_grid%vertices(ivertex)%z = vec_ptr((ivertex-1)*3+3)
   enddo
-  call PUVRestoreArray(vertices_new,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(vertices_new,vec_ptr,ierr);CHKERRQ(ierr)
 
 #if UGRID_DEBUG
   write(string,*) option%myrank
@@ -2036,7 +2036,7 @@ subroutine UGridComputeVolumes(unstructured_grid,option,volume)
   PetscReal, pointer :: volume_p(:)
   PetscErrorCode :: ierr
 
-  call PUVGetArray(volume,volume_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(volume,volume_p,ierr);CHKERRQ(ierr)
 
   do local_id = 1, unstructured_grid%nlmax
     ! ghosted_id = local_id on unstructured grids
@@ -2054,7 +2054,7 @@ subroutine UGridComputeVolumes(unstructured_grid,option,volume)
                            ghosted_id),vertex_8,option)
   enddo
 
-  call PUVRestoreArray(volume,volume_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(volume,volume_p,ierr);CHKERRQ(ierr)
 
 end subroutine UGridComputeVolumes
 
@@ -2085,7 +2085,7 @@ subroutine UGridComputeAreas(unstructured_grid,option,area)
   PetscReal, pointer :: area_p(:)
   PetscErrorCode :: ierr
 
-  call PUVGetArray(area,area_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(area,area_p,ierr);CHKERRQ(ierr)
 
   do local_id = 1, unstructured_grid%nlmax
     ! ghosted_id = local_id on unstructured grids
@@ -2107,7 +2107,7 @@ subroutine UGridComputeAreas(unstructured_grid,option,area)
                            ghosted_id),vertex_4,option)
   enddo
 
-  call PUVRestoreArray(area,area_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(area,area_p,ierr);CHKERRQ(ierr)
 
 end subroutine UGridComputeAreas
 
@@ -2816,7 +2816,7 @@ subroutine UGridMapSideSet(unstructured_grid,face_vertices,n_ss_faces, &
     min_verts_req = 2.d0
   endif
 
-  call PUVGetArray(Face_vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(Face_vec,vec_ptr,ierr);CHKERRQ(ierr)
   ! resulting vec contains the number of natural vertices in the sideset that
   ! intersect a local face
   do iface = 1, boundary_face_count
@@ -2845,7 +2845,7 @@ subroutine UGridMapSideSet(unstructured_grid,face_vertices,n_ss_faces, &
       endif
     endif
   enddo
-  call PUVRestoreArray(Face_vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(Face_vec,vec_ptr,ierr);CHKERRQ(ierr)
   deallocate(boundary_faces)
 
   allocate(cell_ids(mapped_face_count))
@@ -3415,13 +3415,13 @@ subroutine UGridImplicitExpandGhostCells(ugrid,scatter_gtol,global_vec, &
                         SCATTER_FORWARD,ierr);CHKERRQ(ierr)
     call VecScatterEnd(scatter_gtol,global_vec,local_vec,INSERT_VALUES, &
                       SCATTER_FORWARD,ierr);CHKERRQ(ierr)
-    call PUVGetArrayRead(local_vec,vec_loc_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(local_vec,vec_loc_ptr,ierr);CHKERRQ(ierr)
     do ghosted_id = 1, ugrid%ngmax
       cell_vertices_natural_new_1d((ghosted_id-1)* &
                                    ugrid%max_nvert_per_cell+ivertex) = &
         nint(vec_loc_ptr(ghosted_id))
     enddo
-    call PUVRestoreArrayRead(local_vec,vec_loc_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(local_vec,vec_loc_ptr,ierr);CHKERRQ(ierr)
   enddo
   deallocate(int_array)
   num_vert_full = ugrid%ngmax*ugrid%max_nvert_per_cell
@@ -3523,7 +3523,7 @@ subroutine UGridImplicitExpandGhostCells(ugrid,scatter_gtol,global_vec, &
                           SCATTER_FORWARD,ierr);CHKERRQ(ierr)
       call VecScatterEnd(scatter_gtol,global_vec,local_vec,INSERT_VALUES, &
                         SCATTER_FORWARD,ierr);CHKERRQ(ierr)
-      call PUVGetArrayRead(local_vec,vec_loc_ptr,ierr);CHKERRQ(ierr)
+      call VecGetArrayRead(local_vec,vec_loc_ptr,ierr);CHKERRQ(ierr)
       do ghosted_id = 1, ugrid%ngmax
         ivert_local = cell_vertices_ghosted_new(ivertex,ghosted_id)
         select case(i)
@@ -3535,7 +3535,7 @@ subroutine UGridImplicitExpandGhostCells(ugrid,scatter_gtol,global_vec, &
             vertices_new(ivert_local)%z = vec_loc_ptr(ghosted_id)
         end select
       enddo
-      call PUVRestoreArrayRead(local_vec,vec_loc_ptr,ierr);CHKERRQ(ierr)
+      call VecRestoreArrayRead(local_vec,vec_loc_ptr,ierr);CHKERRQ(ierr)
     enddo
   enddo
   deallocate(real_array)

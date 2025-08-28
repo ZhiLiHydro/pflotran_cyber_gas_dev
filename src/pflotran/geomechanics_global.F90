@@ -229,7 +229,7 @@ subroutine GeomechGlobalSetAuxVarVecLocPatch(geomech_realization,vec_loc,ivar,&
   grid => patch%geomech_grid
   option => geomech_realization%option
 
-  call PUVGetArray(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
   select case(ivar)
     case(GEOMECH_DISP_X)
@@ -261,7 +261,7 @@ subroutine GeomechGlobalSetAuxVarVecLocPatch(geomech_realization,vec_loc,ivar,&
       end select
   end select
 
-  call PUVRestoreArray(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
 end subroutine GeomechGlobalSetAuxVarVecLocPatch
 

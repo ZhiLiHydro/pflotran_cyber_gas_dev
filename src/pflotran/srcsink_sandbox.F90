@@ -271,7 +271,7 @@ subroutine SSSandbox(residual,Jacobian,compute_derivative, &
   call PrintErrMsg(option)
 
   if (.not.compute_derivative) then
-    call PUVGetArray(residual,r_p,ierr);CHKERRQ(ierr)
+    call VecGetArray(residual,r_p,ierr);CHKERRQ(ierr)
   endif
 
   cur_srcsink => ss_sandbox_list
@@ -298,7 +298,7 @@ subroutine SSSandbox(residual,Jacobian,compute_derivative, &
   enddo
 
   if (.not.compute_derivative) then
-    call PUVRestoreArray(residual,r_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(residual,r_p,ierr);CHKERRQ(ierr)
   endif
 
 end subroutine SSSandbox
