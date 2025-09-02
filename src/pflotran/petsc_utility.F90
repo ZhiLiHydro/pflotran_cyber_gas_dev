@@ -34,6 +34,10 @@ module Petsc_Utility_module
     module procedure PUMSetValuesLocal3
   end interface
 
+  interface PUCast
+    module procedure PUCastBoolean
+  end interface
+
   public :: PetUtilMatSVBL, &
             PetUtilVecSVBL, &
             PetUtilLoadVec, &
@@ -60,7 +64,8 @@ module Petsc_Utility_module
             PUIRestoreIndices, &
             PUVDuplicateVecs, &
             PUVDestroyVecs, &
-            PetscTestFile!, &
+            PetscTestFile, &
+            PUCast
 !            PetscTime
 
 contains
@@ -1024,5 +1029,20 @@ subroutine PetscTime(time,ierr)
 
 end subroutine PetscTime
 #endif
+
+
+! ************************************************************************** !
+
+function PUCastBoolean(flag)
+
+  implicit none
+
+  logical :: flag
+
+  PetscBool :: PUCastBoolean
+
+  PUCastBoolean = flag
+
+end function PUCastBoolean
 
 end module Petsc_Utility_module

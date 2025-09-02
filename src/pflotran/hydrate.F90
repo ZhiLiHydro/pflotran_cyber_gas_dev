@@ -61,7 +61,7 @@ subroutine HydrateSetup(realization)
 
   PetscInt :: ghosted_id, iconn, sum_connection, local_id
   PetscInt :: idof, ndof
-  PetscBool :: error_found
+  logical :: error_found
   PetscInt :: flag(10)
   PetscBool, allocatable :: dof_is_active(:)
   PetscErrorCode :: ierr
@@ -1132,6 +1132,7 @@ subroutine HydrateUpdateFixedAccum(realization)
   use Material_Aux_module
   use Hydrate_Aux_module
   use Hydrate_Common_module
+  use Petsc_Utility_module, only : PUCast
 
   implicit none
 
@@ -1197,7 +1198,7 @@ subroutine HydrateUpdateFixedAccum(realization)
                              material_parameter%soil_heat_capacity(imat), &
                              option,accum_p(local_start:local_end), &
                              Jac_dummy,PETSC_FALSE, &
-                             local_id == hydrate_debug_cell_id)
+                             PUCast(local_id == hydrate_debug_cell_id))
   enddo
 
 
@@ -1231,6 +1232,7 @@ subroutine HydrateResidual(snes,xx,r,realization,pm_well,ierr)
   use Hydrate_Common_module
   use PM_Well_class
   use Matrix_Zeroing_module
+  use Petsc_Utility_module, only : PUCast
 
   implicit none
 
@@ -1373,7 +1375,7 @@ subroutine HydrateResidual(snes,xx,r,realization,pm_well,ierr)
                              material_parameter%soil_heat_capacity(imat), &
                              option,Res,Jac_dummy,&
                              hydrate_analytical_derivatives, &
-                             local_id == hydrate_debug_cell_id)
+                             PUcast(local_id == hydrate_debug_cell_id))
     r_p(local_start:local_end) =  r_p(local_start:local_end) + Res(:)
     accum_p2(local_start:local_end) = Res(:)
   enddo
@@ -1441,8 +1443,8 @@ subroutine HydrateResidual(snes,xx,r,realization,pm_well,ierr)
                        hydrate_analytical_derivatives, &
                        update_upwind_direction, &
                        count_upwind_direction_flip, &
-                       (local_id_up == hydrate_debug_cell_id .or. &
-                        local_id_dn == hydrate_debug_cell_id))
+                       PUCast(local_id_up == hydrate_debug_cell_id .or. &
+                              local_id_dn == hydrate_debug_cell_id))
 
       patch%internal_velocities(:,sum_connection) = v_darcy
       if (associated(patch%internal_flow_fluxes)) then
@@ -1506,7 +1508,7 @@ subroutine HydrateResidual(snes,xx,r,realization,pm_well,ierr)
                      hydrate_analytical_derivatives, &
                      update_upwind_direction, &
                      count_upwind_direction_flip, &
-                     local_id == hydrate_debug_cell_id)
+                     PUCast(local_id == hydrate_debug_cell_id))
       patch%boundary_velocities(:,sum_connection) = v_darcy
       if (associated(patch%boundary_flow_fluxes)) then
         patch%boundary_flow_fluxes(:,sum_connection) = Res(:)
@@ -1605,7 +1607,7 @@ subroutine HydrateResidual(snes,xx,r,realization,pm_well,ierr)
                           ss_flow_vol_flux, &
                           scale,Res,Jac_dummy, &
                           hydrate_analytical_derivatives, &
-                          local_id == hydrate_debug_cell_id)
+                          PUCast(local_id == hydrate_debug_cell_id))
 
       r_p(local_start:local_end) =  r_p(local_start:local_end) - Res(:)
 

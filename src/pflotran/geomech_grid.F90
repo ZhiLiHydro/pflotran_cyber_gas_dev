@@ -84,7 +84,7 @@ subroutine CopySubsurfaceGridtoGeomechGrid(ugrid,geomech_grid,option)
   type(point3d_type), pointer :: vertices(:)
   PetscInt, allocatable :: vertex_count_array(:)
   PetscInt, allocatable :: vertex_count_array2(:)
-  PetscBool :: lflag
+  logical :: lflag
 
 
 #ifdef GEOMECH_DEBUG

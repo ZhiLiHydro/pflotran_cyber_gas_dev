@@ -39,7 +39,7 @@ module Option_module
     PetscMPIInt :: hdf5_read_group_size, hdf5_write_group_size
     PetscBool :: broadcast_read
     PetscBool :: blocking
-    PetscBool :: error_while_nonblocking
+    logical :: error_while_nonblocking
 
     character(len=MAXSTRINGLENGTH) :: io_buffer
 

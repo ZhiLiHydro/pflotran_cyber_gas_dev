@@ -488,7 +488,7 @@ recursive subroutine PMERTInitializeRun(this)
   type(patch_type), pointer :: patch
   character(len=MAXWORDLENGTH) :: word
   PetscInt :: ispecies
-  PetscBool :: flag
+  logical :: flag
   PetscReal :: tempreal
   PetscReal, parameter :: ELEMENTARY_CHARGE = 1.6022d-19 ! C
   PetscReal, parameter :: AVOGADRO_NUMBER = 6.02214d23 ! atoms per mol
@@ -802,6 +802,7 @@ subroutine PMERTSetupSolvers(this)
 
   use Solver_module
   use Discretization_module
+  use Petsc_Utility_module, only : PUCast
 
   implicit none
 
@@ -829,8 +830,8 @@ subroutine PMERTSetupSolvers(this)
                                   ONEDOF, &
                                   solver%Mpre_mat_type, &
                                   solver%Mpre, &
-                                  associated(this%realization%patch% &
-                                    prescribed_condition_list%first), &
+                                  PUCast(associated(this%realization%patch% &
+                                    prescribed_condition_list%first)), &
                                   option)
 
   call MatSetOptionsPrefix(solver%Mpre,"geop_",ierr);CHKERRQ(ierr)

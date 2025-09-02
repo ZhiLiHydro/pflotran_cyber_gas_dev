@@ -12163,7 +12163,7 @@ subroutine PatchCheckError(flag,option)
 
   implicit none
 
-  PetscBool :: flag
+  logical :: flag
   type(option_type) :: option
 
   PetscErrorCode :: ierr

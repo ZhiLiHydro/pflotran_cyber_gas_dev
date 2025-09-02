@@ -25,6 +25,7 @@ subroutine InitSubsurfFlowReadInitCond(realization,filename)
 
 #include "petsc/finclude/petscvec.h"
   use petscvec
+
   use Realization_Subsurface_class
   use Option_module
   use Field_module
@@ -32,6 +33,7 @@ subroutine InitSubsurfFlowReadInitCond(realization,filename)
   use Patch_module
   use Discretization_module
   use HDF5_module
+  use Petsc_Utility_module, only : PUCast
 
   implicit none
 
@@ -73,8 +75,8 @@ subroutine InitSubsurfFlowReadInitCond(realization,filename)
   group_name = ''
   dataset_name = 'Pressure'
   call HDF5ReadCellIndexedRealArray(realization,field%work, &
-                                    filename,group_name, &
-                                    dataset_name,option%id>0)
+                                    filename,group_name,dataset_name, &
+                                    PUCast(option%id>0))
   call VecGetArray(field%work,vec_p,ierr);CHKERRQ(ierr)
   do local_id=1, grid%nlmax
     if (patch%imat(grid%nL2G(local_id)) <= 0) cycle

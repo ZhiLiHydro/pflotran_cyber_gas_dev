@@ -342,7 +342,7 @@ module PM_Well_class
     ! time tracking
     PetscReal :: tran_time
     ! time step cut flag for quasi-implicit coupling
-    PetscBool :: cut_ts_flag
+    logical :: cut_ts_flag
   end type well_soln_tran_type
 
   type, public :: well_comm_type

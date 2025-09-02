@@ -1867,10 +1867,10 @@ subroutine EOSWaterDensityIF97Region3(T,P,calculate_derivatives,dw,dwmol, &
   T_temp = T+Tf
 
   ! 21.0434 MPa
-  call EOSWaterSaturationPressureIF97(370.d0, .false., &
+  call EOSWaterSaturationPressureIF97(370.d0, PETSC_FALSE, &
                                       psat_64315, dumb, ierr)
   ! 16.5292 MPa
-  call EOSWaterSaturationPressureIF97(350.d0, .false., &
+  call EOSWaterSaturationPressureIF97(350.d0, PETSC_FALSE, &
                                       psat_62315, dumb, ierr)
 
   ! ranges given in Table 2 and Table 10 (near critical point)
@@ -3216,7 +3216,7 @@ subroutine EOSWaterEnthalpyIF97(T,P,calculate_derivatives,hw, &
   else
     ! Region 3: Valid in "wedge" >623.15K, >Ps(T), and 100MPa
     ! moved to subroutine to avoid weighting down this more-used routine
-    call EOSWaterEnthalpyIF97Region3(T,P,.false.,hw,hwp,hwt)
+    call EOSWaterEnthalpyIF97Region3(T,P,PETSC_FALSE,hw,hwp,hwt)
   end if
 
 end subroutine EOSWaterEnthalpyIF97
@@ -3262,7 +3262,7 @@ subroutine EOSWaterEnthalpyIF97Region3(T,P,calculate_derivatives,hw,hwp,hwt)
 
   T_temp = T+Tf
   ! P only used to compute density
-  call EOSWaterDensityIF97Region3(T,P,.false.,dw,dum1,dum2,dum3)
+  call EOSWaterDensityIF97Region3(T,P,PETSC_FALSE,dw,dum1,dum2,dum3)
   delta = dw/rho_c
   tau = T_c/T_temp
 

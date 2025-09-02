@@ -2705,6 +2705,7 @@ subroutine InvSubsurfPrintCurMeasValues(this)
   ! Date: 11/17/22
   !
   use Driver_class
+  use Petsc_Utility_module, only : PUCast
 
   class(inversion_subsurface_type) :: this
 
@@ -2715,16 +2716,18 @@ subroutine InvSubsurfPrintCurMeasValues(this)
   if (this%driver%PrintToScreen()) then
     do i = 1, num_measurements
       call InvMeasurePrintComparison(STDOUT_UNIT, &
-                                     this%inversion_aux%measurements(i),i==1, &
-                                     i==num_measurements, &
+                                     this%inversion_aux%measurements(i), &
+                                     PUCast(i==1), &
+                                     PUCast(i==num_measurements), &
                                      this%realization%option)
     enddo
   endif
   if (this%driver%PrintToFile()) then
     do i = 1, num_measurements
       call InvMeasurePrintComparison(this%driver%fid_out, &
-                                     this%inversion_aux%measurements(i),i==1, &
-                                     i==num_measurements, &
+                                     this%inversion_aux%measurements(i), &
+                                     PUCast(i==1), &
+                                     PUCast(i==num_measurements), &
                                      this%realization%option)
     enddo
   endif
@@ -2742,6 +2745,7 @@ subroutine InvSubsurfPrintCurParamValues(this)
   ! Date: 11/17/22
   !
   use Driver_class
+  use Petsc_Utility_module, only : PUCast
 
   class(inversion_subsurface_type) :: this
 
@@ -2754,16 +2758,18 @@ subroutine InvSubsurfPrintCurParamValues(this)
   if (this%driver%PrintToScreen()) then
     do i = 1, num_parameters
       call InversionParameterPrint(STDOUT_UNIT, &
-                                   this%inversion_aux%parameters(i),i==1, &
-                                   i==num_parameters, &
+                                   this%inversion_aux%parameters(i), &
+                                   PUCast(i==1), &
+                                   PUCast(i==num_parameters), &
                                    this%realization%option)
     enddo
   endif
   if (this%driver%PrintToFile()) then
     do i = 1, num_parameters
       call InversionParameterPrint(this%driver%fid_out, &
-                                   this%inversion_aux%parameters(i),i==1, &
-                                   i==num_parameters, &
+                                   this%inversion_aux%parameters(i), &
+                                   PUCast(i==1), &
+                                   PUCast(i==num_parameters), &
                                    this%realization%option)
     enddo
   endif
@@ -2781,6 +2787,7 @@ subroutine InvSubsurfPrintCurParamUpdate(this)
   ! Date: 11/17/22
   !
   use Driver_class
+  use Petsc_Utility_module, only : PUCast
 
   class(inversion_subsurface_type) :: this
 
@@ -2797,15 +2804,17 @@ subroutine InvSubsurfPrintCurParamUpdate(this)
   if (this%driver%PrintToScreen()) then
     do i = 1, num_parameters
       call InversionParameterPrintUpdate(STDOUT_UNIT, &
-                                   this%inversion_aux%parameters(i),i==1, &
-                                   i==num_parameters)
+                                   this%inversion_aux%parameters(i), &
+                                   PUCast(i==1), &
+                                   PUCast(i==num_parameters))
     enddo
   endif
   if (this%driver%PrintToFile()) then
     do i = 1, num_parameters
       call InversionParameterPrintUpdate(this%driver%fid_out, &
-                                   this%inversion_aux%parameters(i),i==1, &
-                                   i==num_parameters)
+                                   this%inversion_aux%parameters(i), &
+                                   PUCast(i==1), &
+                                   PUCast(i==num_parameters))
     enddo
   endif
 

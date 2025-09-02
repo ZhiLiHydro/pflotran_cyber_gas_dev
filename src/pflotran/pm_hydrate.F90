@@ -2131,7 +2131,7 @@ subroutine PMHydrateCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
   PetscBool :: converged_absolute
   PetscBool :: converged_scaled
   PetscMPIInt :: mpi_int
-  PetscBool :: flags(242)
+  logical :: flags(242)
   PetscBool :: converged_well
   character(len=MAXSTRINGLENGTH) :: string
 
