@@ -49,6 +49,7 @@ subroutine GeneralSetup(realization)
   use Material_Aux_module
   use Output_Aux_module
   use Matrix_Zeroing_module
+  use Petsc_Utility_module, only : PUCast
 
   implicit none
 
@@ -62,7 +63,7 @@ subroutine GeneralSetup(realization)
 
   PetscInt :: ghosted_id, iconn, sum_connection, local_id
   PetscInt :: i, idof, ndof
-  PetscBool :: error_found
+  logical :: error_found
   PetscInt :: flag(10)
   PetscBool, allocatable :: dof_is_active(:)
   PetscErrorCode :: ierr
@@ -155,8 +156,8 @@ subroutine GeneralSetup(realization)
     do ghosted_id = 1, grid%ngmax
       do idof = 0, 2*ndof
         call GeneralAuxVarInit(gen_auxvars(idof,ghosted_id), &
-                           (general_analytical_derivatives .and. idof==0), &
-                            option)
+                       PUCast(general_analytical_derivatives .and. idof==0), &
+                       option)
       enddo
     enddo
   else
@@ -164,8 +165,8 @@ subroutine GeneralSetup(realization)
     do ghosted_id = 1, grid%ngmax
       do idof = 0, ndof
         call GeneralAuxVarInit(gen_auxvars(idof,ghosted_id), &
-                           (general_analytical_derivatives .and. idof==0), &
-                            option)
+                        PUCast(general_analytical_derivatives .and. idof==0), &
+                        option)
       enddo
     enddo
   endif
@@ -697,6 +698,7 @@ subroutine GeneralUpdateAuxVars(realization,update_state,update_state_bc)
   use Material_Aux_module
   use EOS_Water_module
   use Saturation_Function_module
+  use Petsc_Utility_module, only : PUCast
 
   implicit none
 
@@ -1173,7 +1175,7 @@ subroutine GeneralUpdateAuxVars(realization,update_state,update_state_bc)
                           material_is_soluble, &
                           material_parameter%soil_heat_capacity(&
                             patch%imat(ghosted_id)), &
-                          local_id == general_debug_cell_id)
+                          PUCast(local_id == general_debug_cell_id))
 
     enddo
     source_sink => source_sink%next
@@ -1202,6 +1204,7 @@ subroutine GeneralUpdateFixedAccum(realization)
   use Grid_module
   use Material_Aux_module
   use Material_module
+  use Petsc_Utility_module, only : PUCast
 
   implicit none
 
@@ -1279,7 +1282,7 @@ subroutine GeneralUpdateFixedAccum(realization)
                              material_parameter%soil_heat_capacity(imat), &
                              option,accum_p(local_start:local_end), &
                              Jac_dummy,PETSC_FALSE,material_is_soluble, &
-                             local_id == general_debug_cell_id)
+                             PUCast(local_id == general_debug_cell_id))
   enddo
 
 
@@ -1312,6 +1315,7 @@ subroutine GeneralResidual(snes,xx,r,realization,ierr)
   use Material_module
   use Upwind_Direction_module
   use Matrix_Zeroing_module
+  use Petsc_Utility_module, only : PUCast
 
 !#define DEBUG_WITH_TECPLOT
 #ifdef DEBUG_WITH_TECPLOT
@@ -1468,7 +1472,7 @@ subroutine GeneralResidual(snes,xx,r,realization,ierr)
                              general_analytical_derivatives, &
                              general_parameter% &
                                material_is_soluble(patch%imat(ghosted_id)), &
-                             local_id == general_debug_cell_id)
+                             PUCast(local_id == general_debug_cell_id))
     r_p(local_start:local_end) =  r_p(local_start:local_end) + Res(:)
     accum_p2(local_start:local_end) = Res(:)
   enddo
@@ -1512,8 +1516,8 @@ subroutine GeneralResidual(snes,xx,r,realization,ierr)
                        general_analytical_derivatives, &
                        update_upwind_direction, &
                        count_upwind_direction_flip, &
-                       (local_id_up == general_debug_cell_id .or. &
-                        local_id_dn == general_debug_cell_id))
+                       PUCast(local_id_up == general_debug_cell_id .or. &
+                              local_id_dn == general_debug_cell_id))
 
       patch%internal_velocities(:,sum_connection) = v_darcy
       if (associated(patch%internal_flow_fluxes)) then
@@ -1577,7 +1581,7 @@ subroutine GeneralResidual(snes,xx,r,realization,ierr)
                      general_analytical_derivatives, &
                      update_upwind_direction, &
                      count_upwind_direction_flip, &
-                     local_id == general_debug_cell_id)
+                     PUCast(local_id == general_debug_cell_id))
       patch%boundary_velocities(:,sum_connection) = v_darcy
       if (associated(patch%boundary_flow_fluxes)) then
         patch%boundary_flow_fluxes(:,sum_connection) = Res(:)
@@ -1647,7 +1651,7 @@ subroutine GeneralResidual(snes,xx,r,realization,ierr)
                             material_is_soluble(patch%imat(ghosted_id)), &
                           material_parameter%soil_heat_capacity(&
                             patch%imat(ghosted_id)), &
-                          local_id == general_debug_cell_id)
+                          PUCast(local_id == general_debug_cell_id))
 
       r_p(local_start:local_end) =  r_p(local_start:local_end) - Res(:)
 

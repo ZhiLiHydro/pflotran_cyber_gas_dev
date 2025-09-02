@@ -966,6 +966,7 @@ subroutine TimestepperSNESPrintInfo(this,aux_string,option)
   !
   use Option_module
   use String_module
+  use Petsc_Utility_module, only : PUCast
 
   implicit none
 
@@ -986,7 +987,7 @@ subroutine TimestepperSNESPrintInfo(this,aux_string,option)
   allocate(strings(this%ntfac+20))
   strings = ''
   strings(1) = 'acceleration: ' // &
-    trim(StringWrite(String1Or2(this%iaccel>0,'on','off')))
+    trim(StringWrite(String1Or2(PUCast(this%iaccel>0),'on','off')))
   if (this%iaccel > 0) then
     strings(2) = 'acceleration threshold: ' // &
       trim(StringWrite(this%iaccel))

@@ -340,7 +340,7 @@ subroutine CopySubsurfaceGridtoGeomechGrid(ugrid,geomech_grid,option)
     lflag = PETSC_TRUE
   endif
   call MPI_Allreduce(MPI_IN_PLACE,lflag,ONE_INTEGER_MPI, &
-                     MPI_LOGICAL,MPI_LOR,option%mycomm,ierr);CHKERRQ(ierr)
+                     MPI_C_BOOL,MPI_LOR,option%mycomm,ierr);CHKERRQ(ierr)
   if (lflag) then
     option%io_buffer = 'See errors above.'
     call PrintErrMsg(option)

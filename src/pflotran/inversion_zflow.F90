@@ -2637,6 +2637,7 @@ subroutine InversionZFlowCheckpoint(this)
   use Driver_class
   use HDF5_Aux_module
   use String_module
+  use Petsc_Utility_module, only : PUCast
 
   class(inversion_zflow_type) :: this
 
@@ -2651,7 +2652,8 @@ subroutine InversionZFlowCheckpoint(this)
 
   call this%driver%PrintMsg('Checkpointing inversion iteration ' // &
                             trim(StringWrite(this%iteration)) // '.')
-  call HDF5FileOpen(this%checkpoint_filename,file_id,(this%iteration==1), &
+  call HDF5FileOpen(this%checkpoint_filename,file_id, &
+                    PUCast(this%iteration==1), &
                     this%driver)
   call HDF5AttributeWrite(file_id,H5T_NATIVE_INTEGER,'Last Iteration', &
                           this%iteration,this%driver)

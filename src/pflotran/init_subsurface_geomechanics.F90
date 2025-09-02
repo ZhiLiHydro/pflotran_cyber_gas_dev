@@ -1034,7 +1034,7 @@ subroutine InitSubsurfGeomechChkInactiveCells(geomech_realization, &
   type(gmdm_ptr_type), pointer :: dm_ptr
 
   PetscErrorCode :: ierr
-  PetscBool :: error_found
+  logical :: error_found
   PetscInt :: geomech_local_id, subsurf_local_id, geomech_ghosted_id
   PetscInt :: subsurf_ghosted_id
   PetscReal, pointer :: subsurf_vec_1dof(:)

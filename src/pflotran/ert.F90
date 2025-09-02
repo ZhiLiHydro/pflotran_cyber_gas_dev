@@ -60,7 +60,7 @@ subroutine ERTSetup(realization)
   PetscInt :: local_id, ghosted_id,num_neighbors
   PetscBool :: require_electrical_conductivity
   PetscBool :: archies_parameters_defined
-  PetscBool :: error_found
+  logical :: error_found
   PetscBool :: dof_is_active(1)
   PetscErrorCode :: ierr
 

@@ -636,6 +636,8 @@ subroutine HDF5QueryRegionDefinition(region, filename, option, &
   PetscBool, intent (out) :: face_ids_exists
   PetscBool, intent (out) :: vert_ids_exists
 
+  logical :: lflag
+
   type(option_type) :: option
 
   character(len=MAXSTRINGLENGTH) :: string
@@ -659,13 +661,16 @@ subroutine HDF5QueryRegionDefinition(region, filename, option, &
 
   ! Querry region definition
   string = "Cell Ids"
-  call h5lexists_f(grp_id2, string, cell_ids_exists, hdf5_err)
+  call h5lexists_f(grp_id2, string, lflag, hdf5_err)
+  cell_ids_exists = lflag
 
   string = "Face Ids"
-  call h5lexists_f(grp_id2, string, face_ids_exists, hdf5_err)
+  call h5lexists_f(grp_id2, string, lflag, hdf5_err)
+  face_ids_exists = lflag
 
   string = "Vertex Ids"
-  call h5lexists_f(grp_id2, string, vert_ids_exists, hdf5_err)
+  call h5lexists_f(grp_id2, string, lflag, hdf5_err)
+  vert_ids_exists = lflag
 
   call HDF5GroupClose(grp_id2,option)
   call HDF5GroupClose(grp_id,option)
@@ -708,7 +713,7 @@ subroutine HDF5ReadRegionFromFile(grid,region,filename,option)
   integer(HID_T) :: file_id
   integer(HID_T) :: grp_id, grp_id2
 
-  PetscBool :: grp_exists
+  logical :: grp_exists
 
   call PetscLogEventBegin(logging%event_region_read_hdf5,ierr);CHKERRQ(ierr)
 

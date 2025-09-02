@@ -1477,6 +1477,7 @@ subroutine CondControlAssignRTTranInitCond(realization)
   use Reaction_module
   use Reaction_Mineral_module
   use HDF5_module
+  use Petsc_Utility_module, only : PUCast
   use Secondary_Continuum_Aux_module
 
   implicit none
@@ -1757,7 +1758,7 @@ subroutine CondControlAssignRTTranInitCond(realization)
             global_auxvars(ghosted_id),material_auxvars(ghosted_id), &
             reaction,constraint, &
             constraint_coupler%num_iterations, &
-            (prev_equilibrated_ghosted_id > 0),option)
+            PUCast(prev_equilibrated_ghosted_id > 0),option)
           option%iflag = 0
           ave_num_iterations = ave_num_iterations + &
             constraint_coupler%num_iterations
@@ -2382,6 +2383,7 @@ subroutine CondControlReadTransportIC(realization,filename)
   use Reaction_Aux_module
   use Discretization_module
   use HDF5_module
+  use Petsc_Utility_module, only : PUCast
 
   implicit none
 
@@ -2423,8 +2425,8 @@ subroutine CondControlReadTransportIC(realization,filename)
       if (associated(realization%reaction_nw)) &
         dataset_name = realization%reaction_nw%species_names(idof)
       call HDF5ReadCellIndexedRealArray(realization,field%work, &
-                                        filename,group_name, &
-                                        dataset_name,option%id>0)
+                                        filename,group_name,dataset_name, &
+                                        PUCast(option%id>0))
       call VecGetArray(field%work,vec_p,ierr);CHKERRQ(ierr)
       do local_id=1, grid%nlmax
         if (patch%imat(grid%nL2G(local_id)) <= 0) cycle
