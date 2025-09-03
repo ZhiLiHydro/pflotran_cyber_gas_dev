@@ -1034,7 +1034,7 @@ subroutine InitSubsurfGeomechChkInactiveCells(geomech_realization, &
   type(gmdm_ptr_type), pointer :: dm_ptr
 
   PetscErrorCode :: ierr
-  logical :: error_found
+  PetscBool :: error_found
   PetscInt :: geomech_local_id, subsurf_local_id, geomech_ghosted_id
   PetscInt :: subsurf_ghosted_id
   PetscReal, pointer :: subsurf_vec_1dof(:)
@@ -1075,7 +1075,7 @@ subroutine InitSubsurfGeomechChkInactiveCells(geomech_realization, &
                          nL2G(geomech_local_id)
     if (nint(subsurf_vec_1dof(geomech_local_id)) <= 0) error_found = PETSC_TRUE
   enddo
-  call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_LOGICAL, &
+  call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_C_BOOL, &
                      MPI_LOR,option%mycomm,ierr);CHKERRQ(ierr)
   if (error_found)then
     option%io_buffer = 'Cannot map inactive flow cell to geomechanics '//&

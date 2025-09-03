@@ -39,7 +39,7 @@ module Option_module
     PetscMPIInt :: hdf5_read_group_size, hdf5_write_group_size
     PetscBool :: broadcast_read
     PetscBool :: blocking
-    logical :: error_while_nonblocking
+    PetscBool :: error_while_nonblocking
 
     character(len=MAXSTRINGLENGTH) :: io_buffer
 
@@ -698,7 +698,7 @@ subroutine OptionCheckNonBlockingError(option)
 
   mpi_int = 1
   call MPI_Allreduce(MPI_IN_PLACE,option%error_while_nonblocking,mpi_int, &
-                     MPI_LOGICAL,MPI_LOR,option%mycomm,ierr);CHKERRQ(ierr)
+                     MPI_C_BOOL,MPI_LOR,option%mycomm,ierr);CHKERRQ(ierr)
   if (option%error_while_nonblocking) then
     call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
     call PetscInitialized(petsc_initialized,ierr);CHKERRQ(ierr)

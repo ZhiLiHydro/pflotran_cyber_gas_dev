@@ -488,7 +488,7 @@ recursive subroutine PMERTInitializeRun(this)
   type(patch_type), pointer :: patch
   character(len=MAXWORDLENGTH) :: word
   PetscInt :: ispecies
-  logical :: flag
+  PetscBool :: flag
   PetscReal :: tempreal
   PetscReal, parameter :: ELEMENTARY_CHARGE = 1.6022d-19 ! C
   PetscReal, parameter :: AVOGADRO_NUMBER = 6.02214d23 ! atoms per mol
@@ -764,7 +764,7 @@ recursive subroutine PMERTInitializeRun(this)
   call VecRestoreArray(this%realization%field%work, &
                           vec_ptr,ierr);CHKERRQ(ierr)
 
-  call MPI_Allreduce(MPI_IN_PLACE,flag,ONE_INTEGER_MPI,MPI_LOGICAL,MPI_LOR, &
+  call MPI_Allreduce(MPI_IN_PLACE,flag,ONE_INTEGER_MPI,MPI_C_BOOL,MPI_LOR, &
                      option%mycomm,ierr);CHKERRQ(ierr)
   if (flag) then
     option%io_buffer = 'Electrodes in inactive or prescribed condition &

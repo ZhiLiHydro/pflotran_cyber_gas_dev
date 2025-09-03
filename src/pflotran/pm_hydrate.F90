@@ -2131,7 +2131,7 @@ subroutine PMHydrateCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
   PetscBool :: converged_absolute
   PetscBool :: converged_scaled
   PetscMPIInt :: mpi_int
-  logical :: flags(242)
+  PetscBool :: flags(242)
   PetscBool :: converged_well
   character(len=MAXSTRINGLENGTH) :: string
 
@@ -2938,7 +2938,7 @@ subroutine PMHydrateCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
     mpi_int = 242
     ! do not perform an all reduce on cell id as this info is not printed
     ! in parallel
-    call MPI_Allreduce(MPI_IN_PLACE,flags,mpi_int,MPI_LOGICAL,MPI_LAND, &
+    call MPI_Allreduce(MPI_IN_PLACE,flags,mpi_int,MPI_C_BOOL,MPI_LAND, &
                        option%mycomm,ierr);CHKERRQ(ierr)
     this%converged_flag = reshape(flags(1:60*MAX_INDEX),(/4,15,MAX_INDEX/))
     hydrate_high_temp_ts_cut = .not.flags(241)
@@ -3019,7 +3019,7 @@ subroutine PMHydrateCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
     endif
 
     call MPI_Allreduce(MPI_IN_PLACE,hydrate_force_iteration,ONE_INTEGER, &
-                       MPI_LOGICAL,MPI_LOR,option%mycomm,ierr)
+                       MPI_C_BOOL,MPI_LOR,option%mycomm,ierr)
     if (hydrate_force_iteration) then
       if (.not.hydrate_newtontrdc_hold_inner) then
         option%convergence = CONVERGENCE_BREAKOUT_INNER_ITER
@@ -3070,7 +3070,7 @@ subroutine PMHydrateCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
       cur_well => this%pmwell_ptr
       do
         if (.not. associated(cur_well)) exit
-        call MPI_Bcast(cur_well%pressure_controlled,ONE_INTEGER,MPI_LOGICAL, &
+        call MPI_Bcast(cur_well%pressure_controlled,ONE_INTEGER,MPI_C_BOOL, &
                         cur_well%well_grid%h_rank_id( &
                           cur_well%well_grid%bottom_seg_index), &
                         cur_well%option%mycomm, &

@@ -649,7 +649,7 @@ function ElementCheckKdDataset(element, material)
 ! element: element object under examination
 ! material (optional): material to check
 ! --------------------------------------------
-  logical :: ElementCheckKdDataset
+  PetscBool :: ElementCheckKdDataset
   type(element_type), pointer :: element
   character(len=MAXWORDLENGTH), optional :: material
 ! --------------------------------------------

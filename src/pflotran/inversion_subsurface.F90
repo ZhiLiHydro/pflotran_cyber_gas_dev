@@ -1483,7 +1483,7 @@ subroutine InvSubsurfCalculateSensitivity(this)
     call MatAssembled(this%inversion_aux%JsensitivityT,assembled, &
                       ierr);CHKERRQ(ierr)
   endif
-  call MPI_Bcast(assembled,ONE_INTEGER_MPI,MPI_LOGICAL, &
+  call MPI_Bcast(assembled,ONE_INTEGER_MPI,MPI_C_BOOL, &
                  this%driver%comm%io_rank,this%driver%comm%communicator, &
                  ierr);CHKERRQ(ierr)
   if (.not.assembled) then

@@ -12163,13 +12163,13 @@ subroutine PatchCheckError(flag,option)
 
   implicit none
 
-  logical :: flag
+  PetscBool :: flag
   type(option_type) :: option
 
   PetscErrorCode :: ierr
 
   call MPI_Allreduce(MPI_IN_PLACE,flag,ONE_INTEGER_MPI, &
-                     MPI_LOGICAL,MPI_LOR,option%mycomm, &
+                     MPI_C_BOOL,MPI_LOR,option%mycomm, &
                      ierr);CHKERRQ(ierr)
   if (flag) then
     option%io_buffer = 'Stopping due to error that occurred earlier &

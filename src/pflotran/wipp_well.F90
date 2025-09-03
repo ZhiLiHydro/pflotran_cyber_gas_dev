@@ -2844,7 +2844,7 @@ subroutine PMWellCheckConvergenceTran(pm_well,n_iter,fixed_accum)
     all_cnvgd(4) = all_cnvgd_due_to_residual
   endif
 
-  call MPI_Allreduce(MPI_IN_PLACE,all_cnvgd,FOUR_INTEGER,MPI_LOGICAL, &
+  call MPI_Allreduce(MPI_IN_PLACE,all_cnvgd,FOUR_INTEGER,MPI_C_BOOL, &
                      MPI_LAND,pm_well%well_comm%comm,ierr)
   call MPI_Allreduce(MPI_IN_PLACE,max_criteria,THREE_INTEGER, &
                      MPI_DOUBLE_PRECISION,MPI_MAX,pm_well%well_comm%comm,ierr)

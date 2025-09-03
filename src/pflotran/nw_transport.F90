@@ -780,7 +780,7 @@ subroutine NWTResidual(snes,xx,r,realization,pmwell_ptr,ierr)
               ONE_INTEGER_MPI,MPI_DOUBLE_PRECISION,MPI_MAX, &
               option%comm%communicator,ierr);CHKERRQ(ierr)
             call MPI_Allreduce(MPI_IN_PLACE,pm_well%tran_soln%cut_ts_flag, &
-              ONE_INTEGER_MPI,MPI_LOGICAL,MPI_LOR,option%comm%communicator, &
+              ONE_INTEGER_MPI,MPI_C_BOOL,MPI_LOR,option%comm%communicator, &
               ierr);CHKERRQ(ierr)
 
             if (pm_well%tran_soln%cut_ts_flag) return

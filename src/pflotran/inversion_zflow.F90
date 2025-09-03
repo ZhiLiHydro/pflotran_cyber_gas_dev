@@ -861,7 +861,7 @@ subroutine InversionZFlowCheckConvergence(this)
 !print *, this%driver%comm%rank, ' Bcast6 all'
 !call MPI_Barrier(this%driver%comm%communicator,ierr);CHKERRQ(ierr)
   call MPI_Bcast(this%converged,ONE_INTEGER_MPI, &
-                 MPI_LOGICAL,this%driver%comm%io_rank, &
+                 MPI_C_BOOL,this%driver%comm%io_rank, &
                  this%driver%comm%communicator,ierr);CHKERRQ(ierr)
 
 end subroutine InversionZFlowCheckConvergence

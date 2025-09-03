@@ -60,7 +60,7 @@ subroutine ERTSetup(realization)
   PetscInt :: local_id, ghosted_id,num_neighbors
   PetscBool :: require_electrical_conductivity
   PetscBool :: archies_parameters_defined
-  logical :: error_found
+  PetscBool :: error_found
   PetscBool :: dof_is_active(1)
   PetscErrorCode :: ierr
 
@@ -184,7 +184,7 @@ subroutine ERTSetup(realization)
   enddo
 
   error_found = error_found .or. (maxval(flag) > 0)
-  call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_LOGICAL, &
+  call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_C_BOOL, &
                      MPI_LOR,option%mycomm,ierr);CHKERRQ(ierr)
   if (error_found) then
     option%io_buffer = 'Material property errors found in ERTSetup.'

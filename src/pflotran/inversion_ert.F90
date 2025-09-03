@@ -848,7 +848,7 @@ subroutine InversionERTCheckConvergence(this)
         (this%iteration > this%maximum_iteration)) this%converged = PETSC_TRUE
   endif
   call MPI_Bcast(this%converged,ONE_INTEGER_MPI, &
-                 MPI_LOGICAL,this%driver%comm%io_rank, &
+                 MPI_C_BOOL,this%driver%comm%io_rank, &
                  this%driver%comm%communicator,ierr);CHKERRQ(ierr)
 
 end subroutine InversionERTCheckConvergence

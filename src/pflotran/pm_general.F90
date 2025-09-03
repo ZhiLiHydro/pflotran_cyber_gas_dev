@@ -1643,7 +1643,7 @@ subroutine PMGeneralCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
       .not.general_high_temp_ts_cut
     mpi_int = option%nflowdof*general_max_states*MAX_INDEX+1
     call MPI_Allreduce(MPI_IN_PLACE,flags,mpi_int, &
-                       MPI_LOGICAL,MPI_LAND,option%mycomm,ierr);CHKERRQ(ierr)
+                       MPI_C_BOOL,MPI_LAND,option%mycomm,ierr);CHKERRQ(ierr)
 
     this%converged_flag = reshape(flags(1:option%nflowdof*general_max_states*MAX_INDEX),&
                             (/option%nflowdof,general_max_states,MAX_INDEX/))
@@ -1717,7 +1717,7 @@ subroutine PMGeneralCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
     endif
 
     call MPI_Allreduce(MPI_IN_PLACE,general_force_iteration,ONE_INTEGER, &
-                       MPI_LOGICAL,MPI_LOR,option%mycomm,ierr)
+                       MPI_C_BOOL,MPI_LOR,option%mycomm,ierr)
     if (general_force_iteration) then
       if (.not.general_newtontrdc_hold_inner) then
         option%convergence = CONVERGENCE_BREAKOUT_INNER_ITER
