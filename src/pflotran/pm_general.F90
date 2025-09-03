@@ -1499,7 +1499,7 @@ subroutine PMGeneralCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
   PetscBool :: converged_absolute
   PetscBool :: converged_scaled
   PetscMPIInt :: mpi_int
-  logical, allocatable :: flags(:)
+  PetscBool, allocatable :: flags(:)
   PetscBool :: rho_flag
   character(len=MAXSTRINGLENGTH) :: string
   character(len=12), allocatable :: state_string(:)
