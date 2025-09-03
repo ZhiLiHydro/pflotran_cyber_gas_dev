@@ -52,6 +52,7 @@ subroutine WIPPFloSetup(realization)
   use Characteristic_Curves_module
   use WIPP_Characteristic_Curve_module
   use Matrix_Zeroing_module
+  use MPI_Utility_module
 !  use PM_Base_class
 !  use PM_WIPP_Flow_class
 
@@ -71,7 +72,6 @@ subroutine WIPPFloSetup(realization)
   PetscBool :: error_found
   PetscInt :: flag(10)
   PetscBool, allocatable :: dof_is_active(:)
-  PetscErrorCode :: ierr
                                                 ! extra index for derivatives
   type(wippflo_auxvar_type), pointer :: wippflo_auxvars(:,:)
   type(wippflo_auxvar_type), pointer :: wippflo_auxvars_bc(:)
@@ -117,8 +117,7 @@ subroutine WIPPFloSetup(realization)
   enddo
 
   error_found = error_found .or. (maxval(flag) > 0)
-  call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_LOGICAL, &
-                     MPI_LOR,option%mycomm,ierr);CHKERRQ(ierr)
+  call MUAllreduce(error_found,MPI_LOR,option%mycomm)
   if (error_found) then
     option%io_buffer = 'Material property errors found in WIPPFloSetup.'
     call PrintErrMsg(option)

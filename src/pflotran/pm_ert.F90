@@ -466,6 +466,7 @@ recursive subroutine PMERTInitializeRun(this)
   use Transport_Constraint_RT_module
   use ZFlow_Aux_module
   use Variables_module, only : MATERIAL_ELECTRICAL_CONDUCTIVITY
+  use MPI_Utility_module
 
   implicit none
 
@@ -488,7 +489,7 @@ recursive subroutine PMERTInitializeRun(this)
   type(patch_type), pointer :: patch
   character(len=MAXWORDLENGTH) :: word
   PetscInt :: ispecies
-  logical :: flag
+  PetscBool :: flag
   PetscReal :: tempreal
   PetscReal, parameter :: ELEMENTARY_CHARGE = 1.6022d-19 ! C
   PetscReal, parameter :: AVOGADRO_NUMBER = 6.02214d23 ! atoms per mol
@@ -764,8 +765,7 @@ recursive subroutine PMERTInitializeRun(this)
   call VecRestoreArray(this%realization%field%work, &
                           vec_ptr,ierr);CHKERRQ(ierr)
 
-  call MPI_Allreduce(MPI_IN_PLACE,flag,ONE_INTEGER_MPI,MPI_LOGICAL,MPI_LOR, &
-                     option%mycomm,ierr);CHKERRQ(ierr)
+  call MUAllreduce(flag,MPI_LOR,option%mycomm)
   if (flag) then
     option%io_buffer = 'Electrodes in inactive or prescribed condition &
       &cells (see above).'

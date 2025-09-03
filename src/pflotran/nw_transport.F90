@@ -641,6 +641,7 @@ subroutine NWTResidual(snes,xx,r,realization,pmwell_ptr,ierr)
   use WIPP_Flow_Aux_module
   use WIPP_Well_class
   use PM_Well_class
+  use MPI_Utility_module
 
   implicit none
 
@@ -779,10 +780,8 @@ subroutine NWTResidual(snes,xx,r,realization,pmwell_ptr,ierr)
             call MPI_Allreduce(MPI_IN_PLACE,pm_well%tran_soln%tran_time, &
               ONE_INTEGER_MPI,MPI_DOUBLE_PRECISION,MPI_MAX, &
               option%comm%communicator,ierr);CHKERRQ(ierr)
-            call MPI_Allreduce(MPI_IN_PLACE,pm_well%tran_soln%cut_ts_flag, &
-              ONE_INTEGER_MPI,MPI_LOGICAL,MPI_LOR,option%comm%communicator, &
-              ierr);CHKERRQ(ierr)
-
+            call MUAllreduce(pm_well%tran_soln%cut_ts_flag,MPI_LOR, &
+                             option%comm%communicator)
             if (pm_well%tran_soln%cut_ts_flag) return
         endif
       class default

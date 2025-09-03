@@ -1466,6 +1466,7 @@ subroutine PMGeneralCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
   use Patch_module
   use Option_module
   use String_module
+  use MPI_Utility_module
 
   implicit none
 
@@ -1499,7 +1500,7 @@ subroutine PMGeneralCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
   PetscBool :: converged_absolute
   PetscBool :: converged_scaled
   PetscMPIInt :: mpi_int
-  logical, allocatable :: flags(:)
+  PetscBool, allocatable :: flags(:)
   PetscBool :: rho_flag
   character(len=MAXSTRINGLENGTH) :: string
   character(len=12), allocatable :: state_string(:)
@@ -1642,8 +1643,7 @@ subroutine PMGeneralCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
     flags(option%nflowdof*general_max_states*MAX_INDEX+1) =&
       .not.general_high_temp_ts_cut
     mpi_int = option%nflowdof*general_max_states*MAX_INDEX+1
-    call MPI_Allreduce(MPI_IN_PLACE,flags,mpi_int, &
-                       MPI_LOGICAL,MPI_LAND,option%mycomm,ierr);CHKERRQ(ierr)
+    call MUAllreduce(flags,mpi_int,MPI_LAND,option%mycomm)
 
     this%converged_flag = reshape(flags(1:option%nflowdof*general_max_states*MAX_INDEX),&
                             (/option%nflowdof,general_max_states,MAX_INDEX/))
@@ -1716,8 +1716,7 @@ subroutine PMGeneralCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
       endif
     endif
 
-    call MPI_Allreduce(MPI_IN_PLACE,general_force_iteration,ONE_INTEGER, &
-                       MPI_LOGICAL,MPI_LOR,option%mycomm,ierr)
+    call MUAllreduce(general_force_iteration,MPI_LOR,option%mycomm)
     if (general_force_iteration) then
       if (.not.general_newtontrdc_hold_inner) then
         option%convergence = CONVERGENCE_BREAKOUT_INNER_ITER

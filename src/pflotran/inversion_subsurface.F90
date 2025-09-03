@@ -1468,6 +1468,7 @@ subroutine InvSubsurfCalculateSensitivity(this)
   ! Author: Glenn Hammond
   ! Date: 03/25/22
   !
+  use MPI_Utility_module
 
   class(inversion_subsurface_type) :: this
 
@@ -1483,9 +1484,8 @@ subroutine InvSubsurfCalculateSensitivity(this)
     call MatAssembled(this%inversion_aux%JsensitivityT,assembled, &
                       ierr);CHKERRQ(ierr)
   endif
-  call MPI_Bcast(assembled,ONE_INTEGER_MPI,MPI_LOGICAL, &
-                 this%driver%comm%io_rank,this%driver%comm%communicator, &
-                 ierr);CHKERRQ(ierr)
+  call MUBcast(assembled,this%driver%comm%io_rank, &
+               this%driver%comm%communicator)
   if (.not.assembled) then
     call this%driver%PrintErrMsg('JsensitivityT was not assembled.')
   endif

@@ -46,6 +46,7 @@ subroutine SCO2Setup(realization)
   use Material_Aux_module
   use Output_Aux_module
   use Matrix_Zeroing_module
+  use MPI_Utility_module
 
   implicit none
 
@@ -63,7 +64,6 @@ subroutine SCO2Setup(realization)
   PetscBool :: error_found
   PetscInt :: flag(10)
   PetscBool, allocatable :: dof_is_active(:)
-  PetscErrorCode :: ierr
 
   type(sco2_auxvar_type), pointer :: sco2_auxvars(:,:)
   type(sco2_auxvar_type), pointer :: sco2_auxvars_bc(:)
@@ -135,8 +135,7 @@ subroutine SCO2Setup(realization)
   enddo
 
   error_found = error_found .or. (maxval(flag) > 0)
-  call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_LOGICAL, &
-                     MPI_LOR,option%mycomm,ierr);CHKERRQ(ierr)
+  call MUAllreduce(error_found,MPI_LOR,option%mycomm)
   if (error_found) then
     option%io_buffer = 'Material property errors found in SCO2Setup.'
     call PrintErrMsg(option)

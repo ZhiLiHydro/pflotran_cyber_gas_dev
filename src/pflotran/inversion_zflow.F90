@@ -845,11 +845,11 @@ subroutine InversionZFlowCheckConvergence(this)
   ! Author: Piyoosh Jaysaval
   ! Date: 10/15/21
 
+  use MPI_Utility_module
+
   implicit none
 
   class(inversion_zflow_type) :: this
-
-  PetscErrorCode :: ierr
 
   this%converged = PETSC_FALSE
   if (associated(this%inversion_option%invcomm)) then
@@ -860,9 +860,8 @@ subroutine InversionZFlowCheckConvergence(this)
   ! need to broadcast in the case of parallel perturbation
 !print *, this%driver%comm%rank, ' Bcast6 all'
 !call MPI_Barrier(this%driver%comm%communicator,ierr);CHKERRQ(ierr)
-  call MPI_Bcast(this%converged,ONE_INTEGER_MPI, &
-                 MPI_LOGICAL,this%driver%comm%io_rank, &
-                 this%driver%comm%communicator,ierr);CHKERRQ(ierr)
+  call MUBcast(this%converged,this%driver%comm%io_rank, &
+               this%driver%comm%communicator)
 
 end subroutine InversionZFlowCheckConvergence
 

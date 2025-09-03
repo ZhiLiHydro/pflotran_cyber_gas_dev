@@ -46,6 +46,7 @@ subroutine CopySubsurfaceGridtoGeomechGrid(ugrid,geomech_grid,option)
   use String_module
   use Utility_module, only : DeallocateArray
   use Petsc_Utility_module
+  use MPI_Utility_module
 
   implicit none
 
@@ -84,7 +85,7 @@ subroutine CopySubsurfaceGridtoGeomechGrid(ugrid,geomech_grid,option)
   type(point3d_type), pointer :: vertices(:)
   PetscInt, allocatable :: vertex_count_array(:)
   PetscInt, allocatable :: vertex_count_array2(:)
-  logical :: lflag
+  PetscBool :: lflag
 
 
 #ifdef GEOMECH_DEBUG
@@ -339,8 +340,7 @@ subroutine CopySubsurfaceGridtoGeomechGrid(ugrid,geomech_grid,option)
     call PrintMsgByRank(option)
     lflag = PETSC_TRUE
   endif
-  call MPI_Allreduce(MPI_IN_PLACE,lflag,ONE_INTEGER_MPI, &
-                     MPI_LOGICAL,MPI_LOR,option%mycomm,ierr);CHKERRQ(ierr)
+  call MUAllreduce(lflag,MPI_LOR,option%mycomm)
   if (lflag) then
     option%io_buffer = 'See errors above.'
     call PrintErrMsg(option)

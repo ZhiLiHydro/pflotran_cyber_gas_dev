@@ -89,6 +89,7 @@ subroutine THSetup(realization)
   use Secondary_Continuum_module
   use Characteristic_Curves_Thermal_module
   use String_module, only : StringWrite
+  use MPI_Utility_module
 
   class(realization_subsurface_type) :: realization
 
@@ -111,7 +112,6 @@ subroutine THSetup(realization)
   PetscBool :: error_found
   PetscReal :: tempreal
   PetscBool :: dof_is_active(2)
-  PetscErrorCode :: ierr
 
   option => realization%option
   patch => realization%patch
@@ -302,8 +302,7 @@ subroutine THSetup(realization)
 
   enddo
 
-  call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_LOGICAL, &
-                     MPI_LOR,option%mycomm,ierr);CHKERRQ(ierr)
+  call MUAllreduce(error_found,MPI_LOR,option%mycomm)
   if (error_found) then
     option%io_buffer = 'Material property errors found in THSetup.'
     call PrintErrMsg(option)

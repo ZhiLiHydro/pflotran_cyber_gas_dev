@@ -123,6 +123,7 @@ subroutine RichardsSetupPatch(realization)
   use Grid_module
   use Region_module
   use String_module
+  use MPI_Utility_module
 
   implicit none
 
@@ -138,7 +139,6 @@ subroutine RichardsSetupPatch(realization)
   PetscInt :: flag(10)
   PetscReal :: minz, maxz, zcenter, zface
   PetscReal :: tempreal
-  PetscErrorCode :: ierr
   type(material_parameter_type), pointer :: material_parameter
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(richards_auxvar_type), pointer :: rich_auxvars(:)
@@ -185,8 +185,7 @@ subroutine RichardsSetupPatch(realization)
   enddo
 
   error_found = error_found .or. (maxval(flag) > 0)
-  call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_LOGICAL, &
-                     MPI_LOR,option%mycomm,ierr);CHKERRQ(ierr)
+  call MUAllreduce(error_found,MPI_LOR,option%mycomm)
   if (error_found) then
     option%io_buffer = 'Material property errors found in RichardsSetup.'
     call PrintErrMsg(option)

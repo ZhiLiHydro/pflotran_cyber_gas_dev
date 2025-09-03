@@ -18,7 +18,7 @@ module Inversion_Base_class
     type(inversion_option_type), pointer :: inversion_option
     PetscInt :: iteration        ! iteration number
     PetscInt :: maximum_iteration        ! Maximum iteration number
-    logical :: converged               ! convergence flag
+    PetscBool :: converged               ! convergence flag
   contains
     procedure, public :: Init => InversionBaseInit
     procedure, public :: ReadBlock => InversionBaseReadBlock

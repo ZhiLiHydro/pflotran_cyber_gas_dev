@@ -42,6 +42,7 @@ subroutine ERTSetup(realization)
                                ARCHIE_TORTUOSITY_CONSTANT, &
                                SURFACE_ELECTRICAL_CONDUCTIVITY, &
                                WAXMAN_SMITS_CLAY_CONDUCTIVITY
+  use MPI_Utility_module
 
   implicit none
 
@@ -60,9 +61,8 @@ subroutine ERTSetup(realization)
   PetscInt :: local_id, ghosted_id,num_neighbors
   PetscBool :: require_electrical_conductivity
   PetscBool :: archies_parameters_defined
-  logical :: error_found
+  PetscBool :: error_found
   PetscBool :: dof_is_active(1)
-  PetscErrorCode :: ierr
 
   option => realization%option
   patch => realization%patch
@@ -184,8 +184,7 @@ subroutine ERTSetup(realization)
   enddo
 
   error_found = error_found .or. (maxval(flag) > 0)
-  call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_LOGICAL, &
-                     MPI_LOR,option%mycomm,ierr);CHKERRQ(ierr)
+  call MUAllreduce(error_found,MPI_LOR,option%mycomm)
   if (error_found) then
     option%io_buffer = 'Material property errors found in ERTSetup.'
     call PrintErrMsg(option)

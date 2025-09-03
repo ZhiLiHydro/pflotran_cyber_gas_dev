@@ -1254,6 +1254,7 @@ subroutine PMNWTCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
   use Field_module
   use Option_module
   use Grid_module
+  use MPI_Utility_module
 
   implicit none
 
@@ -1487,10 +1488,8 @@ subroutine PMNWTCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
 
   mpi_int1 = option%ntrandof*5
   mpi_int2 = option%ntrandof*4
-  call MPI_Allreduce(MPI_IN_PLACE,converged_flag,ONE_INTEGER, &
-                     MPI_LOGICAL,MPI_LAND,option%mycomm,ierr)
-  call MPI_Allreduce(MPI_IN_PLACE,idof_cnvgd,mpi_int1, &
-                     MPI_LOGICAL,MPI_LAND,option%mycomm,ierr)
+  call MUAllreduce(converged_flag,MPI_LAND,option%mycomm)
+  call MUAllreduce(idof_cnvgd,mpi_int1,MPI_LAND,option%mycomm)
   call MPI_Allreduce(MPI_IN_PLACE,species_max,mpi_int2, &
                      MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr)
 

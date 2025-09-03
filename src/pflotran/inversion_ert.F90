@@ -830,14 +830,13 @@ subroutine InversionERTCheckConvergence(this)
   ! Date: 06/15/21
 
   use Survey_module
+  use MPI_Utility_module
 
   implicit none
 
   class(inversion_ert_type) :: this
 
   type(survey_type), pointer :: survey
-
-  PetscErrorCode :: ierr
 
   survey => this%realization%survey
 
@@ -847,9 +846,8 @@ subroutine InversionERTCheckConvergence(this)
     if ((this%current_chi2 <= this%target_chi2) .or. &
         (this%iteration > this%maximum_iteration)) this%converged = PETSC_TRUE
   endif
-  call MPI_Bcast(this%converged,ONE_INTEGER_MPI, &
-                 MPI_LOGICAL,this%driver%comm%io_rank, &
-                 this%driver%comm%communicator,ierr);CHKERRQ(ierr)
+  call MUBcast(this%converged,this%driver%comm%io_rank, &
+               this%driver%comm%communicator)
 
 end subroutine InversionERTCheckConvergence
 
