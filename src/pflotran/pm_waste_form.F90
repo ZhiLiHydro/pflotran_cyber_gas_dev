@@ -5885,9 +5885,9 @@ subroutine PMWFRestartHDF5(this,pm_grp_id)
     cur_waste_form%breach_time=local_wf_array(i+2)
     cur_waste_form%spacer_vitality=local_wf_array(i+3)
     if (cur_waste_form%breach_time<0) then
-      cur_waste_form%breached=PETSC_FALSE
-    else
       cur_waste_form%breached=PETSC_TRUE
+    else
+      cur_waste_form%breached=PETSC_FALSE
     endif
 
     do j = 1,num_species
@@ -6184,9 +6184,9 @@ subroutine PMWFRestartBinary(this, viewer)
     cur_waste_form%breach_time=local_wf_array(i+2)
     cur_waste_form%spacer_vitality=local_wf_array(i+3)
     if (cur_waste_form%breach_time<0) then
-      cur_waste_form%breached=PETSC_FALSE
-    else
       cur_waste_form%breached=PETSC_TRUE
+    else
+      cur_waste_form%breached=PETSC_FALSE
     endif
 
     do j = 1,num_species
