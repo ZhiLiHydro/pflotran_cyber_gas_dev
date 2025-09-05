@@ -689,7 +689,8 @@ subroutine PUMSetValues1(A,nrow,irow,ncol,icol,scalar, &
   array1d(1) = scalar
 
 #if defined(REFACTOR_323)
-stop 'PUMSetValues1'
+  call MatSetValues(A,nrow,irow1d,ncol,icol1d,array1d, &
+                    insert_mode,ierr);CHKERRQ(ierr)
 #else
   call MatSetValues(A,nrow,irow1d,ncol,icol1d,array1d, &
                     insert_mode,ierr);CHKERRQ(ierr)
