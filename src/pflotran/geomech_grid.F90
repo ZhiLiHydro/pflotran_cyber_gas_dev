@@ -901,7 +901,7 @@ subroutine GeomechGridLocalizeRegFromSideSet(geomech_grid, &
                     num_faces_per_ele, &
                     PETSC_DETERMINE,PETSC_DETERMINE, &
                     geomech_grid%nmax_node,4, &
-                    PETSC_NULL_INTEGER,4,PETSC_NULL_INTEGER, &
+                    PETSC_NULL_INTEGER_ARRAY,4,PETSC_NULL_INTEGER_ARRAY, &
                     Mat_face_to_vert,ierr);CHKERRQ(ierr)
 
   call MatZeroEntries(Mat_face_to_vert,ierr);CHKERRQ(ierr)
@@ -960,7 +960,7 @@ subroutine GeomechGridLocalizeRegFromSideSet(geomech_grid, &
   call MatCreateAIJ(option%mycomm,nfaces,PETSC_DETERMINE, &
                     PETSC_DETERMINE, &
                     geomech_grid%nmax_node,4, &
-                    PETSC_NULL_INTEGER,4,PETSC_NULL_INTEGER, &
+                    PETSC_NULL_INTEGER_ARRAY,4,PETSC_NULL_INTEGER_ARRAY, &
                     Mat_region_face_to_vert,ierr);CHKERRQ(ierr)
 
   call MatZeroEntries(Mat_region_face_to_vert,ierr);CHKERRQ(ierr)
@@ -999,16 +999,16 @@ subroutine GeomechGridLocalizeRegFromSideSet(geomech_grid, &
     call MatMPIAIJGetLocalMat(Mat_face,MAT_INITIAL_MATRIX,Mat_face_loc, &
                               ierr);CHKERRQ(ierr)
     ! Get i and j indices of the local-matrix
-    call MatGetRowIJF90(Mat_face_loc,ONE_INTEGER,PETSC_FALSE,PETSC_FALSE,nrow, &
+    call MatGetRowIJ(Mat_face_loc,ONE_INTEGER,PETSC_FALSE,PETSC_FALSE,nrow, &
                         ia_p,ja_p,done,ierr);CHKERRQ(ierr)
     ! Get values stored in the local-matrix
-    call MatSeqAIJGetArrayF90(Mat_face_loc,aa_v,ierr);CHKERRQ(ierr)
+    call MatSeqAIJGetArray(Mat_face_loc,aa_v,ierr);CHKERRQ(ierr)
   else
     ! Get i and j indices of the local-matrix
-    call MatGetRowIJF90(Mat_face,ONE_INTEGER,PETSC_FALSE,PETSC_FALSE,nrow, &
+    call MatGetRowIJ(Mat_face,ONE_INTEGER,PETSC_FALSE,PETSC_FALSE,nrow, &
                         ia_p,ja_p,done,ierr);CHKERRQ(ierr)
     ! Get values stored in the local-matrix
-    call MatSeqAIJGetArrayF90(Mat_face,aa_v,ierr);CHKERRQ(ierr)
+    call MatSeqAIJGetArray(Mat_face,aa_v,ierr);CHKERRQ(ierr)
   endif
 
   min_nverts = 3 ! 3 for tri, 4 for quad
@@ -1061,10 +1061,10 @@ subroutine GeomechGridLocalizeRegFromSideSet(geomech_grid, &
   endif
 
   if (option%comm%size>1) then
-    call MatSeqAIJRestoreArrayF90(Mat_face_loc,aa_v,ierr);CHKERRQ(ierr)
+    call MatSeqAIJRestoreArray(Mat_face_loc,aa_v,ierr);CHKERRQ(ierr)
     call MatDestroy(Mat_face_loc,ierr);CHKERRQ(ierr)
   else
-    call MatSeqAIJRestoreArrayF90(Mat_face,aa_v,ierr);CHKERRQ(ierr)
+    call MatSeqAIJRestoreArray(Mat_face,aa_v,ierr);CHKERRQ(ierr)
   endif
 
   call MatDestroy(Mat_region_vert_to_face,ierr);CHKERRQ(ierr)
