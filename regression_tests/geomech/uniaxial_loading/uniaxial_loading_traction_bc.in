@@ -1,0 +1,245 @@
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE richards
+    / 
+    SUBSURFACE_GEOMECHANICS geomech
+      OPTIONS
+        FLOW_COUPLING TWO_WAY_COUPLED
+      /
+    /
+  / 
+END
+
+SUBSURFACE
+
+#=========================== discretization ===================================
+GRID
+  TYPE UNSTRUCTURED_explicit ../meshes/uniaxial/tet_2/tet_2.uge
+  GRAVITY 0.0 0.0 0.0
+END
+
+#=========================== fluid properties =================================
+EOS WATER
+  DENSITY CONSTANT 990.0
+  VISCOSITY CONSTANT 0.00066
+END
+
+#=========================== material properties ==============================
+MATERIAL_PROPERTY soil1
+  ID 1
+  POROSITY 0.25d0
+  TORTUOSITY 1.d0
+  CHARACTERISTIC_CURVES default
+  PERMEABILITY
+    PERM_ISO 1.d-16
+  /
+END
+
+#=========================== characteristic curves ============================
+CHARACTERISTIC_CURVES default
+  SATURATION_FUNCTION VAN_GENUCHTEN
+    M 0.286
+    ALPHA  1.9401d-4
+    LIQUID_RESIDUAL_SATURATION 0.115
+  /
+  PERMEABILITY_FUNCTION MUALEM_VG_LIQ
+    M 0.286
+    LIQUID_RESIDUAL_SATURATION 0.115
+  /
+END
+
+#=========================== output options ===================================
+#OUTPUT
+#  PERIODIC TIMESTEP 1
+#  FORMAT VTK
+#  #ACKNOWLEDGE_VTK_FLAW
+#    VARIABLES
+#      LIQUID_PRESSURE
+#      LIQUID_SATURATION
+#      LIQUID_DENSITY
+#      POROSITY
+#      PERMEABILITY
+#    / 
+#END
+
+#=========================== times ============================================
+TIME
+  FINAL_TIME 2.d-3 s
+  MAXIMUM_TIMESTEP_SIZE 1.d-3 s
+  INITIAL_TIMESTEP_SIZE 1.d-3 s
+END
+
+#=========================== regions ==========================================
+REGION All
+  COORDINATES
+    -1.d20 -1.d20 -1.d20
+    1.d20 1.d20 1.d20
+  /
+END
+
+#=========================== flow conditions ==================================
+FLOW_CONDITION initial
+  TYPE
+     LIQUID_PRESSURE DIRICHLET
+  /
+  LIQUID_PRESSURE 101325.d0
+END
+
+#=========================== condition couplers ===============================
+# initial condition
+INITIAL_CONDITION
+  FLOW_CONDITION initial
+  REGION All
+END
+
+#=========================== stratigraphy couplers ============================
+STRATA
+  REGION All
+  MATERIAL soil1
+END
+
+END_SUBSURFACE
+
+#================================ geomechanics  ===============================
+
+GEOMECHANICS
+
+GEOMECHANICS_GRID
+  TYPE UNSTRUCTURED ../meshes/uniaxial/tet_2/tet_2.ugi
+  GRAVITY 0.0 0.0 0.0
+END
+
+GEOMECHANICS_MAPPING_FILE ../meshes/uniaxial/tet_2/flow_geomech_mapping.dat
+
+GEOMECHANICS_REGION all_geomech
+  FILE ../meshes/uniaxial/tet_2/all.vset
+END
+
+GEOMECHANICS_REGION north_geomech
+  FILE ../meshes/uniaxial/tet_2/ymax.vset
+END
+
+GEOMECHANICS_REGION south_geomech
+  FILE ../meshes/uniaxial/tet_2/ymin.vset
+END
+
+GEOMECHANICS_REGION east_geomech
+  FILE ../meshes/uniaxial/tet_2/xmax.vset
+END
+
+GEOMECHANICS_REGION top_geomech
+  FILE ../meshes/uniaxial/tet_2/zmax.vset
+END
+
+GEOMECHANICS_REGION bottom_geomech
+  FILE ../meshes/uniaxial/tet_2/zmin.vset
+END
+
+GEOMECHANICS_REGION west_geomech
+  FILE ../meshes/uniaxial/tet_2/xmin.ss
+END
+
+GEOMECHANICS_CONDITION east_geomech
+  TYPE
+    DISPLACEMENT_X DIRICHLET
+  END
+    DISPLACEMENT_X 0.0
+END
+
+GEOMECHANICS_CONDITION west_geomech
+  TYPE
+    TRACTION NEUMANN
+  END
+  STRESS_TENSOR 100.0 0. 0. 0. 0. 0.
+END
+
+GEOMECHANICS_CONDITION north_geomech
+  TYPE
+    DISPLACEMENT_Y DIRICHLET
+  END
+    DISPLACEMENT_Y 0.0
+END
+
+GEOMECHANICS_CONDITION south_geomech
+  TYPE
+    DISPLACEMENT_Y DIRICHLET
+  END
+    DISPLACEMENT_Y 0.0
+END
+
+GEOMECHANICS_CONDITION bottom_geomech
+  TYPE
+    DISPLACEMENT_Z DIRICHLET
+  END
+    DISPLACEMENT_Z 0.0
+END
+
+GEOMECHANICS_CONDITION top_geomech
+  TYPE
+    DISPLACEMENT_Z DIRICHLET
+  END
+    DISPLACEMENT_Z 0.0
+END
+
+GEOMECHANICS_BOUNDARY_CONDITION top_geomech
+  GEOMECHANICS_CONDITION top_geomech
+  GEOMECHANICS_REGION top_geomech
+END
+
+GEOMECHANICS_BOUNDARY_CONDITION bottom_geomech
+  GEOMECHANICS_CONDITION bottom_geomech
+  GEOMECHANICS_REGION bottom_geomech
+END
+
+GEOMECHANICS_BOUNDARY_CONDITION north_geomech
+  GEOMECHANICS_CONDITION north_geomech
+  GEOMECHANICS_REGION north_geomech
+END
+
+GEOMECHANICS_BOUNDARY_CONDITION south_geomech
+  GEOMECHANICS_CONDITION south_geomech
+  GEOMECHANICS_REGION south_geomech
+END
+
+GEOMECHANICS_BOUNDARY_CONDITION east_geomech
+  GEOMECHANICS_CONDITION east_geomech
+  GEOMECHANICS_REGION east_geomech
+END
+
+GEOMECHANICS_BOUNDARY_CONDITION west_geomech
+  GEOMECHANICS_CONDITION west_geomech
+  GEOMECHANICS_REGION west_geomech
+END
+
+GEOMECHANICS_STRATA
+  GEOMECHANICS_REGION all_geomech
+  GEOMECHANICS_MATERIAL soil1
+END
+
+GEOMECHANICS_MATERIAL_PROPERTY soil1
+  ID 1
+  ROCK_DENSITY 2000.d0
+  YOUNGS_MODULUS 10d9
+  POISSONS_RATIO 0.0
+  BIOT_COEFFICIENT 0.85
+  THERMAL_EXPANSION_COEFFICIENT 0.0
+END
+
+GEOMECHANICS_REGRESSION
+  VERTICES
+    24
+  / 
+  VARIABLES
+    DISPLACEMENT_X
+    STRAIN_XX
+    STRESS_XX
+  /  
+END
+
+GEOMECHANICS_OUTPUT
+  FORMAT HDF5
+END
+
+END_GEOMECHANICS
