@@ -366,7 +366,6 @@ subroutine TimestepperTSRegisterHeader(this,bag,header)
   ! Author: Gautam Bisht, LBNL
   ! Date: 06/19/18
   !
-#include "petsc/finclude/petscviewer.h"
 #include "petsc/finclude/petscbag.h"
   use petscbag
 
@@ -397,7 +396,6 @@ subroutine TimestepperTSSetHeader(this,bag,header)
   ! Author: Gautam Bisht, LBNL
   ! Date: 06/19/18
   !
-#include "petsc/finclude/petscviewer.h"
 #include "petsc/finclude/petscbag.h"
   use petscbag
 
@@ -466,8 +464,6 @@ subroutine TimestepperTSPrintInfo(this,aux_string,option)
   use Option_module
 
   implicit none
-
-#include "petsc/finclude/petscts.h"
 
   class(timestepper_TS_type) :: this
   character(len=*) :: aux_string

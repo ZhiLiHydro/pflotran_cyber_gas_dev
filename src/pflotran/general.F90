@@ -2,6 +2,7 @@ module General_module
 
 #include "petsc/finclude/petscsnes.h"
   use petscsnes
+
   use General_Aux_module
   use General_Common_module
   use Global_Aux_module
@@ -2457,8 +2458,6 @@ subroutine GeneralSSSandbox(residual,Jacobian,compute_derivative, &
   ! Author: Glenn Hammond
   ! Date: 04/11/14
   !
-#include "petsc/finclude/petscmat.h"
-  use petscmat
   use Option_module
   use Grid_module
   use Material_Aux_module, only: material_auxvar_type

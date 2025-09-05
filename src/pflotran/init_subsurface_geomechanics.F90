@@ -1,7 +1,8 @@
 module Init_Subsurface_Geomech_module
 
-#include "petsc/finclude/petscsnes.h"
-  use petscsnes
+#include "petsc/finclude/petscmat.h"
+  use petscmat
+
   use PFLOTRAN_Constants_module
 
   implicit none

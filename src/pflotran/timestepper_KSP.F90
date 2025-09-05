@@ -1,7 +1,8 @@
 module Timestepper_KSP_class
 
-#include "petsc/finclude/petscsys.h"
-  use petscsys
+#include "petsc/finclude/petscksp.h"
+  use petscksp
+
   use Solver_module
   use Convergence_module
   use Timestepper_Base_class
@@ -235,9 +236,6 @@ subroutine TimestepperKSPStepDT(this,process_model,stop_flag)
   ! Author: Glenn Hammond
   ! Date: 09/03/21
   !
-
-#include "petsc/finclude/petscksp.h"
-  use petscksp
   use PM_Base_class
   use Option_module
   use Output_EKG_module, only : IUNIT_EKG
@@ -413,7 +411,6 @@ subroutine TimestepperKSPRegisterHeader(this,bag,header)
   ! Author: Glenn Hammond
   ! Date: 12/06/19
   !
-#include "petsc/finclude/petscviewer.h"
 #include "petsc/finclude/petscbag.h"
   use petscbag
 
@@ -445,7 +442,6 @@ subroutine TimestepperKSPSetHeader(this,bag,header)
   ! Author: Glenn Hammond
   ! Date: 12/06/19
   !
-#include "petsc/finclude/petscviewer.h"
 #include "petsc/finclude/petscbag.h"
   use petscbag
 
@@ -751,9 +747,6 @@ subroutine TimestepperKSPGetHeader(this,header)
   use Option_module
 
   implicit none
-
-#include "petsc/finclude/petscviewer.h"
-#include "petsc/finclude/petscbag.h"
 
   class(timestepper_KSP_type) :: this
   class(stepper_KSP_header_type) :: header

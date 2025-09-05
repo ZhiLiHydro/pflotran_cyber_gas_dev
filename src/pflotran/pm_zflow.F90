@@ -1257,7 +1257,6 @@ subroutine PMZFlowCheckpointBinary(this,viewer)
   use Global_module
 
   implicit none
-#include "petsc/finclude/petscviewer.h"
 
   class(pm_zflow_type) :: this
   PetscViewer :: viewer
@@ -1279,7 +1278,6 @@ subroutine PMZFlowRestartBinary(this,viewer)
   use Global_module
 
   implicit none
-#include "petsc/finclude/petscviewer.h"
 
   class(pm_zflow_type) :: this
   PetscViewer :: viewer

@@ -4,9 +4,9 @@ module Secondary_Continuum_module
 
 #include "petsc/finclude/petscsnes.h"
   use petscsnes
-  use Secondary_Continuum_Aux_module
 
   use PFLOTRAN_Constants_module
+  use Secondary_Continuum_Aux_module
   use Utility_module, only : Equal
 
   implicit none
@@ -2137,7 +2137,6 @@ subroutine SecondaryRTGetVariable(realization, vec, ivar, isubvar, mc_layer)
   ! continuum cells. Similar to RealizationGetVariable, but now the "layer"
   ! of the cells needs to be specified.
 
-#include "petsc/finclude/petscvec.h"
   use Variables_module
   use Grid_module
   use Patch_module
@@ -2233,7 +2232,6 @@ subroutine SecondaryRTSetVariable(realization, vec, vec_format, ivar, isubvar, m
   ! continuum cells. Similar to RealizationSetVariable, but now the "layer"
   ! of the cells needs to be specified.
 
-#include "petsc/finclude/petscvec.h"
   use Variables_module
   use Grid_module
   use Patch_module

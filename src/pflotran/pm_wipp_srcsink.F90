@@ -12,8 +12,9 @@ module PM_WIPP_SrcSink_class
 ! source terms, respectively, in the flow process model.
 !=============================================================================
 
-#include "petsc/finclude/petscvec.h"
-  use petscvec
+#include "petsc/finclude/petscmat.h"
+  use petscmat
+
   use PM_Base_class
   use Region_module
   use PFLOTRAN_Constants_module
@@ -2798,9 +2799,6 @@ subroutine PMWSSInitializeRun(this)
   ! Author: Jenn Frederick
   ! Date: 02/14/2017
   !
-
-#include "petsc/finclude/petscis.h"
-  use petscis
   use Data_Mediator_Vec_class
   use Realization_Base_class
   use Material_module
@@ -4458,8 +4456,6 @@ subroutine PMWSSCalcJacobianValues(this,A,ierr)
   ! Author: Jenn Frederick
   ! Date: 10/19/2017
   !
-#include "petsc/finclude/petscsnes.h"
-  use petscsnes
   use WIPP_Flow_Aux_module
   use Material_Aux_module
   use Petsc_Utility_module, only : PUMSetValuesBlockedLocal

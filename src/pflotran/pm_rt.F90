@@ -1013,7 +1013,6 @@ subroutine PMRTDebugDerivatives(this,snes,xx,A,B,ierr)
   use Petsc_Utility_module
   use Debug_module
 
-#include "petsc/finclude/petscsys.h"
   implicit none
 
   class(pm_rt_type) :: this

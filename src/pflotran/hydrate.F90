@@ -2401,8 +2401,6 @@ subroutine HydrateSSSandbox(residual,Jacobian,compute_derivative, &
   ! Author: Michael Nole
   ! Date: 07/23/19
   !
-#include "petsc/finclude/petscmat.h"
-  use petscmat
   use Option_module
   use Grid_module
   use Material_Aux_module, only: material_auxvar_type

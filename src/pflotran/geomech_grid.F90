@@ -1,7 +1,10 @@
 module Geomechanics_Grid_module
 
-#include "petsc/finclude/petscvec.h"
-  use petscvec
+#include "petsc/finclude/petscmat.h"
+#include "petsc/finclude/petscdm.h"
+  use petscmat
+  use petscdm
+
   use Geomechanics_Grid_Aux_module
   use Grid_Unstructured_Cell_module
   use PFLOTRAN_Constants_module
@@ -34,10 +37,9 @@ contains
 ! ************************************************************************** !
 subroutine CopySubsurfaceGridtoGeomechGrid(ugrid,geomech_grid,option)
 
-#include "petsc/finclude/petscdm.h"
 #include "petsc/finclude/petscao.h"
-  use petscdm
   use petscao
+
   use Grid_Unstructured_Aux_module
   use Geomechanics_Grid_Aux_module
   use Option_module
@@ -1089,8 +1091,6 @@ end subroutine GeomechGridLocalizeRegFromSideSet
 subroutine GeomechGridLocalizeRegFromVertIDs(geomech_grid,geomech_region, &
                                              option)
 
-#include "petsc/finclude/petscmat.h"
-  use petscmat
   use Option_module
   use Geomechanics_Region_module
 

@@ -1,6 +1,8 @@
 module Geomechanics_Discretization_module
 
+#include "petsc/finclude/petscvec.h"
 #include "petsc/finclude/petscdmda.h"
+  use petscvec
   use petscdmda
   use Geomechanics_Grid_module
   use Geomechanics_Grid_Aux_module
@@ -495,8 +497,6 @@ subroutine GeomechDiscretAOApplicationToPetsc(geomech_discretization,int_array)
   ! Author: Satish Karra, LANL
   ! Date: 06/02/13
   !
-#include "petsc/finclude/petscao.h"
-  use petscvec
   implicit none
 
   type(geomech_discretization_type) :: geomech_discretization

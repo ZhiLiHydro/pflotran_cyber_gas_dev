@@ -3320,7 +3320,6 @@ subroutine PMHydrateCheckpointBinary(this,viewer)
   use Global_module
 
   implicit none
-#include "petsc/finclude/petscviewer.h"
 
   class(pm_hydrate_type) :: this
   PetscViewer :: viewer
@@ -3342,7 +3341,6 @@ subroutine PMHydrateRestartBinary(this,viewer)
   use Global_module
 
   implicit none
-#include "petsc/finclude/petscviewer.h"
 
   class(pm_hydrate_type) :: this
   PetscViewer :: viewer

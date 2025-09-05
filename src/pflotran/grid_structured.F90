@@ -1,7 +1,9 @@
 module Grid_Structured_module
 
-#include "petsc/finclude/petscsys.h"
-  use petscsys
+#include "petsc/finclude/petscvec.h"
+#include "petsc/finclude/petscdmda.h"
+  use petscvec
+  use petscdmda
   use PFLOTRAN_Constants_module
   use Utility_module, only : Equal
 
@@ -206,8 +208,6 @@ subroutine StructGridCreateDM(structured_grid,da,ndof,stencil_width, &
   ! Author: Glenn Hammond
   ! Date: 10/22/07
   !
-#include "petsc/finclude/petscdmda.h"
-  use petscdmda
   use Option_module
 
   implicit none
@@ -256,8 +256,6 @@ subroutine StructGridComputeLocalBounds(structured_grid,da,option)
   ! Date: 03/13/08
   !
 
-#include "petsc/finclude/petscdm.h"
-  use petscdm
   use Option_module
 
   implicit none
@@ -312,9 +310,6 @@ subroutine StructGridCreateVecFromDM(da,vector,vector_type)
   ! Author: Glenn Hammond
   ! Date: 02/08/08
   !
-#include "petsc/finclude/petscdm.h"
-  use petscdm
-
   implicit none
 
   DM :: da
@@ -1310,8 +1305,6 @@ subroutine StructGridComputeVolumes(radius,structured_grid,option,nL2G,volume)
   ! Date: 10/25/07
   !
 
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Option_module
   use String_module
 
@@ -1396,8 +1389,6 @@ subroutine StructGridMapIndices(structured_grid,stencil_type, &
   ! Date: 10/24/07
   !
 
-#include "petsc/finclude/petscdmda.h"
-  use petscdmda
   use Option_module
 
   implicit none
@@ -1516,8 +1507,6 @@ subroutine StructGridGetGhostedNeighbors(structured_grid,ghosted_id, &
   ! Author: Glenn Hammond
   ! Date: 01/28/11
   !
-#include "petsc/finclude/petscdmda.h"
-  use petscdmda
   use Option_module
 
   implicit none
@@ -1775,8 +1764,6 @@ subroutine StructGridCreateTVDGhosts(structured_grid,ndof,global_vec, &
   ! Date: 01/28/11
   !
 
-#include "petsc/finclude/petscdm.h"
-  use petscdm
   use Option_module
 
   implicit none

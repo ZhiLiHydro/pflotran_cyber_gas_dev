@@ -1,7 +1,7 @@
 module Global_module
 
-#include "petsc/finclude/petscsys.h"
-  use petscsys
+#include "petsc/finclude/petscvec.h"
+  use petscvec
   use Global_Aux_module
 
   use PFLOTRAN_Constants_module
@@ -246,9 +246,6 @@ subroutine GlobalSetAuxVarVecLoc(realization,vec_loc,ivar,time_level)
   ! Author: Glenn Hammond
   ! Date: 11/19/08
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Realization_Subsurface_class
   use Patch_module
   use Grid_module
@@ -478,9 +475,6 @@ subroutine GlobalGetAuxVarVecLoc(realization,vec_loc,ivar)
   ! Author: Glenn Hammond
   ! Date: 11/19/08
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Realization_Subsurface_class
   use Patch_module
   use Grid_module
@@ -618,8 +612,6 @@ subroutine GlobalSetParameterVecLoc(realization,vec_loc,iparameter)
   ! Author: Glenn Hammond
   ! Date: 01/05/24
   !
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Realization_Subsurface_class
 
   implicit none
@@ -775,8 +767,6 @@ subroutine GlobalSetAuxVarsAtTimeLevel(realization,time_level,time)
                                DARCY_VELOCITY
   use ZFlow_Aux_module, only : zflow_density_kg
 
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Discretization_module
   use Output_Common_module
 

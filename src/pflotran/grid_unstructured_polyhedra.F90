@@ -1,7 +1,7 @@
 module Grid_Unstructured_Polyhedra_module
 
-#include "petsc/finclude/petscvec.h"
-  use petscvec
+#include "petsc/finclude/petscmat.h"
+  use petscmat
   use Geometry_module
   use Grid_Unstructured_Aux_module
   use Grid_Unstructured_Cell_module
@@ -2242,9 +2242,6 @@ subroutine UGridPolyhedraComputeOutputInfo(ugrid, nL2G, nG2L, nG2A, option)
   ! Author: Gautam Bisht, LBL
   ! Date: 12/29/13
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Option_module
 
   implicit none

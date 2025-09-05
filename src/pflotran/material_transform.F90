@@ -5,10 +5,8 @@ module Material_Transform_module
   ! Author: Alex Salazar III
   ! Date: 02/25/21
 
-#include "petsc/finclude/petscsys.h"
 #include "petsc/finclude/petscvec.h"
-
-  use petscsys
+  use petscvec
   use PFLOTRAN_Constants_module
 
   implicit none

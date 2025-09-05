@@ -1,7 +1,7 @@
 module Grid_Unstructured_module
 
-#include "petsc/finclude/petscvec.h"
-  use petscvec
+#include "petsc/finclude/petscmat.h"
+  use petscmat
   use Connection_module
   use Grid_Unstructured_Aux_module
   use Grid_Unstructured_Cell_module
@@ -567,8 +567,6 @@ subroutine UGridDecompose(unstructured_grid,option)
   ! Date: 09/30/09
   !
 
-#include "petsc/finclude/petscmat.h"
-  use petscmat
   use Option_module
   use Utility_module, only: ReallocateArray, SearchOrderedArray
 
@@ -2560,9 +2558,6 @@ subroutine UGridMapSideSet(unstructured_grid,face_vertices,n_ss_faces, &
   ! Author: Glenn Hammond
   ! Date: 12/16/11
   !
-
-#include "petsc/finclude/petscmat.h"
-  use petscmat
   use Option_module
 
   implicit none
@@ -2872,9 +2867,6 @@ subroutine UGridMapSideSet2(unstructured_grid,face_vertices,n_ss_faces, &
   ! Author: Gautam Bisht
   ! Date: 03/21/17
   !
-
-#include "petsc/finclude/petscmat.h"
-  use petscmat
   use Option_module
   use String_module
   use Petsc_Utility_module
@@ -3273,9 +3265,6 @@ subroutine UGridGetBoundaryFaces(unstructured_grid,option,boundary_faces)
   ! Author: Glenn Hammond
   ! Date: 01/12/12
   !
-
-#include "petsc/finclude/petscmat.h"
-  use petscmat
   use Option_module
 
   implicit none

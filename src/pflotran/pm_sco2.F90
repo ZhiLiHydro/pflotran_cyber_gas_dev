@@ -2575,8 +2575,6 @@ subroutine PMSCO2CheckpointBinary(this,viewer)
 
   implicit none
 
-#include "petsc/finclude/petscviewer.h"
-
   class(pm_sco2_type) :: this
   PetscViewer :: viewer
 
@@ -2597,8 +2595,6 @@ subroutine PMSCO2RestartBinary(this,viewer)
   use Global_module
 
   implicit none
-
-#include "petsc/finclude/petscviewer.h"
 
   class(pm_sco2_type) :: this
   PetscViewer :: viewer

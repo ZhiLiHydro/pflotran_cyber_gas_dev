@@ -1,7 +1,7 @@
 module Init_Subsurface_Flow_module
 
-#include "petsc/finclude/petscsys.h"
-  use petscsys
+#include "petsc/finclude/petscvec.h"
+  use petscvec
 
   use PFLOTRAN_Constants_module
 
@@ -22,10 +22,6 @@ subroutine InitSubsurfFlowReadInitCond(realization,filename)
   ! Author: Glenn Hammond
   ! Date: 03/05/10, 12/04/14
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
-
   use Realization_Subsurface_class
   use Option_module
   use Field_module

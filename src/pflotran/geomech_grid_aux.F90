@@ -1,8 +1,10 @@
 module Geomechanics_Grid_Aux_module
 
-#include "petsc/finclude/petscvec.h"
+#include "petsc/finclude/petscmat.h"
+#include "petsc/finclude/petscdm.h"
 #include "petsc/finclude/petscao.h"
-  use petscvec
+  use petscmat
+  use petscdm
   use petscao
   use Grid_Unstructured_Cell_module
   use Gauss_module
@@ -204,8 +206,6 @@ end function GMGridCreate
 ! ************************************************************************** !
 subroutine GMCreateGMDM(geomech_grid,gmdm,ndof,option)
 
-#include "petsc/finclude/petscdm.h"
-  use petscdm
   use Option_module
   use Utility_module, only: ReallocateArray
 

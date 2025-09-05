@@ -6,9 +6,8 @@ module PM_Material_Transform_class
 ! for physical phenomena given evolving system conditions
 ! ===========================================================================
 
-#include "petsc/finclude/petscsys.h"
 #include "petsc/finclude/petscvec.h"
-  use petscsys
+  use petscvec
   use PM_Base_class
   use Realization_Subsurface_class
   use Option_module

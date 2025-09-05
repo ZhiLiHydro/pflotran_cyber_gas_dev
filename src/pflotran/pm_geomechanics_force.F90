@@ -438,7 +438,6 @@ subroutine PMGeomechForceCheckpointBinary(this,viewer)
   use Checkpoint_module
 
   implicit none
-#include "petsc/finclude/petscviewer.h"
 
   class(pm_geomech_force_type) :: this
   PetscViewer :: viewer
@@ -460,7 +459,6 @@ subroutine PMGeomechForceRestartBinary(this,viewer)
   use Checkpoint_module
 
   implicit none
-#include "petsc/finclude/petscviewer.h"
 
   class(pm_geomech_force_type) :: this
   PetscViewer :: viewer

@@ -1,7 +1,9 @@
 module Geomechanics_Realization_class
 
-#include "petsc/finclude/petscsys.h"
-  use petscsys
+#include "petsc/finclude/petscvec.h"
+#include "petsc/finclude/petscdm.h"
+  use petscvec
+  use petscdm
   use Realization_Base_class
   use Geomechanics_Discretization_module
   use Geomechanics_Patch_module
@@ -313,8 +315,6 @@ subroutine GeomechRealizCreateDiscretization(geomech_realization)
   ! Author: Satish Karra, LANL
   ! Date: 05/23/13
   !
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Geomechanics_Grid_Aux_module
 
   implicit none
@@ -487,11 +487,9 @@ subroutine GeomechRealizMapSubsurfGeomechGrid(realization, &
   ! Author: Satish Karra, LANL
   ! Date: 09/09/13
   !
-
-#include "petsc/finclude/petscdm.h"
 #include "petsc/finclude/petscao.h"
-  use petscdm
   use petscao
+
   use Option_module
   use Geomechanics_Grid_Aux_module
   use Realization_Subsurface_class
@@ -768,9 +766,6 @@ subroutine GeomechGridElemSharedByNodes(geomech_realization,option)
   ! Author: Satish Karra
   ! Date: 09/17/13
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Option_module
   use Geomechanics_Grid_Aux_module
 
@@ -1128,8 +1123,6 @@ subroutine GeomechRealizGetDataset(geomech_realization,vec,ivar,isubvar, &
   ! Author: Satish Karra, LANL
   ! Date: 07/03/13
   !
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   implicit none
 
   class(realization_geomech_type) :: geomech_realization

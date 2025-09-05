@@ -2028,7 +2028,6 @@ subroutine PMGeneralCheckpointBinary(this,viewer)
   use Global_module
 
   implicit none
-#include "petsc/finclude/petscviewer.h"
 
   class(pm_general_type) :: this
   PetscViewer :: viewer
@@ -2050,7 +2049,6 @@ subroutine PMGeneralRestartBinary(this,viewer)
   use Global_module
 
   implicit none
-#include "petsc/finclude/petscviewer.h"
 
   class(pm_general_type) :: this
   PetscViewer :: viewer

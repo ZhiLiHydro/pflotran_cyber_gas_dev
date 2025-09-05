@@ -1,7 +1,8 @@
 module Timestepper_Steady_class
 
-#include "petsc/finclude/petscsys.h"
-  use petscsys
+#include "petsc/finclude/petscsnes.h"
+  use petscsnes
+
   use Solver_module
   use Convergence_module
   use Timestepper_SNES_class
@@ -194,8 +195,6 @@ subroutine TimestepperSteadyStepDT(this,process_model,stop_flag)
   ! Author: Glenn Hammond
   ! Date: 03/19/21
   !
-#include "petsc/finclude/petscsnes.h"
-  use petscsnes
   use PM_Base_class
   use PM_Subsurface_Flow_class
   use Option_module

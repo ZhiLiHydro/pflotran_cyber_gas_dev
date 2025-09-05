@@ -1,7 +1,7 @@
 module PM_OSRT_class
 
-#include "petsc/finclude/petscsnes.h"
-  use petscsnes
+#include "petsc/finclude/petscmat.h"
+  use petscmat
 
   use PM_RT_class
 

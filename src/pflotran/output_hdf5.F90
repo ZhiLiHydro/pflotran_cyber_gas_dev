@@ -1,11 +1,15 @@
 module Output_HDF5_module
 
-#include "petsc/finclude/petscsys.h"
-  use petscsys
+#include "petsc/finclude/petscvec.h"
+  use petscvec
+  use hdf5
+
+  use HDF5_Aux_module
+  use HDF5_module
+
   use Logging_module
   use Output_Aux_module
   use Output_Common_module
-
   use PFLOTRAN_Constants_module
   use Utility_module, only : Equal
 
@@ -93,12 +97,6 @@ subroutine OutputHDF5(realization_base,var_list_type)
 #else
 #define HDF_NATIVE_INTEGER H5T_NATIVE_INTEGER
 #endif
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
-  use hdf5
-  use HDF5_module
-  use HDF5_Aux_module
 
   implicit none
 
@@ -315,8 +313,6 @@ subroutine OutputHDF5OpenFile(option, output_option, var_list_type, file_id, &
   ! first time the file has been opened.
   !
   use Option_module
-  use hdf5
-  use HDF5_Aux_module
 
   implicit none
 
@@ -389,8 +385,6 @@ end subroutine OutputHDF5OpenFile
 subroutine OutputHDF5CloseFile(option, file_id)
 
   use Option_module
-  use hdf5
-  use HDF5_Aux_module
 
   implicit none
 
@@ -427,12 +421,6 @@ subroutine OutputHDF5UGridXDMF(realization_base,var_list_type)
 #else
 #define HDF_NATIVE_INTEGER H5T_NATIVE_INTEGER
 #endif
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
-  use hdf5
-  use HDF5_module, only : HDF5WriteDataSetFromVec
-  use HDF5_Aux_module
 
   implicit none
 
@@ -790,12 +778,6 @@ subroutine OutputHDF5UGridXDMFExplicit(realization_base,var_list_type)
 #else
 #define HDF_NATIVE_INTEGER H5T_NATIVE_INTEGER
 #endif
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
-  use hdf5
-  use HDF5_module, only : HDF5WriteDataSetFromVec
-  use HDF5_Aux_module
 
   implicit none
 
@@ -1267,8 +1249,6 @@ subroutine WriteHDF5FluxVelocities(name,realization_base,iphase,direction, &
   ! Date: 10/25/07
   !
 
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Realization_Base_class, only : realization_base_type
   use Discretization_module
   use Grid_module
@@ -1276,8 +1256,6 @@ subroutine WriteHDF5FluxVelocities(name,realization_base,iphase,direction, &
   use Field_module
   use Connection_module
   use Patch_module
-  use hdf5
-  use HDF5_module, only : HDF5WriteStructuredDataSet, trick_hdf5
 
   implicit none
 
@@ -1402,8 +1380,6 @@ subroutine OutputHDF5WriteStructCoordGroup(file_id,discretization,grid,option)
   ! Author: Glenn Hammond
   ! Date: 10/12/21
   !
-  use hdf5
-  use HDF5_Aux_module
   use Discretization_module
   use Option_module
   use Grid_module
@@ -1471,9 +1447,6 @@ subroutine WriteHDF5Coordinates(name,option,length,array,file_id)
   ! Author: Glenn Hammond
   ! Date: 10/25/07
   !
-
-  use hdf5
-  use HDF5_Aux_module
   use Option_module
 
   implicit none
@@ -1538,15 +1511,9 @@ subroutine WriteHDF5CoordinatesUGrid(grid,option,file_id)
   ! Author: Gautam Bisht, ORNL
   ! Date: 05/31/12
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
-  use hdf5
-  use HDF5_Aux_module
   use Grid_module
   use Option_module
   use Grid_Unstructured_Aux_module
-  use HDF5_module, only : trick_hdf5
   use Variables_module
 
   implicit none
@@ -1809,11 +1776,6 @@ subroutine WriteHDF5CoordinatesUGridXDMF(realization_base,option,file_id)
   ! Author: Gautam Bisht, LBNL
   ! Date: 10/29/2012
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
-  use hdf5
-  use HDF5_Aux_module
   use Realization_Base_class, only : realization_base_type
   use Grid_module
   use Option_module
@@ -2323,8 +2285,6 @@ subroutine DetermineNumVertices(realization_base,option)
   ! Author: Gautam Bisht, LBNL
   ! Date: 03/13/2015
   !
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Realization_Base_class, only : realization_base_type
   use Grid_module
   use Option_module
@@ -2392,10 +2352,6 @@ subroutine WriteHDF5CoordinatesUGridXDMFExplicit(realization_base,option, &
   ! Date: 07/17/2013
   !
 
-#include "petsc/finclude/petscvec.h"
-  use petscvec
-  use hdf5
-  use HDF5_Aux_module
   use Realization_Base_class, only : realization_base_type
   use Grid_module
   use Option_module
@@ -2645,10 +2601,6 @@ subroutine WriteHDF5FlowratesUGrid(realization_base,option,file_id, &
   ! Author: Gautam Bisht, LBNL
   ! Date: 03/19/2013
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
-  use hdf5
   use Realization_Base_class, only : realization_base_type
   use Patch_module
   use Grid_module
@@ -2658,7 +2610,6 @@ subroutine WriteHDF5FlowratesUGrid(realization_base,option,file_id, &
   use Variables_module
   use Connection_module
   use Coupler_module
-  use HDF5_Aux_module
   use Output_Aux_module
   use Field_module
 
@@ -2875,9 +2826,6 @@ subroutine WriteHDF5FaceVelUGrid(realization_base,option,file_id, &
   ! Date: 05/25/2014
   !
 
-#include "petsc/finclude/petscvec.h"
-  use petscvec
-  use hdf5
   use Realization_Base_class, only : realization_base_type
   use Patch_module
   use Grid_module
@@ -2887,7 +2835,6 @@ subroutine WriteHDF5FaceVelUGrid(realization_base,option,file_id, &
   use Variables_module
   use Connection_module
   use Coupler_module
-  use HDF5_Aux_module
   use Output_Aux_module
   use Field_module
 
@@ -3085,9 +3032,6 @@ subroutine OutputHDF5Provenance(option, output_option, file_id)
   use Output_Aux_module, only : output_option_type
   use PFLOTRAN_Provenance_module, only : provenance_max_str_len
 
-  use hdf5
-  use HDF5_Aux_module
-
   implicit none
 
   type(option_type), intent(in) :: option
@@ -3127,9 +3071,6 @@ subroutine OutputHDF5Provenance_PFLOTRAN(option, provenance_id, string_type)
 
   use Option_module, only : option_type
   use PFLOTRAN_Provenance_module
-
-  use hdf5
-  use HDF5_Aux_module
 
   implicit none
 
@@ -3200,7 +3141,6 @@ subroutine OutputHDF5Provenance_input(option, pflotran_id)
   ! into a buffer, then write the buffer as a pflotran provenance
   ! group dataset.
   !
-  use hdf5
   use Input_Aux_module, only : input_type, InputCreate, InputDestroy, &
        InputGetLineCount, InputReadToBuffer
   use Option_module, only : option_type
@@ -3243,8 +3183,6 @@ subroutine OutputHDF5Provenance_PETSc(provenance_id, string_type, option)
   !
 
   use PFLOTRAN_Provenance_module
-  use hdf5
-  use HDF5_Aux_module
   use Option_module
 
   implicit none
@@ -3293,8 +3231,6 @@ subroutine OutputHDF5AttributeStringArray(parent_id, type, name, length, data)
   ! create the dataspaces and attributes consisting of an array of
   ! strings, then write the data and cleanup
 
-  use hdf5
-
   implicit none
 
   integer(HID_T), intent(in) ::  parent_id, type
@@ -3326,8 +3262,6 @@ end subroutine OutputHDF5AttributeStringArray
 subroutine OutputHDF5DatasetStringArray(parent_id, type, name, length, data)
   ! create the dataspaces and dataset consisting of an array of
   ! strings, then write the data and cleanup
-
-  use hdf5
 
   implicit none
 
@@ -3364,7 +3298,6 @@ subroutine OutputHDF5WriteSnapShotAtts(parent_id,option)
   ! Author: Glenn Hammond
   ! Date: 07/31/19
   !
-  use hdf5
   use Option_module
 
   implicit none
@@ -3413,12 +3346,6 @@ subroutine OutputHDF5PrintRegionsStructured(realization_base)
   use Region_module
   use String_module
   use Variables_module, only : MATERIAL_ID
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
-  use hdf5
-  use HDF5_module
-  use HDF5_Aux_module
 
   implicit none
 
@@ -3495,10 +3422,6 @@ subroutine OutputHDF5PrintRegionsXMF(realization_base)
   ! Author: Glenn Hammond
   ! Date: 10/19/19
   !
-#include "petsc/finclude/petscvec.h"
-  use petscvec
-  use hdf5
-  use HDF5_module
   use Realization_Base_class, only : realization_base_type
   use Discretization_module
   use Option_module
@@ -3654,8 +3577,6 @@ subroutine OutputH5OpenFile(option, h5obj, filename, file_id)
   ! Author: Glenn Hammond
   ! Date: 10/19/19
   !
-  use hdf5
-  use HDF5_Aux_module
   use Option_module
 
   implicit none
@@ -3690,8 +3611,6 @@ subroutine OutputH5CloseFile(option, h5file, file_id)
   ! Author: Glenn Hammond
   ! Date: 10/19/19
   !
-  use hdf5
-  use HDF5_Aux_module
   use Option_module
 
   implicit none
@@ -3739,8 +3658,6 @@ subroutine OutputH5OpenGroup(option, group_name, file_id, grp_id)
   ! Author: Glenn Hammond
   ! Date: 10/19/19
   !
-  use hdf5
-  use HDF5_Aux_module
   use Option_module
 
   implicit none
@@ -3763,8 +3680,6 @@ subroutine OutputH5CloseGroup(option,grp_id)
   ! Author: Glenn Hammond
   ! Date: 10/19/19
   !
-  use hdf5
-  use HDF5_Aux_module
   use Option_module
 
   implicit none

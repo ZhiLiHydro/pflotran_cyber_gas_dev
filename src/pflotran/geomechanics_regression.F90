@@ -202,8 +202,6 @@ subroutine GeomechanicsRegressionCreateMapping(geomechanics_regression, &
   ! Date: 06/22/2016
   !
 
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Option_module
   use Geomechanics_Realization_class
   use Geomechanics_Grid_Aux_module

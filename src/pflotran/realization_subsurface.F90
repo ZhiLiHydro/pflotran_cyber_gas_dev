@@ -1,7 +1,7 @@
 module Realization_Subsurface_class
 
-#include "petsc/finclude/petscsys.h"
-  use petscsys
+#include "petsc/finclude/petscvec.h"
+  use petscvec
 
   use PFLOTRAN_Constants_module
   use Realization_Base_class
@@ -205,9 +205,6 @@ subroutine RealizationCreateDiscretization(realization)
   ! Author: Glenn Hammond
   ! Date: 02/22/08
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Field_module
   use Grid_module
   use Grid_Unstructured_Aux_module
@@ -1939,9 +1936,6 @@ subroutine RealizationUpdatePropertiesTS(realization)
   ! Author: Glenn Hammond
   ! Date: 08/05/09
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Discretization_module
   use Field_module
   use Grid_module
@@ -2654,9 +2648,6 @@ subroutine RealizUnInitializedVar1(realization,ivar,var_name)
   ! Author: Glenn Hammond
   ! Date: 07/06/16
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Option_module
   use Field_module
   use Patch_module

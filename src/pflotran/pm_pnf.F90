@@ -1,7 +1,7 @@
 module PM_PNF_class
 
-#include "petsc/finclude/petscsnes.h"
-  use petscsnes
+#include "petsc/finclude/petscmat.h"
+  use petscmat
 
   use PM_Subsurface_Flow_class
   use Communicator_Base_class
@@ -875,7 +875,6 @@ subroutine PMPNFCheckpointBinary(this,viewer)
   use Global_module
 
   implicit none
-#include "petsc/finclude/petscviewer.h"
 
   class(pm_pnf_type) :: this
   PetscViewer :: viewer
@@ -897,7 +896,6 @@ subroutine PMPNFRestartBinary(this,viewer)
   use Global_module
 
   implicit none
-#include "petsc/finclude/petscviewer.h"
 
   class(pm_pnf_type) :: this
   PetscViewer :: viewer

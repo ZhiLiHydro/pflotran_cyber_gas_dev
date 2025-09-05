@@ -1528,8 +1528,6 @@ subroutine NWTJacobian(snes,xx,A,B,realization,ierr)
   ! Date: 05/14/2019
   !
 
-#include "petsc/finclude/petscmat.h"
-  use petscmat
   use Realization_Subsurface_class
   use Grid_module
   use Field_module

@@ -15,8 +15,8 @@ module PM_UFD_Decay_class
 ! elemental Kd value.
 ! ===========================================================================
 
-#include "petsc/finclude/petscsys.h"
-  use petscsys
+#include "petsc/finclude/petscvec.h"
+  use petscvec
   use PM_Base_class
   use Realization_Subsurface_class
   use Option_module
@@ -1535,8 +1535,6 @@ subroutine PMUFDDecaySolve(this,time,ierr)
   ! Author: Glenn Hammond
   ! Date: 06/24/15
   !
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Option_module
   use Reaction_Aux_module
   use Patch_module
@@ -2232,7 +2230,6 @@ subroutine PMUFDDecayCheckpoint(this,viewer)
   ! Date: 06/24/15
 
   implicit none
-#include "petsc/finclude/petscviewer.h"
 
 ! INPUT ARGUMENTS:
 ! ================
@@ -2255,7 +2252,6 @@ subroutine PMUFDDecayRestart(this,viewer)
   ! Date: 06/24/15
 
   implicit none
-#include "petsc/finclude/petscviewer.h"
 
 ! INPUT ARGUMENTS:
 ! ================

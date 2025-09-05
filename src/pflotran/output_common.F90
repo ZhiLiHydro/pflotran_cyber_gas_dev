@@ -163,8 +163,6 @@ subroutine OutputGetVariableArray(realization_base,vec,variable)
   ! Date: 10/25/07
   !
 
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Realization_Base_class, only : RealizationGetVariable
 
   implicit none
@@ -195,8 +193,6 @@ subroutine OutputConvertArrayToNatural(indices,array,local_size,global_size,opti
   ! Author: Glenn Hammond
   ! Date: 10/25/07
   !
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Option_module
 
   implicit none
@@ -346,8 +342,6 @@ subroutine OutputGetCellCenteredVelocities(realization_base,vec_x,vec_y, &
   ! Author: Glenn Hammond
   ! Date: 10/25/07; refactored 01/31/14
   !
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Logging_module
   use Patch_module
   use Grid_module
@@ -397,8 +391,6 @@ subroutine OutputGetCellCoordinates(grid,vec,direction)
   ! Date: 10/25/07
   !
 
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Grid_module
   use Variables_module
 
@@ -442,8 +434,6 @@ subroutine OutputGetVertexCoordinates(grid,vec,direction,option)
   ! Date: 11/01/2011
   !
 
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Grid_module
   use Option_module
   use Variables_module, only : X_COORDINATE, Y_COORDINATE, Z_COORDINATE
@@ -518,9 +508,6 @@ subroutine OutputGetCellVertices(grid, vec)
   ! Author: Gautam Bisht, ORNL
   ! Date: 05/31/12
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Grid_module
   use Grid_Unstructured_Aux_module
   use Grid_Unstructured_Cell_module
@@ -610,9 +597,6 @@ subroutine OutputGetCellVerticesExplicit(grid, vec)
   ! Author: Satish Karra
   ! Date: 07/16/13
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Grid_module
   use Grid_Unstructured_Aux_module
   use Grid_Unstructured_Cell_module
@@ -888,10 +872,6 @@ subroutine OutputGetFaceVelUGrid(realization_base)
   ! Author: Gautam Bisht, LBNL
   ! Date: 06/15/2016
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
-  use HDF5_module
   use Realization_Base_class, only : realization_base_type
   use Patch_module
   use Grid_module
@@ -901,7 +881,6 @@ subroutine OutputGetFaceVelUGrid(realization_base)
   use Variables_module
   use Connection_module
   use Coupler_module
-  use HDF5_Aux_module
   use Output_Aux_module
   use Field_module
 
@@ -1189,10 +1168,6 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
   ! Author: Gautam Bisht, LBNL
   ! Date: 06/15/2016
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
-  use HDF5_module
   use Realization_Base_class, only : realization_base_type
   use Patch_module
   use Grid_module
@@ -1202,7 +1177,6 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
   use Variables_module
   use Connection_module
   use Coupler_module
-  use HDF5_Aux_module
   use Output_Aux_module
   use Field_module
 
@@ -1402,8 +1376,6 @@ subroutine OutputGetExplicitIDsFlowrates(realization_base,count,vec_proc, &
   ! Date: 04/24/13
   !
 
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Realization_Base_class, only : realization_base_type
   use Patch_module
   use Grid_module
@@ -1551,9 +1523,6 @@ subroutine OutputGetExplicitFlowrates(realization_base,count,vec_proc, &
   ! Author: Satish Karra, LANL
   ! Date: 04/24/13
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Realization_Base_class, only : realization_base_type
   use Patch_module
   use Grid_module
@@ -1634,9 +1603,6 @@ subroutine OutputGetExplicitAuxVars(realization_base,count,vec_proc,density)
   ! Author: Satish Karra, LANL
   ! Date: 07/17/13
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Realization_Base_class, only : realization_base_type
   use Patch_module
   use Grid_module
@@ -1755,8 +1721,6 @@ subroutine OutputGetExplicitCellInfo(realization_base,num_cells,ids,sat,por, &
   ! Author: Satish Karra, LANL
   ! Date: 08/21/13
   !
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Realization_Base_class, only : realization_base_type
   use Patch_module
   use Grid_module

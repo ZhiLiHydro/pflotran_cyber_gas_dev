@@ -1,7 +1,8 @@
 module Geomechanics_Patch_module
 
-#include "petsc/finclude/petscsys.h"
-  use petscsys
+#include "petsc/finclude/petscvec.h"
+  use petscvec
+
   use Option_module
   use Geomechanics_Grid_module
   use Geomechanics_Material_module
@@ -548,8 +549,6 @@ subroutine GeomechPatchGetDataset(patch,geomech_field,option,output_option, &
   ! Date: 07/02/13
   !
 
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Geomechanics_Grid_module
   use Geomechanics_Grid_Aux_module
   use Option_module

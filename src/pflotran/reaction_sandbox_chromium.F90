@@ -131,9 +131,6 @@ subroutine ChromiumRead(this,input,option)
   ! Author: Satish Karra and Scott Hansen, LANL
   ! Date: 08/19/2015
   !
-
-#include "petsc/finclude/petscsys.h"
-  use petscsys
   use Option_module
   use String_module
   use Input_Aux_module

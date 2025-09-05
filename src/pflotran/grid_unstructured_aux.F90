@@ -1,12 +1,10 @@
 module Grid_Unstructured_Aux_module
 
 !  use Connection_module
-#include "petsc/finclude/petscvec.h"
-#include "petsc/finclude/petscao.h"
-#include "petsc/finclude/petscsys.h"
-  use petscvec
-  use petscao
-  use petscsys
+#include "petsc/finclude/petscdmda.h"
+#include "petsc/finclude/petscmat.h"
+  use petscdmda
+  use petscmat
 
   use Grid_Unstructured_Cell_module
   use Geometry_module
@@ -397,8 +395,6 @@ subroutine UGridCreateUGDM(unstructured_grid,ugdm,ndof,option)
   ! Date: 09/30/09
   !
 
-#include "petsc/finclude/petscdm.h"
-  use petscdm
   use Option_module
   use Utility_module, only: ReallocateArray
 
@@ -736,8 +732,6 @@ subroutine UGridCreateUGDMShell(unstructured_grid,da,ugdm,ndof,option)
   ! Author: Gautam Bisht, LBNL
   ! Date: 11/10/15
   !
-#include "petsc/finclude/petscdmda.h"
-  use petscdmda
   use Option_module
   use Utility_module, only: ReallocateArray
 
@@ -795,9 +789,6 @@ subroutine UGridDMCreateMatrix(unstructured_grid,ugdm,mat_type,J,option)
   ! Author: Glenn Hammond
   ! Date: 11/05/09
   !
-#include "petsc/finclude/petscmat.h"
-  use petscmat
-
   use Option_module
   use Petsc_Utility_module
 
@@ -1047,8 +1038,6 @@ subroutine UGridPartition(ugrid,option,Dual_mat,is_new, &
   ! Date: 10/05/12
   !
 
-#include "petsc/finclude/petscmat.h"
-  use petscmat
   use Option_module
 
   implicit none
@@ -1124,8 +1113,6 @@ subroutine UGridCreateOldVec(ugrid,option,elements_old, &
   ! Author: Glenn Hammond
   ! Date: 11/01/09
   !
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Option_module
 
   implicit none
@@ -1195,8 +1182,6 @@ subroutine UGridNaturalToPetsc(ugrid,option,elements_old,elements_local, &
   ! Date: 11/01/09
   !
 
-#include "petsc/finclude/petscmat.h"
-  use petscmat
   use Option_module
   use Utility_module, only: ReallocateArray, DeallocateArray
 

@@ -2,6 +2,7 @@ module WIPP_Flow_module
 
 #include "petsc/finclude/petscsnes.h"
   use petscsnes
+
   use WIPP_Flow_Aux_module
   use WIPP_Flow_Common_module
   use Global_Aux_module
@@ -1908,8 +1909,6 @@ subroutine WIPPFloSSSandbox(residual,Jacobian,compute_derivative, &
   ! Author: Glenn Hammond
   ! Date: 07/11/17
   !
-#include "petsc/finclude/petscmat.h"
-  use petscmat
   use Option_module
   use Grid_module
   use Material_Aux_module, only: material_auxvar_type

@@ -1,7 +1,8 @@
 module PM_Fracture_class
 
-#include "petsc/finclude/petscsnes.h"
-  use petscsnes
+#include "petsc/finclude/petscvec.h"
+  use petscvec
+
   use Realization_Subsurface_class
   use PFLOTRAN_Constants_module
   use PM_Base_class

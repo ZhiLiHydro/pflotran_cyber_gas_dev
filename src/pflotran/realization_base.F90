@@ -1,7 +1,7 @@
 module Realization_Base_class
 
-#include "petsc/finclude/petscsys.h"
-  use petscsys
+#include "petsc/finclude/petscvec.h"
+  use petscvec
 
   use Communicator_Base_class
   use Data_Mediator_Base_class
@@ -98,9 +98,6 @@ subroutine RealizationGetVariable(realization_base,vec,ivar,isubvar, &
   ! Author: Glenn Hammond
   ! Date: 09/12/08
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Option_module
 
   implicit none
@@ -173,9 +170,6 @@ subroutine RealizationSetVariable(realization_base,vec,vec_format,ivar,isubvar)
   ! Author: Glenn Hammond
   ! Date: 09/12/08
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Option_module
 
   implicit none
@@ -202,8 +196,6 @@ subroutine RealizCreateFlowMassTransferVec(this)
   ! Author: Glenn Hammond
   ! Date: 03/20/15
   !
-#include <petsc/finclude/petscvec.h>
-  use petscvec
   implicit none
 
   class(realization_base_type) :: this
@@ -227,8 +219,6 @@ subroutine RealizCreateTranMassTransferVec(this)
   ! Author: Glenn Hammond
   ! Date: 03/20/15
   !
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   implicit none
 
   class(realization_base_type) :: this

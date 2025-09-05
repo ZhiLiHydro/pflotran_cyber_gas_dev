@@ -1,8 +1,6 @@
 module Geomechanics_Field_module
 
-#include "petsc/finclude/petscvec.h"
 #include "petsc/finclude/petscmat.h"
-  use petscvec
   use petscmat
   use PFLOTRAN_Constants_module
 ! IMPORTANT NOTE: This module can have no dependencies on other modules!!!

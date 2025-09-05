@@ -2583,7 +2583,6 @@ subroutine PMWIPPFloCheckpointBinary(this,viewer)
   use Global_module
 
   implicit none
-#include "petsc/finclude/petscviewer.h"
 
   class(pm_wippflo_type) :: this
   PetscViewer :: viewer
@@ -2644,7 +2643,6 @@ subroutine PMWIPPFloRestartBinary(this,viewer)
   use Option_module
 
   implicit none
-#include "petsc/finclude/petscviewer.h"
 
   class(pm_wippflo_type) :: this
   type(option_type), pointer :: option

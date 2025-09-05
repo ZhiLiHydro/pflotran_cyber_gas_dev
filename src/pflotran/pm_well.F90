@@ -1,7 +1,8 @@
 module PM_Well_class
 
-#include "petsc/finclude/petscsnes.h"
-  use petscsnes
+#include "petsc/finclude/petscmat.h"
+  use petscmat
+
   use PM_Base_class
   use Option_module
   use Geometry_module

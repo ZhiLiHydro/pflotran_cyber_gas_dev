@@ -1,7 +1,7 @@
 module Timestepper_SNES_class
 
-#include "petsc/finclude/petscsys.h"
-  use petscsys
+#include "petsc/finclude/petscsnes.h"
+  use petscsnes
   use Solver_module
   use Convergence_module
   use Timestepper_Base_class
@@ -319,9 +319,6 @@ subroutine TimestepperSNESStepDT(this,process_model,stop_flag)
   ! Author: Glenn Hammond
   ! Date: 07/22/13
   !
-
-#include "petsc/finclude/petscsnes.h"
-  use petscsnes
   use PM_Base_class
   use PM_Subsurface_Flow_class
   use Option_module
@@ -548,7 +545,6 @@ subroutine TimestepperSNESRegisterHeader(this,bag,header)
   ! Author: Glenn Hammond
   ! Date: 07/30/13
   !
-#include "petsc/finclude/petscviewer.h"
 #include "petsc/finclude/petscbag.h"
   use petscbag
 
@@ -585,14 +581,12 @@ subroutine TimestepperSNESSetHeader(this,bag,header)
   ! Author: Glenn Hammond
   ! Date: 07/25/13
   !
-#include "petsc/finclude/petscviewer.h"
 #include "petsc/finclude/petscbag.h"
   use petscbag
 
   use Option_module
 
   implicit none
-
 
   class(timestepper_SNES_type) :: this
   class(stepper_SNES_header_type) :: header
@@ -918,9 +912,6 @@ subroutine TimestepperSNESGetHeader(this,header)
   use Option_module
 
   implicit none
-
-#include "petsc/finclude/petscviewer.h"
-#include "petsc/finclude/petscbag.h"
 
   class(timestepper_SNES_type) :: this
   class(stepper_SNES_header_type) :: header

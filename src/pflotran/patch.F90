@@ -5682,9 +5682,8 @@ subroutine PatchScaleSourceSink(patch,source_sink,iscale_type,option)
   ! Author: Glenn Hammond
   ! Date: 01/12/11
   !
-
-#include "petsc/finclude/petscdmda.h"
   use petscdmda
+
   use Option_module
   use Field_module
   use Coupler_module
@@ -5866,8 +5865,6 @@ subroutine PatchUpdateHetroCouplerAuxVars(patch,coupler,dataset_base, &
   ! Date: 10/03/2012
   !
 
-#include "petsc/finclude/petscdmda.h"
-  use petscdmda
   use Option_module
   use Field_module
   use Coupler_module

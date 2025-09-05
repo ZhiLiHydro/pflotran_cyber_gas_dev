@@ -3360,8 +3360,6 @@ subroutine RichardsSSSandbox(residual,Jacobian,compute_derivative, &
   !
   ! Modified by: Ayman Alzraiee on 04/05/2016
 
-#include "petsc/finclude/petscmat.h"
-  use petscmat
   use Option_module
   use Grid_module
   use Material_Aux_module, only: material_auxvar_type

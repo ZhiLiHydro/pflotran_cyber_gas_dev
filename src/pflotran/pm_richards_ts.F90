@@ -450,10 +450,6 @@ subroutine PMRichardsTSCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
   ! Author: Gautam Bisht, LBNL
   ! Date: 06/19/18
   !
-
-#include "petsc/finclude/petscsnes.h"
-  use petscsnes
-
   implicit none
 
   SNES :: snes

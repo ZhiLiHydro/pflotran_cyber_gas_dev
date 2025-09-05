@@ -2,15 +2,9 @@ module CPR_Preconditioner_module
 ! Implements a CPR preconditioner using the PCSHELL
 ! funcitonality of PETSC.
 ! Daniel Stone and Sebastien Loisel
-#include <petsc/finclude/petscsys.h>
-#include "petsc/finclude/petscts.h"
-#include "petsc/finclude/petscmat.h"
-#include "petsc/finclude/petscvec.h"
-#include "petsc/finclude/petscpc.h"
-#include "petsc/finclude/petscviewer.h"
-  use petscmat
+#include "petsc/finclude/petscksp.h"
   use petscksp
-  use petscvec
+
   use PFLOTRAN_Constants_module
   use Option_module
   implicit none
