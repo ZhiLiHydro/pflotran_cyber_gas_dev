@@ -452,11 +452,10 @@ end subroutine PMBaseIJacobian
 ! ************************************************************************** !
 
 subroutine PMBaseCheckpointBinary(this,viewer)
-  implicit none
 #include "petsc/finclude/petscviewer.h"
+  implicit none
   class(pm_base_type) :: this
   PetscViewer :: viewer
-!  call this%PrintErrMsg('PMBaseCheckpointBinary')
 end subroutine PMBaseCheckpointBinary
 
 ! ************************************************************************** !

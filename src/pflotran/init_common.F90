@@ -1,6 +1,7 @@
 module Init_Common_module
-#include "petsc/finclude/petscts.h"
-  use petscts
+
+#include "petsc/finclude/petscvec.h"
+  use petscvec
   use PFLOTRAN_Constants_module
 
   implicit none

@@ -1,15 +1,13 @@
 module PMC_Subsurface_class
 
-  use PMC_Base_class
-  use Realization_Subsurface_class
-
-  use PFLOTRAN_Constants_module
-
 #include "petsc/finclude/petscts.h"
   use petscts
 
-  implicit none
+  use PFLOTRAN_Constants_module
+  use PMC_Base_class
+  use Realization_Subsurface_class
 
+  implicit none
 
   private
 

@@ -1,12 +1,12 @@
 module Timestepper_TS_class
 
-#include "petsc/finclude/petscsys.h"
-  use petscsys
+#include "petsc/finclude/petscts.h"
+  use petscts
+
+  use PFLOTRAN_Constants_module
   use Timestepper_Base_class
   use Solver_module
   use Waypoint_module
-
-  use PFLOTRAN_Constants_module
   use Utility_module, only : Equal
 
   implicit none
@@ -182,9 +182,6 @@ subroutine TimestepperTSStepDT(this,process_model,stop_flag)
   ! Author: Gautam Bisht, LBNL
   ! Date: 06/19/18
   !
-
-#include "petsc/finclude/petscts.h"
-  use petscts
   use PM_Base_class
   use PM_Subsurface_Flow_class
   use Option_module

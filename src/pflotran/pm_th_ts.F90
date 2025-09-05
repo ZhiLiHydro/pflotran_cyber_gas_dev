@@ -1,9 +1,7 @@
 module PM_TH_TS_class
 
 #include "petsc/finclude/petscts.h"
-#include "petsc/finclude/petscvec.h"
   use petscts
-  use petscvec
   use TH_module
   use TH_Aux_module
   use Global_Aux_module
@@ -726,10 +724,6 @@ subroutine PMTHTSCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
   ! Author: Satish Karra, LANL
   ! Date: 05/08/19
   !
-
-#include "petsc/finclude/petscsnes.h"
-  use petscsnes
-
   implicit none
 
   SNES :: snes

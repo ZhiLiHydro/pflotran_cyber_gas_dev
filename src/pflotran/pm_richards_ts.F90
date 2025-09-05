@@ -1,9 +1,7 @@
 module PM_Richards_TS_class
 
 #include "petsc/finclude/petscts.h"
-#include "petsc/finclude/petscvec.h"
   use petscts
-  use petscvec
   use Richards_module
   use Richards_Aux_module
   use Richards_Common_module

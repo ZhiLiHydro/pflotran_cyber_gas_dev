@@ -1,9 +1,8 @@
 module Solver_module
 
-#include "petsc/finclude/petsc.h"
-  use petsc
 #include "petsc/finclude/petscts.h"
   use petscts
+
   use PFLOTRAN_Constants_module
   use CPR_Preconditioner_module
   use Solver_CPR_module

@@ -1,14 +1,13 @@
 module PMC_Geomechanics_class
 
-#include "petsc/finclude/petscts.h"
-  use petscts
+#include "petsc/finclude/petscmat.h"
+  use petscmat
   use PMC_Base_class
   use Realization_Subsurface_class
   use Geomechanics_Realization_class
   use PFLOTRAN_Constants_module
 
   implicit none
-
 
   private
 
@@ -313,9 +312,6 @@ subroutine PMCGeomechanicsSetAuxData(this)
   ! Author: Gautam Bisht, LBNL
   ! Date: 01/01/14
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Option_module
   use Grid_module
   use Discretization_module
@@ -595,8 +591,6 @@ subroutine PMCGeomechanicsGetAuxData(this)
   ! Date: 01/01/14
   !
 
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Option_module
   use Geomechanics_Discretization_module
   use Geomechanics_Force_module

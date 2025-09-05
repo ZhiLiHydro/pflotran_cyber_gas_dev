@@ -1,15 +1,13 @@
 module PMC_Subsurface_OSRT_class
 
-#include "petsc/finclude/petscts.h"
-  use petscts
+#include "petsc/finclude/petscksp.h"
+  use petscksp
 
+  use PFLOTRAN_Constants_module
   use PMC_Subsurface_class
   use PM_OSRT_class
 
-  use PFLOTRAN_Constants_module
-
   implicit none
-
 
   private
 
