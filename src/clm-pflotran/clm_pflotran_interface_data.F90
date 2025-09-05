@@ -4,7 +4,6 @@ module clm_pflotran_interface_data
 #include "petsc/finclude/petscvec.h"
   use petscsys
   use petscvec
-  use Petsc_Utility_module
 
   implicit none
 
