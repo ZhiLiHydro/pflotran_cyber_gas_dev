@@ -1046,6 +1046,7 @@ subroutine THUpdateFixedAccumulation(realization)
     endif
 
     global_auxvars(ghosted_id)%istate = iphase
+    option%iflag = TH_UPDATE_FOR_FIXED_ACCUM
     call THAccumulation(th_auxvars(ghosted_id),global_auxvars(ghosted_id), &
                         material_auxvars(ghosted_id), &
                         th_parameter%dencpr(patch%cct_id(ghosted_id)), &
@@ -1180,6 +1181,7 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
   use Saturation_Function_module
   use Material_Aux_module, only : material_auxvar_type
   use EOS_Water_module
+  use Parameter_module
 
   implicit none
 
@@ -1222,6 +1224,11 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
   PetscReal :: dui_dT
   PetscInt :: idof, ieq
 
+  PetscInt :: porosity_id
+  PetscReal :: biot_coeff
+  PetscReal :: youngs_mod, poissons_ratio
+  PetscReal :: porosity_0, dr_bulk_modulus
+
   if (th_numerical_derivatives) then
     J = 0.d0
     call THAccumulation(th_auxvar,global_auxvar,material_auxvar, &
@@ -1255,6 +1262,24 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
 
   por = material_auxvar%porosity
   dcompressed_porosity_dp = material_auxvar%dporosity_dp
+
+
+  print *, 'original por, dpor/dp: ', por, dcompressed_porosity_dp
+  ! jaa
+  ! update por and dcompressed_porosity_dp
+  porosity_0 = material_auxvar%porosity_0
+  youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
+  poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
+  biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
+  ! Bulk modulus unit = Pa
+  dr_bulk_modulus = youngs_mod / &
+                   (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
+  ! Burghardt 2017 paper
+  dcompressed_porosity_dp = (biot_coeff**2)/dr_bulk_modulus + &
+    ((biot_coeff-porosity_0)*(1.d0-biot_coeff))/dr_bulk_modulus
+  porosity_id = ParameterGetIDFromName('geomech_porosity',option)
+  por = global_auxvar%parameters(porosity_id)
+  print *, 'new por, dpor/dp: ', por, dcompressed_porosity_dp
 
   porXvol = por*vol
 
@@ -1424,6 +1449,7 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
   use Option_module
   use Material_Aux_module, only : material_auxvar_type
   use EOS_Water_module
+  use Parameter_module
 
   implicit none
 
@@ -1442,9 +1468,48 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
   PetscReal :: sat_g, den_g, kmol_g, u_g
   PetscReal :: sat_i, den_i, u_i
 
+  ! jaa
+  PetscInt :: press_old_id, porosity_id, temp_porosity_id
+  PetscReal :: biot_coeff, youngs_mod, poissons_ratio, dr_bulk_modulus
+  PetscReal :: old_pressure, porosity_0
+
   vol = material_auxvar%volume
 
   por = material_auxvar%porosity
+
+  ! jaa : extend fixed stress here
+  if (option%iflag == TH_UPDATE_FOR_FIXED_ACCUM) then
+    !print *, 'fixed TH accumulation'
+    porosity_id = ParameterGetIDFromName('geomech_porosity',option)
+    por = global_auxvar%parameters(porosity_id)
+    print *, 'fixed por: ', por
+  else
+    !print *, 'non-fixed TH accumulation'
+    youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
+    poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
+    biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
+    ! 3D bulk modulus
+    dr_bulk_modulus = youngs_mod / &
+                      (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
+    porosity_0 = material_auxvar%porosity_0
+    porosity_id = ParameterGetIDFromName('geomech_porosity',option)
+    por = global_auxvar%parameters(porosity_id)
+    press_old_id = ParameterGetIDFromName( &
+                   'geomech_old_press', option)
+    temp_porosity_id = ParameterGetIDFromName( &
+                   'geomech_temp_porosity', option)
+    old_pressure = global_auxvar%parameters(press_old_id)
+    ! Burghardt 2017 paper .. temp_porosity
+    por = por + (((biot_coeff**2/dr_bulk_modulus) + &
+      ((biot_coeff-porosity_0)*(1.d0-biot_coeff)/dr_bulk_modulus)) * &
+      ! (pressure@ n+1 - pressure@ n)
+      ! pressure@ n is pressure used in last mech step
+      (global_auxvar%pres(1)-old_pressure))
+    ! store temp porosity for threshold check
+    global_auxvar%parameters(temp_porosity_id) = por
+    print *, 'temp por, old_press, new_press', &
+       por, old_pressure, global_auxvar%pres(1)
+  endif
 
   ! TechNotes, TH Mode: First term of Equation 8
   porXvol = por*vol
@@ -4128,6 +4193,8 @@ subroutine THResidualAccumulation(r,realization,ierr)
       vol_frac_prim = material_auxvars(ghosted_id)%secondary_prop%epsilon
     endif
 
+    ! jaa - non-fixed here
+    option%iflag = TH_UPDATE_FOR_ACCUM
     call THAccumulation(th_auxvars(ghosted_id),global_auxvars(ghosted_id), &
                         material_auxvars(ghosted_id), &
                         th_parameter%dencpr(patch%cct_id(ghosted_id)), &

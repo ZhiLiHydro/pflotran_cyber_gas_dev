@@ -329,6 +329,11 @@ recursive subroutine PMRichardsInitializeRun(this)
   ! Date: 01/05/2025
 
   use Realization_Base_class
+  use Richards_module
+  use Richards_Aux_module
+  use Global_Aux_module
+  use Grid_module
+
 
   implicit none
 
@@ -336,6 +341,22 @@ recursive subroutine PMRichardsInitializeRun(this)
 
   class(pm_well_type), pointer :: pm_well
   PetscErrorCode :: ierr
+
+  type(richards_auxvar_type), pointer :: rich_auxvars(:)
+  type(global_auxvar_type), pointer :: global_auxvars(:)
+  type(grid_type), pointer :: grid
+  PetscInt :: local_id, ghosted_id
+
+  ! call parent implementation
+  call PMSubsurfaceFlowInitializeRun(this)
+  ! jaa - test init density for geomech accumulation
+  rich_auxvars => this%realization%patch%aux%Richards%auxvars
+  global_auxvars => this%realization%patch%aux%Global%auxvars
+  grid => this%realization%patch%grid
+  do local_id = 1, grid%nlmax
+    ghosted_id = grid%nL2G(local_id)
+    rich_auxvars(ghosted_id)%den_0 = global_auxvars(ghosted_id)%den(1)
+  enddo
 
   ! setup coupling in jacobian matrix for the well model
   if (this%option%coupled_well .and. associated(this%pmwell_ptr)) then

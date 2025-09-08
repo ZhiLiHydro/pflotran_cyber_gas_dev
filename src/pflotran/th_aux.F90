@@ -27,6 +27,7 @@ module TH_Aux_module
   PetscInt, parameter, public :: TH_CONDUCTANCE_DOF = 3
 
   PetscInt, parameter, public :: TH_UPDATE_FOR_FIXED_ACCUM = 0
+  PetscInt, parameter, public :: TH_UPDATE_FOR_ACCUM = 1 ! jaa testing
 
   type, public :: th_auxvar_type
     PetscReal :: pres

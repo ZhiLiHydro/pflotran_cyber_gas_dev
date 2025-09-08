@@ -66,7 +66,26 @@ subroutine RichardsAccumDerivative(rich_auxvar,global_auxvar, &
   type(material_auxvar_type) :: material_auxvar_pert
   PetscReal :: x(1), x_pert(1), pert, res(1), res_pert(1), J_pert(1,1)
 
+  PetscReal :: biot_coeff
+  PetscReal :: youngs_mod, poissons_ratio
+  PetscReal :: porosity_0, dr_bulk_modulus
+
   vol_over_dt = material_auxvar%volume/option%flow_dt
+
+  if (option%geomechanics%split_scheme == &
+      GEOMECH_FIXED_STRAIN_SPLIT) then ! jaa.. change to fixed stress later
+    porosity_0 = material_auxvar%porosity_0
+    youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
+    poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
+    biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
+    ! Bulk modulus unit = Pa
+    dr_bulk_modulus = youngs_mod / &
+                     (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
+    ! Burghardt 2017 paper
+    material_auxvar%dporosity_dp = (biot_coeff**2)/dr_bulk_modulus + &
+           ((biot_coeff-porosity_0)*(1.d0-biot_coeff))/dr_bulk_modulus
+    ! jaa - double check porosity is correct in material_auxvar%porosity!!
+  endif
 
   ! accumulation term units = dkmol/dp
   J(1,1) = (material_auxvar%dporosity_dp*global_auxvar%sat(1)* &
@@ -122,6 +141,7 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
 
   use Option_module
   use Material_Aux_module, only : material_auxvar_type
+  use Parameter_module
 
   implicit none
 
@@ -133,11 +153,61 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
 
   PetscReal :: vol_over_dt
 
+  PetscReal :: biot_coeff
+  PetscReal :: youngs_mod, poissons_ratio
+  PetscReal :: porosity_0, dr_bulk_modulus
+  PetscReal :: temp_porosity, old_pressure, porosity, porosity_fixed
+  PetscInt :: press_old_id, porosity_id, temp_porosity_id, porosity_old_id
+
   vol_over_dt = material_auxvar%volume/option%flow_dt
 
   ! accumulation term units = kmol/s
   Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
            material_auxvar%porosity * vol_over_dt
+
+  if (option%geomechanics%split_scheme == &
+      GEOMECH_FIXED_STRAIN_SPLIT) then ! jaa.. change to fixed stress later
+    youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
+    poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
+    biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
+    porosity_0 = material_auxvar%porosity_0
+    ! 3D bulk modulus
+    dr_bulk_modulus = youngs_mod / &
+                         (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
+    porosity_id = ParameterGetIDFromName( &
+                   'geomech_porosity', &
+                   option)
+    porosity_old_id = ParameterGetIDFromName( &
+                       'geomech_old_porosity', &
+                       option)
+    porosity = global_auxvar%parameters(porosity_id)
+    porosity_fixed = global_auxvar%parameters(porosity_old_id)
+    ! porosity@ n
+    if (option%iflag == RICHARDS_UPDATE_FOR_FIXED_ACCUM) then
+      ! porosity needs to correspond to last rich step
+      print *, 'fixed por: ', porosity_fixed
+      Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
+               porosity_fixed * vol_over_dt
+    else ! porosity@ n+1
+      press_old_id = ParameterGetIDFromName( &
+                     'geomech_old_press', option)
+      temp_porosity_id = ParameterGetIDFromName( &
+                     'geomech_temp_porosity', option)
+      old_pressure = global_auxvar%parameters(press_old_id)
+      ! Burghardt 2017 paper
+      temp_porosity = porosity + (((biot_coeff**2/dr_bulk_modulus) + &
+         ((biot_coeff-porosity_0)*(1.d0-biot_coeff)/dr_bulk_modulus)) * &
+         ! (pressure@ n+1 - pressure@ n)
+         ! pressure@ n is pressure used in last mech step
+         (global_auxvar%pres(1)-old_pressure))
+      print *, 'temp por, old_press, new_press', &
+               temp_porosity, old_pressure, global_auxvar%pres(1)
+      Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
+        temp_porosity * vol_over_dt
+      ! store temp porosity for threshold check
+      global_auxvar%parameters(temp_porosity_id) = temp_porosity
+    endif
+  endif
 
 end subroutine RichardsAccumulation
 

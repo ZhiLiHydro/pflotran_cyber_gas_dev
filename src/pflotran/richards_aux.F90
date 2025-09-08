@@ -47,6 +47,7 @@ module Richards_Aux_module
     PetscReal :: kvr
     PetscReal :: kr
     PetscReal :: visc
+    PetscReal :: den_0 ! jaa reference density
     PetscReal :: dkvr_dp
     PetscReal :: dsat_dp
     PetscReal :: dden_dp
@@ -144,6 +145,8 @@ subroutine RichardsAuxVarInit(auxvar,option)
   auxvar%kvr = 0.d0
   auxvar%visc = 0.d0
   auxvar%kr = 0.d0
+  auxvar%den_0 = 0.d0
+
   auxvar%dkvr_dp = 0.d0
 
   auxvar%dsat_dp = 0.d0
