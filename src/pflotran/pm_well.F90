@@ -7881,7 +7881,7 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
   PetscReal, allocatable :: J_block(:,:)
   PetscInt :: j,k,idof,irow
   PetscInt :: local_row_index, local_col_index
-  PetscReal :: P_well, temp_real(1)
+  PetscReal :: P_well, temp_real
 
   option => this%option
 
