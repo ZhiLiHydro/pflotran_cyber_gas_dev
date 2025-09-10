@@ -140,9 +140,9 @@ subroutine PMTHSetFlowMode(this,pm_well,option)
   th_conductance_dof = option%nflowdof + 1
   if (associated(pm_well)) then
     if (pm_well%flow_coupling == FULLY_IMPLICIT_WELL) then
-      if (pm_well%well%well_model_type /= WELL_MODEL_HYDROSTATIC) then
+      if (pm_well%well%well_model_type /= WELL_MODEL_U_SHAPE) then
         option%io_buffer = 'Currently, TH mode can only be &
-                  &used with the HYDROSTATIC well model.'
+                  &used with the CLOSED_LOOP_U_SHAPE well model.'
         call PrintErrMsg(option)
       endif
       option%nflowdof = option%nflowdof + 1

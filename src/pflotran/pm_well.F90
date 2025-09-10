@@ -55,7 +55,6 @@ module PM_Well_class
   PetscInt, parameter, public :: WELL_MODEL_HYDROSTATIC = 4
   PetscInt, parameter, public :: WELL_MODEL_U_SHAPE = 5
   PetscInt, parameter, public :: WELL_MODEL_COAXIAL = 6
-  PetscInt, parameter, public :: WELL_MODEL_PIPE_FLOW = 7
 
   ! Well constraint types
   PetscInt, parameter, public :: WELL_CONSTANT_PRESSURE = 1
@@ -688,8 +687,8 @@ function PMWellUShapeCreate()
   !
   ! Creates the U-shape well process model.
   !
-  ! Author: Michael Nole
-  ! Date: 02/03/2025
+  ! Author: Glenn Hammond
+  ! Date: 09/10/25
 
   implicit none
 
@@ -5724,6 +5723,7 @@ subroutine PMWellSetPropertiesToClosestReservoirValue(pm_well, well, reservoir, 
       dn_dist = dn_dist + well_grid%dh(index)/2.0  ! The bottom of the segment
     enddo
 
+    closest_connected_segment = UNINITIALIZED_INTEGER
     if (up_connected_index == -1 .and. dn_connected_index == -1) then
       option%io_buffer =  'Cannot find a connected segment, &
         &ensure that the well is connected to at least one reservoir &
@@ -8077,7 +8077,7 @@ subroutine PMWellModifyDummyFlowJacobian(this,Jac,ierr)
 
     case(TH_MODE)
       select case(this%well%well_model_type)
-        case(WELL_MODEL_PIPE_FLOW)
+        case(WELL_MODEL_U_SHAPE)
           ! expanded stencil already accommodates heat
           ! convection/conduction in the pipe
         case default
