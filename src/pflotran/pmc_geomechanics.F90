@@ -175,7 +175,10 @@ subroutine PMCGeomechanicsSetupSolvers(this)
   call PrintMsg(option,"  Finished setting up GEOMECH KSP ")
 
   ! jaa - account for initialization
-  if (this%option%geomechanics%split_scheme == GEOMECH_FIXED_STRAIN_SPLIT) &
+  if (this%option%geomechanics%split_scheme == &
+      GEOMECH_FIXED_STRAIN_SPLIT .or. &
+      this%option%geomechanics%split_scheme == &
+      GEOMECH_FIXED_STRESS_SPLIT) &
     this%timestepper%steps = -1
 
 end subroutine PMCGeomechanicsSetupSolvers
@@ -609,100 +612,106 @@ subroutine PMCGeomechanicsSetAuxData(this)
                   perm0_p(local_id),local_stress,local_strain,local_pressure, &
                   perm_new,this%option)
             perm_p(local_id) = perm_new
+
             ! jaa begin -------------------------------------------------------
-            ! get id's for global_aux%parameters
-            strainv_0_id = ParameterGetIDFromName( &
-                               'geomech_vol_strain_0', &
-                               pmc%subsurf_realization%option)
-            stressv_0_id = ParameterGetIDFromName( &
-                               'geomech_vol_stress_0', &
-                               pmc%subsurf_realization%option)
-            strainv_id = ParameterGetIDFromName( &
-                               'geomech_vol_strain', &
-                               pmc%subsurf_realization%option)
-            strainv_old_id = ParameterGetIDFromName( &
-                               'geomech_vol_strain_old', &
-                               pmc%subsurf_realization%option)
-            stressv_id = ParameterGetIDFromName( &
-                               'geomech_vol_stress', &
-                               pmc%subsurf_realization%option)
-            stressv_old_id = ParameterGetIDFromName( &
-                               'geomech_vol_stress_old', &
-                               pmc%subsurf_realization%option)
-            press_old_id = ParameterGetIDFromName( &
-                               'geomech_old_press', &
-                               pmc%subsurf_realization%option)
-            press_0_id = ParameterGetIDFromName( &
-                               'geomech_press_0', &
-                               pmc%subsurf_realization%option)
-            porosity_id = ParameterGetIDFromName( &
-                               'geomech_porosity', &
-                               pmc%subsurf_realization%option)
-            porosity_old_id = ParameterGetIDFromName( &
-                                'geomech_old_porosity', &
-                                pmc%subsurf_realization%option)
-            temp_porosity_id = ParameterGetIDFromName( &
-                                 'geomech_temp_porosity', &
+            if (this%option%geomechanics%split_scheme == &
+              GEOMECH_FIXED_STRESS_SPLIT) then
+              !print *, 'in here!!'; stop
+              ! get id's for global_aux%parameters
+              strainv_0_id = ParameterGetIDFromName( &
+                                 'geomech_vol_strain_0', &
                                  pmc%subsurf_realization%option)
-            ghosted_id = grid%nL2G(local_id)
-            imat = pmc%subsurf_realization%patch%aux%Material% &
-                   auxvars(local_id)%id
-            ! calc volumetric strain
-            strain_vol = local_strain(1) + local_strain(2) + local_strain(3)
-            ! calc volumetric stress
-            stress_vol = (local_stress(1) + local_stress(2) + &
-                          local_stress(3))/3.d0
-            youngs_mod = this%option%geomechanics%youngs_modulus(imat)
-            poissons_ratio = this%option%geomechanics%poissons_ratio(imat)
-            biot_coeff = this%option%geomechanics%biot_coefficient(imat)
-            dr_bulk_modulus = youngs_mod / &
-                       (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
-            if (this%timestepper%steps < 0) then ! before init
-              global_auxvars(ghosted_id)%parameters(stressv_id) = 0.d0
-              global_auxvars(ghosted_id)%parameters(stressv_old_id) = 0.d0
-              global_auxvars(ghosted_id)%parameters(press_0_id) = local_pressure
-            elseif (this%timestepper%steps < 1) then ! at init
-              press_init = global_auxvars(ghosted_id)%parameters(press_0_id)
-              global_auxvars(ghosted_id)%parameters(strainv_0_id) = strain_vol
-              global_auxvars(ghosted_id)%parameters(stressv_0_id) = stress_vol
-              global_auxvars(ghosted_id)%parameters(stressv_old_id) = 0.d0
-              global_auxvars(ghosted_id)%parameters(stressv_id) = &
-                ! with geomech
-                stress_vol
-                ! without geomech
-                !(biot_coeff * (local_pressure-press_init)/3.d0)
-              global_auxvars(ghosted_id)%parameters(porosity_old_id) = &
-                pmc%subsurf_realization%patch%aux%Material% &
-                auxvars(local_id)%porosity_0
-            else ! post init
-              press_init = global_auxvars(ghosted_id)%parameters(press_0_id)
-              global_auxvars(ghosted_id)%parameters(stressv_old_id) = &
-                global_auxvars(ghosted_id)%parameters(stressv_id)
-              global_auxvars(ghosted_id)%parameters(stressv_id) = &
-                ! with geomech
-                stress_vol
-                ! without geomech
-                !(biot_coeff*(local_pressure-press_init)/3.d0)
-              ! use temp porosity for flow sol. at fixed
-              global_auxvars(ghosted_id)%parameters(porosity_old_id) = &
-                global_auxvars(ghosted_id)%parameters(temp_porosity_id)
+              stressv_0_id = ParameterGetIDFromName( &
+                                 'geomech_vol_stress_0', &
+                                 pmc%subsurf_realization%option)
+              strainv_id = ParameterGetIDFromName( &
+                                 'geomech_vol_strain', &
+                                 pmc%subsurf_realization%option)
+              strainv_old_id = ParameterGetIDFromName( &
+                                 'geomech_vol_strain_old', &
+                                 pmc%subsurf_realization%option)
+              stressv_id = ParameterGetIDFromName( &
+                                 'geomech_vol_stress', &
+                                 pmc%subsurf_realization%option)
+              stressv_old_id = ParameterGetIDFromName( &
+                                 'geomech_vol_stress_old', &
+                                 pmc%subsurf_realization%option)
+              press_old_id = ParameterGetIDFromName( &
+                                 'geomech_old_press', &
+                                 pmc%subsurf_realization%option)
+              press_0_id = ParameterGetIDFromName( &
+                                 'geomech_press_0', &
+                                 pmc%subsurf_realization%option)
+              porosity_id = ParameterGetIDFromName( &
+                                 'geomech_porosity', &
+                                 pmc%subsurf_realization%option)
+              porosity_old_id = ParameterGetIDFromName( &
+                                  'geomech_old_porosity', &
+                                  pmc%subsurf_realization%option)
+              temp_porosity_id = ParameterGetIDFromName( &
+                                   'geomech_temp_porosity', &
+                                   pmc%subsurf_realization%option)
+              ghosted_id = grid%nL2G(local_id)
+              imat = pmc%subsurf_realization%patch%aux%Material% &
+                     auxvars(local_id)%id
+              ! calc volumetric strain
+              strain_vol = local_strain(1) + local_strain(2) + local_strain(3)
+              ! calc volumetric stress
+              stress_vol = (local_stress(1) + local_stress(2) + &
+                            local_stress(3))/3.d0
+              youngs_mod = this%option%geomechanics%youngs_modulus(imat)
+              poissons_ratio = this%option%geomechanics%poissons_ratio(imat)
+              biot_coeff = this%option%geomechanics%biot_coefficient(imat)
+              dr_bulk_modulus = youngs_mod / &
+                         (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
+              print *, 'timestepper steps: ', this%timestepper%steps
+              if (this%timestepper%steps < 0) then ! before init
+                global_auxvars(ghosted_id)%parameters(stressv_id) = 0.d0
+                global_auxvars(ghosted_id)%parameters(stressv_old_id) = 0.d0
+                global_auxvars(ghosted_id)%parameters(press_0_id) = local_pressure
+              elseif (this%timestepper%steps < 1) then ! at init
+                press_init = global_auxvars(ghosted_id)%parameters(press_0_id)
+                global_auxvars(ghosted_id)%parameters(strainv_0_id) = strain_vol
+                global_auxvars(ghosted_id)%parameters(stressv_0_id) = stress_vol
+                global_auxvars(ghosted_id)%parameters(stressv_old_id) = 0.d0
+                global_auxvars(ghosted_id)%parameters(stressv_id) = &
+                  ! with geomech
+                  stress_vol
+                  ! without geomech
+                  !(biot_coeff * (local_pressure-press_init)/3.d0)
+                global_auxvars(ghosted_id)%parameters(porosity_old_id) = &
+                  pmc%subsurf_realization%patch%aux%Material% &
+                  auxvars(local_id)%porosity_0
+              else ! post init
+                press_init = global_auxvars(ghosted_id)%parameters(press_0_id)
+                global_auxvars(ghosted_id)%parameters(stressv_old_id) = &
+                  global_auxvars(ghosted_id)%parameters(stressv_id)
+                global_auxvars(ghosted_id)%parameters(stressv_id) = &
+                  ! with geomech
+                  stress_vol
+                  ! without geomech
+                  !(biot_coeff*(local_pressure-press_init)/3.d0)
+                ! use temp porosity for flow sol. at fixed
+                global_auxvars(ghosted_id)%parameters(porosity_old_id) = &
+                  global_auxvars(ghosted_id)%parameters(temp_porosity_id)
+              endif
+              ! jaa - using Jeff's paper
+              porosity_0 = pmc%subsurf_realization%patch%aux%Material% &
+                           auxvars(local_id)%porosity_0
+              strain_vol_0 = global_auxvars(ghosted_id)%parameters(strainv_0_id)
+              por_p(local_id) = porosity_0 +&
+                                (biot_coeff*(strain_vol-strain_vol_0)) + &
+                                (((biot_coeff-porosity_0)* &
+                                (1.d0-biot_coeff)/dr_bulk_modulus)* &
+                                (local_pressure-press_init))
+              global_auxvars(ghosted_id)%parameters(porosity_id) = por_p(local_id)
+              print *, 'id, por_p, del_volstrain, press ', local_id, por_p(local_id), &
+                     strain_vol - strain_vol_0, local_pressure
+              !print *, 'strain_vol_0, porosity_old ', strain_vol_0, &
+              !   global_auxvars(ghosted_id)%parameters(porosity_old_id)
+              global_auxvars(ghosted_id)%parameters(press_old_id) = local_pressure
             endif
-            ! jaa - using Jeff's paper
-            porosity_0 = pmc%subsurf_realization%patch%aux%Material% &
-                         auxvars(local_id)%porosity_0
-            strain_vol_0 = global_auxvars(ghosted_id)%parameters(strainv_0_id)
-            por_p(local_id) = porosity_0 +&
-                              (biot_coeff*(strain_vol-strain_vol_0)) + &
-                              (((biot_coeff-porosity_0)* &
-                              (1.d0-biot_coeff)/dr_bulk_modulus)* &
-                              (local_pressure-press_init))
-            global_auxvars(ghosted_id)%parameters(porosity_id) = por_p(local_id)
-            print *, 'id, por_p, del_volstrain, press ', local_id, por_p(local_id), &
-                   strain_vol - strain_vol_0, local_pressure
-            !print *, 'strain_vol_0, porosity_old ', strain_vol_0, &
-            !   global_auxvars(ghosted_id)%parameters(porosity_old_id)
-            global_auxvars(ghosted_id)%parameters(press_old_id) = local_pressure
-            ! jaa end ---------------------------------------------------------
+              ! jaa end ---------------------------------------------------------
           enddo
 
           call VecRestoreArray(pmc%sim_aux%subsurf_por0,por0_p, &

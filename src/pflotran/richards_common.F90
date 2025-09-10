@@ -73,7 +73,7 @@ subroutine RichardsAccumDerivative(rich_auxvar,global_auxvar, &
   vol_over_dt = material_auxvar%volume/option%flow_dt
 
   if (option%geomechanics%split_scheme == &
-      GEOMECH_FIXED_STRAIN_SPLIT) then ! jaa.. change to fixed stress later
+      GEOMECH_FIXED_STRESS_SPLIT) then
     porosity_0 = material_auxvar%porosity_0
     youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
     poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
@@ -166,7 +166,7 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
            material_auxvar%porosity * vol_over_dt
 
   if (option%geomechanics%split_scheme == &
-      GEOMECH_FIXED_STRAIN_SPLIT) then ! jaa.. change to fixed stress later
+      GEOMECH_FIXED_STRESS_SPLIT) then
     youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
     poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
     biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
@@ -208,6 +208,8 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
       global_auxvar%parameters(temp_porosity_id) = temp_porosity
     endif
   endif
+
+  !print *, 'jaa stopping!!'; stop
 
 end subroutine RichardsAccumulation
 

@@ -324,6 +324,7 @@ subroutine FactoryForwardReadSimProcessModels(input,pm_master,option)
       case('SUBSURFACE_GEOMECHANICS')
         new_pm => PMGeomechForceCreate()
         new_pm%option => option
+        ! jaa for now used this as default
         option%geomechanics%split_scheme = GEOMECH_FIXED_STRAIN_SPLIT
         call InitSubsurfGeomechReadSimBlock(input,new_pm)
       case('SUBSURFACE_GEOPHYSICS')
