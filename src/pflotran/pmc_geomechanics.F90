@@ -178,7 +178,11 @@ subroutine PMCGeomechanicsSetupSolvers(this)
   if (this%option%geomechanics%split_scheme == &
       GEOMECH_FIXED_STRAIN_SPLIT .or. &
       this%option%geomechanics%split_scheme == &
-      GEOMECH_FIXED_STRESS_SPLIT) &
+      GEOMECH_FIXED_STRESS_SPLIT .or. &
+      this%option%geomechanics%split_scheme == &
+      GEOMECH_DRAINED_SPLIT .or. &
+      this%option%geomechanics%split_scheme == &
+      GEOMECH_UNDRAINED_SPLIT) &
     this%timestepper%steps = -1
 
 end subroutine PMCGeomechanicsSetupSolvers
