@@ -106,6 +106,7 @@ module EOS_Water_module
     subroutine EOSWaterViscosityDummy(T, P, PS, dPS_dT, &
                                       calculate_derivatives, VW, &
                                       dVW_dT, dVW_dP, ierr,table_idxs)
+      use petscsys
       implicit none
       PetscReal, intent(in) :: T, P, PS, dPS_dT
       PetscBool, intent(in) :: calculate_derivatives
@@ -116,6 +117,7 @@ module EOS_Water_module
     end subroutine EOSWaterViscosityDummy
     subroutine EOSWaterSatPressDummy(T, calculate_derivatives, &
                                      PS, dPS_dT, ierr)
+      use petscsys
       implicit none
       PetscReal, intent(in) :: T
       PetscBool, intent(in) :: calculate_derivatives
@@ -124,6 +126,7 @@ module EOS_Water_module
     end subroutine EOSWaterSatPressDummy
     subroutine EOSWaterDensityDummy(t,p,calculate_derivatives, &
                                     dw,dwmol,dwp,dwt,ierr,table_idxs)
+      use petscsys
       implicit none
       PetscReal, intent(in) :: t
       PetscReal, intent(in) :: p
@@ -134,6 +137,7 @@ module EOS_Water_module
     end subroutine EOSWaterDensityDummy
     subroutine EOSWaterEnthalpyDummy(t,p,calculate_derivatives, &
                                      hw,hwp,hwt,ierr)
+      use petscsys
       implicit none
       PetscReal, intent(in) :: t
       PetscReal, intent(in) :: p
@@ -143,6 +147,7 @@ module EOS_Water_module
     end subroutine EOSWaterEnthalpyDummy
     subroutine EOSWaterSteamDenEnthDummy(t,p,calculate_derivatives, &
                                          dg,dgmol,hg,dgp,dgt,hgp,hgt,ierr)
+      use petscsys
       implicit none
       PetscReal, intent(in) :: t
       PetscReal, intent(in) :: p
@@ -153,6 +158,7 @@ module EOS_Water_module
     end subroutine EOSWaterSteamDenEnthDummy
     subroutine EOSWaterDensityIceDummy(t,p,calculate_derivatives, &
                                        dw,dwp,dwt,ierr)
+      use petscsys
       implicit none
       PetscReal, intent(in) :: t
       PetscReal, intent(in) :: p
@@ -163,6 +169,7 @@ module EOS_Water_module
     ! Extended versions
     subroutine EOSWaterSatPressExtDummy(T, aux, calculate_derivatives,&
                                         PS, dPS_dT, ierr)
+      use petscsys
       implicit none
       PetscReal, intent(in) :: T
       PetscBool, intent(in) :: calculate_derivatives
@@ -173,6 +180,7 @@ module EOS_Water_module
     subroutine EOSWaterViscosityExtDummy(T, P, PS, dPS_dT, aux, &
                                          calculate_derivatives, VW, &
                                          dVW_dT, dVW_dP, ierr)
+      use petscsys
       implicit none
       PetscReal, intent(in) :: T, P, PS, dPS_dT
       PetscBool, intent(in) :: calculate_derivatives
@@ -183,6 +191,7 @@ module EOS_Water_module
     end subroutine EOSWaterViscosityExtDummy
     subroutine EOSWaterDensityExtDummy(t,p,aux,calculate_derivatives, &
                                        dw,dwmol,dwp,dwt,ierr)
+      use petscsys
       implicit none
       PetscReal, intent(in) :: t
       PetscReal, intent(in) :: p
@@ -193,6 +202,7 @@ module EOS_Water_module
     end subroutine EOSWaterDensityExtDummy
     subroutine EOSWaterEnthalpyExtDummy(t,p,aux,calculate_derivatives, &
                                         hw,hwp,hwt,ierr)
+      use petscsys
       implicit none
       PetscReal, intent(in) :: t
       PetscReal, intent(in) :: p
@@ -203,6 +213,7 @@ module EOS_Water_module
     end subroutine EOSWaterEnthalpyExtDummy
     subroutine EOSWaterInternalEnergyIceDummy(t,u,calculate_derivatives,&
                                               du_ice_dT,du_ice_dP,ierr)
+      use petscsys
       implicit none
       PetscReal, intent(in) :: t
       PetscReal, intent(out) :: u
@@ -1938,10 +1949,10 @@ subroutine EOSWaterDensityIF97Region3(T,P,calculate_derivatives,dw,dwmol, &
   T_temp = T+Tf
 
   ! 21.0434 MPa
-  call EOSWaterSaturationPressureIF97(370.d0, .false., &
+  call EOSWaterSaturationPressureIF97(370.d0, PETSC_FALSE, &
                                       psat_64315, dumb, ierr)
   ! 16.5292 MPa
-  call EOSWaterSaturationPressureIF97(350.d0, .false., &
+  call EOSWaterSaturationPressureIF97(350.d0, PETSC_FALSE, &
                                       psat_62315, dumb, ierr)
 
   ! ranges given in Table 2 and Table 10 (near critical point)
@@ -3287,7 +3298,7 @@ subroutine EOSWaterEnthalpyIF97(T,P,calculate_derivatives,hw, &
   else
     ! Region 3: Valid in "wedge" >623.15K, >Ps(T), and 100MPa
     ! moved to subroutine to avoid weighting down this more-used routine
-    call EOSWaterEnthalpyIF97Region3(T,P,.false.,hw,hwp,hwt)
+    call EOSWaterEnthalpyIF97Region3(T,P,PETSC_FALSE,hw,hwp,hwt)
   end if
   open(unit=102, file='EOSWaterEnthalpyIF97.dat', status='unknown', position='append')
   write(102,'(E22.8,1x,E22.8,1x,L1,1x,E22.8,1x,E22.8,1x,E22.8,1x,I8)') T, P, calculate_derivatives, hw, hwp, hwt, ierr
@@ -3330,11 +3341,12 @@ subroutine EOSWaterEnthalpyIF97Region3(T,P,calculate_derivatives,hw,hwp,hwt)
        2,2,2,3,3, 3,3,3,4,4, 4,4,5,5,5, 6,6,6,7,8, 9,9,10,10,11]
   PetscInt, parameter :: J_i(40) = [0,0,1,2,7, 10,12,23,2,6, 15,17,0,2,6, &
        7,22,26,0,2, 4,16,26,0,2, 4,26,1,3,26, 0,2,26,2,26, 2,26,0,1,26]
-  PetscReal :: tau,  phi_tau, phi_delta, T_temp, delta, dw, dumb
+  PetscReal :: tau,  phi_tau, phi_delta, T_temp, delta, dw
+  PetscReal :: dum1, dum2, dum3
 
   T_temp = T+Tf
   ! P only used to compute density
-  call EOSWaterDensityIF97Region3(T,P,.false.,dw,dumb,dumb,dumb)
+  call EOSWaterDensityIF97Region3(T,P,PETSC_FALSE,dw,dum1,dum2,dum3)
   delta = dw/rho_c
   tau = T_c/T_temp
 

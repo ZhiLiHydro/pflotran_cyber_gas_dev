@@ -1,7 +1,9 @@
 module Geomechanics_Realization_class
 
-#include "petsc/finclude/petscsys.h"
-  use petscsys
+#include "petsc/finclude/petscvec.h"
+#include "petsc/finclude/petscdm.h"
+  use petscvec
+  use petscdm
   use Realization_Base_class
   use Geomechanics_Discretization_module
   use Geomechanics_Patch_module
@@ -93,6 +95,7 @@ function GeomechRealizCreate(option)
   nullify(geomech_realization%geomech_material_property_array)
 
   nullify(geomech_realization%geomech_patch)
+  nullify(geomech_realization%geomech_datasets)
   geomech_realization%dt_coupling = 0.d0
 
   GeomechRealizCreate => geomech_realization
@@ -172,12 +175,17 @@ subroutine GeomechRealizProcessMatProp(geomech_realization)
   !
 
   use String_module
+  use Dataset_Common_HDF5_class
+  use Dataset_module
 
   implicit none
 
   class(realization_geomech_type) :: geomech_realization
   type(geomech_patch_type), pointer :: patch
   type(option_type), pointer :: option
+  type(geomech_material_property_type), pointer :: cur_material_property
+  class(dataset_base_type), pointer :: dataset
+  character(len=MAXSTRINGLENGTH) :: string
 
 
   option => geomech_realization%option
@@ -197,6 +205,105 @@ subroutine GeomechRealizProcessMatProp(geomech_realization)
                                     patch%geomech_material_property_array, &
                                     option)
 
+  ! link dataset-based properties to named datasets
+  cur_material_property => geomech_realization%geomech_material_properties
+  do
+    if (.not.associated(cur_material_property)) exit
+    ! if named, link datasets to property
+
+    ! Young's modulus
+    if (associated(cur_material_property%youngs_modulus_dataset)) then
+      string = 'MATERIAL_PROPERTY(' // trim(cur_material_property%name) // &
+               '),YOUNGS_MODULUS'
+      dataset => &
+        DatasetBaseGetPointer(geomech_realization%geomech_datasets, &
+                              cur_material_property%youngs_modulus_dataset%name, &
+                              string,option)
+      call DatasetDestroy(cur_material_property%youngs_modulus_dataset)
+      select type(dataset)
+        class is (dataset_common_hdf5_type)
+          cur_material_property%youngs_modulus_dataset => dataset
+        class default
+          option%io_buffer = 'Incorrect dataset type for YOUNGS_MODULUS.'
+          call PrintErrMsg(option)
+      end select
+    endif
+
+    ! Poisson's ratio
+    if (associated(cur_material_property%poissons_ratio_dataset)) then
+      string = 'MATERIAL_PROPERTY(' // trim(cur_material_property%name) // &
+               '),POISSONS_RATIO'
+      dataset => &
+        DatasetBaseGetPointer(geomech_realization%geomech_datasets, &
+                              cur_material_property%poissons_ratio_dataset%name, &
+                              string,option)
+      call DatasetDestroy(cur_material_property%poissons_ratio_dataset)
+      select type(dataset)
+        class is (dataset_common_hdf5_type)
+          cur_material_property%poissons_ratio_dataset => dataset
+        class default
+          option%io_buffer = 'Incorrect dataset type for POISSONS_RATIO.'
+          call PrintErrMsg(option)
+      end select
+    endif
+
+    ! Density
+    if (associated(cur_material_property%density_dataset)) then
+      string = 'MATERIAL_PROPERTY(' // trim(cur_material_property%name) // &
+               '),DENSITY'
+      dataset => &
+        DatasetBaseGetPointer(geomech_realization%geomech_datasets, &
+                              cur_material_property%density_dataset%name, &
+                              string,option)
+      call DatasetDestroy(cur_material_property%density_dataset)
+      select type(dataset)
+        class is (dataset_common_hdf5_type)
+          cur_material_property%density_dataset => dataset
+        class default
+          option%io_buffer = 'Incorrect dataset type for ROCK_DENSITY.'
+          call PrintErrMsg(option)
+      end select
+    endif
+
+    ! Biot's coefficient
+    if (associated(cur_material_property%biot_coeff_dataset)) then
+      string = 'MATERIAL_PROPERTY(' // trim(cur_material_property%name) // &
+               '),BIOT_COEFF'
+      dataset => &
+        DatasetBaseGetPointer(geomech_realization%geomech_datasets, &
+                              cur_material_property%biot_coeff_dataset%name, &
+                              string,option)
+      call DatasetDestroy(cur_material_property%biot_coeff_dataset)
+      select type(dataset)
+        class is (dataset_common_hdf5_type)
+          cur_material_property%biot_coeff_dataset => dataset
+        class default
+          option%io_buffer = 'Incorrect dataset type for BIOT_COEFFICIENT.'
+          call PrintErrMsg(option)
+      end select
+    endif
+
+    ! Thermal expansion coefficient
+    if (associated(cur_material_property%thermal_exp_coeff_dataset)) then
+      string = 'MATERIAL_PROPERTY(' // trim(cur_material_property%name) // &
+               '),THERMAL_EXP_COEFF'
+      dataset => &
+        DatasetBaseGetPointer(geomech_realization%geomech_datasets, &
+                              cur_material_property%thermal_exp_coeff_dataset%name, &
+                              string,option)
+      call DatasetDestroy(cur_material_property%thermal_exp_coeff_dataset)
+      select type(dataset)
+        class is (dataset_common_hdf5_type)
+          cur_material_property%thermal_exp_coeff_dataset => dataset
+        class default
+          option%io_buffer = 'Incorrect dataset type for THERMAL_EXPANSION_COEFFICIENT.'
+          call PrintErrMsg(option)
+      end select
+    endif
+
+    cur_material_property => cur_material_property%next
+  enddo
+
 end subroutine GeomechRealizProcessMatProp
 
 ! ************************************************************************** !
@@ -208,8 +315,6 @@ subroutine GeomechRealizCreateDiscretization(geomech_realization)
   ! Author: Satish Karra, LANL
   ! Date: 05/23/13
   !
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Geomechanics_Grid_Aux_module
 
   implicit none
@@ -236,7 +341,7 @@ subroutine GeomechRealizCreateDiscretization(geomech_realization)
 
   call GeomechDiscretizationDuplicateVector(geomech_discretization, &
                                             geomech_field%disp_xx, &
-                                            geomech_field%disp_r)
+                                            geomech_field%rhs)
 
   ! 1 degree of freedom, global
   call GeomechDiscretizationCreateVector(geomech_discretization,ONEDOF, &
@@ -309,6 +414,26 @@ subroutine GeomechRealizCreateDiscretization(geomech_realization)
                                             geomech_field%press_loc, &
                                             geomech_field%porosity_loc)
 
+  call GeomechDiscretizationDuplicateVector(geomech_discretization, &
+                                            geomech_field%press_loc, &
+                                            geomech_field%youngs_modulus)
+
+  call GeomechDiscretizationDuplicateVector(geomech_discretization, &
+                                            geomech_field%press_loc, &
+                                            geomech_field%poissons_ratio)
+
+  call GeomechDiscretizationDuplicateVector(geomech_discretization, &
+                                            geomech_field%press_loc, &
+                                            geomech_field%density)
+
+  call GeomechDiscretizationDuplicateVector(geomech_discretization, &
+                                            geomech_field%press_loc, &
+                                            geomech_field%biot_coeff)
+
+  call GeomechDiscretizationDuplicateVector(geomech_discretization, &
+                                            geomech_field%press_loc, &
+                                            geomech_field%thermal_exp_coeff)
+
   ! 6 dof for strain and stress
   call GeomechDiscretizationCreateVector(geomech_discretization,SIX_INTEGER, &
                                          geomech_field%strain_loc, &
@@ -362,9 +487,9 @@ subroutine GeomechRealizMapSubsurfGeomechGrid(realization, &
   ! Author: Satish Karra, LANL
   ! Date: 09/09/13
   !
+#include "petsc/finclude/petscao.h"
+  use petscao
 
-#include "petsc/finclude/petscdm.h"
-  use petscdm
   use Option_module
   use Geomechanics_Grid_Aux_module
   use Realization_Subsurface_class
@@ -551,13 +676,13 @@ subroutine GeomechRealizMapSubsurfGeomechGrid(realization, &
 
   ! Geomech to subsurf scatter
 
-  call ISGetIndicesF90(is_geomech_petsc,int_ptr,ierr);CHKERRQ(ierr)
+  call ISGetIndices(is_geomech_petsc,int_ptr,ierr);CHKERRQ(ierr)
   size_int_ptr = size(int_ptr)
   allocate(int_array(size_int_ptr))
   do local_id = 1, size_int_ptr
     int_array(local_id) = int_ptr(local_id)
   enddo
-  call ISRestoreIndicesF90(is_geomech_petsc,int_ptr,ierr);CHKERRQ(ierr)
+  call ISRestoreIndices(is_geomech_petsc,int_ptr,ierr);CHKERRQ(ierr)
   call ISCreateBlock(option%mycomm,SIX_INTEGER,size_int_ptr,int_array, &
                      PETSC_COPY_VALUES,is_geomech_petsc_block, &
                      ierr);CHKERRQ(ierr)
@@ -571,13 +696,13 @@ subroutine GeomechRealizMapSubsurfGeomechGrid(realization, &
   call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
 #endif
 
-  call ISGetIndicesF90(is_subsurf,int_ptr,ierr);CHKERRQ(ierr)
+  call ISGetIndices(is_subsurf,int_ptr,ierr);CHKERRQ(ierr)
   size_int_ptr = size(int_ptr)
   allocate(int_array(size_int_ptr))
   do local_id = 1, size_int_ptr
     int_array(local_id) = int_ptr(local_id)
   enddo
-  call ISRestoreIndicesF90(is_subsurf,int_ptr,ierr);CHKERRQ(ierr)
+  call ISRestoreIndices(is_subsurf,int_ptr,ierr);CHKERRQ(ierr)
   call ISCreateBlock(option%mycomm,SIX_INTEGER,size_int_ptr,int_array, &
                      PETSC_COPY_VALUES,is_subsurf_petsc_block, &
                      ierr);CHKERRQ(ierr)
@@ -641,9 +766,6 @@ subroutine GeomechGridElemSharedByNodes(geomech_realization,option)
   ! Author: Satish Karra
   ! Date: 09/17/13
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Option_module
   use Geomechanics_Grid_Aux_module
 
@@ -667,7 +789,7 @@ subroutine GeomechGridElemSharedByNodes(geomech_realization,option)
 
   grid => geomech_realization%geomech_discretization%grid
 
-  call VecGetArrayF90(grid%no_elems_sharing_node_loc,elem_sharing_node_loc_p, &
+  call VecGetArray(grid%no_elems_sharing_node_loc,elem_sharing_node_loc_p, &
                       ierr);CHKERRQ(ierr)
 
   ! Calculate the common elements to a node on a process
@@ -681,7 +803,7 @@ subroutine GeomechGridElemSharedByNodes(geomech_realization,option)
     enddo
   enddo
 
-  call VecRestoreArrayF90(grid%no_elems_sharing_node_loc, &
+  call VecRestoreArray(grid%no_elems_sharing_node_loc, &
                           elem_sharing_node_loc_p,ierr);CHKERRQ(ierr)
 
   ! Local to global scatter
@@ -1001,8 +1123,6 @@ subroutine GeomechRealizGetDataset(geomech_realization,vec,ivar,isubvar, &
   ! Author: Satish Karra, LANL
   ! Date: 07/03/13
   !
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   implicit none
 
   class(realization_geomech_type) :: geomech_realization

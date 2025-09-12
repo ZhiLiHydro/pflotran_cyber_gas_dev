@@ -1,7 +1,7 @@
 module Global_module
 
-#include "petsc/finclude/petscsys.h"
-  use petscsys
+#include "petsc/finclude/petscvec.h"
+  use petscvec
   use Global_Aux_module
 
   use PFLOTRAN_Constants_module
@@ -16,7 +16,7 @@ module Global_module
          GlobalGetAuxVarVecLoc, &
          GlobalWeightAuxVars, &
          GlobalUpdateState, &
-         GlobalUpdateAuxVars
+         GlobalSetAuxVarsAtTimeLevel
 
 contains
 
@@ -246,9 +246,6 @@ subroutine GlobalSetAuxVarVecLoc(realization,vec_loc,ivar,time_level)
   ! Author: Glenn Hammond
   ! Date: 11/19/08
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Realization_Subsurface_class
   use Patch_module
   use Grid_module
@@ -284,7 +281,7 @@ subroutine GlobalSetAuxVarVecLoc(realization,vec_loc,ivar,time_level)
 
   auxvars => patch%aux%Global%auxvars
 
-  call VecGetArrayReadF90(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
   select case(ivar)
     case(LIQUID_PRESSURE)
@@ -465,7 +462,7 @@ subroutine GlobalSetAuxVarVecLoc(realization,vec_loc,ivar,time_level)
       stop
   end select
 
-  call VecRestoreArrayReadF90(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
 end subroutine GlobalSetAuxVarVecLoc
 
@@ -478,9 +475,6 @@ subroutine GlobalGetAuxVarVecLoc(realization,vec_loc,ivar)
   ! Author: Glenn Hammond
   ! Date: 11/19/08
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Realization_Subsurface_class
   use Patch_module
   use Grid_module
@@ -505,7 +499,7 @@ subroutine GlobalGetAuxVarVecLoc(realization,vec_loc,ivar)
   grid => patch%grid
   option => realization%option
 
-  call VecGetArrayReadF90(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
   select case(ivar)
     case(STATE)
@@ -518,7 +512,7 @@ subroutine GlobalGetAuxVarVecLoc(realization,vec_loc,ivar)
       call PrintErrMsg(option)
   end select
 
-  call VecRestoreArrayReadF90(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
 end subroutine GlobalGetAuxVarVecLoc
 
@@ -618,8 +612,6 @@ subroutine GlobalSetParameterVecLoc(realization,vec_loc,iparameter)
   ! Author: Glenn Hammond
   ! Date: 01/05/24
   !
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Realization_Subsurface_class
 
   implicit none
@@ -636,11 +628,11 @@ subroutine GlobalSetParameterVecLoc(realization,vec_loc,iparameter)
 
   auxvars => realization%patch%aux%Global%auxvars
 
-  call VecGetArrayReadF90(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
   do ghosted_id = 1, realization%patch%grid%ngmax
     auxvars(ghosted_id)%parameters(iparameter) = vec_loc_p(ghosted_id)
   enddo
-  call VecRestoreArrayReadF90(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
 end subroutine GlobalSetParameterVecLoc
 
@@ -689,7 +681,7 @@ subroutine GlobalWeightAuxVars(realization,weight)
   end select
 
   select case(option%iflowmode)
-    case(G_MODE,H_MODE,SCO2_MODE)
+    case(TH_MODE,G_MODE,H_MODE,SCO2_MODE)
       do ghosted_id = 1, realization%patch%aux%Global%num_aux
         auxvars(ghosted_id)%pres(:) = &
           (weight*auxvars(ghosted_id)%pres_store(:,TIME_TpDT)+ &
@@ -754,10 +746,9 @@ end subroutine GlobalUpdateState
 
 ! ************************************************************************** !
 
-subroutine GlobalUpdateAuxVars(realization,time_level,time)
+subroutine GlobalSetAuxVarsAtTimeLevel(realization,time_level,time)
   !
-  ! Updates global aux var variables for use in
-  ! reactive transport
+  ! Updates global aux var variables for use in reactive transport
   !
   ! Author: Glenn Hammond
   ! Date: 01/14/09
@@ -776,8 +767,6 @@ subroutine GlobalUpdateAuxVars(realization,time_level,time)
                                DARCY_VELOCITY
   use ZFlow_Aux_module, only : zflow_density_kg
 
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Discretization_module
   use Output_Common_module
 
@@ -804,18 +793,19 @@ subroutine GlobalUpdateAuxVars(realization,time_level,time)
       realization%patch%aux%Global%time_t = time
     case(TIME_TpDT)
       realization%patch%aux%Global%time_tpdt = time
+    case(TIME_NULL)
+    case default
+      option%io_buffer = 'Unknown time level in GlobalSetAuxVarsAtTimeLevel'
+      call PrintErrMsg(option)
   end select
 
-  ! liquid density
   select case(option%iflowmode)
     case(ZFLOW_MODE)
       call GlobalSetAuxVarScalar(realization,zflow_density_kg,LIQUID_DENSITY)
     case default
-      ! liquid density
       call GlobalUpdateSingleAuxVar(realization,LIQUID_DENSITY,time_level)
   end select
 
-  ! liquid saturation
   call GlobalUpdateSingleAuxVar(realization,LIQUID_SATURATION,time_level)
 
   ! gas saturation
@@ -833,51 +823,32 @@ subroutine GlobalUpdateAuxVars(realization,time_level,time)
 
   select case(option%iflowmode)
     case(MPH_MODE)
-      ! Gas density
       call GlobalUpdateSingleAuxVar(realization,GAS_DENSITY,time_level)
       call GlobalUpdateSingleAuxVar(realization,GAS_DENSITY_MOL,time_level)
-
-      ! liquid pressure
       call GlobalUpdateSingleAuxVar(realization,LIQUID_PRESSURE,time_level)
-
-      ! gas pressure
       call GlobalUpdateSingleAuxVar(realization,GAS_PRESSURE,time_level)
-
-      ! temperature
       call GlobalUpdateSingleAuxVar(realization,TEMPERATURE,time_level)
-
-      ! fugacity coeff
       call GlobalUpdateSingleAuxVar(realization,SC_FUGA_COEFF,time_level)
     case(TH_MODE,TH_TS_MODE)
-      ! pressure
+      call GlobalUpdateSingleAuxVar(realization,LIQUID_PRESSURE,time_level)
       call GlobalUpdateSingleAuxVar(realization,LIQUID_DENSITY,time_level)
-
-      ! temperature
       call GlobalUpdateSingleAuxVar(realization,TEMPERATURE,time_level)
     case(G_MODE,WF_MODE)
-      ! pressure
       call GlobalUpdateSingleAuxVar(realization,LIQUID_DENSITY,time_level)
       if (option%iflowmode == G_MODE) then
-        ! temperature
         call GlobalUpdateSingleAuxVar(realization,TEMPERATURE,time_level)
       endif
-      ! Gas pressure
-      call GlobalUpdateSingleAuxVar(realization,GAS_DENSITY,time_level)
-      ! Gas density
+      call GlobalUpdateSingleAuxVar(realization,GAS_PRESSURE,time_level)
       call GlobalUpdateSingleAuxVar(realization,GAS_DENSITY,time_level)
     case(SCO2_MODE)
-      if (option%ntrandof > 0 .or. option%flow%store_state_variables_in_global) then
+      if (option%ntrandof > 0 .or. &
+          option%flow%store_state_variables_in_global) then
         call GlobalUpdateSingleAuxVar(realization,LIQUID_DENSITY,time_level)
-        ! Gas density
         call GlobalUpdateSingleAuxVar(realization,GAS_DENSITY,time_level)
         call GlobalUpdateSingleAuxVar(realization,GAS_DENSITY_MOL,time_level)
-        ! liquid pressure
         call GlobalUpdateSingleAuxVar(realization,LIQUID_PRESSURE,time_level)
-        ! gas pressure
         call GlobalUpdateSingleAuxVar(realization,GAS_PRESSURE,time_level)
-        ! temperature
         call GlobalUpdateSingleAuxVar(realization,TEMPERATURE,time_level)
-        ! fugacity coeff
         call GlobalUpdateSingleAuxVar(realization,SC_FUGA_COEFF,time_level)
       endif
   end select
@@ -897,10 +868,10 @@ subroutine GlobalUpdateAuxVars(realization,time_level,time)
                                          LIQUID_PHASE)
 
     ! open the vectors
-    call VecGetArrayF90(vec_x,vec_x_ptr,ierr);CHKERRQ(ierr)
-    call VecGetArrayF90(vec_y,vec_y_ptr,ierr);CHKERRQ(ierr)
-    call VecGetArrayF90(vec_z,vec_z_ptr,ierr);CHKERRQ(ierr)
-    call VecGetArrayF90(vec_calc,vec_calc_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(vec_x,vec_x_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(vec_y,vec_y_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(vec_z,vec_z_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(vec_calc,vec_calc_ptr,ierr);CHKERRQ(ierr)
 
     ! the local size of the velocity vector
     ! local size = the number of cells calculated on the processor
@@ -915,10 +886,10 @@ subroutine GlobalUpdateAuxVars(realization,time_level,time)
     enddo
 
     ! close the vectors
-    call VecRestoreArrayF90(vec_calc,vec_calc_ptr,ierr);CHKERRQ(ierr)
-    call VecRestoreArrayF90(vec_x,vec_x_ptr,ierr);CHKERRQ(ierr)
-    call VecRestoreArrayF90(vec_y,vec_y_ptr,ierr);CHKERRQ(ierr)
-    call VecRestoreArrayF90(vec_z,vec_z_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(vec_calc,vec_calc_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(vec_x,vec_x_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(vec_y,vec_y_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(vec_z,vec_z_ptr,ierr);CHKERRQ(ierr)
 
     ! Set the auxvar variable for the DARCY_VELOCITY
     call realization%comm1%GlobalToLocal(vec_calc,field%work_loc)
@@ -935,7 +906,7 @@ subroutine GlobalUpdateAuxVars(realization,time_level,time)
   end if
   ! darcy velocity (end)
 
-end subroutine GlobalUpdateAuxVars
+end subroutine GlobalSetAuxVarsAtTimeLevel
 
 ! ************************************************************************** !
 

@@ -1,9 +1,7 @@
 module PM_Richards_TS_class
 
 #include "petsc/finclude/petscts.h"
-#include "petsc/finclude/petscvec.h"
   use petscts
-  use petscvec
   use Richards_module
   use Richards_Aux_module
   use Richards_Common_module
@@ -112,12 +110,12 @@ subroutine PMRichardsTSUpdateAuxVarsPatch(realization)
   material_auxvars => patch%aux%Material%auxvars
 
   ! 1. Update auxvars based on new values of pressure
-  call RichardsUpdateAuxVars(realization)
+  call RichardsUpdateAuxVars(realization,null())
 
   ! 2. Update auxvars based on new value of dpressure_dtime, mass, and
   !    dmass_dtime
-  call VecGetArrayReadF90(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayReadF90(field%flow_xxdot_loc,xxdot_loc_p, &
+  call VecGetArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%flow_xxdot_loc,xxdot_loc_p, &
                           ierr);CHKERRQ(ierr)
 
   do ghosted_id = 1, grid%ngmax
@@ -133,8 +131,8 @@ subroutine PMRichardsTSUpdateAuxVarsPatch(realization)
                                        option)
   enddo
 
-  call VecRestoreArrayReadF90(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayReadF90(field%flow_xxdot_loc,xxdot_loc_p, &
+  call VecRestoreArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(field%flow_xxdot_loc,xxdot_loc_p, &
                               ierr);CHKERRQ(ierr)
 
 end subroutine PMRichardsTSUpdateAuxVarsPatch
@@ -183,7 +181,7 @@ subroutine PMRichardsTSIFunction(this,ts,time,U,Udot,F,ierr)
 
   call RichardsResidualInternalConn(F,realization,skip_conn_type,ierr)
   call RichardsResidualBoundaryConn(F,realization,ierr)
-  call RichardsResidualSourceSink(F,realization,ierr)
+  call RichardsResidualSourceSink(F,realization,null(),ierr)
   call IFunctionAccumulation(F,realization,ierr)
 
 end subroutine PMRichardsTSIFunction
@@ -228,7 +226,7 @@ subroutine IFunctionAccumulation(F,realization,ierr)
   global_auxvars => patch%aux%Global%auxvars
   material_auxvars => patch%aux%Material%auxvars
 
-  call VecGetArrayF90(F,f_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(F,f_p,ierr);CHKERRQ(ierr)
 
   do local_id = 1, grid%nlmax
 
@@ -264,7 +262,7 @@ subroutine IFunctionAccumulation(F,realization,ierr)
 
   enddo
 
-  call VecRestoreArrayF90(F,f_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(F,f_p,ierr);CHKERRQ(ierr)
 
 end subroutine IFunctionAccumulation
 
@@ -306,7 +304,7 @@ subroutine PMRichardsTSIJacobian(this,ts,time,U,Udot,shift,A,B,ierr)
 
   call RichardsJacobianInternalConn(J,realization,ierr)
   call RichardsJacobianBoundaryConn(J,realization,ierr)
-  call RichardsJacobianSourceSink(J,realization,ierr)
+  call RichardsJacobianSourceSink(J,realization,null(),ierr)
   call IJacobianAccumulation(J,shift,realization,ierr)
 
   if (A /= B) then
@@ -331,6 +329,7 @@ subroutine IJacobianAccumulation(J,shift,realization,ierr)
   use Patch_module
   use Option_module
   use Material_Aux_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -411,7 +410,7 @@ subroutine IJacobianAccumulation(J,shift,realization,ierr)
             rich_auxvars(ghosted_id)%dpres_dtime)* &
             material_auxvars(ghosted_id)%volume
 
-    call MatSetValuesLocal(J,1,row,1,col,val,ADD_VALUES,ierr);CHKERRQ(ierr)
+    call PUMSetValuesLocal(J,1,row,1,col,val,ADD_VALUES,ierr);CHKERRQ(ierr)
 
   enddo
 
@@ -451,10 +450,6 @@ subroutine PMRichardsTSCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
   ! Author: Gautam Bisht, LBNL
   ! Date: 06/19/18
   !
-
-#include "petsc/finclude/petscsnes.h"
-  use petscsnes
-
   implicit none
 
   SNES :: snes

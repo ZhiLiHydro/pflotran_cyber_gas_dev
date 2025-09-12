@@ -53,7 +53,7 @@ contains
 
 ! ************************************************************************** !
 
-subroutine RichardsTimeCut(realization)
+subroutine RichardsTimeCut(realization,pm_well)
   !
   ! Resets arrays for time step cut
   !
@@ -62,15 +62,17 @@ subroutine RichardsTimeCut(realization)
   !
 
   use Realization_Subsurface_class
+  use PM_Well_class
   use Option_module
   use Field_module
 
   implicit none
 
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
 
   richards_ts_cut_count = richards_ts_cut_count + 1
-  call RichardsInitializeTimestep(realization)
+  call RichardsInitializeTimestep(realization,pm_well)
 
 end subroutine RichardsTimeCut
 
@@ -183,7 +185,7 @@ subroutine RichardsSetupPatch(realization)
   enddo
 
   error_found = error_found .or. (maxval(flag) > 0)
-  call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_LOGICAL, &
+  call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_C_BOOL, &
                      MPI_LOR,option%mycomm,ierr);CHKERRQ(ierr)
   if (error_found) then
     option%io_buffer = 'Material property errors found in RichardsSetup.'
@@ -641,10 +643,10 @@ subroutine RichardsUpdatePermPatch(realization)
     call PrintErrMsg(option)
   endif
 
-  call VecGetArrayF90(field%perm0_xx,perm0_xx_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(field%perm0_zz,perm0_zz_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(field%perm0_yy,perm0_yy_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayReadF90(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%perm0_xx,perm0_xx_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%perm0_zz,perm0_zz_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%perm0_yy,perm0_yy_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
@@ -671,10 +673,10 @@ subroutine RichardsUpdatePermPatch(realization)
       perm0_zz_p(local_id)*scale
   enddo
 
-  call VecRestoreArrayF90(field%perm0_xx,perm0_xx_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(field%perm0_zz,perm0_zz_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(field%perm0_yy,perm0_yy_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayReadF90(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%perm0_xx,perm0_xx_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%perm0_zz,perm0_zz_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%perm0_yy,perm0_yy_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
   call MaterialGetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
                                PERMEABILITY_X,ZERO_INTEGER)
@@ -700,7 +702,7 @@ end subroutine RichardsUpdatePermPatch
 
 ! ************************************************************************** !
 
-subroutine RichardsUpdateAuxVars(realization)
+subroutine RichardsUpdateAuxVars(realization,pm_well)
   !
   ! Updates the auxiliary variables associated with
   ! the Richards problem
@@ -710,15 +712,18 @@ subroutine RichardsUpdateAuxVars(realization)
   !
 
   use Realization_Subsurface_class
-  class(realization_subsurface_type) :: realization
+  use PM_Well_class
 
-  call RichardsUpdateAuxVarsPatch(realization)
+  class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
+
+  call RichardsUpdateAuxVarsPatch(realization,pm_well)
 
 end subroutine RichardsUpdateAuxVars
 
 ! ************************************************************************** !
 
-subroutine RichardsUpdateAuxVarsPatch(realization)
+subroutine RichardsUpdateAuxVarsPatch(realization,pm_well)
   !
   ! Updates the auxiliary variables associated with
   ! the Richards problem
@@ -728,12 +733,14 @@ subroutine RichardsUpdateAuxVarsPatch(realization)
   !
 
   use Realization_Subsurface_class
+  use PM_Well_class
   use Patch_module
   use Option_module
   use Field_module
   use Grid_module
   use Coupler_module
   use Connection_module
+  use Condition_module
   use Material_module
   use Logging_module
   use Region_module
@@ -741,6 +748,7 @@ subroutine RichardsUpdateAuxVarsPatch(realization)
   implicit none
 
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
 
   type(option_type), pointer :: option
   type(patch_type), pointer :: patch
@@ -757,11 +765,14 @@ subroutine RichardsUpdateAuxVarsPatch(realization)
   type(global_auxvar_type), pointer :: global_auxvars_bc(:)
   type(global_auxvar_type), pointer :: global_auxvars_ss(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
-  PetscInt :: ghosted_id, local_id, sum_connection, iconn, region_id
+  type(flow_condition_type), pointer :: well_flow_condition
+  class(pm_well_type), pointer :: cur_well
+  PetscInt :: ghosted_id, local_id, sum_connection, iconn, region_id, idof
   PetscInt :: istart, iend
   PetscReal, pointer :: xx_loc_p(:)
   PetscReal :: xxbc(realization%option%nflowdof), Pl
   PetscErrorCode :: ierr
+
 
   call PetscLogEventBegin(logging%event_r_auxvars,ierr);CHKERRQ(ierr)
 
@@ -778,7 +789,7 @@ subroutine RichardsUpdateAuxVarsPatch(realization)
   global_auxvars_ss => patch%aux%Global%auxvars_ss
   material_auxvars => patch%aux%Material%auxvars
 
-  call VecGetArrayReadF90(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
   ! Compute auxvars for the accumulation term that corresponding
   ! to values for the current time step
@@ -801,6 +812,16 @@ subroutine RichardsUpdateAuxVarsPatch(realization)
                                  patch%cc_id(ghosted_id))%ptr, &
                                grid%nG2A(ghosted_id), &
                                PETSC_TRUE,option)
+    if (richards_well_coupling == RICHARDS_FULLY_IMPLICIT_WELL) then
+      ! MAN: this is a hack to get well to initialize properly
+      if (xx_loc_p(iend) /= &
+          global_auxvars(ghosted_id)%pres(option%liquid_phase)) then
+        rich_auxvars(ghosted_id)%well%bh_p = xx_loc_p(iend)
+      else
+        rich_auxvars(ghosted_id)%well%pressure_bump = &
+                                                   UNINITIALIZED_DOUBLE
+      endif
+    endif
   enddo
 
   if (option%flow%inline_surface_flow) then
@@ -907,6 +928,10 @@ subroutine RichardsUpdateAuxVarsPatch(realization)
   sum_connection = 0
   do
     if (.not.associated(source_sink)) exit
+    if (associated(source_sink%flow_condition%well)) then
+      source_sink => source_sink%next
+      cycle
+    endif
     cur_connection_set => source_sink%connection_set
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
@@ -923,7 +948,45 @@ subroutine RichardsUpdateAuxVarsPatch(realization)
     source_sink => source_sink%next
   enddo
 
-  call VecRestoreArrayReadF90(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  if (option%coupled_well .and. associated(pm_well)) then
+    cur_well => pm_well
+    do
+      if (.not. associated(cur_well)) exit
+      if (associated(cur_well%flow_condition)) then
+        well_flow_condition => cur_well%flow_condition
+        if (associated(well_flow_condition%rate)) then
+          cur_well%well%well_constraint_type = WELL_CONSTANT_RATE
+          if (any(well_flow_condition%rate%dataset%rarray(:) < 0.d0)) then
+            cur_well%well%total_rate = well_flow_condition%rate%dataset% &
+                                       rarray(1)
+            if (cur_well%well%total_rate > 0.d0) then
+              option%io_buffer = "The well model does not support a concurrent &
+                                & injection and production well."
+            endif
+            cur_well%well%th_ql = 0.d0
+          else
+            cur_well%well%th_ql = well_flow_condition%rate%dataset% &
+                                  rarray(1)
+            cur_well%well%total_rate = UNINITIALIZED_DOUBLE
+          endif
+        elseif (associated(well_flow_condition%pressure)) then
+          cur_well%well%well_constraint_type = WELL_CONSTANT_PRESSURE_HYDROSTATIC
+          cur_well%well%th_p = well_flow_condition%pressure%dataset% &
+                                       rarray(1)
+          cur_well%well%th_ql = 0.d0
+        endif
+        if (Initialized(cur_well%well%bh_p)) then
+          do idof = 1,option%nflowdof
+            call PMWellCopyWell(cur_well%well,cur_well%well_pert(idof), &
+                                PETSC_FALSE)
+          enddo
+        endif
+      endif
+      cur_well => cur_well%next_well
+    enddo
+  endif
+
+  call VecRestoreArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
   patch%aux%Richards%auxvars_up_to_date = PETSC_TRUE
   if (option%flow%inline_surface_flow) then
@@ -936,7 +999,7 @@ end subroutine RichardsUpdateAuxVarsPatch
 
 ! ************************************************************************** !
 
-subroutine RichardsInitializeTimestep(realization)
+subroutine RichardsInitializeTimestep(realization,pm_well)
   !
   ! Update data in module prior to time step
   !
@@ -945,26 +1008,24 @@ subroutine RichardsInitializeTimestep(realization)
   !
 
   use Realization_Subsurface_class
+  use PM_Well_class
   use Field_module
 
   implicit none
 
-
-
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
 
   type(field_type), pointer :: field
 
-
   field => realization%field
-
 
   call RichardsUpdateFixedAccum(realization)
 
   richards_ni_count = 0
 
   if (realization%option%flow%quasi_3d) &
-    call RichardsComputeLateralMassFlux(realization)
+    call RichardsComputeLateralMassFlux(realization,pm_well)
 
 !   call PetscViewerASCIIOpen(realization%option%mycomm,'flow_yy.out', &
 !                              viewer,ierr)
@@ -1082,7 +1143,7 @@ subroutine RichardsUpdateFixedAccumPatch(realization)
   type(global_auxvar_type), pointer :: global_auxvars(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
 
-  PetscInt :: ghosted_id, local_id
+  PetscInt :: ghosted_id, local_id, istart
   PetscInt :: region_id
   PetscReal, pointer :: xx_p(:)
   PetscReal, pointer :: accum_p(:)
@@ -1098,9 +1159,9 @@ subroutine RichardsUpdateFixedAccumPatch(realization)
   global_auxvars => patch%aux%Global%auxvars
   material_auxvars => patch%aux%Material%auxvars
 
-  call VecGetArrayReadF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
 
-  call VecGetArrayF90(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
 !  numfaces = 6     ! hex only
 !  allocate(sq_faces(numfaces))
@@ -1109,6 +1170,7 @@ subroutine RichardsUpdateFixedAccumPatch(realization)
   do local_id = 1, grid%nlmax
 
     ghosted_id = grid%nL2G(local_id)
+    istart = (local_id-1)*option%nflowdof + 1
 
     !geh - Ignore inactive cells with inactive materials
     if (patch%imat(ghosted_id) <= 0) cycle
@@ -1124,7 +1186,7 @@ subroutine RichardsUpdateFixedAccumPatch(realization)
     call RichardsAccumulation(rich_auxvars(ghosted_id), &
                               global_auxvars(ghosted_id), &
                               material_auxvars(ghosted_id), &
-                              option,accum_p(local_id:local_id))
+                              option,accum_p(istart:istart))
   enddo
 
 
@@ -1133,6 +1195,7 @@ subroutine RichardsUpdateFixedAccumPatch(realization)
                                    patch%region_list)
     do region_id = 1, patch%aux%InlineSurface%num_aux
       local_id = region%cell_ids(region_id)
+      istart = (local_id-1)*option%nflowdof + 1
       ghosted_id = grid%nL2G(local_id)
       call InlineSurfaceAuxVarCompute(patch%aux%InlineSurface% &
                                         auxvars(region_id), &
@@ -1141,18 +1204,18 @@ subroutine RichardsUpdateFixedAccumPatch(realization)
       call InlineSurfaceAccumulation(patch%aux%InlineSurface% &
                                        auxvars(region_id), &
                                      material_auxvars(ghosted_id),option,Res)
-      accum_p(local_id:local_id) = accum_p(local_id:local_id) + Res(1)
+      accum_p(istart:istart) = accum_p(istart:istart) + Res(1)
     enddo
   endif
 
-  call VecRestoreArrayReadF90(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
 end subroutine RichardsUpdateFixedAccumPatch
 
 ! ************************************************************************** !
 
-subroutine RichardsNumericalJacTest(xx,realization)
+subroutine RichardsNumericalJacTest(xx,realization,pm_well)
   !
   ! Computes the a test numerical jacobian
   !
@@ -1161,15 +1224,18 @@ subroutine RichardsNumericalJacTest(xx,realization)
   !
 
   use Realization_Subsurface_class
+  use PM_Well_class
   use Patch_module
   use Option_module
   use Grid_module
   use Field_module
+  use Petsc_Utility_module
 
   implicit none
 
   Vec :: xx
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
 
   Vec :: xx_pert
   Vec :: res
@@ -1204,30 +1270,30 @@ subroutine RichardsNumericalJacTest(xx,realization)
   call MatSetType(A,MATAIJ,ierr);CHKERRQ(ierr)
   call MatSetFromOptions(A,ierr);CHKERRQ(ierr)
 
-  call RichardsResidual(PETSC_NULL_SNES,xx,res,realization,ierr)
-  call VecGetArrayF90(res,vec2_p,ierr);CHKERRQ(ierr)
+  call RichardsResidual(PETSC_NULL_SNES,xx,res,realization,pm_well,ierr)
+  call VecGetArray(res,vec2_p,ierr);CHKERRQ(ierr)
   do icell = 1,grid%nlmax
     if (patch%imat(grid%nL2G(icell)) <= 0) cycle
      idof = icell
 !    do idof = (icell-1)*option%nflowdof+1,icell*option%nflowdof
-      call veccopy(xx,xx_pert,ierr);CHKERRQ(ierr)
-      call vecgetarrayf90(xx_pert,vec_p,ierr);CHKERRQ(ierr)
+      call VecCopy(xx,xx_pert,ierr);CHKERRQ(ierr)
+      call VecGetArray(xx_pert,vec_p,ierr);CHKERRQ(ierr)
       perturbation = vec_p(idof)*perturbation_tolerance
       vec_p(idof) = vec_p(idof)+perturbation
-      call vecrestorearrayf90(xx_pert,vec_p,ierr);CHKERRQ(ierr)
-      call RichardsResidual(PETSC_NULL_SNES,xx_pert,res_pert,realization,ierr)
-      call vecgetarrayf90(res_pert,vec_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(xx_pert,vec_p,ierr);CHKERRQ(ierr)
+      call RichardsResidual(PETSC_NULL_SNES,xx_pert,res_pert,realization,pm_well,ierr)
+      call VecGetArray(res_pert,vec_p,ierr);CHKERRQ(ierr)
       do idof2 = 1, grid%nlmax*option%nflowdof
         derivative = (vec_p(idof2)-vec2_p(idof2))/perturbation
         if (dabs(derivative) > 1.d-30) then
-          call matsetvalue(a,idof2-1,idof-1,derivative,insert_values, &
+          call MatSetValue(a,idof2-1,idof-1,derivative,insert_values, &
                            ierr);CHKERRQ(ierr)
         endif
       enddo
-      call VecRestoreArrayF90(res_pert,vec_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(res_pert,vec_p,ierr);CHKERRQ(ierr)
 !    enddo
   enddo
-  call VecRestoreArrayF90(res,vec2_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(res,vec2_p,ierr);CHKERRQ(ierr)
 
   call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
   call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
@@ -1246,7 +1312,7 @@ end subroutine RichardsNumericalJacTest
 
 ! ************************************************************************** !
 
-subroutine RichardsResidual(snes,xx,r,realization,ierr)
+subroutine RichardsResidual(snes,xx,r,realization,pm_well,ierr)
   !
   ! Computes the residual equation
   !
@@ -1263,6 +1329,7 @@ subroutine RichardsResidual(snes,xx,r,realization,ierr)
   use Material_Aux_module
   use Variables_module
   use Debug_module
+  use PM_Well_class
 
   implicit none
 
@@ -1270,6 +1337,7 @@ subroutine RichardsResidual(snes,xx,r,realization,ierr)
   Vec :: xx
   Vec :: r
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
   PetscViewer :: viewer
   PetscInt :: skip_conn_type
   PetscErrorCode :: ierr
@@ -1283,15 +1351,15 @@ subroutine RichardsResidual(snes,xx,r,realization,ierr)
   field => realization%field
   option => realization%option
 
-  call RichardsResidualPreliminaries(xx,r,realization,ierr)
+  call RichardsResidualPreliminaries(xx,r,realization,pm_well,ierr)
 
   skip_conn_type = NO_CONN
   if (option%flow%only_vertical_flow) skip_conn_type = HORZ_CONN
 
   call RichardsResidualInternalConn(r,realization,skip_conn_type,ierr)
   call RichardsResidualBoundaryConn(r,realization,ierr)
-  call RichardsResidualAccumulation(r,realization,ierr)
-  call RichardsResidualSourceSink(r,realization,ierr)
+  call RichardsResidualAccumulation(r,realization,pm_well,ierr)
+  call RichardsResidualSourceSink(r,realization,pm_well,ierr)
 
   if (realization%debug%vecview_residual) then
     call DebugWriteFilename(realization%debug,string,'Rresidual','', &
@@ -1316,7 +1384,7 @@ end subroutine RichardsResidual
 
 ! ************************************************************************** !
 
-subroutine RichardsResidualPreliminaries(xx,r,realization,ierr)
+subroutine RichardsResidualPreliminaries(xx,r,realization,pm_well,ierr)
   !
   ! Perform preliminary work prior to residual computation
   !
@@ -1326,6 +1394,7 @@ subroutine RichardsResidualPreliminaries(xx,r,realization,ierr)
 
   use Connection_module
   use Realization_Subsurface_class
+  use PM_Well_class
   use Patch_module
   use Option_module
   use Coupler_module
@@ -1337,6 +1406,7 @@ subroutine RichardsResidualPreliminaries(xx,r,realization,ierr)
   Vec, intent(inout) :: xx
   Vec, intent(inout) :: r
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
 
   type(patch_type), pointer :: patch
   type(option_type), pointer :: option
@@ -1349,7 +1419,7 @@ subroutine RichardsResidualPreliminaries(xx,r,realization,ierr)
 
   call RichardsUpdateLocalVecs(xx,realization,ierr)
 
-  call RichardsUpdateAuxVarsPatch(realization)
+  call RichardsUpdateAuxVarsPatch(realization,pm_well)
 
   ! override flags since they will soon be out of date
   patch%aux%Richards%auxvars_up_to_date = PETSC_FALSE
@@ -1483,7 +1553,7 @@ subroutine RichardsResidualInternalConn(r,realization,skip_conn_type,ierr)
     insurf_auxvars => patch%aux%InlineSurface%auxvars
   endif
 
-  call VecGetArrayF90(r,r_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
 
   ! Interior Flux Terms -----------------------------------
   connection_set_list => grid%internal_connection_set_list
@@ -1587,7 +1657,7 @@ subroutine RichardsResidualInternalConn(r,realization,skip_conn_type,ierr)
     cur_connection_set => cur_connection_set%next
   enddo
 
-  call VecRestoreArrayF90(r,r_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 
 end subroutine RichardsResidualInternalConn
 
@@ -1649,7 +1719,7 @@ subroutine RichardsResidualBoundaryConn(r,realization,ierr)
   global_auxvars_bc => patch%aux%Global%auxvars_bc
   material_auxvars => patch%aux%Material%auxvars
 
-  call VecGetArrayF90(r,r_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
 
   ! Boundary Flux Terms -----------------------------------
   boundary_condition => patch%boundary_condition_list%first
@@ -1749,13 +1819,13 @@ subroutine RichardsResidualBoundaryConn(r,realization,ierr)
 
   endif
 
-  call VecRestoreArrayF90(r,r_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 
 end subroutine RichardsResidualBoundaryConn
 
 ! ************************************************************************** !
 
-subroutine RichardsResidualSourceSink(r,realization,ierr)
+subroutine RichardsResidualSourceSink(r,realization,pm_well,ierr)
   !
   ! Computes the accumulation and source/sink terms of
   ! the residual equation on a single patch
@@ -1769,16 +1839,20 @@ subroutine RichardsResidualSourceSink(r,realization,ierr)
   use Patch_module
   use Grid_module
   use Option_module
+  use String_module
   use Coupler_module
   use Field_module
   use Debug_module
   use Utility_module, only : Smoothstep
+  use PM_Well_class
   use Matrix_Zeroing_module
 
   implicit none
 
   Vec :: r
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
+  class(pm_well_type), pointer :: cur_well
 
   type(grid_type), pointer :: grid
   type(patch_type), pointer :: patch
@@ -1793,6 +1867,7 @@ subroutine RichardsResidualSourceSink(r,realization,ierr)
   PetscInt :: local_id, ghosted_id
   PetscInt :: istart
   PetscInt :: iconn
+  PetscInt :: k
   PetscInt :: sum_connection
 #if defined(CLM_PFLOTRAN) || defined(CLM_OFFLINE)
   PetscReal, pointer :: qflx_pf_p(:)
@@ -1812,6 +1887,8 @@ subroutine RichardsResidualSourceSink(r,realization,ierr)
   PetscBool :: inhibit_flow_above_pressure
   PetscReal :: dummy
 
+  character(len=MAXSTRINGLENGTH) :: srcsink_name
+
   Mat, parameter :: null_mat = tMat(0)
 
   PetscErrorCode :: ierr
@@ -1827,16 +1904,56 @@ subroutine RichardsResidualSourceSink(r,realization,ierr)
   material_auxvars => patch%aux%Material%auxvars
 
   ! now assign access pointer to local variables
-  call VecGetArrayF90(r,r_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
 #if defined(CLM_PFLOTRAN) || defined(CLM_OFFLINE)
-  call VecGetArrayF90(clm_pf_idata%qflx_pf,qflx_pf_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(clm_pf_idata%qflx_pf,qflx_pf_p,ierr);CHKERRQ(ierr)
 #endif
+
+  ! Update well source/sink terms
+  if (richards_well_coupling == RICHARDS_FULLY_IMPLICIT_WELL) then
+    if (associated(pm_well)) then
+      cur_well => pm_well
+      sum_connection = 0
+      do
+        if (.not. associated(cur_well)) exit
+        if (any(cur_well%well_grid%h_rank_id == option%myrank)) then
+          call cur_well%UpdateFlowRates(ZERO_INTEGER,ZERO_INTEGER,-999,ierr)
+          call cur_well%ModifyFlowResidual(r_p)
+          source_sink => patch%source_sink_list%first
+          do
+            if (.not.associated(source_sink)) exit
+            if (associated(source_sink%flow_condition%well)) then
+              do k = 1,cur_well%well_grid%nsegments
+                if (cur_well%well_grid%h_rank_id(k) /= option%myrank) cycle
+                srcsink_name = trim(cur_well%name) // '_well_segment_' // &
+                              StringWrite(k)
+                if (trim(srcsink_name) == trim(source_sink%name)) then
+                  sum_connection = sum_connection + 1
+                  if (associated(patch%ss_flow_vol_fluxes)) then
+                    patch%ss_flow_vol_fluxes(ONE_INTEGER,sum_connection) = &
+                                      -1.d0 * cur_well%well%liq%Q(k) ! [kg/s]
+                  endif
+                  exit
+                endif
+              enddo
+            endif
+            source_sink => source_sink%next
+          enddo
+        endif
+        cur_well => cur_well%next_well
+      enddo
+    endif
+  endif
 
   ! Source/sink terms -------------------------------------
   source_sink => patch%source_sink_list%first
   sum_connection = 0
   do
     if (.not.associated(source_sink)) exit
+    if (associated(source_sink%flow_condition%well)) then
+      source_sink => source_sink%next
+      cycle
+    endif
 
     cur_connection_set => source_sink%connection_set
 
@@ -1973,8 +2090,7 @@ subroutine RichardsResidualSourceSink(r,realization,ierr)
     source_sink => source_sink%next
   enddo
 
-
-  call VecRestoreArrayF90(r,r_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 
   call MatrixZeroingZeroVecEntries(patch%aux%Richards%matrix_zeroing,r)
 
@@ -1982,11 +2098,11 @@ subroutine RichardsResidualSourceSink(r,realization,ierr)
                          global_auxvars,rich_auxvars,option)
 
 #if defined(CLM_PFLOTRAN) || defined(CLM_OFFLINE)
-  call VecRestoreArrayF90(clm_pf_idata%qflx_pf,qflx_pf_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(clm_pf_idata%qflx_pf,qflx_pf_p,ierr);CHKERRQ(ierr)
 #endif
 
   ! Mass Transfer
-  if (field%flow_mass_transfer /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(field%flow_mass_transfer)) then
     ! scale by -1.d0 for contribution to residual.  A negative contribution
     ! indicates mass being added to system.
     call VecAXPY(r,-1.d0,field%flow_mass_transfer,ierr);CHKERRQ(ierr)
@@ -1996,7 +2112,7 @@ end subroutine RichardsResidualSourceSink
 
 ! ************************************************************************** !
 
-subroutine RichardsResidualAccumulation(r,realization,ierr)
+subroutine RichardsResidualAccumulation(r,realization,pm_well,ierr)
   !
   ! Computes the accumulation terms of the residual equation
   !
@@ -2013,11 +2129,14 @@ subroutine RichardsResidualAccumulation(r,realization,ierr)
   use Field_module
   use Debug_module
   use Region_module
+  use PM_Well_class
 
   implicit none
 
   Vec :: r
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
+  class(pm_well_type), pointer :: cur_well
 
   type(grid_type), pointer :: grid
   type(patch_type), pointer :: patch
@@ -2029,7 +2148,7 @@ subroutine RichardsResidualAccumulation(r,realization,ierr)
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(inlinesurface_auxvar_type), pointer :: inlinesurface_auxvars(:)
 
-  PetscInt :: local_id, ghosted_id, region_id
+  PetscInt :: local_id, ghosted_id, region_id, ghosted_end
   PetscInt :: istart
 
   PetscReal, pointer :: r_p(:), accum_p(:), accum2_p(:)
@@ -2052,13 +2171,14 @@ subroutine RichardsResidualAccumulation(r,realization,ierr)
   endif
 
   ! now assign access pointer to local variables
-  call VecGetArrayF90(r,r_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(field%flow_accum2,accum2_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%flow_accum2,accum2_p,ierr);CHKERRQ(ierr)
 
   ! Accumulation terms ------------------------------------
   if (.not.option%flow%steady_state) then
-    r_p(1:grid%nlmax) = r_p(1:grid%nlmax) - accum_p(1:grid%nlmax)
+    r_p(1:grid%nlmax*option%nflowdof) = r_p(1:grid%nlmax*option%nflowdof) - &
+                                        accum_p(1:grid%nlmax*option%nflowdof)
 
     do local_id = 1, grid%nlmax  ! For each local node do...
       ghosted_id = grid%nL2G(local_id)
@@ -2071,6 +2191,29 @@ subroutine RichardsResidualAccumulation(r,realization,ierr)
       istart = (local_id-1)*option%nflowdof + 1
       r_p(istart) = r_p(istart) + Res(1)
       accum2_p(istart) = Res(1)
+
+      ! This is for the convergence check.
+      if (richards_well_coupling == RICHARDS_FULLY_IMPLICIT_WELL) then
+        if (associated(pm_well)) then
+          cur_well => pm_well
+          do
+            if (.not. associated(cur_well)) exit
+            if (cur_well%well_grid%h_rank_id( &
+                cur_well%well_grid%bottom_seg_index) == option%myrank) then
+              ghosted_id = cur_well%well_grid%h_ghosted_id( &
+                                  cur_well%well_grid%bottom_seg_index)
+              ghosted_end = ghosted_id * option%nflowdof
+              if (dabs(cur_well%well%th_ql) > 0.d0) then
+                accum2_p(ghosted_end) = cur_well%well%th_ql
+              else
+                accum2_p(ghosted_end) = 0.d0
+              endif
+              r_p(ghosted_end) = 0.d0
+            endif
+            cur_well => cur_well%next_well
+          enddo
+        endif
+      endif
     enddo
 
     if (option%flow%inline_surface_flow) then
@@ -2089,9 +2232,9 @@ subroutine RichardsResidualAccumulation(r,realization,ierr)
 
   endif
 
-  call VecRestoreArrayF90(r,r_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(field%flow_accum2,accum2_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%flow_accum2,accum2_p,ierr);CHKERRQ(ierr)
 
 end subroutine RichardsResidualAccumulation
 
@@ -2129,7 +2272,7 @@ subroutine RichApplyPrescribedConditions(realization)
 
   if (.not.associated(patch%prescribed_condition_list%first)) return
 
-  call VecGetArrayF90(realization%field%flow_xx, &
+  call VecGetArray(realization%field%flow_xx, &
                       vec_ptr,ierr);CHKERRQ(ierr)
 
   cur_coupler => patch%prescribed_condition_list%first
@@ -2145,14 +2288,14 @@ subroutine RichApplyPrescribedConditions(realization)
     cur_coupler => cur_coupler%next
   enddo
 
-  call VecRestoreArrayF90(realization%field%flow_xx, &
+  call VecRestoreArray(realization%field%flow_xx, &
                           vec_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine RichApplyPrescribedConditions
 
 ! ************************************************************************** !
 
-subroutine RichardsJacobian(snes,xx,A,B,realization,ierr)
+subroutine RichardsJacobian(snes,xx,A,B,realization,pm_well,ierr)
   !
   ! Computes the Jacobian
   !
@@ -2161,6 +2304,7 @@ subroutine RichardsJacobian(snes,xx,A,B,realization,ierr)
   !
 
   use Realization_Subsurface_class
+  use PM_Well_class
   use Patch_module
   use Grid_module
   use Option_module
@@ -2173,6 +2317,7 @@ subroutine RichardsJacobian(snes,xx,A,B,realization,ierr)
   Vec :: xx
   Mat :: A, B
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
   PetscErrorCode :: ierr
 
   Mat :: J
@@ -2201,7 +2346,7 @@ subroutine RichardsJacobian(snes,xx,A,B,realization,ierr)
   call RichardsJacobianInternalConn(J,realization,ierr)
   call RichardsJacobianBoundaryConn(J,realization,ierr)
   call RichardsJacobianAccumulation(J,realization,ierr)
-  call RichardsJacobianSourceSink(J,realization,ierr)
+  call RichardsJacobianSourceSink(J,realization,pm_well,ierr)
 
   if (A /= B .and. mat_type_A /= MATMFFD) then
     ! If the Jacobian and preconditioner matrices are different (and not
@@ -2272,6 +2417,7 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
   use Debug_module
   use Material_Aux_module
   use Region_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -2385,9 +2531,9 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
           istart_up = (ghosted_id_up-1)*option%nflowdof + 1
           istart_dn = (ghosted_id_dn-1)*option%nflowdof + 1
 
-          call MatSetValuesLocal(A,1,istart_up-1,1,istart_up-1,Jup,ADD_VALUES, &
+          call PUMSetValuesLocal(A,1,istart_up-1,1,istart_up-1,Jup,ADD_VALUES, &
                                  ierr);CHKERRQ(ierr)
-          call MatSetValuesLocal(A,1,istart_up-1,1,istart_dn-1,Jdn,ADD_VALUES, &
+          call PUMSetValuesLocal(A,1,istart_up-1,1,istart_dn-1,Jdn,ADD_VALUES, &
                                  ierr);CHKERRQ(ierr)
 #ifdef BUFFER_MATRIX
         endif
@@ -2408,9 +2554,9 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
           istart_up = (ghosted_id_up-1)*option%nflowdof + 1
           istart_dn = (ghosted_id_dn-1)*option%nflowdof + 1
 
-          call MatSetValuesLocal(A,1,istart_dn-1,1,istart_dn-1,Jdn,ADD_VALUES, &
+          call PUMSetValuesLocal(A,1,istart_dn-1,1,istart_dn-1,Jdn,ADD_VALUES, &
                                  ierr);CHKERRQ(ierr)
-          call MatSetValuesLocal(A,1,istart_dn-1,1,istart_up-1,Jup,ADD_VALUES, &
+          call PUMSetValuesLocal(A,1,istart_dn-1,1,istart_up-1,Jup,ADD_VALUES, &
                                  ierr);CHKERRQ(ierr)
 #ifdef BUFFER_MATRIX
         endif
@@ -2456,18 +2602,18 @@ subroutine RichardsJacobianInternalConn(A,realization,ierr)
       if (local_id_up>0) then
         istart_up = (ghosted_id_up-1)*option%nflowdof + 1
         istart_dn = (ghosted_id_dn-1)*option%nflowdof + 1
-        call MatSetValuesLocal(A,1,istart_up-1,1,istart_up-1,Jup,ADD_VALUES, &
+        call PUMSetValuesLocal(A,1,istart_up-1,1,istart_up-1,Jup,ADD_VALUES, &
                                ierr);CHKERRQ(ierr)
-        call MatSetValuesLocal(A,1,istart_up-1,1,istart_dn-1,Jdn,ADD_VALUES, &
+        call PUMSetValuesLocal(A,1,istart_up-1,1,istart_dn-1,Jdn,ADD_VALUES, &
                                ierr);CHKERRQ(ierr)
       endif
 
       if (local_id_dn>0) then
         istart_up = (ghosted_id_up-1)*option%nflowdof + 1
         istart_dn = (ghosted_id_dn-1)*option%nflowdof + 1
-        call MatSetValuesLocal(A,1,istart_dn-1,1,istart_dn-1,-Jdn,ADD_VALUES, &
+        call PUMSetValuesLocal(A,1,istart_dn-1,1,istart_dn-1,-Jdn,ADD_VALUES, &
                                ierr);CHKERRQ(ierr)
-        call MatSetValuesLocal(A,1,istart_dn-1,1,istart_up-1,-Jup,ADD_VALUES, &
+        call PUMSetValuesLocal(A,1,istart_dn-1,1,istart_up-1,-Jup,ADD_VALUES, &
                                ierr);CHKERRQ(ierr)
       endif
     enddo
@@ -2507,6 +2653,7 @@ subroutine RichardsJacobianBoundaryConn(A,realization,ierr)
   use Debug_module
   use Material_Aux_module
   use Region_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -2597,7 +2744,7 @@ subroutine RichardsJacobianBoundaryConn(A,realization,ierr)
 #endif
         istart = (ghosted_id-1)*option%nflowdof + 1
 
-        call MatSetValuesLocal(A,1,istart-1,1,istart-1,Jdn,ADD_VALUES, &
+        call PUMSetValuesLocal(A,1,istart-1,1,istart-1,Jdn,ADD_VALUES, &
                                ierr);CHKERRQ(ierr)
 #ifdef BUFFER_MATRIX
       endif
@@ -2646,7 +2793,7 @@ subroutine RichardsJacobianBoundaryConn(A,realization,ierr)
           Jdn = -Jdn
 
           istart = (ghosted_id-1)*option%nflowdof + 1
-          call MatSetValuesLocal(A,1,istart-1,1,istart-1,Jdn,ADD_VALUES, &
+          call PUMSetValuesLocal(A,1,istart-1,1,istart-1,Jdn,ADD_VALUES, &
                                  ierr);CHKERRQ(ierr)
 
         enddo
@@ -2687,6 +2834,7 @@ subroutine RichardsJacobianAccumulation(A,realization,ierr)
   use Coupler_module
   use Debug_module
   use Region_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -2748,7 +2896,7 @@ subroutine RichardsJacobianAccumulation(A,realization,ierr)
 #endif
         istart = (ghosted_id-1)*option%nflowdof + 1
 
-        call MatSetValuesLocal(A,1,istart-1,1,istart-1,Jup,ADD_VALUES, &
+        call PUMSetValuesLocal(A,1,istart-1,1,istart-1,Jup,ADD_VALUES, &
                                ierr);CHKERRQ(ierr)
 #ifdef BUFFER_MATRIX
       endif
@@ -2763,7 +2911,7 @@ subroutine RichardsJacobianAccumulation(A,realization,ierr)
         call InlineSurfaceAccumulationJac(inlinesurface_auxvars(region_id), &
              material_auxvars(ghosted_id),option,Jup)
         istart = (ghosted_id-1)*option%nflowdof + 1
-        call MatSetValuesLocal(A,1,istart-1,1,istart-1,Jup,ADD_VALUES, &
+        call PUMSetValuesLocal(A,1,istart-1,1,istart-1,Jup,ADD_VALUES, &
                                ierr);CHKERRQ(ierr)
       enddo
     endif
@@ -2785,7 +2933,7 @@ end subroutine RichardsJacobianAccumulation
 
 ! ************************************************************************** !
 
-subroutine RichardsJacobianSourceSink(A,realization,ierr)
+subroutine RichardsJacobianSourceSink(A,realization,pm_well,ierr)
   !
   ! Computes the accumulation and source/sink terms of
   ! the Jacobian
@@ -2796,6 +2944,7 @@ subroutine RichardsJacobianSourceSink(A,realization,ierr)
 
   use Connection_module
   use Realization_Subsurface_class
+  use PM_Well_class
   use Option_module
   use Patch_module
   use Grid_module
@@ -2804,11 +2953,14 @@ subroutine RichardsJacobianSourceSink(A,realization,ierr)
   use Debug_module
   use Utility_module, only : Smoothstep
   use Matrix_Zeroing_module
+  use Petsc_Utility_module
 
   implicit none
 
   Mat, intent(inout) :: A
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
+  class(pm_well_type), pointer :: cur_well
 
   PetscErrorCode :: ierr
 
@@ -2838,6 +2990,8 @@ subroutine RichardsJacobianSourceSink(A,realization,ierr)
   PetscReal :: ukvr, Dq, dphi, v_darcy
   Vec, parameter :: null_vec = tVec(0)
   character(len=MAXSTRINGLENGTH) :: string
+  PetscInt :: deactivate_row
+  PetscReal, parameter :: epsilon = 1.d-30
 
   PetscReal :: threshold_pressure, pressure_span, min_pressure, max_pressure
   PetscReal :: volume_scale, smoothstep_scale
@@ -2856,6 +3010,10 @@ subroutine RichardsJacobianSourceSink(A,realization,ierr)
   source_sink => patch%source_sink_list%first
   do
     if (.not.associated(source_sink)) exit
+    if (associated(source_sink%flow_condition%well)) then
+      source_sink => source_sink%next
+      cycle
+    endif
 
     if (source_sink%flow_condition%itype(1)/=HET_VOL_RATE_SS.and. &
        source_sink%flow_condition%itype(1)/=HET_MASS_RATE_SS .and. &
@@ -2970,7 +3128,7 @@ subroutine RichardsJacobianSourceSink(A,realization,ierr)
 #endif
         istart = (ghosted_id-1)*option%nflowdof + 1
 
-        call MatSetValuesLocal(A,1,istart-1,1,istart-1,Jup,ADD_VALUES, &
+        call PUMSetValuesLocal(A,1,istart-1,1,istart-1,Jup,ADD_VALUES, &
                                ierr);CHKERRQ(ierr)
 #ifdef BUFFER_MATRIX
       endif
@@ -2981,6 +3139,37 @@ subroutine RichardsJacobianSourceSink(A,realization,ierr)
 
   call RichardsSSSandbox(null_vec,A,PETSC_TRUE,grid,material_auxvars, &
                          global_auxvars,rich_auxvars,option)
+
+  if (realization%debug%matview_Matrix_detailed) then
+    call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+    call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+    call DebugWriteFilename(realization%debug,string,'Rjacobian_srcsink_nowell','', &
+                            richards_ts_count,richards_ts_cut_count, &
+                            richards_ni_count)
+    call DebugCreateViewer(realization%debug,string,option,viewer)
+    call MatView(A,viewer,ierr);CHKERRQ(ierr)
+    call DebugViewerDestroy(realization%debug,viewer)
+  endif
+
+  ! Well Terms
+  ! perturbation in bottom pressure
+  if (richards_well_coupling == RICHARDS_FULLY_IMPLICIT_WELL) then
+    if (associated(pm_well)) then
+      cur_well => pm_well
+      do
+        if (.not. associated(cur_well)) exit
+        if (any(cur_well%well_grid%h_rank_id == option%myrank)) then
+          ! Update the well and well's reservoir variables.
+          call cur_well%Perturb()
+          ! Go through and update the well contributions to the Jacobian:
+          ! dRi/d(P_well), dRwell/d(P_well), dRi/dxi, and dRwell,dxi
+          call cur_well%ModifyFlowJacobian(A,ierr)
+        endif
+        cur_well => cur_well%next_well
+      enddo
+    endif
+  endif
+
 
   if (realization%debug%matview_Matrix_detailed) then
     call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
@@ -3007,6 +3196,41 @@ subroutine RichardsJacobianSourceSink(A,realization,ierr)
 
   call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
   call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+
+
+  ! zero out isothermal and inactive cells
+  if (richards_well_coupling == RICHARDS_FULLY_IMPLICIT_WELL) then
+    if (associated(pm_well)) then
+      call MatrixZeroingZeroMatEntries(patch%aux%Richards%matrix_zeroing,A)
+      qsrc = 1.d0 ! solely a temporary variable in this conditional
+      cur_well => pm_well
+      do
+        if (.not. associated(cur_well)) exit
+        if (((dabs(cur_well%well%th_ql) < epsilon) .and. &
+             (cur_well%well%total_rate > 0.d0)) .or. &
+              cur_well%pressure_controlled) then
+          ! Don't solve for BHP if there is no flow in the well, or
+          ! if the well is pressure-controlled.
+          deactivate_row = cur_well%well_grid%h_ghosted_id( &
+                            cur_well%well_grid%bottom_seg_index) * &
+                            option%nflowdof
+          deactivate_row = deactivate_row - 1
+          if (cur_well%well_grid%h_rank_id( &
+              cur_well%well_grid%bottom_seg_index) == option%myrank) then
+            call MatZeroRowsLocal(A,ONE_INTEGER,[deactivate_row], &
+                        qsrc,PETSC_NULL_VEC,PETSC_NULL_VEC, &
+                        ierr);CHKERRQ(ierr)
+          else
+            call MatZeroRowsLocal(A,ZERO_INTEGER,[deactivate_row], &
+                        qsrc,PETSC_NULL_VEC,PETSC_NULL_VEC, &
+                        ierr);CHKERRQ(ierr)
+          endif
+        endif
+        cur_well => cur_well%next_well
+      enddo
+    endif
+  endif
+
 
 ! zero out isothermal and inactive cells
 #ifdef BUFFER_MATRIX
@@ -3136,13 +3360,12 @@ subroutine RichardsSSSandbox(residual,Jacobian,compute_derivative, &
   !
   ! Modified by: Ayman Alzraiee on 04/05/2016
 
-#include "petsc/finclude/petscmat.h"
-  use petscmat
   use Option_module
   use Grid_module
   use Material_Aux_module, only: material_auxvar_type
   use SrcSink_Sandbox_module
   use SrcSink_Sandbox_Base_class
+  use Petsc_Utility_module
 
   implicit none
 
@@ -3165,7 +3388,7 @@ subroutine RichardsSSSandbox(residual,Jacobian,compute_derivative, &
   PetscErrorCode :: ierr
 
   if (.not.compute_derivative) then
-    call VecGetArrayF90(residual,r_p,ierr);CHKERRQ(ierr)
+    call VecGetArray(residual,r_p,ierr);CHKERRQ(ierr)
   endif
 
   cur_srcsink => ss_sandbox_list
@@ -3200,7 +3423,7 @@ subroutine RichardsSSSandbox(residual,Jacobian,compute_derivative, &
         print *, 'Jac_num:', Jac(1,1)
   !      stop
 #endif
-        call MatSetValuesBlockedLocal(Jacobian,1,ghosted_id-1,1,ghosted_id-1, &
+        call PUMSetValuesBlockedLocal(Jacobian,1,ghosted_id-1,1,ghosted_id-1, &
                                       Jac,ADD_VALUES,ierr);CHKERRQ(ierr)
 
       else
@@ -3213,7 +3436,7 @@ subroutine RichardsSSSandbox(residual,Jacobian,compute_derivative, &
   enddo
 
   if (.not.compute_derivative) then
-    call VecRestoreArrayF90(residual,r_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(residual,r_p,ierr);CHKERRQ(ierr)
   endif
 
 end subroutine RichardsSSSandbox
@@ -3254,7 +3477,7 @@ end subroutine RichardsSSSandboxLoadAuxReal
 
 ! ************************************************************************** !
 
-subroutine RichardsComputeLateralMassFlux(realization)
+subroutine RichardsComputeLateralMassFlux(realization,pm_well)
   !
   ! Computes lateral flux source/sink term when QUASI_3D is true
   !
@@ -3264,11 +3487,13 @@ subroutine RichardsComputeLateralMassFlux(realization)
 
   use Connection_module
   use Realization_Subsurface_class
+  use PM_Well_class
   use Field_module
 
   implicit none
 
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
   type(field_type), pointer :: field
   PetscErrorCode :: ierr
 
@@ -3276,7 +3501,7 @@ subroutine RichardsComputeLateralMassFlux(realization)
 
   call RichardsUpdateLocalVecs(field%flow_xx, realization, ierr)
 
-  call RichardsUpdateAuxVarsPatch(realization)
+  call RichardsUpdateAuxVarsPatch(realization,pm_well)
 
   call VecZeroEntries(field%flow_mass_transfer,ierr);CHKERRQ(ierr)
 

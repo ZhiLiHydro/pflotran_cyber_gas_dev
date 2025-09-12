@@ -1,15 +1,14 @@
 module PMC_Geophysics_class
 
+#include "petsc/finclude/petscmat.h"
+  use petscmat
+
+  use PFLOTRAN_Constants_module
   use Option_module
   use PMC_Base_class
   use PM_ERT_class
   use Realization_Subsurface_class
   use Waypoint_module
-
-  use PFLOTRAN_Constants_module
-
-#include "petsc/finclude/petscts.h"
-  use petscts
 
   implicit none
 
@@ -205,7 +204,8 @@ subroutine PMCGeophysicsStepDT(this,stop_flag)
   skip_survey = PETSC_TRUE
   if (pm_ert%waypoint_list%num_waypoints > 0) then
     if (associated(this%cur_waypoint)) then
-      if (Equal(this%cur_waypoint%time,timestepper%target_time)) then
+      ! approximately equal within 1s tolerance
+      if (EqualTol(this%cur_waypoint%time,timestepper%target_time, 1.d0)) then
         skip_survey = PETSC_FALSE
         this%cur_waypoint => this%cur_waypoint%next
       endif

@@ -94,6 +94,7 @@ module Utility_module
             LUBackSubstitution, &
             FileExists, &
             Equal, &
+            EqualTol, &
             InitToNaN, &
             BestFloat, &
             QuadraticPolynomialSetup, &
@@ -1650,6 +1651,31 @@ end function Equal
 
 ! ************************************************************************** !
 
+function EqualTol(value1, value2, tol)
+  !
+  ! Returns PETSC_TRUE if values are approximately equal within tolerance
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date: 09/02/25
+  !
+  implicit none
+
+
+  PetscBool :: EqualTol
+
+  PetscReal :: value1, value2
+  PetscReal :: tol     ! tolerance, e.g., 1.0d0
+
+  ! Default to false
+  EqualTol = PETSC_FALSE
+
+  ! Check absolute difference against tolerance
+  if (dabs(value1 - value2) <= tol) EqualTol = PETSC_TRUE
+
+end function EqualTol
+
+! ************************************************************************** !
+
 function InitToNan()
 
   !----------------------------------------------------------------------------
@@ -2234,15 +2260,15 @@ subroutine MatInv3(A,invA)
        + A(1,2)*(A(3,1)*A(2,3) - A(2,1)*A(3,3))  &
        + A(1,3)*(A(2,1)*A(3,2) - A(3,1)*A(2,2))
 
-  invA(1,1) = +1.0/detA * (A(2,2)*A(3,3) - A(2,3)*A(3,2))
-  invA(2,1) = -1.0/detA * (A(2,1)*A(3,3) - A(2,3)*A(3,1))
-  invA(3,1) = +1.0/detA * (A(2,1)*A(3,2) - A(2,2)*A(3,1))
-  invA(1,2) = -1.0/detA * (A(1,2)*A(3,3) - A(1,3)*A(3,2))
-  invA(2,2) = +1.0/detA * (A(1,1)*A(3,3) - A(1,3)*A(3,1))
-  invA(3,2) = -1.0/detA * (A(1,1)*A(3,2) - A(1,2)*A(3,1))
-  invA(1,3) = +1.0/detA * (A(1,2)*A(2,3) - A(1,3)*A(2,2))
-  invA(2,3) = -1.0/detA * (A(1,1)*A(2,3) - A(1,3)*A(2,1))
-  invA(3,3) = +1.0/detA * (A(1,1)*A(2,2) - A(1,2)*A(2,1))
+  invA(1,1) = +1.d0/detA * (A(2,2)*A(3,3) - A(2,3)*A(3,2))
+  invA(2,1) = -1.d0/detA * (A(2,1)*A(3,3) - A(2,3)*A(3,1))
+  invA(3,1) = +1.d0/detA * (A(2,1)*A(3,2) - A(2,2)*A(3,1))
+  invA(1,2) = -1.d0/detA * (A(1,2)*A(3,3) - A(1,3)*A(3,2))
+  invA(2,2) = +1.d0/detA * (A(1,1)*A(3,3) - A(1,3)*A(3,1))
+  invA(3,2) = -1.d0/detA * (A(1,1)*A(3,2) - A(1,2)*A(3,1))
+  invA(1,3) = +1.d0/detA * (A(1,2)*A(2,3) - A(1,3)*A(2,2))
+  invA(2,3) = -1.d0/detA * (A(1,1)*A(2,3) - A(1,3)*A(2,1))
+  invA(3,3) = +1.d0/detA * (A(1,1)*A(2,2) - A(1,2)*A(2,1))
 
 end subroutine MatInv3
 

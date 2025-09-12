@@ -226,14 +226,17 @@ condition_control.o : \
   nw_transport_equilibrium.o \
   option.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   reaction.o \
   reaction_aux.o \
+  reaction_mineral.o \
   reaction_mineral_aux.o \
   reactive_transport.o \
   reactive_transport_aux.o \
   realization_subsurface.o \
   region.o \
+  richards_aux.o \
   sco2_aux.o \
   secondary_continuum_aux.o \
   transport_constraint_base.o \
@@ -427,6 +430,7 @@ ert.o : \
   matrix_zeroing.o \
   option.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   realization_subsurface.o \
   string.o \
@@ -497,7 +501,7 @@ factory_geomechanics.o : \
   simulation_base.o \
   simulation_geomechanics.o \
   simulation_subsurface.o \
-  timestepper_steady.o \
+  timestepper_KSP.o \
   waypoint.o
 factory_pflotran.o : \
   communicator_aux.o \
@@ -598,6 +602,7 @@ factory_subsurface_linkage.o : \
   logging.o \
   option.o \
   output_aux.o \
+  petsc_utility.o \
   pflotran_constants.o \
   pm_auxiliary.o \
   pm_base.o \
@@ -611,6 +616,7 @@ factory_subsurface_linkage.o : \
   pm_parameter.o \
   pm_pnf.o \
   pm_ponded_water.o \
+  pm_richards.o \
   pm_richards_ts.o \
   pm_rt.o \
   pm_sco2.o \
@@ -769,6 +775,7 @@ general.o : \
   output_aux.o \
   output_tecplot.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   realization_subsurface.o \
   saturation_function.o \
@@ -832,6 +839,7 @@ geomech_grid.o : \
   input_aux.o \
   logging.o \
   option.o \
+  petsc_utility.o \
   pflotran_constants.o \
   string.o \
   utility.o
@@ -897,6 +905,7 @@ geomechanics_force.o : \
   grid_unstructured_cell.o \
   option.o \
   output_aux.o \
+  petsc_utility.o \
   pflotran_constants.o \
   realization_subsurface.o \
   shape_function.o \
@@ -920,6 +929,8 @@ geomechanics_global_aux.o : \
   pflotran_constants.o \
   utility.o
 geomechanics_material.o : \
+  dataset.o \
+  dataset_base.o \
   input_aux.o \
   option.o \
   pflotran_constants.o \
@@ -943,6 +954,7 @@ geomechanics_patch.o : \
 geomechanics_realization.o : \
   dataset.o \
   dataset_base.o \
+  dataset_common_hdf5.o \
   geomech_grid_aux.o \
   geomechanics_condition.o \
   geomechanics_coupler.o \
@@ -971,6 +983,7 @@ geomechanics_region.o : \
   logging.o \
   option.o \
   pflotran_constants.o \
+  region.o \
   string.o \
   utility.o
 geomechanics_regression.o : \
@@ -983,7 +996,7 @@ geomechanics_regression.o : \
   output_geomechanics.o \
   pflotran_constants.o \
   string.o \
-  timestepper_steady.o \
+  timestepper_KSP.o \
   utility.o
 geomechanics_strata.o : \
   geomechanics_material.o \
@@ -1082,7 +1095,9 @@ grid_unstructured_aux.o : \
   geometry.o \
   grid_unstructured_cell.o \
   option.o \
+  petsc_utility.o \
   pflotran_constants.o \
+  string.o \
   utility.o \
   well_grid.o
 grid_unstructured_cell.o : \
@@ -1115,6 +1130,11 @@ grid_unstructured_polyhedra.o : \
 hdf5.o : \
   discretization.o \
   field.o \
+  geomech_grid_aux.o \
+  geomechanics_discretization.o \
+  geomechanics_field.o \
+  geomechanics_patch.o \
+  geomechanics_realization.o \
   grid.o \
   grid_unstructured_cell.o \
   hdf5_aux.o \
@@ -1155,6 +1175,7 @@ hydrate.o : \
   option.o \
   output_aux.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   pm_well.o \
   realization_subsurface.o \
@@ -1267,10 +1288,15 @@ init_subsurface_flow.o : \
   hdf5.o \
   option.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   realization_subsurface.o
 init_subsurface_geomechanics.o : \
   condition_control.o \
+  dataset.o \
+  dataset_base.o \
+  dataset_common_hdf5.o \
+  dataset_gridded_hdf5.o \
   geomech_grid.o \
   geomech_grid_aux.o \
   geomechanics_attributes.o \
@@ -1311,7 +1337,7 @@ init_subsurface_geomechanics.o : \
   simulation_subsurface.o \
   solver.o \
   string.o \
-  timestepper_steady.o \
+  timestepper_KSP.o \
   units.o \
   utility.o \
   waypoint.o
@@ -1438,6 +1464,7 @@ inversion_subsurface.o : \
   option_inversion.o \
   output_hdf5.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   pm_base.o \
   pm_ert.o \
@@ -1477,6 +1504,7 @@ inversion_zflow.o : \
   material_aux.o \
   option.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   print.o \
   realization_base.o \
@@ -1532,6 +1560,7 @@ matrix_block_aux.o : \
 matrix_buffer.o : \
   grid.o \
   grid_structured.o \
+  petsc_utility.o \
   pflotran_constants.o
 matrix_zeroing.o : \
   pflotran_constants.o \
@@ -1558,6 +1587,7 @@ mphase.o : \
   option.o \
   output_aux.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   realization_subsurface.o \
   secondary_continuum.o \
@@ -1601,6 +1631,7 @@ nw_transport.o : \
   option.o \
   output_aux.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   pm_well.o \
   realization_subsurface.o \
@@ -2015,6 +2046,7 @@ pm_ert.o : \
   option.o \
   parameter.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   pm_base.o \
   reaction_aux.o \
@@ -2035,7 +2067,6 @@ pm_fracture.o : \
   field.o \
   general_aux.o \
   geometry.o \
-  global_aux.o \
   grid.o \
   input_aux.o \
   material_aux.o \
@@ -2044,6 +2075,7 @@ pm_fracture.o : \
   pm_base.o \
   realization_subsurface.o \
   string.o \
+  th_aux.o \
   utility.o
 pm_general.o : \
   checkpoint.o \
@@ -2074,7 +2106,6 @@ pm_geomechanics_force.o : \
   communicator_base.o \
   communicator_structured.o \
   communicator_unstructured.o \
-  convergence.o \
   geomechanics_condition.o \
   geomechanics_discretization.o \
   geomechanics_force.o \
@@ -2242,6 +2273,7 @@ pm_pnf.o : \
   material_aux.o \
   option.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   pm_subsurface_flow.o \
   pnf.o \
@@ -2281,6 +2313,8 @@ pm_richards.o : \
   pflotran_constants.o \
   pm_base.o \
   pm_subsurface_flow.o \
+  pm_well.o \
+  realization_base.o \
   realization_subsurface.o \
   richards.o \
   richards_aux.o \
@@ -2294,6 +2328,7 @@ pm_richards_ts.o : \
   material_aux.o \
   option.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   pm_base.o \
   pm_richards.o \
@@ -2437,6 +2472,7 @@ pm_th_ts.o : \
   material_aux.o \
   option.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   pm_base.o \
   pm_subsurface_flow.o \
@@ -2562,10 +2598,13 @@ pm_well.o : \
   nw_transport_aux.o \
   option.o \
   output_aux.o \
+  petsc_utility.o \
   pflotran_constants.o \
   pm_base.o \
   reactive_transport_aux.o \
   realization_subsurface.o \
+  region.o \
+  richards_aux.o \
   sco2_aux.o \
   strata.o \
   string.o \
@@ -2596,6 +2635,7 @@ pm_wipp_flow.o : \
   material_aux.o \
   option.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   pm_base.o \
   pm_subsurface_flow.o \
@@ -2627,6 +2667,7 @@ pm_wipp_srcsink.o : \
   option.o \
   output_aux.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   pm_base.o \
   realization_base.o \
@@ -2667,6 +2708,7 @@ pmc_base.o : \
   option_checkpoint.o \
   output.o \
   output_aux.o \
+  petsc_utility.o \
   pflotran_constants.o \
   pm_base.o \
   pm_base_pointer.o \
@@ -2689,7 +2731,6 @@ pmc_general.o : \
   pmc_base.o \
   timestepper_base.o
 pmc_geomechanics.o : \
-  convergence.o \
   discretization.o \
   geomechanics_discretization.o \
   geomechanics_force.o \
@@ -2705,8 +2746,8 @@ pmc_geomechanics.o : \
   pmc_base.o \
   realization_subsurface.o \
   solver.o \
-  timestepper_base.o \
-  timestepper_steady.o
+  timestepper_KSP.o \
+  timestepper_base.o
 pmc_geophysics.o : \
   hdf5_aux.o \
   option.o \
@@ -2825,8 +2866,10 @@ pnf_aux.o : \
   utility.o
 preconditioner_cpr.o : \
   option.o \
+  petsc_utility.o \
   pflotran_constants.o \
-  string.o
+  string.o \
+  utility.o
 print.o : \
   communicator_aux.o \
   pflotran_constants.o \
@@ -3303,6 +3346,7 @@ reactive_transport.o : \
   output_aux.o \
   output_tecplot.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   reaction.o \
   reaction_aux.o \
@@ -3435,6 +3479,7 @@ regression.o : \
   timestepper_base.o \
   utility.o
 richards.o : \
+  condition.o \
   connection.o \
   coupler.o \
   debug.o \
@@ -3452,7 +3497,9 @@ richards.o : \
   option.o \
   output_aux.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
+  pm_well.o \
   realization_base.o \
   realization_subsurface.o \
   region.o \
@@ -3509,6 +3556,7 @@ sco2.o : \
   option.o \
   output_aux.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   pm_well.o \
   realization_subsurface.o \
@@ -3617,7 +3665,6 @@ simulation_geomechanics.o : \
   simulation_aux.o \
   simulation_subsurface.o \
   timestepper_base.o \
-  timestepper_steady.o \
   utility.o \
   waypoint.o
 simulation_inverse.o : \
@@ -3687,8 +3734,9 @@ simulation_subsurface.o : \
   srcsink_sandbox.o \
   strata.o \
   string.o \
+  timestepper_KSP.o \
   timestepper_base.o \
-  timestepper_steady.o \
+  utility.o \
   waypoint.o \
   wipp.o
 slatec_pchip.o :
@@ -3714,6 +3762,7 @@ srcsink_sandbox.o : \
   material_aux.o \
   option.o \
   output_aux.o \
+  petsc_utility.o \
   pflotran_constants.o \
   region.o \
   richards_aux.o \
@@ -3841,6 +3890,7 @@ th.o : \
   option.o \
   output_aux.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   realization_subsurface.o \
   region.o \
@@ -3861,7 +3911,8 @@ th_aux.o : \
   matrix_zeroing.o \
   option.o \
   pflotran_constants.o \
-  saturation_function.o
+  saturation_function.o \
+  utility.o
 time_storage.o : \
   option.o \
   pflotran_constants.o
@@ -3887,6 +3938,7 @@ timestepper_SNES.o : \
   option.o \
   output.o \
   output_ekg.o \
+  petsc_utility.o \
   pflotran_constants.o \
   pm_base.o \
   pm_subsurface_flow.o \
@@ -4008,6 +4060,7 @@ well_grid.o : \
   geometry.o \
   option.o \
   pflotran_constants.o \
+  region.o \
   utility.o
 wipp.o : \
   characteristic_curves_base.o \
@@ -4037,6 +4090,7 @@ wipp_flow.o : \
   option.o \
   output_aux.o \
   patch.o \
+  petsc_utility.o \
   pflotran_constants.o \
   pm_well.o \
   pm_wipp_srcsink.o \
@@ -4094,6 +4148,7 @@ wipp_well.o : \
   material_aux.o \
   nw_transport_aux.o \
   option.o \
+  petsc_utility.o \
   pflotran_constants.o \
   pm_base.o \
   pm_well.o \

@@ -6,9 +6,8 @@ module PM_Material_Transform_class
 ! for physical phenomena given evolving system conditions
 ! ===========================================================================
 
-#include "petsc/finclude/petscsys.h"
 #include "petsc/finclude/petscvec.h"
-  use petscsys
+  use petscvec
   use PM_Base_class
   use Realization_Subsurface_class
   use Option_module
@@ -470,7 +469,15 @@ subroutine PMMaterialTransformInitializeTS(this)
   class(pm_material_transform_type) :: this
   ! --------------------------------
 
-  if (.not.this%option%ntrandof > 0) call GlobalWeightAuxVars(this%realization,1.d0)
+
+  select case(this%option%iflowmode)
+    case(TH_MODE)
+      call GlobalWeightAuxVars(this%realization,1.d0)
+    case default
+      if (.not.this%option%ntrandof > 0) then
+        call GlobalWeightAuxVars(this%realization,1.d0)
+      endif
+  end select
 
 end subroutine PMMaterialTransformInitializeTS
 
@@ -892,7 +899,7 @@ subroutine PMMTransformCheckpointHDF5(this, pm_grp_id)
   enddo
 
   if (check_il) then
-    global_vec = PETSC_NULL_VEC
+    PetscObjectNullify(global_vec)
     call DiscretizationCreateVector(this%realization%discretization, ONEDOF, &
                                     global_vec, GLOBAL, option)
     call DiscretizationCreateVector(this%realization%discretization, ONEDOF, &
@@ -1067,7 +1074,7 @@ subroutine PMMaterialTransformRestartHDF5(this, pm_grp_id)
                      SCATTER_FORWARD,ierr);CHKERRQ(ierr)
 
   ! convert the data into a Fortran array
-  call VecGetArrayF90(local_mt_vec,local_mt_array,ierr);CHKERRQ(ierr)
+  call VecGetArray(local_mt_vec,local_mt_array,ierr);CHKERRQ(ierr)
 
   ! assign checkpointed material transform information
   i = 1
@@ -1081,7 +1088,7 @@ subroutine PMMaterialTransformRestartHDF5(this, pm_grp_id)
     i = i + stride
   enddo
 
-  call VecRestoreArrayF90(local_mt_vec,local_mt_array,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(local_mt_vec,local_mt_array,ierr);CHKERRQ(ierr)
   call VecScatterDestroy(scatter_ctx,ierr);CHKERRQ(ierr)
   call ISDestroy(is,ierr);CHKERRQ(ierr)
   call VecDestroy(global_mt_vec,ierr);CHKERRQ(ierr)
@@ -1103,7 +1110,7 @@ subroutine PMMaterialTransformRestartHDF5(this, pm_grp_id)
   enddo
 
   if (check_il) then
-    global_vec = PETSC_NULL_VEC
+    PetscObjectNullify(global_vec)
     call DiscretizationCreateVector(this%realization%discretization, ONEDOF, &
                                     global_vec, GLOBAL, option)
     call DiscretizationCreateVector(this%realization%discretization, ONEDOF, &
@@ -1321,7 +1328,7 @@ subroutine PMMTransformCheckpointBinary(this, viewer)
   enddo
 
   if (check_il) then
-    global_vec = PETSC_NULL_VEC
+    PetscObjectNullify(global_vec)
     call DiscretizationCreateVector(this%realization%discretization, ONEDOF, &
                                     global_vec, GLOBAL, option)
     call MTransformGetAuxVarVecLoc(this%realization%patch%aux%MTransform, &
@@ -1481,7 +1488,7 @@ subroutine PMMTransformRestartBinary(this, viewer)
                      SCATTER_FORWARD,ierr);CHKERRQ(ierr)
 
   ! convert the data into a Fortran array
-  call VecGetArrayF90(local_mt_vec,local_mt_array,ierr);CHKERRQ(ierr)
+  call VecGetArray(local_mt_vec,local_mt_array,ierr);CHKERRQ(ierr)
 
   ! assign checkpointed material transform information
   i = 1
@@ -1495,7 +1502,7 @@ subroutine PMMTransformRestartBinary(this, viewer)
     i = i + stride
   enddo
 
-  call VecRestoreArrayF90(local_mt_vec,local_mt_array,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(local_mt_vec,local_mt_array,ierr);CHKERRQ(ierr)
   call VecScatterDestroy(scatter_ctx,ierr);CHKERRQ(ierr)
   call ISDestroy(is,ierr);CHKERRQ(ierr)
   call VecDestroy(global_mt_vec,ierr);CHKERRQ(ierr)
@@ -1517,7 +1524,7 @@ subroutine PMMTransformRestartBinary(this, viewer)
   enddo
 
   if (check_il) then
-    global_vec = PETSC_NULL_VEC
+    PetscObjectNullify(global_vec)
     call DiscretizationCreateVector(this%realization%discretization, ONEDOF, &
                                     global_vec, GLOBAL, option)
     call VecLoad(global_vec,viewer,ierr);CHKERRQ(ierr)

@@ -164,8 +164,10 @@ subroutine GeomechanicsSimulationExecuteRun(this)
   PetscReal :: time
   PetscReal :: final_time
   PetscReal :: dt
+  PetscReal, parameter :: tolerance = 1.d-3
 
   time = this%option%time
+  dt = this%geomech%realization%dt_coupling
 
   final_time = SimSubsurfGetFinalWaypointTime(this)
 
@@ -185,13 +187,11 @@ subroutine GeomechanicsSimulationExecuteRun(this)
       call PrintErrMsg(this%option)
     else
       do
-        if (time + this%geomech%realization%dt_coupling > final_time) then
-          dt = final_time-time
-        else
-          dt = this%geomech%realization%dt_coupling
-        endif
-
         time = time + dt
+        if (time + dt*tolerance >= final_time) then
+          dt = final_time-time
+          time = final_time
+        endif
         this%geomech%process_model_coupler%timestepper%dt = dt
         call this%RunToTime(time)
 
@@ -215,33 +215,19 @@ subroutine GeomechanicsSimulationFinalizeRun(this)
   ! Date: 01/01/14
   ! Modified by Satish Karra, 06/22/16
 
-  use Timestepper_Steady_class
   use Timestepper_Base_class
 
   implicit none
 
   class(simulation_geomechanics_type) :: this
 
-  class(timestepper_steady_type), pointer :: geomech_timestepper
-
 #ifdef GEOMECH_DEBUG
   call PrintMsg(this%option,'GeomechanicsSimulationFinalizeRun')
 #endif
 
-  !call GeomechanicsFinalizeRun(this)
-  nullify(geomech_timestepper)
-  if (associated(this%geomech%process_model_coupler)) then
-    select type(ts => this%geomech%process_model_coupler%timestepper)
-      class is(timestepper_steady_type)
-        geomech_timestepper => ts
-    end select
-  endif
-
   select case(this%stop_flag)
     case(TS_STOP_END_SIMULATION,TS_STOP_MAX_TIME_STEP)
-      call GeomechanicsRegressionOutput(this%geomech%regression, &
-                                        this%geomech%realization, &
-                                        geomech_timestepper)
+      call SimSubsurfWriteRegression(this)
   end select
 
   call SimSubsurfFinalizeRun(this)

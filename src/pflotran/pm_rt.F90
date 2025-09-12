@@ -55,6 +55,12 @@ module PM_RT_class
     PetscBool, pointer :: converged_flag(:)
     PetscInt, pointer :: converged_cell(:,:)
     PetscReal, pointer :: converged_real(:,:)
+    PetscReal :: norm_history(1,10)
+    PetscInt :: oscillation_count
+    PetscBool :: dampen_oscillatory_updates
+    PetscBool :: dampen_update
+    PetscInt :: dampen_count
+    PetscReal :: dampening_factor
   contains
     procedure, public :: Setup => PMRTSetup
     procedure, public :: ReadSimulationOptionsBlock => PMRTReadSimOptionsBlock
@@ -167,6 +173,12 @@ subroutine PMRTInit(pm_rt)
   nullify(pm_rt%converged_flag)
   nullify(pm_rt%converged_cell)
   nullify(pm_rt%converged_real)
+  pm_rt%norm_history = 0.d0
+  pm_rt%oscillation_count = 0
+  pm_rt%dampen_oscillatory_updates = PETSC_FALSE
+  pm_rt%dampen_update = PETSC_FALSE
+  pm_rt%dampen_count = 0
+  pm_rt%dampening_factor = 1.d0
 
 end subroutine PMRTInit
 
@@ -368,6 +380,8 @@ subroutine PMRTReadNewtonSelectCase(this,input,keyword,found, &
       call InputReadDouble(input,option,rt_itol_rel_update)
       call InputErrorMsg(input,option,keyword,error_string)
       this%check_post_convergence = PETSC_TRUE
+    case('DAMPEN_OSCILLATION')
+      this%dampen_oscillatory_updates = PETSC_TRUE
     case default
       found = PETSC_FALSE
 
@@ -552,6 +566,7 @@ recursive subroutine PMRTInitializeRun(this)
   use Variables_module, only : POROSITY
   use Material_Aux_module, only : POROSITY_BASE
   use Material_module, only : MaterialGetAuxVarVecLoc
+  use Global_module, only : GlobalWeightAuxVars
   use String_module, only : StringWrite
   use Utility_module, only : Equal
 
@@ -585,6 +600,11 @@ recursive subroutine PMRTInitializeRun(this)
 !    call CondControlAssignTranInitCond(this%realization)
 !  endif
 
+  if (this%option%iflowmode /= NULL_MODE) then
+    ! at this point, global_auxvars%xxx_store(:,1) holds the correct values
+    ! and weighting by 0. obtains that value
+    call GlobalWeightAuxVars(this%realization,0.d0)
+  endif
   ! update boundary concentrations so that activity coefficients can be
   ! calculated at first time step
   !geh: need to update cells also, as the flow solution may have changed
@@ -741,6 +761,11 @@ subroutine PMRTPreSolve(this)
                  this%realization%field%tran_log_xx,ierr);CHKERRQ(ierr)
     call VecLog(this%realization%field%tran_log_xx,ierr);CHKERRQ(ierr)
   endif
+  this%norm_history = 0.d0
+  this%oscillation_count = 0
+  this%dampen_update = PETSC_FALSE
+  this%dampen_count = 0
+  this%dampening_factor = 1.d0
 
   call DataMediatorUpdate(this%realization%tran_data_mediator_list, &
                           this%realization%field%tran_mass_transfer, &
@@ -770,7 +795,7 @@ subroutine PMRTFinalizeTimestep(this)
   ! Date: 04/03/13
   !
 
-  use Reactive_Transport_module, only : RTMaxChange
+  use Reactive_Transport_module
   use Variables_module, only : POROSITY
   use Material_module, only : MaterialGetAuxVarVecLoc
   use Material_Aux_module, only : POROSITY_BASE
@@ -794,6 +819,8 @@ subroutine PMRTFinalizeTimestep(this)
     call RealizationUpdatePropertiesTS(this%realization)
   endif
 
+  ! this update of rates is only for the max_volfrac_change below.
+  call RTUpdateMineralKineticRates(this%realization)
   call RTMaxChange(this%realization,this%max_concentration_change, &
                    this%max_volfrac_change)
   write(this%option%io_buffer,'("  --> max change:  dcmx= ",1pe12.4,&
@@ -986,7 +1013,6 @@ subroutine PMRTDebugDerivatives(this,snes,xx,A,B,ierr)
   use Petsc_Utility_module
   use Debug_module
 
-#include "petsc/finclude/petscsys.h"
   implicit none
 
   class(pm_rt_type) :: this
@@ -1077,9 +1103,13 @@ subroutine PMRTCheckUpdatePre(this,snes,X,dX,changed,ierr)
   grid => this%realization%patch%grid
   reaction => this%realization%reaction
 
-  call VecGetArrayF90(dX,dC_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(dX,dC_p,ierr);CHKERRQ(ierr)
 
   if (reaction%use_log_formulation) then
+    if (this%dampen_update) then
+      dC_p(:) = log(this%dampening_factor*exp(dC_p(:)) + &
+                    (1.d0-this%dampening_factor))
+    endif
     ! C and dC are actually lnC and dlnC
     dC_p = dsign(1.d0,dC_p)*min(dabs(dC_p),reaction%max_dlnC)
     ! at this point, it does not matter whether "changed" is set to true,
@@ -1087,22 +1117,25 @@ subroutine PMRTCheckUpdatePre(this,snes,X,dX,changed,ierr)
     ! time checking for changes and performing an allreduce for log
     ! formulation.
     if (Initialized(reaction%truncated_concentration)) then
-      call VecGetArrayReadF90(X,C_p,ierr);CHKERRQ(ierr)
+      call VecGetArrayRead(X,C_p,ierr);CHKERRQ(ierr)
       dC_p = min(C_p-log(reaction%truncated_concentration),dC_p)
-      call VecRestoreArrayReadF90(X,C_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArrayRead(X,C_p,ierr);CHKERRQ(ierr)
     endif
     if (this%debug_update) then
-      call VecGetArrayReadF90(X,C_p,ierr);CHKERRQ(ierr)
+      call VecGetArrayRead(X,C_p,ierr);CHKERRQ(ierr)
       write(*,'("C: ",10es15.6)') exp(C_p(:))
       write(*,'("dC: ",10es15.6)') exp(C_p(:)-dC_p(:))-exp(C_p(:))
       write(*,'("dlnC: ",10es15.6)') -dC_p(:)
       write(*,'("dC/C: ",10es15.6)') &
         (exp(C_p(:)-dC_p(:))-exp(C_p(:)))/exp(C_p(:))
-      call VecRestoreArrayReadF90(X,C_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArrayRead(X,C_p,ierr);CHKERRQ(ierr)
     endif
   else
+    if (this%dampen_update) then
+      dC_p(:) = this%dampening_factor*dC_p(:)
+    endif
     call VecGetLocalSize(X,n,ierr);CHKERRQ(ierr)
-    call VecGetArrayReadF90(X,C_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(X,C_p,ierr);CHKERRQ(ierr)
     if (Initialized(reaction%truncated_concentration)) then
       dC_p = min(dC_p,C_p-reaction%truncated_concentration)
     else
@@ -1156,10 +1189,10 @@ subroutine PMRTCheckUpdatePre(this,snes,X,dX,changed,ierr)
         write(*,'("dC/C: ",10es15.6)') -dC_p(:)/C_p(:)
       endif
     endif
-    call VecRestoreArrayReadF90(X,C_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(X,C_p,ierr);CHKERRQ(ierr)
   endif
 
-  call VecRestoreArrayF90(dX,dC_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(dX,dC_p,ierr);CHKERRQ(ierr)
 
 end subroutine PMRTCheckUpdatePre
 
@@ -1225,10 +1258,10 @@ subroutine PMRTCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
   if (this%check_post_convergence .or. this%print_ekg) then
     relative_change = 0.d0
     scaled_residual = 0.d0
-    call VecGetArrayReadF90(dX,dC_p,ierr);CHKERRQ(ierr)
-    call VecGetArrayReadF90(X0,C0_p,ierr);CHKERRQ(ierr)
-    call VecGetArrayReadF90(field%tran_r,r_p,ierr);CHKERRQ(ierr)
-    call VecGetArrayReadF90(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(dX,dC_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(X0,C0_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(field%tran_r,r_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
     do local_id = 1, grid%nlmax
       offset = (local_id-1)*option%ntrandof
       natural_id = grid%nG2A(grid%nL2G(local_id))
@@ -1260,10 +1293,10 @@ subroutine PMRTCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
         endif
       enddo
     enddo
-    call VecRestoreArrayReadF90(dX,dC_p,ierr);CHKERRQ(ierr)
-    call VecRestoreArrayReadF90(X0,C0_p,ierr);CHKERRQ(ierr)
-    call VecRestoreArrayReadF90(field%tran_r,r_p,ierr);CHKERRQ(ierr)
-    call VecRestoreArrayReadF90(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(dX,dC_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(X0,C0_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(field%tran_r,r_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
     mpi_int = option%ntrandof
     call MPI_Allreduce(MPI_IN_PLACE,this%converged_real,mpi_int, &
                        MPI_DOUBLE_PRECISION,MPI_MAX, &
@@ -1320,6 +1353,10 @@ subroutine PMRTCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
   PetscInt :: i
   PetscReal :: inorm_residual
   PetscReal :: tempreal
+  PetscReal, parameter :: tol = 1.d-2
+  PetscReal, parameter :: pert = 1.d-40
+  PetscBool :: found
+  PetscInt :: local_reason_flag
 
   option => this%option
 
@@ -1361,30 +1398,45 @@ subroutine PMRTCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
     call SNESConvergedDefault(snes,it,xnorm,unorm,fnorm,reason, &
                               0,ierr);CHKERRQ(ierr)
 
-    if (option%convergence /= CONVERGENCE_CONVERGED .and. reason == -9) then
+    if (option%convergence /= CONVERGENCE_CONVERGED .and. &
+        reason == SNES_DIVERGED_DTOL) then
       write(out_string,'(i3," 2r:",es9.2," 2x:",es9.2," 2u:",es9.2, &
             & " -diverged")') it, fnorm, xnorm, unorm
       call PrintMsg(option,out_string)
       return
     endif
 
+    local_reason_flag = 0
+    if (reason == SNES_CONVERGED_FNORM_ABS) then
+      local_reason_flag = 2
+    endif
+    if (reason == SNES_CONVERGED_FNORM_RELATIVE) then
+      local_reason_flag = 3
+    endif
+    if (reason == SNES_CONVERGED_SNORM_RELATIVE) then
+      local_reason_flag = 4
+    endif
+
     if (Initialized(rt_itol_abs_update) .and. &
         this%converged_flag(ABS_UPDATE_INDEX)) then
-      reason = 13
+      local_reason_flag = 13
+      reason = SNES_CONVERGED_USER
     endif
 
     if (Initialized(rt_itol_scaled_res) .and. &
         this%converged_flag(SCALED_RESIDUAL_INDEX)) then
-      reason = 12
+      local_reason_flag = 12
+      reason = SNES_CONVERGED_USER
     endif
 
     if (Initialized(rt_itol_rel_update) .and. &
         this%converged_flag(REL_UPDATE_INDEX)) then
-      reason = 11
+      local_reason_flag = 11
+      reason = SNES_CONVERGED_USER
     endif
 
     if (it < this%solver%newton_min_iterations) then
-      reason = 0
+      reason = SNES_CONVERGED_ITERATING
     endif
 
     call SNESGetFunction(snes,residual_vec,PETSC_NULL_FUNCTION, &
@@ -1392,23 +1444,23 @@ subroutine PMRTCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
     call VecNorm(residual_vec,NORM_INFINITY,inorm_residual, &
                  ierr);CHKERRQ(ierr)
 
-      icount = int(reason)
-      select case(icount)
-        case(2)
-          rsn_string = 'atol'
-        case(3)
-          rsn_string = 'rtol'
-        case(4)
-          rsn_string = 'stol'
-        case(11)
-          rsn_string = 'itol_rel_upd'
-        case(12)
-          rsn_string = 'itol_scl_res'
-        case(13)
-          rsn_string = 'itol_abs_upd'
-        case default
-          write(rsn_string,'(i3)') reason
-      end select
+    icount = int(local_reason_flag)
+    select case(icount)
+      case(2)
+        rsn_string = 'atol'
+      case(3)
+        rsn_string = 'rtol'
+      case(4)
+        rsn_string = 'stol'
+      case(11)
+        rsn_string = 'itol_rel_upd'
+      case(12)
+        rsn_string = 'itol_scl_res'
+      case(13)
+        rsn_string = 'itol_abs_upd'
+      case default
+        write(rsn_string,'(i3)') reason
+    end select
 
     write(out_string,'(i3)') it
     icount = 5
@@ -1476,6 +1528,44 @@ subroutine PMRTCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
     call ConvergenceTest(snes,it,xnorm,unorm,fnorm,reason, &
                         this%realization%patch%grid, &
                         this%option,this%solver,ierr)
+  endif
+
+  ! check for oscillatory convergence
+  this%norm_history = cshift(this%norm_history,shift=-1,dim=2)
+  this%norm_history(1,1) = fnorm
+  if (this%norm_history(1,5) > 0.d0) then
+    found = PETSC_FALSE
+    do i = 2, 7
+      if (maxval(dabs((this%norm_history(:,1)-this%norm_history(:,i))/ &
+                      (this%norm_history(:,1)+pert))) < tol) then
+        ! check next 2 sets of numbers
+        if (maxval(dabs((this%norm_history(:,2)-this%norm_history(:,i+1))/ &
+                        (this%norm_history(:,2)+pert))) < tol .and. &
+            maxval(dabs((this%norm_history(:,3)-this%norm_history(:,i+2))/ &
+                        (this%norm_history(:,3)+pert))) < tol) then
+          found = PETSC_TRUE
+        endif
+      endif
+    enddo
+    if (found) then
+      this%option%io_buffer = 'Potential oscillatory convergence'
+      call PrintWrnMsg(this%option)
+      this%oscillation_count = this%oscillation_count + 1
+      if (this%dampen_oscillatory_updates) then
+        if (mod(this%oscillation_count,2) == 0) then
+          this%dampen_update = PETSC_TRUE
+          this%dampening_factor = 0.6d0
+        endif
+      endif
+    else
+      this%oscillation_count = 0
+      if (this%dampen_count > 3) then
+        this%dampen_update = PETSC_FALSE
+        this%dampening_factor = 1.d0
+        this%dampen_count = 0
+      endif
+    endif
+    if (this%dampen_update) this%dampen_count = this%dampen_count + 1
   endif
 
 end subroutine PMRTCheckConvergence
@@ -1676,6 +1766,9 @@ subroutine PMRTCheckpointBinary(this,viewer)
   ! Author: Glenn Hammond
   ! Date: 07/29/13
   !
+#include <petsc/finclude/petscbag.h>
+  use petscbag
+
   use Option_module
   use Realization_Subsurface_class
   use Realization_Base_class
@@ -1696,6 +1789,7 @@ subroutine PMRTCheckpointBinary(this,viewer)
 
   interface PetscBagGetData
     subroutine PetscBagGetData(bag,header,ierr)
+      use petscbag
       import :: pm_rt_header_type
       implicit none
       PetscBag :: bag
@@ -1730,7 +1824,7 @@ subroutine PMRTCheckpointBinary(this,viewer)
   grid => realization%patch%grid
   patch => realization%patch
 
-  global_vec = PETSC_NULL_VEC
+  PetscObjectNullify(global_vec)
 
   bagsize = size(transfer(dummy_header,dummy_char))
 
@@ -1759,7 +1853,7 @@ subroutine PMRTCheckpointBinary(this,viewer)
   if (option%ntrandof > 0) then
     call VecView(field%tran_xx,viewer,ierr);CHKERRQ(ierr)
     ! create a global vec for writing below
-    if (global_vec == PETSC_NULL_VEC) then
+    if (PetscObjectIsNull(global_vec)) then
       call DiscretizationCreateVector(realization%discretization,ONEDOF, &
                                       global_vec,GLOBAL,option)
     endif
@@ -1844,7 +1938,7 @@ subroutine PMRTCheckpointBinary(this,viewer)
     endif
   endif
 
-  if (global_vec /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(global_vec)) then
     call VecDestroy(global_vec,ierr);CHKERRQ(ierr)
   endif
 
@@ -1859,6 +1953,9 @@ subroutine PMRTRestartBinary(this,viewer)
   ! Author: Glenn Hammond
   ! Date: 07/29/13
   !
+#include <petsc/finclude/petscbag.h>
+  use petscbag
+
   use Option_module
   use Realization_Subsurface_class
   use Realization_Base_class
@@ -1880,6 +1977,7 @@ subroutine PMRTRestartBinary(this,viewer)
 
   interface PetscBagGetData
     subroutine PetscBagGetData(bag,header,ierr)
+      use petscbag
       import :: pm_rt_header_type
       implicit none
       PetscBag :: bag
@@ -1914,8 +2012,8 @@ subroutine PMRTRestartBinary(this,viewer)
   grid => realization%patch%grid
   patch => realization%patch
 
-  global_vec = PETSC_NULL_VEC
-  local_vec = PETSC_NULL_VEC
+  PetscObjectNullify(global_vec)
+  PetscObjectNullify(local_vec)
 
   bagsize = size(transfer(dummy_header,dummy_char))
 
@@ -1932,7 +2030,7 @@ subroutine PMRTRestartBinary(this,viewer)
                                     field%tran_xx_loc,NTRANDOF)
   call VecCopy(field%tran_xx,field%tran_yy,ierr);CHKERRQ(ierr)
 
-  if (global_vec == PETSC_NULL_VEC) then
+  if (PetscObjectIsNull(global_vec)) then
     call DiscretizationCreateVector(realization%discretization,ONEDOF, &
                                     global_vec,GLOBAL,option)
   endif
@@ -2026,10 +2124,10 @@ subroutine PMRTRestartBinary(this,viewer)
   endif
 
   ! We are finished, so clean up.
-  if (global_vec /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(global_vec)) then
     call VecDestroy(global_vec,ierr);CHKERRQ(ierr)
   endif
-  if (local_vec /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(local_vec)) then
     call VecDestroy(local_vec,ierr);CHKERRQ(ierr)
   endif
 

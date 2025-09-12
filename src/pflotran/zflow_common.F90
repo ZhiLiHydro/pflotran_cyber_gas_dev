@@ -1,4 +1,5 @@
 module ZFlow_Common_module
+#include "petsc/finclude/petscsys.h"
 
   use ZFlow_Aux_module
   use Global_Aux_module
@@ -10,7 +11,6 @@ module ZFlow_Common_module
 
   private
 
-#include "petsc/finclude/petscsys.h"
 
 #define SOLUTE_TRANSPORT
 
@@ -32,6 +32,7 @@ module ZFlow_Common_module
                          dResdparamup,dResdparamdn, &
                          calculate_derivatives, &
                          debug_connection)
+      use petscsys
       use ZFlow_Aux_module
       use Global_Aux_module
       use Option_module
@@ -63,6 +64,7 @@ module ZFlow_Common_module
                            dResdparamdn, &
                            calculate_derivatives, &
                            debug_connection)
+      use petscsys
       use ZFlow_Aux_module
       use Global_Aux_module
       use Option_module

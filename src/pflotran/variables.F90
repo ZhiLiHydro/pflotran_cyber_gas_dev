@@ -1,6 +1,7 @@
 module Variables_module
 
 #include "petsc/finclude/petscsys.h"
+  use petscsys
 
   implicit none
 
@@ -107,6 +108,11 @@ module Variables_module
   PetscInt, parameter, public :: GEOMECH_REL_DISP_X      = 87
   PetscInt, parameter, public :: GEOMECH_REL_DISP_Y      = 88
   PetscInt, parameter, public :: GEOMECH_REL_DISP_Z      = 89
+  PetscInt, parameter, public :: YOUNGS_MODULUS          = 186
+  PetscInt, parameter, public :: POISSONS_RATIO          = 187
+  PetscInt, parameter, public :: ROCK_DENSITY            = 188
+  PetscInt, parameter, public :: BIOT_COEFF              = 189
+  PetscInt, parameter, public :: THERMAL_EXP_COEFF       = 190
 
   PetscInt, parameter, public :: VOLUME                  = 90
   PetscInt, parameter, public :: TORTUOSITY              = 91
@@ -219,5 +225,6 @@ module Variables_module
 
   PetscInt, parameter, public :: WELL_BHP = 171
   PetscInt, parameter, public :: TOTAL_LIQUID_HEAD             = 172
+  PetscInt, parameter, public :: WATER_ACTIVITY_COEFFICIENT = 173
 
 end module Variables_module

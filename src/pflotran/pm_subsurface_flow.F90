@@ -569,7 +569,7 @@ subroutine PMSubsurfaceFlowSetSoilRefPres(realization)
   material_property_array => patch%material_property_array
   material_auxvars => patch%aux%Material%auxvars
 
-  dataset_vec = PETSC_NULL_VEC
+  PetscObjectNullify(dataset_vec)
 
   if (option%iflowmode == PNF_MODE) return
 
@@ -585,7 +585,7 @@ subroutine PMSubsurfaceFlowSetSoilRefPres(realization)
                                    realization%field%work, &
                                    realization%field%work_loc, &
                                    ONEDOF)
-  call VecGetArrayReadF90(realization%field%work_loc,vec_loc_p, &
+  call VecGetArrayRead(realization%field%work_loc,vec_loc_p, &
                           ierr);CHKERRQ(ierr)
 
   ref_pres_set_by_initial = PETSC_FALSE
@@ -595,7 +595,7 @@ subroutine PMSubsurfaceFlowSetSoilRefPres(realization)
             patch%material_property_array(material_id)%ptr
     if (.not.associated(material_property)) cycle
     if (associated(material_property%soil_reference_pressure_dataset)) then
-      if (dataset_vec == PETSC_NULL_VEC) then
+      if (PetscObjectIsNull(dataset_vec)) then
         call DiscretizationDuplicateVector(realization%discretization, &
                                            realization%field%work_loc, &
                                            dataset_vec)
@@ -629,7 +629,7 @@ subroutine PMSubsurfaceFlowSetSoilRefPres(realization)
     else
       cycle
     endif
-    call VecGetArrayReadF90(vec_int_ptr,vec_loc_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(vec_int_ptr,vec_loc_p,ierr);CHKERRQ(ierr)
     do ghosted_id = 1, grid%ngmax
       if (patch%imat(ghosted_id) /= material_property%internal_id) cycle
       if (associated(material_auxvars(ghosted_id)%fracture)) then
@@ -640,7 +640,7 @@ subroutine PMSubsurfaceFlowSetSoilRefPres(realization)
                                   SOIL_REFERENCE_PRESSURE, &
                                   vec_loc_p(ghosted_id))
     enddo
-    call VecRestoreArrayReadF90(vec_int_ptr,vec_loc_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(vec_int_ptr,vec_loc_p,ierr);CHKERRQ(ierr)
   enddo
 
   if (ref_pres_set_by_initial .and. option%time > 0.d0) then
@@ -650,7 +650,7 @@ subroutine PMSubsurfaceFlowSetSoilRefPres(realization)
     call PrintErrMsg(option)
   endif
 
-  if (dataset_vec /= PETSC_NULL_VEC) then
+  if (.not.PetscObjectIsNull(dataset_vec)) then
     call VecDestroy(dataset_vec,ierr);CHKERRQ(ierr)
   endif
 
@@ -719,7 +719,8 @@ subroutine PMSubsurfaceFlowInitializeTimestepB(this)
 
   if (this%option%flow%store_state_variables_in_global) then
     ! store initial saturations for transport
-    call GlobalUpdateAuxVars(this%realization,TIME_T,this%option%time)
+    call GlobalSetAuxVarsAtTimeLevel(this%realization,TIME_T, &
+                                     this%option%time)
     if (this%store_porosity_for_transport) then
       ! store time t properties for transport
       call MaterialGetAuxVarVecLoc(this%realization%patch%aux%Material, &
@@ -989,7 +990,8 @@ subroutine PMSubsurfaceFlowFinalizeTimestep(this)
 
   if (this%option%flow%store_state_variables_in_global) then
     ! store final saturations, etc. for transport
-    call GlobalUpdateAuxVars(this%realization,TIME_TpDT,this%option%time)
+    call GlobalSetAuxVarsAtTimeLevel(this%realization,TIME_TpDT, &
+                                     this%option%time)
     if (this%store_porosity_for_transport) then
       ! store time t properties for transport
       call MaterialGetAuxVarVecLoc(this%realization%patch%aux%Material, &
@@ -1171,7 +1173,8 @@ subroutine PMSubsurfaceFlowRestartUpdate(this)
   endif
   call this%UpdateAuxVars()
   ! push pressures, saturations, etc. to global object
-  call GlobalUpdateAuxVars(this%realization,TIME_NULL,UNINITIALIZED_DOUBLE)
+  call GlobalSetAuxVarsAtTimeLevel(this%realization,TIME_NULL, &
+                                   UNINITIALIZED_DOUBLE)
   call this%UpdateSolution()
 
 end subroutine PMSubsurfaceFlowRestartUpdate

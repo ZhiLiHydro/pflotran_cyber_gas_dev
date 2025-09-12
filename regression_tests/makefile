@@ -110,12 +110,17 @@ STANDARD_CFG = \
 	geomech/uniaxial_loading/uniaxial_loading.cfg \
 	geomech/uniaxial_loading_biot/uniaxial_loading_biot.cfg \
 	geomech/terzaghi/terzaghi.cfg \
+	geomech/simple_tet_cube/simple_tet_cube.cfg \
+	geomech/spatially_varying/spatially_varying.cfg \
 	geophys/ert/ert.cfg \
 	geothermal_hpt/1D_Calcite/calcite_hpt.cfg\
 	inversion/inversion.cfg \
 	ngee/ngee.cfg \
 	pnf/unit_cube/unit_cube.cfg \
 	ntrdc/ntrdc.cfg \
+	multiphysics/hm/hm.cfg \
+	multiphysics/thm/thm.cfg \
+	multiphysics/thmce/thmce.cfg \
 	shortcourse/1D_Calcite/calcite.cfg \
 	shortcourse/1D_variably_saturated_flow/vsat_flow.cfg \
 	shortcourse/copper_leaching/cu_leaching.cfg \
@@ -123,6 +128,7 @@ STANDARD_CFG = \
 	shortcourse/electron_tower/electron_tower.cfg \
 	surfaceflow/inlinesurface/inlinesurface.cfg \
 	ufd/ufd.cfg \
+	well_model/richards/richards.cfg \
 	wipp/nuts/nuts.cfg \
 	wipp/transport/batch/wipp_batch.cfg \
 	wipp/transport/wipp_regular.cfg \
@@ -169,7 +175,10 @@ GEOMECHANICS_CFG = \
 	geomech/uniaxial_loading_biot/uniaxial_loading_biot.cfg \
 	geomech/uniaxial_strain/uniaxial_strain.cfg \
 	geomech/uniaxial_strain_tets/uniaxial_strain_tets.cfg \
-	geomech/terzaghi/terzaghi.cfg
+	geomech/terzaghi/terzaghi.cfg \
+	geomech/spatially_varying/spatially_varying.cfg \
+	multiphysics/hm/hm.cfg \
+	multiphysics/thm/thm.cfg
 
 FLOW_CFG = \
 	default/543/543.cfg \
@@ -201,7 +210,8 @@ TRANSPORT_CFG = \
 	wipp/well_model/well.cfg
 
 GEOPHYSICS_CFG = \
-	geophys/ert/ert.cfg
+	geophys/ert/ert.cfg \
+	multiphysics/thmce/thmce.cfg
 
 INVERSE_CFG = \
 	inversion/inversion.cfg

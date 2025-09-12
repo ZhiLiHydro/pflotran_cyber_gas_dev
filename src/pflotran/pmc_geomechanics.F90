@@ -1,14 +1,13 @@
 module PMC_Geomechanics_class
 
-#include "petsc/finclude/petscsys.h"
-  use petscsys
+#include "petsc/finclude/petscmat.h"
+  use petscmat
   use PMC_Base_class
   use Realization_Subsurface_class
   use Geomechanics_Realization_class
   use PFLOTRAN_Constants_module
 
   implicit none
-
 
   private
 
@@ -86,11 +85,8 @@ subroutine PMCGeomechanicsSetupSolvers(this)
   ! Author: Glenn Hammond
   ! Date: 03/18/13
   !
-#include "petsc/finclude/petscsnes.h"
-  use petscsnes
-  use Convergence_module
   use Geomechanics_Discretization_module
-  use Timestepper_Steady_class
+  use Timestepper_KSP_class
   use PM_Base_class
   use PM_Base_Pointer_module
   use Option_module
@@ -102,10 +98,8 @@ subroutine PMCGeomechanicsSetupSolvers(this)
 
   class(realization_geomech_type), pointer :: geomech_realization
   class(geomech_discretization_type), pointer :: geomech_discretization
-  class(timestepper_steady_type), pointer :: ts_steady
   type(solver_type), pointer :: solver
   type(option_type), pointer :: option
-  SNESLineSearch :: linesearch
   character(len=MAXSTRINGLENGTH) :: string
   PetscErrorCode :: ierr
 
@@ -114,27 +108,28 @@ subroutine PMCGeomechanicsSetupSolvers(this)
 #endif
 
   option => this%option
+  solver => this%timestepper%solver
   geomech_realization => this%geomech_realization
   geomech_discretization => geomech_realization%geomech_discretization
-  select type(ts => this%timestepper)
-    class is (timestepper_steady_type)
-      ts_steady => ts
-      solver => ts%solver
+
+  select type(ts=>this%timestepper)
+    class is(timestepper_KSP_type)
+    class default
+      option%io_buffer = 'A KSP timestepper must be used for geomechanics.'
+      call PrintErrMsg(option)
   end select
 
-  call PrintMsg(option,"  Beginning setup of GEOMECH SNES ")
+  call SolverCreateKSP(solver,option%mycomm)
+
+  call PrintMsg(option,"  Beginning setup of GEOMECH KSP")
+  call KSPSetOptionsPrefix(solver%ksp,"geomech_",ierr);CHKERRQ(ierr)
+  call SolverCheckCommandLine(solver)
 
   if (solver%M_mat_type == MATAIJ) then
     option%io_buffer = 'AIJ matrix not supported for geomechanics.'
     call PrintErrMsg(option)
   endif
 
-  call SolverCreateSNES(solver,option%mycomm,'geomech_',option)
-
-  if (solver%snes_type /= SNESNEWTONLS) then
-    option%io_buffer = 'Geomechanics only supports the LineSearch SNES_TYPE.'
-    call PrintErrMsg(option)
-  endif
 
   if (Uninitialized(solver%Mpre_mat_type) .and. &
       Uninitialized(solver%M_mat_type)) then
@@ -156,37 +151,27 @@ subroutine PMCGeomechanicsSetupSolvers(this)
                                          solver%Mpre_mat_type, &
                                          solver%Mpre,option)
 
-  solver%M = solver%Mpre
   call MatSetOptionsPrefix(solver%Mpre,"geomech_",ierr);CHKERRQ(ierr)
-
-  ! by default turn off line search
-  call SNESGetLineSearch(solver%snes,linesearch,ierr);CHKERRQ(ierr)
-  call SNESLineSearchSetType(linesearch,SNESLINESEARCHBASIC, &
-                             ierr);CHKERRQ(ierr)
+  solver%M = solver%Mpre
+  geomech_realization%geomech_field%A = solver%M
 
 
   ! Have PETSc do a SNES_View() at the end of each solve if verbosity > 0.
-  if (option%verbosity >= 1) then
-    string = '-geomech_snes_view'
+  if (option%verbosity >= 2) then
+    string = '-geomech_ksp_view'
+    call PetscOptionsInsertString(PETSC_NULL_OPTIONS,string, &
+                                  ierr);CHKERRQ(ierr)
+    string = '-geomech_ksp_monitor'
     call PetscOptionsInsertString(PETSC_NULL_OPTIONS,string, &
                                   ierr);CHKERRQ(ierr)
   endif
 
-  option%io_buffer = 'Solver: ' // trim(solver%ksp_type)
-  call PrintMsg(option)
-  option%io_buffer = 'Preconditioner: ' // trim(solver%pc_type)
-  call PrintMsg(option)
 
-  call SNESSetConvergenceTest(solver%snes,PMCheckConvergencePtr,this%pm_ptr, &
-                              PETSC_NULL_FUNCTION,ierr);CHKERRQ(ierr)
-  call SNESSetFunction(solver%snes,this%pm_ptr%pm%residual_vec,PMResidualPtr, &
-                       this%pm_ptr,ierr);CHKERRQ(ierr)
-  call SNESSetJacobian(solver%snes,solver%M,solver%Mpre,PMJacobianPtr, &
-                       this%pm_ptr,ierr);CHKERRQ(ierr)
+  ! call KSPSetOperators(solver%ksp,solver%M,solver%Mpre,ierr);CHKERRQ(ierr)
 
-  call SolverSetSNESOptions(solver,option)
+  call SolverSetKSPOptions(solver,option)
 
-  call PrintMsg(option,"  Finished setting up GEOMECH SNES ")
+  call PrintMsg(option,"  Finished setting up GEOMECH KSP ")
 
 
 end subroutine PMCGeomechanicsSetupSolvers
@@ -222,9 +207,6 @@ recursive subroutine PMCGeomechanicsRunToTime(this,sync_time,stop_flag)
   class(pm_base_type), pointer :: cur_pm
 
   if (stop_flag == TS_STOP_FAILURE) return
-
-  ! jaa:  want to sync geomech dt with flow_dt (master)
-  this%timestepper%dt = this%option%flow_dt
 
   call this%PrintHeader()
   this%option%io_buffer = trim(this%name) // ':' // trim(this%pm_list%name)
@@ -330,9 +312,6 @@ subroutine PMCGeomechanicsSetAuxData(this)
   ! Author: Gautam Bisht, LBNL
   ! Date: 01/01/14
   !
-
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Option_module
   use Grid_module
   use Discretization_module
@@ -373,9 +352,9 @@ subroutine PMCGeomechanicsSetAuxData(this)
 
   select type(pmc => this)
     class is(pmc_geomechanics_type)
-      if (this%option%geomechanics%subsurf_coupling == &
+      if (this%option%geomechanics%flow_coupling == &
             GEOMECH_TWO_WAY_COUPLED .or. &
-          this%option%geomechanics%subsurf_coupling == &
+          this%option%geomechanics%geophysics_coupling == &
             GEOMECH_ERT_COUPLING) then
 
         grid => pmc%subsurf_realization%patch%grid
@@ -469,16 +448,16 @@ subroutine PMCGeomechanicsSetAuxData(this)
 #endif
 
         ! Strain
-        call VecGetArrayF90(pmc%sim_aux%subsurf_strain,strain_p, &
+        call VecGetArray(pmc%sim_aux%subsurf_strain,strain_p, &
                             ierr);CHKERRQ(ierr)
         ! Stress
-        call VecGetArrayF90(pmc%sim_aux%subsurf_stress,stress_p, &
+        call VecGetArray(pmc%sim_aux%subsurf_stress,stress_p, &
                             ierr);CHKERRQ(ierr)
 
-        if (this%option%geomechanics%subsurf_coupling == &
+        if (this%option%geomechanics%geophysics_coupling == &
                                 GEOMECH_ERT_COUPLING) then
           ! stress
-          call VecGetArrayF90(pmc%subsurf_realization%field%work, &
+          call VecGetArray(pmc%subsurf_realization%field%work, &
                               vec_ptr,ierr);CHKERRQ(ierr)
           do local_id = 1, grid%nlmax
             vec_ptr(local_id) = 0.d0
@@ -488,13 +467,13 @@ subroutine PMCGeomechanicsSetAuxData(this)
             enddo
             vec_ptr(local_id) = vec_ptr(local_id) / 3.d0
           enddo
-          call VecRestoreArrayF90(pmc%subsurf_realization%field%work, &
+          call VecRestoreArray(pmc%subsurf_realization%field%work, &
                                   vec_ptr,ierr);CHKERRQ(ierr)
           call DiscretizationGlobalToLocal( &
                  pmc%subsurf_realization%discretization, &
                  pmc%subsurf_realization%field%work, &
                  pmc%subsurf_realization%field%work_loc,ONEDOF)
-          call VecGetArrayF90(pmc%subsurf_realization%field%work_loc, &
+          call VecGetArray(pmc%subsurf_realization%field%work_loc, &
                               vec_ptr,ierr);CHKERRQ(ierr)
           parameter_index = ParameterGetIDFromName('geomechanics_stress', &
                                              pmc%subsurf_realization%option)
@@ -503,10 +482,10 @@ subroutine PMCGeomechanicsSetAuxData(this)
               Global%auxvars(ghosted_id)%parameters(parameter_index) = &
                 vec_ptr(ghosted_id)
           enddo
-          call VecRestoreArrayF90(pmc%subsurf_realization%field%work_loc, &
+          call VecRestoreArray(pmc%subsurf_realization%field%work_loc, &
                                   vec_ptr,ierr);CHKERRQ(ierr)
           ! strain
-          call VecGetArrayF90(pmc%subsurf_realization%field%work, &
+          call VecGetArray(pmc%subsurf_realization%field%work, &
                               vec_ptr,ierr);CHKERRQ(ierr)
           do local_id = 1, grid%nlmax
             vec_ptr(local_id) = 0.d0
@@ -516,13 +495,13 @@ subroutine PMCGeomechanicsSetAuxData(this)
             enddo
             !vec_ptr(local_id) = vec_ptr(local_id) / 3.d0
           enddo
-          call VecRestoreArrayF90(pmc%subsurf_realization%field%work, &
+          call VecRestoreArray(pmc%subsurf_realization%field%work, &
                                   vec_ptr,ierr);CHKERRQ(ierr)
           call DiscretizationGlobalToLocal( &
                  pmc%subsurf_realization%discretization, &
                  pmc%subsurf_realization%field%work, &
                  pmc%subsurf_realization%field%work_loc,ONEDOF)
-          call VecGetArrayF90(pmc%subsurf_realization%field%work_loc, &
+          call VecGetArray(pmc%subsurf_realization%field%work_loc, &
                               vec_ptr,ierr);CHKERRQ(ierr)
           parameter_index = ParameterGetIDFromName('geomechanics_strain', &
                                              pmc%subsurf_realization%option)
@@ -531,24 +510,24 @@ subroutine PMCGeomechanicsSetAuxData(this)
               Global%auxvars(ghosted_id)%parameters(parameter_index) = &
                 vec_ptr(ghosted_id)
           enddo
-          call VecRestoreArrayF90(pmc%subsurf_realization%field%work_loc, &
+          call VecRestoreArray(pmc%subsurf_realization%field%work_loc, &
                                   vec_ptr,ierr);CHKERRQ(ierr)
         endif
 
-        if (this%option%geomechanics%subsurf_coupling == &
+        if (this%option%geomechanics%flow_coupling == &
             GEOMECH_TWO_WAY_COUPLED) then
 
           ! Update porosity dataset in sim_aux%subsurf_por
-          call VecGetArrayF90(pmc%sim_aux%subsurf_por0,por0_p, &
+          call VecGetArray(pmc%sim_aux%subsurf_por0,por0_p, &
                               ierr);CHKERRQ(ierr)
-          call VecGetArrayF90(pmc%sim_aux%subsurf_por,por_p,ierr);CHKERRQ(ierr)
+          call VecGetArray(pmc%sim_aux%subsurf_por,por_p,ierr);CHKERRQ(ierr)
           ! Perm
-          call VecGetArrayF90(pmc%sim_aux%subsurf_perm0,perm0_p, &
+          call VecGetArray(pmc%sim_aux%subsurf_perm0,perm0_p, &
                               ierr);CHKERRQ(ierr)
-          call VecGetArrayF90(pmc%sim_aux%subsurf_perm,perm_p, &
+          call VecGetArray(pmc%sim_aux%subsurf_perm,perm_p, &
                               ierr);CHKERRQ(ierr)
           ! Flow
-          call VecGetArrayF90(pmc%subsurf_realization%field%flow_xx,press_p, &
+          call VecGetArray(pmc%subsurf_realization%field%flow_xx,press_p, &
                               ierr);CHKERRQ(ierr)
 
 
@@ -574,22 +553,22 @@ subroutine PMCGeomechanicsSetAuxData(this)
             perm_p(local_id) = perm_new
           enddo
 
-          call VecRestoreArrayF90(pmc%sim_aux%subsurf_por0,por0_p, &
+          call VecRestoreArray(pmc%sim_aux%subsurf_por0,por0_p, &
                                   ierr);CHKERRQ(ierr)
-          call VecRestoreArrayF90(pmc%sim_aux%subsurf_por,por_p, &
+          call VecRestoreArray(pmc%sim_aux%subsurf_por,por_p, &
                                   ierr);CHKERRQ(ierr)
-          call VecRestoreArrayF90(pmc%subsurf_realization%field%flow_xx,press_p, &
+          call VecRestoreArray(pmc%subsurf_realization%field%flow_xx,press_p, &
                                   ierr);CHKERRQ(ierr)
 
-          call VecRestoreArrayF90(pmc%sim_aux%subsurf_perm0,perm0_p, &
+          call VecRestoreArray(pmc%sim_aux%subsurf_perm0,perm0_p, &
                                   ierr);CHKERRQ(ierr)
-          call VecRestoreArrayF90(pmc%sim_aux%subsurf_perm,perm_p, &
+          call VecRestoreArray(pmc%sim_aux%subsurf_perm,perm_p, &
                                   ierr);CHKERRQ(ierr)
         endif
 
-        call VecRestoreArrayF90(pmc%sim_aux%subsurf_stress,stress_p, &
+        call VecRestoreArray(pmc%sim_aux%subsurf_stress,stress_p, &
                                 ierr);CHKERRQ(ierr)
-        call VecRestoreArrayF90(pmc%sim_aux%subsurf_strain,strain_p, &
+        call VecRestoreArray(pmc%sim_aux%subsurf_strain,strain_p, &
                                 ierr);CHKERRQ(ierr)
 
         call VecDestroy(geomech_vec,ierr);CHKERRQ(ierr)
@@ -612,8 +591,6 @@ subroutine PMCGeomechanicsGetAuxData(this)
   ! Date: 01/01/14
   !
 
-#include "petsc/finclude/petscvec.h"
-  use petscvec
   use Option_module
   use Geomechanics_Discretization_module
   use Geomechanics_Force_module

@@ -228,6 +228,7 @@ subroutine FactSubLinkSetupPMCLinkages(simulation,pm_flow,pm_tran, &
   use PM_Fracture_class
   use PM_SCO2_class
   use PM_Hydrate_class
+  use PM_Richards_class
   use PM_Parameter_class
   use PM_Ponded_Water_class
   use PM_Unit_Test_class
@@ -236,6 +237,7 @@ subroutine FactSubLinkSetupPMCLinkages(simulation,pm_flow,pm_tran, &
   use Realization_Subsurface_class
   use Option_module
   use Input_Aux_module
+  use Petsc_Utility_module
 
   implicit none
 
@@ -284,7 +286,7 @@ subroutine FactSubLinkSetupPMCLinkages(simulation,pm_flow,pm_tran, &
   if (associated(pm_waste_form)) &
     call FactSubLinkAddPMCWasteForm(simulation,pm_waste_form, &
                                     'PMC3PWasteForm',&
-                                    associated(pm_ufd_decay),input)
+                                    PUCast(associated(pm_ufd_decay)),input)
 
   if (associated(pm_ufd_decay)) then
     call FactSubLinkAddPMCUFDDecay(simulation,pm_ufd_decay, &
@@ -293,7 +295,7 @@ subroutine FactSubLinkSetupPMCLinkages(simulation,pm_flow,pm_tran, &
   if (associated(pm_ufd_biosphere)) then
     call FactSubLinkAddPMCUFDBiosphere(simulation,pm_ufd_biosphere, &
                                        'PMC3PUFDBiosphere',&
-                                       associated(pm_ufd_decay),input)
+                                       PUCast(associated(pm_ufd_decay)),input)
   endif
   if (associated(pm_auxiliary)) then
     call FactSubLinkAddPMCSalinity(simulation,pm_auxiliary,'SALINITY')
@@ -323,6 +325,8 @@ subroutine FactSubLinkSetupPMCLinkages(simulation,pm_flow,pm_tran, &
         class is (pm_sco2_type)
           pm_flow%pmwell_ptr => pm_well_list
         class is (pm_hydrate_type)
+          pm_flow%pmwell_ptr => pm_well_list
+        class is (pm_richards_type)
           pm_flow%pmwell_ptr => pm_well_list
       end select
     endif
@@ -565,7 +569,7 @@ subroutine FactSubLinkAddPMCWasteForm(simulation,pm_waste_form,pmc_name,&
   class(simulation_subsurface_type) :: simulation
   class(pm_waste_form_type), pointer :: pm_waste_form
   character(len=*) :: pmc_name
-  logical :: pm_ufd_decay_present
+  PetscBool :: pm_ufd_decay_present
   type(input_type), pointer :: input
 
   class(pmc_third_party_type), pointer :: pmc_waste_form
@@ -710,7 +714,7 @@ subroutine FactSubLinkAddPMCUFDBiosphere(simulation,pm_ufd_biosphere, &
   class(simulation_subsurface_type) :: simulation
   class(pm_ufd_biosphere_type), pointer :: pm_ufd_biosphere
   character(len=*) :: pmc_name
-  logical :: pm_ufd_decay_present
+  PetscBool :: pm_ufd_decay_present
   type(input_type), pointer :: input
 
   class(pmc_third_party_type), pointer :: pmc_ufd_biosphere
@@ -1068,11 +1072,12 @@ subroutine FactSubLinkAddPMCWell(simulation,pm_well_list,pmc_name,input)
 
     select case(option%iflowmode)
 
-      case (WF_MODE, SCO2_MODE, H_MODE)
+      case (WF_MODE, SCO2_MODE, H_MODE, RICHARDS_MODE)
 
       case default
         option%io_buffer = 'Currently, the WELLBORE_MODEL process model can &
-               &only be used with WIPP_FLOW mode, SCO2 mode, and HYDRATE mode.'
+               &only be used with WIPP_FLOW mode, SCO2 mode, RICHARDS mode &
+               &and HYDRATE mode.'
         call PrintErrMsg(option)
     end select
 

@@ -1,7 +1,8 @@
 module Init_Subsurface_Geomech_module
 
-#include "petsc/finclude/petscsnes.h"
-  use petscsnes
+#include "petsc/finclude/petscmat.h"
+  use petscmat
+
   use PFLOTRAN_Constants_module
 
   implicit none
@@ -97,6 +98,9 @@ subroutine InitSubsurfGeomechReadInput(geomech,geomech_solver, &
   use Solver_module
   use Units_module
   use Waypoint_module
+  use Dataset_Base_class
+  use Dataset_module
+  use Dataset_Common_HDF5_class
   use Utility_module, only : DeallocateArray, UtilityReadArray
   use Geomechanics_Attr_module
 
@@ -111,6 +115,8 @@ subroutine InitSubsurfGeomechReadInput(geomech,geomech_solver, &
   type(output_option_type), pointer :: output_option
 
   class(realization_geomech_type), pointer :: geomech_realization
+  class(dataset_base_type), pointer :: dataset
+
   type(geomech_discretization_type), pointer :: geomech_discretization
   type(geomech_material_property_type),pointer :: geomech_material_property
   type(geomech_grid_type), pointer :: grid
@@ -170,6 +176,17 @@ subroutine InitSubsurfGeomechReadInput(geomech,geomech_solver, &
                                 geomech_realization%geomech_material_properties)
         nullify(geomech_material_property)
 
+      case ('GEOMECHANICS_SET_REF_P_T_TO_IC')
+        option%geomechanics%set_ref_pres_and_temp_to_IC = PETSC_TRUE
+
+      !.........................................................................
+      ! Read geomechanics datasets
+      case ('GEOMECHANICS_DATASET')
+          nullify(dataset)
+          call DatasetRead(input,dataset,option)
+          call DatasetBaseAddToList(dataset,geomech_realization%geomech_datasets)
+          nullify(dataset)
+
       !.........................................................................
       case ('GEOMECHANICS_REGION')
         region => GeomechRegionCreate()
@@ -210,23 +227,9 @@ subroutine InitSubsurfGeomechReadInput(geomech,geomech_solver, &
         call GeomechRealizAddGeomechCoupler(geomech_realization,coupler)
         nullify(coupler)
 
-      !.........................................................................
-      case('NEWTON_SOLVER')
-        call InputReadCard(input,option,word,PETSC_FALSE)
-        call StringToUpper(word)
-        select case(word)
-          case('GEOMECHANICS')
-            call SolverReadNewton(geomech_solver,input,option)
-        end select
-
      !....................
-      case ('LINEAR_SOLVER')
-        call InputReadCard(input,option,word,PETSC_FALSE)
-        call StringToUpper(word)
-        select case(word)
-          case('GEOMECHANICS')
-            call SolverReadLinear(geomech_solver,input,option)
-        end select
+      case ('GEOMECHANICS_LINEAR_SOLVER')
+        call SolverReadLinear(geomech_solver,input,option)
 
       !.....................
       case ('GEOMECHANICS_REGRESSION')
@@ -367,7 +370,7 @@ subroutine InitSubsurfGeomechJumpStart(geomech)
 
   use Geomechanics_Realization_class
   use Option_module
-  use Timestepper_Steady_class
+  use Timestepper_KSP_class
   use Output_Aux_module
   use Output_module, only : Output, OutputPrintCouplers
   use Output_Geomechanics_module
@@ -383,7 +386,7 @@ subroutine InitSubsurfGeomechJumpStart(geomech)
 
   class(realization_geomech_type), pointer :: geomech_realization
   class(pmc_geomechanics_type), pointer :: geomech_pmc
-  class(timestepper_steady_type), pointer :: geomech_timestepper
+  class(timestepper_ksp_type), pointer :: geomech_timestepper
 
   PetscBool :: snapshot_plot_flag,observation_plot_flag,massbal_plot_flag
   PetscBool :: geomech_read
@@ -392,7 +395,7 @@ subroutine InitSubsurfGeomechJumpStart(geomech)
 
   geomech_realization => geomech%realization
   geomech_pmc => geomech%process_model_coupler
-  geomech_timestepper => TimestepperSteadyCast(geomech_pmc%timestepper)
+  geomech_timestepper => TimestepperKSPCast(geomech_pmc%timestepper)
 
   call PetscOptionsHasName(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER, &
                            "-vecload_block_size",failure,ierr);CHKERRQ(ierr)
@@ -548,7 +551,8 @@ subroutine InitSubsurfGeomechSetupRealization(subsurf_realization, &
 
   call GeomechRealizCreateDiscretization(geomech_realization)
 
-  if (option%geomechanics%subsurf_coupling /= 0) then
+  if (option%geomechanics%flow_coupling /= 0 .or. &
+      option%geomechanics%geophysics_coupling /= 0) then
     call GeomechCreateGeomechSubsurfVec(subsurf_realization, &
                                         geomech_realization)
     call GeomechCreateSubsurfStressStrainVec(subsurf_realization, &
@@ -609,6 +613,9 @@ subroutine InitMatPropToGeomechRegions(geomech_realization)
   PetscInt :: istart, iend
   character(len=MAXSTRINGLENGTH) :: dataset_name
   PetscErrorCode :: ierr
+
+  Vec :: temp_vec
+  PetscReal, pointer :: temp_vec_p(:)
 
   type(option_type), pointer :: option
   type(geomech_grid_type), pointer :: grid
@@ -681,7 +688,7 @@ subroutine InitMatPropToGeomechRegions(geomech_realization)
   ! set cell by cell material properties
   ! create null material property for inactive cells
   null_geomech_material_property => GeomechanicsMaterialPropertyCreate()
-  call VecGetArrayF90(field%imech_loc,imech_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%imech_loc,imech_loc_p,ierr);CHKERRQ(ierr)
   do local_id = 1, grid%nlmax_node
     ghosted_id = grid%nL2G(local_id)
     geomech_material_id = patch%imat(ghosted_id)
@@ -719,7 +726,98 @@ subroutine InitMatPropToGeomechRegions(geomech_realization)
     endif
     imech_loc_p(ghosted_id) = geomech_material_property%id
   enddo ! local_id - loop
-  call VecRestoreArrayF90(field%imech_loc,imech_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%imech_loc,imech_loc_p,ierr);CHKERRQ(ierr)
+
+  ! read in any user-defined geomech property fields
+  call GeomechDiscretizationDuplicateVector(geomech_discretization, &
+                                            field%press_loc, &
+                                            temp_vec)
+  do geomech_material_id = 1, size(patch%geomech_material_property_array)
+    geomech_material_property => &
+            patch%geomech_material_property_array(geomech_material_id)%ptr
+    if (.not.associated(geomech_material_property)) cycle
+    ! Young's modulus
+    if (associated(geomech_material_property%youngs_modulus_dataset)) then
+      ! Set the value of field%youngs_modulus for this material to the dataset values
+      call GeomechReadDatasetToVecWithMask(geomech_realization, &
+            geomech_material_property%youngs_modulus_dataset, &
+            geomech_material_property%id,PETSC_FALSE,field%youngs_modulus,temp_vec)
+    else
+      ! Set the value of field%youngs_modulus for this material to the constant value
+      call VecGetArray(field%youngs_modulus,temp_vec_p,ierr);CHKERRQ(ierr)
+      do local_id = 1, grid%nlmax_node
+        if (patch%imat(grid%nL2G(local_id)) == geomech_material_property%id) then
+          temp_vec_p(local_id) = geomech_material_property%youngs_modulus
+        endif
+      enddo
+      call VecRestoreArray(field%youngs_modulus,temp_vec_p,ierr);CHKERRQ(ierr)
+    endif
+    ! Poisson's ratio
+    if (associated(geomech_material_property%poissons_ratio_dataset)) then
+      ! Set the value of field%poissons_ratio for this material to the dataset values
+      call GeomechReadDatasetToVecWithMask(geomech_realization, &
+            geomech_material_property%poissons_ratio_dataset, &
+            geomech_material_property%id,PETSC_FALSE,field%poissons_ratio,temp_vec)
+    else
+      ! Set the value of field%poissons_ratio for this material to the constant value
+      call VecGetArray(field%poissons_ratio,temp_vec_p,ierr);CHKERRQ(ierr)
+      do local_id = 1, grid%nlmax_node
+        if (patch%imat(grid%nL2G(local_id)) == geomech_material_property%id) then
+          temp_vec_p(local_id) = geomech_material_property%poissons_ratio
+        endif
+      enddo
+      call VecRestoreArray(field%poissons_ratio,temp_vec_p,ierr);CHKERRQ(ierr)
+    endif
+    ! Density
+    if (associated(geomech_material_property%density_dataset)) then
+      ! Set the value of field%density for this material to the dataset values
+      call GeomechReadDatasetToVecWithMask(geomech_realization, &
+            geomech_material_property%density_dataset, &
+            geomech_material_property%id,PETSC_FALSE,field%density,temp_vec)
+    else
+      ! Set the value of field%density for this material to the constant value
+      call VecGetArray(field%density,temp_vec_p,ierr);CHKERRQ(ierr)
+      do local_id = 1, grid%nlmax_node
+        if (patch%imat(grid%nL2G(local_id)) == geomech_material_property%id) then
+          temp_vec_p(local_id) = geomech_material_property%density
+        endif
+      enddo
+      call VecRestoreArray(field%density,temp_vec_p,ierr);CHKERRQ(ierr)
+    endif
+    ! Biot's coefficient
+    if (associated(geomech_material_property%biot_coeff_dataset)) then
+      ! Set the value of field%biot_coeff for this material to the dataset values
+      call GeomechReadDatasetToVecWithMask(geomech_realization, &
+            geomech_material_property%biot_coeff_dataset, &
+            geomech_material_property%id,PETSC_FALSE,field%biot_coeff,temp_vec)
+    else
+      ! Set the value of field%biot_coeff for this material to the constant value
+      call VecGetArray(field%biot_coeff,temp_vec_p,ierr);CHKERRQ(ierr)
+      do local_id = 1, grid%nlmax_node
+        if (patch%imat(grid%nL2G(local_id)) == geomech_material_property%id) then
+          temp_vec_p(local_id) = geomech_material_property%biot_coeff
+        endif
+      enddo
+      call VecRestoreArray(field%biot_coeff,temp_vec_p,ierr);CHKERRQ(ierr)
+    endif
+    ! Thermal expansion coefficient
+    if (associated(geomech_material_property%thermal_exp_coeff_dataset)) then
+      ! Set the value of field%thermal_exp_coeff for this material to the dataset values
+      call GeomechReadDatasetToVecWithMask(geomech_realization, &
+            geomech_material_property%thermal_exp_coeff_dataset, &
+            geomech_material_property%id,PETSC_FALSE,field%thermal_exp_coeff,temp_vec)
+    else
+      ! Set the value of field%thermal_exp_coeff for this material to the constant value
+      call VecGetArray(field%thermal_exp_coeff,temp_vec_p,ierr);CHKERRQ(ierr)
+      do local_id = 1, grid%nlmax_node
+        if (patch%imat(grid%nL2G(local_id)) == geomech_material_property%id) then
+          temp_vec_p(local_id) = geomech_material_property%thermal_exp_coeff
+        endif
+      enddo
+      call VecRestoreArray(field%thermal_exp_coeff,temp_vec_p,ierr);CHKERRQ(ierr)
+    endif
+  enddo
+  call VecDestroy(temp_vec,ierr);CHKERRQ(ierr)
 
   call GeomechanicsMaterialPropertyDestroy(null_geomech_material_property)
   nullify(null_geomech_material_property)
@@ -756,7 +854,7 @@ subroutine InitSubsurfGeomechInitSimulation(simulation, pm_geomech)
   use Simulation_Aux_module
   use Realization_Subsurface_class
   use Realization_Base_class
-  use Timestepper_Steady_class
+  use Timestepper_KSP_class
   use Logging_module
   use Output_Aux_module
   use Waypoint_module
@@ -770,17 +868,22 @@ subroutine InitSubsurfGeomechInitSimulation(simulation, pm_geomech)
   class(realization_subsurface_type), pointer :: subsurf_realization
   class(realization_geomech_type), pointer :: geomech_realization
   class(pmc_base_type), pointer :: cur_process_model_coupler
+  class(pmc_base_type), pointer :: pmc_dummy
   type(gmdm_ptr_type), pointer :: dm_ptr
   class(pmc_geomechanics_type), pointer :: pmc_geomech
-  class(timestepper_steady_type), pointer :: timestepper
+  class(timestepper_ksp_type), pointer :: timestepper
   type(geomechanics_regression_type), pointer :: geomech_regression
   PetscErrorCode :: ierr
 
   if (.not. associated(pm_geomech)) return
 
+  nullify(pmc_dummy)
+
   option => simulation%option
   geomech_realization => simulation%geomech%realization
   subsurf_realization => simulation%realization
+  pmc_geomech => simulation%geomech%process_model_coupler
+  timestepper => TimestepperKSPCast(pmc_geomech%timestepper)
 
   geomech_regression => simulation%geomech%regression
 
@@ -792,8 +895,6 @@ subroutine InitSubsurfGeomechInitSimulation(simulation, pm_geomech)
                                                subsurf_realization)
   call pm_geomech%Setup()
 
-  pmc_geomech => simulation%geomech%process_model_coupler
-  timestepper => TimestepperSteadyCast(pmc_geomech%timestepper)
   call pmc_geomech%SetupSolvers()
 
   ! Here I first calculate the linear part of the jacobian and store it
@@ -803,7 +904,7 @@ subroutine InitSubsurfGeomechInitSimulation(simulation, pm_geomech)
   ! re-uses the linear Jacobian at all iterations and times
   call MatSetOption(timestepper%solver%M,MAT_NEW_NONZERO_ALLOCATION_ERR, &
                     PETSC_FALSE,ierr);CHKERRQ(ierr)
-  call GeomechForceJacobianLinearPart(timestepper%solver%M, &
+  call GeomechForceAssembleCoeffMatrix(timestepper%solver%M, &
                                       geomech_realization)
   call MatSetOption(timestepper%solver%M,MAT_NEW_NONZERO_ALLOCATION_ERR, &
                     PETSC_TRUE,ierr);CHKERRQ(ierr)
@@ -851,24 +952,25 @@ subroutine InitSubsurfGeomechInitSimulation(simulation, pm_geomech)
     simulation%flow_process_model_coupler
   ! link subsurface flow as peer
   ! jaa: set geomech as a child
-  simulation%process_model_coupler_list%child => &
-    pmc_geomech
+!  simulation%process_model_coupler_list%child => &
+!    pmc_geomech
+  call PMCBaseSetChildPeerPtr(pmc_geomech%CastToBase(),PM_CHILD, &
+                    simulation%flow_process_model_coupler%CastToBase(), &
+                    pmc_dummy,PM_APPEND)
 
   call InitSubsurfGeomechChkInactiveCells(geomech_realization, &
                                           subsurf_realization)
 
   ! Set data in sim_aux
   cur_process_model_coupler => simulation%process_model_coupler_list
-  call cur_process_model_coupler%SetAuxData()
-  if (associated(cur_process_model_coupler%child)) then
-    cur_process_model_coupler => cur_process_model_coupler%child
-    call cur_process_model_coupler%GetAuxData()
-    call cur_process_model_coupler%SetAuxData()
-    select type(pmc => cur_process_model_coupler)
-      class is(pmc_geomechanics_type)
-        call GeomechStoreInitialPressTemp(pmc%geomech_realization)
-    end select
-  endif
+  call simulation%flow_process_model_coupler%SetAuxData()
+  call simulation%geomech%process_model_coupler%GetAuxData()
+  call simulation%geomech%process_model_coupler%SetAuxData()
+  ! this is solely for casting to pmc geomech
+  select type(pmc => simulation%geomech%process_model_coupler)
+    class is(pmc_geomechanics_type)
+      call GeomechStoreInitialPressTemp(pmc%geomech_realization)
+  end select
 
   call InitSubsurfGeomechJumpStart(simulation%geomech)
 
@@ -948,14 +1050,14 @@ subroutine InitSubsurfGeomechChkInactiveCells(geomech_realization, &
               ierr);CHKERRQ(ierr)
   call VecSet(geomech_realization%geomech_field%press,-888.d0, &
               ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(geomech_realization%geomech_field%subsurf_vec_1dof, &
+  call VecGetArray(geomech_realization%geomech_field%subsurf_vec_1dof, &
               subsurf_vec_1dof,ierr);CHKERRQ(ierr)
   do subsurf_local_id = 1, subsurf_realization%patch%grid%nlmax
     subsurf_ghosted_id = subsurf_realization%patch%grid%nL2G(subsurf_local_id)
     subsurf_vec_1dof(subsurf_local_id) = subsurf_realization%patch%imat( &
                                                   subsurf_ghosted_id)
   enddo
-  call VecRestoreArrayF90(geomech_realization%geomech_field%subsurf_vec_1dof, &
+  call VecRestoreArray(geomech_realization%geomech_field%subsurf_vec_1dof, &
                           subsurf_vec_1dof,ierr);CHKERRQ(ierr)
   ! Scatter the data
   call VecScatterBegin(dm_ptr%gmdm%scatter_subsurf_to_geomech_ndof, &
@@ -966,7 +1068,7 @@ subroutine InitSubsurfGeomechChkInactiveCells(geomech_realization, &
                      geomech_realization%geomech_field%subsurf_vec_1dof, &
                      geomech_realization%geomech_field%press, &
                      INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(geomech_realization%geomech_field%press, &
+  call VecGetArray(geomech_realization%geomech_field%press, &
                       subsurf_vec_1dof, ierr);CHKERRQ(ierr)
   do geomech_local_id = 1, geomech_realization%geomech_patch%geomech_grid% &
                            nlmax_node
@@ -974,7 +1076,7 @@ subroutine InitSubsurfGeomechChkInactiveCells(geomech_realization, &
                          nL2G(geomech_local_id)
     if (nint(subsurf_vec_1dof(geomech_local_id)) <= 0) error_found = PETSC_TRUE
   enddo
-  call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_LOGICAL, &
+  call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_C_BOOL, &
                      MPI_LOR,option%mycomm,ierr);CHKERRQ(ierr)
   if (error_found)then
     option%io_buffer = 'Cannot map inactive flow cell to geomechanics '//&
@@ -1000,7 +1102,7 @@ subroutine InitSubsurfGeomechSetupPMC(simulation,pm_geomech, &
   use Input_Aux_module
   use PM_Geomechanics_Force_class
   use Geomechanics_Realization_class
-  use Timestepper_Steady_class
+  use Timestepper_KSP_class
   use PMC_Geomechanics_class
   use Output_Aux_module
   use Waypoint_module
@@ -1019,7 +1121,7 @@ subroutine InitSubsurfGeomechSetupPMC(simulation,pm_geomech, &
 
   class(pmc_geomechanics_type), pointer :: pmc_geomech
   class(realization_geomech_type), pointer :: geomech_realization
-  class(timestepper_steady_type), pointer :: timestepper
+  class(timestepper_ksp_type), pointer :: timestepper
 
   subsurf_realization => simulation%realization
   option => subsurf_realization%option
@@ -1044,7 +1146,7 @@ subroutine InitSubsurfGeomechSetupPMC(simulation,pm_geomech, &
   pm_geomech%subsurf_realization => simulation%realization
 
   ! add time integrator
-  timestepper => TimestepperSteadyCreate()
+  timestepper => TimestepperKSPCreate()
   pmc_geomech%timestepper => timestepper
 
   ! add solver
@@ -1141,6 +1243,90 @@ subroutine InitSubsurfGeomechReadSimBlock(input,pm)
   call InputPopBlock(input,option)
 
 end subroutine InitSubsurfGeomechReadSimBlock
+
+! ************************************************************************** !
+
+subroutine GeomechReadDatasetToVecWithMask(geomech_realization,dataset, &
+                                           geomech_material_id,read_all_values,vec,temp_vec)
+  !
+  ! Reads a geomechanics dataset into a PETSc Vec
+  ! (based on SubsurfReadDatasetToVecWithMask)
+  !
+  ! Author: Kyle Mosley, WSP
+  ! Date: 07/2025
+  !
+  use Geomechanics_Realization_class
+  use Geomechanics_Field_module
+  use Geomechanics_Grid_Aux_module
+  use Geomechanics_Patch_module
+  use Option_module
+  use Input_Aux_module
+  Use HDF5_module
+  Use Dataset_Base_class
+  use Dataset_Common_HDF5_class
+  use Dataset_Gridded_HDF5_class
+
+  implicit none
+
+  ! input/output declarations
+  class(realization_geomech_type) :: geomech_realization
+  class(dataset_base_type) :: dataset
+  PetscInt :: geomech_material_id
+  PetscBool :: read_all_values
+  Vec :: vec
+  Vec :: temp_vec
+
+  type(geomech_field_type), pointer :: field
+  type(geomech_patch_type), pointer :: patch
+  type(geomech_grid_type), pointer :: grid
+  type(option_type), pointer :: option
+  character(len=MAXSTRINGLENGTH) :: group_name
+  character(len=MAXSTRINGLENGTH) :: dataset_name
+  PetscInt :: local_id
+  PetscErrorCode :: ierr
+  PetscReal, pointer :: vec_p(:)
+  PetscReal, pointer :: work_p(:)
+
+  field => geomech_realization%geomech_field
+  patch => geomech_realization%geomech_patch
+  grid => patch%geomech_grid
+  option => geomech_realization%option
+
+  call VecGetArray(vec,vec_p,ierr);CHKERRQ(ierr)
+  if (index(dataset%filename,'.h5') > 0) then
+    group_name = ''
+    dataset_name = dataset%name
+    select type(dataset)
+    class is(dataset_common_hdf5_type)
+
+
+      dataset_name = dataset%hdf5_dataset_name
+      call HDF5ReadCellIndexedRealArrayGM(geomech_realization,temp_vec, &
+                                        dataset%filename, &
+                                        group_name,dataset_name, &
+                                        dataset%realization_dependent)
+      call VecGetArray(temp_vec,work_p,ierr);CHKERRQ(ierr)
+      if (read_all_values) then
+        do local_id = 1, grid%nlmax_node
+          vec_p(local_id) = work_p(local_id)
+        enddo
+      else
+        do local_id = 1, grid%nlmax_node
+          if (patch%imat(grid%nL2G(local_id)) == geomech_material_id) then
+            vec_p(local_id) = work_p(local_id)
+          endif
+        enddo
+      endif
+      call VecRestoreArray(temp_vec,work_p,ierr);CHKERRQ(ierr)
+    class default
+        option%io_buffer = 'Dataset "' // trim(dataset%name) // '" is of the &
+          &wrong type for GeomechReadDatasetToVecWithMask()'
+        call PrintErrMsg(option)
+    end select
+  endif
+  call VecRestoreArray(vec,vec_p,ierr);CHKERRQ(ierr)
+
+  end subroutine GeomechReadDatasetToVecWithMask
 
 ! ************************************************************************** !
 

@@ -293,6 +293,16 @@ subroutine PatchProcessCouplers(patch,flow_conditions,transport_conditions, &
   coupler => patch%boundary_condition_list%first
   do
     if (.not.associated(coupler)) exit
+
+    ! ensure named for mass balance output
+    if (option%compute_mass_balance_new .and. &
+        len_trim(coupler%name) == 0) then
+      option%io_buffer = 'All BOUNDARY_CONDITIONs &
+        &must be named in the input file to differentiate &
+        &MASS_BALANCE outputs.'
+      call PrintErrMsg(option)
+    endif
+
     ! pointer to region
     coupler%region => RegionGetPtrFromList(coupler%region_name, &
                                            patch%region_list)
@@ -437,6 +447,16 @@ subroutine PatchProcessCouplers(patch,flow_conditions,transport_conditions, &
   coupler => patch%source_sink_list%first
   do
     if (.not.associated(coupler)) exit
+
+    ! ensure named for mass balance output
+    if (option%compute_mass_balance_new .and. &
+        len_trim(coupler%name) == 0) then
+      option%io_buffer = 'All SOURCE_SINKs &
+        &must be named in the input file to differentiate &
+        &MASS_BALANCE outputs.'
+      call PrintErrMsg(option)
+    endif
+
     ! pointer to region
     coupler%region => RegionGetPtrFromList(coupler%region_name, &
                                            patch%region_list)
@@ -520,7 +540,7 @@ subroutine PatchProcessCouplers(patch,flow_conditions,transport_conditions, &
   coupler => patch%well_coupler_list%first
   ! catch flow modes that do not support the well model
   select case(option%iflowmode)
-    case(SCO2_MODE,H_MODE)
+    case(SCO2_MODE,H_MODE,RICHARDS_MODE)
     case(WF_MODE)
       if (associated(coupler)) then
         option%io_buffer = 'WIPP_FLOW has not been tested using a &
@@ -1585,6 +1605,7 @@ subroutine PatchUpdateCouplerAuxVarsG(patch,coupler,option)
   PetscReal :: relative_humidity
   PetscReal :: gas_sat, air_pressure, gas_pressure, liq_pressure, &
                precipitate_sat
+  PetscBool :: error_flag
 
   PetscReal :: dummy_real
   character(len=MAXSTRINGLENGTH) :: string
@@ -1602,6 +1623,7 @@ subroutine PatchUpdateCouplerAuxVarsG(patch,coupler,option)
   flow_condition => coupler%flow_condition
 
   general => flow_condition%general
+  error_flag = PETSC_FALSE
   dof1 = PETSC_FALSE
   dof2 = PETSC_FALSE
   dof3 = PETSC_FALSE
@@ -1741,9 +1763,12 @@ subroutine PatchUpdateCouplerAuxVarsG(patch,coupler,option)
               &within a HYDROSTATIC_BC boundary condition for GENERAL mode. &
               &A hydrostatic boundary condition may not be used to set &
               &state variables in the vadose zone for GENERAL mode.'
-            call PrintErrMsg(option)
+            call PrintMsgByRank(option)
+            error_flag = PETSC_TRUE
+            exit
           endif
         enddo
+        call PatchCheckError(error_flag,option)
         dof1 = PETSC_TRUE; dof2 = PETSC_TRUE; dof3 = PETSC_TRUE;
         if (general_salt) dof4 = PETSC_TRUE
       endif
@@ -2688,6 +2713,7 @@ subroutine PatchUpdateCouplerAuxVarsH(patch,coupler,option)
                liq_pressure, x_salt
   PetscReal :: dummy_real
   character(len=MAXSTRINGLENGTH) :: string
+  PetscBool :: error_flag
   PetscErrorCode :: ierr
 
   PetscInt :: num_connections
@@ -2702,6 +2728,7 @@ subroutine PatchUpdateCouplerAuxVarsH(patch,coupler,option)
   flow_condition => coupler%flow_condition
 
   hydrate => flow_condition%hydrate
+  error_flag = PETSC_FALSE
   dof1 = PETSC_FALSE
   dof2 = PETSC_FALSE
   dof3 = PETSC_FALSE
@@ -2818,9 +2845,12 @@ subroutine PatchUpdateCouplerAuxVarsH(patch,coupler,option)
               &within a HYDROSTATIC_BC boundary condition for HYDRATE mode. &
               &A hydrostatic boundary condition may not be used to set &
               &state variables in the vadose zone for HYDRATE mode.'
-            call PrintErrMsg(option)
+            call PrintMsgByRank(option)
+            error_flag = PETSC_TRUE
+            exit
           endif
         enddo
+        call PatchCheckError(error_flag,option)
         dof1 = PETSC_TRUE; dof2 = PETSC_TRUE; dof3 = PETSC_TRUE;
       endif
     case(G_STATE)
@@ -4365,6 +4395,11 @@ subroutine PatchUpdateCouplerAuxVarsRich(patch,coupler,option)
             flow_condition%pressure%aux_real(1)
         endif
     end select
+    ! TODO: JOE: I am not sure if I need this or not, I need to check!
+    ! if (richards_well_coupling == RICHARDS_FULLY_IMPLICIT_WELL) then
+    !   coupler%flow_aux_real_var(RICHARDS_WELL_DOF, 1:num_connections) = &
+    !               coupler%flow_aux_real_var(RICHARDS_PRESSURE_DOF,1:num_connections)
+    ! endif
   endif
   if (associated(flow_condition%saturation)) then
     call PatchUpdateCouplerSaturation(coupler,option,patch%grid, &
@@ -4621,6 +4656,7 @@ subroutine PatchUpdateCouplerAuxVarsSCO2(patch,coupler,option)
                co2_pressure
   PetscReal :: dummy_real
   character(len=MAXSTRINGLENGTH) :: string
+  PetscBool :: error_flag
   PetscErrorCode :: ierr
 
   PetscInt :: num_connections
@@ -4635,6 +4671,7 @@ subroutine PatchUpdateCouplerAuxVarsSCO2(patch,coupler,option)
   flow_condition => coupler%flow_condition
 
   sco2 => flow_condition%sco2
+  error_flag = PETSC_FALSE
   dof1 = PETSC_FALSE
   dof2 = PETSC_FALSE
   dof3 = PETSC_FALSE
@@ -4761,9 +4798,12 @@ subroutine PatchUpdateCouplerAuxVarsSCO2(patch,coupler,option)
               &within a HYDROSTATIC_BC boundary condition for SCO2 mode. &
               &A hydrostatic boundary condition may not be used to set &
               &state variables in the vadose zone for SCO2 mode.'
-            call PrintErrMsg(option)
+            call PrintMsgByRank(option)
+            error_flag = PETSC_TRUE
+            exit
           endif
         enddo
+        call PatchCheckError(error_flag,option)
         dof1 = PETSC_TRUE
         dof2 = PETSC_TRUE
         dof3 = PETSC_TRUE
@@ -4805,9 +4845,12 @@ subroutine PatchUpdateCouplerAuxVarsSCO2(patch,coupler,option)
               &within a HYDROSTATIC_BC boundary condition for SCO2 mode. &
               &A hydrostatic boundary condition may not be used to set &
               &state variables in the vadose zone for SCO2 mode.'
-            call PrintErrMsg(option)
+            call PrintMsgByRank(option)
+            error_flag = PETSC_TRUE
+            exit
           endif
         enddo
+        call PatchCheckError(error_flag,option)
         dof1 = PETSC_TRUE
         dof2 = PETSC_TRUE
         dof3 = PETSC_TRUE
@@ -5641,9 +5684,8 @@ subroutine PatchScaleSourceSink(patch,source_sink,iscale_type,option)
   ! Author: Glenn Hammond
   ! Date: 01/12/11
   !
-
-#include "petsc/finclude/petscdmda.h"
   use petscdmda
+
   use Option_module
   use Field_module
   use Coupler_module
@@ -5685,7 +5727,7 @@ subroutine PatchScaleSourceSink(patch,source_sink,iscale_type,option)
   grid => patch%grid
 
   call VecZeroEntries(field%work,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(field%work,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%work,vec_ptr,ierr);CHKERRQ(ierr)
 
   inactive_found = PETSC_FALSE
   cur_connection_set => source_sink%connection_set
@@ -5770,7 +5812,7 @@ subroutine PatchScaleSourceSink(patch,source_sink,iscale_type,option)
       call PrintErrMsg(option)
   end select
 
-  call VecRestoreArrayF90(field%work,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%work,vec_ptr,ierr);CHKERRQ(ierr)
   call VecNorm(field%work,NORM_1,scale,ierr);CHKERRQ(ierr)
   if (scale < 1.d-40) then
     option%io_buffer = 'Zero infinity norm in PatchScaleSourceSink for ' // &
@@ -5780,7 +5822,7 @@ subroutine PatchScaleSourceSink(patch,source_sink,iscale_type,option)
   scale = 1.d0/scale
   call VecScale(field%work,scale,ierr);CHKERRQ(ierr)
 
-  call VecGetArrayF90(field%work,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%work,vec_ptr,ierr);CHKERRQ(ierr)
   do iconn = 1, cur_connection_set%num_connections
     local_id = cur_connection_set%id_dn(iconn)
     select case(option%iflowmode)
@@ -5804,7 +5846,7 @@ subroutine PatchScaleSourceSink(patch,source_sink,iscale_type,option)
         call PrintErrMsg(option)
     end select
   enddo
-  call VecRestoreArrayF90(field%work,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%work,vec_ptr,ierr);CHKERRQ(ierr)
 
   if (inactive_found) then
     option%io_buffer = 'Inactive cells found in source/sink "' // &
@@ -5825,8 +5867,6 @@ subroutine PatchUpdateHetroCouplerAuxVars(patch,coupler,dataset_base, &
   ! Date: 10/03/2012
   !
 
-#include "petsc/finclude/petscdmda.h"
-  use petscdmda
   use Option_module
   use Field_module
   use Coupler_module
@@ -5995,11 +6035,11 @@ subroutine PatchCreateFlowConditionDatasetMap(grid,dataset_map_hdf5,cell_ids,nce
   call ISDestroy(is_from,ierr);CHKERRQ(ierr)
   call ISDestroy(is_to,ierr);CHKERRQ(ierr)
 
-  call VecGetArrayF90(map_ids_1,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(map_ids_1,vec_ptr,ierr);CHKERRQ(ierr)
   do ii=1,dataset_map_hdf5%map_dims_local(2)
     vec_ptr(ii)=dataset_map_hdf5%mapping(1,ii)
   enddo
-  call VecRestoreArrayF90(map_ids_1,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(map_ids_1,vec_ptr,ierr);CHKERRQ(ierr)
 
   call VecScatterBegin(vec_scatter,map_ids_1,map_ids_2,INSERT_VALUES, &
                        SCATTER_FORWARD,ierr);CHKERRQ(ierr)
@@ -6045,11 +6085,11 @@ subroutine PatchCreateFlowConditionDatasetMap(grid,dataset_map_hdf5,cell_ids,nce
 
   ! Step-3: Save the datatocell_ids
   allocate(dataset_map_hdf5%datatocell_ids(ncells))
-  call VecGetArrayF90(map_ids_3,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(map_ids_3,vec_ptr,ierr);CHKERRQ(ierr)
   do local_id=1,ncells
     dataset_map_hdf5%datatocell_ids(local_id) = int(vec_ptr(local_id))
   enddo
-  call VecRestoreArrayF90(map_ids_3,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(map_ids_3,vec_ptr,ierr);CHKERRQ(ierr)
 
   call VecDestroy(map_ids_1,ierr);CHKERRQ(ierr)
   call VecDestroy(map_ids_2,ierr);CHKERRQ(ierr)
@@ -6074,6 +6114,7 @@ subroutine PatchInitConstraints(patch,reaction_base,option)
   class(reaction_base_type), pointer :: reaction_base
   type(option_type) :: option
 
+  call PrintMsg(option,NL//'Initializing constraints for reactive transport.')
   call PatchInitCouplerConstraints(patch%initial_condition_list, &
                                    reaction_base,option)
 
@@ -6404,7 +6445,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
   material_auxvars => patch%aux%Material%auxvars
   reaction => ReactionAuxCast(reaction_base)
 
-  call VecGetArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
   vec_ptr(:) = UNINITIALIZED_DOUBLE
 
   iphase = 1
@@ -6429,22 +6470,22 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
           case(TEMPERATURE)
             do local_id=1,grid%nlmax
               vec_ptr(local_id) = &
-                patch%aux%Global%auxvars(grid%nL2G(local_id))%temp
+                patch%aux%TH%auxvars(grid%nL2G(local_id))%temp
             enddo
           case(LIQUID_PRESSURE,MAXIMUM_PRESSURE)
             do local_id=1,grid%nlmax
               vec_ptr(local_id) = &
-                patch%aux%Global%auxvars(grid%nL2G(local_id))%pres(1)
+                patch%aux%TH%auxvars(grid%nL2G(local_id))%pres
             enddo
           case(LIQUID_SATURATION)
             do local_id=1,grid%nlmax
               vec_ptr(local_id) = &
-                patch%aux%Global%auxvars(grid%nL2G(local_id))%sat(1)
+                patch%aux%TH%auxvars(grid%nL2G(local_id))%sat
             enddo
           case(LIQUID_DENSITY)
             do local_id=1,grid%nlmax
               vec_ptr(local_id) = &
-                patch%aux%Global%auxvars(grid%nL2G(local_id))%den_kg(1)
+                patch%aux%TH%auxvars(grid%nL2G(local_id))%den_kg
             enddo
           case(GAS_MOLE_FRACTION,GAS_ENERGY,GAS_DENSITY,GAS_VISCOSITY)
             call PatchUnsupportedVariable('TH','for gas phase',option)
@@ -6455,7 +6496,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
                   patch%aux%TH%auxvars(grid%nL2G(local_id))%ice%sat_gas
               else
                 vec_ptr(local_id) = &
-                  1.d0 - patch%aux%Global%auxvars(grid%nL2G(local_id))%sat(1)
+                  1.d0 - patch%aux%TH%auxvars(grid%nL2G(local_id))%sat
               endif
             enddo
           case(ICE_SATURATION)
@@ -6486,7 +6527,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
           case(LIQUID_MOBILITY)
             do local_id=1,grid%nlmax
               vec_ptr(local_id) = &
-                  patch%aux%TH%auxvars(grid%nL2G(local_id))%kvr
+                  patch%aux%TH%auxvars(grid%nL2G(local_id))%mobility
             enddo
           case(LIQUID_MOLE_FRACTION)
             call PatchUnsupportedVariable('TH','LIQUID_MOLE_FRACTION',option)
@@ -7638,7 +7679,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
          SURFACE_CMPLX,SURFACE_CMPLX_FREE,SURFACE_SITE_DENSITY, &
          KIN_SURFACE_CMPLX,KIN_SURFACE_CMPLX_FREE, PRIMARY_ACTIVITY_COEF, &
          SECONDARY_ACTIVITY_COEF,PRIMARY_KD,TOTAL_SORBED,TOTAL_SORBED_MOBILE, &
-         AGE,TOTAL_BULK,IMMOBILE_SPECIES, &
+         AGE,TOTAL_BULK,IMMOBILE_SPECIES,WATER_ACTIVITY_COEFFICIENT, &
          GAS_CONCENTRATION,GAS_PARTIAL_PRESSURE,REACTION_AUXILIARY)
 
       select case(ivar)
@@ -7859,6 +7900,12 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
             vec_ptr(local_id) = patch%aux%RT%auxvars(grid%nL2G(local_id))% &
               kinsrfcplx_free_site_conc(isubvar)
           enddo
+        case(WATER_ACTIVITY_COEFFICIENT)
+          do local_id=1,grid%nlmax
+            ghosted_id = grid%nL2G(local_id)
+            vec_ptr(local_id) = &
+              exp(patch%aux%RT%auxvars(ghosted_id)%ln_act_h2o)
+          enddo
         case(PRIMARY_ACTIVITY_COEF)
           do local_id=1,grid%nlmax
             ghosted_id = grid%nL2G(local_id)
@@ -7992,7 +8039,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
         case(TH_MODE,TH_TS_MODE)
           do local_id=1,grid%nlmax
             vec_ptr(local_id) = &
-              patch%aux%TH%auxvars(grid%nL2G(local_id))%kvr * &
+              patch%aux%TH%auxvars(grid%nL2G(local_id))%mobility * &
               patch%aux%TH%auxvars(grid%nL2G(local_id))%vis
           enddo
         case(G_MODE)
@@ -8149,10 +8196,10 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
           patch%aux%Global%auxvars(grid%nL2G(local_id))%m_nacl(ONE_INTEGER)
       enddo
     case(RESIDUAL)
-      call VecRestoreArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
       call VecStrideGather(field%flow_r,isubvar-1,vec,INSERT_VALUES, &
                            ierr);CHKERRQ(ierr)
-      call VecGetArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+      call VecGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
     case(X_COORDINATE)
       do local_id=1,grid%nlmax
         vec_ptr(local_id) = grid%x(grid%nL2G(local_id))
@@ -8328,6 +8375,29 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
                                             grid%nL2G(local_id))%well%bh_p
               enddo
           end select
+        case(RICHARDS_MODE)
+          select case(ivar)
+            case(WELL_LIQ_PRESSURE)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = &
+                  patch%aux%richards%auxvars(grid%nL2G(local_id))%well%pl
+              enddo
+            case(WELL_LIQ_SATURATION)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = &
+                  patch%aux%richards%auxvars(grid%nL2G(local_id))%well%sl
+              enddo
+            case(WELL_LIQ_Q)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = &
+                  patch%aux%richards%auxvars(grid%nL2G(local_id))%well%Ql
+              enddo
+            case(WELL_BHP)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = &
+                  patch%aux%richards%auxvars(grid%nL2G(local_id))%well%bh_p
+              enddo
+          end select
       end select
     case(NAMED_PARAMETER)
       do local_id=1,grid%nlmax
@@ -8338,7 +8408,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
       call PatchUnsupportedVariable(ivar,option)
   end select
 
-  call VecRestoreArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine PatchGetVariable1
 
@@ -8441,24 +8511,24 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
       if (associated(patch%aux%TH)) then
         select case(ivar)
           case(TEMPERATURE)
-            value = patch%aux%Global%auxvars(ghosted_id)%temp
+            value = patch%aux%TH%auxvars(ghosted_id)%temp
           case(LIQUID_PRESSURE,MAXIMUM_PRESSURE)
-            value = patch%aux%Global%auxvars(ghosted_id)%pres(1)
+            value = patch%aux%TH%auxvars(ghosted_id)%pres
           case(LIQUID_SATURATION)
-            value = patch%aux%Global%auxvars(ghosted_id)%sat(1)
+            value = patch%aux%TH%auxvars(ghosted_id)%sat
           case(LIQUID_DENSITY)
-            value = patch%aux%Global%auxvars(ghosted_id)%den_kg(1)
+            value = patch%aux%TH%auxvars(ghosted_id)%den_kg
           case(LIQUID_VISCOSITY)
             value = patch%aux%TH%auxvars(ghosted_id)%vis
           case(LIQUID_MOBILITY)
-            value = patch%aux%TH%auxvars(ghosted_id)%kvr
+            value = patch%aux%TH%auxvars(ghosted_id)%mobility
           case(GAS_MOLE_FRACTION,GAS_ENERGY,GAS_DENSITY)
             call PatchUnsupportedVariable('TH','GAS_MOLE_FRACTION',option)
           case(GAS_SATURATION)
             if (option%flow%th_freezing) then
               value = patch%aux%TH%auxvars(ghosted_id)%ice%sat_gas
             else
-              value = 0.d0
+              value = 1.d0 - patch%aux%TH%auxvars(ghosted_id)%sat
             endif
           case(CAPILLARY_PRESSURE)
             value = patch%aux%TH%auxvars(ghosted_id)%pc
@@ -9171,6 +9241,7 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
          KIN_SURFACE_CMPLX,KIN_SURFACE_CMPLX_FREE, PRIMARY_ACTIVITY_COEF, &
          SECONDARY_ACTIVITY_COEF,PRIMARY_KD, TOTAL_SORBED, &
          TOTAL_SORBED_MOBILE,AGE,TOTAL_BULK, &
+         WATER_ACTIVITY_COEFFICIENT, &
          IMMOBILE_SPECIES,GAS_CONCENTRATION,GAS_PARTIAL_PRESSURE, &
          REACTION_AUXILIARY)
 
@@ -9291,6 +9362,8 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
         case(KIN_SURFACE_CMPLX_FREE)
           value = &
             patch%aux%RT%auxvars(ghosted_id)%kinsrfcplx_free_site_conc(isubvar)
+        case(WATER_ACTIVITY_COEFFICIENT)
+          value = exp(patch%aux%RT%auxvars(ghosted_id)%ln_act_h2o)
         case(PRIMARY_ACTIVITY_COEF)
           value = patch%aux%RT%auxvars(ghosted_id)%pri_act_coef(isubvar)
         case(SECONDARY_ACTIVITY_COEF)
@@ -9373,7 +9446,7 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
         case(ZFLOW_MODE)
           value = patch%aux%ZFlow%auxvars(ZERO_INTEGER,ghosted_id)%kr
         case(TH_MODE,TH_TS_MODE)
-          value = patch%aux%TH%auxvars(ghosted_id)%kvr / &
+          value = patch%aux%TH%auxvars(ghosted_id)%mobility / &
                   patch%aux%TH%auxvars(ghosted_id)%vis
         case(G_MODE)
           value = patch%aux%General%auxvars(ZERO_INTEGER,ghosted_id)% &
@@ -9531,9 +9604,9 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
       endif
     case(RESIDUAL)
       local_id = grid%nG2L(ghosted_id)
-      call VecGetArrayF90(field%flow_r,vec_ptr2,ierr);CHKERRQ(ierr)
+      call VecGetArray(field%flow_r,vec_ptr2,ierr);CHKERRQ(ierr)
       value = vec_ptr2((local_id-1)*option%nflowdof+isubvar)
-      call VecRestoreArrayF90(field%flow_r,vec_ptr2,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(field%flow_r,vec_ptr2,ierr);CHKERRQ(ierr)
     case(X_COORDINATE)
       value = grid%x(ghosted_id)
     case(Y_COORDINATE)
@@ -9620,6 +9693,21 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
             value = &
               patch%aux%hydrate%auxvars(ZERO_INTEGER,ghosted_id)%well%bh_p
         end select
+      case (RICHARDS_MODE)
+        select case(ivar)
+          case(WELL_LIQ_PRESSURE)
+            value = &
+                patch%aux%richards%auxvars(ghosted_id)%well%pl
+          case(WELL_LIQ_SATURATION)
+            value = &
+                patch%aux%richards%auxvars(ghosted_id)%well%sl
+          case(WELL_LIQ_Q)
+            value = &
+              patch%aux%richards%auxvars(ghosted_id)%well%Ql
+          case(WELL_BHP)
+            value = &
+              patch%aux%richards%auxvars(ghosted_id)%well%bh_p
+        end select
       end select
     case(NAMED_PARAMETER)
       value = patch%aux%Global%auxvars(ghosted_id)%parameters(isubvar)
@@ -9670,7 +9758,7 @@ subroutine PatchSetVariable(patch,field,option,vec,vec_format,ivar,isubvar)
   grid => patch%grid
   material_auxvars => patch%aux%Material%auxvars
 
-  call VecGetArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
   if (vec_format == NATURAL) then
     call PrintErrMsg(option,&
@@ -9691,45 +9779,45 @@ subroutine PatchSetVariable(patch,field,option,vec,vec_format,ivar,isubvar)
           case(TEMPERATURE)
             if (vec_format == GLOBAL) then
               do local_id=1,grid%nlmax
-                patch%aux%Global%auxvars(grid%nL2G(local_id))%temp = &
+                patch%aux%TH%auxvars(grid%nL2G(local_id))%temp = &
                   vec_ptr(local_id)
               enddo
             else if (vec_format == LOCAL) then
               do ghosted_id=1,grid%ngmax
-                patch%aux%Global%auxvars(ghosted_id)%temp = vec_ptr(ghosted_id)
+                patch%aux%TH%auxvars(ghosted_id)%temp = vec_ptr(ghosted_id)
               enddo
             endif
           case(LIQUID_PRESSURE)
             if (vec_format == GLOBAL) then
               do local_id=1,grid%nlmax
-                patch%aux%Global%auxvars(grid%nL2G(local_id))%pres = &
+                patch%aux%TH%auxvars(grid%nL2G(local_id))%pres = &
                   vec_ptr(local_id)
               enddo
             else if (vec_format == LOCAL) then
               do ghosted_id=1,grid%ngmax
-                patch%aux%Global%auxvars(ghosted_id)%pres = vec_ptr(ghosted_id)
+                patch%aux%TH%auxvars(ghosted_id)%pres = vec_ptr(ghosted_id)
               enddo
             endif
           case(LIQUID_SATURATION)
             if (vec_format == GLOBAL) then
               do local_id=1,grid%nlmax
-                patch%aux%Global%auxvars(grid%nL2G(local_id))%sat = &
+                patch%aux%TH%auxvars(grid%nL2G(local_id))%sat = &
                   vec_ptr(local_id)
               enddo
             else if (vec_format == LOCAL) then
               do ghosted_id=1,grid%ngmax
-                patch%aux%Global%auxvars(ghosted_id)%sat = vec_ptr(ghosted_id)
+                patch%aux%TH%auxvars(ghosted_id)%sat = vec_ptr(ghosted_id)
               enddo
             endif
           case(LIQUID_DENSITY)
             if (vec_format == GLOBAL) then
               do local_id=1,grid%nlmax
-                patch%aux%Global%auxvars(grid%nL2G(local_id))%den_kg = &
+                patch%aux%TH%auxvars(grid%nL2G(local_id))%den_kg = &
                   vec_ptr(local_id)
               enddo
             else if (vec_format == LOCAL) then
               do ghosted_id=1,grid%ngmax
-                patch%aux%Global%auxvars(ghosted_id)%den_kg = &
+                patch%aux%TH%auxvars(ghosted_id)%den_kg = &
                   vec_ptr(ghosted_id)
               enddo
             endif
@@ -10300,7 +10388,8 @@ subroutine PatchSetVariable(patch,field,option,vec,vec_format,ivar,isubvar)
 
     case(PRIMARY_MOLALITY,TOTAL_MOLARITY,MINERAL_VOLUME_FRACTION, &
          PRIMARY_ACTIVITY_COEF,SECONDARY_ACTIVITY_COEF,IMMOBILE_SPECIES, &
-         GAS_CONCENTRATION,REACTION_AUXILIARY,MINERAL_SURFACE_AREA)
+         GAS_CONCENTRATION,REACTION_AUXILIARY,MINERAL_SURFACE_AREA, &
+         WATER_ACTIVITY_COEFFICIENT)
       select case(ivar)
         case(PRIMARY_MOLALITY)
           if (vec_format == GLOBAL) then
@@ -10364,6 +10453,18 @@ subroutine PatchSetVariable(patch,field,option,vec,vec_format,ivar,isubvar)
             do ghosted_id=1,grid%ngmax
               patch%aux%RT%auxvars(ghosted_id)% &
                 immobile(isubvar) = vec_ptr(ghosted_id)
+            enddo
+          endif
+        case(WATER_ACTIVITY_COEFFICIENT)
+          if (vec_format == GLOBAL) then
+            do local_id=1,grid%nlmax
+              patch%aux%RT%auxvars(grid%nL2G(local_id))% &
+                ln_act_h2o = log(vec_ptr(local_id))
+            enddo
+          else if (vec_format == LOCAL) then
+            do ghosted_id=1,grid%ngmax
+              patch%aux%RT%auxvars(ghosted_id)% &
+                ln_act_h2o = log(vec_ptr(ghosted_id))
             enddo
           endif
         case(PRIMARY_ACTIVITY_COEF)
@@ -10535,7 +10636,7 @@ subroutine PatchSetVariable(patch,field,option,vec,vec_format,ivar,isubvar)
       call PrintErrMsg(option)
   end select
 
-  call VecRestoreArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine PatchSetVariable
 
@@ -10740,7 +10841,7 @@ subroutine PatchGetVariable2(patch,option,output_option,vec, &
 
   grid => patch%grid
 
-  call VecGetArrayF90(vec,vec_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
   iphase = 1
 
@@ -12049,6 +12150,33 @@ subroutine PatchCreateZeroArray(patch,dof_is_active,matrix_zeroing,option)
   endif
 
 end subroutine PatchCreateZeroArray
+
+! ************************************************************************** !
+
+subroutine PatchCheckError(flag,option)
+  !
+  ! Author: Glenn Hammond
+  ! Date: 07/15/25
+
+  use Option_module
+
+  implicit none
+
+  PetscBool :: flag
+  type(option_type) :: option
+
+  PetscErrorCode :: ierr
+
+  call MPI_Allreduce(MPI_IN_PLACE,flag,ONE_INTEGER_MPI, &
+                     MPI_C_BOOL,MPI_LOR,option%mycomm, &
+                     ierr);CHKERRQ(ierr)
+  if (flag) then
+    option%io_buffer = 'Stopping due to error that occurred earlier &
+      &(see above).'
+    call PrintErrMsg(option)
+  endif
+
+end subroutine PatchCheckError
 
 ! ************************************************************************** !
 

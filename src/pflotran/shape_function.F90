@@ -1,6 +1,7 @@
 module Shape_Function_module
 
 #include "petsc/finclude/petscsys.h"
+  use petscsys
 
   use Gauss_module
   use Grid_Unstructured_Cell_module
@@ -45,6 +46,11 @@ subroutine ShapeFunctionInitialize(shapefunction)
       allocate(shapefunction%DN(TWO_INTEGER,ONE_INTEGER))
       allocate(shapefunction%zeta(ONE_INTEGER))
       allocate(shapefunction%coord(TWO_INTEGER,ONE_INTEGER))
+    case(TRI_TYPE)
+      allocate(shapefunction%N(THREE_INTEGER))
+      allocate(shapefunction%DN(THREE_INTEGER,TWO_INTEGER))
+      allocate(shapefunction%zeta(TWO_INTEGER))
+      allocate(shapefunction%coord(THREE_INTEGER,TWO_INTEGER))
     case(QUAD_TYPE)
       allocate(shapefunction%N(FOUR_INTEGER))
       allocate(shapefunction%DN(FOUR_INTEGER,TWO_INTEGER))
@@ -86,6 +92,10 @@ subroutine ShapeFunctionInitialize(shapefunction)
     case(LINE_TYPE)
       coord(1,1) = -1.d0
       coord(2,1) = 1.d0
+    case(TRI_TYPE)
+      coord(1,:) = (/0.d0,0.d0/)
+      coord(2,:) = (/1.d0,0.d0/)
+      coord(3,:) = (/0.d0,1.d0/)
     case(QUAD_TYPE)
       coord(1,1) = -1.d0
       coord(1,2) = -1.d0
@@ -181,6 +191,13 @@ subroutine ShapeFunctionCalculate(shapefunction)
       N(2) = 0.5d0*(1.d0 + zeta(1))
       DN(1,1) = -0.5d0
       DN(2,1) = 0.5d0
+    case(TRI_TYPE)
+      N(1) = (1.d0 - zeta(1) - zeta(2))
+      N(2) = zeta(1)
+      N(3) = zeta(2)
+      DN(1,:) = (/-1.d0, -1.d0/)
+      DN(2,:) = (/1.d0, 0.d0/)
+      DN(3,:) = (/0.d0, 1.d0/)
     case(QUAD_TYPE)
       N(1) = 1.d0/4.d0*(1.d0 - zeta(1))*(1.d0 - zeta(2))
       N(2) = 1.d0/4.d0*(1.d0 + zeta(1))*(1.d0 - zeta(2))

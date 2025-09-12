@@ -452,6 +452,7 @@ module PM_Waste_Form_class
     PetscBool :: print_mass_balance
     PetscBool :: implicit_solution
     PetscLogDouble :: cumulative_time
+    PetscBool :: chemistry_acknowledgement
   contains
     procedure, public :: SetRealization => PMWFSetRealization
     procedure, public :: Setup => PMWFSetup
@@ -1125,6 +1126,7 @@ function PMWFCreate()
   nullify(PMWFCreate%criticality_mediator)
   PMWFCreate%print_mass_balance = PETSC_FALSE
   PMWFCreate%implicit_solution = PETSC_FALSE
+  PMWFCreate%chemistry_acknowledgement = PETSC_FALSE
   PMWFCreate%cumulative_time = 0.d0
   PMWFCreate%name = 'waste form general'
   PMWFCreate%header = 'WASTE FORM (GENERAL)'
@@ -1207,6 +1209,10 @@ subroutine PMWFReadPMBlock(this,input)
     !-------------------------------------
       case('IMPLICIT_SOLUTION')
         this%implicit_solution = PETSC_TRUE
+        cycle
+    !-------------------------------------
+      case('ACKNOWLEDGE_CHEMISTRY_CONFLICT')
+        this%chemistry_acknowledgement = PETSC_TRUE
         cycle
     end select
 
@@ -3361,11 +3367,12 @@ end subroutine PMWFSetup
   ! ensure that waste form is not being used with other reactive transport
   ! capability
   if (associated(reaction)) then
-    if (reaction%neqcplx + reaction%nsorb + reaction%ngeneral_rxn + &
+    if ((reaction%neqcplx + reaction%nsorb + reaction%ngeneral_rxn + &
         reaction%microbial%nrxn + reaction%nradiodecay_rxn + &
         reaction%immobile%nimmobile > 0 .or. &
         ReactionGasGetGasCount(reaction%gas,ACTIVE_AND_PASSIVE_GAS) > 0 .or. &
-        associated(rxn_sandbox_list)) then
+        associated(rxn_sandbox_list)) .and. &
+        .not.this%chemistry_acknowledgement) then
       this%option%io_buffer = 'The UFD_DECAY process model may not be used &
         &with other reactive transport capability within PFLOTRAN. &
         &Minerals (and mineral kinetics) are used because their data &
@@ -3783,7 +3790,7 @@ subroutine PMWFInitializeTimestep(this)
         (.not.cur_waste_form%breached .and. &
          initialized(cur_waste_form%breach_time) .and. &
          option%time > cur_waste_form%breach_time)) then
-      call VecGetArrayF90(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
+      call VecGetArray(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
       do k = 1,num_species
         cur_waste_form%inst_release_amount(k) = &
            (cwfm%rad_species_list(k)%inst_release_fraction * &
@@ -3846,7 +3853,7 @@ subroutine PMWFInitializeTimestep(this)
 
       cur_waste_form%breached = PETSC_TRUE
       cur_waste_form%breach_time = option%time
-      call VecRestoreArrayF90(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
     endif
 
     ! Save the concentration after inst. release for the decay step
@@ -4296,10 +4303,10 @@ subroutine PMWFSolve(this,time,ierr)
   grid => this%realization%patch%grid
   option => this%realization%option
 
-  call VecGetArrayF90(this%data_mediator%vec,vec_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayF90(this%realization%field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(this%data_mediator%vec,vec_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(this%realization%field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
   if (associated(this%criticality_mediator)) then
-    call VecGetArrayF90(this%criticality_mediator%data_mediator%vec, &
+    call VecGetArray(this%criticality_mediator%data_mediator%vec, &
                         heat_source,ierr);CHKERRQ(ierr)
   endif
 
@@ -4540,12 +4547,12 @@ subroutine PMWFSolve(this,time,ierr)
   endif
 
   if (associated(this%criticality_mediator)) then
-    call VecRestoreArrayF90(this%criticality_mediator%data_mediator%vec, &
+    call VecRestoreArray(this%criticality_mediator%data_mediator%vec, &
                             heat_source,ierr);CHKERRQ(ierr)
   endif
-  call VecRestoreArrayF90(this%realization%field%tran_xx,xx_p, &
+  call VecRestoreArray(this%realization%field%tran_xx,xx_p, &
                           ierr);CHKERRQ(ierr)
-  call VecRestoreArrayF90(this%data_mediator%vec,vec_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(this%data_mediator%vec,vec_p,ierr);CHKERRQ(ierr)
 
   call PetscTime(log_end_time,ierr);CHKERRQ(ierr)
 
@@ -5861,7 +5868,7 @@ subroutine PMWFRestartHDF5(this,pm_grp_id)
                      SCATTER_FORWARD,ierr);CHKERRQ(ierr)
 
   !Convert the data to a Fortran array
-  call VecGetArrayF90(local_wf_vec,local_wf_array,ierr);CHKERRQ(ierr)
+  call VecGetArray(local_wf_vec,local_wf_array,ierr);CHKERRQ(ierr)
 
   !Assign checkpointed waste form attribute values
   i=1
@@ -5891,7 +5898,7 @@ subroutine PMWFRestartHDF5(this,pm_grp_id)
     i=i+stride
   enddo
 
-  call VecRestoreArrayF90(local_wf_vec,local_wf_array,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(local_wf_vec,local_wf_array,ierr);CHKERRQ(ierr)
   call VecScatterDestroy(scatter_ctx,ierr);CHKERRQ(ierr)
   call ISDestroy(is,ierr);CHKERRQ(ierr)
   call VecDestroy(global_wf_vec,ierr);CHKERRQ(ierr)
@@ -6160,7 +6167,7 @@ subroutine PMWFRestartBinary(this, viewer)
                      SCATTER_FORWARD,ierr);CHKERRQ(ierr)
 
   !Convert the data to a Fortran array
-  call VecGetArrayF90(local_wf_vec,local_wf_array,ierr);CHKERRQ(ierr)
+  call VecGetArray(local_wf_vec,local_wf_array,ierr);CHKERRQ(ierr)
 
   !Assign checkpointed waste form attribute values
   i=1
@@ -6190,7 +6197,7 @@ subroutine PMWFRestartBinary(this, viewer)
     i=i+stride
   enddo
 
-  call VecRestoreArrayF90(local_wf_vec,local_wf_array,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(local_wf_vec,local_wf_array,ierr);CHKERRQ(ierr)
   call VecScatterDestroy(scatter_ctx,ierr);CHKERRQ(ierr)
   call ISDestroy(is,ierr);CHKERRQ(ierr)
   call VecDestroy(global_wf_vec,ierr);CHKERRQ(ierr)
