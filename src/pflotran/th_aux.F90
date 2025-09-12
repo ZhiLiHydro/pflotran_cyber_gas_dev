@@ -22,6 +22,10 @@ module TH_Aux_module
 
   PetscInt, public :: th_ice_model
 
+  PetscInt, parameter, public :: TH_LIQUID_EQUATION_INDEX = 1
+  PetscInt, parameter, public :: TH_ENERGY_EQUATION_INDEX = 2
+  PetscInt, public :: th_well_eq = UNINITIALIZED_INTEGER
+
   PetscInt, parameter, public :: TH_PRESSURE_DOF = 1
   PetscInt, parameter, public :: TH_TEMPERATURE_DOF = 2
   PetscInt, public :: th_well_dof = UNINITIALIZED_INTEGER

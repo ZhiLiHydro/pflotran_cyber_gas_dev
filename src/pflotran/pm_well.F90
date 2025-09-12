@@ -489,7 +489,7 @@ module PM_Well_class
 
   ! Closed Loop Well Model
   type, public, extends(pm_well_implicit_type) :: pm_well_closed_loop_type
-    ! Placeholder for now
+      ! Placeholder for now
   end type pm_well_closed_loop_type
 
   ! Extensions of the closed loop well model type
@@ -497,6 +497,10 @@ module PM_Well_class
   ! U-shaped well model
   type, public, extends(pm_well_closed_loop_type) :: pm_well_u_shape_type
     ! Placeholder for now
+  contains
+    procedure, public :: Setup => PMWellSetupUShape
+    procedure, public :: InitializeRun => PMWellInitializeRunUShape
+    procedure, public :: Solve => PMWellSolveUShape
   end type pm_well_u_shape_type
 
   ! Coaxial well model
@@ -3138,6 +3142,22 @@ end subroutine PMWellSetupHydrostatic
 
 ! ************************************************************************** !
 
+subroutine PMWellSetupUShape(this)
+  !
+  ! Initializes variables associated with the u shape well process model.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/11/25
+  !
+
+  implicit none
+
+  class(pm_well_u_shape_type) :: this
+
+end subroutine PMWellSetupUShape
+
+! ************************************************************************** !
+
 subroutine PMWellReadSimOptionsBlockBase(this,input)
   !
   ! Author: Michael Nole
@@ -5207,6 +5227,22 @@ recursive subroutine PMWellInitializeRunHydrostatic(this)
   endif
 
 end subroutine PMWellInitializeRunHydrostatic
+
+! ************************************************************************** !
+
+recursive subroutine PMWellInitializeRunUShape(this)
+  !
+  ! Initializes the simulation run for the u shape well process model.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/11/25
+  !
+
+  implicit none
+
+  class(pm_well_u_shape_type) :: this
+
+end subroutine PMWellInitializeRunUShape
 
 ! ************************************************************************** !
 
@@ -8688,6 +8724,24 @@ subroutine PMWellSolveFlowImplicit(this,perturbation_index,ierr)
   call PrintErrMsg(this%realization%option)
 
 end subroutine PMWellSolveFlowImplicit
+
+! ************************************************************************** !
+
+subroutine PMWellSolveUShape(this,time,ierr)
+  !
+  ! Author: Michael Nole
+  ! Date: 09/11/25
+  !
+
+  implicit none
+
+  class(pm_well_u_shape_type) :: this
+  PetscReal :: time
+  PetscErrorCode :: ierr
+
+  ierr = 0
+
+end subroutine PMWellSolveUShape
 
 ! ************************************************************************** !
 

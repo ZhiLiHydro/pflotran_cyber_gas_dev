@@ -148,6 +148,7 @@ subroutine PMTHSetFlowMode(this,pm_well,option)
       option%nflowdof = option%nflowdof + 1
       option%coupled_well = PETSC_TRUE
       th_well_dof = option%nflowdof
+      th_well_eq = option%nflowdof
       th_conductance_dof = th_well_dof + 1
     else
       option%io_buffer = 'Currently, only FULLY_IMPLICIT &

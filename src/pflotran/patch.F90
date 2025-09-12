@@ -4216,6 +4216,10 @@ subroutine PatchUpdateCouplerAuxVarsTH(patch,coupler,option)
             call DatasetUnknownClass(selector,option, &
                                      'PatchUpdateCouplerAuxVarsTH')
         end select
+        if (Initialized(th_well_dof)) then
+          coupler%flow_aux_real_var(th_well_dof,:) = &
+            coupler%flow_aux_real_var(TH_TEMPERATURE_DOF,:)
+        endif
       case (HET_DIRICHLET_BC)
         call PatchUpdateHetroCouplerAuxVars(patch,coupler, &
                 flow_condition%temperature%dataset, &
