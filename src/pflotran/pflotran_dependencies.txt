@@ -1744,8 +1744,6 @@ output_common.o : \
   grid_structured.o \
   grid_unstructured_aux.o \
   grid_unstructured_cell.o \
-  hdf5.o \
-  hdf5_aux.o \
   logging.o \
   material_aux.o \
   option.o \
@@ -2428,6 +2426,7 @@ pm_subsurface_flow.o : \
   patch.o \
   pflotran_constants.o \
   pm_base.o \
+  pm_well.o \
   reaction_mineral_aux.o \
   realization_base.o \
   realization_subsurface.o \
@@ -2456,6 +2455,7 @@ pm_th.o : \
   pflotran_constants.o \
   pm_base.o \
   pm_subsurface_flow.o \
+  pm_well.o \
   realization_subsurface.o \
   saturation_function.o \
   string.o \
@@ -3891,6 +3891,7 @@ th.o : \
   patch.o \
   petsc_utility.o \
   pflotran_constants.o \
+  pm_well.o \
   realization_subsurface.o \
   region.o \
   saturation_function.o \
@@ -3912,6 +3913,15 @@ th_aux.o : \
   pflotran_constants.o \
   saturation_function.o \
   utility.o
+th_well.o : \
+  connection.o \
+  grid.o \
+  option.o \
+  patch.o \
+  petsc_utility.o \
+  pflotran_constants.o \
+  pm_well.o \
+  th_aux.o
 time_storage.o : \
   option.o \
   pflotran_constants.o

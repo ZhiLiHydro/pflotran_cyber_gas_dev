@@ -13,6 +13,7 @@ module PM_Well_class
   use NW_Transport_Aux_module
   use Well_Grid_module
   use Condition_module
+  use Connection_module
 
   implicit none
 
@@ -361,6 +362,7 @@ module PM_Well_class
     PetscMPIInt :: commsize
   end type well_comm_type
 
+  !TODO(geh): pm_well_type -> pm_well_base_type
   type, public, extends(pm_base_type) :: pm_well_type
     class(realization_subsurface_type), pointer :: realization
     type(well_grid_type), pointer :: well_grid
@@ -490,6 +492,8 @@ module PM_Well_class
   ! Closed Loop Well Model
   type, public, extends(pm_well_implicit_type) :: pm_well_closed_loop_type
       ! Placeholder for now
+    PetscInt, pointer :: well_cells(:)
+    type(connection_set_type), pointer :: connection_set_list
   end type pm_well_closed_loop_type
 
   ! Extensions of the closed loop well model type
@@ -501,6 +505,8 @@ module PM_Well_class
     procedure, public :: Setup => PMWellSetupUShape
     procedure, public :: InitializeRun => PMWellInitializeRunUShape
     procedure, public :: Solve => PMWellSolveUShape
+    procedure, public :: FinalizeTimestep => PMWellFinalizeTimestepUShape
+    procedure, public :: Destroy => PMWellDestroyUShape
   end type pm_well_u_shape_type
 
   ! Coaxial well model
@@ -514,6 +520,7 @@ module PM_Well_class
             PMWellFlowCreate, &
             PMWellTranCreate, &
             PMWellVarCreate, &
+            PMWellCastToClosedLoop, &
             PMWellSetupGrid, &
             PMWellReadGrid, &
             PMWellReadPass2, &
@@ -1045,6 +1052,28 @@ subroutine PMWellVarCreate(well)
 
 
 end subroutine PMWellVarCreate
+
+! ************************************************************************** !
+
+function PMWellCastToClosedLoop(pm_well_base)
+  !
+  ! Creates the U-shape well process model.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/10/25
+
+  implicit none
+
+  class(pm_well_type), pointer :: pm_well_base
+  class(pm_well_closed_loop_type), pointer :: PMWellCastToClosedLoop
+
+  nullify(PMWellCastToClosedLoop)
+  select type(pm=>pm_well_base)
+    class is(pm_well_closed_loop_type)
+      PMWellCastToClosedLoop => pm
+  end select
+
+end function PMWellCastToClosedLoop
 
 ! ************************************************************************** !
 
@@ -3149,10 +3178,19 @@ subroutine PMWellSetupUShape(this)
   ! Author: Glenn Hammond
   ! Date: 09/11/25
   !
-
   implicit none
 
   class(pm_well_u_shape_type) :: this
+
+  type(option_type), pointer :: option
+
+  option => this%option
+
+  select case(option%iflowmode)
+    case(TH_MODE)
+    case default
+      call PrintErrMsg(option,'U Shaped wells only supported by TH mode')
+  end select
 
 end subroutine PMWellSetupUShape
 
@@ -6776,6 +6814,20 @@ end subroutine PMWellFinalizeTimestepHydrostatic
 
 ! ************************************************************************** !
 
+subroutine PMWellFinalizeTimestepUShape(this)
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/13/25
+  !
+
+  implicit none
+
+  class(pm_well_u_shape_type) :: this
+
+end subroutine PMWellFinalizeTimestepUShape
+
+! ************************************************************************** !
+
 subroutine PMWellUpdateReservoirSrcSinkFlow(pm_well)
   !
   ! Author: Jennifer M. Frederick
@@ -8729,10 +8781,9 @@ end subroutine PMWellSolveFlowImplicit
 
 subroutine PMWellSolveUShape(this,time,ierr)
   !
-  ! Author: Michael Nole
+  ! Author: Glenn Hammond
   ! Date: 09/11/25
   !
-
   implicit none
 
   class(pm_well_u_shape_type) :: this
@@ -11090,6 +11141,22 @@ subroutine PMWellDestroyHydrostatic(this)
   nullify(this%strata_list)
 
 end subroutine PMWellDestroyHydrostatic
+
+! ************************************************************************** !
+
+subroutine PMWellDestroyUShape(this)
+  !
+  ! Destroys the u shape well process model.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/13/25
+  !
+
+  implicit none
+
+  class(pm_well_u_shape_type) :: this
+
+end subroutine PMWellDestroyUShape
 
 ! ************************************************************************** !
 

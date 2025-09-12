@@ -116,6 +116,17 @@ module TH_Aux_module
     PetscReal :: dpres_fh2o_dT
   end type th_ice_type
 
+  type, public :: th_well_auxvar_type
+    PetscReal :: temp
+    PetscReal :: u
+    PetscReal :: h
+    PetscReal :: du_dT
+    PetscReal :: dh_dT
+        ! for numerical derivatives
+    PetscReal :: pert
+    type(th_well_auxvar_type), pointer :: auxvar_pert(:)
+  end type th_well_auxvar_type
+
   type, public :: th_parameter_type
     PetscReal, pointer :: dencpr(:)
     PetscReal, pointer :: ckdry(:) ! Thermal conductivity (dry)
@@ -134,6 +145,7 @@ module TH_Aux_module
     type(th_auxvar_type), pointer :: auxvars_bc(:)
     type(th_auxvar_type), pointer :: auxvars_ss(:)
     type(matrix_zeroing_type), pointer :: matrix_zeroing
+    type(th_well_auxvar_type), pointer :: auxvars_well(:)
   end type TH_type
 
   PetscReal, parameter :: epsilon = 1.d-6
@@ -143,6 +155,7 @@ module TH_Aux_module
             THAuxDestroy, &
             THAuxVarComputeNoFreezing, &
             THAuxVarInit, &
+            THWellAuxVarInit, &
             THAuxVarCopy, &
             THAuxVarCompute2ndOrderDeriv, &
             THAuxVarPerturb, &
@@ -185,6 +198,7 @@ function THAuxCreate(option)
   nullify(aux%auxvars_bc)
   nullify(aux%auxvars_ss)
   nullify(aux%matrix_zeroing)
+  nullify(aux%auxvars_well)
 
   allocate(aux%th_parameter)
   nullify(aux%th_parameter%dencpr)
@@ -299,6 +313,44 @@ recursive subroutine THAuxVarInit(auxvar,option,allocate_perturbation)
   endif
 
 end subroutine THAuxVarInit
+
+! ************************************************************************** !
+
+recursive subroutine THWellAuxVarInit(auxvar,option,allocate_perturbation)
+  !
+  ! Initialize well auxiliary object
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/12/25
+  !
+
+  use Option_module
+
+  implicit none
+
+  type(th_auxvar_type) :: auxvar
+  type(option_type) :: option
+  PetscBool :: allocate_perturbation
+
+  PetscInt :: i
+
+  auxvar%temp = 0.d0
+  auxvar%u = 0.d0
+  auxvar%h = 0.d0
+  auxvar%du_dT = 0.d0
+  auxvar%dh_dT = 0.d0
+
+  auxvar%pert = 0.d0
+  if (allocate_perturbation) then
+    allocate(auxvar%auxvar_pert(option%nflowdof))
+    do i = 1, option%nflowdof
+      call THWellAuxVarInit(auxvar%auxvar_pert(i),option,PETSC_FALSE)
+    enddo
+  else
+    nullify(auxvar%auxvar_pert)
+  endif
+
+end subroutine THWellAuxVarInit
 
 ! ************************************************************************** !
 

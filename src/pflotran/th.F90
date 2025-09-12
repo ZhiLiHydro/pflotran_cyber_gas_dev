@@ -1065,14 +1065,14 @@ subroutine THUpdateFixedAccumulation(realization)
   call VecRestoreArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
 #if 0
-   call THNumericalJacobianTest(field%flow_xx,realization)
+   call THNumericalJacobianTest(field%flow_xx,realization,pm_well)
 #endif
 
 end subroutine THUpdateFixedAccumulation
 
 ! ************************************************************************** !
 
-subroutine THNumericalJacobianTest(xx,realization)
+subroutine THNumericalJacobianTest(xx,realization,pm_well)
   !
   ! Computes the a test numerical jacobian
   !
@@ -1085,11 +1085,13 @@ subroutine THNumericalJacobianTest(xx,realization)
   use Option_module
   use Grid_module
   use Field_module
+  use PM_Well_class
 
   implicit none
 
   Vec :: xx
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
 
   Vec :: xx_pert
   Vec :: res
@@ -1124,7 +1126,7 @@ subroutine THNumericalJacobianTest(xx,realization)
   call MatSetType(A,MATAIJ,ierr);CHKERRQ(ierr)
   call MatSetFromOptions(A,ierr);CHKERRQ(ierr)
 
-  call THResidual(PETSC_NULL_SNES,xx,res,realization,ierr)
+  call THResidual(PETSC_NULL_SNES,xx,res,realization,pm_well,ierr)
   call VecGetArray(res,vec2_p,ierr);CHKERRQ(ierr)
   do icell = 1,grid%nlmax
     if (patch%imat(icell) <= 0) cycle
@@ -1134,7 +1136,8 @@ subroutine THNumericalJacobianTest(xx,realization)
       perturbation = vec_p(idof)*perturbation_tolerance
       vec_p(idof) = vec_p(idof)+perturbation
       call VecRestoreArray(xx_pert,vec_p,ierr);CHKERRQ(ierr)
-      call THResidual(PETSC_NULL_SNES,xx_pert,res_pert,realization,ierr)
+      call THResidual(PETSC_NULL_SNES,xx_pert,res_pert,realization, &
+                      pm_well,ierr)
       call VecGetArray(res_pert,vec_p,ierr);CHKERRQ(ierr)
       do idof2 = 1, grid%nlmax*option%nflowdof
         derivative = (vec_p(idof2)-vec2_p(idof2))/perturbation
@@ -3522,7 +3525,7 @@ end subroutine THBCFlux
 
 ! ************************************************************************** !
 
-subroutine THResidual(snes,xx,r,realization,ierr)
+subroutine THResidual(snes,xx,r,realization,pm_well,ierr)
   !
   ! Computes the residual equation
   !
@@ -3539,6 +3542,8 @@ subroutine THResidual(snes,xx,r,realization,ierr)
   use Material_module
   use Debug_module
   use Matrix_Zeroing_module
+  use PM_Well_class
+  use TH_Well_module
 
   implicit none
 
@@ -3546,8 +3551,10 @@ subroutine THResidual(snes,xx,r,realization,ierr)
   Vec :: xx
   Vec :: r
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
   PetscErrorCode :: ierr
 
+  Mat :: dummy_mat
   type(discretization_type), pointer :: discretization
   type(field_type), pointer :: field
   type(option_type), pointer :: option
@@ -3571,6 +3578,7 @@ subroutine THResidual(snes,xx,r,realization,ierr)
   call THResidualBoundaryConn(r,realization,ierr)
   call THResidualAccumulation(r,realization,ierr)
   call THResidualSourceSink(r,realization,ierr)
+  call THWell(r,dummy_mat,pm_well,PETSC_FALSE)
   call MatrixZeroingZeroVecEntries(realization%patch%aux%TH%matrix_zeroing,r)
 
   if (realization%debug%vecview_residual) then
@@ -4359,7 +4367,7 @@ end subroutine THResidualSourceSink
 
 ! ************************************************************************** !
 
-subroutine THJacobian(snes,xx,A,B,realization,ierr)
+subroutine THJacobian(snes,xx,A,B,realization,pm_well,ierr)
   !
   ! Computes the Jacobian
   !
@@ -4373,6 +4381,7 @@ subroutine THJacobian(snes,xx,A,B,realization,ierr)
   use Option_module
   use Debug_module
   use Matrix_Zeroing_module
+  use PM_Well_class
 
   implicit none
 
@@ -4380,6 +4389,7 @@ subroutine THJacobian(snes,xx,A,B,realization,ierr)
   Vec :: xx
   Mat :: A, B
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
   PetscErrorCode :: ierr
 
   Mat :: J

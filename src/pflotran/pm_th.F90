@@ -32,7 +32,7 @@ module PM_TH_class
     PetscReal :: residual_scaled_inf_tol(2)
     PetscReal :: abs_update_inf_tol(2)
     PetscReal :: rel_update_inf_tol(2)
-    class(pm_well_type), pointer :: pmwell_ptr
+    !TODO(GEH): remove pmwell_ptr from pm and use pm_subsurface%pm_well
   contains
     procedure, public :: Setup => PMTHSetup
     procedure, public :: ReadSimulationOptionsBlock => PMTHReadSimOptionsBlock
@@ -105,8 +105,6 @@ function PMTHCreate()
   this%residual_scaled_inf_tol = residual_scaled_inf_tol
   this%abs_update_inf_tol = abs_update_inf_tol
   this%rel_update_inf_tol = rel_update_inf_tol
-
-  nullify(this%pmwell_ptr)
 
   PMTHCreate => this
 
@@ -420,12 +418,12 @@ recursive subroutine PMTHInitializeRun(this)
   call PMSubsurfaceFlowInitializeRun(this)
 
   ! setup coupling in jacobian matrix for the well model
-  if (this%option%coupled_well .and. associated(this%pmwell_ptr)) then
+  if (this%option%coupled_well .and. associated(this%pm_well)) then
     call MatSetOption(this%solver%M,MAT_NEW_NONZERO_LOCATIONS,PETSC_TRUE, &
                       ierr);CHKERRQ(ierr)
     call MatSetOption(this%solver%Mpre,MAT_NEW_NONZERO_LOCATIONS,PETSC_TRUE, &
                       ierr);CHKERRQ(ierr)
-    pm_well => this%pmwell_ptr
+    pm_well => this%pm_well
     do
       if (.not. associated(pm_well)) exit
       if (any(pm_well%well_grid%h_rank_id == pm_well%option%myrank)) then
@@ -440,8 +438,8 @@ recursive subroutine PMTHInitializeRun(this)
     call MatAssemblyEnd(this%solver%M,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
     call MatSetOption(this%solver%M,MAT_NEW_NONZERO_LOCATIONS,PETSC_FALSE, &
                       ierr);CHKERRQ(ierr)
-    call MatAssemblyBegin(this%solver%Mpre,MAT_FINAL_ASSEMBLY,ierr); &
-                         CHKERRQ(ierr)
+    call MatAssemblyBegin(this%solver%Mpre,MAT_FINAL_ASSEMBLY, &
+                          ierr);CHKERRQ(ierr)
     call MatAssemblyEnd(this%solver%Mpre,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
     call MatSetOption(this%solver%Mpre,MAT_NEW_NONZERO_LOCATIONS,PETSC_FALSE, &
                       ierr);CHKERRQ(ierr)
@@ -608,7 +606,7 @@ subroutine PMTHResidual(this,snes,xx,r,ierr)
   Vec :: r
   PetscErrorCode :: ierr
 
-  call THResidual(snes,xx,r,this%realization,ierr)
+  call THResidual(snes,xx,r,this%realization,this%pm_well,ierr)
 
 end subroutine PMTHResidual
 
@@ -632,7 +630,7 @@ subroutine PMTHJacobian(this,snes,xx,A,B,ierr)
   Mat :: A, B
   PetscErrorCode :: ierr
 
-  call THJacobian(snes,xx,A,B,this%realization,ierr)
+  call THJacobian(snes,xx,A,B,this%realization,this%pm_well,ierr)
 
 end subroutine PMTHJacobian
 
