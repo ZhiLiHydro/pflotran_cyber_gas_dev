@@ -65,7 +65,7 @@ module EOS_Water_module
   ! steam density and enthalpy variables
   integer(C_long) steam_dens_handle, steam_H_handle, steam_dens_PT_INPUTS, steam_H_PT_INPUTS
   integer(C_long) steam_dens_iP, steam_H_iP, steam_dens_iT, steam_H_iT, steam_dens_iDmass, steam_H_iH
-
+  integer(C_long) sat_pres_handle, sat_pres_QT_INPUTS, sat_pres_iP, sat_pres_iT, sat_pres_iQ
   
   ! PVT tables - eos_tables
   class(eos_table_type), pointer :: pvt_table => null()
@@ -679,6 +679,14 @@ subroutine EOSWaterSetSaturationPressure(keyword,aux)
       EOSWaterSaturationPressureExtPtr => EOSWaterSatPressSparrowExt
     case('HUANG-ICE','ICE')
       EOSWaterSaturationPressurePtr => EOSWaterSaturationPressureIce
+    case('COOLPROP')
+      fluid = "Water"//C_NULL_CHAR
+      EOSWaterSaturationPressurePtr => EOSWaterSaturationPressureCoolProp
+      sat_pres_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
+      sat_pres_QT_INPUTS = get_input_pair_index(C_CHAR_"QT_INPUTS"//C_NULL_CHAR)
+      sat_pres_iP = get_param_index(C_CHAR_"P"//C_NULL_CHAR)
+      sat_pres_iT = get_param_index(C_CHAR_"T"//C_NULL_CHAR)
+      sat_pres_iQ = get_param_index(C_CHAR_"Q"//C_NULL_CHAR)
     case default
       print *, 'Unknown pointer type "' // trim(keyword) // &
         '" in EOSWaterSetSaturationPressure().'
@@ -1466,6 +1474,9 @@ subroutine EOSWaterSaturationPressureIF97(T, calculate_derivatives, &
     else
       dPS_DT = UNINITIALIZED_DOUBLE
     endif
+  open(unit=103, file='EOSWaterSaturationPressureIF97.dat', status='unknown', position='append')
+  write(103,'(E22.8,1x,L1,1x,E22.8,1x,E22.8,1x,I8)') T, calculate_derivatives, PS, dPS_dT, ierr
+  close(103)
   endif
 
 end subroutine EOSWaterSaturationPressureIF97
@@ -1884,7 +1895,16 @@ subroutine EOSWaterDensityIF97(T,P,calculate_derivatives,dw,dwmol, &
     call EOSWaterDensityIF97Region3(T,P,calculate_derivatives,dw,dwmol, &
                                     dwp,dwt)
   end if
-
+  write(*,'(E22.8)') T
+  print *,"in ES80.8 P is: "
+  write(*,'(ES30.8)') P
+  write(*,'(L1)') calculate_derivatives
+  write(*,'(E22.8)') dw
+! etc...
+  open(unit=101, file='EOSWaterDensityIF97.dat', status='unknown', position='append')
+  write(101,'(E22.8,1x,ES30.8,1x,L1,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,I8)')T, P, calculate_derivatives, dw, dwmol, dwp, dwt, ierr
+  !write(101,'(E22.8,1x,G19.4,1x,L1,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,I8)') T, P, calculate_derivatives, dw, dwmol, dwp, dwt, ierr
+  close(101)
 end subroutine EOSWaterDensityIF97
 
 ! ************************************************************************** !
@@ -3269,7 +3289,9 @@ subroutine EOSWaterEnthalpyIF97(T,P,calculate_derivatives,hw, &
     ! moved to subroutine to avoid weighting down this more-used routine
     call EOSWaterEnthalpyIF97Region3(T,P,.false.,hw,hwp,hwt)
   end if
-
+  open(unit=102, file='EOSWaterEnthalpyIF97.dat', status='unknown', position='append')
+  write(102,'(E22.8,1x,E22.8,1x,L1,1x,E22.8,1x,E22.8,1x,E22.8,1x,I8)') T, P, calculate_derivatives, hw, hwp, hwt, ierr
+  close(102)
 end subroutine EOSWaterEnthalpyIF97
 
 ! ************************************************************************** !
@@ -4575,8 +4597,10 @@ subroutine EOSWaterSteamDensityEnthalpyIF97(T, Pv, calculate_derivatives, &
   else
     !stop 'wow. much hotness.'
   end if
-
-
+  open(unit=104, file='EOSWaterSteamDensityEnthalpyIF97.dat', status='unknown', position='append')
+  write(104,'(E22.8,1x,E22.8,1x,L1,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,I8)') T, Pv, calculate_derivatives, dg, dgmol, hg, dgp, dgt, hgp, hgt, ierr
+  close(104)
+end subroutine EOSWaterSteamDensityEnthalpyIF97
 
 ! ************************************************************************** !
 
@@ -6344,6 +6368,7 @@ subroutine EOSWaterDensityCoolProp(T,P,calculate_derivatives,dw,dwmol, &
     dwt = UNINITIALIZED_DOUBLE
     dwp = UNINITIALIZED_DOUBLE
   endif
+  print *,"EOSWaterDensityCoolProp: T=",T," P= ",P," dw= ",dw," dwp= ",dwp," dwt= ",dwt
 end subroutine
 
 subroutine EOSWaterEnthalpyCoolProp(t,p,calculate_derivatives,hw, &
@@ -6377,13 +6402,17 @@ subroutine EOSWaterEnthalpyCoolProp(t,p,calculate_derivatives,hw, &
     hwt = AbstractState_first_partial_deriv(H_handle, &
                                   H_iH, H_iT, H_iP, errcode, mesgbfr, bfrlen)
     hwt = hwt * FMWH2O ! convert to J/kmol/C
+
     hwp = AbstractState_first_partial_deriv(H_handle, &
                                   H_iH, H_iP, H_iT, errcode, mesgbfr, bfrlen)
+
     hwp = hwp * FMWH2O ! convert to J/kmol/Pa
+
   else
     hwt = UNINITIALIZED_DOUBLE
     hwp = UNINITIALIZED_DOUBLE
   endif
+  print *,"EOSWaterEnthalpyCoolProp: T=",T," P= ",P," hw= ",hw," hwp= ",hwp," hwt= ",hwt
 end subroutine
 
 subroutine EOSWaterViscosityCoolProp(T, P, PS, dPS_dT, &
@@ -6491,7 +6520,33 @@ subroutine EOSWaterSteamDensityEnthalpyCoolProp(t,pv,calculate_derivatives, &
     hgp = UNINITIALIZED_DOUBLE
     hgt = UNINITIALIZED_DOUBLE
   endif
+  print *,"EOSWaterSteamDensityEnthalpyCoolProp: T=",T," P= ",pv," dg= ",dg,"dgmol= ",dgmol," hg= ",hg," hgt= ",hgt," hgp= ",hgp
 end subroutine EOSWaterSteamDensityEnthalpyCoolProp
 
+subroutine EOSWaterSaturationPressureCoolProp(T, calculate_derivatives, &
+                                           PS, dPS_dT, ierr)
+  implicit none
+
+  PetscReal, intent(in) :: T ! temperature
+  PetscBool, intent(in) :: calculate_derivatives
+  PetscReal, intent(out) :: PS, dPS_dT ! Saturation pres. and derivative
+  PetscErrorCode, intent(inout) :: ierr
+
+  character(LEN=32) fluid, out1, n1, n2
+  PetscReal :: T_K
+  PetscReal :: Q = 0
+  T_K = T + T273K
+
+  call AbstractState_update(sat_pres_handle,sat_pres_QT_INPUTS, Q, T_K, errcode, mesgbfr, bfrlen)
+  PS = AbstractState_keyed_output(sat_pres_handle, sat_pres_iP, errcode, mesgbfr, bfrlen)
+
+  if (calculate_derivatives) then
+    dPS_dT = AbstractState_first_partial_deriv(sat_pres_handle, &
+                                  sat_pres_iP, sat_pres_iT, sat_pres_iQ, errcode, mesgbfr, bfrlen)
+  else
+    dPS_dT = UNINITIALIZED_DOUBLE
+  endif
+  print *,"EOSWaterSaturationPressureCoolProp: T=",T," Q= ",Q," PS= ",PS," dPS_dT= ",dPS_dT
+end subroutine EOSWaterSaturationPressureCoolProp
 
 end module EOS_Water_module

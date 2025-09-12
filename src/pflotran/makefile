@@ -41,10 +41,10 @@ regression_test_dir = $(SRC_DIR)/../../regression_tests
 unit_test_dir = $(SRC_DIR)/unittests
 
 # path to CoolProp library
-COOLPROP_LIB_DIR = /usr/local/share/CoolProp/build-release
+COOLPROP_LIB_DIR = /home/burg137/software/pflotran/src/CoolProp/build/gccstatic
 
-#MYFLAGS = -I. -g
-MYFLAGS = -I.
+MYFLAGS = -I. -g
+#MYFLAGS = -I.
 
 # Import variables/options/rules from PETSc.
 include ${PETSC_DIR}/lib/petsc/conf/variables
@@ -295,6 +295,10 @@ pflotran_rxn : libpflotranchem.a $(pflotran_rxn_obj)
 # PFLOTRAN derivative test
 pflotran_derivative : $(pflotran_base_obj) pflotran_derivative.o
 	${FLINKER} -o pflotran_derivative $(pflotran_base_obj) pflotran_derivative.o ${PETSC_LIB} ${LIBS} 
+
+checker_obj = $(pflotran_base_obj) check_water_density.o
+check_water_density: $(checker_obj)
+	${FLINKER} -o check_water_density $(checker_obj) ${PETSC_LIB} ${LIBS}		
 
 $(SRC_DIR)/pflotran_provenance.F90 : FORCE
 ifeq ($(UPDATE_PROVENANCE),1)
