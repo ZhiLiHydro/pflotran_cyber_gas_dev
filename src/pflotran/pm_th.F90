@@ -385,7 +385,7 @@ subroutine PMTHSetup(this)
          this%realization%patch%aux%Material%material_parameter, &
          this%realization%patch%material_property_array, &
          this%realization%option)
-  call THSetup(this%realization)
+  call THSetup(this%realization,this%pm_well)
   call PMSubsurfaceFlowSetup(this)
 
   ! set up communicator

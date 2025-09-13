@@ -493,7 +493,7 @@ module PM_Well_class
   type, public, extends(pm_well_implicit_type) :: pm_well_closed_loop_type
       ! Placeholder for now
     PetscInt, pointer :: well_cells(:)
-    type(connection_set_type), pointer :: connection_set_list
+    type(connection_set_type), pointer :: connection_set
   end type pm_well_closed_loop_type
 
   ! Extensions of the closed loop well model type

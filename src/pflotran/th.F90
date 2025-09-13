@@ -4,6 +4,7 @@ module TH_module
   use petscsnes
 
   use TH_Aux_module
+  use TH_Well_module
   use Global_Aux_module
   use Material_Aux_module
   use PFLOTRAN_Constants_module
@@ -71,7 +72,7 @@ end subroutine THTimeCut
 
 ! ************************************************************************** !
 
-subroutine THSetup(realization)
+subroutine THSetup(realization,pm_well)
   !
   ! Author: ???
   ! Date: 02/22/08
@@ -90,8 +91,10 @@ subroutine THSetup(realization)
   use Secondary_Continuum_module
   use Characteristic_Curves_Thermal_module
   use String_module, only : StringWrite
+  use PM_Well_class
 
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
 
   type(output_variable_list_type), pointer :: list
   type(option_type), pointer :: option
@@ -441,6 +444,10 @@ subroutine THSetup(realization)
   call THSetPlotVariables(realization,list)
   list => realization%output_option%output_obs_variable_list
   call THSetPlotVariables(realization,list)
+
+  if (associated(pm_well)) then
+    call THWellSetup(pm_well)
+  endif
 
   TH_ts_count = 0
   TH_ts_cut_count = 0
@@ -3543,7 +3550,6 @@ subroutine THResidual(snes,xx,r,realization,pm_well,ierr)
   use Debug_module
   use Matrix_Zeroing_module
   use PM_Well_class
-  use TH_Well_module
 
   implicit none
 
