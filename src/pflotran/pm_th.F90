@@ -1127,7 +1127,7 @@ subroutine PMTHUpdateAuxVars(this)
 
   class(pm_th_type) :: this
 
-  call THUpdateAuxVars(this%realization)
+  call THUpdateAuxVars(this%realization,this%pm_well)
 
 end subroutine PMTHUpdateAuxVars
 

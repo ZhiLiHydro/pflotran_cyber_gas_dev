@@ -145,7 +145,9 @@ module TH_Aux_module
     type(th_auxvar_type), pointer :: auxvars_bc(:)
     type(th_auxvar_type), pointer :: auxvars_ss(:)
     type(matrix_zeroing_type), pointer :: matrix_zeroing
+    PetscInt :: num_well_aux, num_well_aux_bc
     type(th_well_auxvar_type), pointer :: auxvars_well(:)
+    type(th_well_auxvar_type), pointer :: auxvars_well_bc(:)
   end type TH_type
 
   PetscReal, parameter :: epsilon = 1.d-6
@@ -155,10 +157,11 @@ module TH_Aux_module
             THAuxDestroy, &
             THAuxVarComputeNoFreezing, &
             THAuxVarInit, &
-            THWellAuxVarInit, &
             THAuxVarCopy, &
             THAuxVarCompute2ndOrderDeriv, &
             THAuxVarPerturb, &
+            THWellAuxVarInit, &
+            THWellAuxVarCompute, &
             THAuxVarDestroy
 
   public :: THAuxVarComputeFreezing
@@ -313,44 +316,6 @@ recursive subroutine THAuxVarInit(auxvar,option,allocate_perturbation)
   endif
 
 end subroutine THAuxVarInit
-
-! ************************************************************************** !
-
-recursive subroutine THWellAuxVarInit(auxvar,option,allocate_perturbation)
-  !
-  ! Initialize well auxiliary object
-  !
-  ! Author: Glenn Hammond
-  ! Date: 09/12/25
-  !
-
-  use Option_module
-
-  implicit none
-
-  type(th_auxvar_type) :: auxvar
-  type(option_type) :: option
-  PetscBool :: allocate_perturbation
-
-  PetscInt :: i
-
-  auxvar%temp = 0.d0
-  auxvar%u = 0.d0
-  auxvar%h = 0.d0
-  auxvar%du_dT = 0.d0
-  auxvar%dh_dT = 0.d0
-
-  auxvar%pert = 0.d0
-  if (allocate_perturbation) then
-    allocate(auxvar%auxvar_pert(option%nflowdof))
-    do i = 1, option%nflowdof
-      call THWellAuxVarInit(auxvar%auxvar_pert(i),option,PETSC_FALSE)
-    enddo
-  else
-    nullify(auxvar%auxvar_pert)
-  endif
-
-end subroutine THWellAuxVarInit
 
 ! ************************************************************************** !
 
@@ -1134,6 +1099,88 @@ subroutine THAuxVarCompute2ndOrderDeriv(th_auxvar,global_auxvar, &
   enddo
 
 end subroutine THAuxVarCompute2ndOrderDeriv
+
+! ************************************************************************** !
+
+recursive subroutine THWellAuxVarInit(auxvar,option,allocate_perturbation)
+  !
+  ! Initialize well auxiliary object
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/12/25
+  !
+
+  use Option_module
+
+  implicit none
+
+  type(th_well_auxvar_type) :: auxvar
+  type(option_type) :: option
+  PetscBool :: allocate_perturbation
+
+  PetscInt :: i
+
+  auxvar%temp = 0.d0
+  auxvar%u = 0.d0
+  auxvar%h = 0.d0
+  auxvar%du_dT = 0.d0
+  auxvar%dh_dT = 0.d0
+
+  auxvar%pert = 0.d0
+  if (allocate_perturbation) then
+    allocate(auxvar%auxvar_pert(option%nflowdof))
+    do i = 1, option%nflowdof
+      call THWellAuxVarInit(auxvar%auxvar_pert(i),option,PETSC_FALSE)
+    enddo
+  else
+    nullify(auxvar%auxvar_pert)
+  endif
+
+end subroutine THWellAuxVarInit
+
+! ************************************************************************** !
+
+subroutine THWellAuxVarCompute(liquid_pressure,x,auxvar,natural_id,option)
+  !
+  ! Computes secondary state variables for well auxvar
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/15/25
+  !
+  use Option_module
+  use EOS_Water_module
+
+  implicit none
+
+  PetscReal :: liquid_pressure
+  type(option_type) :: option
+  PetscReal :: x(option%nflowdof)
+  type(th_well_auxvar_type) :: auxvar
+  PetscInt :: natural_id
+
+  PetscReal :: pw,dw_mol,hw
+  PetscReal :: dw_dT
+  PetscReal :: hw_dp, hw_dT
+  PetscErrorCode :: ierr
+
+  pw = liquid_pressure
+  auxvar%temp = x(th_well_dof)
+
+  dw_mol = 1.d3 / FMWH2O
+  dw_dT = 0.d0
+  call EOSWaterEnthalpy(auxvar%temp,pw,hw,hw_dp,hw_dT,ierr)
+  auxvar%h = hw
+  auxvar%u = auxvar%h - pw / dw_mol
+  auxvar%dh_dT = hw_dT
+  auxvar%du_dT = hw_dT + pw/(dw_mol*dw_mol)*dw_dT
+
+  ! J/kmol -> whatever units (default of option%scale is 1.e-6)
+  auxvar%h = auxvar%h * option%scale
+  auxvar%u = auxvar%u * option%scale
+  auxvar%dh_dT = auxvar%dh_dT * option%scale
+  auxvar%du_dT = auxvar%du_dT * option%scale
+
+end subroutine THWellAuxVarCompute
 
 ! ************************************************************************** !
 

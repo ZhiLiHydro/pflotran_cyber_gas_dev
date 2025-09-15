@@ -638,7 +638,7 @@ end subroutine THUpdateMassBalance
 
 ! ************************************************************************** !
 
-subroutine THUpdateAuxVars(realization)
+subroutine THUpdateAuxVars(realization,pm_well)
   !
   ! Updates the auxiliary variables associated with
   ! the TH problem
@@ -655,10 +655,12 @@ subroutine THUpdateAuxVars(realization)
   use Coupler_module
   use Connection_module
   use Material_module
+  use PM_Well_class
 
   implicit none
 
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
 
   type(option_type), pointer :: option
   type(patch_type), pointer :: patch
@@ -670,6 +672,8 @@ subroutine THUpdateAuxVars(realization)
   type(th_auxvar_type), pointer :: th_auxvars(:)
   type(th_auxvar_type), pointer :: th_auxvars_bc(:)
   type(th_auxvar_type), pointer :: th_auxvars_ss(:)
+  type(th_well_auxvar_type), pointer :: th_well_auxvars(:)
+  type(th_well_auxvar_type), pointer :: th_well_auxvars_bc(:)
   type(global_auxvar_type), pointer :: global_auxvars(:)
   type(global_auxvar_type), pointer :: global_auxvars_bc(:)
   type(global_auxvar_type), pointer :: global_auxvars_ss(:)
@@ -702,6 +706,8 @@ subroutine THUpdateAuxVars(realization)
   th_auxvars => patch%aux%TH%auxvars
   th_auxvars_bc => patch%aux%TH%auxvars_bc
   th_auxvars_ss => patch%aux%TH%auxvars_ss
+  th_well_auxvars => patch%aux%TH%auxvars_well
+  th_well_auxvars_bc => patch%aux%TH%auxvars_well_bc
   global_auxvars => patch%aux%Global%auxvars
   global_auxvars_bc => patch%aux%Global%auxvars_bc
   global_auxvars_ss => patch%aux%Global%auxvars_ss
@@ -3578,7 +3584,7 @@ subroutine THResidual(snes,xx,r,realization,pm_well,ierr)
     return
   endif
 
-  call THResidualPreliminaries(xx,r,realization,ierr)
+  call THResidualPreliminaries(xx,r,realization,pm_well,ierr)
 
   call THResidualInternalConn(r,realization,ierr)
   call THResidualBoundaryConn(r,realization,ierr)
@@ -3665,7 +3671,7 @@ end subroutine THApplyPrescribedConditions
 
 ! ************************************************************************** !
 
-subroutine THResidualPreliminaries(xx,r,realization,ierr)
+subroutine THResidualPreliminaries(xx,r,realization,pm_well,ierr)
   !
   ! Perform preliminary work prior to residual computation
   !
@@ -3677,12 +3683,14 @@ subroutine THResidualPreliminaries(xx,r,realization,ierr)
   use Realization_Subsurface_class
   use Patch_module
   use Option_module
+  use PM_Well_class
 
   implicit none
 
   Vec, intent(inout) :: xx
   Vec, intent(inout) :: r
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
 
   type(patch_type), pointer :: patch
   type(option_type), pointer :: option
@@ -3695,7 +3703,7 @@ subroutine THResidualPreliminaries(xx,r,realization,ierr)
 
   call THUpdateLocalVecs(xx,realization,ierr)
 
-  call THUpdateAuxVars(realization)
+  call THUpdateAuxVars(realization,pm_well)
   ! override flags since they will soon be out of date
   patch%aux%TH%auxvars_up_to_date = PETSC_FALSE
 
