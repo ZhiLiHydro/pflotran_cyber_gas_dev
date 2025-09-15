@@ -177,10 +177,12 @@ subroutine FactoryGeomechanicsInitialize(simulation)
 
   ! Set data in sim_aux
   cur_process_model_coupler => simulation%process_model_coupler_list
+  print *, 'calling 1st SetAuxData'
   call cur_process_model_coupler%SetAuxData()
   if (associated(cur_process_model_coupler%peer)) then
     cur_process_model_coupler => cur_process_model_coupler%peer
     call cur_process_model_coupler%GetAuxData()
+    print *, 'calling 2nd SetAuxData'
     call cur_process_model_coupler%SetAuxData()
     if (option%geomechanics%set_ref_pres_and_temp_to_IC) then
       ! Switch back to geomech and fetch flow data

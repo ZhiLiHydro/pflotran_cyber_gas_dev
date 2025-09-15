@@ -616,11 +616,10 @@ subroutine PMCGeomechanicsSetAuxData(this)
                   perm0_p(local_id),local_stress,local_strain,local_pressure, &
                   perm_new,this%option)
             perm_p(local_id) = perm_new
-
             ! jaa begin -------------------------------------------------------
             if (this%option%geomechanics%split_scheme == &
               GEOMECH_FIXED_STRESS_SPLIT) then
-              !print *, 'in here!!'; stop
+              ! ID's are registered in factory_subsurface.F90
               ! get id's for global_aux%parameters
               strainv_0_id = ParameterGetIDFromName( &
                                  'geomech_vol_strain_0', &
@@ -709,14 +708,47 @@ subroutine PMCGeomechanicsSetAuxData(this)
                                 (1.d0-biot_coeff)/dr_bulk_modulus)* &
                                 (local_pressure-press_init))
               global_auxvars(ghosted_id)%parameters(porosity_id) = por_p(local_id)
-              print *, 'id, por_p, del_volstrain, press ', local_id, por_p(local_id), &
-                     strain_vol - strain_vol_0, local_pressure
-              !print *, 'strain_vol_0, porosity_old ', strain_vol_0, &
-              !   global_auxvars(ghosted_id)%parameters(porosity_old_id)
+              !print *, 'id, por_p, del_volstrain, press ', local_id, por_p(local_id), &
+              !       strain_vol - strain_vol_0, local_pressure
+              print *, 'local id, press, por_p', local_id, local_pressure, por_p(local_id)
               global_auxvars(ghosted_id)%parameters(press_old_id) = local_pressure
+            ! below changes will need to be part of undrained, drained, fixed strain
+            ! bc biot coef should be part of porosity update
+            elseif (this%option%geomechanics%split_scheme == &
+                    GEOMECH_UNDRAINED_SPLIT &
+                    .or. this%option%geomechanics%split_scheme == &
+                    GEOMECH_DRAINED_SPLIT &
+                    .or. this%option%geomechanics%split_scheme == &
+                    GEOMECH_FIXED_STRAIN_SPLIT &
+                   ) then
+              strainv_0_id = ParameterGetIDFromName( &
+                               'geomech_vol_strain_0', &
+                               pmc%subsurf_realization%option)
+              ghosted_id = grid%nL2G(local_id)
+              strain_vol = local_strain(1) + local_strain(2) + local_strain(3)
+              imat = pmc%subsurf_realization%patch%aux%Material% &
+                     auxvars(local_id)%id
+              biot_coeff = this%option%geomechanics%biot_coefficient(imat)
+              if (this%timestepper%steps == 0) then ! at init
+                global_auxvars(ghosted_id)%parameters(strainv_0_id) = strain_vol
+                strain_vol_0 = strain_vol
+              elseif (this%timestepper%steps > 0) then
+                strain_vol_0 = global_auxvars(ghosted_id)%parameters(strainv_0_id)
+              else ! before init
+                cycle
+              endif
+              porosity_0 = pmc%subsurf_realization%patch%aux%Material% &
+                           auxvars(local_id)%porosity_0
+              !print *, 'id, porosity_0, biot_coeff, strain_vol, strain_vol_0', &
+              !  local_id, porosity_0, biot_coeff, strain_vol, strain_vol_0
+              por_p(local_id) = porosity_0 +&
+                                (biot_coeff*(strain_vol-strain_vol_0))
+              print *, 'local id, press, por_p', local_id, local_pressure, por_p(local_id)
+            !else ! print pressure for other split schemes
+            !  print *, 'local id, press', local_id, local_pressure
             endif
-              ! jaa end ---------------------------------------------------------
-          enddo
+              ! jaa end --------------------------------------------------------
+          enddo ! local_id loop
 
           call VecRestoreArray(pmc%sim_aux%subsurf_por0,por0_p, &
                                   ierr);CHKERRQ(ierr)

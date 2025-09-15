@@ -973,8 +973,10 @@ subroutine InitSubsurfGeomechInitSimulation(simulation, pm_geomech)
 
   ! Set data in sim_aux
   cur_process_model_coupler => simulation%process_model_coupler_list
+  print *, 'first call SetAuxData'
   call simulation%flow_process_model_coupler%SetAuxData()
   call simulation%geomech%process_model_coupler%GetAuxData()
+  print *, 'second call SetAuxData'
   call simulation%geomech%process_model_coupler%SetAuxData()
   ! this is solely for casting to pmc geomech
   select type(pmc => simulation%geomech%process_model_coupler)

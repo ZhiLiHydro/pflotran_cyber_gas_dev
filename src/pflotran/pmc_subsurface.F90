@@ -808,6 +808,7 @@ subroutine PMCSubsurfaceSetAuxDataForGeomech(this)
   print *, 'PMCSubsurfaceSetAuxDataForGeomech()'
 #endif
 
+  print *, 'PMCSubsurfaceSetAuxDataForGeomech'
 
   select case(this%option%iflowmode)
     case (TH_MODE,TH_TS_MODE)
