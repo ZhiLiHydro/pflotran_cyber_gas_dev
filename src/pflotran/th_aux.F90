@@ -162,6 +162,7 @@ module TH_Aux_module
             THAuxVarPerturb, &
             THWellAuxVarInit, &
             THWellAuxVarCompute, &
+            THWellAuxVarPerturb, &
             THAuxVarDestroy
 
   public :: THAuxVarComputeFreezing
@@ -1102,6 +1103,70 @@ end subroutine THAuxVarCompute2ndOrderDeriv
 
 ! ************************************************************************** !
 
+subroutine THAuxVarPerturb(th_auxvar,global_auxvar, &
+                           material_auxvar,iphase, &
+                           characteristic_curves, &
+                           thermal_cc,th_parameter,icct, &
+                           natural_id,update_porosity,option)
+  ! Calculates auxiliary variables for perturbed TH system
+  !
+  ! Author: Glenn Hammond
+  ! Date: 08/04/25
+
+
+  use Option_module
+  use Global_Aux_module
+
+  use EOS_Water_module
+  use Characteristic_Curves_module
+  use Characteristic_Curves_Common_module
+  use Characteristic_Curves_Thermal_module
+  use Material_Aux_module
+
+  implicit none
+
+  type(option_type) :: option
+  class(characteristic_curves_type) :: characteristic_curves
+  class(cc_thermal_type) :: thermal_cc
+  type(th_auxvar_type) :: th_auxvar
+  type(global_auxvar_type) :: global_auxvar
+  PetscInt :: iphase
+  type(th_parameter_type) :: th_parameter
+  PetscInt :: icct
+  type(material_auxvar_type) :: material_auxvar
+  PetscInt :: natural_id
+  PetscBool :: update_porosity
+
+  PetscInt :: idof
+  PetscReal :: x(3)
+  PetscReal :: x_pert(3)
+  PetscReal :: pert
+
+  if (update_porosity) then
+    option%io_buffer = 'Update of porosity not supported for numerical &
+      &derivatives in THAuxVarPerturb'
+    call PrintErrMsg(option)
+  endif
+
+  x(TH_PRESSURE_DOF) = th_auxvar%pres
+  x(TH_TEMPERATURE_DOF) = th_auxvar%temp
+  do idof = 1, option%nflowdof
+    pert = x(idof)*th_rel_pert+th_min_pert(idof)
+    th_auxvar%auxvar_pert(idof)%pert = pert
+    x_pert(1:option%nflowdof) = x
+    x_pert(idof) = x(idof) + pert
+    call THAuxVarComputeNoFreezing(x_pert, &
+                                   th_auxvar%auxvar_pert(idof), &
+                                   global_auxvar,material_auxvar,iphase, &
+                                   characteristic_curves, &
+                                   thermal_cc,th_parameter,icct, &
+                                   natural_id,update_porosity,option)
+  enddo
+
+end subroutine THAuxVarPerturb
+
+! ************************************************************************** !
+
 recursive subroutine THWellAuxVarInit(auxvar,option,allocate_perturbation)
   !
   ! Initialize well auxiliary object
@@ -1184,67 +1249,40 @@ end subroutine THWellAuxVarCompute
 
 ! ************************************************************************** !
 
-subroutine THAuxVarPerturb(th_auxvar,global_auxvar, &
-                           material_auxvar,iphase, &
-                           characteristic_curves, &
-                           thermal_cc,th_parameter,icct, &
-                           natural_id,update_porosity,option)
-  ! Calculates auxiliary variables for perturbed TH system
+subroutine THWellAuxVarPerturb(liquid_pressure,auxvar_well, &
+                               natural_id,option)
+  !
+  ! Calculates well auxiliary variables for perturbed TH system
   !
   ! Author: Glenn Hammond
-  ! Date: 08/04/25
-
+  ! Date: 09/15/25
 
   use Option_module
-  use Global_Aux_module
-
-  use EOS_Water_module
-  use Characteristic_Curves_module
-  use Characteristic_Curves_Common_module
-  use Characteristic_Curves_Thermal_module
-  use Material_Aux_module
 
   implicit none
 
-  type(option_type) :: option
-  class(characteristic_curves_type) :: characteristic_curves
-  class(cc_thermal_type) :: thermal_cc
-  type(th_auxvar_type) :: th_auxvar
-  type(global_auxvar_type) :: global_auxvar
-  PetscInt :: iphase
-  type(th_parameter_type) :: th_parameter
-  PetscInt :: icct
-  type(material_auxvar_type) :: material_auxvar
+  PetscReal :: liquid_pressure
+  type(th_well_auxvar_type) :: auxvar_well
   PetscInt :: natural_id
-  PetscBool :: update_porosity
+  type(option_type) :: option
 
   PetscInt :: idof
-  PetscReal :: x(2)
-  PetscReal :: x_pert(2)
+  PetscReal :: x(3)
+  PetscReal :: x_pert(3)
   PetscReal :: pert
 
-  if (update_porosity) then
-    option%io_buffer = 'Update of porosity not supported for numerical &
-      &derivatives in THAuxVarPerturb'
-    call PrintErrMsg(option)
-  endif
-
-  x(TH_PRESSURE_DOF) = th_auxvar%pres
-  x(TH_TEMPERATURE_DOF) = th_auxvar%temp
-  do idof = 1, option%nflowdof
+  x = UNINITIALIZED_DOUBLE
+  x(th_well_dof) = auxvar_well%temp
+  do idof = th_well_dof, option%nflowdof
     pert = x(idof)*th_rel_pert+th_min_pert(idof)
-    th_auxvar%auxvar_pert(idof)%pert = pert
+    auxvar_well%auxvar_pert(idof)%pert = pert
     x_pert(1:option%nflowdof) = x
     x_pert(idof) = x(idof) + pert
-    call THAuxVarComputeNoFreezing(x_pert, &
-                                   th_auxvar%auxvar_pert(idof), &
-                                   global_auxvar,material_auxvar,iphase, &
-                                   characteristic_curves, &
-                                   thermal_cc,th_parameter,icct, &
-                                   natural_id,update_porosity,option)
+    call THWellAuxVarCompute(liquid_pressure,x,auxvar_well, &
+                             natural_id,option)
   enddo
 
-end subroutine THAuxVarPerturb
+end subroutine THWellAuxVarPerturb
 
 ! ************************************************************************** !
 

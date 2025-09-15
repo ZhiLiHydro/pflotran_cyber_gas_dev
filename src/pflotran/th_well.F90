@@ -16,9 +16,10 @@ module TH_Well_module
   PetscReal :: thermal_diffusivity = 0.143d-6
   PetscReal :: volume = 1.d0
   PetscReal :: velocity = 1.1574074d-5
-  PetscReal :: inlet_temperature = 15.d0
 
   public :: THWellSetup, &
+            THWellUpdateAuxVars, &
+            THWellPerturb, &
             THWell
 
 contains
@@ -112,8 +113,7 @@ subroutine THWellSetup(pm_well_base)
   patch%aux%TH%num_well_aux = num_well_cells
   allocate(th_well_auxvars(2))
   do i = 1, 2
-    call THWellAuxVarInit(th_well_auxvars(i),option, &
-                          th_numerical_derivatives)
+    call THWellAuxVarInit(th_well_auxvars(i),option,PETSC_FALSE)
   enddo
   patch%aux%TH%auxvars_well_bc => th_well_auxvars
   patch%aux%TH%num_well_aux_bc = 2
@@ -334,6 +334,53 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
   call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 
 end subroutine THWell
+
+! ************************************************************************** !
+
+subroutine THWellPerturb(pm_well_base)
+  !
+  ! Configure the well
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/12/25
+
+  use Option_module
+  use Patch_module
+  use Grid_module
+
+  implicit none
+
+  class(pm_well_type), pointer :: pm_well_base
+
+  class(pm_well_closed_loop_type), pointer :: pm_well
+  type(patch_type), pointer :: patch
+  type(grid_type), pointer :: grid
+  type(option_type), pointer :: option
+  type(th_well_auxvar_type), pointer :: auxvars_well(:)
+  PetscInt :: local_id, ghosted_id, natural_id
+  PetscInt :: i
+  PetscInt :: num_well_cells
+
+  if (.not.associated(pm_well_base)) return
+
+  pm_well => PMWellCastToClosedLoop(pm_well_base)
+
+  patch => pm_well%realization%patch
+  grid => patch%grid
+  option => pm_well%option
+
+  auxvars_well => patch%aux%TH%auxvars_well
+
+  num_well_cells = size(pm_well%well_cells)
+  do i = 1, num_well_cells
+    local_id = pm_well%well_cells(i)
+    ghosted_id = grid%nL2G(local_id)
+    natural_id = grid%nG2A(ghosted_id)
+    call THWellAuxVarPerturb(liquid_pressure,auxvars_well(ghosted_id), &
+                             natural_id,option)
+  enddo
+
+end subroutine THWellPerturb
 
 ! ************************************************************************** !
 

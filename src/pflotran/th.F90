@@ -872,6 +872,8 @@ subroutine THUpdateAuxVars(realization,pm_well)
   enddo
   deallocate(xx)
 
+  call THWellUpdateAuxVars(xx_loc_p,pm_well)
+
   call VecRestoreArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
   patch%aux%TH%auxvars_up_to_date = PETSC_TRUE
@@ -4430,7 +4432,7 @@ subroutine THJacobian(snes,xx,A,B,realization,pm_well,ierr)
 #endif
 
   if (th_numerical_derivatives) then
-    call THPerturb(realization)
+    call THPerturb(realization,pm_well)
   endif
 
   call THJacobianInternalConn(J,realization,ierr)
@@ -4467,7 +4469,7 @@ end subroutine THJacobian
 
 ! ************************************************************************** !
 
-subroutine THPerturb(realization)
+subroutine THPerturb(realization,pm_well)
   !
   ! Perturbs primary dofs for numerical derivatives
   !
@@ -4480,8 +4482,10 @@ subroutine THPerturb(realization)
   use Patch_module
   use Characteristic_Curves_module
   use Characteristic_Curves_Thermal_module
+  use PM_Well_class
 
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
 
   type(grid_type), pointer :: grid
   type(patch_type), pointer :: patch
@@ -4521,6 +4525,8 @@ subroutine THPerturb(realization)
                          thermal_cc,th_parameter,icct, &
                          natural_id,PETSC_FALSE,option)
   enddo
+
+  call THWellPerturb(pm_well)
 
 end subroutine THPerturb
 

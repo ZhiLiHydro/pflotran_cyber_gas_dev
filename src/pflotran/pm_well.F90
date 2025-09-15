@@ -713,6 +713,9 @@ function PMWellUShapeCreate()
   pm_well%well%well_model_type = WELL_MODEL_U_SHAPE
   pm_well%flow_coupling = FULLY_IMPLICIT_WELL
 
+  pm_well%inlet_temperature = 15.d0
+  nullify(pm_well%well_cells)
+  nullify(pm_well%connection_set)
   nullify(pm_well%next_well)
 
   PMWellUShapeCreate => pm_well
