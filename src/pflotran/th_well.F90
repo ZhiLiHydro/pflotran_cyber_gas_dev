@@ -12,7 +12,7 @@ module TH_Well_module
   private
 
   PetscReal :: liquid_pressure = 1.d6
-  PetscReal :: liquid_density = 1.d3
+  PetscReal :: liquid_density_kmol = 1.d3 / FMWH2O
   PetscReal :: thermal_diffusivity = 0.143d-6
   PetscReal :: volume = 1.d0
   PetscReal :: velocity = 1.1574074d-5
@@ -285,7 +285,7 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
     endif
 
     q = velocity * area
-    convective_energy_flux = q * liquid_density * enthalpy
+    convective_energy_flux = q * liquid_density_kmol * enthalpy
 
     ! conduction
     diffusive_energy_flux = thermal_diffusivity * area * (tup-tdn) / dist
@@ -330,7 +330,7 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
     area = connection_set%area(iconn)
     ! boundary fluxes
     q = velocity * area
-    convective_energy_flux = q * liquid_density * enthalpy
+    convective_energy_flux = q * liquid_density_kmol * enthalpy
     ! conduction
     diffusive_energy_flux = thermal_diffusivity * area * (tup-tdn) / dist
 
@@ -458,9 +458,12 @@ subroutine THWellAccumulation(auxvar_well,Res,Jac)
 
   PetscReal :: tempreal
 
+  ! Res [MJ] = liquid_density_kmol [kmol liquid/m^3 liquid] *
+  !            internal energy [MJ/kmol liquid] *
+  !            volume [m^3 liquid]
   Res = 0.d0
   Jac = 0.d0
-  tempreal = volume * liquid_density
+  tempreal = volume * liquid_density_kmol
   Res(1) = tempreal * auxvar_well%u
   Jac(3,3) = tempreal * auxvar_well%du_dT
 
@@ -485,7 +488,7 @@ subroutine THWellFlux(auxvar_well_up,auxvar_welL_dn, &
 
   PetscReal :: tup, tdn
   PetscReal :: dh_dTup, dh_dTdn
-  PetscReal :: enthalpy, velocity, area, q
+  PetscReal :: enthalpy, velocity, area, q_kmol
   PetscReal :: diffusive_energy_flux, convective_energy_flux
   PetscReal :: tempreal
 
@@ -505,17 +508,21 @@ subroutine THWellFlux(auxvar_well_up,auxvar_welL_dn, &
     dh_dTdn = auxvar_well_dn%dh_dT
   endif
 
-  q = velocity * area
-  convective_energy_flux = q * liquid_density * enthalpy
+  q_kmol = velocity * area * liquid_density_kmol
+  convective_energy_flux = q_kmol * enthalpy
 
   ! conduction
-  diffusive_energy_flux = thermal_diffusivity * area * (tup-tdn) / dist
+  ! [MJ/s] = [m^2 bulk/s] * [m^2 bulk] [C] / [m bulk]
+  tempreal = thermal_diffusivity * area
+  diffusive_energy_flux = tempreal * (tup-tdn)
 
   Res(th_well_dof) = convective_energy_flux + diffusive_energy_flux
 
   if (calculate_derivatives) then
     Jup = 0.d0
-    Jup(3,3) = UNINITIALIZED_DOUBLE
+    Jup(3,3) = q_kmol * dh_dTup + tempreal
+    Jdn = 0.d0
+    Jdn(3,3) = q_kmol * dh_dTdn - tempreal
   endif
 
 end subroutine THWellFlux

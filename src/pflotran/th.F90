@@ -1483,7 +1483,7 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
 
 ! TechNotes, TH Mode: First term of Equation 9
   ! rock_dencpr [MJ/m^3 rock-K]
-  ! [MJ] = [m^3 water/m^3 por] * [kmol water/m^3 water] * [MJ/m^3 water] &
+  ! [MJ] = [m^3 water/m^3 por] * [kmol water/m^3 water] * [MJ/kmol water] &
   !        * [m^3 pore/m^3 bulk] * [m^3 bulk] + [m^3 rock/m^3 bulk] * [m^3 bulk] &
   !        * [MJ/m^3 rock-K] * [C]
   eng = th_auxvar%sat * &
