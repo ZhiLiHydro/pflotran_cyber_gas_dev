@@ -4610,7 +4610,7 @@ subroutine EOSWaterSteamDensityEnthalpyIF97(T, Pv, calculate_derivatives, &
     !stop 'wow. much hotness.'
   end if
   open(unit=104, file='EOSWaterSteamDensityEnthalpyIF97.dat', status='unknown', position='append')
-  write(104,'(E22.8,1x,E22.8,1x,L1,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,I8)') T, Pv, calculate_derivatives, dg, dgmol, hg, dgp, dgt, hgp, hgt, ierr
+  write(104,'(E22.8,1x,E22.8,1x,L1,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,I8)') T, Pv, calculate_derivatives, dg, dgmol, dgp, dgt, hg, hgp, hgt, ierr
   close(104)
 end subroutine EOSWaterSteamDensityEnthalpyIF97
 
@@ -6380,7 +6380,7 @@ subroutine EOSWaterDensityCoolProp(T,P,calculate_derivatives,dw,dwmol, &
     dwt = UNINITIALIZED_DOUBLE
     dwp = UNINITIALIZED_DOUBLE
   endif
-  print *,"EOSWaterDensityCoolProp: T=",T," P= ",P," dw= ",dw," dwp= ",dwp," dwt= ",dwt
+  !print *,"EOSWaterDensityCoolProp: T=",T," P= ",P," dw= ",dw," dwp= ",dwp," dwt= ",dwt
 end subroutine
 
 subroutine EOSWaterEnthalpyCoolProp(t,p,calculate_derivatives,hw, &
@@ -6424,7 +6424,7 @@ subroutine EOSWaterEnthalpyCoolProp(t,p,calculate_derivatives,hw, &
     hwt = UNINITIALIZED_DOUBLE
     hwp = UNINITIALIZED_DOUBLE
   endif
-  print *,"EOSWaterEnthalpyCoolProp: T=",T," P= ",P," hw= ",hw," hwp= ",hwp," hwt= ",hwt
+  !print *,"EOSWaterEnthalpyCoolProp: T=",T," P= ",P," hw= ",hw," hwp= ",hwp," hwt= ",hwt
 end subroutine
 
 subroutine EOSWaterViscosityCoolProp(T, P, PS, dPS_dT, &
@@ -6532,7 +6532,7 @@ subroutine EOSWaterSteamDensityEnthalpyCoolProp(t,pv,calculate_derivatives, &
     hgp = UNINITIALIZED_DOUBLE
     hgt = UNINITIALIZED_DOUBLE
   endif
-  print *,"EOSWaterSteamDensityEnthalpyCoolProp: T=",T," P= ",pv," dg= ",dg,"dgmol= ",dgmol," hg= ",hg," hgt= ",hgt," hgp= ",hgp
+  !print *,"EOSWaterSteamDensityEnthalpyCoolProp: T=",T," P= ",pv," dg= ",dg,"dgmol= ",dgmol," hg= ",hg," hgt= ",hgt," hgp= ",hgp
 end subroutine EOSWaterSteamDensityEnthalpyCoolProp
 
 subroutine EOSWaterSaturationPressureCoolProp(T, calculate_derivatives, &
@@ -6553,12 +6553,15 @@ subroutine EOSWaterSaturationPressureCoolProp(T, calculate_derivatives, &
   PS = AbstractState_keyed_output(sat_pres_handle, sat_pres_iP, errcode, mesgbfr, bfrlen)
 
   if (calculate_derivatives) then
-    dPS_dT = AbstractState_first_partial_deriv(sat_pres_handle, &
-                                  sat_pres_iP, sat_pres_iT, sat_pres_iQ, errcode, mesgbfr, bfrlen)
+    !dPS_dT = AbstractState_first_partial_deriv(sat_pres_handle, &
+    !                              sat_pres_iP, sat_pres_iT, sat_pres_iQ, errcode, mesgbfr, bfrlen)
+    
+    dPS_dT = AbstractState_first_saturation_deriv(sat_pres_handle, sat_pres_iP, &
+                                  sat_pres_iT, errcode, mesgbfr, bfrlen)
   else
     dPS_dT = UNINITIALIZED_DOUBLE
   endif
-  print *,"EOSWaterSaturationPressureCoolProp: T=",T," Q= ",Q," PS= ",PS," dPS_dT= ",dPS_dT
+  !print *,"EOSWaterSaturationPressureCoolProp: T=",T," Q= ",Q," PS= ",PS," dPS_dT= ",dPS_dT
 end subroutine EOSWaterSaturationPressureCoolProp
 
 end module EOS_Water_module

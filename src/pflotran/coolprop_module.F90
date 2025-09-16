@@ -21,7 +21,7 @@ MODULE CoolProp_module
             character(c_char) :: name3(*)
             real(C_DOUBLE), VALUE :: prop3
         END FUNCTION HAPropsSI
-                FUNCTION get_input_pair_index(input) BIND(C, NAME='get_input_pair_index')
+        FUNCTION get_input_pair_index(input) BIND(C, NAME='get_input_pair_index')
             use iso_c_binding
             integer(C_long) :: get_input_pair_index
             character(KIND=c_char) :: input(*)
@@ -84,6 +84,16 @@ MODULE CoolProp_module
             integer(C_long), VALUE :: buffersize
 
         END FUNCTION AbstractState_first_partial_deriv
-
+        FUNCTION AbstractState_first_saturation_deriv(handle, Of, Wrt, errcode, &
+            buffer, buffersize) BIND(C, NAME='AbstractState_first_saturation_deriv')
+            use iso_c_binding
+            real(C_DOUBLE) :: AbstractState_first_saturation_deriv
+            integer(C_long),VALUE :: handle
+            integer(C_long),VALUE :: Of
+            integer(C_long),VALUE :: Wrt
+            integer(C_long) :: errcode
+            character(kind=c_char) :: buffer(*)
+            integer(C_long), VALUE :: buffersize
+        END FUNCTION AbstractState_first_saturation_deriv
     END INTERFACE
 END MODULE CoolProp_module

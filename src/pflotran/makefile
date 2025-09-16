@@ -296,9 +296,12 @@ pflotran_rxn : libpflotranchem.a $(pflotran_rxn_obj)
 pflotran_derivative : $(pflotran_base_obj) pflotran_derivative.o
 	${FLINKER} -o pflotran_derivative $(pflotran_base_obj) pflotran_derivative.o ${PETSC_LIB} ${LIBS} 
 
-checker_obj = $(pflotran_base_obj) check_water_density.o
-check_water_density: $(checker_obj)
-	${FLINKER} -o check_water_density $(checker_obj) ${PETSC_LIB} ${LIBS}		
+checker_water_obj = $(pflotran_base_obj) check_water_density.o check_water_enthalpy.o check_water_saturation_pressure.o check_steam_density_enthalpy.o
+checkers: $(checker_water_obj)
+	${FLINKER} -o check_water_density $(pflotran_base_obj) check_water_density.o ${PETSC_LIB} ${LIBS}		
+	${FLINKER} -o check_water_enthalpy $(pflotran_base_obj) check_water_enthalpy.o ${PETSC_LIB} ${LIBS}		
+	${FLINKER} -o check_water_saturation_pressure $(pflotran_base_obj) check_water_saturation_pressure.o ${PETSC_LIB} ${LIBS}		
+	${FLINKER} -o check_steam_density_enthalpy $(pflotran_base_obj) check_steam_density_enthalpy.o ${PETSC_LIB} ${LIBS}		
 
 $(SRC_DIR)/pflotran_provenance.F90 : FORCE
 ifeq ($(UPDATE_PROVENANCE),1)
