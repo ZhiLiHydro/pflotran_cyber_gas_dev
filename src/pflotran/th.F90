@@ -4409,6 +4409,7 @@ subroutine THJacobian(snes,xx,A,B,realization,pm_well,ierr)
   PetscErrorCode :: ierr
 
   Mat :: J
+  Vec :: r_dummy
   MatType :: mat_type
   PetscViewer :: viewer
   type(option_type),  pointer :: option
@@ -4439,6 +4440,7 @@ subroutine THJacobian(snes,xx,A,B,realization,pm_well,ierr)
   call THJacobianBoundaryConn(J,realization,ierr)
   call THJacobianAccumulation(J,realization,ierr)
   call THJacobianSourceSink(J,realization,ierr)
+  call THWell(r_dummy,J,pm_well,PETSC_TRUE)
 
   call MatrixZeroingZeroMatEntries(realization%patch%aux%TH%matrix_zeroing,J)
 

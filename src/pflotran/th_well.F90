@@ -247,7 +247,9 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
   auxvars_well => patch%aux%TH%auxvars_well
   auxvars_well_bc => patch%aux%TH%auxvars_well_bc
 
-  call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
+  if (.not.calculate_derivatives) then
+    call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
+  endif
 
   do i = 1, size(pm_well%well_cells)
     local_id = pm_well%well_cells(i)
@@ -289,10 +291,18 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
     diffusive_energy_flux = thermal_diffusivity * area * (tup-tdn) / dist
 
     total_energy_flux = convective_energy_flux + diffusive_energy_flux
-    offset = local_id_up*option%nflowdof
-    r_p(offset) = r_p(offset) - total_energy_flux
-    offset = local_id_dn*option%nflowdof
-    r_p(offset) = r_p(offset)  + total_energy_flux
+
+    if (calculate_derivatives) then
+      call PUMSetValuesBlockedLocal(J,1,ghosted_id,1,ghosted_id, &
+                                    Jac,ADD_VALUES,ierr)
+      call PUMSetValuesBlockedLocal(J,1,ghosted_id,1,ghosted_id, &
+                                    Jac,ADD_VALUES,ierr)
+    else
+      offset = local_id_up*option%nflowdof
+      r_p(offset) = r_p(offset) - total_energy_flux
+      offset = local_id_dn*option%nflowdof
+      r_p(offset) = r_p(offset)  + total_energy_flux
+    endif
 
   enddo
 
@@ -330,10 +340,61 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
   enddo
 
   ! calculate heat transfer between well cells and subsurface cells
-
-  call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
+  if (.not.calculate_derivatives) then
+    call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
+  endif
 
 end subroutine THWell
+
+! ************************************************************************** !
+
+subroutine THWellDerivative(r,J,pm_well_base)
+  !
+  ! Calculates contribution of well model to the TH residual and Jacobian
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/12/25
+  !
+  use Option_module
+  use Petsc_Utility_module
+  use Connection_module
+  use Patch_module
+  use Grid_module
+
+  implicit none
+
+  Vec :: r
+  Mat :: J
+  class(pm_well_type), pointer :: pm_well_base
+
+  class(pm_well_closed_loop_type), pointer :: pm_well
+  type(patch_type), pointer :: patch
+  type(grid_type), pointer :: grid
+  type(option_type), pointer :: option
+  PetscReal, pointer :: r_p(:)
+  type(th_well_auxvar_type), pointer :: auxvars_well(:)
+  type(th_well_auxvar_type), pointer :: auxvars_well_bc(:)
+  type(connection_set_type), pointer :: connection_set
+  PetscReal :: Res(3)
+  PetscReal :: Jac(3,3)
+  PetscInt :: local_id, local_id_up, local_id_dn
+  PetscInt :: ghosted_id, ghosted_id_up, ghosted_id_dn
+  PetscInt :: i, iconn, ibc, offset
+  PetscReal :: dist, area
+  PetscReal :: tup, tdn
+  PetscReal :: enthalpy
+  PetscReal :: q
+  PetscReal :: convective_energy_flux, diffusive_energy_flux, total_energy_flux
+  PetscReal :: residual_scaling_factor
+  PetscErrorCode :: ierr
+
+  if (.not.associated(pm_well_base)) return
+
+  if (th_numerical_derivatives) then
+  else
+  endif
+
+end subroutine THWellDerivative
 
 ! ************************************************************************** !
 
@@ -386,10 +447,10 @@ end subroutine THWellPerturb
 
 subroutine THWellAccumulation(auxvar_well,Res,Jac)
   !
-  ! Calculates contribution of well model to the TH residual and Jacobian
+  ! Calculates accumulation term for TH well residual and Jacobian
   !
   ! Author: Glenn Hammond
-  ! Date: 09/12/25
+  ! Date: 09/15/25
   !
   type(th_well_auxvar_type) :: auxvar_well
   PetscReal :: Res(:)
@@ -404,6 +465,60 @@ subroutine THWellAccumulation(auxvar_well,Res,Jac)
   Jac(3,3) = tempreal * auxvar_well%du_dT
 
 end subroutine THWellAccumulation
+
+! ************************************************************************** !
+
+subroutine THWellFlux(auxvar_well_up,auxvar_welL_dn, &
+                      dist,Res,Jup,Jdn,calculate_derivatives)
+  !
+  ! Calculates internal flux term for TH well residual and Jacobian
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/15/25
+  !
+  type(th_well_auxvar_type) :: auxvar_well_up, auxvar_well_dn
+  PetscReal :: Res(:)
+  PetscReal :: Jup(:,:)
+  PetscReal :: Jdn(:,:)
+  PetscReal :: dist
+  PetscBool :: calculate_derivatives
+
+  PetscReal :: tup, tdn
+  PetscReal :: dh_dTup, dh_dTdn
+  PetscReal :: enthalpy, velocity, area, q
+  PetscReal :: diffusive_energy_flux, convective_energy_flux
+  PetscReal :: tempreal
+
+  Res = 0.d0
+
+  tup = auxvar_well_up%temp
+  tdn = auxvar_well_dn%temp
+
+  ! convection
+  dh_dTup = 0.d0
+  dh_dTdn = 0.d0
+  if (velocity > 0) then
+    enthalpy = auxvar_well_up%h
+    dh_dTup = auxvar_well_up%dh_dT
+  else
+    enthalpy = auxvar_well_dn%h
+    dh_dTdn = auxvar_well_dn%dh_dT
+  endif
+
+  q = velocity * area
+  convective_energy_flux = q * liquid_density * enthalpy
+
+  ! conduction
+  diffusive_energy_flux = thermal_diffusivity * area * (tup-tdn) / dist
+
+  Res(th_well_dof) = convective_energy_flux + diffusive_energy_flux
+
+  if (calculate_derivatives) then
+    Jup = 0.d0
+    Jup(3,3) = UNINITIALIZED_DOUBLE
+  endif
+
+end subroutine THWellFlux
 
 end module TH_Well_module
 
