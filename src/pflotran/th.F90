@@ -1046,6 +1046,8 @@ subroutine THUpdateFixedAccumulation(realization)
     endif
 
     global_auxvars(ghosted_id)%istate = iphase
+    ! jaa this porosity should be ok (needs double checking!)
+    print *, 'ghosted_id, por fixed ', material_auxvars(ghosted_id)%porosity
     call THAccumulation(th_auxvars(ghosted_id),global_auxvars(ghosted_id), &
                         material_auxvars(ghosted_id), &
                         th_parameter%dencpr(patch%cct_id(ghosted_id)), &
@@ -4061,6 +4063,7 @@ subroutine THResidualAccumulation(r,realization,ierr)
   use Debug_module
   use Secondary_Continuum_Aux_module
   use Secondary_Continuum_module
+  use Parameter_module
 
   implicit none
 
@@ -4085,6 +4088,8 @@ subroutine THResidualAccumulation(r,realization,ierr)
   type(global_auxvar_type), pointer :: global_auxvars(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(sec_heat_type), pointer :: TH_sec_heat_vars(:)
+
+  PetscInt :: porosity_store_id
 
   PetscInt :: istart, iend
   PetscReal :: vol_frac_prim
@@ -4127,6 +4132,20 @@ subroutine THResidualAccumulation(r,realization,ierr)
     if (option%use_sc) then
       vol_frac_prim = material_auxvars(ghosted_id)%secondary_prop%epsilon
     endif
+
+    ! jaa testing
+    ! below include the non-fixed accumulation term
+    !print *, 'local_id, por', local_id, material_auxvars(ghosted_id)%porosity
+    ! quick workaround to ensure porosity is updated from geomech
+    if (option%ngeomechdof > 0) then
+      porosity_store_id = ParameterGetIDFromName( &
+                            'geomech_porosity_stash', &
+                            option)
+      ! overwrite by stored value
+      material_auxvars(ghosted_id)%porosity = &
+        global_auxvars(ghosted_id)%parameters(porosity_store_id)
+    endif
+    print *, 'F* local_id, por', local_id, material_auxvars(ghosted_id)%porosity
 
     call THAccumulation(th_auxvars(ghosted_id),global_auxvars(ghosted_id), &
                         material_auxvars(ghosted_id), &

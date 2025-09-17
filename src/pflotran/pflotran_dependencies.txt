@@ -1744,8 +1744,6 @@ output_common.o : \
   grid_structured.o \
   grid_unstructured_aux.o \
   grid_unstructured_cell.o \
-  hdf5.o \
-  hdf5_aux.o \
   logging.o \
   material_aux.o \
   option.o \
@@ -2735,6 +2733,7 @@ pmc_geomechanics.o : \
   geomechanics_force.o \
   geomechanics_realization.o \
   geomechanics_subsurface_properties.o \
+  global_aux.o \
   grid.o \
   option.o \
   output_geomechanics.o \
@@ -2799,6 +2798,7 @@ pmc_subsurface.o : \
   pm_zflow.o \
   pmc_base.o \
   pmc_geomechanics.o \
+  pmc_geophysics.o \
   realization_subsurface.o \
   richards_aux.o \
   solver.o \
@@ -3888,6 +3888,7 @@ th.o : \
   matrix_zeroing.o \
   option.o \
   output_aux.o \
+  parameter.o \
   patch.o \
   petsc_utility.o \
   pflotran_constants.o \

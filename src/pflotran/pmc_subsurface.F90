@@ -680,6 +680,7 @@ subroutine PMCSubsurfaceGetAuxDataFromGeomech(this)
   use Material_Aux_module
   use Material_module
   use PMC_Geomechanics_class
+  use PMC_Geophysics_class
 
   implicit none
 
@@ -703,6 +704,9 @@ subroutine PMCSubsurfaceGetAuxDataFromGeomech(this)
   print *, 'PMCSubsurfaceGetAuxDataFromGeomech()'
 #endif
 
+  print *, 'pmc name', this%name
+  print *, 'PMCSubsurfaceGetAuxDataFromGeomech()'
+
   ! jaa: want to skip initial get aux when using new pmc geomech
   if (this%timestepper%steps < 1) then
     if (associated(this%child)) then
@@ -720,6 +724,14 @@ subroutine PMCSubsurfaceGetAuxDataFromGeomech(this)
         subsurf_grid  => pmc%realization%discretization%grid
         subsurf_field => pmc%realization%field
         subsurf_material_auxvars => pmc%realization%patch%aux%Material%auxvars
+
+        ! jaa
+        if (associated(this%peer)) then
+          select type (pmc => this%peer)
+            class is(pmc_geophysics_type)
+              print *, '>>>> geophysics is a peer'
+          end select
+        endif
 
         if (option%geomechanics%flow_coupling == GEOMECH_TWO_WAY_COUPLED) then
 

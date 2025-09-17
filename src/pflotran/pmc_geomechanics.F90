@@ -317,6 +317,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
   use Discretization_module
   use Geomechanics_Subsurface_Properties_module
   use Parameter_module
+  use Global_Aux_module
 
   implicit none
 
@@ -341,6 +342,9 @@ subroutine PMCGeomechanicsSetAuxData(this)
   Vec :: geomech_vec
   Vec :: subsurf_vec
 
+  type(global_auxvar_type), pointer :: global_auxvars(:)
+  PetscInt :: porosity_store_id
+
 #if GEOMECH_DEBUG
   PetscViewer :: viewer
   print *, 'PMCGeomechSetAuxData'
@@ -358,6 +362,9 @@ subroutine PMCGeomechanicsSetAuxData(this)
             GEOMECH_ERT_COUPLING) then
 
         grid => pmc%subsurf_realization%patch%grid
+
+        global_auxvars => pmc%subsurf_realization% &
+                          patch%aux%Global%auxvars
 
         ! Find the number of geomech grid nodes for each flow cell
         call VecDuplicate(pmc%geomech_realization%geomech_field%strain, &
@@ -544,6 +551,14 @@ subroutine PMCGeomechanicsSetAuxData(this)
                   por0_p(local_id),local_stress,local_strain,local_pressure, &
                   por_new,this%option)
             por_p(local_id) = por_new
+            print *, 'local_id, por', local_id, por_p(local_id)
+            ! jaa - stash porosity from geomech update
+            porosity_store_id = ParameterGetIDFromName( &
+                                 'geomech_porosity_stash', &
+                                 this%option)
+            ghosted_id = grid%nL2G(local_id)
+            global_auxvars(ghosted_id)%parameters(porosity_store_id) = &
+              por_p(local_id)
             ! Update permeability based on stress/strain
             call GeomechanicsSubsurfacePropsPermEvaluate( &
                   grid, &
