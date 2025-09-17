@@ -14,6 +14,7 @@ module PM_Well_class
   use Well_Grid_module
   use Condition_module
   use Connection_module
+  use Matrix_Zeroing_module
 
   implicit none
 
@@ -495,6 +496,7 @@ module PM_Well_class
     PetscInt, pointer :: well_cells(:)
     PetscReal :: inlet_temperature
     type(connection_set_type), pointer :: connection_set
+    type(matrix_zeroing_type), pointer :: matrix_zeroing
   end type pm_well_closed_loop_type
 
   ! Extensions of the closed loop well model type
@@ -716,6 +718,7 @@ function PMWellUShapeCreate()
   pm_well%inlet_temperature = 15.d0
   nullify(pm_well%well_cells)
   nullify(pm_well%connection_set)
+  nullify(pm_well%matrix_zeroing)
   nullify(pm_well%next_well)
 
   PMWellUShapeCreate => pm_well
@@ -11159,6 +11162,8 @@ subroutine PMWellDestroyUShape(this)
   implicit none
 
   class(pm_well_u_shape_type) :: this
+
+  call MatrixZeroingDestroy(this%matrix_zeroing)
 
 end subroutine PMWellDestroyUShape
 

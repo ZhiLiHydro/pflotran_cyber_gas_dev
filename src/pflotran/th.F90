@@ -405,9 +405,9 @@ subroutine THSetup(realization,pm_well)
 
   allocate(dof_is_active(option%nflowdof))
   dof_is_active = PETSC_TRUE
-  if (Initialized(th_well_dof)) then
-    dof_is_active(th_well_dof) = PETSC_FALSE
-  endif
+ ! if (Initialized(th_well_dof)) then
+ !   dof_is_active(th_well_dof) = PETSC_FALSE
+ ! endif
   call PatchCreateZeroArray(patch,dof_is_active, &
                             patch%aux%TH%matrix_zeroing,option)
   deallocate(dof_is_active)
@@ -1080,14 +1080,14 @@ subroutine THUpdateFixedAccumulation(realization)
   call VecRestoreArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
 #if 0
-   call THNumericalJacobianTest(field%flow_xx,realization,pm_well)
+   call THNumericalJacobianTest(field%flow_xx,J,realization,pm_well)
 #endif
 
 end subroutine THUpdateFixedAccumulation
 
 ! ************************************************************************** !
 
-subroutine THNumericalJacobianTest(xx,realization,pm_well)
+subroutine THNumericalJacobianTest(xx,A_orig,realization,pm_well)
   !
   ! Computes the a test numerical jacobian
   !
@@ -1105,6 +1105,7 @@ subroutine THNumericalJacobianTest(xx,realization,pm_well)
   implicit none
 
   Vec :: xx
+  Mat :: A_orig
   class(realization_subsurface_type) :: realization
   class(pm_well_type), pointer :: pm_well
 
@@ -1135,11 +1136,13 @@ subroutine THNumericalJacobianTest(xx,realization,pm_well)
   call VecDuplicate(xx,res,ierr);CHKERRQ(ierr)
   call VecDuplicate(xx,res_pert,ierr);CHKERRQ(ierr)
 
-  call MatCreate(option%mycomm,A,ierr);CHKERRQ(ierr)
-  call MatSetSizes(A,PETSC_DECIDE,PETSC_DECIDE,grid%nlmax*option%nflowdof, &
-                   grid%nlmax*option%nflowdof,ierr);CHKERRQ(ierr)
-  call MatSetType(A,MATAIJ,ierr);CHKERRQ(ierr)
-  call MatSetFromOptions(A,ierr);CHKERRQ(ierr)
+  call MatDuplicate(A_orig,MAT_SHARE_NONZERO_PATTERN,A,ierr);CHKERRQ(ierr)
+  call MatZeroEntries(A,ierr);CHKERRQ(ierr)
+!  call MatCreate(option%mycomm,A,ierr);CHKERRQ(ierr)
+!  call MatSetSizes(A,PETSC_DECIDE,PETSC_DECIDE,grid%nlmax*option%nflowdof, &
+!                   grid%nlmax*option%nflowdof,ierr);CHKERRQ(ierr)
+!  call MatSetType(A,MATAIJ,ierr);CHKERRQ(ierr)
+!  call MatSetFromOptions(A,ierr);CHKERRQ(ierr)
 
   call THResidual(PETSC_NULL_SNES,xx,res,realization,pm_well,ierr)
   call VecGetArray(res,vec2_p,ierr);CHKERRQ(ierr)
@@ -3558,6 +3561,7 @@ subroutine THResidual(snes,xx,r,realization,pm_well,ierr)
   use Debug_module
   use Matrix_Zeroing_module
   use PM_Well_class
+  use TH_Well_module
 
   implicit none
 
@@ -3593,7 +3597,11 @@ subroutine THResidual(snes,xx,r,realization,pm_well,ierr)
   call THResidualAccumulation(r,realization,ierr)
   call THResidualSourceSink(r,realization,ierr)
   call THWell(r,dummy_mat,pm_well,PETSC_FALSE)
+
   call MatrixZeroingZeroVecEntries(realization%patch%aux%TH%matrix_zeroing,r)
+  if (associated(pm_well)) then
+    call THWellMatrixZeroing(pm_well,r,dummy_mat,PETSC_FALSE)
+  endif
 
   if (realization%debug%vecview_residual) then
     call DebugWriteFilename(realization%debug,string,'THresidual','', &
@@ -4398,6 +4406,7 @@ subroutine THJacobian(snes,xx,A,B,realization,pm_well,ierr)
   use Debug_module
   use Matrix_Zeroing_module
   use PM_Well_class
+  use TH_Well_module
 
   implicit none
 
@@ -4428,8 +4437,8 @@ subroutine THJacobian(snes,xx,A,B,realization,pm_well,ierr)
 
   call MatZeroEntries(J,ierr);CHKERRQ(ierr)
 
-#if 0
-   call THNumericalJacobianTest(xx,realization)
+#if 1
+   call THNumericalJacobianTest(xx,J,realization,pm_well)
 #endif
 
   if (th_numerical_derivatives) then
@@ -4442,7 +4451,33 @@ subroutine THJacobian(snes,xx,A,B,realization,pm_well,ierr)
   call THJacobianSourceSink(J,realization,ierr)
   call THWell(r_dummy,J,pm_well,PETSC_TRUE)
 
+  call MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+  call MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+
+! zero out isothermal and inactive cells
+#ifdef ISOTHERMAL_MODE_DOES_NOT_WORK
+  do i=1, patch%aux%TH%matrix_zeroing%n_zero_rows
+    ii = mod(patch%aux%TH%matrix_zeroing%zero_rows_local(i),option%nflowdof)
+    ip1 = patch%aux%TH%matrix_zeroing%zero_rows_local_ghosted(i)
+    if (ii == 0) then
+      ip2 = ip1-1
+    else if (ii == option%nflowdof-1) then
+      ip2 = ip1+1
+    else
+      ip2 = ip1
+    endif
+    call PUMSetValuesLocal(J,1,ip1,1,ip2,1.d0,INSERT_VALUES, &
+                           ierr);CHKERRQ(ierr)
+  enddo
+
+  call MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+  call MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+#endif
+
   call MatrixZeroingZeroMatEntries(realization%patch%aux%TH%matrix_zeroing,J)
+  if (associated(pm_well)) then
+    call THWellMatrixZeroing(pm_well,r_dummy,J,PETSC_TRUE)
+  endif
 
   if (realization%debug%matview_Matrix) then
     call DebugWriteFilename(realization%debug,string,'THjacobian','', &
@@ -5185,29 +5220,6 @@ subroutine THJacobianSourceSink(A,realization,ierr)
   endif
 
   call VecRestoreArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
-
-  call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
-  call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
-
-! zero out isothermal and inactive cells
-#ifdef ISOTHERMAL_MODE_DOES_NOT_WORK
-  do i=1, patch%aux%TH%matrix_zeroing%n_zero_rows
-    ii = mod(patch%aux%TH%matrix_zeroing%zero_rows_local(i),option%nflowdof)
-    ip1 = patch%aux%TH%matrix_zeroing%zero_rows_local_ghosted(i)
-    if (ii == 0) then
-      ip2 = ip1-1
-    else if (ii == option%nflowdof-1) then
-      ip2 = ip1+1
-    else
-      ip2 = ip1
-    endif
-    call PUMSetValuesLocal(A,1,ip1,1,ip2,1.d0,INSERT_VALUES, &
-                           ierr);CHKERRQ(ierr)
-  enddo
-
-  call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
-  call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
-#endif
 
 end subroutine THJacobianSourceSink
 

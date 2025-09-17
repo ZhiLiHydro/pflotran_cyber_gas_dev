@@ -20,7 +20,8 @@ module TH_Well_module
   public :: THWellSetup, &
             THWellUpdateAuxVars, &
             THWellPerturb, &
-            THWell
+            THWell, &
+            THWellMatrixZeroing
 
 contains
 
@@ -37,6 +38,7 @@ subroutine THWellSetup(pm_well_base)
   use Connection_module
   use Patch_module
   use Grid_module
+  use Matrix_Zeroing_module
 
   implicit none
 
@@ -49,11 +51,13 @@ subroutine THWellSetup(pm_well_base)
   type(connection_set_type), pointer :: connection_set
   type(th_well_auxvar_type), pointer :: th_well_auxvars(:)
   PetscReal :: dist_up, dist_dn
-  PetscInt :: i, index, iconn
+  PetscInt :: local_id, ghosted_id
+  PetscInt :: i, iconn, idof
   PetscInt :: nx, ny, nz
   PetscInt :: offset_i, offset_j, offset_k
   PetscInt :: num_connections
   PetscInt :: num_well_cells
+  PetscInt, allocatable :: inactive_cells(:)
 
   if (.not.associated(pm_well_base)) return
 
@@ -83,9 +87,9 @@ subroutine THWellSetup(pm_well_base)
   offset_j = 1
   offset_k = 1
   do iconn = 1, num_connections
-    index = nx*ny*offset_k + nx*offset_j + offset_i + iconn
-    connection_set%id_up(iconn) = index
-    connection_set%id_dn(iconn) = index + 1
+    ghosted_id = nx*ny*offset_k + nx*offset_j + offset_i + iconn
+    connection_set%id_up(iconn) = ghosted_id
+    connection_set%id_dn(iconn) = ghosted_id + 1
     connection_set%dist(:,iconn) = 0.d0
     dist_up = 0.5d0*grid%structured_grid%dx(offset_i+1)
     dist_dn = 0.5d0*grid%structured_grid%dx(offset_i+2)
@@ -99,8 +103,8 @@ subroutine THWellSetup(pm_well_base)
 
   allocate(pm_well%well_cells(num_well_cells))
   do i = 1, num_well_cells
-    index = nx*ny*offset_k + nx*offset_j + offset_i + i
-    pm_well%well_cells(i) = index
+    local_id = nx*ny*offset_k + nx*offset_j + offset_i + i
+    pm_well%well_cells(i) = local_id
   enddo
 
   ! allocate auxvar data structures for all grid cells
@@ -117,6 +121,33 @@ subroutine THWellSetup(pm_well_base)
   enddo
   patch%aux%TH%auxvars_well_bc => th_well_auxvars
   patch%aux%TH%num_well_aux_bc = 2
+
+  ! generate matrix zeroing
+  pm_well%matrix_zeroing => MatrixZeroingCreate()
+  allocate(inactive_cells(grid%nlmax))
+  inactive_cells = 1
+  do i = 1, size(pm_well%well_cells)
+    inactive_cells(pm_well%well_cells(i)) = 0
+  enddo
+  i = 0
+  do local_id = 1, grid%nlmax
+    if (inactive_cells(local_id) /= 1) then
+      i = i + 1
+      inactive_cells(i) = i
+    endif
+  enddo
+  pm_well%matrix_zeroing%zero_rows_exist = (i > 0)
+  pm_well%matrix_zeroing%n_zero_rows = i
+  call MatrixZeroingAllocateArray(pm_well%matrix_zeroing,i)
+  do i = 1, pm_well%matrix_zeroing%n_zero_rows
+    local_id = inactive_cells(i)
+    ghosted_id = grid%nL2G(local_id)
+    idof = (local_id-1)*option%nflowdof + th_well_dof
+    pm_well%matrix_zeroing%zero_rows_local(i) = idof ! one-based
+    idof = (ghosted_id-1)*option%nflowdof + th_well_dof
+    pm_well%matrix_zeroing%zero_rows_local_ghosted(i) = idof-1 ! zero-based
+  enddo
+  deallocate(inactive_cells)
 
 end subroutine THWellSetup
 
@@ -350,6 +381,36 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
   endif
 
 end subroutine THWell
+
+! ************************************************************************** !
+
+subroutine THWellMatrixZeroing(pm_well_base,r,J,calculate_derivatives)
+  !
+  ! Zeros dof for non-well grid cells
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/17/25
+  !
+  use Matrix_Zeroing_module
+
+  implicit none
+
+  class(pm_well_type), pointer :: pm_well_base
+  Vec :: r
+  Mat :: J
+  PetscBool :: calculate_derivatives
+
+  class(pm_well_closed_loop_type), pointer :: pm_well
+
+  if (.not.associated(pm_well_base)) return
+
+  if (calculate_derivatives) then
+    call MatrixZeroingZeroMatEntries(pm_well%matrix_zeroing,J)
+  else
+    call MatrixZeroingZeroVecEntries(pm_well%matrix_zeroing,r)
+  endif
+
+end subroutine THWellMatrixZeroing
 
 ! ************************************************************************** !
 
