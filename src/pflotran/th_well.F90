@@ -84,8 +84,8 @@ subroutine THWellSetup(pm_well_base)
       connection_set%dist = 0.d0
       connection_set%area = 0.d0
   offset_i = 0
-  offset_j = 1
-  offset_k = 1
+  offset_j = int(ny/2)
+  offset_k = int(nz/2)
   do iconn = 1, num_connections
     ghosted_id = nx*ny*offset_k + nx*offset_j + offset_i + iconn
     connection_set%id_up(iconn) = ghosted_id
@@ -131,7 +131,7 @@ subroutine THWellSetup(pm_well_base)
   enddo
   i = 0
   do local_id = 1, grid%nlmax
-    if (inactive_cells(local_id) /= 1) then
+    if (inactive_cells(local_id) == 1) then
       i = i + 1
       inactive_cells(i) = i
     endif
@@ -542,7 +542,7 @@ subroutine THWellFlux(auxvar_well_up,auxvar_well_dn, &
 
   PetscReal :: tup, tdn
   PetscReal :: dh_dTup, dh_dTdn
-  PetscReal :: enthalpy, velocity, q_kmol
+  PetscReal :: enthalpy, q_kmol
   PetscReal :: diffusive_energy_flux, convective_energy_flux
   PetscReal :: tempreal
 

@@ -4437,7 +4437,7 @@ subroutine THJacobian(snes,xx,A,B,realization,pm_well,ierr)
 
   call MatZeroEntries(J,ierr);CHKERRQ(ierr)
 
-#if 1
+#if 0
    call THNumericalJacobianTest(xx,J,realization,pm_well)
 #endif
 
