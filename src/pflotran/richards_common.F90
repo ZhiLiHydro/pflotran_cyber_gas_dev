@@ -209,8 +209,6 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
     endif
   endif
 
-  !print *, 'jaa stopping!!'; stop
-
 end subroutine RichardsAccumulation
 
 ! ************************************************************************** !

@@ -706,6 +706,7 @@ subroutine CopySubsurfaceGridtoGeomechGrid(ugrid,geomech_grid,option)
     geomech_grid%gauss_surf_node(face_type_id)%entity_type = face_type_id
     geomech_grid%gauss_surf_node(face_type_id)%dim = TWO_DIM_GRID
     geomech_grid%gauss_surf_node(face_type_id)%num_gauss_pts = ONE_INTEGER
+    !geomech_grid%gauss_surf_node(face_type_id)%num_gauss_pts = THREE_INTEGER
     call GaussCalculatePoints(geomech_grid%gauss_surf_node(face_type_id))
   enddo
 

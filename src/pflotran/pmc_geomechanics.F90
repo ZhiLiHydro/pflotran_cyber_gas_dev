@@ -667,7 +667,6 @@ subroutine PMCGeomechanicsSetAuxData(this)
               biot_coeff = this%option%geomechanics%biot_coefficient(imat)
               dr_bulk_modulus = youngs_mod / &
                          (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
-              print *, 'timestepper steps: ', this%timestepper%steps
               if (this%timestepper%steps < 0) then ! before init
                 global_auxvars(ghosted_id)%parameters(stressv_id) = 0.d0
                 global_auxvars(ghosted_id)%parameters(stressv_old_id) = 0.d0
@@ -710,7 +709,9 @@ subroutine PMCGeomechanicsSetAuxData(this)
               global_auxvars(ghosted_id)%parameters(porosity_id) = por_p(local_id)
               !print *, 'id, por_p, del_volstrain, press ', local_id, por_p(local_id), &
               !       strain_vol - strain_vol_0, local_pressure
-              print *, 'local id, press, por_p', local_id, local_pressure, por_p(local_id)
+              !print *, 'local id, press, por_p', local_id, local_pressure, por_p(local_id)
+              print *, 'local id, press, por_p, vol strain', local_id, local_pressure, &
+                por_p(local_id), strain_vol
               global_auxvars(ghosted_id)%parameters(press_old_id) = local_pressure
             ! below changes will need to be part of undrained, drained, fixed strain
             ! bc biot coef should be part of porosity update
@@ -743,7 +744,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
               !  local_id, porosity_0, biot_coeff, strain_vol, strain_vol_0
               por_p(local_id) = porosity_0 +&
                                 (biot_coeff*(strain_vol-strain_vol_0))
-              print *, 'local id, press, por_p', local_id, local_pressure, por_p(local_id)
+              print *, 'local id, press, vol strain', local_id, local_pressure, strain_vol
             !else ! print pressure for other split schemes
             !  print *, 'local id, press', local_id, local_pressure
             endif
