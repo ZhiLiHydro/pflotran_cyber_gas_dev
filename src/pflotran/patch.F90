@@ -12092,7 +12092,7 @@ subroutine PatchCreateZeroArray(patch,dof_is_active,matrix_zeroing,option)
     cur_coupler => cur_coupler%next
   enddo
 
-  call MatrixZeroingAllocateArray(matrix_zeroing,n_zero_rows)
+  call MatrixZeroingAllocateArray(matrix_zeroing,n_zero_rows,option)
 
   ncount = 0
 
@@ -12139,12 +12139,6 @@ subroutine PatchCreateZeroArray(patch,dof_is_active,matrix_zeroing,option)
    enddo
    cur_coupler => cur_coupler%next
   enddo
-
-  call MPI_Allreduce(n_zero_rows,flag,ONE_INTEGER_MPI,MPIU_INTEGER, &
-                     MPI_MAX,option%mycomm,ierr);CHKERRQ(ierr)
-  if (flag > 0) then
-    matrix_zeroing%zero_rows_exist = PETSC_TRUE
-  endif
 
   if (ncount /= n_zero_rows) then
     option%io_buffer = 'Error:  Mismatch in non-zero row count! ' // &

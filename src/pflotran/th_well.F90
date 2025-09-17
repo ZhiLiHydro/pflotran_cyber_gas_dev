@@ -136,9 +136,7 @@ subroutine THWellSetup(pm_well_base)
       inactive_cells(i) = i
     endif
   enddo
-  pm_well%matrix_zeroing%zero_rows_exist = (i > 0)
-  pm_well%matrix_zeroing%n_zero_rows = i
-  call MatrixZeroingAllocateArray(pm_well%matrix_zeroing,i)
+  call MatrixZeroingAllocateArray(pm_well%matrix_zeroing,i,option)
   do i = 1, pm_well%matrix_zeroing%n_zero_rows
     local_id = inactive_cells(i)
     ghosted_id = grid%nL2G(local_id)
@@ -403,6 +401,8 @@ subroutine THWellMatrixZeroing(pm_well_base,r,J,calculate_derivatives)
   class(pm_well_closed_loop_type), pointer :: pm_well
 
   if (.not.associated(pm_well_base)) return
+
+  pm_well => PMWellCastToClosedLoop(pm_well_base)
 
   if (calculate_derivatives) then
     call MatrixZeroingZeroMatEntries(pm_well%matrix_zeroing,J)

@@ -620,6 +620,7 @@ factory_subsurface_linkage.o : \
   pm_rt.o \
   pm_sco2.o \
   pm_subsurface_flow.o \
+  pm_th.o \
   pm_th_ts.o \
   pm_ufd_biosphere.o \
   pm_ufd_decay.o \
@@ -1562,6 +1563,7 @@ matrix_buffer.o : \
   petsc_utility.o \
   pflotran_constants.o
 matrix_zeroing.o : \
+  option.o \
   pflotran_constants.o \
   utility.o
 mphase.o : \
@@ -3917,6 +3919,7 @@ th_aux.o : \
 th_well.o : \
   connection.o \
   grid.o \
+  matrix_zeroing.o \
   option.o \
   patch.o \
   petsc_utility.o \

@@ -3152,7 +3152,9 @@ subroutine PMWellSetupHydrostatic(this)
       if (size(matrix_zeroing%zero_rows_local) == 1) then
         deallocate(matrix_zeroing%zero_rows_local)
         deallocate(matrix_zeroing%zero_rows_local_ghosted)
-        matrix_zeroing%zero_rows_exist = PETSC_FALSE
+! calls to MatZeroRowsLocal are collective, meaning everyone calls even if
+! there are no rows to be zeroed
+!        matrix_zeroing%zero_rows_exist = PETSC_FALSE
         matrix_zeroing%n_zero_rows = 0
       else
         if (allocated(temp)) deallocate(temp)
