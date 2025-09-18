@@ -14,8 +14,6 @@ module TH_Well_module
   PetscReal :: liquid_pressure = 1.d6
   PetscReal :: liquid_density_kmol = 1.d3 / FMWH2O
   PetscReal :: thermal_diffusivity = 0.143d-6
-  PetscReal :: volume = 1.d0
-  PetscReal :: velocity = 0.d0 !1.1574074d-5
 
   public :: THWellSetup, &
             THWellUpdateAuxVars, &
@@ -58,6 +56,7 @@ subroutine THWellSetup(pm_well_base)
   PetscInt :: offset_i, offset_j, offset_k
   PetscInt :: num_connections
   PetscInt :: num_well_cells
+  PetscReal :: pipe_cross_sectional_area
   PetscInt, allocatable :: inactive_cells(:)
 
   if (.not.associated(pm_well_base)) return
@@ -68,6 +67,8 @@ subroutine THWellSetup(pm_well_base)
   grid => patch%grid
   option => pm_well%option
 
+  pipe_cross_sectional_area = PI*(0.5d0*pm_well%pipe_diameter)**2
+
   nx = grid%structured_grid%nx
   ny = grid%structured_grid%ny
   nz = grid%structured_grid%nz
@@ -76,14 +77,15 @@ subroutine THWellSetup(pm_well_base)
 
   connection_set => &
     ConnectionCreate(num_connections,INTERNAL_FACE_CONNECTION_TYPE,NULL_GRID)
-        allocate(connection_set%id_up(num_connections))
-      allocate(connection_set%id_dn(num_connections))
-      allocate(connection_set%dist(-1:3,num_connections))
-      allocate(connection_set%area(num_connections))
-      connection_set%id_up = 0
-      connection_set%id_dn = 0
-      connection_set%dist = 0.d0
-      connection_set%area = 0.d0
+  allocate(connection_set%id_up(num_connections))
+  allocate(connection_set%id_dn(num_connections))
+  allocate(connection_set%dist(-1:3,num_connections))
+  allocate(connection_set%area(num_connections))
+  connection_set%id_up = 0
+  connection_set%id_dn = 0
+  connection_set%dist = 0.d0
+  connection_set%area = 0.d0
+
   offset_i = 0
   offset_j = int(ny/2)
   offset_k = int(nz/2)
@@ -97,8 +99,7 @@ subroutine THWellSetup(pm_well_base)
     connection_set%dist(0,iconn) = dist_up + dist_dn
     connection_set%dist(-1,iconn) = dist_up/(dist_up+dist_dn)
     connection_set%dist(1,iconn) = 1.d0
-    connection_set%area(iconn) = grid%structured_grid%dy(offset_j+1)* &
-                                 grid%structured_grid%dz(offset_k+1)
+    connection_set%area(iconn) = pipe_cross_sectional_area
   enddo
   pm_well%connection_set => connection_set
 
@@ -113,7 +114,13 @@ subroutine THWellSetup(pm_well_base)
   do i = 1, num_well_cells
     call THWellAuxVarInit(th_well_auxvars(i),option, &
                           th_numerical_derivatives)
+    local_id = pm_well%well_cells(i)
+    ghosted_id = grid%nL2G(local_id)
     th_well_auxvars(i)%local_id = pm_well%well_cells(i)
+    th_well_auxvars(i)%volume = grid%structured_grid%dx(ghosted_id) * &
+                                pipe_cross_sectional_area
+    th_well_auxvars(i)%surface_area = grid%structured_grid%dx(ghosted_id) * &
+                                      pm_well%pipe_diameter
   enddo
   patch%aux%TH%auxvars_well => th_well_auxvars
   patch%aux%TH%num_well_aux = num_well_cells
@@ -215,7 +222,7 @@ subroutine THWellUpdateAuxVars(xx,pm_well_base)
         ! ghosted id of downwind cells on last connection
         ghosted_id = pm_well%connection_set%id_dn(iconn)
         ! to guarantee zero conduction at boundary
-        xxbc(th_well_dof) = 5.d0 !auxvars_well(ghosted_id)%temp
+        xxbc(th_well_dof) = auxvars_well(ghosted_id)%temp
     end select
     call THWellAuxVarCompute(liquid_pressure,xxbc, &
                              auxvars_well_bc(ibc), &
@@ -254,6 +261,7 @@ subroutine THWellAccumulationTerms(r,J,pm_well_base,calculate_derivatives)
   type(th_well_auxvar_type), pointer :: auxvars_well(:)
   PetscReal :: Res(3)
   PetscReal :: Jblock(3,3)
+  PetscReal :: dt
   PetscInt :: ndof
   PetscInt :: local_id
   PetscInt :: ghosted_id
@@ -270,6 +278,7 @@ subroutine THWellAccumulationTerms(r,J,pm_well_base,calculate_derivatives)
 
   ndof = option%nflowdof
   auxvars_well => patch%aux%TH%auxvars_well
+  dt = option%flow_dt
 
   if (.not.calculate_derivatives) then
     call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
@@ -278,8 +287,10 @@ subroutine THWellAccumulationTerms(r,J,pm_well_base,calculate_derivatives)
   do i = 1, size(pm_well%well_cells)
     local_id = pm_well%well_cells(i)
     ghosted_id = grid%nL2G(local_id)
-    call THWellAccumulation(auxvars_well(ghosted_id),Res,Jblock,ndof)
-    Res = Res/option%flow_dt
+    call THWellAccumulationDerivative(auxvars_well(ghosted_id),Res,Jblock, &
+                                      ndof,calculate_derivatives)
+    Res = Res/dt
+    Jblock = Jblock/dt
     if (calculate_derivatives) then
       call PetUtilMatSVBL(J,ghosted_id,ghosted_id,Jblock,ndof)
     else
@@ -331,8 +342,7 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
   PetscInt :: local_id_up, local_id_dn
   PetscInt :: ghosted_id_up, ghosted_id_dn
   PetscInt :: iconn, ibc
-  PetscReal :: residual_scaling_factor
-  PetscBool :: reverse_direction
+  PetscBool :: forward_direction
   PetscErrorCode :: ierr
 
   if (.not.associated(pm_well_base)) return
@@ -361,8 +371,9 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
     ghosted_id_dn = connection_set%id_dn(iconn)
     local_id_up = grid%nG2L(ghosted_id_up)
     local_id_dn = grid%nG2L(ghosted_id_dn)
-    call THWellFlux(auxvars_well(ghosted_id_up), &
+    call THWellFluxDerivative(auxvars_well(ghosted_id_up), &
                     auxvars_well(ghosted_id_dn), &
+                    pm_well%flow_velocity, &
                     connection_set%dist(0,iconn), &
                     connection_set%area(iconn), &
                     Res,Jup,Jdn,ndof,calculate_derivatives)
@@ -398,40 +409,34 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
         local_id_dn = grid%nG2L(ghosted_id_dn)
         auxvar_up => auxvars_well_bc(ibc)
         auxvar_dn => auxvars_well(ghosted_id_dn)
-        residual_scaling_factor = 1.d0
-        reverse_direction = PETSC_FALSE
+        forward_direction = PETSC_TRUE
       case(2)
         ! the downstream cell on last internal connection is upstream on bc
         iconn = connection_set%num_connections
         ghosted_id_dn = connection_set%id_dn(iconn)
         local_id_dn = grid%nG2L(ghosted_id_dn)
-        !auxvar_up => auxvars_well(ghosted_id_dn)
-        auxvar_up => auxvars_well_bc(ibc)
+        auxvar_up => auxvars_well(ghosted_id_dn)
         ! to guarantee no conductive heat flux
-        auxvar_dn => auxvars_well(ghosted_id_dn)
-        residual_scaling_factor = -1.d0
-        reverse_direction = PETSC_TRUE
+!        auxvar_dn => auxvars_well(ghosted_id_dn)
+        auxvar_dn => auxvars_well_bc(ibc)
+        forward_direction = PETSC_FALSE
     end select
-    call THWellFlux(auxvar_up, &
+    call THWellFluxDerivative(auxvar_up, &
                     auxvar_dn, &
+                    pm_well%flow_velocity, &
                     connection_set%dist(0,iconn), &
                     connection_set%area(iconn), &
                     Res,Jup,Jdn,ndof,calculate_derivatives)
     if (calculate_derivatives) then
-      if (reverse_direction) then
-        call PetUtilMatSVBL(J,ghosted_id_dn,ghosted_id_up,Jup,ndof)
-      else
-        Jup = -Jup
+      if (forward_direction) then
         Jdn = -Jdn
-        call PetUtilMatSVBL(J,ghosted_id_dn,ghosted_id_dn,Jdn,ndof)
       endif
+      call PetUtilMatSVBL(J,ghosted_id_dn,ghosted_id_dn,Jdn,ndof)
     else
-      if (reverse_direction) then
-        call PetUtilVecSVBL(r_p,local_id_dn,Res,ndof,PETSC_FALSE)
-      else
+      if (forward_direction) then
         Res = -Res
-        call PetUtilVecSVBL(r_p,local_id_dn,Res,ndof,PETSC_FALSE)
       endif
+      call PetUtilVecSVBL(r_p,local_id_dn,Res,ndof,PETSC_FALSE)
     endif
   enddo
 
@@ -542,7 +547,7 @@ subroutine THWellAccumulation(auxvar_well,Res,Jac,ndof)
   !            volume [m^3 liquid]
   Res = 0.d0
   Jac = 0.d0
-  tempreal = volume * liquid_density_kmol
+  tempreal = auxvar_well%volume * liquid_density_kmol
   Res(ndof) = tempreal * auxvar_well%u
   Jac(ndof,ndof) = tempreal * auxvar_well%du_dT
 
@@ -551,7 +556,7 @@ end subroutine THWellAccumulation
 ! ************************************************************************** !
 
 subroutine THWellAccumulationDerivative(auxvar_well,Res,Jac,ndof, &
-                                        numerical_derivatives)
+                                        calculate_derivatives)
   !
   ! Calculates accumulation term for TH well residual and Jacobian
   !
@@ -562,14 +567,14 @@ subroutine THWellAccumulationDerivative(auxvar_well,Res,Jac,ndof, &
   PetscInt :: ndof
   PetscReal :: Res(ndof)
   PetscReal :: Jac(ndof,ndof)
-  PetscBool :: numerical_derivatives
+  PetscBool :: calculate_derivatives
 
   PetscReal :: Res_pert(ndof)
   PetscReal :: Jdum(ndof,ndof)
   PetscInt :: idof, ieq
 
   call THWellAccumulation(auxvar_well,Res,Jac,ndof)
-  if (numerical_derivatives) then
+  if (calculate_derivatives .and. th_numerical_derivatives) then
     do idof = 1, ndof
       call THWellAccumulation(auxvar_well%auxvar_pert(idof), &
                               Res_pert,Jdum,ndof)
@@ -585,7 +590,7 @@ end subroutine THWellAccumulationDerivative
 ! ************************************************************************** !
 
 subroutine THWellFlux(auxvar_well_up,auxvar_well_dn, &
-                      dist,area,Res,Jup,Jdn,ndof, &
+                      velocity,dist,area,Res,Jup,Jdn,ndof, &
                       calculate_derivatives)
   !
   ! Calculates internal flux term for TH well residual and Jacobian
@@ -598,6 +603,7 @@ subroutine THWellFlux(auxvar_well_up,auxvar_well_dn, &
   PetscReal :: Res(ndof)
   PetscReal :: Jup(ndof,ndof)
   PetscReal :: Jdn(ndof,ndof)
+  PetscReal :: velocity
   PetscReal :: dist
   PetscReal :: area
   PetscBool :: calculate_derivatives
@@ -647,8 +653,8 @@ end subroutine THWellFlux
 ! ************************************************************************** !
 
 subroutine THWellFluxDerivative(auxvar_well_up,auxvar_well_dn, &
-                                dist,area,Res,Jup,Jdn,ndof, &
-                                numerical_derivatives)
+                                velocity,dist,area,Res,Jup,Jdn,ndof, &
+                                calculate_derivatives)
   !
   ! Calculates internal flux term for TH well residual and Jacobian
   !
@@ -660,21 +666,23 @@ subroutine THWellFluxDerivative(auxvar_well_up,auxvar_well_dn, &
   PetscReal :: Res(ndof)
   PetscReal :: Jup(ndof,ndof)
   PetscReal :: Jdn(ndof,ndof)
+  PetscReal :: velocity
   PetscReal :: dist
   PetscReal :: area
-  PetscBool :: numerical_derivatives
+  PetscBool :: calculate_derivatives
 
   PetscReal :: Res_pert(ndof)
   PetscReal :: Jdum(ndof,ndof), Jdum1(ndof,ndof)
   PetscInt :: idof, ieq
 
   call THWellFlux(auxvar_well_up,auxvar_well_dn, &
-                  dist,area,Res,Jup,Jdn,ndof,.not.numerical_derivatives)
-  if (numerical_derivatives) then
+                  velocity,dist,area,Res,Jup,Jdn,ndof, &
+                  .not.th_numerical_derivatives)
+  if (calculate_derivatives .and. th_numerical_derivatives) then
     Jup = 0.d0
     do idof = 1, ndof
       call THWellFlux(auxvar_well_up%auxvar_pert(idof),auxvar_well_dn, &
-                      dist,area,Res_pert,Jdum,Jdum1,ndof,PETSC_FALSE)
+                      velocity,dist,area,Res_pert,Jdum,Jdum1,ndof,PETSC_FALSE)
       do ieq = 1, ndof
         Jup(ieq,idof) = (Res_pert(ieq) - Res(ieq)) / &
                         auxvar_well_up%auxvar_pert(idof)%pert
@@ -683,7 +691,7 @@ subroutine THWellFluxDerivative(auxvar_well_up,auxvar_well_dn, &
     Jdn = 0.d0
     do idof = 1, ndof
       call THWellFlux(auxvar_well_up,auxvar_well_dn%auxvar_pert(idof), &
-                      dist,area,Res_pert,Jdum,Jdum1,ndof,PETSC_FALSE)
+                      velocity,dist,area,Res_pert,Jdum,Jdum1,ndof,PETSC_FALSE)
       do ieq = 1, ndof
         Jdn(ieq,idof) = (Res_pert(ieq) - Res(ieq)) / &
                         auxvar_well_dn%auxvar_pert(idof)%pert

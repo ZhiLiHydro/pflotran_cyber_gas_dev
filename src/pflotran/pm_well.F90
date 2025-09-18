@@ -495,6 +495,9 @@ module PM_Well_class
       ! Placeholder for now
     PetscInt, pointer :: well_cells(:)
     PetscReal :: inlet_temperature
+    PetscReal :: pipe_diameter
+    PetscReal :: flow_velocity
+    PetscReal :: heat_transfer_coef
     type(connection_set_type), pointer :: connection_set
     type(matrix_zeroing_type), pointer :: matrix_zeroing
   end type pm_well_closed_loop_type
@@ -716,6 +719,9 @@ function PMWellUShapeCreate()
   pm_well%flow_coupling = FULLY_IMPLICIT_WELL
 
   pm_well%inlet_temperature = 15.d0
+  pm_well%pipe_diameter = 0.1
+  pm_well%flow_velocity = 1.574074d-5 ! 1 m/d
+  pm_well%heat_transfer_coef = 1.d-3
   nullify(pm_well%well_cells)
   nullify(pm_well%connection_set)
   nullify(pm_well%matrix_zeroing)

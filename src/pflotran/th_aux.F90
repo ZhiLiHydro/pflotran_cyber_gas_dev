@@ -123,6 +123,9 @@ module TH_Aux_module
     PetscReal :: h
     PetscReal :: du_dT
     PetscReal :: dh_dT
+    PetscReal :: volume
+    PetscReal :: surface_area
+    PetscReal :: heat_transfer_coef
         ! for numerical derivatives
     PetscReal :: pert
     type(th_well_auxvar_type), pointer :: auxvar_pert(:)
@@ -1192,6 +1195,9 @@ recursive subroutine THWellAuxVarInit(auxvar,option,allocate_perturbation)
   auxvar%h = 0.d0
   auxvar%du_dT = 0.d0
   auxvar%dh_dT = 0.d0
+  auxvar%volume = 0.d0
+  auxvar%surface_area = 0.d0
+  auxvar%heat_transfer_coef = 0.d0
 
   auxvar%pert = 0.d0
   if (allocate_perturbation) then
