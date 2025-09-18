@@ -6462,7 +6462,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
          SC_FUGA_COEFF,ICE_DENSITY,LIQUID_HEAD,VAPOR_PRESSURE, &
          SATURATION_PRESSURE,PRECIPITATE_SATURATION,DERIVATIVE, &
          MAXIMUM_PRESSURE,LIQUID_MASS_FRACTION,GAS_MASS_FRACTION,&
-         SOLUTE_CONCENTRATION,TOTAL_LIQUID_HEAD)
+         SOLUTE_CONCENTRATION,TOTAL_LIQUID_HEAD,PIPE_TEMPERATURE)
 
       if (associated(patch%aux%TH)) then
         select case(ivar)
@@ -6474,6 +6474,12 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
             do local_id=1,grid%nlmax
               vec_ptr(local_id) = &
                 patch%aux%TH%auxvars(grid%nL2G(local_id))%temp
+            enddo
+          case(PIPE_TEMPERATURE)
+            do tempint=1,patch%aux%TH%num_well_aux
+              local_id = patch%aux%TH%auxvars_well(tempint)%local_id
+              vec_ptr(local_id) = &
+                patch%aux%TH%auxvars_well(grid%nL2G(local_id))%temp
             enddo
           case(LIQUID_PRESSURE,MAXIMUM_PRESSURE)
             do local_id=1,grid%nlmax

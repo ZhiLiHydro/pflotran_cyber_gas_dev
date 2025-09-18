@@ -15,7 +15,7 @@ module TH_Well_module
   PetscReal :: liquid_density_kmol = 1.d3 / FMWH2O
   PetscReal :: thermal_diffusivity = 0.143d-6
   PetscReal :: volume = 1.d0
-  PetscReal :: velocity = 1.1574074d-5
+  PetscReal :: velocity = 0.d0 !1.1574074d-5
 
   public :: THWellSetup, &
             THWellUpdateAuxVars, &
@@ -113,6 +113,7 @@ subroutine THWellSetup(pm_well_base)
   do i = 1, num_well_cells
     call THWellAuxVarInit(th_well_auxvars(i),option, &
                           th_numerical_derivatives)
+    th_well_auxvars(i)%local_id = pm_well%well_cells(i)
   enddo
   patch%aux%TH%auxvars_well => th_well_auxvars
   patch%aux%TH%num_well_aux = num_well_cells
@@ -208,13 +209,13 @@ subroutine THWellUpdateAuxVars(xx,pm_well_base)
   do ibc = 1, 2
     select case(ibc)
       case(1)
-        xxbc(th_well_dof) = pm_well%inlet_temperature
+        xxbc(th_well_dof) = 5.d0 !pm_well%inlet_temperature
       case(2)
         iconn = pm_well%connection_set%num_connections
         ! ghosted id of downwind cells on last connection
         ghosted_id = pm_well%connection_set%id_dn(iconn)
         ! to guarantee zero conduction at boundary
-        xxbc(th_well_dof) = auxvars_well(ghosted_id)%temp
+        xxbc(th_well_dof) = 5.d0 !auxvars_well(ghosted_id)%temp
     end select
     call THWellAuxVarCompute(liquid_pressure,xxbc, &
                              auxvars_well_bc(ibc), &
@@ -331,6 +332,7 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
   PetscInt :: ghosted_id_up, ghosted_id_dn
   PetscInt :: iconn, ibc
   PetscReal :: residual_scaling_factor
+  PetscBool :: reverse_direction
   PetscErrorCode :: ierr
 
   if (.not.associated(pm_well_base)) return
@@ -393,41 +395,40 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
         iconn = 1
         ! the upstream cell on first internal connection is downstream on bc
         ghosted_id_dn = connection_set%id_up(iconn)
-        local_id_up = -1
         local_id_dn = grid%nG2L(ghosted_id_dn)
         auxvar_up => auxvars_well_bc(ibc)
         auxvar_dn => auxvars_well(ghosted_id_dn)
         residual_scaling_factor = 1.d0
+        reverse_direction = PETSC_FALSE
       case(2)
         ! the downstream cell on last internal connection is upstream on bc
         iconn = connection_set%num_connections
         ghosted_id_dn = connection_set%id_dn(iconn)
-        local_id_up = grid%nG2L(ghosted_id_dn)
-        local_id_dn = -1
-        auxvar_up => auxvars_well(ghosted_id_dn)
+        local_id_dn = grid%nG2L(ghosted_id_dn)
+        !auxvar_up => auxvars_well(ghosted_id_dn)
+        auxvar_up => auxvars_well_bc(ibc)
         ! to guarantee no conductive heat flux
         auxvar_dn => auxvars_well(ghosted_id_dn)
         residual_scaling_factor = -1.d0
+        reverse_direction = PETSC_TRUE
     end select
-    call THWellFlux(auxvars_well(ghosted_id_up), &
-                    auxvars_well(ghosted_id_dn), &
+    call THWellFlux(auxvar_up, &
+                    auxvar_dn, &
                     connection_set%dist(0,iconn), &
                     connection_set%area(iconn), &
                     Res,Jup,Jdn,ndof,calculate_derivatives)
     if (calculate_derivatives) then
-      if (local_id_up > 0) then
-        call PetUtilMatSVBL(J,ghosted_id_up,ghosted_id_up,Jup,ndof)
-      endif
-      if (local_id_dn > 0) then
+      if (reverse_direction) then
+        call PetUtilMatSVBL(J,ghosted_id_dn,ghosted_id_up,Jup,ndof)
+      else
         Jup = -Jup
         Jdn = -Jdn
         call PetUtilMatSVBL(J,ghosted_id_dn,ghosted_id_dn,Jdn,ndof)
       endif
     else
-      if (local_id_up > 0) then
-        call PetUtilVecSVBL(r_p,local_id_up,Res,ndof,PETSC_FALSE)
-      endif
-      if (local_id_dn > 0) then
+      if (reverse_direction) then
+        call PetUtilVecSVBL(r_p,local_id_dn,Res,ndof,PETSC_FALSE)
+      else
         Res = -Res
         call PetUtilVecSVBL(r_p,local_id_dn,Res,ndof,PETSC_FALSE)
       endif
@@ -632,6 +633,7 @@ subroutine THWellFlux(auxvar_well_up,auxvar_well_dn, &
   diffusive_energy_flux = tempreal * (tup-tdn)
 
   Res(th_well_dof) = convective_energy_flux + diffusive_energy_flux
+!  print *, convective_energy_flux, diffusive_energy_flux
 
   if (calculate_derivatives) then
     Jup = 0.d0

@@ -4378,6 +4378,7 @@ subroutine THResidualSourceSink(r,realization,ierr)
     if (patch%imat(ghosted_id) <= 0) cycle
     iend = local_id*option%nflowdof
     istart = iend-option%nflowdof+1
+    iend = istart + 1 ! kludge to avoid th_well_dof
     r_p (istart:iend)= r_p(istart:iend)/material_auxvars(ghosted_id)%volume
   enddo
 
@@ -5716,6 +5717,13 @@ subroutine THSetPlotVariables(realization,list)
     units = 'C'
     call OutputVariableAddToList(list,name,OUTPUT_GENERIC,units, &
                                 TEMPERATURE)
+
+    if (Initialized(th_well_dof)) then
+      name = 'Pipe Temperature'
+      units = 'C'
+      call OutputVariableAddToList(list,name,OUTPUT_GENERIC,units, &
+                                   PIPE_TEMPERATURE)
+    endif
 
   endif
 

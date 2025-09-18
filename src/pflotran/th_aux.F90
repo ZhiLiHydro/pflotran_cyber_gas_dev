@@ -117,6 +117,7 @@ module TH_Aux_module
   end type th_ice_type
 
   type, public :: th_well_auxvar_type
+    PetscInt :: local_id
     PetscReal :: temp
     PetscReal :: u
     PetscReal :: h
@@ -1185,6 +1186,7 @@ recursive subroutine THWellAuxVarInit(auxvar,option,allocate_perturbation)
 
   PetscInt :: i
 
+  auxvar%local_id = 0
   auxvar%temp = 0.d0
   auxvar%u = 0.d0
   auxvar%h = 0.d0
@@ -1278,7 +1280,8 @@ subroutine THWellAuxVarPerturb(liquid_pressure,auxvar_well, &
     auxvar_well%auxvar_pert(idof)%pert = pert
     x_pert(1:option%nflowdof) = x
     x_pert(idof) = x(idof) + pert
-    call THWellAuxVarCompute(liquid_pressure,x,auxvar_well, &
+    call THWellAuxVarCompute(liquid_pressure,x_pert, &
+                             auxvar_well%auxvar_pert(idof), &
                              natural_id,option)
   enddo
 
