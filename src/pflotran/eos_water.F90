@@ -615,7 +615,8 @@ subroutine EOSWaterSetEnthalpy(keyword,aux)
     case('COOLPROP')
       fluid = "Water"//C_NULL_CHAR
       EOSWaterEnthalpyPtr => EOSWaterEnthalpyCoolProp
-      H_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
+      !H_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
+      H_handle = AbstractState_factory(C_CHAR_"HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
       H_PT_INPUTS = get_input_pair_index(C_CHAR_"PT_INPUTS"//C_NULL_CHAR)
       H_iP = get_param_index(C_CHAR_"P"//C_NULL_CHAR)
       H_iT = get_param_index(C_CHAR_"T"//C_NULL_CHAR)
@@ -655,7 +656,8 @@ subroutine EOSWaterSetViscosity(keyword,aux)
     case('COOLPROP')
       fluid = "Water"//C_NULL_CHAR
       EOSWaterViscosityPtr => EOSWaterViscosityCoolProp
-      visc_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
+      !visc_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
+      visc_handle = AbstractState_factory(C_CHAR_"HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
       visc_PT_INPUTS = get_input_pair_index(C_CHAR_"PT_INPUTS"//C_NULL_CHAR)
       visc_iP = get_param_index(C_CHAR_"P"//C_NULL_CHAR)
       visc_iT = get_param_index(C_CHAR_"T"//C_NULL_CHAR)
@@ -693,7 +695,8 @@ subroutine EOSWaterSetSaturationPressure(keyword,aux)
     case('COOLPROP')
       fluid = "Water"//C_NULL_CHAR
       EOSWaterSaturationPressurePtr => EOSWaterSaturationPressureCoolProp
-      sat_pres_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
+      !sat_pres_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
+      sat_pres_handle = AbstractState_factory(C_CHAR_"HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
       sat_pres_QT_INPUTS = get_input_pair_index(C_CHAR_"QT_INPUTS"//C_NULL_CHAR)
       sat_pres_iP = get_param_index(C_CHAR_"P"//C_NULL_CHAR)
       sat_pres_iT = get_param_index(C_CHAR_"T"//C_NULL_CHAR)
@@ -729,7 +732,8 @@ subroutine EOSWaterSetSteamDensity(keyword,aux)
     case('COOLPROP')
       fluid = "Water"//C_NULL_CHAR
       EOSWaterSteamDensityEnthalpyPtr => EOSWaterSteamDensityEnthalpyCoolProp
-      steam_dens_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
+      !steam_dens_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
+      steam_dens_handle = AbstractState_factory(C_CHAR_"HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
       steam_dens_PT_INPUTS = get_input_pair_index(C_CHAR_"PT_INPUTS"//C_NULL_CHAR)
       steam_dens_iP = get_param_index(C_CHAR_"P"//C_NULL_CHAR)
       steam_dens_iT = get_param_index(C_CHAR_"T"//C_NULL_CHAR)
@@ -765,7 +769,8 @@ subroutine EOSWaterSetSteamEnthalpy(keyword,aux)
     case('COOLPROP')
       fluid = "Water"//C_NULL_CHAR
       EOSWaterSteamDensityEnthalpyPtr => EOSWaterSteamDensityEnthalpyCoolProp
-      steam_H_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
+      !steam_H_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
+      steam_H_handle = AbstractState_factory(C_CHAR_"HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
       steam_H_PT_INPUTS = get_input_pair_index(C_CHAR_"PT_INPUTS"//C_NULL_CHAR)
       steam_H_iP = get_param_index(C_CHAR_"P"//C_NULL_CHAR)
       steam_H_iT = get_param_index(C_CHAR_"T"//C_NULL_CHAR)
