@@ -51,7 +51,7 @@ contains
 
 ! ************************************************************************** !
 
-subroutine THTimeCut(realization)
+subroutine THTimeCut(realization,pm_well)
   !
   ! Resets arrays for time step cut
   !
@@ -60,13 +60,15 @@ subroutine THTimeCut(realization)
   !
 
   use Realization_Subsurface_class
+  use PM_Well_class
 
   implicit none
 
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
 
   TH_ts_cut_count = TH_ts_cut_count + 1
-  call THInitializeTimestep(realization)
+  call THInitializeTimestep(realization,pm_well)
 
 end subroutine THTimeCut
 
@@ -882,7 +884,7 @@ end subroutine THUpdateAuxVars
 
 ! ************************************************************************** !
 
-subroutine THInitializeTimestep(realization)
+subroutine THInitializeTimestep(realization,pm_well)
   !
   ! Update data in module prior to time step
   !
@@ -891,12 +893,18 @@ subroutine THInitializeTimestep(realization)
   !
 
   use Realization_Subsurface_class
+  use PM_Well_class
 
   implicit none
 
   class(realization_subsurface_type) :: realization
+  class(pm_well_type), pointer :: pm_well
+
+  Mat :: Jdum
 
   call THUpdateFixedAccumulation(realization)
+  call THWellAccumulationTerms(realization%field%flow_accum,Jdum, &
+                               pm_well,PETSC_FALSE)
 
 end subroutine THInitializeTimestep
 
@@ -1030,7 +1038,6 @@ subroutine THUpdateFixedAccumulation(realization)
   call VecGetArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
 
   call VecGetArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
-
 
   vol_frac_prim = 1.d0
 

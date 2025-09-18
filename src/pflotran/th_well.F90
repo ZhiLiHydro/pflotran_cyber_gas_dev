@@ -21,6 +21,7 @@ module TH_Well_module
             THWellUpdateAuxVars, &
             THWellPerturb, &
             THWell, &
+            THWellAccumulationTerms, &
             THWellMatrixZeroing
 
 contains
@@ -224,6 +225,76 @@ end subroutine THWellUpdateAuxVars
 
 ! ************************************************************************** !
 
+subroutine THWellAccumulationTerms(r,J,pm_well_base,calculate_derivatives)
+  !
+  ! Calculates contribution of well model to the TH residual and Jacobian
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/12/25
+  !
+  use Option_module
+  use Petsc_Utility_module
+  use Connection_module
+  use Patch_module
+  use Grid_module
+
+  implicit none
+
+  Vec :: r
+  Mat :: J
+  class(pm_well_type), pointer :: pm_well_base
+  PetscBool :: calculate_derivatives
+
+  class(pm_well_closed_loop_type), pointer :: pm_well
+  type(patch_type), pointer :: patch
+  type(grid_type), pointer :: grid
+  type(option_type), pointer :: option
+  PetscReal, pointer :: r_p(:)
+  type(th_well_auxvar_type), pointer :: auxvars_well(:)
+  PetscReal :: Res(3)
+  PetscReal :: Jblock(3,3)
+  PetscInt :: ndof
+  PetscInt :: local_id
+  PetscInt :: ghosted_id
+  PetscInt :: i
+  PetscErrorCode :: ierr
+
+  if (.not.associated(pm_well_base)) return
+
+  pm_well => PMWellCastToClosedLoop(pm_well_base)
+
+  patch => pm_well%realization%patch
+  grid => patch%grid
+  option => pm_well%option
+
+  ndof = option%nflowdof
+  auxvars_well => patch%aux%TH%auxvars_well
+
+  if (.not.calculate_derivatives) then
+    call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
+  endif
+
+  do i = 1, size(pm_well%well_cells)
+    local_id = pm_well%well_cells(i)
+    ghosted_id = grid%nL2G(local_id)
+    call THWellAccumulation(auxvars_well(ghosted_id),Res,Jblock,ndof)
+    Res = Res/option%flow_dt
+    if (calculate_derivatives) then
+      call PetUtilMatSVBL(J,ghosted_id,ghosted_id,Jblock,ndof)
+    else
+      call PetUtilVecSVBL(r_p,local_id,Res,ndof,PETSC_FALSE)
+    endif
+  enddo
+
+  ! calculate heat transfer between well cells and subsurface cells
+  if (.not.calculate_derivatives) then
+    call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
+  endif
+
+end subroutine THWellAccumulationTerms
+
+! ************************************************************************** !
+
 subroutine THWell(r,J,pm_well_base,calculate_derivatives)
   !
   ! Calculates contribution of well model to the TH residual and Jacobian
@@ -256,9 +327,9 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
   PetscReal :: Res(3)
   PetscReal :: Jup(3,3), Jdn(3,3)
   PetscInt :: ndof
-  PetscInt :: local_id, local_id_up, local_id_dn
-  PetscInt :: ghosted_id, ghosted_id_up, ghosted_id_dn
-  PetscInt :: i, iconn, ibc
+  PetscInt :: local_id_up, local_id_dn
+  PetscInt :: ghosted_id_up, ghosted_id_dn
+  PetscInt :: iconn, ibc
   PetscReal :: residual_scaling_factor
   PetscErrorCode :: ierr
 
@@ -274,21 +345,11 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
   auxvars_well => patch%aux%TH%auxvars_well
   auxvars_well_bc => patch%aux%TH%auxvars_well_bc
 
+  call THWellAccumulationTerms(r,J,pm_well_base,calculate_derivatives)
+
   if (.not.calculate_derivatives) then
     call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
   endif
-
-  do i = 1, size(pm_well%well_cells)
-    local_id = pm_well%well_cells(i)
-    ghosted_id = grid%nL2G(local_id)
-    call THWellAccumulation(auxvars_well(ghosted_id),Res,Jup,ndof)
-    if (calculate_derivatives) then
-      call PetUtilMatSVBL(J,ghosted_id,ghosted_id,Jup,ndof)
-    else
-      Res = -Res ! to subtract
-      call PetUtilVecSVBL(r_p,local_id,Res,ndof,PETSC_FALSE)
-    endif
-  enddo
 
   ! calculate heat transfer between well cells
   connection_set => pm_well%connection_set

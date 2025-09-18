@@ -468,7 +468,7 @@ subroutine PMTHInitializeTimestep(this)
 
   ! update porosity
 
-  call THInitializeTimestep(this%realization)
+  call THInitializeTimestep(this%realization,this%pm_well)
   call PMSubsurfaceFlowInitializeTimestepB(this)
 
 end subroutine PMTHInitializeTimestep
@@ -1088,7 +1088,7 @@ subroutine PMTHTimeCut(this)
   class(pm_th_type) :: this
 
   call PMSubsurfaceFlowTimeCut(this)
-  call THTimeCut(this%realization)
+  call THTimeCut(this%realization,this%pm_well)
 
 end subroutine PMTHTimeCut
 

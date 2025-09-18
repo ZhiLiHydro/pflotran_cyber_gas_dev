@@ -12058,7 +12058,6 @@ subroutine PatchCreateZeroArray(patch,dof_is_active,matrix_zeroing,option)
   type(coupler_type), pointer :: cur_coupler
   type(connection_set_type), pointer :: cur_connection_set
   PetscInt :: flag
-  PetscErrorCode :: ierr
 
   flag = 0
   grid => patch%grid
