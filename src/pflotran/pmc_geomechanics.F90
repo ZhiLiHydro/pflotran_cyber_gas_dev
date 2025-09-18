@@ -551,7 +551,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
                   por0_p(local_id),local_stress,local_strain,local_pressure, &
                   por_new,this%option)
             por_p(local_id) = por_new
-            print *, 'local_id, por', local_id, por_p(local_id)
+
             ! jaa - stash porosity from geomech update
             porosity_store_id = ParameterGetIDFromName( &
                                  'geomech_porosity_stash', &
@@ -559,6 +559,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
             ghosted_id = grid%nL2G(local_id)
             global_auxvars(ghosted_id)%parameters(porosity_store_id) = &
               por_p(local_id)
+
             ! Update permeability based on stress/strain
             call GeomechanicsSubsurfacePropsPermEvaluate( &
                   grid, &

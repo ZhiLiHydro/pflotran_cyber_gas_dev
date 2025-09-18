@@ -1046,8 +1046,6 @@ subroutine THUpdateFixedAccumulation(realization)
     endif
 
     global_auxvars(ghosted_id)%istate = iphase
-    ! jaa this porosity should be ok (needs double checking!)
-    print *, 'ghosted_id, por fixed ', material_auxvars(ghosted_id)%porosity
     call THAccumulation(th_auxvars(ghosted_id),global_auxvars(ghosted_id), &
                         material_auxvars(ghosted_id), &
                         th_parameter%dencpr(patch%cct_id(ghosted_id)), &
@@ -1416,8 +1414,8 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
                           material_auxvar, &
                           rock_dencpr,option,vol_frac_prim,Res)
   !
-  ! Computes the non-fixed portion of the accumulation
-  ! term for the residual
+  ! Computes both the fixed and non-fixed portions of the
+  ! accumulation term for the residual
   !
   ! Author: ???
   ! Date: 12/13/07
@@ -4133,9 +4131,7 @@ subroutine THResidualAccumulation(r,realization,ierr)
       vol_frac_prim = material_auxvars(ghosted_id)%secondary_prop%epsilon
     endif
 
-    ! jaa testing
-    ! below include the non-fixed accumulation term
-    !print *, 'local_id, por', local_id, material_auxvars(ghosted_id)%porosity
+    ! jaa - added on 9/18/2025
     ! quick workaround to ensure porosity is updated from geomech
     if (option%ngeomechdof > 0) then
       porosity_store_id = ParameterGetIDFromName( &
@@ -4145,8 +4141,8 @@ subroutine THResidualAccumulation(r,realization,ierr)
       material_auxvars(ghosted_id)%porosity = &
         global_auxvars(ghosted_id)%parameters(porosity_store_id)
     endif
-    print *, 'F* local_id, por', local_id, material_auxvars(ghosted_id)%porosity
 
+    ! non-fixed term
     call THAccumulation(th_auxvars(ghosted_id),global_auxvars(ghosted_id), &
                         material_auxvars(ghosted_id), &
                         th_parameter%dencpr(patch%cct_id(ghosted_id)), &

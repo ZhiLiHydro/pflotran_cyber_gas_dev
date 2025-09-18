@@ -373,7 +373,8 @@ subroutine FactorySubsurfaceInitSimulation(simulation)
       call RealizationRegisterParameter(realization,'geomechanics_stress')
       call RealizationRegisterParameter(realization,'geomechanics_strain')
   end select
-  ! jaa - testing geomech porosity stash
+  ! jaa - workaround for storing geomech porosity
+  ! applied in TH mode
   select case(option%geomechanics%flow_coupling)
     case(GEOMECH_TWO_WAY_COUPLED)
       call RealizationRegisterParameter(realization, &

@@ -701,8 +701,6 @@ recursive subroutine PMCBaseRunToTime(this,sync_time,stop_flag)
         ! Run neighboring process model couplers
         call this%peer%RunToTime(this%timestepper%target_time, &
                                 local_stop_flag)
-        print *, 'jaa GetAuxData in pmc_base'
-        print *, 'name ', this%name
         call this%GetAuxData()
         peer_already_run_to_time = PETSC_TRUE
       endif

@@ -2798,7 +2798,6 @@ pmc_subsurface.o : \
   pm_zflow.o \
   pmc_base.o \
   pmc_geomechanics.o \
-  pmc_geophysics.o \
   realization_subsurface.o \
   richards_aux.o \
   solver.o \
