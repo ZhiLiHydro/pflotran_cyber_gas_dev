@@ -67,6 +67,27 @@ subroutine THWellSetup(pm_well_base)
   grid => patch%grid
   option => pm_well%option
 
+  if (Uninitialized(pm_well%inlet_temperature)) then
+    option%io_buffer = 'Well INLET_TEMPERATURE must be specified'
+    call PrintErrMsg(option)
+  endif
+  if (Uninitialized(pm_well%pipe_diameter)) then
+    option%io_buffer = 'Well PIPE_DIAMETER must be specified'
+    call PrintErrMsg(option)
+  endif
+  if (Uninitialized(pm_well%pipe_wall_thickness)) then
+    option%io_buffer = 'Well PIPE_WALL_THICKNESS must be specified'
+    call PrintErrMsg(option)
+  endif
+  if (Uninitialized(pm_well%pipe_wall_thermal_conductivity)) then
+    option%io_buffer = 'Well PIPE_WALL_THERMAL_CONDUCTIVITY must be specified'
+    call PrintErrMsg(option)
+  endif
+  if (Uninitialized(pm_well%flow_velocity)) then
+    option%io_buffer = 'Well PIPE_FLOW_VELOCITY must be specified'
+    call PrintErrMsg(option)
+  endif
+
   pipe_cross_sectional_area = PI*(0.5d0*pm_well%pipe_diameter)**2
 
   nx = grid%structured_grid%nx
@@ -112,10 +133,10 @@ subroutine THWellSetup(pm_well_base)
   ! allocate auxvar data structures for all grid cells
   allocate(th_well_auxvars(num_well_cells))
   do i = 1, num_well_cells
-    call THWellAuxVarInit(th_well_auxvars(i),option, &
-                          th_numerical_derivatives)
     local_id = pm_well%well_cells(i)
     ghosted_id = grid%nL2G(local_id)
+    call THWellAuxVarInit(th_well_auxvars(i),option, &
+                          th_numerical_derivatives)
     th_well_auxvars(i)%local_id = pm_well%well_cells(i)
     th_well_auxvars(i)%volume = grid%structured_grid%dx(ghosted_id) * &
                                 pipe_cross_sectional_area
@@ -142,9 +163,12 @@ subroutine THWellSetup(pm_well_base)
   do local_id = 1, grid%nlmax
     if (inactive_cells(local_id) == 1) then
       i = i + 1
-      inactive_cells(i) = i
+      inactive_cells(i) = local_id
     endif
   enddo
+  if (i < grid%nlmax) then
+    inactive_cells(i+1:) = UNINITIALIZED_INTEGER
+  endif
   call MatrixZeroingAllocateArray(pm_well%matrix_zeroing,i,option)
   do i = 1, pm_well%matrix_zeroing%n_zero_rows
     local_id = inactive_cells(i)
@@ -208,7 +232,7 @@ subroutine THWellUpdateAuxVars(xx,pm_well_base)
     iend = ghosted_id * option%nflowdof
     istart = iend - option%nflowdof + 1
     call THWellAuxVarCompute(liquid_pressure,xx(istart:iend), &
-                             auxvars_well(ghosted_id), &
+                             auxvars_well(i), &
                              natural_id,option)
   enddo
 
@@ -222,7 +246,7 @@ subroutine THWellUpdateAuxVars(xx,pm_well_base)
         ! ghosted id of downwind cells on last connection
         ghosted_id = pm_well%connection_set%id_dn(iconn)
         ! to guarantee zero conduction at boundary
-        xxbc(th_well_dof) = auxvars_well(ghosted_id)%temp
+        xxbc(th_well_dof) = auxvars_well(size(pm_well%well_cells))%temp
     end select
     call THWellAuxVarCompute(liquid_pressure,xxbc, &
                              auxvars_well_bc(ibc), &
@@ -287,7 +311,7 @@ subroutine THWellAccumulationTerms(r,J,pm_well_base,calculate_derivatives)
   do i = 1, size(pm_well%well_cells)
     local_id = pm_well%well_cells(i)
     ghosted_id = grid%nL2G(local_id)
-    call THWellAccumulationDerivative(auxvars_well(ghosted_id),Res,Jblock, &
+    call THWellAccumulationDerivative(auxvars_well(i),Res,Jblock, &
                                       ndof,calculate_derivatives)
     Res = Res/dt
     Jblock = Jblock/dt
@@ -332,6 +356,7 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
   type(grid_type), pointer :: grid
   type(option_type), pointer :: option
   PetscReal, pointer :: r_p(:)
+  type(th_auxvar_type), pointer :: auxvars(:)
   type(th_well_auxvar_type), pointer :: auxvars_well(:)
   type(th_well_auxvar_type), pointer :: auxvars_well_bc(:)
   type(connection_set_type), pointer :: connection_set
@@ -339,9 +364,9 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
   PetscReal :: Res(3)
   PetscReal :: Jup(3,3), Jdn(3,3)
   PetscInt :: ndof
-  PetscInt :: local_id_up, local_id_dn
-  PetscInt :: ghosted_id_up, ghosted_id_dn
-  PetscInt :: iconn, ibc
+  PetscInt :: local_id, local_id_up, local_id_dn
+  PetscInt :: ghosted_id, ghosted_id_up, ghosted_id_dn
+  PetscInt :: i, iconn, ibc
   PetscBool :: forward_direction
   PetscErrorCode :: ierr
 
@@ -354,6 +379,7 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
   option => pm_well%option
 
   ndof = option%nflowdof
+  auxvars => patch%aux%TH%auxvars
   auxvars_well => patch%aux%TH%auxvars_well
   auxvars_well_bc => patch%aux%TH%auxvars_well_bc
 
@@ -365,14 +391,16 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
 
   ! calculate heat transfer between well cells
   connection_set => pm_well%connection_set
+  i = 0
   do iconn = 1, connection_set%num_connections
     ! cells are ghosted in connection set
     ghosted_id_up = connection_set%id_up(iconn)
     ghosted_id_dn = connection_set%id_dn(iconn)
     local_id_up = grid%nG2L(ghosted_id_up)
     local_id_dn = grid%nG2L(ghosted_id_dn)
-    call THWellFluxDerivative(auxvars_well(ghosted_id_up), &
-                    auxvars_well(ghosted_id_dn), &
+    i = i + 1
+    call THWellFluxDerivative(auxvars_well(i), &
+                    auxvars_well(i+1), &
                     pm_well%flow_velocity, &
                     connection_set%dist(0,iconn), &
                     connection_set%area(iconn), &
@@ -408,14 +436,16 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
         ghosted_id_dn = connection_set%id_up(iconn)
         local_id_dn = grid%nG2L(ghosted_id_dn)
         auxvar_up => auxvars_well_bc(ibc)
-        auxvar_dn => auxvars_well(ghosted_id_dn)
+!        auxvar_dn => auxvars_well(ghosted_id_dn)
+        auxvar_dn => auxvars_well(1)
         forward_direction = PETSC_TRUE
       case(2)
         ! the downstream cell on last internal connection is upstream on bc
         iconn = connection_set%num_connections
         ghosted_id_dn = connection_set%id_dn(iconn)
         local_id_dn = grid%nG2L(ghosted_id_dn)
-        auxvar_up => auxvars_well(ghosted_id_dn)
+!        auxvar_up => auxvars_well(ghosted_id_dn)
+        auxvar_up => auxvars_well(size(pm_well%well_cells))
         ! to guarantee no conductive heat flux
 !        auxvar_dn => auxvars_well(ghosted_id_dn)
         auxvar_dn => auxvars_well_bc(ibc)
@@ -439,6 +469,23 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
       call PetUtilVecSVBL(r_p,local_id_dn,Res,ndof,PETSC_FALSE)
     endif
   enddo
+
+#if 1
+  do i = 1, size(pm_well%well_cells)
+    local_id = pm_well%well_cells(i)
+    ghosted_id = grid%nL2G(local_id)
+    call THWellHeatExchangeDerivative(auxvars(ghosted_id), &
+                                      auxvars_well(i), &
+                                      pm_well, &
+                                      Res,Jdn, &
+                                      ndof,calculate_derivatives)
+    if (calculate_derivatives) then
+      call PetUtilMatSVBL(J,ghosted_id,ghosted_id,Jdn,ndof)
+    else
+      call PetUtilVecSVBL(r_p,local_id,Res,ndof,PETSC_FALSE)
+    endif
+  enddo
+#endif
 
   ! calculate heat transfer between well cells and subsurface cells
   if (.not.calculate_derivatives) then
@@ -520,7 +567,7 @@ subroutine THWellPerturb(pm_well_base)
     local_id = pm_well%well_cells(i)
     ghosted_id = grid%nL2G(local_id)
     natural_id = grid%nG2A(ghosted_id)
-    call THWellAuxVarPerturb(liquid_pressure,auxvars_well(ghosted_id), &
+    call THWellAuxVarPerturb(liquid_pressure,auxvars_well(i), &
                              natural_id,option)
   enddo
 
@@ -634,18 +681,17 @@ subroutine THWellFlux(auxvar_well_up,auxvar_well_dn, &
   convective_energy_flux = q_kmol * enthalpy
 
   ! conduction
-  ! [MJ/s] = [m^2 bulk/s] * [m^2 bulk] [C] / [m bulk]
-  tempreal = thermal_diffusivity * area
+  ! [MW] = [MW/m-K] * [m^2 bulk] [C] / [m bulk]
+  tempreal = thermal_diffusivity * area / dist
   diffusive_energy_flux = tempreal * (tup-tdn)
 
-  Res(th_well_dof) = convective_energy_flux + diffusive_energy_flux
-!  print *, convective_energy_flux, diffusive_energy_flux
+  Res(th_well_eq) = convective_energy_flux + diffusive_energy_flux
 
   if (calculate_derivatives) then
     Jup = 0.d0
-    Jup(ndof,ndof) = q_kmol * dh_dTup + tempreal
+    Jup(th_well_eq,th_well_dof) = q_kmol * dh_dTup + tempreal
     Jdn = 0.d0
-    Jdn(ndof,ndof) = q_kmol * dh_dTdn - tempreal
+    Jdn(th_well_eq,th_well_dof) = q_kmol * dh_dTdn - tempreal
   endif
 
 end subroutine THWellFlux
@@ -700,6 +746,98 @@ subroutine THWellFluxDerivative(auxvar_well_up,auxvar_well_dn, &
   endif
 
 end subroutine THWellFluxDerivative
+
+! ************************************************************************** !
+
+subroutine THWellHeatExchange(auxvar,auxvar_well,pm_well, &
+                              Res,J,ndof, &
+                              calculate_derivatives)
+  !
+  ! Calculates heat flux between grid cell and pipe
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/18/25
+  !
+  type(th_auxvar_type) :: auxvar
+  type(th_well_auxvar_type) :: auxvar_well
+  class(pm_well_closed_loop_type) :: pm_well
+  PetscInt :: ndof
+  PetscReal :: Res(ndof)
+  PetscReal :: J(ndof,ndof)
+  PetscBool :: calculate_derivatives
+
+  PetscReal :: tcell, tpipe
+  PetscReal :: diffusive_energy_flux
+  PetscReal :: tempreal
+
+  Res = 0.d0
+
+  tcell = auxvar%temp
+  tpipe = auxvar_well%temp
+
+  ! conduction
+  ! [MW] = [MW/m-K] * [m^2] * [C] / [m]
+  tempreal = pm_well%pipe_wall_thermal_conductivity * &
+             auxvar_well%surface_area / pm_well%pipe_wall_thickness
+  diffusive_energy_flux = tempreal * (tcell-tpipe)
+
+  Res(TH_ENERGY_EQUATION_INDEX) = diffusive_energy_flux
+  Res(th_well_eq) = -diffusive_energy_flux
+
+  if (calculate_derivatives) then
+    J = 0.d0
+    J(TH_ENERGY_EQUATION_INDEX,th_well_dof) = -tempreal
+    J(TH_ENERGY_EQUATION_INDEX,TH_TEMPERATURE_DOF) = tempreal
+    J(th_well_eq,th_well_dof) = tempreal
+    J(th_well_eq,TH_TEMPERATURE_DOF) = -tempreal
+  endif
+
+end subroutine THWellHeatExchange
+
+! ************************************************************************** !
+subroutine THWellHeatExchangeDerivative(auxvar,auxvar_well,pm_well, &
+                                        Res,J,ndof, &
+                                        calculate_derivatives)
+  !
+  ! Calculates heat flux between grid cell and pipe
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/18/25
+  !
+  type(th_auxvar_type) :: auxvar
+  type(th_well_auxvar_type) :: auxvar_well
+  class(pm_well_closed_loop_type) :: pm_well
+  PetscInt :: ndof
+  PetscReal :: Res(ndof)
+  PetscReal :: J(ndof,ndof)
+  PetscBool :: calculate_derivatives
+
+  PetscReal :: Res_pert(ndof)
+  PetscReal :: Jdum(ndof,ndof)
+  PetscReal :: pert
+  PetscInt :: idof, ieq
+
+  call THWellHeatExchange(auxvar,auxvar_well,pm_well, &
+                          Res,J,ndof, &
+                          .not.th_numerical_derivatives)
+  if (calculate_derivatives .and. th_numerical_derivatives) then
+    J = 0.d0
+    do idof = 1, ndof
+      call THWellHeatExchange(auxvar%auxvar_pert(idof), &
+                              auxvar_well%auxvar_pert(idof),pm_well, &
+                              Res_pert,Jdum,ndof,PETSC_FALSE)
+      if (idof == th_well_dof) then
+        pert = auxvar%auxvar_pert(idof)%pert
+      else
+        pert = auxvar_well%auxvar_pert(idof)%pert
+      endif
+      do ieq = 1, ndof
+        J(ieq,idof) = (Res_pert(ieq) - Res(ieq)) / pert
+      enddo
+    enddo
+  endif
+
+end subroutine THWellHeatExchangeDerivative
 
 end module TH_Well_module
 

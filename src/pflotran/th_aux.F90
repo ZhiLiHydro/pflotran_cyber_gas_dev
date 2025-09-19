@@ -77,6 +77,9 @@ module TH_Aux_module
     ! for ice
     type(th_ice_type), pointer :: ice
 
+    ! for well model
+!    type(th_well_auxvar_type), pointer :: auxvar_well
+
     ! for numerical derivatives
     PetscReal :: pert
     type(th_auxvar_type), pointer :: auxvar_pert(:)
@@ -207,6 +210,7 @@ function THAuxCreate(option)
   nullify(aux%auxvars_ss)
   nullify(aux%matrix_zeroing)
   nullify(aux%auxvars_well)
+  nullify(aux%auxvars_well_bc)
 
   allocate(aux%th_parameter)
   nullify(aux%th_parameter%dencpr)
@@ -304,6 +308,8 @@ recursive subroutine THAuxVarInit(auxvar,option,allocate_perturbation)
   else
     nullify(auxvar%ice)
   endif
+
+!  nullify(auxvar%auxvar_well)
 
 #if defined(CLM_PFLOTRAN) || defined(CLM_OFFLINE)
   auxvar%bc_alpha      = uninit_value
@@ -1346,7 +1352,28 @@ end subroutine THPrintAuxVars
 
 ! ************************************************************************** !
 
-subroutine THAuxVarDestroy(auxvar)
+recursive subroutine THWellAuxVarStrip(auxvar_well)
+  !
+  ! Deallocates a TH auxiliary object
+  !
+  ! Author: ???
+  ! Date: 02/14/08
+  !
+
+  implicit none
+
+  type(th_well_auxvar_type) :: auxvar_well
+
+  if (associated(auxvar_well%auxvar_pert)) then
+    deallocate(auxvar_well%auxvar_pert)
+    nullify(auxvar_well%auxvar_pert)
+  endif
+
+end subroutine THWellAuxVarStrip
+
+! ************************************************************************** !
+
+recursive subroutine THAuxVarDestroy(auxvar)
   !
   ! Deallocates a TH auxiliary object
   !
@@ -1360,6 +1387,7 @@ subroutine THAuxVarDestroy(auxvar)
 
   if (associated(auxvar%ice)) deallocate(auxvar%ice)
   nullify(auxvar%ice)
+!  call THWellAuxVarDestroy(auxvar%auxvar_well)
 
 end subroutine THAuxVarDestroy
 
@@ -1392,6 +1420,12 @@ subroutine THAuxDestroy(aux)
   do iaux = 1, aux%num_aux_ss
     call THAuxVarDestroy(aux%auxvars_ss(iaux))
   enddo
+  do iaux = 1, aux%num_well_aux
+    call THWellAuxVarStrip(aux%auxvars_well(iaux))
+  enddo
+  do iaux = 1, aux%num_well_aux_bc
+    call THWellAuxVarStrip(aux%auxvars_well_bc(iaux))
+  enddo
 
   if (associated(aux%auxvars)) deallocate(aux%auxvars)
   nullify(aux%auxvars)
@@ -1399,6 +1433,10 @@ subroutine THAuxDestroy(aux)
   nullify(aux%auxvars_bc)
   if (associated(aux%auxvars_ss)) deallocate(aux%auxvars_ss)
   nullify(aux%auxvars_ss)
+  if (associated(aux%auxvars_well)) deallocate(aux%auxvars_well)
+  nullify(aux%auxvars_well)
+  if (associated(aux%auxvars_well_bc)) deallocate(aux%auxvars_well_bc)
+  nullify(aux%auxvars_well_bc)
 
   call MatrixZeroingDestroy(aux%matrix_zeroing)
 

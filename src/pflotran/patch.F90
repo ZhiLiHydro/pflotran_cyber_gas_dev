@@ -6478,8 +6478,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
           case(PIPE_TEMPERATURE)
             do tempint=1,patch%aux%TH%num_well_aux
               local_id = patch%aux%TH%auxvars_well(tempint)%local_id
-              vec_ptr(local_id) = &
-                patch%aux%TH%auxvars_well(grid%nL2G(local_id))%temp
+              vec_ptr(local_id) = patch%aux%TH%auxvars_well(tempint)%temp
             enddo
           case(LIQUID_PRESSURE,MAXIMUM_PRESSURE)
             do local_id=1,grid%nlmax

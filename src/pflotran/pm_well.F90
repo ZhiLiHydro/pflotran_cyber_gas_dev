@@ -496,8 +496,9 @@ module PM_Well_class
     PetscInt, pointer :: well_cells(:)
     PetscReal :: inlet_temperature
     PetscReal :: pipe_diameter
+    PetscReal :: pipe_wall_thickness
+    PetscReal :: pipe_wall_thermal_conductivity
     PetscReal :: flow_velocity
-    PetscReal :: heat_transfer_coef
     type(connection_set_type), pointer :: connection_set
     type(matrix_zeroing_type), pointer :: matrix_zeroing
   end type pm_well_closed_loop_type
@@ -718,10 +719,11 @@ function PMWellUShapeCreate()
   pm_well%well%well_model_type = WELL_MODEL_U_SHAPE
   pm_well%flow_coupling = FULLY_IMPLICIT_WELL
 
-  pm_well%inlet_temperature = 15.d0
-  pm_well%pipe_diameter = 0.1
-  pm_well%flow_velocity = 1.574074d-5 ! 1 m/d
-  pm_well%heat_transfer_coef = 1.d-3
+  pm_well%inlet_temperature = UNINITIALIZED_DOUBLE
+  pm_well%pipe_diameter = UNINITIALIZED_DOUBLE
+  pm_well%pipe_wall_thickness = UNINITIALIZED_DOUBLE
+  pm_well%pipe_wall_thermal_conductivity = UNINITIALIZED_DOUBLE
+  pm_well%flow_velocity = UNINITIALIZED_DOUBLE
   nullify(pm_well%well_cells)
   nullify(pm_well%connection_set)
   nullify(pm_well%matrix_zeroing)
@@ -4144,10 +4146,16 @@ subroutine PMWellReadWell(pm_well,input,option,keyword,error_string,found)
   PetscReal, pointer :: temp_well_perm(:)
   PetscReal, pointer :: temp_well_phi(:)
   PetscReal, pointer :: temp(:)
+  PetscBool :: skip_check
 
   error_string = trim(error_string) // ',WELL'
   found = PETSC_TRUE
   num_errors = 0
+  skip_check = PETSC_FALSE
+  select type(pm_well)
+    class is(pm_well_closed_loop_type)
+      skip_check = PETSC_TRUE
+  end select
 
   read_max = 9000
   allocate(temp_diameter(read_max))
@@ -4236,6 +4244,33 @@ subroutine PMWellReadWell(pm_well,input,option,keyword,error_string,found)
             end select
             call InputErrorMsg(input,option,'WELL_INDEX_MODEL',error_string)
         !-----------------------------
+          case('INLET_TEMPERATURE','PIPE_DIAMETER','PIPE_WALL_THICKNESS', &
+               'PIPE_WALL_THERMAL_CONDUCTIVITY','PIPE_FLOW_VELOCITY')
+            select type(pm => pm_well)
+              class is(pm_well_closed_loop_type)
+                select case(word)
+                  case('INLET_TEMPERATURE')
+                    call InputReadDouble(input,option,pm%inlet_temperature)
+                    call InputErrorMsg(input,option,word,error_string)
+                  case('PIPE_DIAMETER')
+                    call InputReadDouble(input,option,pm%pipe_diameter)
+                    call InputErrorMsg(input,option,word,error_string)
+                  case('PIPE_WALL_THICKNESS')
+                    call InputReadDouble(input,option,pm%pipe_wall_thickness)
+                    call InputErrorMsg(input,option,word,error_string)
+                  case('PIPE_WALL_THERMAL_CONDUCTIVITY')
+                    call InputReadDouble(input,option, &
+                                         pm%pipe_wall_thermal_conductivity)
+                    call InputErrorMsg(input,option,word,error_string)
+                  case('PIPE_FLOW_VELOCITY')
+                    call InputReadDouble(input,option,pm%flow_velocity)
+                    call InputErrorMsg(input,option,word,error_string)
+                end select
+              class default
+                option%io_buffer = &
+                  'Well class does not support keyword: ' // word
+                call PrintErrMsg(option)
+            end select
           case default
             call InputKeywordUnrecognized(input,word,error_string,option)
         !-----------------------------
@@ -4245,13 +4280,13 @@ subroutine PMWellReadWell(pm_well,input,option,keyword,error_string,found)
 
       ! ----------------- error messaging -------------------------------------
       if (.not.associated(pm_well%well%friction_factor) .and. &
-          pm_well%well%WI_model /= PEACEMAN_NONE) then
+          pm_well%well%WI_model /= PEACEMAN_NONE .and..not.skip_check) then
         option%io_buffer = 'Keyword FRICTION_COEFFICIENT must be provided in &
                            &the ' // trim(error_string) // ' block.'
         call PrintErrMsg(option)
       endif
       if (.not.associated(pm_well%well%diameter) .and. &
-          pm_well%well%WI_model /= PEACEMAN_NONE) then
+          pm_well%well%WI_model /= PEACEMAN_NONE .and..not.skip_check) then
         option%io_buffer = 'Keyword DIAMETER must be provided in &
                            &the ' // trim(error_string) // ' block.'
         call PrintErrMsg(option)
