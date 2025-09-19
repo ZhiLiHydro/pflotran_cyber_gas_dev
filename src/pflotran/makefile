@@ -42,7 +42,8 @@ unit_test_dir = $(SRC_DIR)/unittests
 
 # path to CoolProp library
 #COOLPROP_LIB_DIR = /home/burg137/software/pflotran/src/CoolProp/build/gccstatic
-COOLPROP_LIB_DIR =  /usr/local/share/CoolProp/build-release/
+#COOLPROP_LIB_DIR =  /usr/local/share/CoolProp/build-release/
+#COOLPROP_LIB_DIR = ${COOLPROP_LIB_DIR}
 
 MYFLAGS = -I. -g
 #MYFLAGS = -I.
@@ -186,7 +187,9 @@ ifdef have_hdf5
 LIBS +=  -L${HDF5_LIB} -lhdf5_fortran -lhdf5 -lz 
 endif
 
-LIBS += -L$(COOLPROP_LIB_DIR) -lCoolProp -lstdc++
+ifdef COOLPROP_LIB_DIR
+	LIBS += -L$(COOLPROP_LIB_DIR) -lCoolProp -lstdc++
+endif
 #MYFLAGS += -I$(COOLPROP_LIB_DIR)
 
 

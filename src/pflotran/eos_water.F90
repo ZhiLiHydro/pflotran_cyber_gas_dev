@@ -57,14 +57,14 @@ module EOS_Water_module
   CHARACTER(100) mesgbfr
   integer(C_long) errcode, bfrlen
   ! density variables
-  integer(C_long) dens_handle, dens_PT_INPUTS, dens_iP, dens_iT, dens_iDmass
+  integer(C_long) dens_handle, dens_PT_INPUTS, dens_QT_INPUTS, dens_iP, dens_iT, dens_iDmass, dens_iQ
   ! enthalpy variables
-  integer(C_long) H_handle, H_PT_INPUTS, H_iP, H_iT, H_iH
+  integer(C_long) H_handle, H_PT_INPUTS, H_QT_INPUTS, H_iP, H_iT, H_iH, H_iQ
   ! viscosity variables
-  integer(C_long) visc_handle, visc_PT_INPUTS, visc_iP, visc_iT, visc_iV
+  integer(C_long) visc_handle, visc_PT_INPUTS, visc_QT_INPUTS, visc_iP, visc_iT, visc_iV, visc_iQ
   ! steam density and enthalpy variables
-  integer(C_long) steam_dens_handle, steam_H_handle, steam_dens_PT_INPUTS, steam_H_PT_INPUTS
-  integer(C_long) steam_dens_iP, steam_H_iP, steam_dens_iT, steam_H_iT, steam_dens_iDmass, steam_H_iH
+  integer(C_long) steam_dens_handle, steam_H_handle, steam_dens_PT_INPUTS, steam_dens_QT_INPUTS, steam_H_PT_INPUTS, steam_H_QT_INPUTS
+  integer(C_long) steam_dens_iP, steam_H_iP, steam_dens_iT, steam_H_iT, steam_dens_iDmass, steam_H_iH, steam_dens_iQ, steam_H_iQ
   integer(C_long) sat_pres_handle, sat_pres_QT_INPUTS, sat_pres_iP, sat_pres_iT, sat_pres_iQ
   
   ! PVT tables - eos_tables
@@ -542,9 +542,11 @@ subroutine EOSWaterSetDensity(keyword,aux)
       fluid = "Water"//C_NULL_CHAR
       EOSWaterDensityPtr => EOSWaterDensityCoolProp
       dens_PT_INPUTS = get_input_pair_index(C_CHAR_"PT_INPUTS"//C_NULL_CHAR)
+      dens_QT_INPUTS = get_input_pair_index(C_CHAR_"QT_INPUTS"//C_NULL_CHAR)
       dens_iDmass = get_param_index(C_CHAR_"Dmass"//C_NULL_CHAR)
       dens_iP = get_param_index(C_CHAR_"P"//C_NULL_CHAR)
       dens_iT = get_param_index(C_CHAR_"T"//C_NULL_CHAR)
+      dens_iQ = get_param_index(C_CHAR_"Q"//C_NULL_CHAR)
       !dens_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
       !dens_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,C_CHAR_"Water"//C_NULL_CHAR,errcode,mesgbfr,bfrlen)
       dens_handle = AbstractState_factory(C_CHAR_"HEOS"//C_NULL_CHAR,C_CHAR_"Water"//C_NULL_CHAR,errcode,mesgbfr,bfrlen)
@@ -618,9 +620,11 @@ subroutine EOSWaterSetEnthalpy(keyword,aux)
       !H_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
       H_handle = AbstractState_factory(C_CHAR_"HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
       H_PT_INPUTS = get_input_pair_index(C_CHAR_"PT_INPUTS"//C_NULL_CHAR)
+      H_QT_INPUTS = get_input_pair_index(C_CHAR_"QT_INPUTS"//C_NULL_CHAR)
       H_iP = get_param_index(C_CHAR_"P"//C_NULL_CHAR)
       H_iT = get_param_index(C_CHAR_"T"//C_NULL_CHAR)
       H_iH = get_param_index(C_CHAR_"H"//C_NULL_CHAR)
+      H_iQ = get_param_index(C_CHAR_"Q"//C_NULL_CHAR)
     case default
       print *, 'Unknown pointer type "' // trim(keyword) // &
         '" in EOSWaterSetEnthalpy().'
@@ -659,9 +663,11 @@ subroutine EOSWaterSetViscosity(keyword,aux)
       !visc_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
       visc_handle = AbstractState_factory(C_CHAR_"HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
       visc_PT_INPUTS = get_input_pair_index(C_CHAR_"PT_INPUTS"//C_NULL_CHAR)
+      visc_QT_INPUTS = get_input_pair_index(C_CHAR_"QT_INPUTS"//C_NULL_CHAR)
       visc_iP = get_param_index(C_CHAR_"P"//C_NULL_CHAR)
       visc_iT = get_param_index(C_CHAR_"T"//C_NULL_CHAR)
       visc_iV = get_param_index(C_CHAR_"V"//C_NULL_CHAR)
+      visc_iQ = get_param_index(C_CHAR_"Q"//C_NULL_CHAR)
     case default
       print *, 'Unknown pointer type "' // trim(keyword) // &
         '" in EOSWaterSetViscosity().'
@@ -735,9 +741,11 @@ subroutine EOSWaterSetSteamDensity(keyword,aux)
       !steam_dens_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
       steam_dens_handle = AbstractState_factory(C_CHAR_"HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
       steam_dens_PT_INPUTS = get_input_pair_index(C_CHAR_"PT_INPUTS"//C_NULL_CHAR)
+      steam_dens_QT_INPUTS = get_input_pair_index(C_CHAR_"QT_INPUTS"//C_NULL_CHAR)
       steam_dens_iP = get_param_index(C_CHAR_"P"//C_NULL_CHAR)
       steam_dens_iT = get_param_index(C_CHAR_"T"//C_NULL_CHAR)
       steam_dens_iDmass = get_param_index(C_CHAR_"Dmass"//C_NULL_CHAR)
+      steam_dens_iQ = get_param_index(C_CHAR_"Q"//C_NULL_CHAR)
     case default
       print *, 'Unknown pointer type "' // trim(keyword) // &
         '" in EOSWaterSetSteamDensity().'
@@ -772,9 +780,11 @@ subroutine EOSWaterSetSteamEnthalpy(keyword,aux)
       !steam_H_handle = AbstractState_factory(C_CHAR_"TTSE&HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
       steam_H_handle = AbstractState_factory(C_CHAR_"HEOS"//C_NULL_CHAR,fluid,errcode,mesgbfr,bfrlen)
       steam_H_PT_INPUTS = get_input_pair_index(C_CHAR_"PT_INPUTS"//C_NULL_CHAR)
+      steam_H_QT_INPUTS = get_input_pair_index(C_CHAR_"QT_INPUTS"//C_NULL_CHAR)
       steam_H_iP = get_param_index(C_CHAR_"P"//C_NULL_CHAR)
       steam_H_iT = get_param_index(C_CHAR_"T"//C_NULL_CHAR)
       steam_H_iH = get_param_index(C_CHAR_"H"//C_NULL_CHAR)
+      steam_H_iQ = get_param_index(C_CHAR_"Q"//C_NULL_CHAR)
     case default
       print *, 'Unknown pointer type "' // trim(keyword) // &
         '" in EOSWaterSetSteamEnthalpy().'
@@ -6337,6 +6347,44 @@ end subroutine EOSWaterKelvin
 
 ! ************************************************************************** !
 
+! filepath: /home/burg137/software/pflotran/src/pflotran/eos_water.F90
+! ...existing code...
+
+logical function IsPressureNearSaturationCoolProp(handle, QT_INPUTS, P_index, T_index, P, T)
+  implicit none
+  integer(C_long), intent(in) :: handle, QT_INPUTS, P_index, T_index
+  PetscReal, intent(in) :: P, T
+  PetscReal :: T_K, PS, rel_tol, Q
+  integer(C_long) :: errcode
+  CHARACTER(100) :: mesgbfr
+  integer(C_long) :: bfrlen
+
+  T_K = T + T273K
+  bfrlen = 100
+  mesgbfr = ' '
+  errcode = 0
+  rel_tol = 1.0E-6  ! 1E-4%
+
+  Q = 0.0
+  ! Compute saturation pressure at T
+  call AbstractState_update(handle, QT_INPUTS, Q, T_K, errcode, mesgbfr, bfrlen)
+  if (errcode .ne. 0) then
+      Print *,"In IsPressureNearSaturationCoolProp call 0 ", errcode, mesgbfr
+      Print *,"P= ",P," T= ",T_K
+      call exit()
+  endif
+  ! Get saturation pressure
+  PS = AbstractState_keyed_output(handle, P_index, errcode, mesgbfr, bfrlen)
+  if (errcode .ne. 0) then
+      Print *,"In IsPressureNearSaturationCoolProp call 1 ", errcode, mesgbfr
+      Print *,"P= ",P," T= ",T_K
+      call exit()
+  endif
+  ! Compare P to PS
+  IsPressureNearSaturationCoolProp = abs(P - PS) <= rel_tol * PS
+end function IsPressureNearSaturationCoolProp
+
+
 subroutine EOSWaterDensityCoolProp(T,P,calculate_derivatives,dw,dwmol, &
                                    dwp,dwt,ierr,table_idxs)
 
@@ -6350,36 +6398,57 @@ subroutine EOSWaterDensityCoolProp(T,P,calculate_derivatives,dw,dwmol, &
   PetscInt, pointer, optional, intent(inout) :: table_idxs(:)
 
   character(LEN=32) fluid, out1, n1, n2
-  PetscReal :: T_K
+  PetscReal :: T_K, Q
+  logical :: near_sat
 
   T_K = T + T273K
+  near_sat = IsPressureNearSaturationCoolProp(dens_handle, &
+                dens_QT_INPUTS, dens_iP, dens_iT, P, T)
   if (P>6.9e6) then
     Print *,"In EOSWaterDensityCoolProp call 0. P= ", P, " T= ", T_K
   endif
-  call AbstractState_update(dens_handle,dens_PT_INPUTS, P, T_K, errcode,mesgbfr,bfrlen)
-  if (errcode .ne. 0) then
-      Print *,"In EOSWaterDensityCoolProp call 1 ", errcode, mesgbfr
-      Print *,"P= ",P," T= ",T_K
-      call exit()
+  if (near_sat) then
+    ! evaluate the density using QT inputs with Q = 0.0 (saturated liquid) if
+    ! the pressure is near the saturation pressure at the given temperature
+    Q = 0.0
+    call AbstractState_update(dens_handle, dens_QT_INPUTS, Q, T_K, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterDensityCoolProp call near_sat 1 ", errcode, mesgbfr
+        Print *,"P= ",P," T= ",T_K
+        call exit()
+    endif
+  else
+    call AbstractState_update(dens_handle,dens_PT_INPUTS, P, T_K, errcode,mesgbfr,bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterDensityCoolProp call 1 ", errcode, mesgbfr
+        Print *,"P= ",P," T= ",T_K
+        call exit()
+    endif
   endif
-  dw = AbstractState_keyed_output(dens_handle,dens_iDmass,errcode,mesgbfr,bfrlen)
+  
+  dw = AbstractState_keyed_output(dens_handle, dens_iDmass, errcode,mesgbfr,bfrlen)
   if (errcode .ne. 0) then
-      Print *,"In EOSWaterDensityCoolProp call 2", errcode, mesgbfr
+      Print *,"In EOSWaterDensityCoolProp call near_sat 2", errcode, mesgbfr
       Print *,"P= ",P," T= ",T_K
       call exit()
   endif
   dwmol = dw/FMWH2O
-
-  if (calculate_derivatives) then
-    !out1 = "d(D)/d(T)|P"//CHAR(0)
-    !dwt = PropsSI(out1, n1, T_K, n2, P, fluid)
-    !out1 = "d(D)/d(P)|T"//CHAR(0)
-    !dwp = PropsSI(out1, n1, T_K, n2, P, fluid)
+  if (calculate_derivatives) then 
     dwt = AbstractState_first_partial_deriv(dens_handle, &
                                   dens_iDmass, dens_iT, dens_iP, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterDensityCoolProp call near_sat 3", errcode, mesgbfr
+        Print *,"P= ",P," T= ",T_K
+        call exit()
+    endif                              
     dwt = dwt/FMWH2O
     dwp = AbstractState_first_partial_deriv(dens_handle, &
                                   dens_iDmass, dens_iP, dens_iT, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterDensityCoolProp call near_sat 4", errcode, mesgbfr
+        Print *,"P= ",P," T= ",T_K
+        call exit()
+    endif
     dwp = dwp/FMWH2O
   else
     dwt = UNINITIALIZED_DOUBLE
@@ -6399,30 +6468,53 @@ subroutine EOSWaterEnthalpyCoolProp(t,p,calculate_derivatives,hw, &
   PetscErrorCode, intent(inout) :: ierr
 
   character(LEN=32) fluid, out1, n1, n2
-  PetscReal :: T_K
-
+  PetscReal :: T_K, Q
+  logical :: near_sat
   T_K = T + T273K
-  !out1 = "H"//CHAR(0)
-  !n1 = "T"//CHAR(0)
-  !n2 = "P"//CHAR(0)
-  !fluid = "Water"//CHAR(0)
-
-  !hw = PropsSI(out1, n1, T_K, n2, P, fluid)
-  call AbstractState_update(H_handle,H_PT_INPUTS, p, T_K, errcode, mesgbfr, bfrlen)
+  near_sat = IsPressureNearSaturationCoolProp(H_handle, &
+                H_QT_INPUTS, H_iP, H_iT, p, t)
+  if (near_sat) then
+    ! evaluate the enthalpy using QT inputs with Q = 0.0 (saturated liquid) if
+    ! the pressure is near the saturation pressure at the given temperature
+    Q = 0.0
+    call AbstractState_update(H_handle, H_QT_INPUTS, Q, T_K, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterEnthalpyCoolProp call near_sat 1 ", errcode, mesgbfr
+        Print *,"P= ",p," T= ",T_K
+        call exit()
+    endif
+  else 
+    call AbstractState_update(H_handle,H_PT_INPUTS, p, T_K, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterEnthalpyCoolProp call 1 ", errcode, mesgbfr
+        Print *,"P= ",p," T= ",T_K
+        call exit()
+    endif
+  endif
   hw = AbstractState_keyed_output(H_handle,H_iH, errcode,mesgbfr,bfrlen)
+  if (errcode .ne. 0) then
+      Print *,"In EOSWaterEnthalpyCoolProp call 2", errcode, mesgbfr
+      Print *,"P= ",p," T= ",T_K
+      call exit()
+  endif
   hw = hw * FMWH2O ! convert to J/kmol
   if (calculate_derivatives) then
-    !out1 = "d(H)/d(T)|P"//CHAR(0)
-    !hwt = PropsSI(out1, n1, T_K, n2, P, fluid)
-    !out1 = "d(H)/d(P)|T"//CHAR(0)
-    !hwp = PropsSI(out1, n1, T_K, n2, P, fluid)
     hwt = AbstractState_first_partial_deriv(H_handle, &
                                   H_iH, H_iT, H_iP, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterEnthalpyCoolProp call 3", errcode, mesgbfr
+        Print *,"P= ",p," T= ",T_K
+        call exit()
+    endif
     hwt = hwt * FMWH2O ! convert to J/kmol/C
 
     hwp = AbstractState_first_partial_deriv(H_handle, &
                                   H_iH, H_iP, H_iT, errcode, mesgbfr, bfrlen)
-
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterEnthalpyCoolProp call 4", errcode, mesgbfr
+        Print *,"P= ",p," T= ",T_K
+        call exit()
+    endif
     hwp = hwp * FMWH2O ! convert to J/kmol/Pa
 
   else
@@ -6449,27 +6541,51 @@ subroutine EOSWaterViscosityCoolProp(T, P, PS, dPS_dT, &
   PetscInt, pointer, optional, intent(inout) :: table_idxs(:)
 
   character(LEN=32) fluid, out1, n1, n2
-  PetscReal :: T_K
-
+  PetscReal :: T_K, Q
+  logical :: near_sat
   T_K = T + T273K
-  !out1 = "V"//CHAR(0)
-  !n1 = "T"//CHAR(0)
-  !n2 = "P"//CHAR(0)
-  !fluid = "Water"//CHAR(0)
-
-  !VW = PropsSI(out1, n1, T_K, n2, P, fluid)
-  call AbstractState_update(visc_handle,visc_PT_INPUTS, P, T_K, errcode, mesgbfr, bfrlen)
+  near_sat = IsPressureNearSaturationCoolProp(visc_handle, &
+                visc_QT_INPUTS, visc_iP, visc_iT, P, T)
+  if (near_sat) then
+    ! evaluate the viscosity using QT inputs with Q = 0.0 (saturated liquid) if
+    ! the pressure is near the saturation pressure at the given temperature
+    Q = 0.0
+    call AbstractState_update(visc_handle, visc_QT_INPUTS, Q, T_K, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterViscosityCoolProp call near_sat 1 ", errcode, mesgbfr
+        Print *,"P= ",P," T= ",T_K
+        call exit()
+    endif
+  else
+    ! if not near saturation, use PT inputs
+    call AbstractState_update(visc_handle,visc_PT_INPUTS, P, T_K, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterViscosityCoolProp call 1 ", errcode, mesgbfr
+        Print *,"P= ",P," T= ",T_K
+        call exit()
+    endif
+  endif
   VW = AbstractState_keyed_output(visc_handle,visc_iV,errcode,mesgbfr,bfrlen)
-
+  if ( errcode .ne. 0) then
+      Print *,"In EOSWaterViscosityCoolProp call 2", errcode, mesgbfr
+      Print *,"P= ",P," T= ",T_K
+      call exit()
+  endif
   if (calculate_derivatives) then
-    !out1 = "d(V)/d(T)|P"//CHAR(0)
-    !dVW_dT = PropsSI(out1, n1, T_K, n2, P, fluid)
-    !out1 = "d(V)/d(P)|T"//CHAR(0)
-    !dVW_dP = PropsSI(out1, n1, T_K, n2, P, fluid)
     dVW_dT = AbstractState_first_partial_deriv(visc_handle, &
                                   visc_iV, visc_iT, visc_iP, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterViscosityCoolProp call 3", errcode, mesgbfr
+        Print *,"P= ",P," T= ",T_K
+        call exit()
+    endif
     dVW_dP = AbstractState_first_partial_deriv(visc_handle, &
                                   visc_iV, visc_iP, visc_iT, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterViscosityCoolProp call 4", errcode, mesgbfr
+        Print *,"P= ",P," T= ",T_K
+        call exit()
+    endif
   else
     dVW_dT = UNINITIALIZED_DOUBLE
     dVW_dP = UNINITIALIZED_DOUBLE
@@ -6490,46 +6606,94 @@ subroutine EOSWaterSteamDensityEnthalpyCoolProp(t,pv,calculate_derivatives, &
   PetscErrorCode, intent(inout) :: ierr
   
   character(LEN=32) fluid, out1, n1, n2
-  PetscReal :: T_K
-
+  PetscReal :: T_K, Q
+  logical :: near_sat
   T_K = T + T273K
-  !out1 = "D"//CHAR(0)
-  !n1 = "T"//CHAR(0)
-  !n2 = "P"//CHAR(0)
-  !fluid = "Water"//CHAR(0)
-
-  !dg = PropsSI(out1, n1, T_K, n2, pv, fluid)
-  call AbstractState_update(steam_dens_handle,steam_dens_PT_INPUTS, pv, T_K, errcode, mesgbfr, bfrlen)
+  near_sat = IsPressureNearSaturationCoolProp(steam_dens_handle, &
+                steam_dens_QT_INPUTS, steam_dens_iP, steam_dens_iT, pv, t)
+  if (near_sat) then
+    ! evaluate the density using QT inputs with Q = 1.0 (saturated vapor) if
+    ! the pressure is near the saturation pressure at the given temperature
+    Q = 1.0
+    call AbstractState_update(steam_dens_handle, steam_dens_QT_INPUTS, Q, T_K, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterSteamDensityEnthalpyCoolProp call near_sat 1 ", errcode, mesgbfr
+        Print *,"P= ",pv," T= ",T_K
+        call exit()
+    endif
+    call AbstractState_update(steam_H_handle, steam_H_QT_INPUTS, Q, T_K, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterSteamDensityEnthalpyCoolProp call near_sat 2 ", errcode, mesgbfr
+        Print *,"P= ",pv," T= ",T_K
+        call exit()
+    endif
+  else
+    call AbstractState_update(steam_dens_handle,steam_dens_PT_INPUTS, pv, T_K, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterSteamDensityEnthalpyCoolProp call 0 ", errcode, mesgbfr
+        Print *,"P= ",pv," T= ",T_K
+        call exit()
+    endif
+    call AbstractState_update(steam_H_handle,steam_H_PT_INPUTS, pv, T_K, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+      Print *,"In EOSWaterSteamDensityEnthalpyCoolProp call 2 "
+      Print *,"errcode= ", errcode
+      Print *,"mesgbfr= ", mesgbfr
+      Print *,"P= ",pv," T(C)= ",T
+      call exit()
+    endif
+  endif
   dg = AbstractState_keyed_output(steam_dens_handle, steam_dens_iDmass, errcode, mesgbfr, bfrlen)
+  if (errcode .ne. 0) then
+      Print *,"In EOSWaterSteamDensityEnthalpyCoolProp call 1 "
+      Print *,"errcode= ", errcode
+      Print *,"mesgbfr= ", mesgbfr
+      Print *,"P= ",pv," T(C)= ",T
+      call exit()
+  endif
   dgmol = dg/FMWH2O
-
-  !out1 = "H"//CHAR(0)
-  !hg = PropsSI(out1, n1, T_K, n2, pv, fluid)
-  call AbstractState_update(steam_H_handle,steam_H_PT_INPUTS, pv, T_K, errcode, mesgbfr, bfrlen)
   hg = AbstractState_keyed_output(steam_H_handle, &
                                   steam_H_iH, errcode, mesgbfr, bfrlen)
+  if (errcode .ne. 0) then
+      Print *,"In EOSWaterSteamDensityEnthalpyCoolProp call 3 "
+      Print *,"errcode= ", errcode
+      Print *,"mesgbfr= ", mesgbfr
+      Print *,"P= ",pv," T(C)= ",T
+      call exit()
+  endif
   hg = hg * FMWH2O ! convert to J/kmol
   if (calculate_derivatives) then
-    !out1 = "d(D)/d(P)|T"//CHAR(0)
-    !dgp = PropsSI(out1, n1, T_K, n2, pv, fluid)
-    !out1 = "d(D)/d(T)|P"//CHAR(0)
-    !dgt = PropsSI(out1, n1, T_K, n2, pv, fluid)
-    !out1 = "d(H)/d(P)|T"//CHAR(0)
-    !hgp = PropsSI(out1, n1, T_K, n2, pv, fluid)
-    !out1 = "d(H)/d(T)|P"//CHAR(0)
-    !hgt = PropsSI(out1, n1, T_K, n2, pv, fluid)
-    ! JEFF check to see if these should be derivatives of molar density instead of mass density
     dgp = AbstractState_first_partial_deriv(steam_dens_handle, &
                                   steam_dens_iDmass, steam_dens_iP, steam_dens_iT, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterSteamDensityEnthalpyCoolProp call 4", errcode, mesgbfr
+        Print *,"P= ",pv," T= ",T_K
+        call exit()
+    endif
     dgp = dgp/FMWH2O
     dgt = AbstractState_first_partial_deriv(steam_dens_handle, &
                                   steam_dens_iDmass, steam_dens_iT, steam_dens_iP, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterSteamDensityEnthalpyCoolProp call 5", errcode, mesgbfr
+        Print *,"P= ",pv," T= ",T_K
+        call exit()
+    endif
     dgt = dgt/FMWH2O
     hgp = AbstractState_first_partial_deriv(steam_H_handle, &
                                   steam_H_iH, steam_H_iP, steam_H_iT, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterSteamDensityEnthalpyCoolProp call 6", errcode, mesgbfr
+        Print *,"P= ",pv," T= ",T_K
+        call exit()
+    endif
     hgp = hgp * FMWH2O ! convert to J/kmol/Pa
     hgt = AbstractState_first_partial_deriv(steam_H_handle, &
                                   steam_H_iH, steam_H_iT, steam_H_iP, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterSteamDensityEnthalpyCoolProp call 7", errcode, mesgbfr
+        Print *,"P= ",pv," T= ",T_K
+        call exit()
+    endif
     hgt = hgt * FMWH2O ! convert to J/kmol/C
   else
     dgp = UNINITIALIZED_DOUBLE
@@ -6555,14 +6719,28 @@ subroutine EOSWaterSaturationPressureCoolProp(T, calculate_derivatives, &
   T_K = T + T273K
 
   call AbstractState_update(sat_pres_handle,sat_pres_QT_INPUTS, Q, T_K, errcode, mesgbfr, bfrlen)
+  if (errcode .ne. 0) then
+      Print *,"In EOSWaterSaturationPressureCoolProp call 1 ", errcode, mesgbfr
+      Print *,"T= ",T_K
+      call exit()
+  endif
   PS = AbstractState_keyed_output(sat_pres_handle, sat_pres_iP, errcode, mesgbfr, bfrlen)
-
+  if ( errcode .ne. 0) then
+      Print *,"In EOSWaterSaturationPressureCoolProp call 2", errcode, mesgbfr
+      Print *,"T= ",T_K
+      call exit()
+  endif
   if (calculate_derivatives) then
     !dPS_dT = AbstractState_first_partial_deriv(sat_pres_handle, &
     !                              sat_pres_iP, sat_pres_iT, sat_pres_iQ, errcode, mesgbfr, bfrlen)
     
     dPS_dT = AbstractState_first_saturation_deriv(sat_pres_handle, sat_pres_iP, &
                                   sat_pres_iT, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In EOSWaterSaturationPressureCoolProp call 3", errcode, mesgbfr
+        Print *,"T= ",T_K
+        call exit()
+    endif
   else
     dPS_dT = UNINITIALIZED_DOUBLE
   endif
