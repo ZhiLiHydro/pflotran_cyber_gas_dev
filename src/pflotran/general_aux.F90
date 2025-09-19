@@ -635,8 +635,8 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
   PetscReal :: sigma, temp_psat
   PetscReal, parameter :: SUPERCRITICAL_SAT_PRES = 1.d6
   PetscReal, parameter :: SUPERCRITICAL_HENRY_COEFF = 0.26e9
-  PetscReal, parameter :: CRITICAL_TEMP = 374.d0
-
+  PetscReal, parameter :: CRITICAL_TEMP = 373.946d0 ! C
+  PetscReal, parameter :: CRITICAL_TEMP_EPSILON = 0.1
 
   ierr = 0
   eos_henry_ierr = 0
@@ -730,7 +730,7 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
 
       if (.not.option%flow%sat_pres_depends_on_salinity) then
         if (associated(gen_auxvar%d)) then
-          if (gen_auxvar%temp > CRITICAL_TEMP) then
+          if (gen_auxvar%temp > (CRITICAL_TEMP - CRITICAL_TEMP_EPSILON)) then
               print *, "Supercritical temperature detected. Returning Henry's constant from subcritical approximation."
               gen_auxvar%pres(spid) = SUPERCRITICAL_SAT_PRES ! Define saturation pressure as pseudovalue, if used
           else
@@ -745,7 +745,7 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
                             eos_henry_ierr)
           gen_auxvar%d%Hc = K_H_tilde
         else
-          if (gen_auxvar%temp > CRITICAL_TEMP) then
+          if (gen_auxvar%temp > (CRITICAL_TEMP-CRITICAL_TEMP_EPSILON)) then
               print *, "Supercritical temperature detected. Returning Henry's constant from subcritical approximation."
               gen_auxvar%pres(spid) = SUPERCRITICAL_SAT_PRES ! Define saturation pressure as pseudovalue, if used
           else
@@ -864,7 +864,7 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
       if (.not.option%flow%sat_pres_depends_on_salinity) then
         if (associated(gen_auxvar%d)) then
           !Not supported: interfacial tension, Kelvin equation
-          if (gen_auxvar%temp > CRITICAL_TEMP) then
+          if (gen_auxvar%temp > (CRITICAL_TEMP-CRITICAL_TEMP_EPSILON)) then
             print *, "Supercritical temperature detected. Returning Henry's constant from subcritical approximation."
             gen_auxvar%pres(spid) = SUPERCRITICAL_SAT_PRES ! Define saturation pressure as pseudovalue, if used
           else
@@ -879,7 +879,7 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
                              eos_henry_ierr)
           gen_auxvar%d%Hc = K_H_tilde
         else
-          if (gen_auxvar%temp > CRITICAL_TEMP) then
+          if (gen_auxvar%temp > (CRITICAL_TEMP-CRITICAL_TEMP_EPSILON)) then
             print *, "Supercritical temperature detected. Returning Henry's constant from subcritical approximation."
             gen_auxvar%pres(spid) = SUPERCRITICAL_SAT_PRES ! Define saturation pressure as pseudovalue, if used
           else
@@ -916,7 +916,7 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
           endif
         endif
         if (associated(gen_auxvar%d)) then
-          if (gen_auxvar%temp > CRITICAL_TEMP) then
+          if (gen_auxvar%temp > (CRITICAL_TEMP-CRITICAL_TEMP_EPSILON)) then
             print *, "Supercritical temperature detected. Returning Henry's constant from subcritical approximation."
             gen_auxvar%pres(spid) = SUPERCRITICAL_SAT_PRES ! Define saturation pressure as pseudovalue, if used
           else
@@ -931,7 +931,7 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
                            eos_henry_ierr)
           gen_auxvar%d%Hc = K_H_tilde
         else
-          if (gen_auxvar%temp > CRITICAL_TEMP) then
+          if (gen_auxvar%temp > (CRITICAL_TEMP-CRITICAL_TEMP_EPSILON)) then
             print *, "Supercritical temperature detected. Returning Henry's constant from subcritical approximation."
             gen_auxvar%pres(spid) = SUPERCRITICAL_SAT_PRES ! Define saturation pressure as pseudovalue, if used
           else
@@ -2943,7 +2943,7 @@ subroutine GeneralAuxVarUpdateState(x,gen_auxvar,global_auxvar, &
   type(material_auxvar_type) :: material_auxvar
 
   PetscReal, parameter :: epsilon = 0.d0
-  PetscReal, parameter :: CRITICAL_TEMP = 374.0d0
+  PetscReal, parameter :: CRITICAL_TEMP = 373.946d0
   PetscReal :: liq_epsilon, gas_epsilon, two_phase_epsilon
   PetscReal :: x(option%nflowdof)
   PetscReal :: Sg_new

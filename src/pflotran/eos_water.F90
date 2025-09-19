@@ -6355,7 +6355,7 @@ logical function IsPressureNearSaturationCoolProp(handle, QT_INPUTS, P_index, T_
   CHARACTER(100) :: mesgbfr
   integer(C_long) :: bfrlen
 
-  small_tolerance = 1.0e-3
+  small_tolerance = 0.1
   T_K = T + T273K
   if (T_K > (H2O_CRITICAL_TEMPERATURE - small_tolerance)) then
     ! saturation pressure not defined above critical point
