@@ -48,7 +48,8 @@ subroutine THWellSetup(pm_well_base)
   type(grid_type), pointer :: grid
   type(option_type), pointer :: option
   type(connection_set_type), pointer :: connection_set
-  type(th_well_auxvar_type), pointer :: th_well_auxvars(:)
+  type(th_auxvar_type), pointer :: auxvars(:)
+  type(th_well_auxvar_type), pointer :: auxvars_well(:)
   PetscReal :: dist_up, dist_dn
   PetscInt :: local_id, ghosted_id
   PetscInt :: i, iconn, idof
@@ -66,6 +67,8 @@ subroutine THWellSetup(pm_well_base)
   patch => pm_well%realization%patch
   grid => patch%grid
   option => pm_well%option
+
+  auxvars => patch%aux%TH%auxvars
 
   if (Uninitialized(pm_well%inlet_temperature)) then
     option%io_buffer = 'Well INLET_TEMPERATURE must be specified'
@@ -131,25 +134,26 @@ subroutine THWellSetup(pm_well_base)
   enddo
 
   ! allocate auxvar data structures for all grid cells
-  allocate(th_well_auxvars(num_well_cells))
+  allocate(auxvars_well(num_well_cells))
   do i = 1, num_well_cells
     local_id = pm_well%well_cells(i)
     ghosted_id = grid%nL2G(local_id)
-    call THWellAuxVarInit(th_well_auxvars(i),option, &
+    auxvars(ghosted_id)%iwellaux = i
+    call THWellAuxVarInit(auxvars_well(i),option, &
                           th_numerical_derivatives)
-    th_well_auxvars(i)%local_id = pm_well%well_cells(i)
-    th_well_auxvars(i)%volume = grid%structured_grid%dx(ghosted_id) * &
+    auxvars_well(i)%local_id = pm_well%well_cells(i)
+    auxvars_well(i)%volume = grid%structured_grid%dx(ghosted_id) * &
                                 pipe_cross_sectional_area
-    th_well_auxvars(i)%surface_area = grid%structured_grid%dx(ghosted_id) * &
+    auxvars_well(i)%surface_area = grid%structured_grid%dx(ghosted_id) * &
                                       pm_well%pipe_diameter
   enddo
-  patch%aux%TH%auxvars_well => th_well_auxvars
+  patch%aux%TH%auxvars_well => auxvars_well
   patch%aux%TH%num_well_aux = num_well_cells
-  allocate(th_well_auxvars(2))
+  allocate(auxvars_well(2))
   do i = 1, 2
-    call THWellAuxVarInit(th_well_auxvars(i),option,PETSC_FALSE)
+    call THWellAuxVarInit(auxvars_well(i),option,PETSC_FALSE)
   enddo
-  patch%aux%TH%auxvars_well_bc => th_well_auxvars
+  patch%aux%TH%auxvars_well_bc => auxvars_well
   patch%aux%TH%num_well_aux_bc = 2
 
   ! generate matrix zeroing
@@ -240,7 +244,7 @@ subroutine THWellUpdateAuxVars(xx,pm_well_base)
   do ibc = 1, 2
     select case(ibc)
       case(1)
-        xxbc(th_well_dof) = 5.d0 !pm_well%inlet_temperature
+        xxbc(th_well_dof) = pm_well%inlet_temperature
       case(2)
         iconn = pm_well%connection_set%num_connections
         ! ghosted id of downwind cells on last connection

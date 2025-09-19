@@ -205,6 +205,10 @@ function THAuxCreate(option)
   aux%num_aux = 0
   aux%num_aux_bc = 0
   aux%num_aux_ss = 0
+  aux%num_aux_bc = 0
+  aux%num_aux_ss = 0
+  aux%num_well_aux = 0
+  aux%num_well_aux_bc = 0
   nullify(aux%auxvars)
   nullify(aux%auxvars_bc)
   nullify(aux%auxvars_ss)
