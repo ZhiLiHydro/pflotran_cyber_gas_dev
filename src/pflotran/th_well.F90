@@ -470,7 +470,6 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
     endif
   enddo
 
-#if 1
   do i = 1, size(pm_well%well_cells)
     local_id = pm_well%well_cells(i)
     ghosted_id = grid%nL2G(local_id)
@@ -485,7 +484,6 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
       call PetUtilVecSVBL(r_p,local_id,Res,ndof,PETSC_FALSE)
     endif
   enddo
-#endif
 
   ! calculate heat transfer between well cells and subsurface cells
   if (.not.calculate_derivatives) then

@@ -8514,12 +8514,17 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
          SECONDARY_TEMPERATURE,LIQUID_DENSITY_MOL,DERIVATIVE, &
          LIQUID_HEAD,VAPOR_PRESSURE,SATURATION_PRESSURE,MAXIMUM_PRESSURE, &
          LIQUID_MASS_FRACTION,GAS_MASS_FRACTION,SOLUTE_CONCENTRATION, &
-         PRECIPITATE_SATURATION,TOTAL_LIQUID_HEAD)
+         PRECIPITATE_SATURATION,TOTAL_LIQUID_HEAD,PIPE_TEMPERATURE)
 
       if (associated(patch%aux%TH)) then
         select case(ivar)
           case(TEMPERATURE)
             value = patch%aux%TH%auxvars(ghosted_id)%temp
+          case(PIPE_TEMPERATURE)
+            tempint = patch%aux%TH%auxvars(ghosted_id)%iwellaux
+            if (tempint > 0) then
+              value = patch%aux%TH%auxvars_well(tempint)%temp
+            endif
           case(LIQUID_PRESSURE,MAXIMUM_PRESSURE)
             value = patch%aux%TH%auxvars(ghosted_id)%pres
           case(LIQUID_SATURATION)

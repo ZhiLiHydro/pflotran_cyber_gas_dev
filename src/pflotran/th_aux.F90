@@ -78,7 +78,7 @@ module TH_Aux_module
     type(th_ice_type), pointer :: ice
 
     ! for well model
-!    type(th_well_auxvar_type), pointer :: auxvar_well
+    PetscInt :: iwellaux
 
     ! for numerical derivatives
     PetscReal :: pert
@@ -309,7 +309,7 @@ recursive subroutine THAuxVarInit(auxvar,option,allocate_perturbation)
     nullify(auxvar%ice)
   endif
 
-!  nullify(auxvar%auxvar_well)
+  auxvar%iwellaux = UNINITIALIZED_INTEGER
 
 #if defined(CLM_PFLOTRAN) || defined(CLM_OFFLINE)
   auxvar%bc_alpha      = uninit_value
