@@ -864,9 +864,14 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
       if (.not.option%flow%sat_pres_depends_on_salinity) then
         if (associated(gen_auxvar%d)) then
           !Not supported: interfacial tension, Kelvin equation
-          call EOSWaterSaturationPressure(gen_auxvar%temp, &
-                                          gen_auxvar%pres(spid), &
-                                          gen_auxvar%d%psat_T,ierr)
+          if (gen_auxvar%temp > CRITICAL_TEMP) then
+            print *, "Supercritical temperature detected. Returning Henry's constant from subcritical approximation."
+            gen_auxvar%pres(spid) = SUPERCRITICAL_SAT_PRES ! Define saturation pressure as pseudovalue, if used
+          else
+            call EOSWaterSaturationPressure(gen_auxvar%temp, &
+                                            gen_auxvar%pres(spid), &
+                                            gen_auxvar%d%psat_T,ierr)
+          endif
           gen_auxvar%d%psat_p = 0.d0
           call EOSGasHenry(gen_auxvar%temp,gen_auxvar%pres(spid), &
                             gen_auxvar%d%psat_p,gen_auxvar%d%psat_T, &
@@ -874,8 +879,13 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
                              eos_henry_ierr)
           gen_auxvar%d%Hc = K_H_tilde
         else
-          call EOSWaterSaturationPressure(gen_auxvar%temp, &
-                                          gen_auxvar%pres(spid),ierr)
+          if (gen_auxvar%temp > CRITICAL_TEMP) then
+            print *, "Supercritical temperature detected. Returning Henry's constant from subcritical approximation."
+            gen_auxvar%pres(spid) = SUPERCRITICAL_SAT_PRES ! Define saturation pressure as pseudovalue, if used
+          else
+            call EOSWaterSaturationPressure(gen_auxvar%temp, &
+                                            gen_auxvar%pres(spid),ierr)
+          endif
           if (general_kelvin_equation) then
             ! Adjust saturation pressure so it is properly used in Henry and
             ! UpdateState. Right now this adds an extra call to density.
@@ -906,9 +916,14 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
           endif
         endif
         if (associated(gen_auxvar%d)) then
-          call EOSWaterSaturationPressureExt(gen_auxvar%temp, aux,&
-                                             gen_auxvar%pres(spid), &
-                                             gen_auxvar%d%psat_T,ierr)
+          if (gen_auxvar%temp > CRITICAL_TEMP) then
+            print *, "Supercritical temperature detected. Returning Henry's constant from subcritical approximation."
+            gen_auxvar%pres(spid) = SUPERCRITICAL_SAT_PRES ! Define saturation pressure as pseudovalue, if used
+          else
+            call EOSWaterSaturationPressureExt(gen_auxvar%temp, aux,&
+                                               gen_auxvar%pres(spid), &
+                                               gen_auxvar%d%psat_T,ierr)
+          endif
           gen_auxvar%d%psat_p = 0.d0
           call EOSGasHenry(gen_auxvar%temp,gen_auxvar%pres(spid), &
                            gen_auxvar%d%psat_p,gen_auxvar%d%psat_T, &
@@ -916,8 +931,13 @@ subroutine GeneralAuxVarCompute(x,gen_auxvar,global_auxvar,material_auxvar, &
                            eos_henry_ierr)
           gen_auxvar%d%Hc = K_H_tilde
         else
-          call EOSWaterSaturationPressureExt(gen_auxvar%temp, aux,&
-                                             gen_auxvar%pres(spid),ierr)
+          if (gen_auxvar%temp > CRITICAL_TEMP) then
+            print *, "Supercritical temperature detected. Returning Henry's constant from subcritical approximation."
+            gen_auxvar%pres(spid) = SUPERCRITICAL_SAT_PRES ! Define saturation pressure as pseudovalue, if used
+          else
+            call EOSWaterSaturationPressureExt(gen_auxvar%temp, aux,&
+                                               gen_auxvar%pres(spid),ierr)
+          endif
           !geh: Henry_air_xxx returns K_H in units of Pa, but I am
           !     not confident that K_H is truly K_H_tilde (i.e. p_g * K_H).
           if (general_kelvin_equation) then

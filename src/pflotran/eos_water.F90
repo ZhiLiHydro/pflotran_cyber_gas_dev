@@ -1500,9 +1500,9 @@ subroutine EOSWaterSaturationPressureIF97(T, calculate_derivatives, &
     else
       dPS_DT = UNINITIALIZED_DOUBLE
     endif
-  open(unit=103, file='EOSWaterSaturationPressureIF97.dat', status='unknown', position='append')
-  write(103,'(E22.8,1x,L1,1x,E22.8,1x,E22.8,1x,I8)') T, calculate_derivatives, PS, dPS_dT, ierr
-  close(103)
+  !open(unit=103, file='EOSWaterSaturationPressureIF97.dat', status='unknown', position='append')
+  !write(103,'(E22.8,1x,L1,1x,E22.8,1x,E22.8,1x,I8)') T, calculate_derivatives, PS, dPS_dT, ierr
+  !close(103)
   endif
 
 end subroutine EOSWaterSaturationPressureIF97
@@ -1921,16 +1921,12 @@ subroutine EOSWaterDensityIF97(T,P,calculate_derivatives,dw,dwmol, &
     call EOSWaterDensityIF97Region3(T,P,calculate_derivatives,dw,dwmol, &
                                     dwp,dwt)
   end if
-  write(*,'(E22.8)') T
-  print *,"in ES80.8 P is: "
-  write(*,'(ES30.8)') P
-  write(*,'(L1)') calculate_derivatives
-  write(*,'(E22.8)') dw
+
 ! etc...
-  open(unit=101, file='EOSWaterDensityIF97.dat', status='unknown', position='append')
-  write(101,'(E22.8,1x,ES30.8,1x,L1,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,I8)')T, P, calculate_derivatives, dw, dwmol, dwp, dwt, ierr
+  !open(unit=101, file='EOSWaterDensityIF97.dat', status='unknown', position='append')
+  !write(101,'(E22.8,1x,ES30.8,1x,L1,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,I8)')T, P, calculate_derivatives, dw, dwmol, dwp, dwt, ierr
   !write(101,'(E22.8,1x,G19.4,1x,L1,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,I8)') T, P, calculate_derivatives, dw, dwmol, dwp, dwt, ierr
-  close(101)
+  !close(101)
 end subroutine EOSWaterDensityIF97
 
 ! ************************************************************************** !
@@ -3315,9 +3311,9 @@ subroutine EOSWaterEnthalpyIF97(T,P,calculate_derivatives,hw, &
     ! moved to subroutine to avoid weighting down this more-used routine
     call EOSWaterEnthalpyIF97Region3(T,P,PETSC_FALSE,hw,hwp,hwt)
   end if
-  open(unit=102, file='EOSWaterEnthalpyIF97.dat', status='unknown', position='append')
-  write(102,'(E22.8,1x,E22.8,1x,L1,1x,E22.8,1x,E22.8,1x,E22.8,1x,I8)') T, P, calculate_derivatives, hw, hwp, hwt, ierr
-  close(102)
+  !open(unit=102, file='EOSWaterEnthalpyIF97.dat', status='unknown', position='append')
+  !write(102,'(E22.8,1x,E22.8,1x,L1,1x,E22.8,1x,E22.8,1x,E22.8,1x,I8)') T, P, calculate_derivatives, hw, hwp, hwt, ierr
+  !close(102)
 end subroutine EOSWaterEnthalpyIF97
 
 ! ************************************************************************** !
@@ -4624,9 +4620,9 @@ subroutine EOSWaterSteamDensityEnthalpyIF97(T, Pv, calculate_derivatives, &
   else
     !stop 'wow. much hotness.'
   end if
-  open(unit=104, file='EOSWaterSteamDensityEnthalpyIF97.dat', status='unknown', position='append')
-  write(104,'(E22.8,1x,E22.8,1x,L1,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,I8)') T, Pv, calculate_derivatives, dg, dgmol, dgp, dgt, hg, hgp, hgt, ierr
-  close(104)
+  !open(unit=104, file='EOSWaterSteamDensityEnthalpyIF97.dat', status='unknown', position='append')
+  !write(104,'(E22.8,1x,E22.8,1x,L1,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,E22.8,1x,I8)') T, Pv, calculate_derivatives, dg, dgmol, dgp, dgt, hg, hgp, hgt, ierr
+  !close(104)
 end subroutine EOSWaterSteamDensityEnthalpyIF97
 
 ! ************************************************************************** !
@@ -6354,34 +6350,40 @@ logical function IsPressureNearSaturationCoolProp(handle, QT_INPUTS, P_index, T_
   implicit none
   integer(C_long), intent(in) :: handle, QT_INPUTS, P_index, T_index
   PetscReal, intent(in) :: P, T
-  PetscReal :: T_K, PS, rel_tol, Q
+  PetscReal :: T_K, PS, rel_tol, Q, small_tolerance
   integer(C_long) :: errcode
   CHARACTER(100) :: mesgbfr
   integer(C_long) :: bfrlen
 
+  small_tolerance = 1.0e-3
   T_K = T + T273K
-  bfrlen = 100
-  mesgbfr = ' '
-  errcode = 0
-  rel_tol = 1.0E-6  ! 1E-4%
+  if (T_K > (H2O_CRITICAL_TEMPERATURE - small_tolerance)) then
+    ! saturation pressure not defined above critical point
+    IsPressureNearSaturationCoolProp = .false.
+  else
+    bfrlen = 100
+    mesgbfr = ' '
+    errcode = 0
+    rel_tol = 1.0E-6  ! 1E-4%
 
-  Q = 0.0
-  ! Compute saturation pressure at T
-  call AbstractState_update(handle, QT_INPUTS, Q, T_K, errcode, mesgbfr, bfrlen)
-  if (errcode .ne. 0) then
-      Print *,"In IsPressureNearSaturationCoolProp call 0 ", errcode, mesgbfr
-      Print *,"P= ",P," T= ",T_K
-      call exit()
+    Q = 0.0
+    ! Compute saturation pressure at T
+    call AbstractState_update(handle, QT_INPUTS, Q, T_K, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In IsPressureNearSaturationCoolProp call 0 ", errcode, mesgbfr
+        Print *,"P= ",P," T= ",T_K
+        call exit()
+    endif
+    ! Get saturation pressure
+    PS = AbstractState_keyed_output(handle, P_index, errcode, mesgbfr, bfrlen)
+    if (errcode .ne. 0) then
+        Print *,"In IsPressureNearSaturationCoolProp call 1 ", errcode, mesgbfr
+        Print *,"P= ",P," T= ",T_K
+        call exit()
+    endif
+    ! Compare P to PS
+    IsPressureNearSaturationCoolProp = abs(P - PS) <= rel_tol * PS
   endif
-  ! Get saturation pressure
-  PS = AbstractState_keyed_output(handle, P_index, errcode, mesgbfr, bfrlen)
-  if (errcode .ne. 0) then
-      Print *,"In IsPressureNearSaturationCoolProp call 1 ", errcode, mesgbfr
-      Print *,"P= ",P," T= ",T_K
-      call exit()
-  endif
-  ! Compare P to PS
-  IsPressureNearSaturationCoolProp = abs(P - PS) <= rel_tol * PS
 end function IsPressureNearSaturationCoolProp
 
 

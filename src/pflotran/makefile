@@ -45,8 +45,8 @@ unit_test_dir = $(SRC_DIR)/unittests
 #COOLPROP_LIB_DIR =  /usr/local/share/CoolProp/build-release/
 #COOLPROP_LIB_DIR = ${COOLPROP_LIB_DIR}
 
-MYFLAGS = -I. -g
-#MYFLAGS = -I.
+#MYFLAGS = -I. -g
+MYFLAGS = -I.
 
 # Import variables/options/rules from PETSc.
 include ${PETSC_DIR}/lib/petsc/conf/variables
