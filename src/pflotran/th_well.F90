@@ -38,6 +38,7 @@ subroutine THWellSetup(pm_well_base)
   use Patch_module
   use Grid_module
   use Matrix_Zeroing_module
+  use String_module
 
   implicit none
 
@@ -52,7 +53,7 @@ subroutine THWellSetup(pm_well_base)
   type(th_well_auxvar_type), pointer :: auxvars_well(:)
   PetscReal :: dist_up, dist_dn
   PetscInt :: local_id, ghosted_id
-  PetscInt :: i, iconn, idof
+  PetscInt :: i, j, k, iconn, idof
   PetscInt :: nx, ny, nz
   PetscInt :: offset_i, offset_j, offset_k
   PetscInt :: num_connections
@@ -96,7 +97,15 @@ subroutine THWellSetup(pm_well_base)
   nx = grid%structured_grid%nx
   ny = grid%structured_grid%ny
   nz = grid%structured_grid%nz
-  num_well_cells = nx
+  select case(pm_well%iscenario)
+    case(1)
+      num_well_cells = nx
+    case(2)
+      num_well_cells = 380
+    case default
+      option%io_buffer = 'Unrecognized scenario in THWellSetup()'
+      call PrintErrMsg(option)
+  end select
   num_connections = num_well_cells-1
 
   connection_set => &
@@ -110,27 +119,86 @@ subroutine THWellSetup(pm_well_base)
   connection_set%dist = 0.d0
   connection_set%area = 0.d0
 
-  offset_i = 0
-  offset_j = int(ny/2)
-  offset_k = int(nz/2)
-  do iconn = 1, num_connections
-    ghosted_id = nx*ny*offset_k + nx*offset_j + offset_i + iconn
-    connection_set%id_up(iconn) = ghosted_id
-    connection_set%id_dn(iconn) = ghosted_id + 1
-    connection_set%dist(:,iconn) = 0.d0
-    dist_up = 0.5d0*grid%structured_grid%dx(offset_i+1)
-    dist_dn = 0.5d0*grid%structured_grid%dx(offset_i+2)
-    connection_set%dist(0,iconn) = dist_up + dist_dn
-    connection_set%dist(-1,iconn) = dist_up/(dist_up+dist_dn)
-    connection_set%dist(1,iconn) = 1.d0
-    connection_set%area(iconn) = pipe_cross_sectional_area
-  enddo
+  select case(pm_well%iscenario)
+    case(1)
+      offset_i = 0
+      offset_j = int(ny/2)
+      offset_k = int(nz/2)
+      do iconn = 1, num_connections
+        ghosted_id = nx*ny*offset_k + nx*offset_j + offset_i + iconn
+        connection_set%id_up(iconn) = ghosted_id
+        connection_set%id_dn(iconn) = ghosted_id + 1
+        connection_set%dist(:,iconn) = 0.d0
+        dist_up = 0.5d0*grid%structured_grid%dx(offset_i+1)
+        dist_dn = 0.5d0*grid%structured_grid%dx(offset_i+2)
+        connection_set%dist(0,iconn) = dist_up + dist_dn
+        connection_set%dist(-1,iconn) = dist_up/(dist_up+dist_dn)
+        connection_set%dist(1,iconn) = 1.d0
+        connection_set%area(iconn) = pipe_cross_sectional_area
+      enddo
+    case(2)
+      i = 22
+      j = 7
+      iconn = 0
+      do k = 102, 33, -1
+        iconn = iconn + 1
+        ghosted_id = nx*ny*(k-1) + nx*(j-1) + i
+        connection_set%id_up(iconn) = ghosted_id
+        connection_set%id_dn(iconn) = ghosted_id - nx*ny
+        connection_set%dist(:,iconn) = 0.d0
+        dist_up = 0.5d0*grid%structured_grid%dz(k)
+        dist_dn = 0.5d0*grid%structured_grid%dz(k-1)
+        connection_set%dist(0,iconn) = dist_up + dist_dn
+        connection_set%dist(-1,iconn) = dist_up/(dist_up+dist_dn)
+        connection_set%dist(3,iconn) = -1.d0
+        connection_set%area(iconn) = pipe_cross_sectional_area
+      enddo
+      j = 7
+      k = 32
+      do i = 22, 260
+        iconn = iconn + 1
+        ghosted_id = nx*ny*(k-1) + nx*(j-1) + i
+        connection_set%id_up(iconn) = ghosted_id
+        connection_set%id_dn(iconn) = ghosted_id + 1
+        connection_set%dist(:,iconn) = 0.d0
+        dist_up = 0.5d0*grid%structured_grid%dz(i)
+        dist_dn = 0.5d0*grid%structured_grid%dz(i+1)
+        connection_set%dist(0,iconn) = dist_up + dist_dn
+        connection_set%dist(-1,iconn) = dist_up/(dist_up+dist_dn)
+        connection_set%dist(1,iconn) = 1.d0
+        connection_set%area(iconn) = pipe_cross_sectional_area
+      enddo
+      i = 261
+      j = 7
+      do k = 32, 101
+        iconn = iconn + 1
+        ghosted_id = nx*ny*(k-1) + nx*(j-1) + i
+        connection_set%id_up(iconn) = ghosted_id
+        connection_set%id_dn(iconn) = ghosted_id + nx*ny
+        connection_set%dist(:,iconn) = 0.d0
+        dist_up = 0.5d0*grid%structured_grid%dz(k)
+        dist_dn = 0.5d0*grid%structured_grid%dz(k+1)
+        connection_set%dist(0,iconn) = dist_up + dist_dn
+        connection_set%dist(-1,iconn) = dist_up/(dist_up+dist_dn)
+        connection_set%dist(3,iconn) = 1.d0
+        connection_set%area(iconn) = pipe_cross_sectional_area
+      enddo
+      if (iconn /= num_connections) then
+        option%io_buffer = 'Mismatch on number of connections in THWellsetup: ' // &
+          StringWrite(iconn) // ' vs ' // StringWrite(num_connections)
+        call PrintErrMsg(option)
+      endif
+  end select
   pm_well%connection_set => connection_set
 
   allocate(pm_well%well_cells(num_well_cells))
-  do i = 1, num_well_cells
-    local_id = nx*ny*offset_k + nx*offset_j + offset_i + i
-    pm_well%well_cells(i) = local_id
+  do iconn = 1, num_connections
+    local_id = grid%nG2L(connection_set%id_up(iconn))
+    pm_well%well_cells(iconn) = local_id
+    if (iconn == num_connections) then
+      local_id = grid%nG2L(connection_set%id_dn(iconn))
+      pm_well%well_cells(iconn+1) = local_id
+    endif
   enddo
 
   ! allocate auxvar data structures for all grid cells
