@@ -635,7 +635,6 @@ subroutine THUpdateMassBalance(realization)
     enddo
   endif
 
-
 end subroutine THUpdateMassBalance
 
 ! ************************************************************************** !
@@ -5723,6 +5722,10 @@ subroutine THSetPlotVariables(realization,list)
       units = 'C'
       call OutputVariableAddToList(list,name,OUTPUT_GENERIC,units, &
                                    PIPE_TEMPERATURE)
+      name = 'Pipe Cells'
+      units = ''
+      call OutputVariableAddToList(list,name,OUTPUT_GENERIC,units, &
+                                   PIPE_CELLS)
     endif
 
   endif

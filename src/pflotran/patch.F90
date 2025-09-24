@@ -6462,7 +6462,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
          SC_FUGA_COEFF,ICE_DENSITY,LIQUID_HEAD,VAPOR_PRESSURE, &
          SATURATION_PRESSURE,PRECIPITATE_SATURATION,DERIVATIVE, &
          MAXIMUM_PRESSURE,LIQUID_MASS_FRACTION,GAS_MASS_FRACTION,&
-         SOLUTE_CONCENTRATION,TOTAL_LIQUID_HEAD,PIPE_TEMPERATURE)
+         SOLUTE_CONCENTRATION,TOTAL_LIQUID_HEAD,PIPE_TEMPERATURE,PIPE_CELLS)
 
       if (associated(patch%aux%TH)) then
         select case(ivar)
@@ -6479,6 +6479,11 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
             do tempint=1,patch%aux%TH%num_well_aux
               local_id = patch%aux%TH%auxvars_well(tempint)%local_id
               vec_ptr(local_id) = patch%aux%TH%auxvars_well(tempint)%temp
+            enddo
+          case(PIPE_CELLS)
+            do tempint=1,patch%aux%TH%num_well_aux
+              local_id = patch%aux%TH%auxvars_well(tempint)%local_id
+              vec_ptr(local_id) = 1
             enddo
           case(LIQUID_PRESSURE,MAXIMUM_PRESSURE)
             do local_id=1,grid%nlmax
@@ -8514,7 +8519,7 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
          SECONDARY_TEMPERATURE,LIQUID_DENSITY_MOL,DERIVATIVE, &
          LIQUID_HEAD,VAPOR_PRESSURE,SATURATION_PRESSURE,MAXIMUM_PRESSURE, &
          LIQUID_MASS_FRACTION,GAS_MASS_FRACTION,SOLUTE_CONCENTRATION, &
-         PRECIPITATE_SATURATION,TOTAL_LIQUID_HEAD,PIPE_TEMPERATURE)
+         PRECIPITATE_SATURATION,TOTAL_LIQUID_HEAD,PIPE_TEMPERATURE,PIPE_CELLS)
 
       if (associated(patch%aux%TH)) then
         select case(ivar)
@@ -8524,6 +8529,11 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
             tempint = patch%aux%TH%auxvars(ghosted_id)%iwellaux
             if (tempint > 0) then
               value = patch%aux%TH%auxvars_well(tempint)%temp
+            endif
+          case(PIPE_CELLS)
+            tempint = patch%aux%TH%auxvars(ghosted_id)%iwellaux
+            if (tempint > 0) then
+              value = 1
             endif
           case(LIQUID_PRESSURE,MAXIMUM_PRESSURE)
             value = patch%aux%TH%auxvars(ghosted_id)%pres
