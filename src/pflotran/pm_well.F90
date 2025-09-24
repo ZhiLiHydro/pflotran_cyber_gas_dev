@@ -500,7 +500,9 @@ module PM_Well_class
     PetscReal :: pipe_wall_thickness
     PetscReal :: pipe_wall_thermal_conductivity
     PetscReal :: flow_velocity
+    PetscReal :: heat_flux(2,2)
     type(connection_set_type), pointer :: connection_set
+    type(connection_set_type), pointer :: bc_connection_set
     type(matrix_zeroing_type), pointer :: matrix_zeroing
   end type pm_well_closed_loop_type
 
@@ -726,8 +728,10 @@ function PMWellUShapeCreate()
   pm_well%pipe_wall_thickness = UNINITIALIZED_DOUBLE
   pm_well%pipe_wall_thermal_conductivity = UNINITIALIZED_DOUBLE
   pm_well%flow_velocity = UNINITIALIZED_DOUBLE
+  pm_well%heat_flux = 0.d0
   nullify(pm_well%well_cells)
   nullify(pm_well%connection_set)
+  nullify(pm_well%bc_connection_set)
   nullify(pm_well%matrix_zeroing)
   nullify(pm_well%next_well)
 
@@ -11206,12 +11210,16 @@ subroutine PMWellDestroyUShape(this)
   ! Author: Glenn Hammond
   ! Date: 09/13/25
   !
+  use Utility_module
 
   implicit none
 
   class(pm_well_u_shape_type) :: this
 
+  call DeallocateArray(this%well_cells)
   call MatrixZeroingDestroy(this%matrix_zeroing)
+  call ConnectionDestroy(this%connection_set)
+  call ConnectionDestroy(this%bc_connection_set)
 
 end subroutine PMWellDestroyUShape
 

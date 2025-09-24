@@ -49,17 +49,23 @@ subroutine THWellSetup(pm_well_base)
   type(grid_type), pointer :: grid
   type(option_type), pointer :: option
   type(connection_set_type), pointer :: connection_set
+  type(connection_set_type), pointer :: bc_connection_set
+  type(th_parameter_type), pointer :: th_parameter
   type(th_auxvar_type), pointer :: auxvars(:)
   type(th_well_auxvar_type), pointer :: auxvars_well(:)
   PetscReal :: dist_up, dist_dn
-  PetscInt :: local_id, ghosted_id
+  PetscInt :: local_id
+  PetscInt :: ghosted_id, ghosted_id_up, ghosted_id_dn
   PetscInt :: i, j, k, iconn, idof
   PetscInt :: nx, ny, nz
   PetscInt :: offset_i, offset_j, offset_k
   PetscInt :: num_connections
   PetscInt :: num_well_cells
   PetscReal :: pipe_cross_sectional_area
+  PetscReal :: rock_thermal_conductivity
   PetscInt, allocatable :: inactive_cells(:)
+  PetscReal, allocatable :: len_(:,:)
+  PetscReal :: segment_length
 
   if (.not.associated(pm_well_base)) return
 
@@ -69,6 +75,14 @@ subroutine THWellSetup(pm_well_base)
   grid => patch%grid
   option => pm_well%option
 
+  select case(grid%itype)
+    case(STRUCTURED_GRID)
+    case default
+      option%io_buffer = 'THWell currently supports only structured grids.'
+      call PrintErrMsg(option)
+  end select
+
+  th_parameter => patch%aux%TH%th_parameter
   auxvars => patch%aux%TH%auxvars
 
   if (Uninitialized(pm_well%inlet_temperature)) then
@@ -110,6 +124,7 @@ subroutine THWellSetup(pm_well_base)
 
   connection_set => &
     ConnectionCreate(num_connections,INTERNAL_FACE_CONNECTION_TYPE,NULL_GRID)
+#if 0
   allocate(connection_set%id_up(num_connections))
   allocate(connection_set%id_dn(num_connections))
   allocate(connection_set%dist(-1:3,num_connections))
@@ -118,23 +133,50 @@ subroutine THWellSetup(pm_well_base)
   connection_set%id_dn = 0
   connection_set%dist = 0.d0
   connection_set%area = 0.d0
+#endif
 
+  bc_connection_set => &
+    ConnectionCreate(2,BOUNDARY_FACE_CONNECTION_TYPE,NULL_GRID)
+
+  allocate(len_(3,grid%ngmax))
+  len_ = 0.d0
   select case(pm_well%iscenario)
     case(1)
       offset_i = 0
       offset_j = int(ny/2)
       offset_k = int(nz/2)
       do iconn = 1, num_connections
-        ghosted_id = nx*ny*offset_k + nx*offset_j + offset_i + iconn
-        connection_set%id_up(iconn) = ghosted_id
-        connection_set%id_dn(iconn) = ghosted_id + 1
+        ghosted_id_up = nx*ny*offset_k + nx*offset_j + offset_i + iconn
+        ghosted_id_dn = ghosted_id_up + 1
+        connection_set%id_up(iconn) = ghosted_id_up
+        connection_set%id_dn(iconn) = ghosted_id_dn
         connection_set%dist(:,iconn) = 0.d0
-        dist_up = 0.5d0*grid%structured_grid%dx(offset_i+1)
-        dist_dn = 0.5d0*grid%structured_grid%dx(offset_i+2)
+        dist_up = 0.5d0*grid%structured_grid%dx(ghosted_id_up)
+        dist_dn = 0.5d0*grid%structured_grid%dx(ghosted_id_dn)
         connection_set%dist(0,iconn) = dist_up + dist_dn
         connection_set%dist(-1,iconn) = dist_up/(dist_up+dist_dn)
         connection_set%dist(1,iconn) = 1.d0
         connection_set%area(iconn) = pipe_cross_sectional_area
+        len_(1,ghosted_id_up) = len_(1,ghosted_id_up) + dist_up
+        len_(1,ghosted_id_dn) = len_(1,ghosted_id_dn) + dist_dn
+        if (iconn == 1) then
+          bc_connection_set%id_dn(1) = ghosted_id_up
+          bc_connection_set%dist(:,1) = 0.d0
+          bc_connection_set%dist(0,1) = dist_up
+          bc_connection_set%dist(-1,1) = 0.d0 ! fraction upwind
+          bc_connection_set%dist(1,1) = 1.d0
+          bc_connection_set%area(1) = pipe_cross_sectional_area
+          len_(1,ghosted_id_up) = len_(1,ghosted_id_up) + dist_up
+        endif
+        if (iconn == num_connections) then
+          bc_connection_set%id_dn(2) = ghosted_id_dn
+          bc_connection_set%dist(:,2) = 0.d0
+          bc_connection_set%dist(0,2) = dist_dn
+          bc_connection_set%dist(-1,2) = 1.d0
+          bc_connection_set%dist(1,2) = 1.d0
+          bc_connection_set%area(2) = pipe_cross_sectional_area
+          len_(1,ghosted_id_dn) = len_(1,ghosted_id_dn) + dist_dn
+        endif
       enddo
     case(2)
       i = 22
@@ -142,39 +184,55 @@ subroutine THWellSetup(pm_well_base)
       iconn = 0
       do k = 102, 33, -1
         iconn = iconn + 1
-        ghosted_id = nx*ny*(k-1) + nx*(j-1) + i
-        connection_set%id_up(iconn) = ghosted_id
-        connection_set%id_dn(iconn) = ghosted_id - nx*ny
+        ghosted_id_up = nx*ny*(k-1) + nx*(j-1) + i
+        ghosted_id_dn = ghosted_id_up - nx*ny
+        connection_set%id_up(iconn) = ghosted_id_up
+        connection_set%id_dn(iconn) = ghosted_id_dn
         connection_set%dist(:,iconn) = 0.d0
-        dist_up = 0.5d0*grid%structured_grid%dz(k)
-        dist_dn = 0.5d0*grid%structured_grid%dz(k-1)
+        dist_up = 0.5d0*grid%structured_grid%dz(ghosted_id_up)
+        dist_dn = 0.5d0*grid%structured_grid%dz(ghosted_id_dn)
         connection_set%dist(0,iconn) = dist_up + dist_dn
         connection_set%dist(-1,iconn) = dist_up/(dist_up+dist_dn)
         connection_set%dist(3,iconn) = -1.d0
         connection_set%area(iconn) = pipe_cross_sectional_area
+        len_(3,ghosted_id_up) = len_(3,ghosted_id_up) + dist_up
+        len_(3,ghosted_id_dn) = len_(3,ghosted_id_dn) + dist_dn
+        if (k == 102) then
+          bc_connection_set%id_dn(1) = ghosted_id_up
+          bc_connection_set%dist(:,1) = 0.d0
+          bc_connection_set%dist(0,1) = dist_up
+          bc_connection_set%dist(-1,1) = 0.d0 ! fraction upwind
+          bc_connection_set%dist(3,1) = -1.d0
+          bc_connection_set%area(1) = pipe_cross_sectional_area
+          len_(3,ghosted_id_up) = len_(3,ghosted_id_up) + dist_up
+        endif
       enddo
       j = 7
       k = 32
       do i = 22, 260
         iconn = iconn + 1
-        ghosted_id = nx*ny*(k-1) + nx*(j-1) + i
-        connection_set%id_up(iconn) = ghosted_id
-        connection_set%id_dn(iconn) = ghosted_id + 1
+        ghosted_id_up = nx*ny*(k-1) + nx*(j-1) + i
+        ghosted_id_dn = ghosted_id_up + 1
+        connection_set%id_up(iconn) = ghosted_id_up
+        connection_set%id_dn(iconn) = ghosted_id_dn
         connection_set%dist(:,iconn) = 0.d0
-        dist_up = 0.5d0*grid%structured_grid%dz(i)
-        dist_dn = 0.5d0*grid%structured_grid%dz(i+1)
+        dist_up = 0.5d0*grid%structured_grid%dx(i)
+        dist_dn = 0.5d0*grid%structured_grid%dx(i+1)
         connection_set%dist(0,iconn) = dist_up + dist_dn
         connection_set%dist(-1,iconn) = dist_up/(dist_up+dist_dn)
         connection_set%dist(1,iconn) = 1.d0
         connection_set%area(iconn) = pipe_cross_sectional_area
+        len_(1,ghosted_id_up) = len_(1,ghosted_id_up) + dist_up
+        len_(1,ghosted_id_dn) = len_(1,ghosted_id_dn) + dist_dn
       enddo
       i = 261
       j = 7
       do k = 32, 101
         iconn = iconn + 1
-        ghosted_id = nx*ny*(k-1) + nx*(j-1) + i
-        connection_set%id_up(iconn) = ghosted_id
-        connection_set%id_dn(iconn) = ghosted_id + nx*ny
+        ghosted_id_up = nx*ny*(k-1) + nx*(j-1) + i
+        ghosted_id_dn = ghosted_id_up + nx*ny
+        connection_set%id_up(iconn) = ghosted_id_up
+        connection_set%id_dn(iconn) = ghosted_id_dn
         connection_set%dist(:,iconn) = 0.d0
         dist_up = 0.5d0*grid%structured_grid%dz(k)
         dist_dn = 0.5d0*grid%structured_grid%dz(k+1)
@@ -182,6 +240,17 @@ subroutine THWellSetup(pm_well_base)
         connection_set%dist(-1,iconn) = dist_up/(dist_up+dist_dn)
         connection_set%dist(3,iconn) = 1.d0
         connection_set%area(iconn) = pipe_cross_sectional_area
+        len_(3,ghosted_id_up) = len_(3,ghosted_id_up) + dist_up
+        len_(3,ghosted_id_dn) = len_(3,ghosted_id_dn) + dist_dn
+        if (k == 101) then
+          bc_connection_set%id_dn(2) = ghosted_id_dn
+          bc_connection_set%dist(:,2) = 0.d0
+          bc_connection_set%dist(0,2) = dist_dn
+          bc_connection_set%dist(-1,2) = 1.d0 ! fraction upwind
+          bc_connection_set%dist(3,2) = 1.d0
+          bc_connection_set%area(2) = pipe_cross_sectional_area
+          len_(3,ghosted_id_dn) = len_(3,ghosted_id_dn) + dist_dn
+        endif
       enddo
       if (iconn /= num_connections) then
         option%io_buffer = 'Mismatch on number of connections in THWellsetup: ' // &
@@ -190,6 +259,7 @@ subroutine THWellSetup(pm_well_base)
       endif
   end select
   pm_well%connection_set => connection_set
+  pm_well%bc_connection_set => bc_connection_set
 
   allocate(pm_well%well_cells(num_well_cells))
   do iconn = 1, num_connections
@@ -212,9 +282,30 @@ subroutine THWellSetup(pm_well_base)
     auxvars_well(i)%local_id = pm_well%well_cells(i)
     auxvars_well(i)%volume = grid%structured_grid%dx(ghosted_id) * &
                                 pipe_cross_sectional_area
-    auxvars_well(i)%surface_area = grid%structured_grid%dx(ghosted_id) * &
-                                      pm_well%pipe_diameter
+    segment_length = sqrt(len_(1,ghosted_id)**2 + &
+                          len_(2,ghosted_id)**2 + &
+                          len_(3,ghosted_id)**2)
+    auxvars_well(i)%surface_area = segment_length * &
+                                   pm_well%pipe_diameter * PI
+    rock_thermal_conductivity = th_parameter%ckwet(patch%cct_id(ghosted_id))
+    call THWellWI(rock_thermal_conductivity, &
+                  rock_thermal_conductivity, &
+                  rock_thermal_conductivity, &
+                  grid%structured_grid%dx(ghosted_id), &
+                  grid%structured_grid%dy(ghosted_id), &
+                  grid%structured_grid%dz(ghosted_id), &
+                  len_(1,ghosted_id), &
+                  len_(2,ghosted_id), &
+                  len_(3,ghosted_id), &
+                  pm_well%pipe_diameter, &
+                  0.d0, & ! s
+                  auxvars_well(i)%well_index)
+    auxvars_well(i)%therm_cond_borehole_to_cell = auxvars_well(i)%well_index / &
+                                                  auxvars_well(i)%surface_area
+!    print *, i, len_(:,ghosted_id), auxvars_well(i)%well_index, auxvars_well(i)%surface_area
   enddo
+  deallocate(len_)
+
   patch%aux%TH%auxvars_well => auxvars_well
   patch%aux%TH%num_well_aux = num_well_cells
   allocate(auxvars_well(2))
@@ -280,7 +371,7 @@ subroutine THWellUpdateAuxVars(xx,pm_well_base)
   type(th_well_auxvar_type), pointer :: auxvars_well(:)
   type(th_well_auxvar_type), pointer :: auxvars_well_bc(:)
   PetscInt :: local_id, ghosted_id, natural_id
-  PetscInt :: i, iconn, ibc
+  PetscInt :: i, ibc
   PetscInt :: istart, iend
   PetscInt :: num_well_cells
   PetscReal :: xxbc(3)
@@ -314,9 +405,7 @@ subroutine THWellUpdateAuxVars(xx,pm_well_base)
       case(1)
         xxbc(th_well_dof) = pm_well%inlet_temperature
       case(2)
-        iconn = pm_well%connection_set%num_connections
-        ! ghosted id of downwind cells on last connection
-        ghosted_id = pm_well%connection_set%id_dn(iconn)
+        ghosted_id = pm_well%bc_connection_set%id_dn(ibc)
         ! to guarantee zero conduction at boundary
         xxbc(th_well_dof) = auxvars_well(size(pm_well%well_cells))%temp
     end select
@@ -503,18 +592,15 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
   do ibc = 1, 2
     select case(ibc)
       case(1)
-        iconn = 1
         ! the upstream cell on first internal connection is downstream on bc
-        ghosted_id_dn = connection_set%id_up(iconn)
+        ghosted_id_dn = pm_well%bc_connection_set%id_dn(ibc)
         local_id_dn = grid%nG2L(ghosted_id_dn)
         auxvar_up => auxvars_well_bc(ibc)
 !        auxvar_dn => auxvars_well(ghosted_id_dn)
         auxvar_dn => auxvars_well(1)
         forward_direction = PETSC_TRUE
       case(2)
-        ! the downstream cell on last internal connection is upstream on bc
-        iconn = connection_set%num_connections
-        ghosted_id_dn = connection_set%id_dn(iconn)
+        ghosted_id_dn = pm_well%bc_connection_set%id_dn(ibc)
         local_id_dn = grid%nG2L(ghosted_id_dn)
 !        auxvar_up => auxvars_well(ghosted_id_dn)
         auxvar_up => auxvars_well(size(pm_well%well_cells))
@@ -526,8 +612,8 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
     call THWellFluxDerivative(auxvar_up, &
                     auxvar_dn, &
                     pm_well%flow_velocity, &
-                    connection_set%dist(0,iconn), &
-                    connection_set%area(iconn), &
+                    pm_well%bc_connection_set%dist(0,ibc), &
+                    pm_well%bc_connection_set%area(ibc), &
                     Res,Jup,Jdn,ndof,calculate_derivatives)
     if (calculate_derivatives) then
       if (forward_direction) then
@@ -540,6 +626,7 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
       endif
       call PetUtilVecSVBL(r_p,local_id_dn,Res,ndof,PETSC_FALSE)
     endif
+    pm_well%heat_flux(1,ibc) = Res(3)
   enddo
 
   do i = 1, size(pm_well%well_cells)
@@ -847,8 +934,11 @@ subroutine THWellHeatExchange(auxvar,auxvar_well,pm_well, &
 
   ! conduction
   ! [MW] = [MW/m-K] * [m^2] * [C] / [m]
-  tempreal = pm_well%pipe_wall_thermal_conductivity * &
-             auxvar_well%surface_area / pm_well%pipe_wall_thickness
+!  tempreal = pm_well%pipe_wall_thermal_conductivity * &
+!             auxvar_well%surface_area / pm_well%pipe_wall_thickness
+  ! [MW] = [MW/m^2-K] * [m^2] * [C]
+  tempreal = auxvar_well%therm_cond_borehole_to_cell * &
+             auxvar_well%surface_area
   diffusive_energy_flux = tempreal * (tcell-tpipe)
 
   Res(TH_ENERGY_EQUATION_INDEX) = diffusive_energy_flux
@@ -908,6 +998,73 @@ subroutine THWellHeatExchangeDerivative(auxvar,auxvar_well,pm_well, &
   endif
 
 end subroutine THWellHeatExchangeDerivative
+
+! ************************************************************************** !
+
+subroutine THWellWI(kx,ky,kz,dx,dy,dz,lenx,leny,lenz,pipe_diameter,s,wi)
+  !
+  ! Calculates well index for a well segment
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/24/25
+  !
+  implicit none
+
+  PetscReal :: kx   ! conductivity in x
+  PetscReal :: ky
+  PetscReal :: kz
+  PetscReal :: dx   ! grid spacing in x
+  PetscReal :: dy
+  PetscReal :: dz
+  PetscReal :: lenx ! length of well segement in x
+  PetscReal :: leny
+  PetscReal :: lenz
+  PetscReal :: pipe_diameter
+  PetscReal :: s
+  PetscReal :: wi
+
+  PetscReal :: sqrt_kx_over_ky
+  PetscReal :: sqrt_ky_over_kx
+  PetscReal :: sqrt_ky_over_kz
+  PetscReal :: sqrt_kz_over_ky
+  PetscReal :: sqrt_kx_over_kz
+  PetscReal :: sqrt_kz_over_kx
+  PetscReal :: ro_x
+  PetscReal :: ro_y
+  PetscReal :: ro_z
+  PetscReal :: wi_x
+  PetscReal :: wi_y
+  PetscReal :: wi_z
+  PetscReal :: rw
+
+  rw = 0.5d0 * pipe_diameter
+
+  sqrt_kx_over_ky = sqrt(kx/ky)
+  sqrt_ky_over_kx = sqrt(ky/kx)
+  sqrt_ky_over_kz = sqrt(ky/kz)
+  sqrt_kz_over_ky = sqrt(kz/ky)
+  sqrt_kx_over_kz = sqrt(kx/kz)
+  sqrt_kz_over_kx = sqrt(kz/kx)
+
+  ro_x = 0.28d0 * sqrt(sqrt_ky_over_kz*dz**2 + sqrt_kz_over_ky*dy**2) / &
+                  (sqrt(sqrt_ky_over_kz) + sqrt(sqrt_kz_over_ky))
+  ro_y = 0.28d0 * sqrt(sqrt_kz_over_kx*dx**2 + sqrt_kx_over_kz*dz**2) / &
+                  (sqrt(sqrt_kz_over_kx) + sqrt(sqrt_kx_over_kz))
+  ro_z = 0.28d0 * sqrt(sqrt_ky_over_kx*dx**2 + sqrt_kx_over_ky*dy**2) / &
+                  (sqrt(sqrt_ky_over_kx) + sqrt(sqrt_kx_over_ky))
+!print *, 'kx: ', kx, ky, kz
+!print *, 'dx: ', dx, dy, dz
+!print *, 'ro_z: ', ro_z
+
+  wi_x = 2.d0*PI*sqrt(ky*kz)*lenx/(log(ro_x/rw)+s)
+  wi_y = 2.d0*PI*sqrt(kx*kz)*leny/(log(ro_y/rw)+s)
+  wi_z = 2.d0*PI*sqrt(kx*ky)*lenz/(log(ro_z/rw)+s)
+
+!print *, 'wi_z: ', wi_z, lenz, rw
+
+  wi = sqrt(wi_x**2 + wi_y**2 + wi_z**2)
+
+end subroutine THWellWI
 
 end module TH_Well_module
 
