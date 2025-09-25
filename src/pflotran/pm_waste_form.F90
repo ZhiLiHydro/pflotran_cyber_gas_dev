@@ -11,6 +11,7 @@ module PM_Waste_Form_class
 ! ===========================================================================
 
 #include "petsc/finclude/petscvec.h"
+#include "petsc/finclude/petscsys.h"
   use petscvec
 
   use PM_Base_class

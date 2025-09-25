@@ -523,21 +523,21 @@ subroutine PUMSetValuesBlockedLocal(A,nrow,irow,ncol,icol,matrix_block, &
 
 end subroutine PUMSetValuesBlockedLocal
 
-! ************************************************************************** !
+! ! ************************************************************************** !
 
-subroutine PetscTestFile(filename,char,flag,ierr)
+! subroutine PetscTestFile(filename,char,flag,ierr)
 
-  implicit none
+!   implicit none
 
-  character(len=*) :: filename
-  character(len=*) :: char
-  PetscBool :: flag
-  PetscErrorCode :: ierr
+!   character(len=*) :: filename
+!   character(len=*) :: char
+!   PetscBool :: flag
+!   PetscErrorCode :: ierr
 
-  inquire(file=trim(filename), exist=flag)
-  ierr = 0
+!   inquire(file=trim(filename), exist=flag)
+!   ierr = 0
 
-end subroutine PetscTestFile
+! end subroutine PetscTestFile
 
 ! ************************************************************************** !
 
