@@ -129,16 +129,6 @@ subroutine THWellSetup(pm_well_base)
 
   connection_set => &
     ConnectionCreate(num_connections,INTERNAL_FACE_CONNECTION_TYPE,NULL_GRID)
-#if 0
-  allocate(connection_set%id_up(num_connections))
-  allocate(connection_set%id_dn(num_connections))
-  allocate(connection_set%dist(-1:3,num_connections))
-  allocate(connection_set%area(num_connections))
-  connection_set%id_up = 0
-  connection_set%id_dn = 0
-  connection_set%dist = 0.d0
-  connection_set%area = 0.d0
-#endif
 
   bc_connection_set => &
     ConnectionCreate(2,BOUNDARY_FACE_CONNECTION_TYPE,NULL_GRID)
@@ -342,6 +332,11 @@ print *, iconn, ghosted_id_up, ghosted_id_dn, i, j, k
                   auxvars_well(i)%well_index)
     auxvars_well(i)%therm_cond_borehole_to_cell = auxvars_well(i)%well_index / &
                                                   auxvars_well(i)%surface_area
+    if (th_numerical_derivatives) then
+      ! must copy parameters down
+      call THWellAuxVarCopyParamsToPert(auxvars_well(i))
+    endif
+!    auxvars_well(i)%therm_cond_borehole_to_cell = 0.d0
 !    print *, i, len_(:,ghosted_id), auxvars_well(i)%well_index, auxvars_well(i)%surface_area
   enddo
   deallocate(len_)
@@ -590,6 +585,7 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
     call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
   endif
 
+#if 1
   ! calculate heat transfer between well cells
   connection_set => pm_well%connection_set
   i = 0
@@ -628,7 +624,8 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
     endif
 
   enddo
-
+#endif
+#if 1
   do ibc = 1, 2
     select case(ibc)
       case(1)
@@ -668,7 +665,9 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
       call PetUtilVecSVBL(r_p,local_id_dn,Res,ndof,PETSC_FALSE)
     endif
   enddo
+#endif
 
+#if 1
   do i = 1, size(pm_well%well_cells)
     local_id = pm_well%well_cells(i)
     ghosted_id = grid%nL2G(local_id)
@@ -683,6 +682,7 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
       call PetUtilVecSVBL(r_p,local_id,Res,ndof,PETSC_FALSE)
     endif
   enddo
+#endif
 
   ! calculate heat transfer between well cells and subsurface cells
   if (.not.calculate_derivatives) then
@@ -1037,9 +1037,9 @@ subroutine THWellHeatExchangeDerivative(auxvar,auxvar_well,pm_well, &
                               auxvar_well%auxvar_pert(idof),pm_well, &
                               Res_pert,Jdum,ndof,PETSC_FALSE)
       if (idof == th_well_dof) then
-        pert = auxvar%auxvar_pert(idof)%pert
-      else
         pert = auxvar_well%auxvar_pert(idof)%pert
+      else
+        pert = auxvar%auxvar_pert(idof)%pert
       endif
       do ieq = 1, ndof
         J(ieq,idof) = (Res_pert(ieq) - Res(ieq)) / pert

@@ -174,6 +174,7 @@ module TH_Aux_module
             THWellAuxVarInit, &
             THWellAuxVarCompute, &
             THWellAuxVarPerturb, &
+            THWellAuxVarCopyParamsToPert, &
             THAuxVarDestroy
 
   public :: THAuxVarComputeFreezing
@@ -1226,6 +1227,33 @@ recursive subroutine THWellAuxVarInit(auxvar,option,allocate_perturbation)
   endif
 
 end subroutine THWellAuxVarInit
+
+! ************************************************************************** !
+
+recursive subroutine THWellAuxVarCopyParamsToPert(auxvar)
+  !
+  ! Copy static parameters to perturbed well auxvar
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/25/25
+  !
+  implicit none
+
+  type(th_well_auxvar_type) :: auxvar
+
+  PetscInt :: i
+
+  do i = 1, size(auxvar%auxvar_pert)
+    auxvar%auxvar_pert(i)%local_id = auxvar%local_id
+    auxvar%auxvar_pert(i)%volume = auxvar%volume
+    auxvar%auxvar_pert(i)%surface_area = auxvar%surface_area
+    auxvar%auxvar_pert(i)%heat_transfer_coef = auxvar%heat_transfer_coef
+    auxvar%auxvar_pert(i)%well_index = auxvar%well_index
+    auxvar%auxvar_pert(i)%therm_cond_borehole_to_cell = &
+      auxvar%therm_cond_borehole_to_cell
+  enddo
+
+end subroutine THWellAuxVarCopyParamsToPert
 
 ! ************************************************************************** !
 
