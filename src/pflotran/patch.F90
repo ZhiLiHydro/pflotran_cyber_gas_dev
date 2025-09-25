@@ -4074,6 +4074,7 @@ subroutine PatchUpdateCouplerAuxVarsTH(patch,coupler,option)
   use Dataset_Gridded_HDF5_class
   use Dataset_Ascii_class
   use Dataset_module
+  use TH_Aux_module, only : th_well_dof
 
   implicit none
 
@@ -4165,6 +4166,19 @@ subroutine PatchUpdateCouplerAuxVarsTH(patch,coupler,option)
               call DatasetUnknownClass(selector,option, &
                                        'PatchUpdateCouplerAuxVarsTH')
           end select
+          if (Initialized(th_well_dof) .and. &
+              associated(coupler%flow_aux_real_var)) then
+            if (Initialized(th_well_init_well_temperature)) then
+              coupler%flow_aux_real_var(th_well_dof, &
+                                        1:num_connections) = &
+                th_well_init_well_temperature
+            else
+              coupler%flow_aux_real_var(th_well_dof, &
+                                        1:num_connections) = &
+                coupler%flow_aux_real_var(TH_TEMPERATURE_DOF, &
+                                          1:num_connections)
+            endif
+          endif
         case (HET_DIRICHLET_BC)
           call PatchUpdateHetroCouplerAuxVars(patch,coupler, &
                   flow_condition%temperature%dataset, &

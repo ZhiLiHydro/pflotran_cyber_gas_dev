@@ -31,6 +31,8 @@ module TH_Aux_module
   PetscInt, public :: th_well_dof = UNINITIALIZED_INTEGER
   PetscInt, public :: th_conductance_dof = UNINITIALIZED_INTEGER
 
+  PetscReal, public :: th_well_init_well_temperature = UNINITIALIZED_DOUBLE
+
   PetscInt, parameter, public :: TH_UPDATE_FOR_FIXED_ACCUM = 0
 
   type, public :: th_auxvar_type
@@ -1245,7 +1247,7 @@ subroutine THWellAuxVarCompute(liquid_pressure,x,auxvar,natural_id,option)
   type(th_well_auxvar_type) :: auxvar
   PetscInt :: natural_id
 
-  PetscReal :: pw,dw_mol,hw
+  PetscReal :: pw, dw_kmol, hw
   PetscReal :: dw_dT
   PetscReal :: hw_dp, hw_dT
   PetscErrorCode :: ierr
@@ -1253,13 +1255,13 @@ subroutine THWellAuxVarCompute(liquid_pressure,x,auxvar,natural_id,option)
   pw = liquid_pressure
   auxvar%temp = x(th_well_dof)
 
-  dw_mol = 1.d3 / FMWH2O
+  dw_kmol = 1.d3 / FMWH2O
   dw_dT = 0.d0
   call EOSWaterEnthalpy(auxvar%temp,pw,hw,hw_dp,hw_dT,ierr)
   auxvar%h = hw
-  auxvar%u = auxvar%h - pw / dw_mol
+  auxvar%u = auxvar%h - pw / dw_kmol
   auxvar%dh_dT = hw_dT
-  auxvar%du_dT = hw_dT + pw/(dw_mol*dw_mol)*dw_dT
+  auxvar%du_dT = hw_dT + pw/(dw_kmol*dw_kmol)*dw_dT
 
   ! J/kmol -> whatever units (default of option%scale is 1.e-6)
   auxvar%h = auxvar%h * option%scale
@@ -1295,7 +1297,7 @@ subroutine THWellAuxVarPerturb(liquid_pressure,auxvar_well, &
 
   x = UNINITIALIZED_DOUBLE
   x(th_well_dof) = auxvar_well%temp
-  do idof = th_well_dof, option%nflowdof
+  do idof = 1, option%nflowdof
     pert = x(idof)*th_rel_pert+th_min_pert(idof)
     auxvar_well%auxvar_pert(idof)%pert = pert
     x_pert(1:option%nflowdof) = x

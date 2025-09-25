@@ -494,6 +494,7 @@ module PM_Well_class
   type, public, extends(pm_well_implicit_type) :: pm_well_closed_loop_type
       ! Placeholder for now
     PetscInt :: iscenario
+    PetscBool :: use_well_index
     PetscInt, pointer :: well_cells(:)
     PetscReal :: inlet_temperature
     PetscReal :: pipe_diameter
@@ -723,6 +724,7 @@ function PMWellUShapeCreate()
   pm_well%flow_coupling = FULLY_IMPLICIT_WELL
 
   pm_well%iscenario = UNINITIALIZED_INTEGER
+  pm_well%use_well_index = PETSC_FALSE
   pm_well%inlet_temperature = UNINITIALIZED_DOUBLE
   pm_well%pipe_diameter = UNINITIALIZED_DOUBLE
   pm_well%pipe_wall_thickness = UNINITIALIZED_DOUBLE
@@ -4251,13 +4253,16 @@ subroutine PMWellReadWell(pm_well,input,option,keyword,error_string,found)
             call InputErrorMsg(input,option,'WELL_INDEX_MODEL',error_string)
         !-----------------------------
           case('INLET_TEMPERATURE','PIPE_DIAMETER','PIPE_WALL_THICKNESS', &
-               'PIPE_WALL_THERMAL_CONDUCTIVITY','PIPE_FLOW_VELOCITY','SCENARIO')
+               'PIPE_WALL_THERMAL_CONDUCTIVITY','PIPE_FLOW_VELOCITY','SCENARIO', &
+               'USE_WELL_INDEX')
             select type(pm => pm_well)
               class is(pm_well_closed_loop_type)
                 select case(word)
                   case('SCENARIO')
                     call InputReadInt(input,option,pm%iscenario)
                     call InputErrorMsg(input,option,word,error_string)
+                  case('USE_WELL_INDEX')
+                    pm%use_well_index = PETSC_TRUE
                   case('INLET_TEMPERATURE')
                     call InputReadDouble(input,option,pm%inlet_temperature)
                     call InputErrorMsg(input,option,word,error_string)

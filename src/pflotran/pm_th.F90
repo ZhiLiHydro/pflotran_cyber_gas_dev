@@ -233,6 +233,9 @@ subroutine PMTHReadSimOptionsBlock(this,input)
              &or DALL_AMICO.'
             call PrintErrMsg(option)
           end select
+      case('INITIAL_WELL_TEMPERATURE')
+        call InputReadDouble(input,option,th_well_init_well_temperature)
+        call InputErrorMsg(input,option,keyword,error_string)
       case default
         call InputKeywordUnrecognized(input,keyword,error_string,option)
     end select
@@ -1103,6 +1106,7 @@ subroutine PMTHUpdateSolution(this)
   !
 
   use TH_module, only : THUpdateSolution, THMapBCAuxVarsToGlobal
+  use TH_Well_module
 
   implicit none
 
@@ -1111,6 +1115,10 @@ subroutine PMTHUpdateSolution(this)
   call PMSubsurfaceFlowUpdateSolution(this)
   call THUpdateSolution(this%realization)
   call THMapBCAuxVarsToGlobal(this%realization)
+
+  if (associated(this%pm_well)) then
+    call THWellUpdateHeatFlux(this%pm_well)
+  endif
 
 end subroutine PMTHUpdateSolution
 
