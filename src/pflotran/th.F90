@@ -4371,15 +4371,17 @@ subroutine THResidualSourceSink(r,realization,ierr)
     source_sink => source_sink%next
   enddo
 
-  ! scale the residual by the volume
-  do local_id = 1, grid%nlmax
-    ghosted_id = grid%nL2G(local_id)
-    if (patch%imat(ghosted_id) <= 0) cycle
-    iend = local_id*option%nflowdof
-    istart = iend-option%nflowdof+1
-    iend = istart + 1 ! kludge to avoid th_well_dof
-    r_p (istart:iend)= r_p(istart:iend)/material_auxvars(ghosted_id)%volume
-  enddo
+  if (th_scale_by_volume) then
+    ! scale the residual by the volume
+    do local_id = 1, grid%nlmax
+      ghosted_id = grid%nL2G(local_id)
+      if (patch%imat(ghosted_id) <= 0) cycle
+      iend = local_id*option%nflowdof
+      istart = iend-option%nflowdof+1
+      iend = istart + 1 ! kludge to avoid th_well_dof
+      r_p (istart:iend)= r_p(istart:iend)/material_auxvars(ghosted_id)%volume
+    enddo
+  endif
 
   if (option%flow%isothermal) then
     do local_id = 1, grid%nlmax  ! For each local node do...
@@ -4620,7 +4622,8 @@ subroutine THJacobianInternalConn(A,realization,ierr)
   PetscInt :: ghosted_id_up, ghosted_id_dn
 
   PetscReal :: Jup(realization%option%nflowdof,realization%option%nflowdof), &
-               Jdn(realization%option%nflowdof,realization%option%nflowdof)
+               Jdn(realization%option%nflowdof,realization%option%nflowdof), &
+               Jtmp(realization%option%nflowdof,realization%option%nflowdof)
 
   type(connection_set_list_type), pointer :: connection_set_list
   type(connection_set_type), pointer :: cur_connection_set
@@ -4758,30 +4761,37 @@ subroutine THJacobianInternalConn(A,realization,ierr)
                             th_parameter, &
                             Jup,Jdn)
 
-!  scale by the volume of the cell
-
       if (local_id_up > 0) then
+        Jtmp = Jup
+        if (th_scale_by_volume)then
+          Jtmp = Jtmp/material_auxvars(ghosted_id_up)%volume
+        endif
         call PUMSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_up-1, &
-                                      Jup/material_auxvars(ghosted_id_up)% &
-                                        volume, &
-                                      ADD_VALUES,ierr);CHKERRQ(ierr)
+                                      Jtmp,ADD_VALUES,ierr);CHKERRQ(ierr)
+        Jtmp = Jdn
+        if (th_scale_by_volume)then
+          Jtmp = Jtmp/material_auxvars(ghosted_id_up)%volume
+        endif
         call PUMSetValuesBlockedLocal(A,1,ghosted_id_up-1,1,ghosted_id_dn-1, &
-                                      Jdn/material_auxvars(ghosted_id_up)% &
-                                        volume, &
-                                      ADD_VALUES,ierr);CHKERRQ(ierr)
+                                      Jtmp,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
       if (local_id_dn > 0) then
         Jup = -Jup
         Jdn = -Jdn
 
+        Jtmp = Jdn
+        if (th_scale_by_volume)then
+          Jtmp = Jtmp/material_auxvars(ghosted_id_dn)%volume
+        endif
         call PUMSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_dn-1, &
-                                      Jdn/material_auxvars(ghosted_id_dn)% &
-                                        volume, &
-                                      ADD_VALUES,ierr);CHKERRQ(ierr)
+                                      Jtmp,ADD_VALUES,ierr);CHKERRQ(ierr)
+        Jtmp = Jup
+        if (th_scale_by_volume)then
+          Jtmp = Jtmp/material_auxvars(ghosted_id_dn)%volume
+        endif
         call PUMSetValuesBlockedLocal(A,1,ghosted_id_dn-1,1,ghosted_id_up-1, &
-                                      Jup/material_auxvars(ghosted_id_dn)% &
-                                        volume, &
-                                      ADD_VALUES,ierr);CHKERRQ(ierr)
+                                      Jtmp,ADD_VALUES,ierr);CHKERRQ(ierr)
+
       endif
     enddo
     cur_connection_set => cur_connection_set%next
@@ -4937,9 +4947,9 @@ subroutine THJacobianBoundaryConn(A,realization,ierr)
                               Jdn)
       Jdn = -Jdn
 
-      !  scale by the volume of the cell
-      Jdn = Jdn/material_auxvars(ghosted_id)%volume
-
+      if (th_scale_by_volume)then
+        Jdn = Jdn/material_auxvars(ghosted_id)%volume
+      endif
       call PUMSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jdn, &
                                     ADD_VALUES,ierr);CHKERRQ(ierr)
 
@@ -5088,9 +5098,9 @@ subroutine THJacobianAccumulation(A,realization,ierr)
       endif
     endif
 
-    ! scale by the volume of the cell
-    Jup = Jup/material_auxvars(ghosted_id)%volume
-
+    if (th_scale_by_volume)then
+      Jup = Jup/material_auxvars(ghosted_id)%volume
+    endif
     call PUMSetValuesBlockedLocal(A,1,ghosted_id-1,1,ghosted_id-1,Jup, &
                                   ADD_VALUES,ierr);CHKERRQ(ierr)
   enddo
@@ -5415,9 +5425,10 @@ subroutine THSourceSink(itype,iratetype,flow_array,energy_array, &
         -qsrc_kmol*th_auxvar%dh_dT
     endif
 
-    ! scale by the volume of the cell
-    J = J/material_auxvar%volume
-!print *, J
+    if (th_scale_by_volume) then
+      J = J/material_auxvar%volume
+    endif
+
   endif
 
 end subroutine THSourceSink

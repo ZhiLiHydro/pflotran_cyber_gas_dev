@@ -71,6 +71,7 @@ subroutine THWellSetup(pm_well_base)
 
   if (.not.associated(pm_well_base)) return
 
+  th_scale_by_volume = PETSC_FALSE
   pm_well => PMWellCastToClosedLoop(pm_well_base)
 
   patch => pm_well%realization%patch
@@ -193,7 +194,6 @@ subroutine THWellSetup(pm_well_base)
         iconn = iconn + 1
         ghosted_id_up = nx*ny*(k-1) + nx*(j-1) + i
         ghosted_id_dn = ghosted_id_up - nx*ny
-print *, iconn, ghosted_id_up, ghosted_id_dn, i, j, k
         connection_set%id_up(iconn) = ghosted_id_up
         connection_set%id_dn(iconn) = ghosted_id_dn
         connection_set%dist(:,iconn) = 0.d0
@@ -231,7 +231,6 @@ print *, iconn, ghosted_id_up, ghosted_id_dn, i, j, k
         iconn = iconn + 1
         ghosted_id_up = nx*ny*(k-1) + nx*(j-1) + i
         ghosted_id_dn = ghosted_id_up + 1
-print *, iconn, ghosted_id_up, ghosted_id_dn, i, j, k
         connection_set%id_up(iconn) = ghosted_id_up
         connection_set%id_dn(iconn) = ghosted_id_dn
         connection_set%dist(:,iconn) = 0.d0
@@ -260,7 +259,6 @@ print *, iconn, ghosted_id_up, ghosted_id_dn, i, j, k
         iconn = iconn + 1
         ghosted_id_up = nx*ny*(k-1) + nx*(j-1) + i
         ghosted_id_dn = ghosted_id_up + nx*ny
-print *, iconn, ghosted_id_up, ghosted_id_dn, i, j, k
         connection_set%id_up(iconn) = ghosted_id_up
         connection_set%id_dn(iconn) = ghosted_id_dn
         connection_set%dist(:,iconn) = 0.d0
@@ -292,14 +290,19 @@ print *, iconn, ghosted_id_up, ghosted_id_dn, i, j, k
   pm_well%bc_connection_set => bc_connection_set
 
   allocate(pm_well%well_cells(num_well_cells))
-  do iconn = 1, num_connections
-    local_id = grid%nG2L(connection_set%id_up(iconn))
-    pm_well%well_cells(iconn) = local_id
-    if (iconn == num_connections) then
-      local_id = grid%nG2L(connection_set%id_dn(iconn))
-      pm_well%well_cells(iconn+1) = local_id
-    endif
-  enddo
+  if (num_well_cells > 1) then
+    do iconn = 1, num_connections
+      local_id = grid%nG2L(connection_set%id_up(iconn))
+      pm_well%well_cells(iconn) = local_id
+      if (iconn == num_connections) then
+        local_id = grid%nG2L(connection_set%id_dn(iconn))
+        pm_well%well_cells(iconn+1) = local_id
+      endif
+    enddo
+  else
+    pm_well%well_cells(1) = 1
+    len_(1,1) = grid%structured_grid%dx(1)
+  endif
 
   ! allocate auxvar data structures for all grid cells
   allocate(auxvars_well(num_well_cells))
@@ -310,11 +313,11 @@ print *, iconn, ghosted_id_up, ghosted_id_dn, i, j, k
     call THWellAuxVarInit(auxvars_well(i),option, &
                           th_numerical_derivatives)
     auxvars_well(i)%local_id = pm_well%well_cells(i)
-    auxvars_well(i)%volume = grid%structured_grid%dx(ghosted_id) * &
-                                pipe_cross_sectional_area
     segment_length = sqrt(len_(1,ghosted_id)**2 + &
                           len_(2,ghosted_id)**2 + &
                           len_(3,ghosted_id)**2)
+    auxvars_well(i)%volume = segment_length * &
+                             pipe_cross_sectional_area
     auxvars_well(i)%surface_area = segment_length * &
                                    pm_well%pipe_diameter * PI
     rock_thermal_conductivity = th_parameter%ckwet(patch%cct_id(ghosted_id))
@@ -333,11 +336,9 @@ print *, iconn, ghosted_id_up, ghosted_id_dn, i, j, k
     auxvars_well(i)%therm_cond_borehole_to_cell = auxvars_well(i)%well_index / &
                                                   auxvars_well(i)%surface_area
     if (th_numerical_derivatives) then
-      ! must copy parameters down
+      ! must copy parameters down to perturbed auxvars
       call THWellAuxVarCopyParamsToPert(auxvars_well(i))
     endif
-!    auxvars_well(i)%therm_cond_borehole_to_cell = 0.d0
-!    print *, i, len_(:,ghosted_id), auxvars_well(i)%well_index, auxvars_well(i)%surface_area
   enddo
   deallocate(len_)
 
@@ -625,6 +626,7 @@ subroutine THWell(r,J,pm_well_base,calculate_derivatives)
 
   enddo
 #endif
+
 #if 1
   do ibc = 1, 2
     select case(ibc)
