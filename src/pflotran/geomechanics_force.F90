@@ -2623,7 +2623,6 @@ subroutine GeomechForceAssembleCoeffMatrix(A,geomech_realization)
                    option%ngeomechdof*(id1-1)+GEOMECH_DISP_Z_DOF, &
                    option%ngeomechdof*(id2-1)+GEOMECH_DISP_X_DOF: &
                    option%ngeomechdof*(id2-1)+GEOMECH_DISP_Z_DOF)
-
         call PUMSetValuesBlocked(A,1,petsc_id1-1,1,petsc_id2-1,Jac_sub_mat, &
                                  ADD_VALUES,ierr);CHKERRQ(ierr)
       enddo
@@ -3087,6 +3086,12 @@ subroutine GeomechForceStressStrain(geomech_realization)
 
   PetscErrorCode :: ierr
 
+  ! jaa testing
+  !PetscReal :: disp_x_print(geomech_realization%geomech_patch%geomech_grid%nmax_node)
+  !PetscInt :: id
+
+  !disp_x_print = 0.d0
+
   field => geomech_realization%geomech_field
   geomech_discretization => geomech_realization%geomech_discretization
   patch => geomech_realization%geomech_patch
@@ -3186,6 +3191,8 @@ subroutine GeomechForceStressStrain(geomech_realization)
         alpha_vec(ivertex) = &
           GeomechParam%thermal_exp_coeff(nint(imech_loc_p(ghosted_id)))
       endif
+      ! use a single process
+      !disp_x_print(ghosted_id) = local_disp(ivertex,1)
     enddo
     size_elenodes = size(elenodes)
     call GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
@@ -3309,6 +3316,11 @@ subroutine GeomechForceStressStrain(geomech_realization)
   call VecRestoreArray(field%stress_loc,stress_loc_p,ierr);CHKERRQ(ierr)
   call VecRestoreArray(field%stress_total_loc,stress_total_loc_p,ierr);CHKERRQ(ierr)
 
+  !print *, 'x disp'
+  !do id = 1, grid%nmax_elem
+  !  print *, id, disp_x_print(id)
+  !enddo
+
 end subroutine GeomechForceStressStrain
 
 ! ************************************************************************** !
@@ -3409,6 +3421,7 @@ subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
     call Kron(identity,transpose(B),kron_eye_B_transpose)
     strain_local =  0.5d0*matmul((kron_B_transpose_eye + &
       matmul(kron_eye_B_transpose,Trans)),vec_local_disp)
+    !print *, 'ivertex, strain_local', ivertex, strain_local
     stress_local = lambda*(strain_local(1,1)+ &
                    strain_local(5,1)+strain_local(9,1))*eye_vec + &
                    2.d0*mu*strain_local

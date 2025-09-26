@@ -710,8 +710,11 @@ subroutine PMCGeomechanicsSetAuxData(this)
               !print *, 'id, por_p, del_volstrain, press ', local_id, por_p(local_id), &
               !       strain_vol - strain_vol_0, local_pressure
               !print *, 'local id, press, por_p', local_id, local_pressure, por_p(local_id)
-              print *, 'local id, press, por_p, vol strain', local_id, local_pressure, &
-                por_p(local_id), strain_vol
+              !print *, 'local id, press, por_p, vol strain', local_id, local_pressure, &
+              !  por_p(local_id), strain_vol
+              !print *, 'id, strain xx, yy, zz', &
+              !  local_id, &
+              !  local_strain(1), local_strain(2), local_strain(3)
               global_auxvars(ghosted_id)%parameters(press_old_id) = local_pressure
             ! below changes will need to be part of undrained, drained, fixed strain
             ! bc biot coef should be part of porosity update

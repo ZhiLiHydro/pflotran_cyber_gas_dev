@@ -166,7 +166,10 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
            material_auxvar%porosity * vol_over_dt
 
   if (option%geomechanics%split_scheme == &
-      GEOMECH_FIXED_STRESS_SPLIT) then
+      GEOMECH_FIXED_STRESS_SPLIT .and. &
+      option%geomechanics%flow_coupling == &
+      GEOMECH_TWO_WAY_COUPLED &
+     ) then
     youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
     poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
     biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)

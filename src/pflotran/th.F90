@@ -1508,11 +1508,11 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
         ((biot_coeff-porosity_0)*(1.d0-biot_coeff)/dr_bulk_modulus)) * &
         ! (pressure@ n+1 - pressure@ n)
         ! pressure@ n is pressure used in last mech step
-        (global_auxvar%pres(1)-old_pressure))
+        (th_auxvar%pres-old_pressure))
       ! store temp porosity for threshold check
       global_auxvar%parameters(temp_porosity_id) = por
       print *, 'temp por, old_press, new_press', &
-         por, old_pressure, global_auxvar%pres(1)
+         por, old_pressure, th_auxvar%pres
     endif
   endif
 
