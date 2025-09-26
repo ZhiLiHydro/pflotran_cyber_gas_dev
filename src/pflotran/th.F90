@@ -5732,11 +5732,11 @@ subroutine THSetPlotVariables(realization,list)
       name = 'Pipe Temperature'
       units = 'C'
       call OutputVariableAddToList(list,name,OUTPUT_GENERIC,units, &
-                                   PIPE_TEMPERATURE)
+                                   WELL_TEMPERATURE)
       name = 'Pipe Cells'
       units = ''
       call OutputVariableAddToList(list,name,OUTPUT_GENERIC,units, &
-                                   PIPE_CELLS)
+                                   WELL_CELLS)
     endif
 
   endif

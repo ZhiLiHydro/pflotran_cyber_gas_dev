@@ -226,7 +226,7 @@ module Variables_module
   PetscInt, parameter, public :: WELL_BHP = 171
   PetscInt, parameter, public :: TOTAL_LIQUID_HEAD          = 172
   PetscInt, parameter, public :: WATER_ACTIVITY_COEFFICIENT = 173
-  PetscInt, parameter, public :: PIPE_TEMPERATURE           = 174
-  PetscInt, parameter, public :: PIPE_CELLS                 = 175
+  PetscInt, parameter, public :: WELL_TEMPERATURE           = 174
+  PetscInt, parameter, public :: WELL_CELLS                 = 175
 
 end module Variables_module

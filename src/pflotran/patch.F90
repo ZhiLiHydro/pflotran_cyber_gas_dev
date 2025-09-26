@@ -6476,7 +6476,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
          SC_FUGA_COEFF,ICE_DENSITY,LIQUID_HEAD,VAPOR_PRESSURE, &
          SATURATION_PRESSURE,PRECIPITATE_SATURATION,DERIVATIVE, &
          MAXIMUM_PRESSURE,LIQUID_MASS_FRACTION,GAS_MASS_FRACTION,&
-         SOLUTE_CONCENTRATION,TOTAL_LIQUID_HEAD,PIPE_TEMPERATURE,PIPE_CELLS)
+         SOLUTE_CONCENTRATION,TOTAL_LIQUID_HEAD,WELL_TEMPERATURE,WELL_CELLS)
 
       if (associated(patch%aux%TH)) then
         select case(ivar)
@@ -6489,12 +6489,12 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
               vec_ptr(local_id) = &
                 patch%aux%TH%auxvars(grid%nL2G(local_id))%temp
             enddo
-          case(PIPE_TEMPERATURE)
+          case(WELL_TEMPERATURE)
             do tempint=1,patch%aux%TH%num_well_aux
               local_id = patch%aux%TH%auxvars_well(tempint)%local_id
               vec_ptr(local_id) = patch%aux%TH%auxvars_well(tempint)%temp
             enddo
-          case(PIPE_CELLS)
+          case(WELL_CELLS)
             do tempint=1,patch%aux%TH%num_well_aux
               local_id = patch%aux%TH%auxvars_well(tempint)%local_id
               vec_ptr(local_id) = 1
@@ -8533,18 +8533,18 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
          SECONDARY_TEMPERATURE,LIQUID_DENSITY_MOL,DERIVATIVE, &
          LIQUID_HEAD,VAPOR_PRESSURE,SATURATION_PRESSURE,MAXIMUM_PRESSURE, &
          LIQUID_MASS_FRACTION,GAS_MASS_FRACTION,SOLUTE_CONCENTRATION, &
-         PRECIPITATE_SATURATION,TOTAL_LIQUID_HEAD,PIPE_TEMPERATURE,PIPE_CELLS)
+         PRECIPITATE_SATURATION,TOTAL_LIQUID_HEAD,WELL_TEMPERATURE,WELL_CELLS)
 
       if (associated(patch%aux%TH)) then
         select case(ivar)
           case(TEMPERATURE)
             value = patch%aux%TH%auxvars(ghosted_id)%temp
-          case(PIPE_TEMPERATURE)
+          case(WELL_TEMPERATURE)
             tempint = patch%aux%TH%auxvars(ghosted_id)%iwellaux
             if (tempint > 0) then
               value = patch%aux%TH%auxvars_well(tempint)%temp
             endif
-          case(PIPE_CELLS)
+          case(WELL_CELLS)
             tempint = patch%aux%TH%auxvars(ghosted_id)%iwellaux
             if (tempint > 0) then
               value = 1

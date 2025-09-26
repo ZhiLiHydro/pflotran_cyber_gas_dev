@@ -3211,6 +3211,7 @@ subroutine PMWellSetupUShape(this)
 
   option => this%option
 
+!  call PMWellSetupBase(this)
   select case(option%iflowmode)
     case(TH_MODE)
     case default
