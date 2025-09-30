@@ -95,7 +95,7 @@ subroutine THSetup(realization,pm_well)
   use String_module, only : StringWrite
   use PM_Well_class
 
-  class(realization_subsurface_type) :: realization
+  class(realization_subsurface_type), pointer :: realization
   class(pm_well_type), pointer :: pm_well
 
   type(output_variable_list_type), pointer :: list
@@ -448,7 +448,7 @@ subroutine THSetup(realization,pm_well)
   call THSetPlotVariables(realization,list)
 
   if (associated(pm_well)) then
-    call THWellSetup(pm_well)
+    call THWellSetup(pm_well,realization)
   endif
 
   TH_ts_count = 0

@@ -27,7 +27,7 @@ contains
 
 ! ************************************************************************** !
 
-subroutine THWellSetup(pm_well_base)
+subroutine THWellSetup(pm_well_base,realization)
   !
   ! Configure the well
   !
@@ -36,6 +36,7 @@ subroutine THWellSetup(pm_well_base)
 
   use Option_module
   use Connection_module
+  use Realization_Subsurface_class
   use Patch_module
   use Grid_module
   use Matrix_Zeroing_module
@@ -44,12 +45,14 @@ subroutine THWellSetup(pm_well_base)
   implicit none
 
   class(pm_well_type), pointer :: pm_well_base
+  class(realization_subsurface_type), pointer :: realization
 
   class(pm_well_closed_loop_type), pointer :: pm_well
   type(patch_type), pointer :: patch
   type(grid_type), pointer :: grid
   type(option_type), pointer :: option
   type(connection_set_type), pointer :: connection_set
+  type(connection_set_type), pointer :: grid_connection_set
   type(connection_set_type), pointer :: bc_connection_set
   type(th_parameter_type), pointer :: th_parameter
   type(th_auxvar_type), pointer :: auxvars(:)
@@ -68,6 +71,7 @@ subroutine THWellSetup(pm_well_base)
   PetscInt, allocatable :: inactive_cells(:)
   PetscReal, allocatable :: len_(:,:)
   PetscReal :: segment_length
+  PetscReal :: dist(-1:3)
 
   if (.not.associated(pm_well_base)) return
 
@@ -84,6 +88,9 @@ subroutine THWellSetup(pm_well_base)
       option%io_buffer = 'THWell currently supports only structured grids.'
       call PrintErrMsg(option)
   end select
+
+  pm_well%realization_base => realization
+  call pm_well%Setup()
 
   th_parameter => patch%aux%TH%th_parameter
   auxvars => patch%aux%TH%auxvars
@@ -122,7 +129,8 @@ subroutine THWellSetup(pm_well_base)
     case(3)
       num_well_cells = 2*(int(0.75001d0*grid%structured_grid%nz)) + &
                        int(0.5001d0*grid%structured_grid%nx) - 2
-    case default
+    case(4)
+      num_well_cells = pm_well%well_grid%nsegments
       option%io_buffer = 'Unrecognized scenario in THWellSetup()'
       call PrintErrMsg(option)
   end select
@@ -285,6 +293,54 @@ subroutine THWellSetup(pm_well_base)
           StringWrite(iconn) // ' vs ' // StringWrite(num_connections)
         call PrintErrMsg(option)
       endif
+    case(4)
+      iconn = 0
+      do i = 1, num_connections
+        iconn = iconn + 1
+        ghosted_id_up = pm_well%well_grid%h_ghosted_id(i)
+        ghosted_id_dn = pm_well%well_grid%h_ghosted_id(i+1)
+        connection_set%id_up(iconn) = ghosted_id_up
+        connection_set%id_dn(iconn) = ghosted_id_dn
+      enddo
+      grid_connection_set => grid%internal_connection_set_list%first
+      do iconn2 = 1, grid_connection_set%num_connections
+        grid_id_up = grid_connection_set%id_up(iconn2)
+        grid_id_dn = grid_connection_set%id_dn(iconn2)
+#if 0
+        do iconn = 1, num_connections
+          well_id_up = connection_set%id_up(iconn)
+          well_id_dn = connection_set%id_dn(iconn)
+        if (grid_id_up == well_id_up) then
+        else (grid_id_up == well_id_dn)
+            .or. &
+            )
+#endif
+      enddo
+        dist(0) = sqrt(grid%x(ghosted_id_dn)-grid%x(ghosted_id_up)**2+ &
+                       grid%y(ghosted_id_dn)-grid%y(ghosted_id_up)**2+ &
+                       grid%z(ghosted_id_dn)-grid%z(ghosted_id_up)**2)
+        dist(1) = grid%x(ghosted_id_dn)-grid%x(ghosted_id_up)
+        dist(2) = grid%y(ghosted_id_dn)-grid%y(ghosted_id_up)
+        dist(3) = grid%z(ghosted_id_dn)-grid%z(ghosted_id_up)
+        if (dist(1) > 0.1d0) then
+        endif
+        dist(1:3) = dist(1:3) / dist(0)
+        dist(-1) = UNINITIALIZED_DOUBLE
+        connection_set%dist(:,iconn) = dist
+        connection_set%area(iconn) = pipe_cross_sectional_area
+        len_(3,ghosted_id_up) = len_(3,ghosted_id_up) + dist_up
+        len_(3,ghosted_id_dn) = len_(3,ghosted_id_dn) + dist_dn
+        if (k == kstart) then
+          bc_connection_set%id_dn(1) = ghosted_id_up
+          bc_connection_set%dist(:,1) = 0.d0
+          bc_connection_set%dist(0,1) = dist_up
+          bc_connection_set%dist(-1,1) = 0.d0 ! fraction upwind
+          bc_connection_set%dist(3,1) = -1.d0
+          bc_connection_set%area(1) = pipe_cross_sectional_area
+          len_(3,ghosted_id_up) = len_(3,ghosted_id_up) + dist_up
+        endif
+      enddo
+
   end select
   pm_well%connection_set => connection_set
   pm_well%bc_connection_set => bc_connection_set

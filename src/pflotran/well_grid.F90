@@ -75,6 +75,7 @@ type, public :: well_grid_type
     ! list of segment length values [m]
     PetscReal, pointer :: l_list(:)
     PetscBool :: save_well_segment_list
+    PetscBool :: sort
     type(deviated_well_type), pointer :: deviated_well_segment_list
 end type well_grid_type
 
@@ -141,6 +142,7 @@ function WellGridCreate()
     well_grid%min_dz = UNINITIALIZED_DOUBLE
     well_grid%well_res_ratio = 1
     well_grid%save_well_segment_list = PETSC_TRUE
+    well_grid%sort = PETSC_TRUE
     nullify(well_grid%z_list)
     nullify(well_grid%l_list)
     nullify(well_grid%deviated_well_segment_list)

@@ -495,6 +495,7 @@ module PM_Well_class
       ! Placeholder for now
     PetscInt :: iscenario
     PetscBool :: use_well_index
+    PetscBool :: setup_complete
     PetscInt, pointer :: well_cells(:)
     PetscReal :: inlet_temperature
     PetscReal :: pipe_diameter
@@ -725,6 +726,7 @@ function PMWellUShapeCreate()
 
   pm_well%iscenario = UNINITIALIZED_INTEGER
   pm_well%use_well_index = PETSC_FALSE
+  pm_well%setup_complete = PETSC_FALSE
   pm_well%inlet_temperature = UNINITIALIZED_DOUBLE
   pm_well%pipe_diameter = UNINITIALIZED_DOUBLE
   pm_well%pipe_wall_thickness = UNINITIALIZED_DOUBLE
@@ -1607,8 +1609,10 @@ subroutine PMWellSetupGrid(this,realization,option)
         well_nodes(k)%z = collect_z_temp(j)
       endif
     enddo
-    dim = 'z'
-    call UtilitySortArray(well_nodes,dim)
+    if (well_grid%sort) then
+      dim = 'z'
+      call UtilitySortArray(well_nodes,dim)
+    endif
 
     ! Need to write the well in the reservoir coordinates, from bottom to top
     well_grid%nsegments = nsegments
@@ -3203,20 +3207,68 @@ subroutine PMWellSetupUShape(this)
   ! Author: Glenn Hammond
   ! Date: 09/11/25
   !
+  use Grid_module
+
   implicit none
 
   class(pm_well_u_shape_type) :: this
 
   type(option_type), pointer :: option
+  type(grid_type), pointer :: grid
+!  type(deviated_well_type), pointer :: cur_well_segment
+!  PetscInt :: cell_count
+!  PetscInt :: local_id
+!  PetscInt, pointer :: local_cell_ids(:)
+!  PetscReal :: cur_coordinate(3), next_coordinate(3)
+
+  if (this%setup_complete) return
 
   option => this%option
+  grid => this%realization%patch%grid
 
-!  call PMWellSetupBase(this)
   select case(option%iflowmode)
     case(TH_MODE)
     case default
       call PrintErrMsg(option,'U Shaped wells only supported by TH mode')
   end select
+  ! do not sort in Z direction because the U is not unidirectional
+  this%well_grid%sort = PETSC_FALSE
+  call PMWellSetupBase(this)
+
+  if (.not.associated(this%well_grid)) then
+    option%io_buffer = 'A WELL_GRID block must be included in the input deck.'
+    call PrintErrMsg(option)
+  endif
+  if (.not.associated(this%well_grid%deviated_well_segment_list)) then
+    option%io_buffer = 'A WELL_TRAJECTORY block must be included within the &
+      &WELL_GRID block in the input deck.'
+    call PrintErrMsg(option)
+  endif
+
+#if 0
+  allocate(local_cell_ids(100))
+  cell_count = 0
+
+  cur_well_segment => this%well_grid%deviated_well_segment_list
+  cur_coordinate(:) = cur_well_segment%surface_origin(:)
+  call GridGetLocalIDFromCoordinate(grid,cur_coordinate,option,local_id)
+  if (local_id > 0) then
+    cell_count = cell_count + 1
+    local_cell_ids(num_cells) = local_id
+  enddo
+  do
+    if (.not.associated(well_segement)) exit
+    do
+    next_coordinate = cur_coordinate + cur_well_segment%dxyz
+    call GridGetLocalIDFromCoordinate(grid,next_coordinate,option,local_id)
+    if (local_id > 0) then
+    endif
+    cur_well_segment => cur_well_segment%next
+  enddo
+  call DeallocateArray(local_dell_ids)
+#endif
+
+  this%setup_complete = PETSC_TRUE
 
 end subroutine PMWellSetupUShape
 

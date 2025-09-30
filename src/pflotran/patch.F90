@@ -4074,7 +4074,6 @@ subroutine PatchUpdateCouplerAuxVarsTH(patch,coupler,option)
   use Dataset_Gridded_HDF5_class
   use Dataset_Ascii_class
   use Dataset_module
-  use TH_Aux_module, only : th_well_dof
 
   implicit none
 
