@@ -60,7 +60,8 @@ subroutine THWellSetup(pm_well_base,realization)
   PetscReal :: dist_up, dist_dn
   PetscInt :: local_id
   PetscInt :: ghosted_id, ghosted_id_up, ghosted_id_dn
-  PetscInt :: i, j, k, iconn, idof
+  PetscInt :: grid_id_up, grid_id_dn
+  PetscInt :: i, j, k, iconn, idof, iconn2
   PetscInt :: nx, ny, nz
   PetscInt :: offset_i, offset_j, offset_k
   PetscInt :: istart, iend, kstart, kend, dk
@@ -72,6 +73,7 @@ subroutine THWellSetup(pm_well_base,realization)
   PetscReal, allocatable :: len_(:,:)
   PetscReal :: segment_length
   PetscReal :: dist(-1:3)
+  PetscBool :: found
 
   if (.not.associated(pm_well_base)) return
 
@@ -306,41 +308,50 @@ subroutine THWellSetup(pm_well_base,realization)
       do iconn2 = 1, grid_connection_set%num_connections
         grid_id_up = grid_connection_set%id_up(iconn2)
         grid_id_dn = grid_connection_set%id_dn(iconn2)
-#if 0
         do iconn = 1, num_connections
-          well_id_up = connection_set%id_up(iconn)
-          well_id_dn = connection_set%id_dn(iconn)
-        if (grid_id_up == well_id_up) then
-        else (grid_id_up == well_id_dn)
-            .or. &
-            )
-#endif
+          if (connection_set%area(iconn) > 0.d0) cycle
+          ghosted_id_up = connection_set%id_up(iconn)
+          ghosted_id_dn = connection_set%id_dn(iconn)
+          found = PETSC_FALSE
+          if (grid_id_up == ghosted_id_up) then
+            found = (grid_id_dn == ghosted_id_dn)
+          elseif (grid_id_up == ghosted_id_dn) then
+            found = (grid_id_dn == ghosted_id_up)
+          endif
+          if (found) then
+            connection_set%dist(:,iconn) = grid_connection_set%dist(:,iconn2)
+            if (grid_id_up /= ghosted_id_up) then
+              connection_set%dist(1:3,iconn) = -connection_set%dist(1:3,iconn)
+              connection_set%dist(-1,iconn) = 1.d0-connection_set%dist(-1,iconn)
+            endif
+            dist_up = connection_set%dist(-1,iconn)*connection_set%dist(0,iconn)
+            dist_dn = connection_set%dist(0,iconn) - dist_up
+            connection_set%area(iconn) = pipe_cross_sectional_area
+            len_(:,ghosted_id_up) = len_(:,ghosted_id_up) + &
+              dist_up*connection_set%dist(1:3,iconn)
+            len_(:,ghosted_id_dn) = len_(:,ghosted_id_dn) + &
+              dist_dn*connection_set%dist(1:3,iconn)
+            if (iconn == 1) then
+              bc_connection_set%id_dn(1) = ghosted_id_up
+              bc_connection_set%dist(0,1) = dist_up
+              bc_connection_set%dist(-1,1) = 0.d0 ! fraction upwind
+              bc_connection_set%dist(1:3,1) = connection_set%dist(1:3,iconn)
+              bc_connection_set%area(1) = pipe_cross_sectional_area
+              len_(:,ghosted_id_up) = len_(:,ghosted_id_up) + &
+                dist_up*connection_set%dist(1:3,iconn)
+            elseif (iconn == num_connections) then
+              bc_connection_set%id_dn(2) = ghosted_id_up
+              bc_connection_set%dist(0,2) = dist_dn
+              bc_connection_set%dist(-1,2) = 0.d0 ! fraction upwind
+              bc_connection_set%dist(1:3,2) = -connection_set%dist(1:3,iconn)
+              bc_connection_set%area(2) = pipe_cross_sectional_area
+              len_(:,ghosted_id_dn) = len_(:,ghosted_id_dn) + &
+                dist_dn*connection_set%dist(1:3,iconn)
+            endif
+            exit
+          endif
+        enddo
       enddo
-        dist(0) = sqrt(grid%x(ghosted_id_dn)-grid%x(ghosted_id_up)**2+ &
-                       grid%y(ghosted_id_dn)-grid%y(ghosted_id_up)**2+ &
-                       grid%z(ghosted_id_dn)-grid%z(ghosted_id_up)**2)
-        dist(1) = grid%x(ghosted_id_dn)-grid%x(ghosted_id_up)
-        dist(2) = grid%y(ghosted_id_dn)-grid%y(ghosted_id_up)
-        dist(3) = grid%z(ghosted_id_dn)-grid%z(ghosted_id_up)
-        if (dist(1) > 0.1d0) then
-        endif
-        dist(1:3) = dist(1:3) / dist(0)
-        dist(-1) = UNINITIALIZED_DOUBLE
-        connection_set%dist(:,iconn) = dist
-        connection_set%area(iconn) = pipe_cross_sectional_area
-        len_(3,ghosted_id_up) = len_(3,ghosted_id_up) + dist_up
-        len_(3,ghosted_id_dn) = len_(3,ghosted_id_dn) + dist_dn
-        if (k == kstart) then
-          bc_connection_set%id_dn(1) = ghosted_id_up
-          bc_connection_set%dist(:,1) = 0.d0
-          bc_connection_set%dist(0,1) = dist_up
-          bc_connection_set%dist(-1,1) = 0.d0 ! fraction upwind
-          bc_connection_set%dist(3,1) = -1.d0
-          bc_connection_set%area(1) = pipe_cross_sectional_area
-          len_(3,ghosted_id_up) = len_(3,ghosted_id_up) + dist_up
-        endif
-      enddo
-
   end select
   pm_well%connection_set => connection_set
   pm_well%bc_connection_set => bc_connection_set
