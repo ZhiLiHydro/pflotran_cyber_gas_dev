@@ -31,6 +31,7 @@ module Option_Geomechanics_module
     PetscReal :: poissons_ratio(100)
     PetscReal :: youngs_modulus(100)
     PetscReal :: biot_coefficient(100)
+    PetscReal :: thermal_exp_coefficient(100)
     ! move later
     PetscReal :: porosity_initial(100)
     PetscReal :: fluid_compressibility(3)
@@ -123,6 +124,7 @@ subroutine OptionGeomechanicsInitRealization(option)
   option%poissons_ratio = UNINITIALIZED_DOUBLE
   option%youngs_modulus = UNINITIALIZED_DOUBLE
   option%biot_coefficient = UNINITIALIZED_DOUBLE
+  option%thermal_exp_coefficient = UNINITIALIZED_DOUBLE
   option%skip_stepdt_flag = PETSC_FALSE
   option%use_porosity_update = PETSC_FALSE
   option%del_poro_tol = UNINITIALIZED_DOUBLE

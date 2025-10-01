@@ -1228,6 +1228,7 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
   PetscReal :: biot_coeff
   PetscReal :: youngs_mod, poissons_ratio
   PetscReal :: porosity_0, dr_bulk_modulus
+  PetscReal :: alpha, dpor_dT
 
   if (th_numerical_derivatives) then
     J = 0.d0
@@ -1263,6 +1264,8 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
   por = material_auxvar%porosity
   dcompressed_porosity_dp = material_auxvar%dporosity_dp
 
+  alpha = 0.d0
+  dpor_dT = 0.d0
   if (option%geomechanics%split_scheme == &
       GEOMECH_FIXED_STRESS_SPLIT) then
     print *, 'original por, dpor/dp: ', por, dcompressed_porosity_dp
@@ -1272,6 +1275,7 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
     youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
     poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
     biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
+    alpha = option%geomechanics%thermal_exp_coefficient(material_auxvar%id)
     ! Bulk modulus unit = Pa
     dr_bulk_modulus = youngs_mod / &
                      (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
@@ -1281,6 +1285,7 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
     porosity_id = ParameterGetIDFromName('geomech_porosity',option)
     por = global_auxvar%parameters(porosity_id)
     print *, 'new por, dpor/dp: ', por, dcompressed_porosity_dp
+    dpor_dT = alpha
   endif
 
   porXvol = por*vol
@@ -1289,14 +1294,16 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
   J(TH_PRESSURE_DOF,TH_PRESSURE_DOF) = (sat*dden_dp + dsat_dp*den)*porXvol + &
     dcompressed_porosity_dp*sat*den*vol
 
-  J(TH_PRESSURE_DOF,TH_TEMPERATURE_DOF) = sat*dden_dT*porXvol
+  J(TH_PRESSURE_DOF,TH_TEMPERATURE_DOF) = sat*dden_dT*porXvol + &
+                                          sat*den*dpor_dT*vol ! jaa testing
   J(TH_TEMPERATURE_DOF,TH_PRESSURE_DOF) = (dsat_dp*den*u + &
                                            sat*dden_dp*u + &
                                            sat*den*du_dp)*porXvol + &
                                            (den*sat*u - rock_dencpr*temp)* &
                                            vol*dcompressed_porosity_dp
   J(TH_TEMPERATURE_DOF,TH_TEMPERATURE_DOF) = &
-            sat*(dden_dT*u + den*du_dT)*porXvol + (1.d0 - por)*vol*rock_dencpr
+            sat*(dden_dT*u + den*du_dT)*porXvol + (1.d0 - por)*vol*rock_dencpr + &
+            sat*den*u*dpor_dT*vol - dpor_dT*vol*rock_dencpr*temp ! jaa testing
 
 
   if (option%flow%th_freezing) then
@@ -1474,6 +1481,8 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
   PetscInt :: press_old_id, porosity_id, temp_porosity_id
   PetscReal :: biot_coeff, youngs_mod, poissons_ratio, dr_bulk_modulus
   PetscReal :: old_pressure, porosity_0
+  PetscInt :: temp_id, temp_0_id
+  PetscReal :: alpha, temp, temp_0
 
   vol = material_auxvar%volume
 
@@ -1502,17 +1511,24 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
                      'geomech_old_press', option)
       temp_porosity_id = ParameterGetIDFromName( &
                      'geomech_temp_porosity', option)
+      temp_id = ParameterGetIDFromName('geomech_temp',option)
+      temp_0_id = ParameterGetIDFromName('geomech_temp_0',option)
+      alpha = option%geomechanics%thermal_exp_coefficient(material_auxvar%id)
+      !temp = global_auxvar%parameters(temp_id)
+      temp = th_auxvar%temp
+      temp_0 = global_auxvar%parameters(temp_0_id)
       old_pressure = global_auxvar%parameters(press_old_id)
       ! Burghardt 2017 paper .. temp_porosity
       por = por + (((biot_coeff**2/dr_bulk_modulus) + &
         ((biot_coeff-porosity_0)*(1.d0-biot_coeff)/dr_bulk_modulus)) * &
         ! (pressure@ n+1 - pressure@ n)
         ! pressure@ n is pressure used in last mech step
-        (th_auxvar%pres-old_pressure))
+        (th_auxvar%pres-old_pressure)) + &
+        (alpha*(temp-temp_0))
       ! store temp porosity for threshold check
       global_auxvar%parameters(temp_porosity_id) = por
-      print *, 'temp por, old_press, new_press', &
-         por, old_pressure, th_auxvar%pres
+      print *, 'temp por, old_press, new_press, T, T_0, alpha', &
+         por, old_pressure, th_auxvar%pres, th_auxvar%temp, temp_0, alpha
     endif
   endif
 

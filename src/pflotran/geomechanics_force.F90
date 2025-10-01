@@ -1691,7 +1691,7 @@ end subroutine GeomechForceApplyTractionBCtoRHS
 ! ************************************************************************** !
 
 subroutine GeomechForceSetupLinearSystem(A,solution,rhs,geomech_realization, &
-                                         ierr)
+                                         subsurf_realization, ierr)
   !
   ! Computes the Coefficient matrix and the right hand side of the system
   !
@@ -1710,6 +1710,9 @@ subroutine GeomechForceSetupLinearSystem(A,solution,rhs,geomech_realization, &
   use Geomechanics_Coupler_module
   use Option_module
   use Geomechanics_Auxiliary_module
+  use Global_Aux_module
+  use Realization_Subsurface_class
+  use Parameter_module
 
   implicit none
 
@@ -1717,6 +1720,8 @@ subroutine GeomechForceSetupLinearSystem(A,solution,rhs,geomech_realization, &
   Vec :: rhs
   Mat :: A
   class(realization_geomech_type) :: geomech_realization
+  ! jaa testing
+  class(realization_subsurface_type) :: subsurf_realization
   PetscErrorCode :: ierr
 
   type(geomech_discretization_type), pointer :: geomech_discretization
@@ -1762,6 +1767,15 @@ subroutine GeomechForceSetupLinearSystem(A,solution,rhs,geomech_realization, &
   PetscReal, pointer :: temp_biot_coeff_p(:)
   PetscReal, pointer :: temp_thermal_exp_coeff_p(:)
 
+  ! jaa
+  type(global_auxvar_type), pointer :: global_auxvars(:)
+  PetscInt :: strainv_id, subsurf_ghosted_id
+  PetscReal :: biot_coeff, porosity_0
+  PetscReal :: comp_fluid, comp_solid
+  PetscReal :: B_mod, inv_B_mod
+  PetscReal :: E, nu, lambda, mu, dr_bulk_modulus
+  PetscReal :: vol_strain, press_ud
+
   field => geomech_realization%geomech_field
   geomech_discretization => geomech_realization%geomech_discretization
   patch => geomech_realization%geomech_patch
@@ -1770,6 +1784,8 @@ subroutine GeomechForceSetupLinearSystem(A,solution,rhs,geomech_realization, &
   geomech_global_aux_vars => patch%geomech_aux%GeomechGlobal%aux_vars
   GeomechParam => patch%geomech_aux%GeomechParam
 
+  ! jaa testing
+  global_auxvars => subsurf_realization%patch%aux%Global%auxvars
 
   solution = field%disp_xx
 
@@ -1842,6 +1858,43 @@ subroutine GeomechForceSetupLinearSystem(A,solution,rhs,geomech_realization, &
           (petsc_ids(ivertex)-1)*option%ngeomechdof + (idof-1)
       enddo
       local_press(ivertex) = press(ghosted_id) - press_init(ghosted_id)  ! p - p_0
+      ! jaa want to update local_press
+      if (option%geomechanics%split_scheme == GEOMECH_UNDRAINED_SPLIT) then
+        subsurf_ghosted_id = grid%mapping_cell_ids_flow(ghosted_id)
+        strainv_id = ParameterGetIDFromName('geomech_vol_strain',option)
+        !print *, 'geomech id, flow id ', ghosted_id, grid%mapping_cell_ids_flow(ghosted_id)
+        vol_strain = global_auxvars(subsurf_ghosted_id)%parameters(strainv_id)
+        !print *, 'vol strain', ghosted_id, global_auxvars(subsurf_ghosted_id)% &
+        !                                     parameters(strainv_id)
+        biot_coeff = GeomechParam%biot_coeff(int(imech_loc_p(ghosted_id)))
+        porosity_0 = subsurf_realization%patch%aux%Material% &
+                       auxvars(subsurf_ghosted_id)%porosity_0
+        comp_fluid = option%geomechanics%fluid_compressibility(1)
+
+        E = GeomechParam%youngs_modulus(int(imech_loc_p(ghosted_id)))
+        nu = GeomechParam%poissons_ratio(int(imech_loc_p(ghosted_id)))
+        ! Lame modulus
+        lambda = E*nu/(1.d0+nu)/(1.d0-2.d0*nu)
+        ! shear modulus
+        mu = E/2.d0/(1.d0+nu)
+
+        dr_bulk_modulus = ((3.d0*lambda)+(2.d0*mu))/3.d0
+        !print *, 'ghosted_id, dr_bulk_modulus, comp_fluid', ghosted_id, dr_bulk_modulus, comp_fluid
+        if (dabs(biot_coeff - 1.d0) < 1.d-12) then
+          ! incompressible solid grain
+          ! ks -> inf
+          inv_B_mod = porosity_0*comp_fluid
+        else
+          comp_solid = dr_bulk_modulus/(1.d0 - biot_coeff)
+          inv_B_mod = (porosity_0*comp_fluid) + ((biot_coeff-porosity_0)/comp_solid)
+        endif
+        !print *, 'comp_solid, inv_B_mod', comp_solid, inv_B_mod
+        !print *, 'biot_coeff, B_mod, vol_strain', biot_coeff, B_mod, vol_strain
+        B_mod = 1.d0/inv_B_mod
+
+        local_press(ivertex) = local_press(ivertex) + (biot_coeff*inv_B_mod*vol_strain)
+        print *, 'old press, updated, new term', press(ghosted_id), local_press(ivertex),  (biot_coeff*B_mod*vol_strain)
+      endif
       local_temp(ivertex) = temp(ghosted_id) - temp_init(ghosted_id)     ! T - T_0
       if (GeomechParam%thermal_exp_coeff_spatially_varying) then
         alpha_vec(ivertex) = temp_thermal_exp_coeff_p(grid%nG2L(ghosted_id))
@@ -1934,6 +1987,7 @@ subroutine GeomechForceSetupLinearSystem(A,solution,rhs,geomech_realization, &
   call VecRestoreArray(field%fluid_density_init_loc,fluid_density_init, &
                           ierr);CHKERRQ(ierr)
 
+  !print *, 'jaa stopping'; stop
 
   call VecAssemblyBegin(rhs,ierr);CHKERRQ(ierr)
   call VecAssemblyEnd(rhs,ierr);CHKERRQ(ierr)
@@ -2429,6 +2483,7 @@ subroutine GeomechGetLambdaMu(lambda,mu,E,nu,option)
     endif
     !print *, 'comp_solid, inv_B_mod', comp_solid, inv_B_mod
     B_mod = 1.d0/inv_B_mod
+    !print *, 'B_mod ', B_mod
     ! undrained bulk modulus
     K_ud = dr_bulk_modulus + ((biot_coeff**2.d0)*B_mod)
     ! undrained poissons ratio

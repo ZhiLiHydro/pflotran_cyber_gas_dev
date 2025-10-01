@@ -397,6 +397,10 @@ subroutine FactorySubsurfaceInitSimulation(simulation)
                                         'geomech_temp_porosity')
       call RealizationRegisterParameter(realization, &
                                         'geomech_old_porosity')
+      call RealizationRegisterParameter(realization, &
+                                        'geomech_temp')
+      call RealizationRegisterParameter(realization, &
+                                        'geomech_temp_0')
   end select
   call FactorySubsurfSetupRealization(simulation)
 

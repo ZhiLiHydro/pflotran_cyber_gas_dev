@@ -317,7 +317,8 @@ subroutine PMGeomechForceSetupLinearSystem(this,A,solution,right_hand_side,ierr)
 #endif
 
   call GeomechForceSetupLinearSystem(A,solution,right_hand_side, &
-                                     this%geomech_realization,ierr)
+                                     this%geomech_realization, &
+                                     this%subsurf_realization, ierr)
 
 end subroutine PMGeomechForceSetupLinearSystem
 
