@@ -1209,6 +1209,8 @@ subroutine THWellUpdateHeatFlux(pm_well_base)
 
   pm_well%heat_flux(2,:) = pm_well%heat_flux(2,:) + &
                            pm_well%heat_flux(1,:) * pm_well%option%flow_dt
+
+#if 0
   print *, 'TIME: ', pm_well%option%time, pm_well%option%flow_dt
   print *, 'INSTANTANEOUS HEAT_FLUX: ', pm_well%heat_flux(1,:)
   print *, 'CUMULATIVE HEAT_FLUX: ', pm_well%heat_flux(2,:)
@@ -1231,6 +1233,7 @@ subroutine THWellUpdateHeatFlux(pm_well_base)
     pm_well%realization%patch%aux%TH%auxvars(i)%temp, &
     pm_well%realization%patch%aux%TH%auxvars(ii)%temp
   endif
+#endif
 
 end subroutine THWellUpdateHeatFlux
 

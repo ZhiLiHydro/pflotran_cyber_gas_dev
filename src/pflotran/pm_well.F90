@@ -3233,17 +3233,21 @@ subroutine PMWellSetupUShape(this)
   end select
   ! do not sort in Z direction because the U is not unidirectional
   this%well_grid%sort = PETSC_FALSE
-  call PMWellSetupBase(this)
 
-  if (.not.associated(this%well_grid)) then
-    option%io_buffer = 'A WELL_GRID block must be included in the input deck.'
-    call PrintErrMsg(option)
-  endif
-  if (.not.associated(this%well_grid%deviated_well_segment_list)) then
-    option%io_buffer = 'A WELL_TRAJECTORY block must be included within the &
-      &WELL_GRID block in the input deck.'
-    call PrintErrMsg(option)
-  endif
+  select case(this%iscenario)
+    case(4)
+      call PMWellSetupBase(this)
+      if (.not.associated(this%well_grid)) then
+        option%io_buffer = 'A WELL_GRID block must be included in the input deck.'
+        call PrintErrMsg(option)
+      endif
+      if (.not.associated(this%well_grid%deviated_well_segment_list)) then
+        option%io_buffer = 'A WELL_TRAJECTORY block must be included within the &
+          &WELL_GRID block in the input deck.'
+        call PrintErrMsg(option)
+      endif
+  end select
+
 
 #if 0
   allocate(local_cell_ids(100))
