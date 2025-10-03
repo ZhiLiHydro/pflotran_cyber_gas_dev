@@ -239,6 +239,8 @@ subroutine TimestepperKSPStepDT(this,process_model,stop_flag)
   use PM_Base_class
   use Option_module
   use Output_EKG_module, only : IUNIT_EKG
+  use PM_Geomechanics_Force_class
+
 
   implicit none
 
@@ -278,6 +280,16 @@ subroutine TimestepperKSPStepDT(this,process_model,stop_flag)
   option%time = this%target_time-this%dt
 
   call process_model%InitializeTimestep()
+
+  ! jaa - want to skip geomech based on a threshold
+  select type(process_model)
+    class is (pm_geomech_force_type)
+      call process_model%PreSolve()
+      if (option%geomechanics%skip_stepdt_flag) then
+        print *, 'skipping timestepper_KSP ..'
+        return
+      endif
+  end select
 
   do
 

@@ -609,7 +609,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
             if (this%option%iflowmode == TH_MODE) then
               local_pressure = press_p(local_id*this%option%nflowdof-1)
               local_temp = press_p(local_id*this%option%nflowdof)
-              print *, 'local temp, press ', local_temp, local_pressure
+              !print *, 'local temp, press ', local_temp, local_pressure
             else ! richards mode
               local_pressure = press_p(local_id)
             endif

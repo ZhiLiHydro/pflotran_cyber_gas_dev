@@ -237,15 +237,15 @@ subroutine TimestepperSteadyStepDT(this,process_model,stop_flag)
 
   call process_model%PreSolve()
 
-
+  ! moved to timestepper_ksp file
   ! jaa - want to skip geomech based on a threshold
-  select type(process_model)
-    class is (pm_geomech_force_type)
-      if (option%geomechanics%skip_stepdt_flag) then
-        print *, 'skipping timestepper_steady ..'
-        return
-      endif
-  end select
+  !select type(process_model)
+  !  class is (pm_geomech_force_type)
+  !    if (option%geomechanics%skip_stepdt_flag) then
+  !      print *, 'skipping timestepper_steady ..'
+  !      return
+  !    endif
+  !end select
 
   call PetscTime(log_start_time,ierr);CHKERRQ(ierr)
 

@@ -1268,7 +1268,7 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
   dpor_dT = 0.d0
   if (option%geomechanics%split_scheme == &
       GEOMECH_FIXED_STRESS_SPLIT) then
-    print *, 'original por, dpor/dp: ', por, dcompressed_porosity_dp
+    !print *, 'original por, dpor/dp: ', por, dcompressed_porosity_dp
     ! jaa
     ! update por and dcompressed_porosity_dp
     porosity_0 = material_auxvar%porosity_0
@@ -1284,7 +1284,7 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
       ((biot_coeff-porosity_0)*(1.d0-biot_coeff))/dr_bulk_modulus
     porosity_id = ParameterGetIDFromName('geomech_porosity',option)
     por = global_auxvar%parameters(porosity_id)
-    print *, 'new por, dpor/dp: ', por, dcompressed_porosity_dp
+    !print *, 'new por, dpor/dp: ', por, dcompressed_porosity_dp
     dpor_dT = alpha
   endif
 
@@ -1495,7 +1495,7 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
       !print *, 'fixed TH accumulation'
       porosity_id = ParameterGetIDFromName('geomech_porosity',option)
       por = global_auxvar%parameters(porosity_id)
-      print *, 'fixed por: ', por
+      !print *, 'fixed por: ', por
     else
       !print *, 'non-fixed TH accumulation'
       youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
@@ -1527,8 +1527,8 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
         (alpha*(temp-temp_0))
       ! store temp porosity for threshold check
       global_auxvar%parameters(temp_porosity_id) = por
-      print *, 'temp por, old_press, new_press, T, T_0, alpha', &
-         por, old_pressure, th_auxvar%pres, th_auxvar%temp, temp_0, alpha
+      !print *, 'temp por, old_press, new_press, T, T_0, alpha', &
+      !   por, old_pressure, th_auxvar%pres, th_auxvar%temp, temp_0, alpha
     endif
   endif
 

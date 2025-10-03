@@ -389,8 +389,8 @@ subroutine PMGeomechForcePreSolve(this)
       por_mech = global_auxvars(ghosted_id)%parameters(por_mech_id)
       por_flow = global_auxvars(ghosted_id)%parameters(por_flow_id)
       max_val = max(max_val, abs(por_flow-por_mech)/por_mech)
-      print *, 'ghosted_id, por_mech, por_flow, max_val, tol: ', &
-             ghosted_id, por_mech, por_flow, max_val, threshold_tol
+      !print *, 'ghosted_id, por_mech, por_flow, max_val, tol: ', &
+      !       ghosted_id, por_mech, por_flow, max_val, threshold_tol
     enddo
 
     if (max_val < threshold_tol) then ! skip mech
