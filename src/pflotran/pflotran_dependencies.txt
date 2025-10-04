@@ -2463,6 +2463,7 @@ pm_th.o : \
   string.o \
   th.o \
   th_aux.o \
+  th_well.o \
   utility.o
 pm_th_ts.o : \
   debug.o \
@@ -3925,6 +3926,8 @@ th_well.o : \
   petsc_utility.o \
   pflotran_constants.o \
   pm_well.o \
+  realization_subsurface.o \
+  string.o \
   th_aux.o
 time_storage.o : \
   option.o \
