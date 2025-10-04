@@ -72,7 +72,6 @@ subroutine THWellSetup(pm_well_base,realization)
   PetscInt, allocatable :: inactive_cells(:)
   PetscReal, allocatable :: len_(:,:)
   PetscReal :: segment_length
-  PetscReal :: dist(-1:3)
   PetscBool :: found
 
   if (.not.associated(pm_well_base)) return
@@ -1201,7 +1200,7 @@ subroutine THWellUpdateHeatFlux(pm_well_base)
   class(pm_well_type), pointer :: pm_well_base
 
   class(pm_well_closed_loop_type), pointer :: pm_well
-  PetscInt :: i, ii
+!  PetscInt :: i, ii
 
   if (.not.associated(pm_well_base)) return
 
