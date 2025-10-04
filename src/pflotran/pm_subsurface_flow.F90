@@ -1245,11 +1245,7 @@ subroutine PMSubsurfaceFlowDestroy(this)
   ! destroyed in realization
   nullify(this%realization)
   nullify(this%comm1)
-  if (associated(this%pm_well)) then
-    call this%pm_well%Destroy()
-    deallocate(this%pm_well)
-    nullify(this%pm_well)
-  endif
+  nullify(this%pm_well) ! solely nullify
 
 end subroutine PMSubsurfaceFlowDestroy
 

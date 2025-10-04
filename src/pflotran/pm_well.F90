@@ -430,8 +430,8 @@ module PM_Well_class
     PetscReal :: bh_zero_value                  ! [mol/m3-bulk]
     PetscInt  :: well_force_ts_cut
     PetscBool :: well_on    !Turns the well on, regardless of other checks
-    type(well_soln_flow_type), pointer :: flow_soln
-    type(well_soln_tran_type), pointer :: tran_soln
+    class(well_soln_flow_type), pointer :: flow_soln
+    class(well_soln_tran_type), pointer :: tran_soln
   contains
     procedure, public :: ReadPMBlock => PMWellReadPMBlockSeq
     procedure, public :: ReadSimulationOptionsBlock => &
@@ -455,6 +455,7 @@ module PM_Well_class
     procedure, public :: Setup => PMWellSetupImplicit
     procedure, public :: Solve => PMWellSolveImplicit
     procedure, public :: SolveFlow => PMWellSolveFlowImplicit
+    procedure, public :: Destroy => PMWellDestroyImplicit
   end type pm_well_implicit_type
 
   ! Extensions of the sequential well model type
@@ -487,7 +488,6 @@ module PM_Well_class
     procedure, public :: ModifyFlowJacobian => PMWellModifyFlowJacHydrostatic
     procedure, public :: UpdateFlowRates => PMWellUpdateFlowRatesHydrostatic
     procedure, public :: FinalizeTimestep => PMWellFinalizeTimestepHydrostatic
-    procedure, public :: Destroy => PMWellDestroyHydrostatic
   end type pm_well_hydrostatic_type
 
   ! Closed Loop Well Model
@@ -1014,6 +1014,7 @@ subroutine PMWellVarCreate(well)
   nullify(well%gas%H)
   nullify(well%gas%Q)
   well%gas%output_Q = PETSC_FALSE
+  nullify(well%gas%Q_cumulative)
 
   ! create the reservoir object
   allocate(well%reservoir)
@@ -5593,7 +5594,7 @@ subroutine PMWellInitFlowSoln(flow_soln,nphase,nsegments)
   ! Author: Michael Nole
   ! Date: 03/06/2023
 
-  type(well_soln_flow_type) :: flow_soln
+  class(well_soln_flow_type) :: flow_soln
   PetscInt :: nphase
   PetscInt :: nsegments
 
@@ -5630,7 +5631,7 @@ subroutine PMWellInitTranSoln(tran_soln,nspecies,nsegments)
   ! Author: Michael Nole
   ! Date: 03/06/2023
 
-  type(well_soln_tran_type) :: tran_soln
+  class(well_soln_tran_type) :: tran_soln
   PetscInt :: nspecies
   PetscInt :: nsegments
 
@@ -10866,6 +10867,294 @@ end subroutine PMWellInputRecord
 
 ! ************************************************************************** !
 
+subroutine PMWellDestroyWellSolnBase(well_soln)
+  !
+  ! Destroys a well soln base object.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 10/03/25
+  !
+  use Utility_module, only : DeallocateArray
+
+  implicit none
+
+  class(well_soln_base_type) :: well_soln
+
+  call DeallocateArray(well_soln%residual)
+  call DeallocateArray(well_soln%Jacobian)
+  call DeallocateArray(well_soln%update)
+
+end subroutine PMWellDestroyWellSolnBase
+
+! ************************************************************************** !
+
+subroutine PMWellDestroyWellSolnFlow(well_soln_flow)
+  !
+  ! Destroys a well flow soln object.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 10/03/25
+  !
+  use Utility_module, only : DeallocateArray
+
+  implicit none
+
+  class(well_soln_flow_type), pointer :: well_soln_flow
+
+  if (.not.associated(well_soln_flow)) return
+
+  call PMWellDestroyWellSolnBase(well_soln_flow)
+  call PMWellDestroyFlowSave(well_soln_flow%prev_soln)
+  call PMWellDestroyFlowSave(well_soln_flow%soln_save)
+  deallocate(well_soln_flow)
+  nullify(well_soln_flow)
+
+end subroutine PMWellDestroyWellSolnFlow
+
+! ************************************************************************** !
+
+subroutine PMWellDestroyWellSolnTran(well_soln_tran)
+  !
+  ! Destroys a well flow soln object.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 10/03/25
+  !
+  use Utility_module, only : DeallocateArray
+
+  implicit none
+
+  class(well_soln_tran_type), pointer :: well_soln_tran
+
+  if (.not.associated(well_soln_tran)) return
+
+  call PMWellDestroyWellSolnBase(well_soln_tran)
+  call PMWellDestroyTranSave(well_soln_tran%prev_soln)
+  deallocate(well_soln_tran)
+  nullify(well_soln_tran)
+
+end subroutine PMWellDestroyWellSolnTran
+
+! ************************************************************************** !
+
+subroutine PMWellDestroyFlowSave(flow_save)
+  !
+  ! Destroys a well flow save object.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 10/03/25
+  !
+  use Utility_module, only : DeallocateArray
+
+  implicit none
+
+  type(well_flow_save_type) :: flow_save
+
+  call DeallocateArray(flow_save%pl)
+  call DeallocateArray(flow_save%sg)
+
+end subroutine PMWellDestroyFlowSave
+
+! ************************************************************************** !
+
+subroutine PMWellDestroyTranSave(tran_save)
+  !
+  ! Destroys a well tran save object.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 10/03/25
+  !
+  use Utility_module, only : DeallocateArray
+
+  implicit none
+
+  type(well_tran_save_type) :: tran_save
+
+  call DeallocateArray(tran_save%aqueous_conc)
+  call DeallocateArray(tran_save%aqueous_conc)
+  call DeallocateArray(tran_save%resr_aqueous_conc)
+
+end subroutine PMWellDestroyTranSave
+
+! ************************************************************************** !
+
+subroutine PMWellDestroyComm(comm)
+  !
+  ! Destroys a well comm object.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 10/03/25
+  !
+  use Utility_module, only : DeallocateArray
+
+  implicit none
+
+  type(well_comm_type), pointer :: comm
+
+  if (.not.associated(comm)) return
+
+  ! type PetscMPIInt
+  if (associated(comm%petsc_rank_list)) then
+    deallocate(comm%petsc_rank_list)
+    nullify(comm%petsc_rank_list)
+  endif
+  if (associated(comm%well_rank_list)) then
+    deallocate(comm%well_rank_list)
+    nullify(comm%well_rank_list)
+  endif
+  deallocate(comm)
+  nullify(comm)
+
+end subroutine PMWellDestroyComm
+
+! ************************************************************************** !
+
+subroutine PMWellDestroyFluid(fluid)
+  !
+  ! Destroys a well fluid object.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 10/03/25
+  !
+  use Utility_module, only : DeallocateArray
+
+  implicit none
+
+  type(well_fluid_type), pointer :: fluid
+
+  if (.not.associated(fluid)) return
+
+  call DeallocateArray(fluid%kr)
+  call DeallocateArray(fluid%den)
+  call DeallocateArray(fluid%visc)
+  call DeallocateArray(fluid%s)
+  call DeallocateArray(fluid%xmass)
+  call DeallocateArray(fluid%H)
+  call DeallocateArray(fluid%Q)
+  call DeallocateArray(fluid%Q_cumulative)
+  deallocate(fluid)
+  nullify(fluid)
+
+end subroutine PMWellDestroyFluid
+
+! ************************************************************************** !
+
+subroutine PMWellDestroyReservoir(reservoir)
+  !
+  ! Destroys a well reservoir object.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 10/03/25
+  !
+  use Utility_module, only : DeallocateArray
+
+  implicit none
+
+  type(well_reservoir_type), pointer :: reservoir
+
+  if (.not.associated(reservoir)) return
+
+  call DeallocateArray(reservoir%p_l)
+  call DeallocateArray(reservoir%p_g)
+  call DeallocateArray(reservoir%s_l)
+  call DeallocateArray(reservoir%s_g)
+  call DeallocateArray(reservoir%temp)
+  call DeallocateArray(reservoir%mobility_l)
+  call DeallocateArray(reservoir%mobility_g)
+  call DeallocateArray(reservoir%kr_l)
+  call DeallocateArray(reservoir%kr_g)
+  call DeallocateArray(reservoir%den_l)
+  call DeallocateArray(reservoir%den_g)
+  call DeallocateArray(reservoir%visc_l)
+  call DeallocateArray(reservoir%visc_g)
+  call DeallocateArray(reservoir%H_l)
+  call DeallocateArray(reservoir%H_g)
+  call DeallocateArray(reservoir%e_por)
+  call DeallocateArray(reservoir%aqueous_conc)
+  call DeallocateArray(reservoir%aqueous_mass)
+  call DeallocateArray(reservoir%xmass_liq)
+  call DeallocateArray(reservoir%xmass_gas)
+  call DeallocateArray(reservoir%kx)
+  call DeallocateArray(reservoir%ky)
+  call DeallocateArray(reservoir%kz)
+  call DeallocateArray(reservoir%dx)
+  call DeallocateArray(reservoir%dy)
+  call DeallocateArray(reservoir%dz)
+  call DeallocateArray(reservoir%volume)
+  call DeallocateArray(reservoir%tmp_flow)
+  call DeallocateArray(reservoir%tmp_tran)
+  deallocate(reservoir)
+  nullify(reservoir)
+
+end subroutine PMWellDestroyReservoir
+
+! ************************************************************************** !
+
+subroutine PMWellDestroyWell(well)
+  !
+  ! Destroys a well object.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 10/03/25
+  !
+  use Utility_module, only : DeallocateArray
+
+  implicit none
+
+  ! can't be a pointer because it may be a member of an array
+  type(well_type) :: well
+
+  call PMWellDestroyReservoir(well%reservoir)
+  call PMWellDestroyReservoir(well%reservoir_save)
+
+  call DeallocateArray(well%mass_balance_liq)
+  call DeallocateArray(well%aq_mass_balance)
+  call DeallocateArray(well%aq_mass_balance_delta)
+
+  call PMWellDestroyFluid(well%liq)
+  call PMWellDestroyFluid(well%gas)
+
+  call DeallocateArray(well%area)
+  call DeallocateArray(well%diameter)
+  call DeallocateArray(well%volume)
+  call DeallocateArray(well%friction_factor)
+  call DeallocateArray(well%skin)
+  call DeallocateArray(well%WI)
+  call DeallocateArray(well%r0)
+  call DeallocateArray(well%pl)
+  call DeallocateArray(well%pg)
+  call DeallocateArray(well%temp)
+  call DeallocateArray(well%output_in_well_file)
+  call DeallocateArray(well%segments_for_output)
+  call DeallocateArray(well%ql)
+  call DeallocateArray(well%qg)
+  call DeallocateArray(well%ql_bc)
+  call DeallocateArray(well%qg_bc)
+  call DeallocateArray(well%ql_kmol)
+  call DeallocateArray(well%qg_kmol)
+  call DeallocateArray(well%ql_kmol_bc)
+  call DeallocateArray(well%qg_kmol_bc)
+  call DeallocateArray(well%liq_cum_mass)
+  call DeallocateArray(well%liq_mass)
+  call DeallocateArray(well%species_names)
+  call DeallocateArray(well%species_parent_id)
+  call DeallocateArray(well%species_radioactive)
+  call DeallocateArray(well%species_decay_rate)
+  call DeallocateArray(well%species_parent_decay_rate)
+  call DeallocateArray(well%aqueous_conc)
+  call DeallocateArray(well%aqueous_mass)
+  call DeallocateArray(well%aqueous_mass_q_cumulative)
+  call DeallocateArray(well%aqueous_mass_Qcumulative)
+  call DeallocateArray(well%aqueous_conc_th)
+  call DeallocateArray(well%ccid)
+  call DeallocateArray(well%permeability)
+  call DeallocateArray(well%phi)
+  ! cannot deallocate the well here as it may be in an array
+
+end subroutine PMWellDestroyWell
+
+! ************************************************************************** !
+
 subroutine PMWellDestroyBase(this)
   !
   ! Destroys the well process model.
@@ -10880,244 +11169,33 @@ subroutine PMWellDestroyBase(this)
 
   class(pm_well_type) :: this
 
-  PetscInt :: s, i
+  PetscInt :: i
 
   call PMBaseDestroy(this)
 
+  nullify(this%realization)
+  if (associated(this%strata_list)) then
+    call StrataDestroyList(this%strata_list)
+  endif
   call WellGridDestroy(this%well_grid)
-
-  call DeallocateArray(this%well%reservoir%p_l)
-  call DeallocateArray(this%well%reservoir%p_g)
-  call DeallocateArray(this%well%reservoir%s_l)
-  call DeallocateArray(this%well%reservoir%s_g)
-  call DeallocateArray(this%well%reservoir%temp)
-  call DeallocateArray(this%well%reservoir%mobility_l)
-  call DeallocateArray(this%well%reservoir%mobility_g)
-  call DeallocateArray(this%well%reservoir%kr_l)
-  call DeallocateArray(this%well%reservoir%kr_g)
-  call DeallocateArray(this%well%reservoir%den_l)
-  call DeallocateArray(this%well%reservoir%den_g)
-  call DeallocateArray(this%well%reservoir%visc_l)
-  call DeallocateArray(this%well%reservoir%visc_g)
-  call DeallocateArray(this%well%reservoir%H_l)
-  call DeallocateArray(this%well%reservoir%H_g)
-  call DeallocateArray(this%well%reservoir%e_por)
-  call DeallocateArray(this%well%reservoir%aqueous_conc)
-  call DeallocateArray(this%well%reservoir%aqueous_mass)
-  call DeallocateArray(this%well%reservoir%xmass_liq)
-  call DeallocateArray(this%well%reservoir%xmass_gas)
-  call DeallocateArray(this%well%reservoir%kx)
-  call DeallocateArray(this%well%reservoir%ky)
-  call DeallocateArray(this%well%reservoir%kz)
-  call DeallocateArray(this%well%reservoir%dx)
-  call DeallocateArray(this%well%reservoir%dy)
-  call DeallocateArray(this%well%reservoir%dz)
-  call DeallocateArray(this%well%reservoir%volume)
-  call DeallocateArray(this%well%reservoir%tmp_flow)
-  call DeallocateArray(this%well%reservoir%tmp_tran)
-
-  call DeallocateArray(this%well%reservoir_save%p_l)
-  call DeallocateArray(this%well%reservoir_save%p_g)
-  call DeallocateArray(this%well%reservoir_save%s_l)
-  call DeallocateArray(this%well%reservoir_save%s_g)
-  call DeallocateArray(this%well%reservoir_save%temp)
-  call DeallocateArray(this%well%reservoir_save%mobility_l)
-  call DeallocateArray(this%well%reservoir_save%mobility_g)
-  call DeallocateArray(this%well%reservoir_save%kr_l)
-  call DeallocateArray(this%well%reservoir_save%kr_g)
-  call DeallocateArray(this%well%reservoir_save%den_l)
-  call DeallocateArray(this%well%reservoir_save%den_g)
-  call DeallocateArray(this%well%reservoir_save%visc_l)
-  call DeallocateArray(this%well%reservoir_save%visc_g)
-  call DeallocateArray(this%well%reservoir_save%H_l)
-  call DeallocateArray(this%well%reservoir_save%H_g)
-  call DeallocateArray(this%well%reservoir_save%e_por)
-  call DeallocateArray(this%well%reservoir_save%aqueous_conc)
-  call DeallocateArray(this%well%reservoir_save%aqueous_mass)
-  call DeallocateArray(this%well%reservoir_save%xmass_liq)
-  call DeallocateArray(this%well%reservoir_save%xmass_gas)
-  call DeallocateArray(this%well%reservoir_save%kx)
-  call DeallocateArray(this%well%reservoir_save%ky)
-  call DeallocateArray(this%well%reservoir_save%kz)
-  call DeallocateArray(this%well%reservoir_save%dx)
-  call DeallocateArray(this%well%reservoir_save%dy)
-  call DeallocateArray(this%well%reservoir_save%dz)
-  call DeallocateArray(this%well%reservoir_save%volume)
-  call DeallocateArray(this%well%reservoir_save%tmp_flow)
-  call DeallocateArray(this%well%reservoir_save%tmp_tran)
-
-  call DeallocateArray(this%well%area)
-  call DeallocateArray(this%well%diameter)
-  call DeallocateArray(this%well%volume)
-  call DeallocateArray(this%well%friction_factor)
-  call DeallocateArray(this%well%WI)
-  call DeallocateArray(this%well%pl)
-  call DeallocateArray(this%well%pg)
-  call DeallocateArray(this%well%ql)
-  call DeallocateArray(this%well%qg)
-  call DeallocateArray(this%well%ql_bc)
-  call DeallocateArray(this%well%qg_bc)
-  call DeallocateArray(this%well%ql_kmol)
-  call DeallocateArray(this%well%qg_kmol)
-  call DeallocateArray(this%well%ql_kmol_bc)
-  call DeallocateArray(this%well%qg_kmol_bc)
-  call DeallocateArray(this%well%liq_cum_mass)
-  call DeallocateArray(this%well%liq_mass)
-  call DeallocateArray(this%well%ccid)
-  call DeallocateArray(this%well%permeability)
-  call DeallocateArray(this%well%phi)
-  call DeallocateArray(this%well%area)
-  call DeallocateArray(this%well%volume)
-  call DeallocateArray(this%well%mass_balance_liq)
-  call DeallocateArray(this%well%aqueous_conc)
-  call DeallocateArray(this%well%aqueous_conc_th)
-  call DeallocateArray(this%well%aqueous_mass)
-  call DeallocateArray(this%well%aqueous_mass_q_cumulative)
-  call DeallocateArray(this%well%aqueous_mass_Qcumulative)
-  call DeallocateArray(this%well%output_in_well_file)
-  call DeallocateArray(this%well%segments_for_output)
-  call DeallocateArray(this%well%temp)
-  call DeallocateArray(this%well%r0)
-  call DeallocateArray(this%well%species_parent_id)
-  call DeallocateArray(this%well%species_radioactive)
-  call DeallocateArray(this%well%species_decay_rate)
-  call DeallocateArray(this%well%species_decay_rate)
-  call DeallocateArray(this%well%liq%den)
-  call DeallocateArray(this%well%liq%visc)
-  call DeallocateArray(this%well%liq%s)
-  call DeallocateArray(this%well%liq%Q)
-  call DeallocateArray(this%well%liq%Q_cumulative)
-  call DeallocateArray(this%well%liq%kr)
-  call DeallocateArray(this%well%liq%H)
-  call DeallocateArray(this%well%liq%xmass)
-  call DeallocateArray(this%well%gas%den)
-  call DeallocateArray(this%well%gas%visc)
-  call DeallocateArray(this%well%gas%s)
-  call DeallocateArray(this%well%gas%Q)
-  call DeallocateArray(this%well%gas%kr)
-  call DeallocateArray(this%well%gas%H)
-  call DeallocateArray(this%well%gas%xmass)
-  deallocate(this%well%liq)
-  nullify(this%well%liq)
-  deallocate(this%well%gas)
-  nullify(this%well%gas)
-
-  call DeallocateArray(this%well_comm%petsc_rank_list)
-  call DeallocateArray(this%well_comm%well_rank_list)
-  deallocate(this%well_comm)
-  nullify(this%well_comm)
-
-  s = size(this%well_pert)
-
-  do i = 1,s
-    call DeallocateArray(this%well_pert(i)%area)
-    call DeallocateArray(this%well_pert(i)%diameter)
-    call DeallocateArray(this%well_pert(i)%volume)
-    call DeallocateArray(this%well_pert(i)%friction_factor)
-    call DeallocateArray(this%well_pert(i)%WI)
-    call DeallocateArray(this%well_pert(i)%pl)
-    call DeallocateArray(this%well_pert(i)%pg)
-    call DeallocateArray(this%well_pert(i)%ql)
-    call DeallocateArray(this%well_pert(i)%qg)
-    call DeallocateArray(this%well_pert(i)%ql_bc)
-    call DeallocateArray(this%well_pert(i)%qg_bc)
-    call DeallocateArray(this%well_pert(i)%ql_kmol)
-    call DeallocateArray(this%well_pert(i)%qg_kmol)
-    call DeallocateArray(this%well_pert(i)%ql_kmol_bc)
-    call DeallocateArray(this%well_pert(i)%qg_kmol_bc)
-    call DeallocateArray(this%well_pert(i)%liq_cum_mass)
-    call DeallocateArray(this%well_pert(i)%liq_mass)
-    call DeallocateArray(this%well_pert(i)%ccid)
-    call DeallocateArray(this%well_pert(i)%permeability)
-    call DeallocateArray(this%well_pert(i)%phi)
-    call DeallocateArray(this%well_pert(i)%area)
-    call DeallocateArray(this%well_pert(i)%volume)
-    call DeallocateArray(this%well_pert(i)%mass_balance_liq)
-    call DeallocateArray(this%well_pert(i)%temp)
-    call DeallocateArray(this%well_pert(i)%r0)
-    call DeallocateArray(this%well_pert(i)%species_parent_id)
-    call DeallocateArray(this%well_pert(i)%species_radioactive)
-    call DeallocateArray(this%well_pert(i)%species_decay_rate)
-    call DeallocateArray(this%well_pert(i)%species_decay_rate)
-    call DeallocateArray(this%well_pert(i)%liq%den)
-    call DeallocateArray(this%well_pert(i)%liq%visc)
-    call DeallocateArray(this%well_pert(i)%liq%s)
-    call DeallocateArray(this%well_pert(i)%liq%Q)
-    call DeallocateArray(this%well_pert(i)%liq%Q_cumulative)
-    call DeallocateArray(this%well_pert(i)%liq%kr)
-    call DeallocateArray(this%well_pert(i)%liq%H)
-    call DeallocateArray(this%well_pert(i)%liq%xmass)
-    call DeallocateArray(this%well_pert(i)%gas%den)
-    call DeallocateArray(this%well_pert(i)%gas%visc)
-    call DeallocateArray(this%well_pert(i)%gas%s)
-    call DeallocateArray(this%well_pert(i)%gas%Q)
-    call DeallocateArray(this%well_pert(i)%gas%kr)
-    call DeallocateArray(this%well_pert(i)%gas%H)
-    call DeallocateArray(this%well_pert(i)%gas%xmass)
-    deallocate(this%well_pert(i)%liq)
-    nullify(this%well_pert(i)%liq)
-    deallocate(this%well_pert(i)%gas)
-    nullify(this%well_pert(i)%gas)
-    call DeallocateArray(this%well_pert(i)%reservoir%p_l)
-    call DeallocateArray(this%well_pert(i)%reservoir%p_g)
-    call DeallocateArray(this%well_pert(i)%reservoir%s_l)
-    call DeallocateArray(this%well_pert(i)%reservoir%s_g)
-    call DeallocateArray(this%well_pert(i)%reservoir%temp)
-    call DeallocateArray(this%well_pert(i)%reservoir%mobility_l)
-    call DeallocateArray(this%well_pert(i)%reservoir%mobility_g)
-    call DeallocateArray(this%well_pert(i)%reservoir%kr_l)
-    call DeallocateArray(this%well_pert(i)%reservoir%kr_g)
-    call DeallocateArray(this%well_pert(i)%reservoir%den_l)
-    call DeallocateArray(this%well_pert(i)%reservoir%den_g)
-    call DeallocateArray(this%well_pert(i)%reservoir%visc_l)
-    call DeallocateArray(this%well_pert(i)%reservoir%visc_g)
-    call DeallocateArray(this%well_pert(i)%reservoir%H_l)
-    call DeallocateArray(this%well_pert(i)%reservoir%H_g)
-    call DeallocateArray(this%well_pert(i)%reservoir%e_por)
-    call DeallocateArray(this%well_pert(i)%reservoir%aqueous_conc)
-    call DeallocateArray(this%well_pert(i)%reservoir%aqueous_mass)
-    call DeallocateArray(this%well_pert(i)%reservoir%xmass_liq)
-    call DeallocateArray(this%well_pert(i)%reservoir%xmass_gas)
-    call DeallocateArray(this%well_pert(i)%reservoir%kx)
-    call DeallocateArray(this%well_pert(i)%reservoir%ky)
-    call DeallocateArray(this%well_pert(i)%reservoir%kz)
-    call DeallocateArray(this%well_pert(i)%reservoir%dx)
-    call DeallocateArray(this%well_pert(i)%reservoir%dy)
-    call DeallocateArray(this%well_pert(i)%reservoir%dz)
-    call DeallocateArray(this%well_pert(i)%reservoir%volume)
-    call DeallocateArray(this%well_pert(i)%reservoir%tmp_flow)
-    call DeallocateArray(this%well_pert(i)%reservoir%tmp_tran)
-
-    call DeallocateArray(this%well_pert(i)%reservoir_save%p_l)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%p_g)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%s_l)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%s_g)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%temp)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%mobility_l)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%mobility_g)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%kr_l)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%kr_g)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%den_l)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%den_g)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%visc_l)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%visc_g)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%H_l)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%H_g)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%e_por)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%aqueous_conc)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%aqueous_mass)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%xmass_liq)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%xmass_gas)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%kx)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%ky)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%kz)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%dx)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%dy)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%dz)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%volume)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%tmp_flow)
-    call DeallocateArray(this%well_pert(i)%reservoir_save%tmp_tran)
-  enddo
+  if (associated(this%well)) then
+    call PMWellDestroyWell(this%well)
+    deallocate(this%well)
+    nullify(this%well)
+  endif
+  if (associated(this%well_pert)) then
+    do i = 1, size(this%well_pert)
+      call PMWellDestroyWell(this%well_pert(i))
+    enddo
+    deallocate(this%well_pert)
+    nullify(this%well_pert)
+  endif
+  call PMWellDestroyComm(this%well_comm)
+  call PMWellDestroyComm(this%well_comm)
+  nullify(this%flow_condition)
+  call DeallocateArray(this%pert)
+  call DeallocateArray(this%srcsink_water)
+  call DeallocateArray(this%srcsink_gas)
 
 end subroutine PMWellDestroyBase
 
@@ -11130,90 +11208,19 @@ subroutine PMWellDestroySequential(this)
   ! Author: Jennifer M. Frederick
   ! Date: 08/04/2021
   !
-
-  use Utility_module, only : DeallocateArray
-  use Strata_module, only : StrataDestroyList
-
   implicit none
 
   class(pm_well_sequential_type) :: this
 
-  PetscInt :: s, i
-
   call PMWellDestroyBase(this)
-
-  if (this%transport) then
-    call DeallocateArray(this%well%reservoir%aqueous_conc)
-    call DeallocateArray(this%well%reservoir%aqueous_mass)
-    call DeallocateArray(this%well%reservoir%tmp_tran)
-  endif
-  deallocate(this%well%reservoir)
-  nullify(this%well%reservoir)
-
-  if (this%transport) then
-    call DeallocateArray(this%well%reservoir_save%aqueous_conc)
-    call DeallocateArray(this%well%reservoir_save%aqueous_mass)
-  endif
-  deallocate(this%well%reservoir_save)
-  nullify(this%well%reservoir_save)
-
-  if (this%transport) then
-    call DeallocateArray(this%well%aqueous_conc)
-    call DeallocateArray(this%well%aqueous_mass)
-    call DeallocateArray(this%well%aqueous_mass_q_cumulative)
-    call DeallocateArray(this%well%aqueous_mass_Qcumulative)
-    call DeallocateArray(this%well%aq_mass_balance)
-    call DeallocateArray(this%well%aq_mass_balance_delta)
-  endif
-  deallocate(this%well)
-  nullify(this%well)
-
-  s = size(this%well_pert)
-
-  do i = 1,s
-    if (this%transport) then
-      call DeallocateArray(this%well_pert(i)%reservoir%aqueous_conc)
-      call DeallocateArray(this%well_pert(i)%reservoir%aqueous_mass)
-    endif
-    deallocate(this%well_pert(i)%reservoir)
-    nullify(this%well_pert(i)%reservoir)
-    if (this%transport) then
-      call DeallocateArray(this%well_pert(i)%reservoir_save%aqueous_conc)
-      call DeallocateArray(this%well_pert(i)%reservoir_save%aqueous_mass)
-    endif
-    deallocate(this%well_pert(i)%reservoir_save)
-    nullify(this%well_pert(i)%reservoir_save)
-  enddo
-  deallocate(this%well_pert)
-  nullify(this%well_pert)
-  call DeallocateArray(this%pert)
-
-  call DeallocateArray(this%flow_soln%residual)
-  call DeallocateArray(this%flow_soln%Jacobian)
-  call DeallocateArray(this%flow_soln%update)
-  call DeallocateArray(this%flow_soln%prev_soln%pl)
-  call DeallocateArray(this%flow_soln%prev_soln%sg)
-  call DeallocateArray(this%flow_soln%soln_save%pl)
-  call DeallocateArray(this%flow_soln%soln_save%sg)
-  nullify(this%flow_soln)
-
-  if (this%transport) then
-    call DeallocateArray(this%tran_soln%residual)
-    call DeallocateArray(this%tran_soln%Jacobian)
-    call DeallocateArray(this%tran_soln%update)
-    call DeallocateArray(this%tran_soln%prev_soln%aqueous_conc)
-    call DeallocateArray(this%tran_soln%prev_soln%aqueous_mass)
-    nullify(this%tran_soln)
-  endif
-
-  call StrataDestroyList(this%strata_list)
-  nullify(this%strata_list)
+  call PMWellDestroyWellSolnFlow(this%flow_soln)
+  call PMWellDestroyWellSolnTran(this%tran_soln)
 
 end subroutine PMWellDestroySequential
 
 ! ************************************************************************** !
 
-subroutine PMWellDestroyHydrostatic(this)
+subroutine PMWellDestroyImplicit(this)
   !
   ! Destroys the well process model.
   !
@@ -11221,47 +11228,13 @@ subroutine PMWellDestroyHydrostatic(this)
   ! Date: 08/04/2021
   !
 
-  use Utility_module, only : DeallocateArray
-  use Strata_module, only : StrataDestroyList
-
   implicit none
 
-  class(pm_well_hydrostatic_type) :: this
-
-  PetscInt :: s, i
+  class(pm_well_implicit_type) :: this
 
   call PMWellDestroyBase(this)
 
-  deallocate(this%well%reservoir)
-  nullify(this%well%reservoir)
-
-  deallocate(this%well%reservoir_save)
-  nullify(this%well%reservoir_save)
-
-  deallocate(this%well)
-  nullify(this%well)
-
-  deallocate(this%srcsink_water)
-  nullify(this%srcsink_water)
-  deallocate(this%srcsink_gas)
-  nullify(this%srcsink_gas)
-
-  s = size(this%well_pert)
-
-  do i = 1,s
-    deallocate(this%well_pert(i)%reservoir)
-    nullify(this%well_pert(i)%reservoir)
-    deallocate(this%well_pert(i)%reservoir_save)
-    nullify(this%well_pert(i)%reservoir_save)
-  enddo
-  deallocate(this%well_pert)
-  nullify(this%well_pert)
-  call DeallocateArray(this%pert)
-
-  call StrataDestroyList(this%strata_list)
-  nullify(this%strata_list)
-
-end subroutine PMWellDestroyHydrostatic
+end subroutine PMWellDestroyImplicit
 
 ! ************************************************************************** !
 
@@ -11278,6 +11251,7 @@ subroutine PMWellDestroyUShape(this)
 
   class(pm_well_u_shape_type) :: this
 
+  call PMWellDestroyBase(this)
   call DeallocateArray(this%well_cells)
   call MatrixZeroingDestroy(this%matrix_zeroing)
   call ConnectionDestroy(this%connection_set)
