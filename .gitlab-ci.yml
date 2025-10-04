@@ -65,6 +65,7 @@ pflotran:
       --tag $NEW_IMAGE
       . || true
     # DO NOT PUSH THE NEW IMAGE
+    - docker push $NEW_IMAGE
     # copy regression results from image by launching container, copying
     # and destorying the container
     - id=$(docker create $NEW_IMAGE)
