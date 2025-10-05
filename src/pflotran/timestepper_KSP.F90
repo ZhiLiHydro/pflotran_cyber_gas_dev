@@ -274,8 +274,16 @@ subroutine TimestepperKSPStepDT(this,process_model,stop_flag)
   sum_wasted_linear_iterations = 0
   icut = 0
 
-  option%dt = this%dt
-  option%time = this%target_time-this%dt
+  ! overwrites target time and dt for geomech
+  ! when flow is the master pm
+  if (option%geomechanics%split_scheme == &
+      GEOMECH_FIXED_STRAIN_SPLIT) then
+    this%dt = option%flow_dt
+    this%target_time = option%time
+  else
+    option%dt = this%dt
+    option%time = this%target_time-this%dt
+  endif
 
   call process_model%InitializeTimestep()
 
