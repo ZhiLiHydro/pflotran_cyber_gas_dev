@@ -277,7 +277,8 @@ subroutine TimestepperKSPStepDT(this,process_model,stop_flag)
   icut = 0
 
   option%dt = this%dt
-  option%time = this%target_time-this%dt
+
+  this%target_time = option%time
 
   call process_model%InitializeTimestep()
 
