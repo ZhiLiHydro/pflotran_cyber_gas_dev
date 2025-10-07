@@ -279,7 +279,9 @@ subroutine TimestepperKSPStepDT(this,process_model,stop_flag)
   ! overwrites target time and dt for geomech
   ! when flow is the master pm
   if (option%geomechanics%split_scheme == &
-      GEOMECH_FIXED_STRAIN_SPLIT) then
+      GEOMECH_FIXED_STRAIN_SPLIT .or. &
+      option%geomechanics%split_scheme == &
+      GEOMECH_FIXED_STRESS_SPLIT ) then
     this%dt = option%flow_dt
     this%target_time = option%time
   else

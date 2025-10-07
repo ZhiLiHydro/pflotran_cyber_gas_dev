@@ -1224,7 +1224,7 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
   PetscReal :: dui_dT
   PetscInt :: idof, ieq
 
-  PetscInt :: porosity_id
+  PetscInt :: porosity_id, temp_porosity_id
   PetscReal :: biot_coeff
   PetscReal :: youngs_mod, poissons_ratio
   PetscReal :: porosity_0, dr_bulk_modulus
@@ -1282,8 +1282,11 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
     ! Burghardt 2017 paper
     dcompressed_porosity_dp = (biot_coeff**2)/dr_bulk_modulus + &
       ((biot_coeff-porosity_0)*(1.d0-biot_coeff))/dr_bulk_modulus
-    porosity_id = ParameterGetIDFromName('geomech_porosity',option)
-    por = global_auxvar%parameters(porosity_id)
+    temp_porosity_id = ParameterGetIDFromName( &
+                         'geomech_temp_porosity', option)
+    por = global_auxvar%parameters(temp_porosity_id)
+    !porosity_id = ParameterGetIDFromName('geomech_porosity',option)
+    !por = global_auxvar%parameters(porosity_id)
     !print *, 'new por, dpor/dp: ', por, dcompressed_porosity_dp
     dpor_dT = alpha
   endif
@@ -1440,6 +1443,9 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
     call MaterialAuxVarStrip(material_auxvar_pert)
   endif
 
+
+ ! print *, 'jaa stopping '; stop
+
 end subroutine THAccumDerivative
 
 ! ************************************************************************** !
@@ -1478,11 +1484,14 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
   PetscReal :: sat_i, den_i, u_i
 
   ! jaa
-  PetscInt :: press_old_id, porosity_id, temp_porosity_id
+  PetscInt :: porosity_id, temp_porosity_id
   PetscReal :: biot_coeff, youngs_mod, poissons_ratio, dr_bulk_modulus
-  PetscReal :: old_pressure, porosity_0
-  PetscInt :: temp_id, temp_0_id
-  PetscReal :: alpha, temp, temp_0
+
+  PetscInt :: id_press_0, id_old_press, id_temp_0
+  PetscInt :: id_vstrain_0, id_vstrain
+  PetscReal :: porosity_0, C1, C2, press_0, temp_0
+  PetscReal :: vstrain_0, vstrain, del_vstrain, alpha
+  PetscReal :: press_old
 
   vol = material_auxvar%volume
 
@@ -1491,44 +1500,61 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
   if (option%geomechanics%split_scheme == &
       GEOMECH_FIXED_STRESS_SPLIT) then
     ! jaa : extend fixed stress here
-    if (option%iflag == TH_UPDATE_FOR_FIXED_ACCUM) then
-      !print *, 'fixed TH accumulation'
-      porosity_id = ParameterGetIDFromName('geomech_porosity',option)
-      por = global_auxvar%parameters(porosity_id)
-      !print *, 'fixed por: ', por
-    else
-      !print *, 'non-fixed TH accumulation'
       youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
       poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
       biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
+      alpha = option%geomechanics%thermal_exp_coefficient(material_auxvar%id)
       ! 3D bulk modulus
       dr_bulk_modulus = youngs_mod / &
                         (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
       porosity_0 = material_auxvar%porosity_0
-      porosity_id = ParameterGetIDFromName('geomech_porosity',option)
-      por = global_auxvar%parameters(porosity_id)
-      press_old_id = ParameterGetIDFromName( &
-                     'geomech_old_press', option)
+      ! C1 constant
+      C1 = (biot_coeff-porosity_0)*(1.d0 - biot_coeff)/dr_bulk_modulus
+      ! C2 constant
+      C2 = biot_coeff**2/dr_bulk_modulus
+      ! get stored values
+      id_press_0=ParameterGetIDFromName('geomech_press_0',option)
+      id_old_press=ParameterGetIDFromName('geomech_old_press', option)
+      id_temp_0=ParameterGetIDFromName('geomech_temp_0',option)
+      id_vstrain_0=ParameterGetIDFromName('geomech_vol_strain_0',option)
+      id_vstrain=ParameterGetIDFromName('geomech_vol_strain',option)
+      press_0 = global_auxvar%parameters(id_press_0)
+      temp_0 = global_auxvar%parameters(id_temp_0)
+      vstrain_0 = global_auxvar%parameters(id_vstrain_0)
+      vstrain = global_auxvar%parameters(id_vstrain)
+      ! delta vstrain
+      del_vstrain = vstrain - vstrain_0
+      !print *, 'porosity_0, biot_coeff, del_vstrain', &
+      !  porosity_0, biot_coeff, del_vstrain
+    if (option%iflag == TH_UPDATE_FOR_FIXED_ACCUM) then
+      !print *, 'fixed TH accumulation'
+      !porosity_id = ParameterGetIDFromName('geomech_porosity',option)
+      ! jaa .. updated 10/6/2025
+      por = porosity_0 + (biot_coeff * del_vstrain) + &
+            ( C1 * (th_auxvar%pres - press_0)) + &
+            ( alpha * (th_auxvar%temp - temp_0))
+      ! jaa .. 10/6/2025
+      ! want to store old press from global_auxvar for fixed term
+      ! since threshold based update doesn't update the value if
+      ! geomech pm is skipped
+      global_auxvar%parameters(id_old_press) = th_auxvar%pres
+      !print *, 'fixed por: ', por
+    else
+      !print *, 'non-fixed TH accumulation'
+      ! pressure @ n
+      press_old = global_auxvar%parameters(id_old_press)
+      ! Burghardt 2017 paper
+      ! new porosity (mass conservative)
+      por = porosity_0 + (biot_coeff * del_vstrain) + &
+            ( C1 * ( press_old - press_0 )) + &
+            ( (C2 + C1) * ( th_auxvar%pres - press_old )) + &
+            ( alpha * (th_auxvar%temp - temp_0 ))
+      ! store temp (new) porosity for threshold check
       temp_porosity_id = ParameterGetIDFromName( &
-                     'geomech_temp_porosity', option)
-      temp_id = ParameterGetIDFromName('geomech_temp',option)
-      temp_0_id = ParameterGetIDFromName('geomech_temp_0',option)
-      alpha = option%geomechanics%thermal_exp_coefficient(material_auxvar%id)
-      !temp = global_auxvar%parameters(temp_id)
-      temp = th_auxvar%temp
-      temp_0 = global_auxvar%parameters(temp_0_id)
-      old_pressure = global_auxvar%parameters(press_old_id)
-      ! Burghardt 2017 paper .. temp_porosity
-      por = por + (((biot_coeff**2/dr_bulk_modulus) + &
-        ((biot_coeff-porosity_0)*(1.d0-biot_coeff)/dr_bulk_modulus)) * &
-        ! (pressure@ n+1 - pressure@ n)
-        ! pressure@ n is pressure used in last mech step
-        (th_auxvar%pres-old_pressure)) + &
-        (alpha*(temp-temp_0))
-      ! store temp porosity for threshold check
+                         'geomech_temp_porosity', option)
       global_auxvar%parameters(temp_porosity_id) = por
       !print *, 'temp por, old_press, new_press, T, T_0, alpha', &
-      !   por, old_pressure, th_auxvar%pres, th_auxvar%temp, temp_0, alpha
+      !   por, press_old, th_auxvar%pres, th_auxvar%temp, temp_0, alpha
     endif
   endif
 

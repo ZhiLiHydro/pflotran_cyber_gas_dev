@@ -396,8 +396,6 @@ subroutine PMCGeomechanicsSetAuxData(this)
   PetscInt :: strainv_id, strainv_old_id
   PetscInt :: press_old_id, porosity_id
   PetscInt :: temp_porosity_id, porosity_old_id
-  PetscInt :: temp_id, temp_0_id
-  PetscReal :: temp, temp_0, alpha
   type(global_auxvar_type), pointer :: global_auxvars(:)
   type(option_type), pointer :: option
 
@@ -407,6 +405,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
   PetscReal :: strain_vol, stress_vol
   PetscReal :: press_init, porosity_0, strain_vol_0
   PetscInt :: imat
+  PetscInt :: id_porosity_mech, id_porosity_flow
 
 #if GEOMECH_DEBUG
   PetscViewer :: viewer
@@ -665,10 +664,6 @@ subroutine PMCGeomechanicsSetAuxData(this)
               temp_porosity_id = ParameterGetIDFromName( &
                                    'geomech_temp_porosity', &
                                    pmc%subsurf_realization%option)
-              if (this%option%iflowmode == TH_MODE) then
-                temp_id = ParameterGetIDFromName('geomech_temp',option)
-                temp_0_id = ParameterGetIDFromName('geomech_temp_0',option)
-              endif
               ghosted_id = grid%nL2G(local_id)
               imat = pmc%subsurf_realization%patch%aux%Material% &
                      auxvars(local_id)%id
@@ -686,13 +681,13 @@ subroutine PMCGeomechanicsSetAuxData(this)
                 global_auxvars(ghosted_id)%parameters(stressv_id) = 0.d0
                 global_auxvars(ghosted_id)%parameters(stressv_old_id) = 0.d0
                 global_auxvars(ghosted_id)%parameters(press_0_id) = local_pressure
-                if (this%option%iflowmode == TH_MODE) then
-                  global_auxvars(ghosted_id)%parameters(temp_0_id) = local_temp
-                  global_auxvars(ghosted_id)%parameters(temp_id) = local_temp
-                endif
+                global_auxvars(ghosted_id)%parameters(temp_porosity_id) = &
+                 pmc%subsurf_realization%patch%aux%Material% &
+                  auxvars(local_id)%porosity_0
               elseif (this%timestepper%steps < 1) then ! at init
                 press_init = global_auxvars(ghosted_id)%parameters(press_0_id)
                 global_auxvars(ghosted_id)%parameters(strainv_0_id) = strain_vol
+                global_auxvars(ghosted_id)%parameters(strainv_id) = strain_vol
                 global_auxvars(ghosted_id)%parameters(stressv_0_id) = stress_vol
                 global_auxvars(ghosted_id)%parameters(stressv_old_id) = 0.d0
                 global_auxvars(ghosted_id)%parameters(stressv_id) = &
@@ -703,10 +698,15 @@ subroutine PMCGeomechanicsSetAuxData(this)
                 global_auxvars(ghosted_id)%parameters(porosity_old_id) = &
                   pmc%subsurf_realization%patch%aux%Material% &
                   auxvars(local_id)%porosity_0
-                if (this%option%iflowmode == TH_MODE) then
-                  global_auxvars(ghosted_id)%parameters(temp_0_id) = local_temp
-                  global_auxvars(ghosted_id)%parameters(temp_id) = local_temp
-                endif
+                global_auxvars(ghosted_id)%parameters(temp_porosity_id) = &
+                 pmc%subsurf_realization%patch%aux%Material% &
+                  auxvars(local_id)%porosity_0
+                !if (this%option%iflowmode == TH_MODE) then
+                !  global_auxvars(ghosted_id)%parameters(temp_0_id) = local_temp
+                !  global_auxvars(ghosted_id)%parameters(temp_id) = local_temp
+                !endif
+              !elseif (this%timestepper%steps > 2) then ! for debugging
+              !  print *, 'stopping jaa ..'; stop
               else ! post init
                 press_init = global_auxvars(ghosted_id)%parameters(press_0_id)
                 global_auxvars(ghosted_id)%parameters(stressv_old_id) = &
@@ -716,37 +716,22 @@ subroutine PMCGeomechanicsSetAuxData(this)
                   stress_vol
                   ! without geomech
                   !(biot_coeff*(local_pressure-press_init)/3.d0)
-                ! use temp porosity for flow sol. at fixed
-                global_auxvars(ghosted_id)%parameters(porosity_old_id) = &
-                  global_auxvars(ghosted_id)%parameters(temp_porosity_id)
-                if (this%option%iflowmode == TH_MODE) &
-                  global_auxvars(ghosted_id)%parameters(temp_id) = local_temp
               endif
-              ! jaa - using Jeff's paper
-              porosity_0 = pmc%subsurf_realization%patch%aux%Material% &
-                           auxvars(local_id)%porosity_0
-              strain_vol_0 = global_auxvars(ghosted_id)%parameters(strainv_0_id)
-              por_p(local_id) = porosity_0 +&
-                                (biot_coeff*(strain_vol-strain_vol_0)) + &
-                                (((biot_coeff-porosity_0)* &
-                                (1.d0-biot_coeff)/dr_bulk_modulus)* &
-                                (local_pressure-press_init))
-              if (this%option%iflowmode == TH_MODE) then
-                alpha = this%option%geomechanics%thermal_exp_coefficient(imat)
-                temp = global_auxvars(ghosted_id)%parameters(temp_id)
-                temp_0 = global_auxvars(ghosted_id)%parameters(temp_0_id)
-                por_p(local_id) = por_p(local_id)+(alpha*(temp-temp_0))
-              endif
-              global_auxvars(ghosted_id)%parameters(porosity_id) = por_p(local_id)
-              !print *, 'id, por_p, del_volstrain, press ', local_id, por_p(local_id), &
-              !       strain_vol - strain_vol_0, local_pressure
-              !print *, 'local id, press, por_p', local_id, local_pressure, por_p(local_id)
-              !print *, 'local id, press, por_p, vol strain', local_id, local_pressure, &
-              !  por_p(local_id), strain_vol
-              !print *, 'id, strain xx, yy, zz', &
-              !  local_id, &
-              !  local_strain(1), local_strain(2), local_strain(3)
-              global_auxvars(ghosted_id)%parameters(press_old_id) = local_pressure
+              ! use this to track threshold updates
+              ! needed since this routine will be skipped if threshold is not met
+              ! jaa need major tidy for all this **
+              ! destination
+              id_porosity_mech = ParameterGetIDFromName('geomech_stored_porosity',option)
+              ! source
+              ! rename temp_porosity to flow_porosity from factory_subsurface
+              !id_porosity_flow = ParameterGetIDFromName('geomech_temp_porosity',option)
+              !print *, 'pmc_geom , geomech por, flow por ', &
+              !  global_auxvars(ghosted_id)%parameters(id_porosity_mech), &
+              !  global_auxvars(ghosted_id)%parameters(temp_porosity_id)
+
+              global_auxvars(ghosted_id)%parameters(id_porosity_mech) = &
+                global_auxvars(ghosted_id)%parameters(temp_porosity_id)
+
             ! below changes will need to be part of undrained, drained, fixed strain
             ! bc biot coef should be part of porosity update
             elseif (this%option%geomechanics%split_scheme == &

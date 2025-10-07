@@ -357,7 +357,7 @@ subroutine PMGeomechForcePreSolve(this)
   PetscInt :: local_id, ghosted_id
   PetscInt :: por_mech_id, por_flow_id
   PetscReal :: por_mech, por_flow
-  PetscReal :: max_val
+  PetscReal :: max_del_poro
 
   call GeomechRealizUpdateAllCouplerAuxVars(this%geomech_realization, &
                                             force_update_flag)
@@ -367,19 +367,22 @@ subroutine PMGeomechForcePreSolve(this)
   if (.not. option%geomechanics%use_porosity_update) return
 
   threshold_tol = option%geomechanics%del_poro_tol
-  max_val = 0.d0
+  max_del_poro = 0.d0
 
   print *, 'in PMGeomechForcePreSolve'
   print *, 'init flag: ', option%geomechanics%initial_flag
 
   ! jaa: add skip check here?
   if (.not. option%geomechanics%initial_flag) then
+    if (this%option%iflowmode == RICHARDS_MODE) then
+      print *, 'need to update richards with TH changes! jaa'; stop
+    endif
     print *, 'want to skip here?'
     grid => this%subsurf_realization%patch%grid
     global_auxvars => this%subsurf_realization%patch%aux% &
                               Global%auxvars
     por_mech_id = ParameterGetIDFromName( &
-                  'geomech_porosity', &
+                  'geomech_stored_porosity', &
                   option)
     por_flow_id = ParameterGetIDFromName( &
                   'geomech_temp_porosity', &
@@ -388,12 +391,13 @@ subroutine PMGeomechForcePreSolve(this)
       ghosted_id = grid%nL2G(local_id)
       por_mech = global_auxvars(ghosted_id)%parameters(por_mech_id)
       por_flow = global_auxvars(ghosted_id)%parameters(por_flow_id)
-      max_val = max(max_val, abs(por_flow-por_mech)/por_mech)
-      !print *, 'ghosted_id, por_mech, por_flow, max_val, tol: ', &
-      !       ghosted_id, por_mech, por_flow, max_val, threshold_tol
+      max_del_poro = max(max_del_poro, abs(por_flow-por_mech)/por_mech)
+      !print *, 'ghosted_id, por_mech, por_flow, max_del_poro, tol: ', &
+      !       ghosted_id, por_mech, por_flow, max_del_poro, threshold_tol
     enddo
+    print *, 'threshold_tol, max_del_poro', threshold_tol, max_del_poro
 
-    if (max_val < threshold_tol) then ! skip mech
+    if (max_del_poro < threshold_tol) then ! skip mech
       option%geomechanics%skip_stepdt_flag = PETSC_TRUE
     else
       print *, 'continue to solve mech..'
