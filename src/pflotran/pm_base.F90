@@ -41,6 +41,8 @@ module PM_Base_class
     procedure, public :: FinalizeRun => PMBaseThisOnly
     procedure, public :: Residual => PMBaseResidual
     procedure, public :: Jacobian => PMBaseJacobian
+    procedure, public :: ScaleResidual => PMBaseScaleResidual
+    procedure, public :: ScaleJacobian => PMBaseScaleJacobian
     procedure, public :: SetupLinearSystem => PMBaseSetupLinearSystem
     procedure, public :: UpdateTimestep => PMBaseUpdateTimestep
     procedure, public :: InitializeTimestep => PMBaseThisOnly
@@ -259,6 +261,15 @@ end subroutine PMBaseResidual
 
 ! ************************************************************************** !
 
+subroutine PMBaseScaleResidual(this,r)
+  ! extend to scale the residual vector by a quantity
+  implicit none
+  class(pm_base_type) :: this
+  Vec :: r
+end subroutine PMBaseScaleResidual
+
+! ************************************************************************** !
+
 subroutine PMBaseJacobian(this,snes,xx,A,B,ierr)
   implicit none
   class(pm_base_type) :: this
@@ -268,6 +279,15 @@ subroutine PMBaseJacobian(this,snes,xx,A,B,ierr)
   PetscErrorCode :: ierr
   call this%PrintErrMsg('PMBaseJacobian')
 end subroutine PMBaseJacobian
+
+! ************************************************************************** !
+
+subroutine PMBaseScaleJacobian(this,A,B)
+  ! extend to scale the Jacobian matrices by a quantity
+  implicit none
+  class(pm_base_type) :: this
+  Mat :: A, B
+end subroutine PMBaseScaleJacobian
 
 ! ************************************************************************** !
 
