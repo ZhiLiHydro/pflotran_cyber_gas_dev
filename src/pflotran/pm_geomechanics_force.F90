@@ -385,7 +385,7 @@ subroutine PMGeomechForcePreSolve(this)
                   'geomech_stored_porosity', &
                   option)
     por_flow_id = ParameterGetIDFromName( &
-                  'geomech_temp_porosity', &
+                  'flow_porosity', &
                   option)
     do local_id = 1, grid%nlmax
       ghosted_id = grid%nL2G(local_id)

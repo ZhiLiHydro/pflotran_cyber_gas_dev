@@ -194,8 +194,10 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
     else ! porosity@ n+1
       press_old_id = ParameterGetIDFromName( &
                      'geomech_old_press', option)
+      ! jaa apply changes from TH to RICHARDS
+      ! used to be geomech_temp_porosity
       temp_porosity_id = ParameterGetIDFromName( &
-                     'geomech_temp_porosity', option)
+                     'flow_porosity', option)
       old_pressure = global_auxvar%parameters(press_old_id)
       ! Burghardt 2017 paper
       temp_porosity = porosity + (((biot_coeff**2/dr_bulk_modulus) + &

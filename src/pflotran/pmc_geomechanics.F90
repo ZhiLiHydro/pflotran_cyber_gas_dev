@@ -662,7 +662,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
                                   'geomech_old_porosity', &
                                   pmc%subsurf_realization%option)
               temp_porosity_id = ParameterGetIDFromName( &
-                                   'geomech_temp_porosity', &
+                                   'flow_porosity', &
                                    pmc%subsurf_realization%option)
               ghosted_id = grid%nL2G(local_id)
               imat = pmc%subsurf_realization%patch%aux%Material% &
@@ -719,12 +719,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
               endif
               ! use this to track threshold updates
               ! needed since this routine will be skipped if threshold is not met
-              ! jaa need major tidy for all this **
-              ! destination
               id_porosity_mech = ParameterGetIDFromName('geomech_stored_porosity',option)
-              ! source
-              ! rename temp_porosity to flow_porosity from factory_subsurface
-              !id_porosity_flow = ParameterGetIDFromName('geomech_temp_porosity',option)
               !print *, 'pmc_geom , geomech por, flow por ', &
               !  global_auxvars(ghosted_id)%parameters(id_porosity_mech), &
               !  global_auxvars(ghosted_id)%parameters(temp_porosity_id)
@@ -810,8 +805,8 @@ subroutine PMCGeomechanicsSetAuxData(this)
               !  local_id, porosity_0, biot_coeff, strain_vol, strain_vol_0
               por_p(local_id) = porosity_0 +&
                                 (biot_coeff*(strain_vol-strain_vol_0))
-              print *, 'local id, press, vol strain', local_id, local_pressure, &
-                global_auxvars(ghosted_id)%parameters(strainv_id)
+              !print *, 'local id, press, vol strain', local_id, local_pressure, &
+              !  global_auxvars(ghosted_id)%parameters(strainv_id)
             !else ! print pressure for other split schemes
             !  print *, 'local id, press', local_id, local_pressure
             endif

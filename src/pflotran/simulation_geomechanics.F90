@@ -178,12 +178,12 @@ subroutine GeomechanicsSimulationExecuteRun(this)
   if (.not.associated(this%geomech%realization)) then
     call this%RunToTime(final_time)
 
+  else
+
     ! jaa: sync geomech dt with init flow dt
     if (this%option%geomechanics%sync_flow_dt) &
       this%geomech%realization%dt_coupling = this% &
         flow_process_model_coupler%timestepper%dt
-
-  else
 
     ! If simulation is decoupled subsurfac-geomech simulation, set
     ! dt_coupling to be dt_max
@@ -191,20 +191,6 @@ subroutine GeomechanicsSimulationExecuteRun(this)
         .not. this%option%geomechanics%sync_flow_dt) then
       this%option%io_buffer = 'Set non-zero COUPLING_TIME_SIZE in GEOMECHANICS_TIME.'
       call PrintErrMsg(this%option)
-    else
-      do
-        time = time + dt
-        if (time + dt*tolerance >= final_time) then
-          dt = final_time-time
-          time = final_time
-        endif
-        this%geomech%process_model_coupler%timestepper%dt = dt
-        call this%RunToTime(time)
-
-        if (this%stop_flag /= TS_CONTINUE) exit ! end simulation
-
-        if (time >= final_time) exit
-      enddo
     endif
     do
       if (this%geomech%process_model_coupler%timestepper%steps == 0 .or.&
@@ -217,10 +203,13 @@ subroutine GeomechanicsSimulationExecuteRun(this)
       if (time + dt > final_time) then
         dt = final_time-time
       endif
+
       time = time + dt
       this%geomech%process_model_coupler%timestepper%dt = dt
       call this%RunToTime(time)
+
       if (this%stop_flag /= TS_CONTINUE) exit ! end simulation
+
       if (time >= final_time) exit
     enddo
   endif

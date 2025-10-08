@@ -1224,7 +1224,7 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
   PetscReal :: dui_dT
   PetscInt :: idof, ieq
 
-  PetscInt :: porosity_id, temp_porosity_id
+  PetscInt :: porosity_id
   PetscReal :: biot_coeff
   PetscReal :: youngs_mod, poissons_ratio
   PetscReal :: porosity_0, dr_bulk_modulus
@@ -1269,8 +1269,8 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
   if (option%geomechanics%split_scheme == &
       GEOMECH_FIXED_STRESS_SPLIT) then
     !print *, 'original por, dpor/dp: ', por, dcompressed_porosity_dp
-    ! jaa
-    ! update por and dcompressed_porosity_dp
+    ! update porosity, dcompressed_porosity_dp, and set dpor_dT
+    ! without geomech coupling, porosity is not a function of temperature
     porosity_0 = material_auxvar%porosity_0
     youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
     poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
@@ -1282,13 +1282,12 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
     ! Burghardt 2017 paper
     dcompressed_porosity_dp = (biot_coeff**2)/dr_bulk_modulus + &
       ((biot_coeff-porosity_0)*(1.d0-biot_coeff))/dr_bulk_modulus
-    temp_porosity_id = ParameterGetIDFromName( &
-                         'geomech_temp_porosity', option)
-    por = global_auxvar%parameters(temp_porosity_id)
-    !porosity_id = ParameterGetIDFromName('geomech_porosity',option)
-    !por = global_auxvar%parameters(porosity_id)
-    !print *, 'new por, dpor/dp: ', por, dcompressed_porosity_dp
+    porosity_id = ParameterGetIDFromName( &
+                         'flow_porosity', option)
+    por = global_auxvar%parameters(porosity_id)
     dpor_dT = alpha
+    !print *, 'new por, dpor/dp, dpor_dT: ', por, dcompressed_porosity_dp, &
+    !  dpor_dT
   endif
 
   porXvol = por*vol
@@ -1484,7 +1483,7 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
   PetscReal :: sat_i, den_i, u_i
 
   ! jaa
-  PetscInt :: porosity_id, temp_porosity_id
+  PetscInt :: porosity_id
   PetscReal :: biot_coeff, youngs_mod, poissons_ratio, dr_bulk_modulus
 
   PetscInt :: id_press_0, id_old_press, id_temp_0
@@ -1528,7 +1527,6 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
       !  porosity_0, biot_coeff, del_vstrain
     if (option%iflag == TH_UPDATE_FOR_FIXED_ACCUM) then
       !print *, 'fixed TH accumulation'
-      !porosity_id = ParameterGetIDFromName('geomech_porosity',option)
       ! jaa .. updated 10/6/2025
       por = porosity_0 + (biot_coeff * del_vstrain) + &
             ( C1 * (th_auxvar%pres - press_0)) + &
@@ -1550,9 +1548,9 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
             ( (C2 + C1) * ( th_auxvar%pres - press_old )) + &
             ( alpha * (th_auxvar%temp - temp_0 ))
       ! store temp (new) porosity for threshold check
-      temp_porosity_id = ParameterGetIDFromName( &
-                         'geomech_temp_porosity', option)
-      global_auxvar%parameters(temp_porosity_id) = por
+      porosity_id = ParameterGetIDFromName( &
+                         'flow_porosity', option)
+      global_auxvar%parameters(porosity_id) = por
       !print *, 'temp por, old_press, new_press, T, T_0, alpha', &
       !   por, press_old, th_auxvar%pres, th_auxvar%temp, temp_0, alpha
     endif
