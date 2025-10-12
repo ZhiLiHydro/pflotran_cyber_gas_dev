@@ -1523,8 +1523,8 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
       vstrain = global_auxvar%parameters(id_vstrain)
       ! delta vstrain
       del_vstrain = vstrain - vstrain_0
-      !print *, 'porosity_0, biot_coeff, del_vstrain', &
-      !  porosity_0, biot_coeff, del_vstrain
+      !print *, 'porosity_0, biot_coeff, vstrain, vstrain_0', &
+      !  porosity_0, biot_coeff, vstrain, vstrain_0
     if (option%iflag == TH_UPDATE_FOR_FIXED_ACCUM) then
       !print *, 'fixed TH accumulation'
       ! jaa .. updated 10/6/2025
@@ -1554,6 +1554,11 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
       !print *, 'temp por, old_press, new_press, T, T_0, alpha', &
       !   por, press_old, th_auxvar%pres, th_auxvar%temp, temp_0, alpha
     endif
+    !print *, 'iflag, vstrain, vstrain0, por, por0, temp, press', &
+    !  option%iflag, vstrain, vstrain_0, por, porosity_0,th_auxvar%temp, &
+    !  th_auxvar%pres
+    !print *, 'alpha, temp, temp0 ', &
+    !  alpha, th_auxvar%temp, temp_0
   endif
 
   ! TechNotes, TH Mode: First term of Equation 8
