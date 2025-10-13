@@ -1487,10 +1487,10 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
   PetscReal :: biot_coeff, youngs_mod, poissons_ratio, dr_bulk_modulus
 
   PetscInt :: id_press_0, id_old_press, id_temp_0
-  PetscInt :: id_vstrain_0, id_vstrain
+  PetscInt :: id_vstrain_0, id_vstrain, id_press_mech
   PetscReal :: porosity_0, C1, C2, press_0, temp_0
   PetscReal :: vstrain_0, vstrain, del_vstrain, alpha
-  PetscReal :: press_old
+  PetscReal :: press_old, press_mech
 
   vol = material_auxvar%volume
 
@@ -1517,19 +1517,20 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
       id_temp_0=ParameterGetIDFromName('geomech_temp_0',option)
       id_vstrain_0=ParameterGetIDFromName('geomech_vol_strain_0',option)
       id_vstrain=ParameterGetIDFromName('geomech_vol_strain',option)
+      id_press_mech=ParameterGetIDFromName('geomech_stored_pressure',option)
       press_0 = global_auxvar%parameters(id_press_0)
+      press_mech = global_auxvar%parameters(id_press_mech)
       temp_0 = global_auxvar%parameters(id_temp_0)
       vstrain_0 = global_auxvar%parameters(id_vstrain_0)
       vstrain = global_auxvar%parameters(id_vstrain)
       ! delta vstrain
       del_vstrain = vstrain - vstrain_0
-      !print *, 'porosity_0, biot_coeff, vstrain, vstrain_0', &
-      !  porosity_0, biot_coeff, vstrain, vstrain_0
     if (option%iflag == TH_UPDATE_FOR_FIXED_ACCUM) then
       !print *, 'fixed TH accumulation'
       ! jaa .. updated 10/6/2025
       por = porosity_0 + (biot_coeff * del_vstrain) + &
-            ( C1 * (th_auxvar%pres - press_0)) + &
+            ( C1 * (press_mech - press_0)) + &
+            ( (C2 + C1) * ( th_auxvar%pres - press_mech )) + &
             ( alpha * (th_auxvar%temp - temp_0))
       ! jaa .. 10/6/2025
       ! want to store old press from global_auxvar for fixed term
@@ -1544,8 +1545,8 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
       ! Burghardt 2017 paper
       ! new porosity (mass conservative)
       por = porosity_0 + (biot_coeff * del_vstrain) + &
-            ( C1 * ( press_old - press_0 )) + &
-            ( (C2 + C1) * ( th_auxvar%pres - press_old )) + &
+            ( C1 * ( press_mech - press_0 )) + &
+            ( (C2 + C1) * ( th_auxvar%pres - press_mech )) + &
             ( alpha * (th_auxvar%temp - temp_0 ))
       ! store temp (new) porosity for threshold check
       porosity_id = ParameterGetIDFromName( &
@@ -1554,11 +1555,9 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
       !print *, 'temp por, old_press, new_press, T, T_0, alpha', &
       !   por, press_old, th_auxvar%pres, th_auxvar%temp, temp_0, alpha
     endif
-    !print *, 'iflag, vstrain, vstrain0, por, por0, temp, press', &
-    !  option%iflag, vstrain, vstrain_0, por, porosity_0,th_auxvar%temp, &
+    !print *, 'iflag, por, por0, press_0, press_mech, th_press,', &
+    !  option%iflag, por, porosity_0,press_0,press_mech, &
     !  th_auxvar%pres
-    !print *, 'alpha, temp, temp0 ', &
-    !  alpha, th_auxvar%temp, temp_0
   endif
 
   ! TechNotes, TH Mode: First term of Equation 8

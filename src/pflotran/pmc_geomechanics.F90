@@ -407,6 +407,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
   PetscReal :: press_init, porosity_0, strain_vol_0
   PetscInt :: imat
   PetscInt :: id_porosity_mech, id_porosity_flow
+  PetscInt :: id_pressure_mech
 
 #if GEOMECH_DEBUG
   PetscViewer :: viewer
@@ -726,6 +727,11 @@ subroutine PMCGeomechanicsSetAuxData(this)
 
               global_auxvars(ghosted_id)%parameters(id_porosity_mech) = &
                 global_auxvars(ghosted_id)%parameters(temp_porosity_id)
+
+              id_pressure_mech = ParameterGetIDFromName('geomech_stored_pressure',option)
+
+              global_auxvars(ghosted_id)%parameters(id_pressure_mech) = &
+                local_pressure
 
             ! below changes will need to be part of undrained, drained, fixed strain
             ! bc biot coef should be part of porosity update
