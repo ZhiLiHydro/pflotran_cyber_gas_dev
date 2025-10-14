@@ -374,9 +374,9 @@ subroutine PMGeomechForcePreSolve(this)
 
   ! jaa: add skip check here?
   if (.not. option%geomechanics%initial_flag) then
-    if (this%option%iflowmode == RICHARDS_MODE) then
-      print *, 'need to update richards with TH changes! jaa'; stop
-    endif
+    !if (this%option%iflowmode == RICHARDS_MODE) then
+    !  print *, 'need to update richards with TH changes! jaa'; stop
+    !endif
     print *, 'want to skip here?'
     grid => this%subsurf_realization%patch%grid
     global_auxvars => this%subsurf_realization%patch%aux% &

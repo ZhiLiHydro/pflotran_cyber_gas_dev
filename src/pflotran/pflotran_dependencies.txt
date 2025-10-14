@@ -620,6 +620,7 @@ factory_subsurface_linkage.o : \
   pm_rt.o \
   pm_sco2.o \
   pm_subsurface_flow.o \
+  pm_th.o \
   pm_th_ts.o \
   pm_ufd_biosphere.o \
   pm_ufd_decay.o \
@@ -900,10 +901,12 @@ geomechanics_force.o : \
   geomechanics_patch.o \
   geomechanics_realization.o \
   geomechanics_region.o \
+  global_aux.o \
   grid.o \
   grid_unstructured_cell.o \
   option.o \
   output_aux.o \
+  parameter.o \
   petsc_utility.o \
   pflotran_constants.o \
   realization_subsurface.o \
@@ -1562,6 +1565,7 @@ matrix_buffer.o : \
   petsc_utility.o \
   pflotran_constants.o
 matrix_zeroing.o : \
+  option.o \
   pflotran_constants.o \
   utility.o
 mphase.o : \
@@ -2428,6 +2432,7 @@ pm_subsurface_flow.o : \
   patch.o \
   pflotran_constants.o \
   pm_base.o \
+  pm_well.o \
   reaction_mineral_aux.o \
   realization_base.o \
   realization_subsurface.o \
@@ -2456,11 +2461,13 @@ pm_th.o : \
   pflotran_constants.o \
   pm_base.o \
   pm_subsurface_flow.o \
+  pm_well.o \
   realization_subsurface.o \
   saturation_function.o \
   string.o \
   th.o \
   th_aux.o \
+  th_well.o \
   utility.o
 pm_th_ts.o : \
   debug.o \
@@ -3894,6 +3901,7 @@ th.o : \
   patch.o \
   petsc_utility.o \
   pflotran_constants.o \
+  pm_well.o \
   realization_subsurface.o \
   region.o \
   saturation_function.o \
@@ -3901,6 +3909,7 @@ th.o : \
   secondary_continuum_aux.o \
   string.o \
   th_aux.o \
+  th_well.o \
   utility.o \
   variables.o
 th_aux.o : \
@@ -3915,6 +3924,18 @@ th_aux.o : \
   pflotran_constants.o \
   saturation_function.o \
   utility.o
+th_well.o : \
+  connection.o \
+  grid.o \
+  matrix_zeroing.o \
+  option.o \
+  patch.o \
+  petsc_utility.o \
+  pflotran_constants.o \
+  pm_well.o \
+  realization_subsurface.o \
+  string.o \
+  th_aux.o
 time_storage.o : \
   option.o \
   pflotran_constants.o
@@ -3928,6 +3949,7 @@ timestepper_KSP.o : \
   output_ekg.o \
   pflotran_constants.o \
   pm_base.o \
+  pm_geomechanics_force.o \
   solver.o \
   string.o \
   timestepper_base.o \

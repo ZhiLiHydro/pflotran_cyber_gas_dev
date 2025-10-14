@@ -248,12 +248,7 @@ subroutine FactorySubsurfaceSetFlowMode(pm_flow,pm_well,option)
       option%nflowspec = 1
       option%flow%isothermal = PETSC_TRUE
     class is (pm_th_type)
-      option%iflowmode = TH_MODE
-      option%nphase = 1
-      option%nflowdof = 2
-      option%nflowspec = 1
-      option%flow%isothermal = PETSC_FALSE
-      option%flow%store_fluxes = PETSC_TRUE
+      call PMTHSetFlowMode(pm_flow,pm_well,option)
     class is (pm_richards_ts_type)
       option%iflowmode = RICHARDS_TS_MODE
       option%nphase = 1
@@ -377,16 +372,16 @@ subroutine FactorySubsurfaceInitSimulation(simulation)
     case(GEOMECH_TWO_WAY_COUPLED) ! jaa testing
       call RealizationRegisterParameter(realization, &
                                         'geomech_vol_strain_0')
-      call RealizationRegisterParameter(realization, &
-                                        'geomech_vol_stress_0')
+      !call RealizationRegisterParameter(realization, &
+      !                                  'geomech_vol_stress_0')
       call RealizationRegisterParameter(realization, &
                                         'geomech_vol_strain')
-      call RealizationRegisterParameter(realization, &
-                                        'geomech_vol_strain_old')
-      call RealizationRegisterParameter(realization, &
-                                        'geomech_vol_stress')
-      call RealizationRegisterParameter(realization, &
-                                        'geomech_vol_stress_old')
+      !call RealizationRegisterParameter(realization, &
+      !                                  'geomech_vol_strain_old')
+      !call RealizationRegisterParameter(realization, &
+      !                                  'geomech_vol_stress')
+      !call RealizationRegisterParameter(realization, &
+      !                                  'geomech_vol_stress_old')
       call RealizationRegisterParameter(realization, &
                                         'geomech_old_press')
       call RealizationRegisterParameter(realization, &
@@ -395,14 +390,14 @@ subroutine FactorySubsurfaceInitSimulation(simulation)
                                         'geomech_porosity')
       call RealizationRegisterParameter(realization, &
                                         'flow_porosity')
-      call RealizationRegisterParameter(realization, &
-                                        'geomech_old_porosity')
+      !call RealizationRegisterParameter(realization, &
+      !                                  'geomech_old_porosity')
       call RealizationRegisterParameter(realization, &
                                          'geomech_stored_porosity')
       call RealizationRegisterParameter(realization, &
                                          'geomech_stored_pressure')
-      call RealizationRegisterParameter(realization, &
-                                        'geomech_temp')
+      !call RealizationRegisterParameter(realization, &
+      !                                  'geomech_temp')
       call RealizationRegisterParameter(realization, &
                                         'geomech_temp_0')
   end select

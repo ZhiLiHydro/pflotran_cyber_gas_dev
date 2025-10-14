@@ -43,6 +43,7 @@ subroutine RichardsAccumDerivative(rich_auxvar,global_auxvar, &
 
   use Option_module
   use Characteristic_Curves_module
+  use Parameter_module
   use Material_Aux_module, only : material_auxvar_type, &
                                  MaterialAuxVarInit, &
                                  MaterialAuxVarCopy, &
@@ -69,6 +70,7 @@ subroutine RichardsAccumDerivative(rich_auxvar,global_auxvar, &
   PetscReal :: biot_coeff
   PetscReal :: youngs_mod, poissons_ratio
   PetscReal :: porosity_0, dr_bulk_modulus
+  PetscInt :: porosity_id
 
   vol_over_dt = material_auxvar%volume/option%flow_dt
 
@@ -84,7 +86,8 @@ subroutine RichardsAccumDerivative(rich_auxvar,global_auxvar, &
     ! Burghardt 2017 paper
     material_auxvar%dporosity_dp = (biot_coeff**2)/dr_bulk_modulus + &
            ((biot_coeff-porosity_0)*(1.d0-biot_coeff))/dr_bulk_modulus
-    ! jaa - double check porosity is correct in material_auxvar%porosity!!
+    porosity_id = ParameterGetIDFromName('flow_porosity', option)
+    material_auxvar%porosity = global_auxvar%parameters(porosity_id)
   endif
 
   ! accumulation term units = dkmol/dp
@@ -156,8 +159,10 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
   PetscReal :: biot_coeff
   PetscReal :: youngs_mod, poissons_ratio
   PetscReal :: porosity_0, dr_bulk_modulus
-  PetscReal :: temp_porosity, old_pressure, porosity, porosity_fixed
-  PetscInt :: press_old_id, porosity_id, temp_porosity_id, porosity_old_id
+  PetscReal :: C1, C2, press_0, vstrain_0, vstrain
+  PetscReal :: del_vstrain, por, press_mech
+  PetscInt :: id_porosity, id_press_0, id_vstrain_0
+  PetscInt :: id_vstrain, id_press_mech
 
   vol_over_dt = material_auxvar%volume/option%flow_dt
 
@@ -165,11 +170,11 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
   Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
            material_auxvar%porosity * vol_over_dt
 
+  ! overwrite the above residual value for geomech coupling
   if (option%geomechanics%split_scheme == &
       GEOMECH_FIXED_STRESS_SPLIT .and. &
       option%geomechanics%flow_coupling == &
-      GEOMECH_TWO_WAY_COUPLED &
-     ) then
+      GEOMECH_TWO_WAY_COUPLED) then
     youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
     poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
     biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
@@ -177,41 +182,38 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
     ! 3D bulk modulus
     dr_bulk_modulus = youngs_mod / &
                          (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
-    porosity_id = ParameterGetIDFromName( &
-                   'geomech_porosity', &
-                   option)
-    porosity_old_id = ParameterGetIDFromName( &
-                       'geomech_old_porosity', &
-                       option)
-    porosity = global_auxvar%parameters(porosity_id)
-    porosity_fixed = global_auxvar%parameters(porosity_old_id)
+    ! C1 constant
+    C1 = (biot_coeff-porosity_0)*(1.d0 - biot_coeff)/dr_bulk_modulus
+    ! C2 constant
+    C2 = biot_coeff**2/dr_bulk_modulus
+    ! get stored values
+    id_press_0=ParameterGetIDFromName('geomech_press_0',option)
+    id_vstrain_0=ParameterGetIDFromName('geomech_vol_strain_0',option)
+    id_vstrain=ParameterGetIDFromName('geomech_vol_strain',option)
+    id_press_mech=ParameterGetIDFromName('geomech_stored_pressure',option)
+    press_0 = global_auxvar%parameters(id_press_0)
+    press_mech = global_auxvar%parameters(id_press_mech)
+    vstrain_0 = global_auxvar%parameters(id_vstrain_0)
+    vstrain = global_auxvar%parameters(id_vstrain)
+    ! delta vstrain
+    del_vstrain = vstrain - vstrain_0
     ! porosity@ n
     if (option%iflag == RICHARDS_UPDATE_FOR_FIXED_ACCUM) then
-      ! porosity needs to correspond to last rich step
-      print *, 'fixed por: ', porosity_fixed
-      Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
-               porosity_fixed * vol_over_dt
+      por = porosity_0 + (biot_coeff * del_vstrain) + &
+            ( C1 * (press_mech - press_0)) + &
+            ( (C2 + C1) * ( global_auxvar%pres(1) - press_mech ))
     else ! porosity@ n+1
-      press_old_id = ParameterGetIDFromName( &
-                     'geomech_old_press', option)
-      ! jaa apply changes from TH to RICHARDS
-      ! used to be geomech_temp_porosity
-      temp_porosity_id = ParameterGetIDFromName( &
-                     'flow_porosity', option)
-      old_pressure = global_auxvar%parameters(press_old_id)
       ! Burghardt 2017 paper
-      temp_porosity = porosity + (((biot_coeff**2/dr_bulk_modulus) + &
-         ((biot_coeff-porosity_0)*(1.d0-biot_coeff)/dr_bulk_modulus)) * &
-         ! (pressure@ n+1 - pressure@ n)
-         ! pressure@ n is pressure used in last mech step
-         (global_auxvar%pres(1)-old_pressure))
-      print *, 'temp por, old_press, new_press', &
-               temp_porosity, old_pressure, global_auxvar%pres(1)
-      Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
-        temp_porosity * vol_over_dt
-      ! store temp porosity for threshold check
-      global_auxvar%parameters(temp_porosity_id) = temp_porosity
+      ! new porosity (mass conservative)
+      por = porosity_0 + (biot_coeff * del_vstrain) + &
+            ( C1 * ( press_mech - press_0 )) + &
+            ( (C2 + C1) * ( global_auxvar%pres(1) - press_mech ))
+      ! store new flow porosity for threshold check
+      id_porosity = ParameterGetIDFromName('flow_porosity', option)
+      global_auxvar%parameters(id_porosity) = por
     endif
+    Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
+             por * vol_over_dt
   endif
 
 end subroutine RichardsAccumulation
