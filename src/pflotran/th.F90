@@ -1341,7 +1341,6 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
             sat*(dden_dT*u + den*du_dT)*porXvol + (1.d0 - por)*vol*rock_dencpr + &
             sat*den*u*dpor_dT*vol - dpor_dT*vol*rock_dencpr*temp
 
-
   if (option%flow%th_freezing) then
      ! SK, 11/17/11
      sat_g    = th_auxvar%ice%sat_gas
@@ -1515,6 +1514,7 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
   PetscReal :: sat_i, den_i, u_i
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   ! jaa
   PetscInt :: porosity_id
   PetscReal :: biot_coeff, youngs_mod, poissons_ratio, dr_bulk_modulus
@@ -1530,6 +1530,10 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
   Res = 0.d0
 >>>>>>> 22a18998c (added heat pipe well model to th)
 
+=======
+  Res = 0.d0
+
+>>>>>>> master
   vol = material_auxvar%volume
   por = material_auxvar%porosity
 
