@@ -273,7 +273,7 @@ recursive subroutine PMCGeomechanicsRunToTime(this,sync_time,stop_flag)
 
   ! overwrites target time and dt for geomech when flow is the master pm
   select case(this%option%geomechanics%split_scheme)
-    case(GEOMECH_FIXED_STRAIN_SPLIT)
+    case(GEOMECH_FIXED_STRAIN_SPLIT,GEOMECH_FIXED_STRESS_SPLIT)
       this%timestepper%dt = this%option%flow_dt
       this%timestepper%target_time = this%option%time
     case default

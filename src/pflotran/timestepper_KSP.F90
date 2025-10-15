@@ -277,30 +277,8 @@ subroutine TimestepperKSPStepDT(this,process_model,stop_flag)
   sum_wasted_linear_iterations = 0
   icut = 0
 
-  ! overwrites target time and dt for geomech
-  ! when flow is the master pm
-  if (option%geomechanics%split_scheme == &
-      GEOMECH_FIXED_STRAIN_SPLIT .or. &
-      option%geomechanics%split_scheme == &
-      GEOMECH_FIXED_STRESS_SPLIT ) then
-    this%dt = option%flow_dt
-    this%target_time = option%time
-  elseif (option%geomechanics%split_scheme == &
-          GEOMECH_DRAINED_SPLIT .and. &
-          option%geomechanics%sync_flow_dt ) then
-    ! for drained split. geomech time is behind but
-    ! is shouldn't matter. Consider flow solution time and
-    ! check corresponding geomech step
-    ! do I need this?
-    this%dt = UNINITIALIZED_INTEGER
-    this%target_time = option%time
-  else
-    !print *, 'before option dt, time, this dt, time', &
-    !  option%dt, option%time, this%dt, this%target_time
-    !stop
-    option%dt = this%dt
-    option%time = this%target_time-this%dt
-  endif
+  option%dt = this%dt
+  option%time = this%target_time-this%dt
 
   call process_model%InitializeTimestep()
 
