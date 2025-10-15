@@ -1513,8 +1513,6 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
   PetscReal :: sat_g, den_g, kmol_g, u_g
   PetscReal :: sat_i, den_i, u_i
 
-<<<<<<< HEAD
-<<<<<<< HEAD
   ! jaa
   PetscInt :: porosity_id
   PetscReal :: biot_coeff, youngs_mod, poissons_ratio, dr_bulk_modulus
@@ -1525,15 +1523,8 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
   PetscReal :: vstrain_0, vstrain, del_vstrain, alpha
   PetscReal :: press_mech
 
-  vol = material_auxvar%volume
-=======
-  Res = 0.d0
->>>>>>> 22a18998c (added heat pipe well model to th)
-
-=======
   Res = 0.d0
 
->>>>>>> master
   vol = material_auxvar%volume
   por = material_auxvar%porosity
 
