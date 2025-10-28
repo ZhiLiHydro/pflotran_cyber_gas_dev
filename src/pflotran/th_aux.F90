@@ -14,7 +14,6 @@ module TH_Aux_module
   PetscInt, public :: th_ts_cut_count
   PetscInt, public :: th_ts_count
 
-  PetscBool, public :: th_scale_by_volume = PETSC_TRUE
   PetscBool, public :: th_numerical_derivatives = PETSC_FALSE
   PetscReal, public :: th_rel_pert = 1.d-8
   PetscReal, public :: th_pres_min_pert = 1.d-2

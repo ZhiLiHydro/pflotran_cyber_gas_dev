@@ -356,8 +356,6 @@ subroutine PMTHReadNewtonSelectCase(this,input,keyword,found, &
       call InputReadDouble(input,option,tempreal)
       call InputErrorMsg(input,option,keyword,error_string)
       this%rel_update_inf_tol(2) = tempreal
-    case('DEACTIVATE_LEGACY_SCALING')
-      th_scale_by_volume = PETSC_FALSE
 
     case default
       found = PETSC_FALSE

@@ -76,7 +76,6 @@ subroutine THWellSetup(pm_well_base,realization)
 
   if (.not.associated(pm_well_base)) return
 
-  th_scale_by_volume = PETSC_FALSE
   pm_well => PMWellCastToClosedLoop(pm_well_base)
 
   patch => pm_well%realization%patch
