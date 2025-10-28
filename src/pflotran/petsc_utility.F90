@@ -587,7 +587,7 @@ subroutine PUCreateViewer(viewer_name_prefix,iformat,viewer,option)
 
   implicit none
 
-  character(len=MAXSTRINGLENGTH), intent(in) :: viewer_name_prefix
+  character(len=*), intent(in) :: viewer_name_prefix
   PetscInt :: iformat
   type(option_type) :: option
   PetscViewer, intent (inout) :: viewer
