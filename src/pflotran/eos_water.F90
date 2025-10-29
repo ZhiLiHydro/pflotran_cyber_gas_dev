@@ -6406,9 +6406,7 @@ subroutine EOSWaterDensityCoolProp(T,P,calculate_derivatives,dw,dwmol, &
   T_K = T + T273K
   near_sat = IsPressureNearSaturationCoolProp(dens_handle, &
                 dens_QT_INPUTS, dens_iP, dens_iT, P, T)
-  if (P>6.9e6) then
-    Print *,"In EOSWaterDensityCoolProp call 0. P= ", P, " T= ", T_K
-  endif
+  
   if (near_sat) then
     ! evaluate the density using QT inputs with Q = 0.0 (saturated liquid) if
     ! the pressure is near the saturation pressure at the given temperature
