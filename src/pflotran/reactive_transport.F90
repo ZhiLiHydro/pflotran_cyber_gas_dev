@@ -61,6 +61,7 @@ contains
 #define DEBUG_RT_RES_INTERNAL_CONNECTION
 #define DEBUG_RT_RES_BOUNDARY_CONNECTION
 #define DEBUG_RT_RES_SOURCE_SINK
+#define DEBUG_RT_RES_REACTION
 #define DEBUG_RT_RES_CO2_SOURCE
 #define DEBUG_RT_RES_EQUILIBRATE_CO2
 #endif
@@ -69,6 +70,7 @@ contains
 #define DEBUG_RT_JAC_INTERNAL_CONNECTION
 #define DEBUG_RT_JAC_BOUNDARY_CONNECTION
 #define DEBUG_RT_JAC_SOURCE_SINK
+#define DEBUG_RT_JAC_REACTION
 #define DEBUG_RT_JAC_CO2_SOURCE
 #define DEBUG_RT_JAC_EQUILIBRATE_CO2
 #endif
@@ -165,6 +167,8 @@ subroutine RTSetup(realization)
   PetscInt :: flag(10)
   PetscBool, allocatable :: dof_is_active(:)
   PetscBool :: allocate_perturbation_auxvars
+  PetscBool :: error_found
+  PetscErrorCode :: ierr
 
   option => realization%option
   patch => realization%patch
@@ -213,6 +217,7 @@ subroutine RTSetup(realization)
 
   rt_parameter%anisotropic_tortuosity = option%transport%anisotropic_tortuosity
   material_auxvars => patch%aux%Material%auxvars
+  error_found = PETSC_FALSE
   flag = 0
   !TODO(geh): change to looping over ghosted ids once the legacy code is
   !           history and the communicator can be passed down.
@@ -273,7 +278,10 @@ subroutine RTSetup(realization)
     endif
   enddo
 
-  if (maxval(flag) > 0) then
+  error_found = error_found .or. (maxval(flag) > 0)
+  call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_C_BOOL, &
+                     MPI_LOR,option%mycomm,ierr);CHKERRQ(ierr)
+  if (error_found) then
     option%io_buffer = &
       'Material property errors found in RTSetup (reactive transport).'
     call PrintErrMsg(option)
@@ -904,6 +912,10 @@ subroutine RTInitializeTimestep(realization)
   call RTUpdateFixedAccumulation(realization)
   ! geh: never use transport coefs evaluated at time k
 !  call RTUpdateTransportCoefs(realization)
+
+  rt_ts_count = rt_ts_count + 1
+  rt_ni_count = 0
+  rt_ts_cut_count = 0
 
 end subroutine RTInitializeTimestep
 
@@ -1641,15 +1653,14 @@ subroutine RTCalculateRHS_t1(realization,rhs_vec)
 
           if (patch%imat(ghosted_id) <= 0) cycle
 
+          offset = (local_id-1)*reaction%ncomp
           select case(source_sink%flow_condition%itype(1))
             case(MASS_RATE_SS)
               do iactgas = 1, reaction%gas%nactive_gas
-                if (abs(reaction%species_idx%co2_gas_id) == iactgas) then
-                  icomp = reaction%gas%paseqspecid(1,iactgas)
-                  iendall = local_id*reaction%ncomp
-                  istartall = iendall-reaction%ncomp
+                if (reaction%species_idx%act_co2_gas_id == iactgas) then
+                  icomp = reaction%gas%acteqspecid(1,iactgas)
                   Res(icomp) = -msrc(2)
-                  rhs_p(istartall+icomp) = rhs_p(istartall+icomp) - Res(icomp)
+                  rhs_p(offset+icomp) = rhs_p(offset+icomp) - Res(icomp)
 !                 print *,'RT SC source', iactgas,icomp, res(icomp)
                 endif
               enddo
@@ -1674,7 +1685,7 @@ end subroutine RTCalculateRHS_t1
 
 ! ************************************************************************** !
 
-subroutine RTCalculateTransportMatrix(realization,T)
+subroutine RTCalculateTransportMatrix(realization,debug,T)
   !
   ! Calculate transport matrix
   !
@@ -1692,10 +1703,12 @@ subroutine RTCalculateTransportMatrix(realization,T)
   use Debug_module
   use Matrix_Zeroing_module
   use Petsc_Utility_module
+  use Debug_module
 
   implicit none
 
   class(realization_subsurface_type) :: realization
+  type(debug_type) :: debug
   Mat :: T
 
   type(global_auxvar_type), pointer :: global_auxvars(:)
@@ -1722,11 +1735,8 @@ subroutine RTCalculateTransportMatrix(realization,T)
   PetscReal :: qsrc(2)
   PetscInt :: flow_src_sink_type
   PetscReal :: coef_in(2), coef_out(2)
-  PetscViewer :: viewer
   PetscInt :: nphase
   PetscErrorCode :: ierr
-
-  character(len=MAXSTRINGLENGTH) :: string
 
   option => realization%option
   field => realization%field
@@ -1896,12 +1906,8 @@ subroutine RTCalculateTransportMatrix(realization,T)
 
   call MatrixZeroingZeroMatEntries(patch%aux%RT%matrix_zeroing,T)
 
-  if (realization%debug%matview_Matrix) then
-    call DebugWriteFilename(realization%debug,string,'Tmatrix','', &
-                            rt_ts_count,rt_ts_cut_count,rt_ni_count)
-    call DebugCreateViewer(realization%debug,string,option,viewer)
-    call MatView(T,viewer,ierr);CHKERRQ(ierr)
-    call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
+  if (debug%matview_Matrix) then
+    call DebugMatView(debug,T,'Tmatrix',option)
   endif
 
 end subroutine RTCalculateTransportMatrix
@@ -2074,7 +2080,7 @@ end subroutine RTComputeBCMassBalanceOS
 
 ! ************************************************************************** !
 
-subroutine RTNumericalJacobianTest(realization,xx)
+subroutine RTNumericalJacobianTest(realization,debug,xx)
   !
   ! Computes the a test numerical jacobian
   !
@@ -2088,10 +2094,12 @@ subroutine RTNumericalJacobianTest(realization,xx)
   use Grid_module
   use Field_module
   use Petsc_Utility_module
+  use Debug_module
 
   implicit none
 
   class(realization_subsurface_type) :: realization
+  type(debug_type) :: debug
   Vec :: xx
 
   Vec :: xx_pert
@@ -2128,7 +2136,7 @@ subroutine RTNumericalJacobianTest(realization,xx)
   call MatSetType(A,MATAIJ,ierr);CHKERRQ(ierr)
   call MatSetFromOptions(A,ierr);CHKERRQ(ierr)
 
-  call RTResidual(PETSC_NULL_SNES,xx,res,realization,ierr)
+  call RTResidual(PETSC_NULL_SNES,xx,res,realization,debug,ierr)
   call VecGetArray(res,vec2_p,ierr);CHKERRQ(ierr)
   do idof = 1,grid%nlmax*option%ntrandof
     icell = (idof-1)/option%ntrandof+1
@@ -2138,7 +2146,7 @@ subroutine RTNumericalJacobianTest(realization,xx)
     perturbation = vec_p(idof)*perturbation_tolerance
     vec_p(idof) = vec_p(idof)+perturbation
     call VecRestoreArray(xx_pert,vec_p,ierr);CHKERRQ(ierr)
-    call RTResidual(PETSC_NULL_SNES,xx_pert,res_pert,realization,ierr)
+    call RTResidual(PETSC_NULL_SNES,xx_pert,res_pert,realization,debug,ierr)
     call VecGetArray(res_pert,vec_p,ierr);CHKERRQ(ierr)
     do idof2 = 1, grid%nlmax*option%ntrandof
       derivative = (vec_p(idof2)-vec2_p(idof2))/perturbation
@@ -2168,7 +2176,7 @@ end subroutine RTNumericalJacobianTest
 
 ! ************************************************************************** !
 
-subroutine RTResidual(snes,xx,r,realization,ierr)
+subroutine RTResidual(snes,xx,r,realization,debug,ierr)
   !
   ! Computes the residual equation
   !
@@ -2185,23 +2193,22 @@ subroutine RTResidual(snes,xx,r,realization,ierr)
   use Logging_module
   use Debug_module
   use Matrix_Zeroing_module
+  use Debug_module
 
   implicit none
 
   SNES :: snes
   Vec :: xx
   Vec :: r
-  class(realization_subsurface_type) :: realization
   PetscReal, pointer :: xx_p(:), log_xx_p(:)
+  class(realization_subsurface_type) :: realization
+  type(debug_type) :: debug
   PetscErrorCode :: ierr
 
   type(discretization_type), pointer :: discretization
   type(field_type), pointer :: field
   type(patch_type), pointer :: patch
   type(option_type), pointer :: option
-  PetscViewer :: viewer
-
-  character(len=MAXSTRINGLENGTH) :: string
 
   call PetscLogEventBegin(logging%event_rt_residual,ierr);CHKERRQ(ierr)
 
@@ -2237,19 +2244,13 @@ subroutine RTResidual(snes,xx,r,realization,ierr)
 
   call MatrixZeroingZeroVecEntries(patch%aux%RT%matrix_zeroing,r)
 
-  if (realization%debug%vecview_residual) then
-    call DebugWriteFilename(realization%debug,string,'RTresidual','', &
-                            rt_ts_count,rt_ts_cut_count,rt_ni_count)
-    call DebugCreateViewer(realization%debug,string,option,viewer)
-    call VecView(r,viewer,ierr);CHKERRQ(ierr)
-    call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
+  if (debug%vecview_residual) then
+    call DebugVecView(debug,r,'RTresidual','', &
+                            rt_ts_count,rt_ts_cut_count,rt_ni_count,option)
   endif
-  if (realization%debug%vecview_solution) then
-    call DebugWriteFilename(realization%debug,string,'RTxx','', &
-                            rt_ts_count,rt_ts_cut_count,rt_ni_count)
-    call DebugCreateViewer(realization%debug,string,option,viewer)
-    call VecView(field%tran_xx,viewer,ierr);CHKERRQ(ierr)
-    call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
+  if (debug%vecview_solution) then
+    call DebugVecView(debug,r,'RTxx','', &
+                            rt_ts_count,rt_ts_cut_count,rt_ni_count,option)
   endif
 
   ! print *,'RT CO2 conc', realization%patch%aux%rt%auxvars(1)%pri_molal(11)
@@ -2585,9 +2586,11 @@ subroutine RTResidualNonFlux(snes,xx,r,realization,ierr)
   PetscInt :: iconn
   PetscReal :: qsrc_flow(2)
   PetscReal :: coef_in(2), coef_out(2)
+  PetscReal :: scale
   PetscReal :: Jup(realization%reaction%ncomp,realization%reaction%ncomp)
   PetscInt :: sum_connection
   PetscInt :: nphase
+  PetscBool :: scale_rate
 
   ! CO2-specific
   PetscReal :: msrc(1:realization%option%nflowspec)
@@ -2793,12 +2796,14 @@ subroutine RTResidualNonFlux(snes,xx,r,realization,ierr)
 
   ! CO2-specific
   if (option%transport%couple_co2) then
+      iactgas = reaction%species_idx%act_co2_gas_id
       source_sink => patch%source_sink_list%first
       do
         if (.not.associated(source_sink)) exit
 
         cur_connection_set => source_sink%connection_set
 
+        scale_rate = PETSC_FALSE
         if (associated(source_sink%flow_condition%well)) then
           if (dabs(source_sink%flow_condition%well%aux_real(1)) < 1.d-30 .and. &
               dabs(source_sink%flow_condition%well%aux_real(2)) < 1.d-30) then
@@ -2814,7 +2819,7 @@ subroutine RTResidualNonFlux(snes,xx,r,realization,ierr)
           endif
         else
           select case(source_sink%flow_condition%itype(1))
-            case(MASS_RATE_SS)
+            case(MASS_RATE_SS,SCALED_MASS_RATE_SS)
               select case(option%iflowmode)
                 case (MPH_MODE)
                   msrc(:) = source_sink%flow_condition%rate%dataset%rarray(:)
@@ -2822,14 +2827,22 @@ subroutine RTResidualNonFlux(snes,xx,r,realization,ierr)
                   msrc(:) = source_sink%flow_condition%sco2%rate%dataset% &
                             rarray(:)
               end select
+              select case(source_sink%flow_condition%itype(1))
+                case(SCALED_MASS_RATE_SS)
+                  scale_rate = PETSC_TRUE
+              end select
             case default
+              option%io_buffer = 'Unsupported CO2 flow condition in &
+                &RTResidualNonFlux'
+              call PrintErrMsg(option)
               msrc(:) = 0.d0
           end select
         endif
 
         msrc(1) =  msrc(1) / FMWH2O*1D3
         msrc(2) =  msrc(2) / FMWCO2*1D3
-        ! print *,'RT SC source'
+
+        scale = 1.d0
         do iconn = 1, cur_connection_set%num_connections
           local_id = cur_connection_set%id_dn(iconn)
           ghosted_id = grid%nL2G(local_id)
@@ -2837,35 +2850,14 @@ subroutine RTResidualNonFlux(snes,xx,r,realization,ierr)
 
           if (patch%imat(ghosted_id) <= 0) cycle
 
-          if (associated(source_sink%flow_condition%well)) then
-            select case(option%iflowmode)
-              case (SCO2_MODE)
-                do iactgas = 1, reaction%gas%nactive_gas
-                  if (abs(reaction%species_idx%co2_gas_id) == iactgas) then
-                    icomp = reaction%gas%paseqspecid(1,iactgas)
-                    iendall = local_id*reaction%ncomp
-                    istartall = iendall-reaction%ncomp
-                    Res(icomp) = -msrc(2)
-                    r_p(istartall+icomp) = r_p(istartall+icomp) + Res(icomp)
-                  ! print *,'RT SC source', iactgas,icomp, res(icomp)
-                  endif
-                enddo
-            end select
-          else
-            select case(source_sink%flow_condition%itype(1))
-              case(MASS_RATE_SS)
-                do iactgas = 1, reaction%gas%nactive_gas
-                  if (abs(reaction%species_idx%co2_gas_id) == iactgas) then
-                    icomp = reaction%gas%paseqspecid(1,iactgas)
-                    iendall = local_id*reaction%ncomp
-                    istartall = iendall-reaction%ncomp
-                    Res(icomp) = -msrc(2)
-                    r_p(istartall+icomp) = r_p(istartall+icomp) + Res(icomp)
-                  ! print *,'RT SC source', iactgas,icomp, res(icomp)
-                  endif
-                enddo
-            end select
+          if (scale_rate) then
+            scale = source_sink%flow_aux_real_var(ONE_INTEGER,iconn)
           endif
+
+          offset = (local_id-1)*option%ntrandof
+          icomp = reaction%gas%acteqspecid(1,iactgas)
+          Res(icomp) = -msrc(2)*scale
+          r_p(offset+icomp) = r_p(offset+icomp) + Res(icomp)
 #if defined(DEBUG_RT_RES_CO2_SOURCE)
           if (grid%nG2A(ghosted_id) == rt_debug_cell_id) then
             print *, 'rcs: ', grid%nG2A(ghosted_id)
@@ -2904,7 +2896,7 @@ subroutine RTResidualNonFlux(snes,xx,r,realization,ierr)
       if (option%use_sc) then
         Res = Res*rt_sec_transport_vars(ghosted_id)%epsilon
       endif
-#if defined(DEBUG_RT_RES_ACCUMULATION)
+#if defined(DEBUG_RT_RES_REACTION)
       if (grid%nG2A(ghosted_id) == rt_debug_cell_id) then
         print *, 'rax: ', grid%nG2A(ghosted_id)
         print *, ' Res: ', Res
@@ -3019,7 +3011,7 @@ end subroutine RTResidualEquilibrateCO2
 
 ! ************************************************************************** !
 
-subroutine RTJacobian(snes,xx,A,B,realization,ierr)
+subroutine RTJacobian(snes,xx,A,B,realization,debug,ierr)
   !
   ! Computes the Jacobian
   !
@@ -3035,6 +3027,7 @@ subroutine RTJacobian(snes,xx,A,B,realization,ierr)
   use Logging_module
   use Debug_module
   use Matrix_Zeroing_module
+  use Debug_module
 
   implicit none
 
@@ -3042,17 +3035,16 @@ subroutine RTJacobian(snes,xx,A,B,realization,ierr)
   Vec :: xx
   Mat :: A, B
   class(realization_subsurface_type) :: realization
+  type(debug_type) :: debug
   PetscErrorCode :: ierr
 
   Mat :: J
   MatType :: mat_type
-  PetscViewer :: viewer
-  character(len=MAXSTRINGLENGTH) :: string
 
   call PetscLogEventBegin(logging%event_rt_jacobian,ierr);CHKERRQ(ierr)
 
 #if 0
-  call RTNumericalJacobianTest(realization,xx)
+  call RTNumericalJacobianTest(realization,debug,xx)
 #endif
 
   call MatGetType(A,mat_type,ierr);CHKERRQ(ierr)
@@ -3065,7 +3057,6 @@ subroutine RTJacobian(snes,xx,A,B,realization,ierr)
   endif
 
   call MatZeroEntries(J,ierr);CHKERRQ(ierr)
-
 
   call PetscLogEventBegin(logging%event_rt_jacobian1,ierr);CHKERRQ(ierr)
 
@@ -3087,24 +3078,19 @@ subroutine RTJacobian(snes,xx,A,B,realization,ierr)
 
   call PetscLogEventEnd(logging%event_rt_jacobian2,ierr);CHKERRQ(ierr)
 
-  if (realization%debug%matview_Matrix) then
-    call DebugWriteFilename(realization%debug,string,'RTjacobian','', &
-                            rt_ts_count,rt_ts_cut_count,rt_ni_count)
-    call DebugCreateViewer(realization%debug,string,realization%option,viewer)
-    call MatView(J,viewer,ierr);CHKERRQ(ierr)
-    call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
+  if (debug%matview_Matrix) then
+    call DebugMatView(debug,J,'RTjacobian','', &
+                      rt_ts_count,rt_ts_cut_count,rt_ni_count, &
+                      realization%option)
   endif
 
   if (realization%reaction%use_log_formulation) then
     call MatDiagonalScaleLocal(J,realization%field%tran_work_loc, &
                                ierr);CHKERRQ(ierr)
-
-    if (realization%debug%matview_Matrix) then
-    call DebugWriteFilename(realization%debug,string,'RTjacobianLog','', &
-                            rt_ts_count,rt_ts_cut_count,rt_ni_count)
-      call DebugCreateViewer(realization%debug,string,realization%option,viewer)
-      call MatView(J,viewer,ierr);CHKERRQ(ierr)
-      call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
+    if (debug%matview_Matrix) then
+      call DebugMatView(debug,J,'RTjacobianLog','', &
+                        rt_ts_count,rt_ts_cut_count,rt_ni_count, &
+                        realization%option)
     endif
 
   endif
@@ -3873,7 +3859,9 @@ subroutine RTUpdateAuxVars(realization,update_cells,update_bcs, &
       if (grid%nG2A(ghosted_id) == rt_debug_cell_id) then
         print *, 'uav: ', grid%nG2A(ghosted_id)
         print *, ' pri_molal: ', rt_auxvars(ghosted_id)%pri_molal
-        print *, ' total: ', rt_auxvars(ghosted_id)%total(:,1)
+        print *, ' sec_molal: ', rt_auxvars(ghosted_id)%sec_molal
+        print *, '     total: ', rt_auxvars(ghosted_id)%total(:,1)
+        print *, '    dtotal: ', rt_auxvars(ghosted_id)%aqueous%dtotal(:,:,1)
       endif
 #endif
     enddo

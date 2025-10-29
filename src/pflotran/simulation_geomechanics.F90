@@ -191,6 +191,22 @@ subroutine GeomechanicsSimulationExecuteRun(this)
         .not. this%option%geomechanics%sync_flow_dt) then
       this%option%io_buffer = 'Set non-zero COUPLING_TIME_SIZE in GEOMECHANICS_TIME.'
       call PrintErrMsg(this%option)
+    else
+      do
+        dt = this%geomech%realization%dt_coupling
+        if (time + dt*(1.d0+tolerance) >= final_time) then
+          dt = final_time-time
+          time = final_time
+        else
+          time = time + dt
+        endif
+        this%geomech%process_model_coupler%timestepper%dt = dt
+        call this%RunToTime(time)
+
+        if (this%stop_flag /= TS_CONTINUE) exit ! end simulation
+
+        if (time >= final_time) exit
+      enddo
     endif
     do
       if (this%geomech%process_model_coupler%timestepper%steps == 0 .or.&

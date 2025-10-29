@@ -385,7 +385,6 @@ subroutine TimestepperKSPCheckpointBinary(this,viewer,option)
   ! Author: Glenn Hammond
   ! Date: 12/06/19
   !
-#include "petsc/finclude/petscviewer.h"
 #include "petsc/finclude/petscbag.h"
   use petscbag
 
@@ -482,7 +481,6 @@ subroutine TimestepperKSPRestartBinary(this,viewer,option)
   ! Author: Glenn Hammond
   ! Date: 12/06/19
   !
-#include "petsc/finclude/petscviewer.h"
 #include "petsc/finclude/petscbag.h"
   use petscbag
 

@@ -83,7 +83,7 @@ module Realization_Subsurface_class
             RealProcessFluidProperties, &
             RealizationUpdatePropertiesTS, &
             RealizationUpdatePropertiesNI, &
-            RealizationCalcMineralPorosity, &
+            RealizationUpdateMineralPorosity, &
             RealizationCountCells, &
             RealizationPrintGridStatistics, &
             RealizationPassPtrsToPatches, &
@@ -653,6 +653,7 @@ subroutine RealProcessMatPropAndSatFunc(realization)
   use String_module
   use Dataset_Common_HDF5_class
   use Dataset_module
+  use Characteristic_Curves_module
   use Characteristic_Curves_Thermal_module
   use TH_Aux_module, only : th_ice_model
 
@@ -664,6 +665,7 @@ subroutine RealProcessMatPropAndSatFunc(realization)
   PetscInt :: i, num_mat_prop
   type(option_type), pointer :: option
   type(material_property_type), pointer :: cur_material_property
+  type(characteristic_curves_type), pointer :: cur_characteristic_curve
   PetscReal, allocatable :: check_thermal_conductivity(:,:)
   type(patch_type), pointer :: patch
   character(len=MAXSTRINGLENGTH) :: verify_string, mat_string
@@ -827,6 +829,14 @@ subroutine RealProcessMatPropAndSatFunc(realization)
   ! create mapping of internal to external material id
   call MaterialCreateIntToExtMapping(patch%material_property_array, &
                                      patch%imat_internal_to_external)
+
+  ! verify characteristic curves
+  cur_characteristic_curve => realization%characteristic_curves
+  do
+    if (.not.associated(cur_characteristic_curve)) exit
+    call CharacteristicCurvesVerify(cur_characteristic_curve,option)
+    cur_characteristic_curve => cur_characteristic_curve%next
+  enddo
 
   cur_material_property => realization%material_properties
   do
@@ -1990,7 +2000,7 @@ subroutine RealizationUpdatePropertiesTS(realization)
   porosity_updated = PETSC_FALSE
   if (reaction%update_porosity) then
     porosity_updated = PETSC_TRUE
-    call RealizationCalcMineralPorosity(realization)
+    call RealizationUpdateMineralPorosity(realization)
   endif
 
   if (reaction%mineral%update_surface_area) then
@@ -2171,9 +2181,9 @@ end subroutine RealizationUpdatePropertiesNI
 
 ! ************************************************************************** !
 
-subroutine RealizationCalcMineralPorosity(realization)
+subroutine RealizationUpdateMineralPorosity(realization)
   !
-  ! Calculates porosity based on the sum of mineral volume fractions
+  ! Updates porosity based on the sum of mineral volume fractions
   !
   ! Author: Glenn Hammond
   ! Date: 11/03/14
@@ -2183,6 +2193,7 @@ subroutine RealizationCalcMineralPorosity(realization)
   use Field_module
   use Grid_module
   use Reaction_Aux_module
+  use Reaction_Mineral_module
   use Reactive_Transport_Aux_module
   use Material_Aux_module
   use Variables_module, only : POROSITY
@@ -2201,8 +2212,7 @@ subroutine RealizationCalcMineralPorosity(realization)
   type(material_auxvar_type), pointer :: material_auxvars(:)
 
   PetscInt :: local_id, ghosted_id
-  PetscInt :: imnrl
-  PetscReal :: sum_volfrac
+  PetscReal :: sum_mnrl_volume_fractions
 
   option => realization%option
   discretization => realization%discretization
@@ -2218,22 +2228,20 @@ subroutine RealizationCalcMineralPorosity(realization)
       ghosted_id = grid%nL2G(local_id)
       ! Go ahead and compute for inactive cells since their porosity does
       ! not matter (avoid check on active/inactive)
-      sum_volfrac = 0.d0
-      do imnrl = 1, reaction%mineral%nkinmnrl
-        sum_volfrac = sum_volfrac + &
-                      rt_auxvars(ghosted_id)%mnrl_volfrac(imnrl)
-      enddo
-      ! the adjusted porosity becomes:
-      ! 1 - sum(mineral volume fractions), but is truncated.
+      sum_mnrl_volume_fractions = &
+        ReactionMnrlCalcSumVolFrac(rt_auxvars(ghosted_id),reaction%mineral)
       material_auxvars(ghosted_id)%porosity_base = &
-        max(1.d0-sum_volfrac,reaction%minimum_porosity)
-      ! this is the proposed form of the equation for updating porosity
+        max(1.d0-sum_mnrl_volume_fractions,reaction%minimum_porosity)
+      ! the adjusted porosity becomes:
+      !  1 - sum(mineral volume fractions), but is truncated.
+      !  this is the proposed form of the equation for updating porosity
       ! but it breaks geochemistry:
-      !material_auxvars(ghosted_id)%porosity_base = &
-      !  max(material_auxvars(ghosted_id)%porosity_0-sum_volfrac, &
-      !      reaction%minimum_porosity)
+      !  material_auxvars(ghosted_id)%porosity_base = &
+      !   max(material_auxvars(ghosted_id)%porosity_0-sum_volfrac, &
+      !       reaction%minimum_porosity)
     enddo
   endif
+
   ! update ghosted porosities
   call MaterialGetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
                                POROSITY,POROSITY_BASE)
@@ -2246,7 +2254,7 @@ subroutine RealizationCalcMineralPorosity(realization)
 !  call MaterialSetAuxVarScalar(patch%aux%Material,UNINITIALIZED_DOUBLE, &
 !                               POROSITY,POROSITY_CURRENT)
 
-end subroutine RealizationCalcMineralPorosity
+end subroutine RealizationUpdateMineralPorosity
 
 ! ************************************************************************** !
 

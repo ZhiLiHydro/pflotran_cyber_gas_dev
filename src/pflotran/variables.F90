@@ -228,5 +228,7 @@ module Variables_module
   PetscInt, parameter, public :: WATER_ACTIVITY_COEFFICIENT = 173
   PetscInt, parameter, public :: WELL_TEMPERATURE           = 174
   PetscInt, parameter, public :: WELL_CELLS                 = 175
+  PetscInt, parameter, public :: SUM_MINERAL_VOLUME_FRACTION = 176
+  PetscInt, parameter, public :: IONIC_STRENGTH              = 177
 
 end module Variables_module

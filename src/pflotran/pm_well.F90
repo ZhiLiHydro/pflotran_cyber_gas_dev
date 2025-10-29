@@ -582,6 +582,7 @@ subroutine PMWellBaseInit(pm_well)
   allocate(pm_well%well)
   allocate(pm_well%well_comm)
   nullify(pm_well%realization)
+  nullify(pm_well%well_pert)
   pm_well%well_grid => WellGridCreate()
   call PMWellVarCreate(pm_well%well)
 
@@ -4038,7 +4039,7 @@ subroutine PMWellReadGrid(well_grid,input,option,keyword,error_string,found)
                   call InputErrorMsg(input,option, &
                                      'SEGMENT_RADIUS_TO_HORIZONTAL_Y', &
                                      error_string)
-                case('SEGMENT_RADIUS_TO_HORIZONTAL_ANGLE')
+                case('SEGMENT_RADIUS_TO_HORIZON_ANGLE')
                   if (.not. associated(deviated_well_segment)) then
                     option%io_buffer = "Error in constructing &
                       &WELL_TRAJECTORY: please first specify &
