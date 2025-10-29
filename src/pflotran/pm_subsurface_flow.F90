@@ -367,6 +367,9 @@ subroutine PMSubsurfaceFlowSetup(this)
   endif
 
   call this%UpdateAuxvars()
+  ! soil reference pressures may be extracted from max pressure in auxvars.
+  ! therefore, have to update auxvars first
+  call PMSubsurfaceFlowSetSoilRefPres(this%realization)
 
   ! set the communicator
   this%comm1 => this%realization%comm1
@@ -492,8 +495,6 @@ recursive subroutine PMSubsurfaceFlowInitializeRun(this)
 
   class(pm_subsurface_flow_type) :: this
 
-  ! must come before RealizUnInitializedVarsTran
-  call PMSubsurfaceFlowSetSoilRefPres(this%realization)
   ! check for uninitialized flow variables
   call RealizUnInitializedVarsFlow(this%realization)
 
@@ -611,8 +612,6 @@ subroutine PMSubsurfaceFlowSetSoilRefPres(realization)
                                    realization%field%work, &
                                    realization%field%work_loc, &
                                    ONEDOF)
-  call VecGetArrayRead(realization%field%work_loc,vec_loc_p, &
-                          ierr);CHKERRQ(ierr)
 
   ref_pres_set_by_initial = PETSC_FALSE
   ! read in any user-defined property fields
