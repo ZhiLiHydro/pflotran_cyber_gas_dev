@@ -3907,8 +3907,11 @@ subroutine OutputHDF5PrintExplicitFlowrates(realization_base)
                                      nat_ids_up,nat_ids_dn)
   call OutputGetExplicitFlowrates(realization_base,count,vec_proc,flowrates, &
                                   darcy,area)
-  call OutputGetExplicitAuxVars(realization_base,count,vec_proc, &
+  if(.not. realization_base%output_option% &
+      print_explicit_flowrate_skip_density) then
+    call OutputGetExplicitAuxVars(realization_base,count,vec_proc, &
                                 density)
+  endif
 
   if (OptionIsIORank(option)) then
     option%io_buffer = ' --> write rate output hdf5 file: ' // &
@@ -3930,7 +3933,10 @@ subroutine OutputHDF5PrintExplicitFlowrates(realization_base)
   call WriteGridHDF5_Int(file_id, grp_conn_id, dataspace_id, dims, "Cell1", nat_ids_up, option)
   call WriteGridHDF5_Int(file_id, grp_conn_id, dataspace_id, dims, "Cell2", nat_ids_dn, option)
   call WriteGridHDF5_Real8(file_id, grp_conn_id, dataspace_id, dims, "Flux", darcy, option)
-  call WriteGridHDF5_Real8(file_id, grp_conn_id, dataspace_id, dims, "Density", density, option)
+  if(.not. realization_base%output_option% &
+      print_explicit_flowrate_skip_density) then
+    call WriteGridHDF5_Real8(file_id, grp_conn_id, dataspace_id, dims, "Density", density, option)
+  endif
   call WriteGridHDF5_Real8(file_id, grp_conn_id, dataspace_id, dims, "Area", area, option)
   call h5sclose_f(dataspace_id, error)
   call HDF5GroupClose(grp_conn_id, option)
@@ -3941,7 +3947,10 @@ subroutine OutputHDF5PrintExplicitFlowrates(realization_base)
   deallocate(darcy)
   deallocate(nat_ids_up)
   deallocate(nat_ids_dn)
-  deallocate(density)
+  if(.not. realization_base%output_option% &
+      print_explicit_flowrate_skip_density) then
+    deallocate(density)
+  endif
   deallocate(area)
 
 end subroutine OutputHDF5PrintExplicitFlowrates

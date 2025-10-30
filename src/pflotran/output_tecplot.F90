@@ -2230,8 +2230,11 @@ subroutine OutputPrintExplicitFlowrates(realization_base)
                                      nat_ids_up,nat_ids_dn)
   call OutputGetExplicitFlowrates(realization_base,count,vec_proc,flowrates, &
                                   darcy,area)
-  call OutputGetExplicitAuxVars(realization_base,count,vec_proc, &
-                                density)
+  if(.not. realization_base%output_option% &
+      print_explicit_flowrate_skip_density) then
+    call OutputGetExplicitAuxVars(realization_base,count,vec_proc, &
+                                  density)
+  endif
 
   if (OptionIsIORank(option)) then
     option%io_buffer = ' --> write rate output file: ' // &
@@ -2250,11 +2253,14 @@ subroutine OutputPrintExplicitFlowrates(realization_base)
   string = trim(filename) // '-rank' // trim(adjustl(string)) // '.dat'
   open(unit=OUTPUT_UNIT,file=trim(string),action="write")
   do i = 1, count
-    density(i) = density(i)*FMWH2O
     write(OUTPUT_UNIT,1001,advance='no') nat_ids_up(i)
     write(OUTPUT_UNIT,1001,advance='no') nat_ids_dn(i)
     write(OUTPUT_UNIT,1000,advance='no') darcy(i)
-    write(OUTPUT_UNIT,1000,advance='no') density(i)
+    if(.not. realization_base%output_option% &
+        print_explicit_flowrate_skip_density) then
+      density(i) = density(i)*FMWH2O
+      write(OUTPUT_UNIT,1000,advance='no') density(i)
+    endif
     write(OUTPUT_UNIT,1000,advance='no') area(i)
     write(OUTPUT_UNIT,'(a)')
   enddo
@@ -2264,7 +2270,10 @@ subroutine OutputPrintExplicitFlowrates(realization_base)
   deallocate(darcy)
   deallocate(nat_ids_up)
   deallocate(nat_ids_dn)
-  deallocate(density)
+  if(.not. realization_base%output_option% &
+      print_explicit_flowrate_skip_density) then
+    deallocate(density)
+  endif
   deallocate(area)
 
  ! Order of printing for the 2nd file

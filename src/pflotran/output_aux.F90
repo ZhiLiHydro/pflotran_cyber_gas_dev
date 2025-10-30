@@ -43,6 +43,7 @@ module Output_Aux_module
     PetscBool :: print_hdf5_aveg_energy_flowrate
     PetscBool :: print_explicit_flowrate
     PetscBool :: print_explicit_flowrate_hdf5
+    PetscBool :: print_explicit_flowrate_skip_density
 
     PetscBool :: print_tecplot
     PetscInt :: tecplot_format
@@ -220,6 +221,7 @@ function OutputOptionCreate()
   output_option%print_hdf5_aveg_energy_flowrate = PETSC_FALSE
   output_option%print_explicit_flowrate = PETSC_FALSE
   output_option%print_explicit_flowrate_hdf5 = PETSC_FALSE
+  output_option%print_explicit_flowrate_skip_density = PETSC_FALSE
 
   output_option%print_tecplot = PETSC_FALSE
   output_option%tecplot_format = 0
@@ -345,6 +347,8 @@ function OutputOptionDuplicate(output_option)
     output_option%print_explicit_flowrate
   output_option2%print_explicit_flowrate_hdf5 = &
     output_option%print_explicit_flowrate_hdf5
+  output_option2%print_explicit_flowrate_skip_density = &
+    output_option%print_explicit_flowrate_skip_density
 
   output_option2%print_tecplot = output_option%print_tecplot
   output_option2%tecplot_format = output_option%tecplot_format
