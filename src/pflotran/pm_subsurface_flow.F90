@@ -370,6 +370,9 @@ subroutine PMSubsurfaceFlowSetup(this)
   ! soil reference pressures may be extracted from max pressure in auxvars.
   ! therefore, have to update auxvars first
   call PMSubsurfaceFlowSetSoilRefPres(this%realization)
+  if (this%realization%material_properties%soil_reference_pressure_initial) then
+    call this%UpdateAuxvars()
+  endif
 
   ! set the communicator
   this%comm1 => this%realization%comm1
