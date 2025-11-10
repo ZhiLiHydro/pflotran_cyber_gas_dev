@@ -199,6 +199,9 @@ recursive subroutine PMCGeomechanicsInitializeRun(this)
 
   target_time = 0.d0
   local_stop_flag = TS_CONTINUE
+
+  if (this%option%geomechanics%split_scheme == GEOMECH_DRAINED_SPLIT) &
+    return
   call this%RunToTime(target_time,local_stop_flag)
 
 end subroutine PMCGeomechanicsInitializeRun
