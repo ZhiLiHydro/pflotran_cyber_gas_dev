@@ -174,6 +174,12 @@ subroutine PMCGeomechanicsSetupSolvers(this)
 
   call PrintMsg(option,"  Finished setting up GEOMECH KSP ")
 
+  ! jaa - account for initialization
+  if (this%option%geomechanics%split_scheme == &
+      GEOMECH_FIXED_STRAIN_SPLIT .or. &
+      this%option%geomechanics%split_scheme == &
+      GEOMECH_FIXED_STRESS_SPLIT) &
+    this%timestepper%steps = -1
 
 end subroutine PMCGeomechanicsSetupSolvers
 

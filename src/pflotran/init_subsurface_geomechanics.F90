@@ -254,6 +254,16 @@ subroutine InitSubsurfGeomechReadInput(geomech,geomech_solver, &
                                             geomech_realization%dt_coupling, &
                                             internal_units,'GEOMECHANICS_TIME,&
                                             &COUPLING_TIMESTEP_SIZE',option)
+            case('SYNC_FLOW_TIMESTEP_SIZE') ! for sync drained split
+              option%geomechanics%sync_flow_dt = PETSC_TRUE
+            case('POROSITY_UPDATE_THRESHOLD')
+              call InputReadDouble(input,option,option%geomechanics% &
+                                   del_poro_tol)
+              call InputErrorMsg(input,option, &
+                   'Porosity Update Threshold','GEOMECHANICS_TIME')
+              option%geomechanics%use_porosity_update = PETSC_TRUE
+              print *, 'set threshold val: ', option%geomechanics% &
+                      del_poro_tol
             case default
               call InputKeywordUnrecognized(input,word, &
                                             'GEOMECHANICS_TIME',option)
@@ -387,6 +397,7 @@ subroutine InitSubsurfGeomechJumpStart(geomech)
   class(realization_geomech_type), pointer :: geomech_realization
   class(pmc_geomechanics_type), pointer :: geomech_pmc
   class(timestepper_ksp_type), pointer :: geomech_timestepper
+  type(option_type), pointer :: option
 
   PetscBool :: snapshot_plot_flag,observation_plot_flag,massbal_plot_flag
   PetscBool :: geomech_read
@@ -396,6 +407,7 @@ subroutine InitSubsurfGeomechJumpStart(geomech)
   geomech_realization => geomech%realization
   geomech_pmc => geomech%process_model_coupler
   geomech_timestepper => TimestepperKSPCast(geomech_pmc%timestepper)
+  option => geomech_pmc%option
 
   call PetscOptionsHasName(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER, &
                            "-vecload_block_size",failure,ierr);CHKERRQ(ierr)
@@ -408,7 +420,8 @@ subroutine InitSubsurfGeomechJumpStart(geomech)
   geomech_read = PETSC_FALSE
   failure = PETSC_FALSE
 
-  call OutputGeomechInit(geomech_timestepper%steps)
+  call OutputGeomechInit(geomech_timestepper%steps, &
+                         option%geomechanics%split_scheme)
 
   ! pushed in INIT_STAGE()
   call PetscLogStagePop(ierr);CHKERRQ(ierr)

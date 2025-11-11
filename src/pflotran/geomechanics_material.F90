@@ -123,12 +123,16 @@ subroutine GeomechanicsMaterialPropertyRead(geomech_material_property, &
                                 'YOUNGS_MODULUS', 'GEOMECHANICS_MATERIAL_PROPERTY', option)
         call InputErrorMsg(input,option,'YOUNGS_MODULUS', &
                            'GEOMECHANICS_MATERIAL_PROPERTY')
+        option%geomechanics%youngs_modulus(geomech_material_property%id) = &
+                            geomech_material_property%youngs_modulus
       case('POISSONS_RATIO')
         call DatasetReadDoubleorDataset(input,geomech_material_property%poissons_ratio, &
                         geomech_material_property%poissons_ratio_dataset, &
                         'POISSONS_RATIO', 'GEOMECHANICS_MATERIAL_PROPERTY', option)
         call InputErrorMsg(input,option,'POISSONS_RATIO', &
                            'GEOMECHANICS_MATERIAL_PROPERTY')
+        option%geomechanics%poissons_ratio(geomech_material_property%id) = &
+                            geomech_material_property%poissons_ratio
       case('ROCK_DENSITY')
         call DatasetReadDoubleorDataset(input,geomech_material_property%density, &
                         geomech_material_property%density_dataset, &
@@ -141,6 +145,8 @@ subroutine GeomechanicsMaterialPropertyRead(geomech_material_property, &
                         'BIOT_COEFFICIENT', 'GEOMECHANICS_MATERIAL_PROPERTY', option)
         call InputErrorMsg(input,option,'BIOT_COEFFICIENT', &
                            'GEOMECHANICS_MATERIAL_PROPERTY')
+        option%geomechanics%biot_coefficient(geomech_material_property%id) = &
+                            geomech_material_property%biot_coeff
       case('THERMAL_EXPANSION_COEFFICIENT')
         call DatasetReadDoubleorDataset(input,geomech_material_property%thermal_exp_coeff, &
                         geomech_material_property%thermal_exp_coeff_dataset, &
@@ -148,6 +154,8 @@ subroutine GeomechanicsMaterialPropertyRead(geomech_material_property, &
                         'GEOMECHANICS_MATERIAL_PROPERTY', option)
         call InputErrorMsg(input,option,'THERMAL_EXPANSION_COEFFICIENT', &
                            'GEOMECHANICS_MATERIAL_PROPERTY')
+        option%geomechanics%thermal_exp_coefficient(geomech_material_property%id) = &
+                            geomech_material_property%thermal_exp_coeff
       case default
         call InputKeywordUnrecognized(input,keyword, &
                                  'GEOMECHANICS_MATERIAL_PROPERTY',option)

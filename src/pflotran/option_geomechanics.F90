@@ -21,6 +21,21 @@ module Option_Geomechanics_module
     PetscBool :: improve_tet_weighting
     PetscBool :: set_ref_pres_and_temp_to_IC
 
+    PetscBool :: sync_flow_dt
+    PetscBool :: skip_stepdt_flag
+    PetscBool :: use_porosity_update
+    PetscReal :: del_poro_tol
+    ! jaa testing - making my life easy
+    ! max of 100 geomech region/mat prop
+    ! clean up later!!
+    PetscReal :: poissons_ratio(100)
+    PetscReal :: youngs_modulus(100)
+    PetscReal :: biot_coefficient(100)
+    PetscReal :: thermal_exp_coefficient(100)
+    ! move later
+    PetscReal :: porosity_initial(100)
+    PetscReal :: fluid_compressibility(3)
+
   end type geomechanics_option_type
 
   public :: OptionGeomechanicsCreate, &
@@ -95,7 +110,7 @@ subroutine OptionGeomechanicsInitRealization(option)
   ! These variables should be initialized once at the beginning of every
   ! PFLOTRAN realization or simulation of a single realization
 
-  option%initial_flag = PETSC_FALSE
+  option%initial_flag = PETSC_TRUE
   option%time = 0.d0
   option%flow_coupling = 0
   option%geophysics_coupling = 0
@@ -104,6 +119,15 @@ subroutine OptionGeomechanicsInitRealization(option)
   option%gravity(3) = -1.d0*EARTH_GRAVITY    ! m/s^2
   option%improve_tet_weighting = PETSC_FALSE
   option%set_ref_pres_and_temp_to_IC = PETSC_FALSE
+
+  option%sync_flow_dt = PETSC_FALSE
+  option%poissons_ratio = UNINITIALIZED_DOUBLE
+  option%youngs_modulus = UNINITIALIZED_DOUBLE
+  option%biot_coefficient = UNINITIALIZED_DOUBLE
+  option%thermal_exp_coefficient = UNINITIALIZED_DOUBLE
+  option%skip_stepdt_flag = PETSC_FALSE
+  option%use_porosity_update = PETSC_FALSE
+  option%del_poro_tol = UNINITIALIZED_DOUBLE
 
 end subroutine OptionGeomechanicsInitRealization
 

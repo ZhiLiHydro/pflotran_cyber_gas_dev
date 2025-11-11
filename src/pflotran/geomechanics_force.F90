@@ -1677,6 +1677,7 @@ subroutine GeomechForceApplyTractionBCtoRHS(local_coordinates, &
     force = force + w(igpt)*kron_N_traction(:,1)*surf_J
     call ShapeFunctionDestroy(shapefunction)
 
+    deallocate(kron_N_traction)
     deallocate(N)
 
   enddo
