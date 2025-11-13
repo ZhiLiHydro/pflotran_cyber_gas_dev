@@ -474,7 +474,7 @@ subroutine PMAuxiliarySalinity(this,time,ierr)
                global_auxvars(ghosted_id)%m_nacl, &
                mass_h2o,dw_mol,dw_dp,dw_dt,ierr)
       global_auxvars(ghosted_id)%den = dw_mol
-      global_auxvars(ghosted_id)%den_kg = mass_h2o    
+      global_auxvars(ghosted_id)%den_kg = mass_h2o
     enddo
   enddo
 
