@@ -130,6 +130,14 @@ subroutine EOSRead(input,option)
                 call InputReadDouble(input,option,temparray(5))
                 call InputErrorMsg(input,option,'THERMAL_EXPANSION', &
                                    'EOS,WATER,DENSITY,EXPONENTIAL_TEMPERATURE')
+              case('LINEAR_SALT')
+                option%flow%density_depends_on_salinity = PETSC_TRUE
+                call InputReadDouble(input,option,temparray(1))
+                call InputErrorMsg(input,option,'REFERENCE_DENSITY', &
+                   'EOS,WATER,DENSITY,LINEAR_SALT')
+                call InputReadDouble(input,option,temparray(2))
+                call InputErrorMsg(input,option, 'LINEAR_SALT_COEFFICIENT', &
+                   'EOS,WATER,DENSITY,LINEAR_SALT')
               case('LINEAR')
                 call InputReadDouble(input,option,temparray(1))
                 call InputErrorMsg(input,option,'REFERENCE_DENSITY', &
