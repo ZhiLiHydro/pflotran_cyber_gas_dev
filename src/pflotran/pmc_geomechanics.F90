@@ -364,6 +364,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
   use Discretization_module
   use Geomechanics_Subsurface_Properties_module
   use Parameter_module
+  use Global_Aux_module
 
   implicit none
 
@@ -379,32 +380,54 @@ subroutine PMCGeomechanicsSetAuxData(this)
   PetscScalar, pointer :: stress_p(:)
   PetscScalar, pointer :: press_p(:)
   PetscReal, pointer :: vec_ptr(:)
-  PetscReal :: local_stress(6), local_strain(6), local_pressure
+  PetscReal :: local_stress(6), local_strain(6)
+  PetscReal :: local_pressure, local_temp
   PetscErrorCode :: ierr
   PetscReal :: por_new
   PetscReal :: perm_new
   PetscInt :: i
   PetscInt :: parameter_index
+
+  PetscInt :: strainv_0_id, stressv_0_id, press_0_id
+  PetscInt :: strainv_id, strainv_old_id
+  PetscInt :: porosity_id
+  PetscInt :: temp_porosity_id, porosity_old_id
+  PetscInt :: temp_0_id
+
+  type(global_auxvar_type), pointer :: global_auxvars(:)
+  type(global_auxvar_type), pointer :: global_auxvar
+  type(option_type), pointer :: option
+
   Vec :: geomech_vec
   Vec :: subsurf_vec
+
+  PetscReal :: biot_coeff, youngs_mod, poissons_ratio, dr_bulk_modulus
+  PetscReal :: strain_vol
+  PetscReal :: porosity_0, strain_vol_0
+  PetscInt :: imat
+  PetscInt :: id_porosity_mech, id_porosity_flow
+  PetscInt :: id_pressure_mech
 
 #if GEOMECH_DEBUG
   PetscViewer :: viewer
   print *, 'PMCGeomechSetAuxData'
 #endif
 
+  option => this%option
 
   ! If at initialization stage, do nothing
 !  if (this%timestepper%steps == 0) return
 
   select type(pmc => this)
     class is(pmc_geomechanics_type)
-      if (this%option%geomechanics%flow_coupling == &
+      if (option%geomechanics%flow_coupling == &
             GEOMECH_TWO_WAY_COUPLED .or. &
-          this%option%geomechanics%geophysics_coupling == &
+          option%geomechanics%geophysics_coupling == &
             GEOMECH_ERT_COUPLING) then
 
         grid => pmc%subsurf_realization%patch%grid
+        global_auxvars => pmc%subsurf_realization% &
+                          patch%aux%Global%auxvars
 
         ! Find the number of geomech grid nodes for each flow cell
         call VecDuplicate(pmc%geomech_realization%geomech_field%strain, &
@@ -424,7 +447,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
 
 
 #if GEOMECH_DEBUG
-  call PetscViewerASCIIOpen(this%option%mycomm, &
+  call PetscViewerASCIIOpen(option%mycomm, &
                             'subsurf_vec_adjacency_count.out',viewer, &
                             ierr);CHKERRQ(ierr)
   call VecView(subsurf_vec,viewer,ierr);CHKERRQ(ierr)
@@ -443,7 +466,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
                            SCATTER_FORWARD,ierr);CHKERRQ(ierr)
 
 #if GEOMECH_DEBUG
-  call PetscViewerASCIIOpen(this%option%mycomm, &
+  call PetscViewerASCIIOpen(option%mycomm, &
                             'subsurf_strain_vector_before_averaging.out', &
                             viewer,ierr);CHKERRQ(ierr)
   call VecView(pmc%sim_aux%subsurf_strain,viewer,ierr);CHKERRQ(ierr)
@@ -462,7 +485,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
                            SCATTER_FORWARD,ierr);CHKERRQ(ierr)
 
 #if GEOMECH_DEBUG
-  call PetscViewerASCIIOpen(this%option%mycomm, &
+  call PetscViewerASCIIOpen(option%mycomm, &
                             'subsurf_stress_vector_before_averaging.out', &
                             viewer,ierr);CHKERRQ(ierr)
   call VecView(pmc%sim_aux%subsurf_stress,viewer,ierr);CHKERRQ(ierr)
@@ -475,7 +498,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
                                 ierr);CHKERRQ(ierr)
 
 #if GEOMECH_DEBUG
-  call PetscViewerASCIIOpen(this%option%mycomm, &
+  call PetscViewerASCIIOpen(option%mycomm, &
                             'subsurf_strain_vector_after_averaging.out', &
                             viewer,ierr);CHKERRQ(ierr)
   call VecView(pmc%sim_aux%subsurf_strain,viewer,ierr);CHKERRQ(ierr)
@@ -487,7 +510,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
                                 ierr);CHKERRQ(ierr)
 
 #if GEOMECH_DEBUG
-  call PetscViewerASCIIOpen(this%option%mycomm, &
+  call PetscViewerASCIIOpen(option%mycomm, &
                             'subsurf_stress_vector_after_averaging.out', &
                             viewer,ierr);CHKERRQ(ierr)
   call VecView(pmc%sim_aux%subsurf_stress,viewer,ierr);CHKERRQ(ierr)
@@ -501,7 +524,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
         call VecGetArray(pmc%sim_aux%subsurf_stress,stress_p, &
                             ierr);CHKERRQ(ierr)
 
-        if (this%option%geomechanics%geophysics_coupling == &
+        if (option%geomechanics%geophysics_coupling == &
                                 GEOMECH_ERT_COUPLING) then
           ! stress
           call VecGetArray(pmc%subsurf_realization%field%work, &
@@ -523,7 +546,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
           call VecGetArray(pmc%subsurf_realization%field%work_loc, &
                               vec_ptr,ierr);CHKERRQ(ierr)
           parameter_index = ParameterGetIDFromName('geomechanics_stress', &
-                                             pmc%subsurf_realization%option)
+                                                   option)
           do ghosted_id = 1, grid%ngmax
             pmc%subsurf_realization%patch%aux% &
               Global%auxvars(ghosted_id)%parameters(parameter_index) = &
@@ -551,7 +574,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
           call VecGetArray(pmc%subsurf_realization%field%work_loc, &
                               vec_ptr,ierr);CHKERRQ(ierr)
           parameter_index = ParameterGetIDFromName('geomechanics_strain', &
-                                             pmc%subsurf_realization%option)
+                                                   option)
           do ghosted_id = 1, grid%ngmax
             pmc%subsurf_realization%patch%aux% &
               Global%auxvars(ghosted_id)%parameters(parameter_index) = &
@@ -561,7 +584,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
                                   vec_ptr,ierr);CHKERRQ(ierr)
         endif
 
-        if (this%option%geomechanics%flow_coupling == &
+        if (option%geomechanics%flow_coupling == &
             GEOMECH_TWO_WAY_COUPLED) then
 
           ! Update porosity dataset in sim_aux%subsurf_por
@@ -583,21 +606,105 @@ subroutine PMCGeomechanicsSetAuxData(this)
               local_stress(i) = stress_p((local_id - 1)*SIX_INTEGER + i)
               local_strain(i) = strain_p((local_id - 1)*SIX_INTEGER + i)
             enddo
+            if (option%iflowmode == TH_MODE) then
+              local_pressure = press_p(local_id*option%nflowdof-1)
+              local_temp = press_p(local_id*option%nflowdof)
+            else ! richards mode
               local_pressure = press_p(local_id)
+            endif
             ! Update porosity based on stress/strain
             call GeomechanicsSubsurfacePropsPoroEvaluate( &
                   grid, &
                   pmc%subsurf_realization%patch%aux%Material%auxvars(local_id), &
                   por0_p(local_id),local_stress,local_strain,local_pressure, &
-                  por_new,this%option)
+                  por_new,option)
             por_p(local_id) = por_new
             ! Update permeability based on stress/strain
             call GeomechanicsSubsurfacePropsPermEvaluate( &
                   grid, &
                   pmc%subsurf_realization%patch%aux%Material%auxvars(local_id), &
                   perm0_p(local_id),local_stress,local_strain,local_pressure, &
-                  perm_new,this%option)
+                  perm_new,option)
             perm_p(local_id) = perm_new
+            select case(option%geomechanics%split_scheme)
+              case(GEOMECH_FIXED_STRESS_SPLIT)
+                ! ID's are registered in factory_subsurface.F90
+                ! get id's for global_aux%parameters
+                strainv_0_id = ParameterGetIDFromName( &
+                                   'geomech_vol_strain_0',option)
+                strainv_id = ParameterGetIDFromName( &
+                                   'geomech_vol_strain', option)
+                strainv_old_id = ParameterGetIDFromName( &
+                                   'geomech_vol_strain_old', option)
+                press_0_id = ParameterGetIDFromName( &
+                                   'geomech_press_0', &
+                                   pmc%subsurf_realization%option)
+                porosity_id = ParameterGetIDFromName( &
+                                   'geomech_porosity', &
+                                   pmc%subsurf_realization%option)
+                temp_porosity_id = ParameterGetIDFromName( &
+                                     'flow_porosity',option)
+                temp_0_id = ParameterGetIDFromName( &
+                                    'geomech_temp_0',option)
+                ! used to track threshold updates
+                ! needed since this routine will be skipped
+                ! if threshold is not met
+                id_porosity_mech = ParameterGetIDFromName( &
+                                   'geomech_stored_porosity', &
+                                   option)
+
+                ghosted_id = grid%nL2G(local_id)
+                global_auxvar => global_auxvars(ghosted_id)
+                imat = pmc%subsurf_realization%patch%aux%Material% &
+                       auxvars(local_id)%id
+
+                ! calc volumetric strain
+                strain_vol = local_strain(1) + local_strain(2) + local_strain(3)
+                youngs_mod = this%option%geomechanics%youngs_modulus(imat)
+                poissons_ratio = this%option%geomechanics%poissons_ratio(imat)
+                biot_coeff = this%option%geomechanics%biot_coefficient(imat)
+
+                dr_bulk_modulus = youngs_mod / &
+                           (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
+
+                if (this%timestepper%steps < 0) then ! before init
+                  global_auxvar%parameters(press_0_id) = local_pressure
+                  global_auxvar%parameters(temp_porosity_id) = &
+                   pmc%subsurf_realization%patch%aux%Material% &
+                    auxvars(local_id)%porosity_0
+                  global_auxvar%parameters(strainv_0_id) = 0.d0
+                  global_auxvar%parameters(strainv_old_id) = 0.d0
+                  global_auxvar%parameters(id_porosity_mech) = &
+                    pmc%subsurf_realization%patch%aux%Material% &
+                    auxvars(local_id)%porosity_0
+                    
+                elseif (this%timestepper%steps == 0) then ! at init
+                  global_auxvar%parameters(strainv_0_id) = strain_vol
+                  global_auxvar%parameters(strainv_old_id) = strain_vol
+                  global_auxvar%parameters(strainv_id) = strain_vol
+                  global_auxvar%parameters(temp_porosity_id) = &
+                    pmc%subsurf_realization%patch%aux%Material% &
+                    auxvars(local_id)%porosity_0
+                  global_auxvar%parameters(id_porosity_mech) = &
+                    pmc%subsurf_realization%patch%aux%Material% &
+                    auxvars(local_id)%porosity_0
+                  if (this%option%iflowmode == TH_MODE) then
+                    global_auxvar%parameters(temp_0_id) = local_temp
+                  endif
+                else ! post init
+                  global_auxvar%parameters(strainv_old_id) = &
+                    global_auxvar%parameters(strainv_id)
+                  global_auxvar%parameters(strainv_id) = strain_vol
+                  global_auxvar%parameters(id_porosity_mech) = &
+                  global_auxvar%parameters(temp_porosity_id)
+                endif
+                id_pressure_mech = ParameterGetIDFromName( &
+                                   'geomech_stored_pressure', &
+                                   option)
+                global_auxvar%parameters(id_pressure_mech) = &
+                  local_pressure
+                print *, 'id, press ', local_id, local_pressure
+            end select
           enddo
 
           call VecRestoreArray(pmc%sim_aux%subsurf_por0,por0_p, &
