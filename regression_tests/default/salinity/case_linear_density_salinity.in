@@ -1,0 +1,176 @@
+#Description: Unit test problem for testing EOS
+
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+SUBSURFACE_TRANSPORT transport
+      MODE GIRT
+/
+    SUBSURFACE_FLOW flow
+      MODE RICHARDS
+    /
+    AUXILIARY SALINITY
+      SPECIES Tracer_salinity 35.453
+  /
+/
+END
+
+SUBSURFACE
+
+
+CHEMISTRY
+  PRIMARY_SPECIES
+      Tracer_salinity
+  END
+
+
+  DATABASE DATABASE ../../../database/hanford.dat
+  OUTPUT
+    ALL
+    TOTAL 
+  /
+END
+
+
+
+#=========================== numerical methods ================================
+NUMERICAL_METHODS FLOW
+
+  LINEAR_SOLVER
+    SOLVER DIRECT
+  /
+
+END
+
+#=========================== regression =======================================
+REGRESSION
+  CELLS_PER_PROCESS 1
+END
+
+#=========================== flow mode ========================================
+
+#=========================== solver options ===================================
+
+#=========================== discretization ===================================
+GRID
+  TYPE STRUCTURED
+  NXYZ 1 1 1
+  BOUNDS
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 1.d0
+  /
+END
+
+#=========================== EOS ==============================================
+EOS WATER
+  DENSITY LINEAR_SALT 996.d0 0.625
+  ENTHALPY DEFAULT
+  VISCOSITY CONSTANT 8.904156d-4
+END
+
+#=========================== fluid properties =================================
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.d-9
+END
+
+#=========================== material properties ==============================
+MATERIAL_PROPERTY soil1
+  ID 1
+  POROSITY 0.25d0
+  PERMEABILITY
+    PERM_ISO 1.d-12
+  /
+  CHARACTERISTIC_CURVES default
+END
+
+#=========================== characteristic curves ============================
+CHARACTERISTIC_CURVES default
+  SATURATION_FUNCTION VAN_GENUCHTEN
+    M 0.286
+    ALPHA  1.9401d-4
+    LIQUID_RESIDUAL_SATURATION 0.115
+  /
+  PERMEABILITY_FUNCTION MUALEM_VG_LIQ
+    M 0.286
+    LIQUID_RESIDUAL_SATURATION 0.115
+  /
+END
+
+
+#=========================== output options ===================================
+OUTPUT
+  VARIABLES
+    LIQUID_PRESSURE
+    LIQUID_SATURATION
+    LIQUID_DENSITY
+    LIQUID_MOBILITY
+  /
+END
+
+#=========================== times ============================================
+TIME
+  FINAL_TIME 1.d0 d
+  INITIAL_TIMESTEP_SIZE 1.d-3 d
+  MAXIMUM_TIMESTEP_SIZE 1.d0 d
+END
+
+#=========================== regions ==========================================
+REGION all
+  COORDINATES
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 1.d0
+  /
+END
+
+REGION west
+  FACE WEST
+  COORDINATES
+    0.d0 0.d0 0.d0
+    0.d0 1.d0 1.d0
+  /
+END
+
+#=========================== flow conditions ==================================
+FLOW_CONDITION initial
+  TYPE
+    LIQUID_PRESSURE Dirichlet
+  /
+  LIQUID_PRESSURE 101325.d0 ! Pa
+END
+
+TRANSPORT_CONDITION initial_transport
+  TYPE zero_gradient
+  CONSTRAINT_LIST
+    0.d0 Initial_transport_constraint
+/
+END
+
+CONSTRAINT Initial_transport_constraint
+  CONCENTRATIONS
+      Tracer_salinity      1.d-1 T
+   /
+END
+
+#=========================== condition couplers ===============================
+# initial condition
+INITIAL_CONDITION
+  FLOW_CONDITION initial
+  TRANSPORT_CONDITION initial_transport
+  REGION all
+END
+
+# west boundary condition
+BOUNDARY_CONDITION west
+  FLOW_CONDITION initial
+  TRANSPORT_CONDITION initial_transport
+  REGION west
+END
+
+
+#=========================== stratigraphy couplers ============================
+STRATA
+  MATERIAL soil1
+  REGION all
+END
+
+END_SUBSURFACE

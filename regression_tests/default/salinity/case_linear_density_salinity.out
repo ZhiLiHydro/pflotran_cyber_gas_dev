@@ -1,0 +1,525 @@
+
+================================
+  PFLOTRAN Development Version
+================================
+
+"grid_structured_type" set to default value.
+pflotran card:: CHEMISTRY
+pflotran card:: NUMERICAL_METHODS
+pflotran card:: REGRESSION
+pflotran card:: GRID
+pflotran card:: EOS
+"EOS,WATER,VISCOSITY,CONSTANT units" set to default value.
+pflotran card:: FLUID_PROPERTY
+"FLUID_PROPERTY,diffusion_coefficient units" set to default value.
+pflotran card:: MATERIAL_PROPERTY
+  Name :: soil1
+pflotran card:: CHARACTERISTIC_CURVES
+  Name :: default
+ WARNING: Mualem-van Genuchten relative permeability function is being used without SMOOTH option.
+pflotran card:: OUTPUT
+pflotran card:: TIME
+pflotran card:: REGION
+all
+pflotran card:: REGION
+west
+pflotran card:: FLOW_CONDITION
+initial
+pflotran card:: TRANSPORT_CONDITION
+initial_transport
+pflotran card:: CONSTRAINT
+Initial_transport_constraint
+Constraint Species: Tracer_salinity
+pflotran card:: INITIAL_CONDITION
+"Initial Condition name" set to default value.
+pflotran card:: BOUNDARY_CONDITION
+pflotran card:: STRATA
+pflotran card:: END_SUBSURFACE
+--------------------------------------------------------------------------------
+
+     1  Primary Species
+
+              Tracer_salinity     
+
+     0  Secondary Complex Species
+
+
+
+     0  Active Gas Species
+
+
+
+     0  Passive Gas Species
+
+
+
+     0  Reference Minerals
+
+
+
+     0  Kinetic Mineral Reactions
+
+
+
+     0  Ion Exchange Reactions
+
+     0  Ion Exchange Cations
+--------------------------------------------------------------------------------
+
+Number of processes: 1
+
+Extent of Gridded Domain
+ X: 0.000000E+00 - 1.000000E+00
+ Y: 0.000000E+00 - 1.000000E+00
+ Z: 0.000000E+00 - 1.000000E+00
+
+Size of Gridded Domain
+ Number of grid cells: 1
+
+Min/Max Cell Volumes [m^3]
+ Maximum: 1.000000E+00
+ Minimum: 1.000000E+00
+
+Number of active grid cells: 1
+Number of inactive grid cells: 0
+
+  Setting up TRAN Realization
+
+Initializing constraints for reactive transport.
+  Finished setting up TRAN Realization
+
+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+  Initial Condition
+
+--------------------------------------------------------------------------------
+          Flow Condition:   initial
+     Transport Condition:   initial_transport
+                  Region:   all
+--------------------------------------------------------------------------------
+
+  Flow Condition: initial
+    Synchronize time with update: no
+    Time units: yr
+    Length units: m
+      Datum:
+
+    Sub Condition: pressure
+      Type: dirichlet
+      Gradient:
+      Data:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Transient: no
+          Array Rank:  1
+
+--------------------------------------------------------------------------------
+
+  Transport Condition: initial_transport
+
+  Constraint: Initial_transport_constraint
+
+  species       molality
+  Tracer_salin  1.0040E-01
+
+
+--------------------------------------------------------------------------------
+
+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+  Boundary Condition
+
+--------------------------------------------------------------------------------
+          Flow Condition:   initial
+     Transport Condition:   initial_transport
+                  Region:   west
+--------------------------------------------------------------------------------
+
+  Flow Condition: initial
+    Synchronize time with update: no
+    Time units: yr
+    Length units: m
+      Datum:
+
+    Sub Condition: pressure
+      Type: dirichlet
+      Gradient:
+      Data:
+        Dataset: Unnamed Ascii Dataset
+          Type: dataset_ascii_type
+          Transient: no
+          Array Rank:  1
+
+--------------------------------------------------------------------------------
+
+  Transport Condition: initial_transport
+
+  Constraint: Initial_transport_constraint
+
+  species       molality
+  Tracer_salin  1.0040E-01
+
+
+--------------------------------------------------------------------------------
+Default HDF5 method is used in Initialization
+  Beginning setup of FLOW SNES
+ number of dofs =   1, number of phases =   1
+ mode = Richards: p
+  Finished setting up FLOW SNES
+mode = Reactive Transport
+  Beginning setup of TRAN SNES
+  Finished setting up TRAN SNES
+
+ Requested processors and decomposition =     1, npx,y,z=   -1  -1  -1
+ Actual decomposition: npx,y,z=    1   1   1
+
+
+FLOW Time Stepper SNES
+      maximum number of steps: 999999
+constant time steps threshold: 5
+       maximum number of cuts: 16
+             reduction factor: 5.000000E-01
+        maximum growth factor: 2.000000E+00
+                 acceleration: on
+       acceleration threshold: 5
+       number of ramp entries: 5
+                ramp entry #1: 2.0000
+                ramp entry #2: 2.0000
+                ramp entry #3: 2.0000
+                ramp entry #4: 2.0000
+                ramp entry #5: 2.0000
+                ramp entry #6: 1.8000
+                ramp entry #7: 1.6000
+                ramp entry #8: 1.4000
+                ramp entry #9: 1.2000
+               ramp entry #10: 1.0000
+               ramp entry #11: 1.0000
+               ramp entry #12: 1.0000
+               ramp entry #13: 1.0000
+
+FLOW Newton Solver
+                         atol: 1.000000E-50
+                         rtol: 1.000000E-08
+                         stol: 1.000000E-08
+                         dtol: 1.000000E+04
+                      maxnorm: 1.000000E+20
+                    inftolres: -9.990000E+02
+                    inftolupd: -9.990000E+02
+                 inftolrelupd: -9.990000E+02
+                 inftolsclres: -9.990000E+02
+                     max iter: 50
+                     min iter: 1
+                         maxf: 10000
+                  matrix type: baij
+         precond. matrix type: baij
+               inexact newton: off
+            print convergence: on
+   print detailed convergence: off
+          check infinity norm: on
+
+FLOW Linear Solver
+                       solver: preonly
+               preconditioner: lu
+                         atol: 1.000000E-50
+                         rtol: 1.000000E-05
+                         dtol: 1.000000E+04
+            maximum iteration: 10000
+
+TRAN Time Stepper SNES
+      maximum number of steps: 999999
+constant time steps threshold: 5
+       maximum number of cuts: 16
+             reduction factor: 5.000000E-01
+        maximum growth factor: 2.000000E+00
+                 acceleration: on
+       acceleration threshold: 5
+       number of ramp entries: 5
+                ramp entry #1: 2.0000
+                ramp entry #2: 2.0000
+                ramp entry #3: 2.0000
+                ramp entry #4: 2.0000
+                ramp entry #5: 2.0000
+                ramp entry #6: 1.8000
+                ramp entry #7: 1.6000
+                ramp entry #8: 1.4000
+                ramp entry #9: 1.2000
+               ramp entry #10: 1.0000
+               ramp entry #11: 1.0000
+               ramp entry #12: 1.0000
+               ramp entry #13: 1.0000
+
+TRAN Newton Solver
+                         atol: 1.000000E-50
+                         rtol: 1.000000E-08
+                         stol: 1.000000E-08
+                         dtol: 1.000000E+04
+                      maxnorm: 1.000000E+20
+                    inftolres: -9.990000E+02
+                    inftolupd: -9.990000E+02
+                 inftolrelupd: -9.990000E+02
+                 inftolsclres: -9.990000E+02
+                     max iter: 50
+                     min iter: 1
+                         maxf: 10000
+                  matrix type: baij
+         precond. matrix type: baij
+               inexact newton: off
+            print convergence: on
+   print detailed convergence: off
+          check infinity norm: on
+
+TRAN Linear Solver
+                       solver: bcgs
+               preconditioner: ilu
+                         atol: 1.000000E-50
+                         rtol: 1.000000E-05
+                         dtol: 1.000000E+04
+            maximum iteration: 10000
+
+
+ Finished Initialization
+
+
+== RICHARDS FLOW ===============================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.01E+05 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step      1 Time=  1.00000E-03 Dt=  1.00000E-03 [d] conv_reason: 2
+  newton =   1 [       1] linear =     1 [         1] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 1 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change: dpmx=   0.0000E+00
+
+== REACTIVE TRANSPORT ==========================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.00E-01 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step      1 Time=  1.00000E-03 Dt=  1.00000E-03 [d] conv_reason: 2
+  newton =   1 [       1] linear =     0 [         0] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 0 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change:  dcmx=   0.0000E+00  dc/dt=   0.0000E+00 [mol/s]
+
+== AUXILIARY SALINITY ==========================================================
+
+== RICHARDS FLOW ===============================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.01E+05 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step      2 Time=  3.00000E-03 Dt=  2.00000E-03 [d] conv_reason: 2
+  newton =   1 [       2] linear =     1 [         2] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 1 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change: dpmx=   0.0000E+00
+
+== REACTIVE TRANSPORT ==========================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.00E-01 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step      2 Time=  3.00000E-03 Dt=  2.00000E-03 [d] conv_reason: 2
+  newton =   1 [       2] linear =     0 [         0] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 0 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change:  dcmx=   0.0000E+00  dc/dt=   0.0000E+00 [mol/s]
+
+== AUXILIARY SALINITY ==========================================================
+
+== RICHARDS FLOW ===============================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.01E+05 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step      3 Time=  7.00000E-03 Dt=  4.00000E-03 [d] conv_reason: 2
+  newton =   1 [       3] linear =     1 [         3] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 1 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change: dpmx=   0.0000E+00
+
+== REACTIVE TRANSPORT ==========================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.00E-01 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step      3 Time=  7.00000E-03 Dt=  4.00000E-03 [d] conv_reason: 2
+  newton =   1 [       3] linear =     0 [         0] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 0 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change:  dcmx=   0.0000E+00  dc/dt=   0.0000E+00 [mol/s]
+
+== AUXILIARY SALINITY ==========================================================
+
+== RICHARDS FLOW ===============================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.01E+05 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step      4 Time=  1.50000E-02 Dt=  8.00000E-03 [d] conv_reason: 2
+  newton =   1 [       4] linear =     1 [         4] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 1 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change: dpmx=   0.0000E+00
+
+== REACTIVE TRANSPORT ==========================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.00E-01 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step      4 Time=  1.50000E-02 Dt=  8.00000E-03 [d] conv_reason: 2
+  newton =   1 [       4] linear =     0 [         0] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 0 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change:  dcmx=   0.0000E+00  dc/dt=   0.0000E+00 [mol/s]
+
+== AUXILIARY SALINITY ==========================================================
+
+== RICHARDS FLOW ===============================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.01E+05 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step      5 Time=  3.10000E-02 Dt=  1.60000E-02 [d] conv_reason: 2
+  newton =   1 [       5] linear =     1 [         5] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 1 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change: dpmx=   0.0000E+00
+
+== REACTIVE TRANSPORT ==========================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.00E-01 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step      5 Time=  3.10000E-02 Dt=  1.60000E-02 [d] conv_reason: 2
+  newton =   1 [       5] linear =     0 [         0] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 0 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change:  dcmx=   0.0000E+00  dc/dt=   0.0000E+00 [mol/s]
+
+== AUXILIARY SALINITY ==========================================================
+
+== RICHARDS FLOW ===============================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.01E+05 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step      6 Time=  6.30000E-02 Dt=  3.20000E-02 [d] conv_reason: 2
+  newton =   1 [       6] linear =     1 [         6] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 1 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change: dpmx=   0.0000E+00
+
+== REACTIVE TRANSPORT ==========================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.00E-01 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step      6 Time=  6.30000E-02 Dt=  3.20000E-02 [d] conv_reason: 2
+  newton =   1 [       6] linear =     0 [         0] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 0 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change:  dcmx=   0.0000E+00  dc/dt=   0.0000E+00 [mol/s]
+
+== AUXILIARY SALINITY ==========================================================
+
+== RICHARDS FLOW ===============================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.01E+05 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step      7 Time=  1.27000E-01 Dt=  6.40000E-02 [d] conv_reason: 2
+  newton =   1 [       7] linear =     1 [         7] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 1 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change: dpmx=   0.0000E+00
+
+== REACTIVE TRANSPORT ==========================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.00E-01 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step      7 Time=  1.27000E-01 Dt=  6.40000E-02 [d] conv_reason: 2
+  newton =   1 [       7] linear =     0 [         0] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 0 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change:  dcmx=   0.0000E+00  dc/dt=   0.0000E+00 [mol/s]
+
+== AUXILIARY SALINITY ==========================================================
+
+== RICHARDS FLOW ===============================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.01E+05 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step      8 Time=  2.55000E-01 Dt=  1.28000E-01 [d] conv_reason: 2
+  newton =   1 [       8] linear =     1 [         8] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 1 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change: dpmx=   0.0000E+00
+
+== REACTIVE TRANSPORT ==========================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.00E-01 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step      8 Time=  2.55000E-01 Dt=  1.28000E-01 [d] conv_reason: 2
+  newton =   1 [       8] linear =     0 [         0] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 0 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change:  dcmx=   0.0000E+00  dc/dt=   0.0000E+00 [mol/s]
+
+== AUXILIARY SALINITY ==========================================================
+
+== RICHARDS FLOW ===============================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.01E+05 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step      9 Time=  5.11000E-01 Dt=  2.56000E-01 [d] conv_reason: 2
+  newton =   1 [       9] linear =     1 [         9] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 1 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change: dpmx=   0.0000E+00
+
+== REACTIVE TRANSPORT ==========================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.00E-01 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step      9 Time=  5.11000E-01 Dt=  2.56000E-01 [d] conv_reason: 2
+  newton =   1 [       9] linear =     0 [         0] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 0 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change:  dcmx=   0.0000E+00  dc/dt=   0.0000E+00 [mol/s]
+
+== AUXILIARY SALINITY ==========================================================
+
+== RICHARDS FLOW ===============================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.01E+05 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step     10 Time=  1.00000E+00 Dt=  4.89000E-01 [d] conv_reason: 2
+  newton =   1 [      10] linear =     1 [        10] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 1 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change: dpmx=   0.0000E+00
+
+== REACTIVE TRANSPORT ==========================================================
+  0 2r: 0.00E+00 2x: 0.00E+00 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn:   0
+  1 2r: 0.00E+00 2x: 1.00E-01 2u: 0.00E+00 ir: 0.00E+00 iu: 0.00E+00 rsn: atol
+
+ Step     10 Time=  1.00000E+00 Dt=  4.89000E-01 [d] conv_reason: 2
+  newton =   1 [      10] linear =     0 [         0] cuts =  0 [   0]
+  --> SNES Linear/Non-Linear Iterations = 0 / 1
+  --> SNES Residual: 0.000000E+00 0.000000E+00 0.000000E+00
+  --> max change:  dcmx=   0.0000E+00  dc/dt=   0.0000E+00 [mol/s]
+
+== AUXILIARY SALINITY ==========================================================
+
+
+PMCSubsurfaceFlow
+ Total Time: 3.1824E-03 seconds
+
+ FLOW TS SNES steps = 10  newton = 10  linear = 10  cuts = 0
+ FLOW TS SNES Wasted Linear Iterations = 0
+ FLOW TS SNES Wasted Newton Iterations = 0
+ FLOW TS SNES time = 0.0 seconds
+
+PMCSubsurfaceTransport
+ Total Time: 2.2621E-03 seconds
+
+ TRAN TS SNES steps = 10  newton = 10  linear = 0  cuts = 0
+ TRAN TS SNES Wasted Linear Iterations = 0
+ TRAN TS SNES Wasted Newton Iterations = 0
+ TRAN TS SNES time = 0.0 seconds
+
+SALINITY
+ Total Time: 0.0000E+00 seconds
+
+ --> write regression output file: case_linear_density_salinity.regression
+
+ Wall Clock Time:  7.3293E-03 [sec]   1.2215E-04 [min]   2.0359E-06 [hr]

@@ -1,0 +1,28 @@
+-- PRESSURE: Liquid Pressure --
+        1:   1.0132500000000E+05
+-- SATURATION: Liquid Saturation --
+        1:   1.0000000000000E+00
+-- GENERIC: Liquid Density --
+        1:   9.9822174790608E+02
+-- GENERIC: Liquid Mobility --
+        1:   1.1230710692849E+03
+-- CONCENTRATION: Total Tracer_salinity --
+        1:   1.0022306705884E-01
+-- DISCRETE: Material ID --
+        1:         1
+-- SOLUTION: Flow --
+   Time (seconds):   1.4373030001025E-03
+   Time Steps:           10
+   Newton Iterations:           10
+   Linear Solver Iterations:           10
+   Time Step Cuts:            0
+   Solution 2-Norm:   1.0132500000000E+05
+   Residual 2-Norm:   0.0000000000000E+00
+-- SOLUTION: Transport --
+   Time (seconds):   1.0998480000808E-03
+   Time Steps:           10
+   Newton Iterations:           10
+   Linear Solver Iterations:            0
+   Time Step Cuts:            0
+   Solution 2-Norm:   1.0040160642570E-01
+   Residual 2-Norm:   0.0000000000000E+00
