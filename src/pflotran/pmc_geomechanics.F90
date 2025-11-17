@@ -388,10 +388,10 @@ subroutine PMCGeomechanicsSetAuxData(this)
   PetscInt :: i
   PetscInt :: parameter_index
 
-  PetscInt :: strainv_0_id, stressv_0_id, press_0_id
+  PetscInt :: strainv_0_id, press_0_id
   PetscInt :: strainv_id, strainv_old_id
   PetscInt :: porosity_id
-  PetscInt :: temp_porosity_id, porosity_old_id
+  PetscInt :: temp_porosity_id
   PetscInt :: temp_0_id
 
   type(global_auxvar_type), pointer :: global_auxvars(:)
@@ -403,9 +403,8 @@ subroutine PMCGeomechanicsSetAuxData(this)
 
   PetscReal :: biot_coeff, youngs_mod, poissons_ratio, dr_bulk_modulus
   PetscReal :: strain_vol
-  PetscReal :: porosity_0, strain_vol_0
   PetscInt :: imat
-  PetscInt :: id_porosity_mech, id_porosity_flow
+  PetscInt :: id_porosity_mech
   PetscInt :: id_pressure_mech
 
 #if GEOMECH_DEBUG
@@ -677,7 +676,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
                   global_auxvar%parameters(id_porosity_mech) = &
                     pmc%subsurf_realization%patch%aux%Material% &
                     auxvars(local_id)%porosity_0
-                    
+
                 elseif (this%timestepper%steps == 0) then ! at init
                   global_auxvar%parameters(strainv_0_id) = strain_vol
                   global_auxvar%parameters(strainv_old_id) = strain_vol
