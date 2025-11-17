@@ -279,7 +279,15 @@ recursive subroutine PMCGeomechanicsRunToTime(this,sync_time,stop_flag)
 
   ! Check if it is initial solve
   if (this%timestepper%steps == 1) then
+    ! jaa - do we need this?
     this%option%geomechanics%initial_flag = PETSC_TRUE
+  endif
+
+  if (this%option%geomechanics%skip_stepdt_flag) then
+    ! reset
+    this%option%geomechanics%skip_stepdt_flag = PETSC_FALSE
+    print *, 'skipping PMCGeomechanicsRunToTime ...'
+    return
   endif
 
   ! Have to loop over all process models coupled in this object and update
@@ -390,8 +398,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
 
   PetscInt :: strainv_0_id, press_0_id
   PetscInt :: strainv_id, strainv_old_id
-  PetscInt :: porosity_id
-  PetscInt :: temp_porosity_id
+  PetscInt :: flow_porosity_id
   PetscInt :: temp_0_id
 
   type(global_auxvar_type), pointer :: global_auxvars(:)
@@ -636,12 +643,8 @@ subroutine PMCGeomechanicsSetAuxData(this)
                 strainv_old_id = ParameterGetIDFromName( &
                                    'geomech_vol_strain_old', option)
                 press_0_id = ParameterGetIDFromName( &
-                                   'geomech_press_0', &
-                                   pmc%subsurf_realization%option)
-                porosity_id = ParameterGetIDFromName( &
-                                   'geomech_porosity', &
-                                   pmc%subsurf_realization%option)
-                temp_porosity_id = ParameterGetIDFromName( &
+                                   'geomech_press_0', option)
+                flow_porosity_id = ParameterGetIDFromName( &
                                      'flow_porosity',option)
                 temp_0_id = ParameterGetIDFromName( &
                                     'geomech_temp_0',option)
@@ -650,6 +653,9 @@ subroutine PMCGeomechanicsSetAuxData(this)
                 ! if threshold is not met
                 id_porosity_mech = ParameterGetIDFromName( &
                                    'geomech_stored_porosity', &
+                                   option)
+                id_pressure_mech = ParameterGetIDFromName( &
+                                   'geomech_stored_pressure', &
                                    option)
 
                 ghosted_id = grid%nL2G(local_id)
@@ -668,7 +674,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
 
                 if (this%timestepper%steps < 0) then ! before init
                   global_auxvar%parameters(press_0_id) = local_pressure
-                  global_auxvar%parameters(temp_porosity_id) = &
+                  global_auxvar%parameters(flow_porosity_id) = &
                    pmc%subsurf_realization%patch%aux%Material% &
                     auxvars(local_id)%porosity_0
                   global_auxvar%parameters(strainv_0_id) = 0.d0
@@ -681,7 +687,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
                   global_auxvar%parameters(strainv_0_id) = strain_vol
                   global_auxvar%parameters(strainv_old_id) = strain_vol
                   global_auxvar%parameters(strainv_id) = strain_vol
-                  global_auxvar%parameters(temp_porosity_id) = &
+                  global_auxvar%parameters(flow_porosity_id) = &
                     pmc%subsurf_realization%patch%aux%Material% &
                     auxvars(local_id)%porosity_0
                   global_auxvar%parameters(id_porosity_mech) = &
@@ -690,16 +696,15 @@ subroutine PMCGeomechanicsSetAuxData(this)
                   if (this%option%iflowmode == TH_MODE) then
                     global_auxvar%parameters(temp_0_id) = local_temp
                   endif
+
                 else ! post init
                   global_auxvar%parameters(strainv_old_id) = &
                     global_auxvar%parameters(strainv_id)
                   global_auxvar%parameters(strainv_id) = strain_vol
                   global_auxvar%parameters(id_porosity_mech) = &
-                  global_auxvar%parameters(temp_porosity_id)
+                  global_auxvar%parameters(flow_porosity_id)
                 endif
-                id_pressure_mech = ParameterGetIDFromName( &
-                                   'geomech_stored_pressure', &
-                                   option)
+
                 global_auxvar%parameters(id_pressure_mech) = &
                   local_pressure
                 print *, 'id, press ', local_id, local_pressure
