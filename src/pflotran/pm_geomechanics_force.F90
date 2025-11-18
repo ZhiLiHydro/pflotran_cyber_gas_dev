@@ -365,14 +365,9 @@ subroutine PMGeomechForcePreSolve(this)
   threshold_tol = option%geomechanics%del_poro_tol
   max_del_poro = 0.d0
 
-  print *, 'in PMGeomechForcePreSolve'
   print *, 'init flag: ', option%geomechanics%initial_flag
 
-  ! jaa: add skip check here?
   if (.not. option%geomechanics%initial_flag) then
-    !if (this%option%iflowmode == RICHARDS_MODE) then
-    !  print *, 'need to update richards with TH changes! jaa'; stop
-    !endif
     print *, 'want to skip here?'
     grid => this%subsurf_realization%patch%grid
     global_auxvars => this%subsurf_realization%patch%aux% &
@@ -387,10 +382,8 @@ subroutine PMGeomechForcePreSolve(this)
       por_mech = global_auxvars(ghosted_id)%parameters(por_mech_id)
       por_flow = global_auxvars(ghosted_id)%parameters(por_flow_id)
       max_del_poro = max(max_del_poro, abs(por_flow-por_mech)/por_mech)
-      !print *, 'ghosted_id, por_mech, por_flow, max_del_poro, tol: ', &
-      !       ghosted_id, por_mech, por_flow, max_del_poro, threshold_tol
     enddo
-    print *, 'threshold_tol, max_del_poro', threshold_tol, max_del_poro
+    !print *, 'threshold_tol, max_del_poro', threshold_tol, max_del_poro
 
     if (max_del_poro < threshold_tol) then ! skip mech
       option%geomechanics%skip_stepdt_flag = PETSC_TRUE
@@ -401,7 +394,7 @@ subroutine PMGeomechForcePreSolve(this)
       !    global_auxvars(ghosted_id)%parameters(por_flow_id)
       !enddo
     else
-      print *, 'continue to solve mech..'
+      call PrintMsg(this%option,'Threshold unmet. Continue to solve..')
     endif
 
   endif

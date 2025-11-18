@@ -285,7 +285,7 @@ subroutine TimestepperKSPStepDT(this,process_model,stop_flag)
     class is (pm_geomech_force_type)
       call process_model%PreSolve()
       if (option%geomechanics%skip_stepdt_flag) then
-        print *, 'skipping timestepper_KSP ..'
+        call PrintMsg(option,'skipping timestepper_KSP ..')
         return
       endif
   end select

@@ -32,9 +32,6 @@ module Option_Geomechanics_module
     PetscReal :: youngs_modulus(100)
     PetscReal :: biot_coefficient(100)
     PetscReal :: thermal_exp_coefficient(100)
-    ! move later
-    PetscReal :: porosity_initial(100)
-    PetscReal :: fluid_compressibility(3)
 
   end type geomechanics_option_type
 

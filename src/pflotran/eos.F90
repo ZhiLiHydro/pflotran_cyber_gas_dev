@@ -140,7 +140,6 @@ subroutine EOSRead(input,option)
                 call InputReadDouble(input,option,temparray(3))
                 call InputErrorMsg(input,option,'WATER_COMPRESSIBILITY', &
                                    'EOS,WATER,DENSITY,LINEAR')
-                option%geomechanics%fluid_compressibility(1) = temparray(3)
               case('QUADRATIC')
                 call InputPushBlock(input,option)
                 do

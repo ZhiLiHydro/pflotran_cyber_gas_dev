@@ -1319,8 +1319,8 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
           id_porosity = ParameterGetIDFromName('flow_porosity',option)
           por = global_auxvar%parameters(id_porosity)
           dpor_dT = alpha
-    endselect ! split_scheme
-  endselect ! flow_coupling
+    end select ! split_scheme
+  end select ! flow_coupling
 
   porXvol = por*vol
 
@@ -1532,6 +1532,7 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
     case(GEOMECH_TWO_WAY_COUPLED)
       select case(option%geomechanics%split_scheme)
         case(GEOMECH_FIXED_STRESS_SPLIT)
+          ! get geomech and flow material properties
           youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
           poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
           biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
@@ -1545,38 +1546,29 @@ subroutine THAccumulation(th_auxvar,global_auxvar, &
           ! C2 constant
           C2 = biot_coeff**2/dr_bulk_modulus
           ! get stored values
-          id_press_0=ParameterGetIDFromName('geomech_press_0',option)
-          id_temp_0=ParameterGetIDFromName('geomech_temp_0',option)
-          id_vstrain_0=ParameterGetIDFromName('geomech_vol_strain_0',option)
-          id_vstrain=ParameterGetIDFromName('geomech_vol_strain',option)
-          id_press_mech=ParameterGetIDFromName('geomech_stored_pressure',option)
-          id_porosity_mech=ParameterGetIDFromName( &
-                            'geomech_stored_porosity',option)
+          id_press_0=ParameterGetIDFromName('press_0',option)
+          id_temp_0=ParameterGetIDFromName('temp_0',option)
+          id_vstrain_0=ParameterGetIDFromName('vol_strain_0',option)
+          id_vstrain=ParameterGetIDFromName('vol_strain',option)
+          id_press_mech=ParameterGetIDFromName('stored_pressure',option)
+          id_porosity_mech=ParameterGetIDFromName('stored_porosity',option)
+          porosity_id = ParameterGetIDFromName('flow_porosity', option)
           press_0 = global_auxvar%parameters(id_press_0)
           press_mech = global_auxvar%parameters(id_press_mech)
           temp_0 = global_auxvar%parameters(id_temp_0)
           vstrain_0 = global_auxvar%parameters(id_vstrain_0)
           vstrain = global_auxvar%parameters(id_vstrain)
-          ! delta vstrain
-          del_vstrain = vstrain - vstrain_0
         if (option%iflag == TH_UPDATE_FOR_FIXED_ACCUM) then
-          ! threshold old
-          !por = porosity_0 + (biot_coeff * del_vstrain) + &
-          !      ( C1 * (press_mech - press_0)) + &
-          !      ( (C2 + C1) * ( th_auxvar%pres - press_mech )) + &
-          !      ( alpha * (th_auxvar%temp - temp_0))
-          !
           por = global_auxvar%parameters(id_porosity_mech)
         else
+          ! delta vstrain
+          del_vstrain = vstrain - vstrain_0
           ! Burghardt 2017 paper
-          ! new porosity (mass conservative)
           por = porosity_0 + (biot_coeff * del_vstrain) + &
                 ( C1 * ( press_mech - press_0 )) + &
                 ( (C2 + C1) * ( th_auxvar%pres - press_mech )) + &
                 ( alpha * (th_auxvar%temp - temp_0 ))
-          ! store new flow porosity for threshold check
-          porosity_id = ParameterGetIDFromName( &
-                             'flow_porosity', option)
+          ! store new (mass conserved) flow porosity for threshold check
           global_auxvar%parameters(porosity_id) = por
         endif
 

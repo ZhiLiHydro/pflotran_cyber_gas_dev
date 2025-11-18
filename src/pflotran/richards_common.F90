@@ -78,6 +78,7 @@ subroutine RichardsAccumDerivative(rich_auxvar,global_auxvar, &
     case(GEOMECH_TWO_WAY_COUPLED)
       select case(option%geomechanics%split_scheme)
         case(GEOMECH_FIXED_STRESS_SPLIT)
+          ! get geomech and flow material properties
           porosity_0 = material_auxvar%porosity_0
           youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
           poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
@@ -163,9 +164,9 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
   PetscReal :: youngs_mod, poissons_ratio
   PetscReal :: porosity_0, dr_bulk_modulus
   PetscReal :: C1, C2, press_0, vstrain_0, vstrain
-  PetscReal :: del_vstrain, por, press_mech, vstrain_old
+  PetscReal :: del_vstrain, por, press_mech
   PetscInt :: id_porosity, id_press_0, id_vstrain_0
-  PetscInt :: id_vstrain, id_vstrain_old, id_press_mech, id_porosity_mech
+  PetscInt :: id_vstrain, id_press_mech, id_porosity_mech
 
   vol_over_dt = material_auxvar%volume/option%flow_dt
 
@@ -178,40 +179,31 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
     case(GEOMECH_TWO_WAY_COUPLED)
       select case(option%geomechanics%split_scheme)
         case(GEOMECH_FIXED_STRESS_SPLIT)
+          ! get geomech and flow material properties
           youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
           poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
           biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
           porosity_0 = material_auxvar%porosity_0
           ! 3D bulk modulus
           dr_bulk_modulus = youngs_mod / &
-                               (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
+                            (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
           ! C1 constant
           C1 = (biot_coeff-porosity_0)*(1.d0 - biot_coeff)/dr_bulk_modulus
           ! C2 constant
           C2 = biot_coeff**2/dr_bulk_modulus
-          ! get stored values
-          id_press_0=ParameterGetIDFromName('geomech_press_0',option)
-          id_vstrain_0=ParameterGetIDFromName('geomech_vol_strain_0',option)
-          id_vstrain=ParameterGetIDFromName('geomech_vol_strain',option)
-          id_vstrain_old=ParameterGetIDFromName('geomech_vol_strain_old',option)
-          id_press_mech=ParameterGetIDFromName('geomech_stored_pressure',option)
-          id_porosity_mech=ParameterGetIDFromName( &
-                            'geomech_stored_porosity',option)
+          ! get stored parameters from pmc_geomech
+          id_press_0=ParameterGetIDFromName('press_0',option)
+          id_vstrain_0=ParameterGetIDFromName('vol_strain_0',option)
+          id_vstrain=ParameterGetIDFromName('vol_strain',option)
+          id_press_mech=ParameterGetIDFromName('stored_pressure',option)
+          id_porosity_mech=ParameterGetIDFromName('stored_porosity',option)
+          id_porosity = ParameterGetIDFromName('flow_porosity', option)
           press_0 = global_auxvar%parameters(id_press_0)
           press_mech = global_auxvar%parameters(id_press_mech)
           vstrain_0 = global_auxvar%parameters(id_vstrain_0)
-          vstrain_old = global_auxvar%parameters(id_vstrain_old)
           vstrain = global_auxvar%parameters(id_vstrain)
-          ! delta vstrain
-          !del_vstrain = vstrain - vstrain_0
           ! porosity@ n
           if (option%iflag == RICHARDS_UPDATE_FOR_FIXED_ACCUM) then
-            ! need to fix this, issue with old porosity use for threshold cases
-            !del_vstrain = vstrain_old - vstrain_0
-            !por = porosity_0 + (biot_coeff * del_vstrain) + &
-            !      ( C1 * (press_mech - press_0)) + &
-            !      ( (C2 + C1) * ( global_auxvar%pres(1) - press_mech ))
-            ! this works for non-threshold cases
             por = global_auxvar%parameters(id_porosity_mech)
           else ! porosity@ n+1
             ! delta vstrain
@@ -221,8 +213,7 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar, &
             por = porosity_0 + (biot_coeff * del_vstrain) + &
                   ( C1 * ( press_mech - press_0 )) + &
                   ( (C2 + C1) * ( global_auxvar%pres(1) - press_mech ))
-            ! store new flow porosity for threshold check
-            id_porosity = ParameterGetIDFromName('flow_porosity', option)
+            ! store new (mass conserved) flow porosity
             global_auxvar%parameters(id_porosity) = por
           endif
           print *, 'option%iflag, por, press, mechpress: ', &

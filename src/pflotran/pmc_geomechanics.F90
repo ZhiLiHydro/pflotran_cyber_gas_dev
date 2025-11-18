@@ -397,7 +397,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
   PetscInt :: parameter_index
 
   PetscInt :: strainv_0_id, press_0_id
-  PetscInt :: strainv_id, strainv_old_id
+  PetscInt :: strainv_id
   PetscInt :: flow_porosity_id
   PetscInt :: temp_0_id
 
@@ -635,34 +635,27 @@ subroutine PMCGeomechanicsSetAuxData(this)
             select case(option%geomechanics%split_scheme)
               case(GEOMECH_FIXED_STRESS_SPLIT)
                 ! ID's are registered in factory_subsurface.F90
-                ! get id's for global_aux%parameters
                 strainv_0_id = ParameterGetIDFromName( &
-                                   'geomech_vol_strain_0',option)
+                                   'vol_strain_0',option)
                 strainv_id = ParameterGetIDFromName( &
-                                   'geomech_vol_strain', option)
-                strainv_old_id = ParameterGetIDFromName( &
-                                   'geomech_vol_strain_old', option)
+                                   'vol_strain', option)
                 press_0_id = ParameterGetIDFromName( &
-                                   'geomech_press_0', option)
+                                   'press_0', option)
                 flow_porosity_id = ParameterGetIDFromName( &
-                                     'flow_porosity',option)
+                                   'flow_porosity',option)
                 temp_0_id = ParameterGetIDFromName( &
-                                    'geomech_temp_0',option)
+                                   'temp_0',option)
                 ! used to track threshold updates
                 ! needed since this routine will be skipped
                 ! if threshold is not met
                 id_porosity_mech = ParameterGetIDFromName( &
-                                   'geomech_stored_porosity', &
-                                   option)
+                                   'stored_porosity', option)
                 id_pressure_mech = ParameterGetIDFromName( &
-                                   'geomech_stored_pressure', &
-                                   option)
-
+                                   'stored_pressure', option)
                 ghosted_id = grid%nL2G(local_id)
                 global_auxvar => global_auxvars(ghosted_id)
                 imat = pmc%subsurf_realization%patch%aux%Material% &
                        auxvars(local_id)%id
-
                 ! calc volumetric strain
                 strain_vol = local_strain(1) + local_strain(2) + local_strain(3)
                 youngs_mod = this%option%geomechanics%youngs_modulus(imat)
@@ -678,14 +671,12 @@ subroutine PMCGeomechanicsSetAuxData(this)
                    pmc%subsurf_realization%patch%aux%Material% &
                     auxvars(local_id)%porosity_0
                   global_auxvar%parameters(strainv_0_id) = 0.d0
-                  global_auxvar%parameters(strainv_old_id) = 0.d0
                   global_auxvar%parameters(id_porosity_mech) = &
                     pmc%subsurf_realization%patch%aux%Material% &
                     auxvars(local_id)%porosity_0
 
                 elseif (this%timestepper%steps == 0) then ! at init
                   global_auxvar%parameters(strainv_0_id) = strain_vol
-                  global_auxvar%parameters(strainv_old_id) = strain_vol
                   global_auxvar%parameters(strainv_id) = strain_vol
                   global_auxvar%parameters(flow_porosity_id) = &
                     pmc%subsurf_realization%patch%aux%Material% &
@@ -698,8 +689,6 @@ subroutine PMCGeomechanicsSetAuxData(this)
                   endif
 
                 else ! post init
-                  global_auxvar%parameters(strainv_old_id) = &
-                    global_auxvar%parameters(strainv_id)
                   global_auxvar%parameters(strainv_id) = strain_vol
                   global_auxvar%parameters(id_porosity_mech) = &
                   global_auxvar%parameters(flow_porosity_id)

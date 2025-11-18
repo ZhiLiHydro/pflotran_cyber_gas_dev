@@ -376,23 +376,21 @@ subroutine FactorySubsurfaceInitSimulation(simulation)
       select case(option%geomechanics%split_scheme)
         case(GEOMECH_FIXED_STRESS_SPLIT)
           call RealizationRegisterParameter(realization, &
-                                            'geomech_vol_strain_0')
+                                            'vol_strain_0')
           call RealizationRegisterParameter(realization, &
-                                            'geomech_vol_strain_old')
+                                            'vol_strain')
           call RealizationRegisterParameter(realization, &
-                                            'geomech_vol_strain')
+                                            'press_old')
           call RealizationRegisterParameter(realization, &
-                                            'geomech_old_press')
+                                            'press_0')
           call RealizationRegisterParameter(realization, &
-                                            'geomech_press_0')
-          call RealizationRegisterParameter(realization, &
-                                            'geomech_temp_0')
+                                            'temp_0')
           call RealizationRegisterParameter(realization, &
                                             'flow_porosity')
           call RealizationRegisterParameter(realization, &
-                                            'geomech_stored_porosity')
+                                            'stored_porosity')
           call RealizationRegisterParameter(realization, &
-                                            'geomech_stored_pressure')
+                                            'stored_pressure')
     end select
   end select
 
