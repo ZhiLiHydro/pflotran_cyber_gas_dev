@@ -31,6 +31,58 @@ module Richards_module
   PetscInt, parameter :: VERT_CONN = 2
   PetscInt, parameter :: HORZ_CONN = 3
 
+!  procedure(RichardsAccumulationDummy), pointer :: RichardsAccumulationPro => null()
+!  procedure(RichardsAccumDerivativeDummy), pointer :: RichardsAccumDerivativePro => null()
+
+!  interface
+!    subroutine RichardsAccumulationDummy(rich_auxvar,global_auxvar, &
+!                                         material_auxvar, &
+!                                         option,Res)
+!      use Option_module
+!      use Richards_Aux_module
+!      use Global_Aux_module
+!      use Material_Aux_module, only : material_auxvar_type
+!      use petscsys
+!      use Parameter_module
+!
+!      implicit none
+!
+!      type(richards_auxvar_type) :: rich_auxvar
+!      type(global_auxvar_type) :: global_auxvar
+!      type(material_auxvar_type) :: material_auxvar
+!      type(option_type) :: option
+!      PetscReal :: Res(1:option%nflowdof)
+!    end subroutine RichardsAccumulationDummy
+!
+!    subroutine RichardsAccumDerivativeDummy(rich_auxvar,global_auxvar, &
+!                                   material_auxvar, &
+!                                   option, &
+!                                   characteristic_curves, &
+!                                   J)
+!      use Option_module
+!      use Richards_Aux_module
+!      use Global_Aux_module
+!      use Characteristic_Curves_module
+!      use Parameter_module
+!      use petscsys
+!      use Material_Aux_module, only : material_auxvar_type, &
+!                                     MaterialAuxVarInit, &
+!                                     MaterialAuxVarCopy, &
+!                                     MaterialAuxVarStrip
+!
+!      implicit none
+!
+!      type(richards_auxvar_type) :: rich_auxvar
+!      type(global_auxvar_type) :: global_auxvar
+!      type(material_auxvar_type) :: material_auxvar
+!      type(option_type) :: option
+!      class(characteristic_curves_type) :: characteristic_curves
+!
+!      PetscReal :: J(option%nflowdof,option%nflowdof)
+!
+!    end subroutine RichardsAccumDerivativeDummy
+!  end interface
+
   public RichardsResidual, &
          RichardsJacobian, &
          RichardsTimeCut,&
@@ -87,10 +139,14 @@ subroutine RichardsSetup(realization)
   use Realization_Subsurface_class
   use Patch_module
   use Output_Aux_module
+  use Option_module
+  use Richards_Common_module
 
   class(realization_subsurface_type) :: realization
 
   type(output_variable_list_type), pointer :: list
+
+  type(option_type), pointer :: option
 
   call RichardsSetupPatch(realization)
 
@@ -102,6 +158,21 @@ subroutine RichardsSetup(realization)
   richards_ts_count = 0
   richards_ts_cut_count = 0
   richards_ni_count = 0
+
+  RichardsAccumulationPro => RichardsAccumulation
+  RichardsAccumDerivativePro => RichardsAccumDerivative
+
+  option => realization%option
+
+  ! override pointer for fixed-stress coupled model
+  select case(option%geomechanics%flow_coupling)
+    case(GEOMECH_TWO_WAY_COUPLED)
+      select case(option%geomechanics%split_scheme)
+        case(GEOMECH_FIXED_STRESS_SPLIT)
+          RichardsAccumulationPro => RichardsAccumulationGeomech
+          RichardsAccumDerivativePro => RichardsAccumDerivativeGeomech
+    end select ! split_scheme
+  end select ! flow_coupling
 
 end subroutine RichardsSetup
 
@@ -1183,7 +1254,7 @@ subroutine RichardsUpdateFixedAccumPatch(realization)
                          patch%cc_id(ghosted_id))%ptr, &
                    grid%nG2A(ghosted_id), &
                    PETSC_TRUE,option)
-    call RichardsAccumulation(rich_auxvars(ghosted_id), &
+    call RichardsAccumulationPro(rich_auxvars(ghosted_id), &
                               global_auxvars(ghosted_id), &
                               material_auxvars(ghosted_id), &
                               option,accum_p(istart:istart))
@@ -2182,7 +2253,7 @@ subroutine RichardsResidualAccumulation(r,realization,pm_well,ierr)
       ghosted_id = grid%nL2G(local_id)
       !geh - Ignore inactive cells with inactive materials
       if (patch%imat(ghosted_id) <= 0) cycle
-      call RichardsAccumulation(rich_auxvars(ghosted_id), &
+      call RichardsAccumulationPro(rich_auxvars(ghosted_id), &
            global_auxvars(ghosted_id), &
            material_auxvars(ghosted_id), &
            option,Res)
@@ -2863,7 +2934,7 @@ subroutine RichardsJacobianAccumulation(A,realization,debug,ierr)
       ghosted_id = grid%nL2G(local_id)
       !geh - Ignore inactive cells with inactive materials
       if (patch%imat(ghosted_id) <= 0) cycle
-      call RichardsAccumDerivative(rich_auxvars(ghosted_id), &
+      call RichardsAccumDerivativePro(rich_auxvars(ghosted_id), &
            global_auxvars(ghosted_id), &
            material_auxvars(ghosted_id), &
            option, &

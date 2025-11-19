@@ -3487,6 +3487,7 @@ regression.o : \
   timestepper_base.o \
   utility.o
 richards.o : \
+  characteristic_curves.o \
   condition.o \
   connection.o \
   coupler.o \
@@ -3504,6 +3505,7 @@ richards.o : \
   matrix_zeroing.o \
   option.o \
   output_aux.o \
+  parameter.o \
   patch.o \
   petsc_utility.o \
   pflotran_constants.o \
