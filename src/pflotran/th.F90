@@ -1634,10 +1634,10 @@ subroutine THAccumDerivativeGeomech(th_auxvar,global_auxvar, &
   ! update porosity, dcompressed_porosity_dp, and set dpor_dT
   ! without geomech coupling, porosity is not a function of temperature
   porosity_0 = material_auxvar%porosity_0
-  youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
-  poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
-  biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
-  alpha = option%geomechanics%thermal_exp_coefficient(material_auxvar%id)
+  youngs_mod = th_auxvar%geomech_aux%GeomechParam%youngs_modulus(material_auxvar%id)
+  poissons_ratio = th_auxvar%geomech_aux%GeomechParam%poissons_ratio(material_auxvar%id)
+  biot_coeff = th_auxvar%geomech_aux%GeomechParam%biot_coeff(material_auxvar%id)
+  alpha = th_auxvar%geomech_aux%GeomechParam%thermal_exp_coeff(material_auxvar%id)
   ! Bulk modulus unit = Pa
   dr_bulk_modulus = youngs_mod / &
                    (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
@@ -1932,10 +1932,10 @@ subroutine THAccumulationGeomech(th_auxvar,global_auxvar, &
   por = material_auxvar%porosity
 
   ! get geomech and flow material properties
-  youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
-  poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
-  biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
-  alpha = option%geomechanics%thermal_exp_coefficient(material_auxvar%id)
+  youngs_mod = th_auxvar%geomech_aux%GeomechParam%youngs_modulus(material_auxvar%id)
+  poissons_ratio = th_auxvar%geomech_aux%GeomechParam%poissons_ratio(material_auxvar%id)
+  biot_coeff = th_auxvar%geomech_aux%GeomechParam%biot_coeff(material_auxvar%id)
+  alpha = th_auxvar%geomech_aux%GeomechParam%thermal_exp_coeff(material_auxvar%id)
   porosity_0 = material_auxvar%porosity_0
   ! 3D bulk modulus
   dr_bulk_modulus = youngs_mod / &

@@ -9,6 +9,7 @@ module Richards_Aux_module
 
   use PFLOTRAN_Constants_module
   use Matrix_Zeroing_module
+  use Geomechanics_Auxiliary_module
 
   implicit none
 
@@ -62,6 +63,7 @@ module Richards_Aux_module
     PetscReal :: dmass_dtime
 
     type(richards_well_aux_type), pointer :: well
+    type(geomech_auxiliary_type), pointer :: geomech_aux
   end type richards_auxvar_type
 
   type, public :: richards_type
@@ -172,6 +174,8 @@ subroutine RichardsAuxVarInit(auxvar,option)
   else
     nullify(auxvar%well)
   endif
+
+  nullify(auxvar%geomech_aux)
 
 end subroutine RichardsAuxVarInit
 
@@ -503,6 +507,8 @@ subroutine AuxVarDestroy(auxvar)
     nullify(auxvar%well)
   endif
 
+  nullify(auxvar%geomech_aux)
+
 end subroutine AuxVarDestroy
 
 ! ************************************************************************** !
@@ -553,6 +559,7 @@ subroutine RichardsAuxDestroy(aux)
   endif
   nullify(aux%matrix_buffer)
 #endif
+
 
   deallocate(aux)
   nullify(aux)

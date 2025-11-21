@@ -887,6 +887,7 @@ subroutine InitSubsurfGeomechInitSimulation(simulation, pm_geomech)
   class(timestepper_ksp_type), pointer :: timestepper
   type(geomechanics_regression_type), pointer :: geomech_regression
   PetscErrorCode :: ierr
+  PetscInt :: ghosted_id
 
   if (.not. associated(pm_geomech)) return
 
@@ -975,6 +976,32 @@ subroutine InitSubsurfGeomechInitSimulation(simulation, pm_geomech)
   call simulation%flow_process_model_coupler%SetAuxData()
   call simulation%geomech%process_model_coupler%GetAuxData()
   call simulation%geomech%process_model_coupler%SetAuxData()
+
+  ! jaa
+  if (option%iflowmode == TH_MODE) then
+
+    print *, 'TH mode.. want to set geomech aux'
+    do ghosted_id = 1, subsurf_realization%patch%grid%ngmax
+      ! idealy I only want to point the geomech aux for relavent vertex/flow
+      ! this works for now!
+      pm_geomech%subsurf_realization%patch%aux%th%auxvars(ghosted_id)%geomech_aux => &
+      pm_geomech%geomech_realization%geomech_patch%geomech_aux
+    enddo
+  !  pm_geomech%subsurf_realization%patch%aux%th%geomech_aux => &
+  !    pm_geomech%geomech_realization%geomech_patch%geomech_aux
+
+    !stop
+  elseif (option%iflowmode == RICHARDS_MODE) then
+    print *, 'RICHARDS HERE'
+    do ghosted_id = 1, subsurf_realization%patch%grid%ngmax
+      pm_geomech%subsurf_realization%patch%aux%richards%auxvars(ghosted_id)%geomech_aux => &
+      pm_geomech%geomech_realization%geomech_patch%geomech_aux
+    enddo
+  !  pm_geomech%subsurf_realization%patch%aux%richards%geomech_aux => &
+  !    pm_geomech%geomech_realization%geomech_patch%geomech_aux
+    !stop
+  endif
+
   ! this is solely for casting to pmc geomech
   select type(pmc => simulation%geomech%process_model_coupler)
     class is(pmc_geomechanics_type)

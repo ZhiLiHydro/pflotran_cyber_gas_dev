@@ -408,7 +408,6 @@ subroutine PMCGeomechanicsSetAuxData(this)
   Vec :: geomech_vec
   Vec :: subsurf_vec
 
-  PetscReal :: biot_coeff, youngs_mod, poissons_ratio, dr_bulk_modulus
   PetscReal :: strain_vol
   PetscInt :: imat
   PetscInt :: id_porosity_mech
@@ -658,12 +657,6 @@ subroutine PMCGeomechanicsSetAuxData(this)
                        auxvars(local_id)%id
                 ! calc volumetric strain
                 strain_vol = local_strain(1) + local_strain(2) + local_strain(3)
-                youngs_mod = this%option%geomechanics%youngs_modulus(imat)
-                poissons_ratio = this%option%geomechanics%poissons_ratio(imat)
-                biot_coeff = this%option%geomechanics%biot_coefficient(imat)
-
-                dr_bulk_modulus = youngs_mod / &
-                           (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
 
                 if (this%timestepper%steps < 0) then ! before init
                   global_auxvar%parameters(press_0_id) = local_pressure

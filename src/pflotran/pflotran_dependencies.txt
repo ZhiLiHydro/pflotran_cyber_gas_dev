@@ -3487,7 +3487,6 @@ regression.o : \
   timestepper_base.o \
   utility.o
 richards.o : \
-  characteristic_curves.o \
   condition.o \
   connection.o \
   coupler.o \
@@ -3505,7 +3504,6 @@ richards.o : \
   matrix_zeroing.o \
   option.o \
   output_aux.o \
-  parameter.o \
   patch.o \
   petsc_utility.o \
   pflotran_constants.o \
@@ -3921,6 +3919,7 @@ th_aux.o : \
   characteristic_curves_common.o \
   characteristic_curves_thermal.o \
   eos_water.o \
+  geomechanics_auxiliary.o \
   global_aux.o \
   material_aux.o \
   matrix_zeroing.o \

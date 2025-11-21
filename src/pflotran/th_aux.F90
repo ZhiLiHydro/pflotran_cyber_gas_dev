@@ -5,6 +5,7 @@ module TH_Aux_module
 
   use PFLOTRAN_Constants_module
   use Matrix_Zeroing_module
+  use Geomechanics_Auxiliary_module
 
   implicit none
 
@@ -87,6 +88,9 @@ module TH_Aux_module
     ! for numerical derivatives
     PetscReal :: pert
     type(th_auxvar_type), pointer :: auxvar_pert(:)
+
+    ! for geomechanics
+    type(geomech_auxiliary_type), pointer :: geomech_aux
 
 #if defined(CLM_PFLOTRAN) || defined(CLM_OFFLINE)
     PetscReal :: bc_alpha  ! Brooks Corey parameterization: alpha
@@ -336,6 +340,7 @@ recursive subroutine THAuxVarInit(auxvar,option,allocate_perturbation)
   else
     nullify(auxvar%auxvar_pert)
   endif
+  nullify(auxvar%geomech_aux)
 
 end subroutine THAuxVarInit
 
@@ -1432,6 +1437,7 @@ recursive subroutine THAuxVarDestroy(auxvar)
   if (associated(auxvar%ice)) deallocate(auxvar%ice)
   nullify(auxvar%ice)
 !  call THWellAuxVarDestroy(auxvar%auxvar_well)
+  nullify(auxvar%geomech_aux)
 
 end subroutine THAuxVarDestroy
 

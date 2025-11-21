@@ -215,9 +215,9 @@ subroutine RichardsAccumDerivativeGeomech(rich_auxvar,global_auxvar, &
 
   ! get geomech and flow material properties
   porosity_0 = material_auxvar%porosity_0
-  youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
-  poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
-  biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
+  youngs_mod = rich_auxvar%geomech_aux%GeomechParam%youngs_modulus(material_auxvar%id)
+  poissons_ratio = rich_auxvar%geomech_aux%GeomechParam%poissons_ratio(material_auxvar%id)
+  biot_coeff = rich_auxvar%geomech_aux%GeomechParam%biot_coeff(material_auxvar%id)
   ! Bulk modulus unit = Pa
   dr_bulk_modulus = youngs_mod / &
                    (3.d0 * (1.d0 - (2.d0 * poissons_ratio)))
@@ -340,9 +340,9 @@ subroutine RichardsAccumulationGeomech(rich_auxvar,global_auxvar, &
   vol_over_dt = material_auxvar%volume/option%flow_dt
 
   ! get geomech and flow material properties
-  youngs_mod = option%geomechanics%youngs_modulus(material_auxvar%id)
-  poissons_ratio = option%geomechanics%poissons_ratio(material_auxvar%id)
-  biot_coeff = option%geomechanics%biot_coefficient(material_auxvar%id)
+  youngs_mod = rich_auxvar%geomech_aux%GeomechParam%youngs_modulus(material_auxvar%id)
+  poissons_ratio = rich_auxvar%geomech_aux%GeomechParam%poissons_ratio(material_auxvar%id)
+  biot_coeff = rich_auxvar%geomech_aux%GeomechParam%biot_coeff(material_auxvar%id)
   porosity_0 = material_auxvar%porosity_0
   ! 3D bulk modulus
   dr_bulk_modulus = youngs_mod / &
