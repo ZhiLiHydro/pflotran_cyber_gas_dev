@@ -1535,11 +1535,12 @@ subroutine THAccumDerivativeGeomech(th_auxvar,global_auxvar, &
                                     thermal_cc, &
                                     vol_frac_prim,J)
   !
-  ! Computes derivatives of the accumulation
+  ! Modified copy of THAccumDerivative that accounts for geomech
+  ! contribution. Computes derivatives of the accumulation
   ! term for the Jacobian
   !
-  ! Author: ???
-  ! Date: 12/13/07
+  ! Author: Jumanah Al Kubaisy
+  ! Date: 11/21/2025
   !
 
   use Option_module

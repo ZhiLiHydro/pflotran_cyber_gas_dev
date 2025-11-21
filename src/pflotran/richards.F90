@@ -31,58 +31,6 @@ module Richards_module
   PetscInt, parameter :: VERT_CONN = 2
   PetscInt, parameter :: HORZ_CONN = 3
 
-!  procedure(RichardsAccumulationDummy), pointer :: RichardsAccumulationPro => null()
-!  procedure(RichardsAccumDerivativeDummy), pointer :: RichardsAccumDerivativePro => null()
-
-!  interface
-!    subroutine RichardsAccumulationDummy(rich_auxvar,global_auxvar, &
-!                                         material_auxvar, &
-!                                         option,Res)
-!      use Option_module
-!      use Richards_Aux_module
-!      use Global_Aux_module
-!      use Material_Aux_module, only : material_auxvar_type
-!      use petscsys
-!      use Parameter_module
-!
-!      implicit none
-!
-!      type(richards_auxvar_type) :: rich_auxvar
-!      type(global_auxvar_type) :: global_auxvar
-!      type(material_auxvar_type) :: material_auxvar
-!      type(option_type) :: option
-!      PetscReal :: Res(1:option%nflowdof)
-!    end subroutine RichardsAccumulationDummy
-!
-!    subroutine RichardsAccumDerivativeDummy(rich_auxvar,global_auxvar, &
-!                                   material_auxvar, &
-!                                   option, &
-!                                   characteristic_curves, &
-!                                   J)
-!      use Option_module
-!      use Richards_Aux_module
-!      use Global_Aux_module
-!      use Characteristic_Curves_module
-!      use Parameter_module
-!      use petscsys
-!      use Material_Aux_module, only : material_auxvar_type, &
-!                                     MaterialAuxVarInit, &
-!                                     MaterialAuxVarCopy, &
-!                                     MaterialAuxVarStrip
-!
-!      implicit none
-!
-!      type(richards_auxvar_type) :: rich_auxvar
-!      type(global_auxvar_type) :: global_auxvar
-!      type(material_auxvar_type) :: material_auxvar
-!      type(option_type) :: option
-!      class(characteristic_curves_type) :: characteristic_curves
-!
-!      PetscReal :: J(option%nflowdof,option%nflowdof)
-!
-!    end subroutine RichardsAccumDerivativeDummy
-!  end interface
-
   public RichardsResidual, &
          RichardsJacobian, &
          RichardsTimeCut,&

@@ -560,7 +560,6 @@ subroutine RichardsAuxDestroy(aux)
   nullify(aux%matrix_buffer)
 #endif
 
-
   deallocate(aux)
   nullify(aux)
 
