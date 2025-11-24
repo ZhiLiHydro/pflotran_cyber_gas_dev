@@ -254,6 +254,16 @@ subroutine InitSubsurfGeomechReadInput(geomech,geomech_solver, &
                                             geomech_realization%dt_coupling, &
                                             internal_units,'GEOMECHANICS_TIME,&
                                             &COUPLING_TIMESTEP_SIZE',option)
+
+            case('POROSITY_UPDATE_THRESHOLD')
+              call InputReadDouble(input,option,option%geomechanics% &
+                                   del_poro_tol)
+              call InputErrorMsg(input,option, &
+                   'Porosity Update Threshold','GEOMECHANICS_TIME')
+              option%geomechanics%use_porosity_update = PETSC_TRUE
+              print *, 'set threshold val: ', option%geomechanics% &
+                      del_poro_tol
+
             case default
               call InputKeywordUnrecognized(input,word, &
                                             'GEOMECHANICS_TIME',option)

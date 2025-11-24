@@ -246,6 +246,13 @@ recursive subroutine PMCGeomechanicsRunToTime(this,sync_time,stop_flag)
     this%option%geomechanics%initial_flag = PETSC_TRUE
   endif
 
+  if (this%option%geomechanics%skip_stepdt_flag) then
+    ! reset
+    this%option%geomechanics%skip_stepdt_flag = PETSC_FALSE
+    print *, 'skipping PMCGeomechanicsRunToTime ...'
+    return
+  endif
+
   ! Have to loop over all process models coupled in this object and update
   ! the time step size.  Still need code to force all process models to
   ! use the same time step size if tightly or iteratively coupled.

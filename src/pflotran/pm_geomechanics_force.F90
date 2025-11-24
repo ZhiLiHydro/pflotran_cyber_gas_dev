@@ -322,10 +322,61 @@ subroutine PMGeomechForcePreSolve(this)
 
   class(pm_geomech_force_type) :: this
 
+  type(grid_type), pointer :: grid
+  type(global_auxvar_type), pointer :: global_auxvars(:)
+  type(option_type), pointer :: option
+
+  PetscReal :: threshold_tol
+  PetscInt :: local_id, ghosted_id
+  PetscInt :: por_mech_id, por_flow_id
+  PetscReal :: por_mech, por_flow
+  PetscReal :: max_del_poro
+
   PetscBool :: force_update_flag = PETSC_TRUE
 
   call GeomechRealizUpdateAllCouplerAuxVars(this%geomech_realization, &
                                             force_update_flag)
+
+  option => this%option
+
+  if (.not. option%geomechanics%use_porosity_update) return
+
+  threshold_tol = option%geomechanics%del_poro_tol
+  max_del_poro = 0.d0
+
+  print *, 'init flag: ', option%geomechanics%initial_flag
+
+  if (.not. option%geomechanics%initial_flag) then
+    print *, 'want to skip here?'
+    grid => this%subsurf_realization%patch%grid
+    global_auxvars => this%subsurf_realization%patch%aux% &
+                              Global%auxvars
+    por_mech_id = ParameterGetIDFromName( &
+                  'geomech_stored_porosity', option)
+    por_flow_id = ParameterGetIDFromName( &
+                  'flow_porosity', option)
+
+    do local_id = 1, grid%nlmax
+      ghosted_id = grid%nL2G(local_id)
+      por_mech = global_auxvars(ghosted_id)%parameters(por_mech_id)
+      por_flow = global_auxvars(ghosted_id)%parameters(por_flow_id)
+      max_del_poro = max(max_del_poro, abs(por_flow-por_mech)/por_mech)
+    enddo
+    !print *, 'threshold_tol, max_del_poro', threshold_tol, max_del_poro
+
+    if (max_del_poro < threshold_tol) then ! skip mech
+      option%geomechanics%skip_stepdt_flag = PETSC_TRUE
+      ! update (mass-conserved) porosity for residual
+      !do local_id = 1, grid%nlmax
+      !  ghosted_id = grid%nL2G(local_id)
+      !  global_auxvars(ghosted_id)%parameters(por_mech_id) = &
+      !    global_auxvars(ghosted_id)%parameters(por_flow_id)
+      !enddo
+    else
+      call PrintMsg(this%option,'Threshold unmet. Continue to solve..')
+    endif
+
+  endif
 
 end subroutine PMGeomechForcePreSolve
 
