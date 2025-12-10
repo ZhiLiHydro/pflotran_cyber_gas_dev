@@ -4,11 +4,13 @@ module PM_Fracture_class
   use petscsnes
   use Realization_Subsurface_class
   use PFLOTRAN_Constants_module
+  use Integral_Flux_Module
   use PM_Base_class
   use Option_module
   use String_module
   use Input_Aux_module
   use Geometry_module
+  use Coupler_module
 
   implicit none
 
@@ -96,6 +98,35 @@ module PM_Fracture_class
     type(fracfam_type), pointer :: next
   end type fracfam_type
 
+  type :: gtmod_type
+    ! geothermal gradient [C/m]
+    PetscReal :: geothermal_gradient
+    ! pointer to the production well integral_flux object
+    type(integral_flux_type), pointer :: prod_well_intflux
+    ! name of the integral_flux object for the production well
+    character(len=MAXWORDLENGTH) :: intflux_name
+    ! production well temperature at top of hole [C]
+    PetscReal :: prod_well_Ttop
+    ! production well temperature at bottom of hole [C]
+    PetscReal :: prod_well_Tbot
+    ! production well mass flow rate, from integral_flux [kg/s]
+    PetscReal :: prod_well_mdot
+    ! production well energy rate, from integral_flux [MJ/s = MW]
+    PetscReal :: prod_well_MW
+    ! production well depth, from integral_flux coordinates [m]
+    PetscReal :: prod_well_depth
+    ! pointer to the injection well source sink object
+    type(coupler_type), pointer :: inj_well_srcsink
+    ! name of the source sink coupler for the injection well
+    character(len=MAXWORDLENGTH) :: srcsink_name
+    ! injection well temperature at top of hole [C]
+    PetscReal :: inj_well_Tbot
+    ! injection well mass flow rate, from source_sink [kg/s]
+    PetscReal :: inj_well_mdot
+    ! injection well depth, from region coordinates [m]
+    PetscReal :: inj_well_depth
+  end type gtmod_type
+
   type, public, extends(pm_base_type) :: pm_fracture_type
     class(realization_subsurface_type), pointer :: realization
     type(fracture_type), pointer :: fracture_list
@@ -128,6 +159,10 @@ module PM_Fracture_class
     PetscInt :: max_frac
     ! flag to update material_auxvar (permeability) object
     PetscBool :: update_material_auxvar_perm
+    ! flag which indicates coupling to GTMOD
+    PetscBool :: GTMOD
+    ! GTMOD object that coordinates coupling w/ GTMOD
+    type(gtmod_type), pointer :: gtmod_coupler
   contains
     procedure, public :: Setup => PMFracSetup
     procedure, public :: ReadPMBlock => PMFracReadPMBlock
@@ -184,11 +219,13 @@ function PMFractureCreate()
   nullify(this%sum_frac_kz)
   nullify(this%max_frac_hap)
   nullify(this%sum_frac_hap)
+  nullify(this%gtmod_coupler)
   this%frac_intersection_type = 1  ! (1=sum;2=max)
   this%nfrac = 0
   this%max_frac = UNINITIALIZED_INTEGER
   this%t_coeff = UNINITIALIZED_DOUBLE ! 40.d-6 is value for granite
   this%update_material_auxvar_perm = PETSC_FALSE
+  this%GTMOD = PETSC_FALSE
 
   PMFractureCreate => this
 
@@ -229,6 +266,24 @@ function FractureFamCreate()
   call FractureFamInit(FractureFamCreate)
 
 end function FractureFamCreate
+
+! ************************************************************************** !
+
+function GTMODCreate()
+  !
+  ! Creates a GTMOD object.
+  !
+  ! Author: Jennifer M. Frederick, SNL
+  ! Date: 11/04/2025
+
+  implicit none
+
+  type(gtmod_type), pointer :: GTMODCreate
+
+  allocate(GTMODCreate)
+  call GTMODInit(GTMODCreate)
+
+end function GTMODCreate
 
 ! ************************************************************************** !
 
@@ -314,6 +369,35 @@ subroutine FractureFamInit(this)
   this%radius_seed = 30
 
 end subroutine FractureFamInit
+
+! ************************************************************************** !
+
+subroutine GTMODInit(this)
+  !
+  ! Initializes variables associated with a GTMOD coupler object.
+  !
+  ! Author: Jennifer M. Frederick, SNL
+  ! Date: 11/04/2025
+  !
+  implicit none
+
+  type(gtmod_type) :: this
+
+  nullify(this%inj_well_srcsink)
+  nullify(this%prod_well_intflux)
+  this%geothermal_gradient = UNINITIALIZED_DOUBLE
+  this%inj_well_Tbot = UNINITIALIZED_DOUBLE
+  this%inj_well_mdot = UNINITIALIZED_DOUBLE
+  this%inj_well_depth = UNINITIALIZED_DOUBLE
+  this%prod_well_Ttop = UNINITIALIZED_DOUBLE
+  this%prod_well_Tbot = UNINITIALIZED_DOUBLE
+  this%prod_well_mdot = UNINITIALIZED_DOUBLE
+  this%prod_well_MW = UNINITIALIZED_DOUBLE
+  this%prod_well_depth = UNINITIALIZED_DOUBLE
+  this%srcsink_name = ''
+  this%intflux_name = ''
+
+end subroutine GTMODInit
 
 ! ************************************************************************** !
 
@@ -697,7 +781,103 @@ subroutine PMFracSetup(this)
   deallocate(temp_allfrac_cell_ids)
   deallocate(d_vertex)
 
+  if (this%GTMOD) then
+    call PMFracGTMODSetup(this)
+  endif
+
 end subroutine PMFracSetup
+
+! ************************************************************************** !
+
+subroutine PMFracGTMODSetup(this)
+  !
+  ! Author: Jennifer M. Frederick, SNL
+  ! Date: 11/05/2025
+  !
+  use Geometry_module
+
+  implicit none
+
+  class(pm_fracture_type) :: this
+
+  type(coupler_type), pointer :: source_sink
+  type(integral_flux_type), pointer :: integral_flux
+  type(point3d_type), pointer :: coordinates(:)
+  character(len=MAXWORDLENGTH) :: filename
+  PetscReal :: zsum
+  PetscInt :: k,fid
+
+  ! --- Injection Well Coupling ---
+  source_sink => this%realization%patch%source_sink_list%first
+  do
+    if (.not.associated(source_sink)) exit
+    if (Stringcompare(source_sink%name,this%gtmod_coupler%srcsink_name)) then
+      source_sink%flow_condition%is_transient = PETSC_TRUE
+      this%gtmod_coupler%inj_well_srcsink => source_sink
+    endif
+    source_sink => source_sink%next
+  enddo
+  if (.not.associated(this%gtmod_coupler%inj_well_srcsink)) then
+    this%option%io_buffer = 'SOURCE_SINK ' // &
+      trim(this%gtmod_coupler%srcsink_name) // ' for GTMOD coupling was not &
+      &found. A SOURCE_SINK <name_string> must be specified for the injection &
+      &well that is coupled to GTMOD.'
+    call PrintErrMsg(this%option)
+  endif
+  coordinates => this%gtmod_coupler%inj_well_srcsink%region%coordinates
+  zsum = 0.d0
+  do k=1,size(coordinates)
+    zsum = zsum + coordinates(k)%z
+  enddo
+  this%gtmod_coupler%inj_well_depth = zsum/(k-1)
+
+  ! --- Production Well Coupling ---
+  integral_flux => this%realization%patch%integral_flux_list%first
+  do
+    if (.not.associated(integral_flux)) exit
+    if (Stringcompare(integral_flux%name,this%gtmod_coupler%intflux_name)) then
+      this%gtmod_coupler%prod_well_intflux => integral_flux
+    endif
+    integral_flux => integral_flux%next
+  enddo
+  if (.not.associated(this%gtmod_coupler%prod_well_intflux)) then
+    this%option%io_buffer = 'INTEGRAL_FLUX ' // &
+      trim(this%gtmod_coupler%intflux_name) // ' for GTMOD coupling was not &
+      &found. An INTEGRAL_FLUX <name_string> must be specified for the &
+      &production well that is coupled to GTMOD and it must be a POLYGON.'
+    call PrintErrMsg(this%option)
+  endif
+
+  if (.not.associated(this%gtmod_coupler%prod_well_intflux%polygon)) then
+    this%option%io_buffer = 'INTEGRAL_FLUX ' // &
+      trim(this%gtmod_coupler%intflux_name) // ' for GTMOD coupling: &
+      &An INTEGRAL_FLUX <name_string> must be specified for the &
+      &production well that is coupled to GTMOD and it must be a POLYGON.'
+    call PrintErrMsg(this%option)
+  endif
+
+  zsum = 0.d0
+  do k=1,size(this%gtmod_coupler%prod_well_intflux%polygon)
+    zsum = zsum + this%gtmod_coupler%prod_well_intflux%polygon(k)%z
+  enddo
+  this%gtmod_coupler%prod_well_depth = zsum/(k-1)
+
+  filename = trim(this%option%global_prefix)//'.gtmod'
+  fid = 191817
+  open(unit=fid,file=filename,action="write",status="replace")
+  ! The header must match the data being written by GTMOD in run_gtmod_cli.m
+  write(fid,'(a)',advance="no") "time [" //trim(this%output_option%tunit)//"]; "
+  write(fid,'(a)',advance="no") "production well Ttop [C]; "
+  write(fid,'(a)',advance="no") "production well mDot [kg/sec]; "
+  write(fid,'(a)',advance="no") "production well power [W]; "
+  write(fid,'(a)',advance="no") "turbine specific work [kJ/kg]; "
+  write(fid,'(a)',advance="no") "gross power output [W]; "
+  write(fid,'(a)',advance="no") "feedpump specific work [kJ/kg]; "
+  write(fid,'(a)',advance="no") "net power after pumping [W]; "
+  write(fid,'(a)',advance="no") "brine temperature out [C]; "
+  write(fid,'(a)',advance="no") "injection well Tbot [C]; "
+
+end subroutine PMFracGTMODSetup
 
 ! ************************************************************************** !
 
@@ -930,6 +1110,11 @@ subroutine PMFracInitializeTimestep(this)
   call VecRestoreArrayReadF90(field%perm0_zz,perm0_zz_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayReadF90(field%perm0_yy,perm0_yy_p,ierr);CHKERRQ(ierr)
 
+  ! Coupling to GTMOD
+  if (this%GTMOD) then
+    call PMFracUpdateGTMOD(this)
+  endif
+
 end subroutine PMFracInitializeTimestep
 
 ! ************************************************************************** !
@@ -1029,6 +1214,10 @@ subroutine PMFracReadPMBlock(this,input)
     call PMFracReadFracFam(this,input,option,word,error_string,found)
     if (found) cycle
 
+    error_string = 'GEOTHERMAL_FRACTURE_MODEL'
+    call PMFracReadGTMOD(this,input,option,word,error_string,found)
+    if (found) cycle
+
     if (.not. found) then
       option%io_buffer = 'Keyword "' // trim(word) // &
                          '" does not exist for GEOTHERMAL_FRACTURE_MODEL.'
@@ -1039,8 +1228,8 @@ subroutine PMFracReadPMBlock(this,input)
   call InputPopBlock(input,option)
 
 if (Uninitialized(this%t_coeff)) then
-  option%io_buffer = 'THERMAL_EXPANSION_COEFFICIENT not provided in &
-    &the GEOTHERMAL_FRACTURE_MODEL block.'
+  option%io_buffer = 'THERMAL_EXPANSION_COEFFICIENT, in units of 1/C, must &
+                     &be specified in the GEOTHERMAL_FRACTURE_MODEL block.'
   call PrintErrMsg(option)
 endif
 
@@ -1063,7 +1252,7 @@ end subroutine PMFracReadPMBlock
 ! ************************************************************************** !
 
 subroutine PMFracReadFracture(pm_fracture,input,option,keyword,error_string, &
-                            found)
+                              found)
   !
   ! Reads input file parameters associated with the fracture model grid.
   !
@@ -1161,37 +1350,37 @@ subroutine PMFracReadFracture(pm_fracture,input,option,keyword,error_string, &
         call PrintMsg(option); num_errors = num_errors + 1
       endif
       if (Uninitialized(new_fracture%hap0)) then
-        option%io_buffer = 'ERROR: HYDRAULIC_APERTURE must be specified in ' // &
-                           trim(error_string) // ' block.'
+        option%io_buffer = 'ERROR: HYDRAULIC_APERTURE, in units of m, must be &
+                           &specified in ' // trim(error_string) // ' block.'
         call PrintMsg(option); num_errors = num_errors + 1
       endif
       if (Uninitialized(new_fracture%radx)) then
-        option%io_buffer = 'ERROR: RADIUS_X must be specified in ' // &
-                           trim(error_string) // ' block.'
+        option%io_buffer = 'ERROR: RADIUS_X, in units of m,  must be specified &
+                           &in ' // trim(error_string) // ' block.'
         call PrintMsg(option); num_errors = num_errors + 1
       endif
       if (Uninitialized(new_fracture%rady)) then
-        option%io_buffer = 'ERROR: RADIUS_Y must be specified in ' // &
-                           trim(error_string) // ' block.'
+        option%io_buffer = 'ERROR: RADIUS_Y, in units of m,  must be specified &
+                           &in ' // trim(error_string) // ' block.'
         call PrintMsg(option); num_errors = num_errors + 1
       endif
       if (Uninitialized(new_fracture%radz)) then
-        option%io_buffer = 'ERROR: RADIUS_Z must be specified in ' // &
-                           trim(error_string) // ' block.'
+        option%io_buffer = 'ERROR: RADIUS_Z, in units of m,  must be specified &
+                           &in ' // trim(error_string) // ' block.'
         call PrintMsg(option); num_errors = num_errors + 1
       endif
       if (Uninitialized(new_fracture%center%x) .or. &
           Uninitialized(new_fracture%center%y) .or. &
           Uninitialized(new_fracture%center%z)) then
-        option%io_buffer = 'ERROR: CENTER coordinate must be specified in ' // &
-                           trim(error_string) // ' block.'
+        option%io_buffer = 'ERROR: CENTER coordinate, in units of m, must be &
+                           &specified in ' // trim(error_string) // ' block.'
         call PrintMsg(option); num_errors = num_errors + 1
       endif
       if (Uninitialized(new_fracture%normal%x) .or. &
           Uninitialized(new_fracture%normal%y) .or. &
           Uninitialized(new_fracture%normal%z)) then
-        option%io_buffer = 'ERROR: NORMAL_VECTOR coordinate must be specified &
-                            &in ' // trim(error_string) // ' block.'
+        option%io_buffer = 'ERROR: NORMAL_VECTOR coordinate, in units of m, &
+                    &must be specified in ' // trim(error_string) // ' block.'
         call PrintMsg(option); num_errors = num_errors + 1
       else
         vmag = sqrt((new_fracture%normal%x)**2.d0 + &
@@ -1584,6 +1773,102 @@ end subroutine PMFracReadFracFam
 
 ! ************************************************************************** !
 
+subroutine PMFracReadGTMOD(pm_fracture,input,option,keyword,error_string, &
+                           found)
+  !
+  ! Reads input file parameters associated with the fracture model grid.
+  !
+  ! Author: Jennifer M. Frederick, SNL
+  ! Date: 11/12/2025
+  !
+
+  implicit none
+
+  class(pm_fracture_type) :: pm_fracture
+  type(input_type), pointer :: input
+  type(option_type) :: option
+  character(len=MAXWORDLENGTH) :: keyword
+  character(len=MAXSTRINGLENGTH) :: error_string
+  PetscBool :: found
+
+  character(len=MAXWORDLENGTH) :: word
+  type(gtmod_type), pointer :: new_gtmod
+  PetscInt :: num_errors
+
+  error_string = trim(error_string) // ',COUPLE_TO_GTMOD'
+  found = PETSC_TRUE
+  num_errors = 0
+
+  select case(trim(keyword))
+  !-------------------------------------
+    case('COUPLE_TO_GTMOD')
+      pm_fracture%GTMOD = PETSC_TRUE
+      allocate(new_gtmod)
+      new_gtmod => GTMODCreate()
+      call InputPushBlock(input,option)
+      do
+        call InputReadPflotranString(input,option)
+        if (InputError(input)) exit
+        if (InputCheckExit(input,option)) exit
+        call InputReadCard(input,option,word)
+        call InputErrorMsg(input,option,'keyword',error_string)
+        call StringToUpper(word)
+        select case(trim(word))
+        !-----------------------------
+          case('GEOTHERMAL_GRADIENT')
+            call InputReadDouble(input,option,new_gtmod%geothermal_gradient)
+            call InputErrorMsg(input,option,'GEOTHERMAL_GRADIENT [C/m]', &
+                               error_string)
+        !-----------------------------
+          case('INTEGRAL_FLUX')
+            call InputReadWord(input,option,new_gtmod%intflux_name,PETSC_TRUE)
+            call InputErrorMsg(input,option,'INTEGRAL_FLUX name',error_string)
+        !-----------------------------
+          case('SOURCE_SINK')
+            call InputReadWord(input,option,new_gtmod%srcsink_name,PETSC_TRUE)
+            call InputErrorMsg(input,option,'SOURCE_SINK name',error_string)
+        !-----------------------------
+          case default
+            call InputKeywordUnrecognized(input,word,error_string,option)
+        !-----------------------------
+        end select
+      enddo
+      call InputPopBlock(input,option)
+      !------ error messaging ----------------------------------------
+      if (Uninitialized(new_gtmod%geothermal_gradient)) then
+        option%io_buffer = 'ERROR: GEOTHERMAL_GRADIENT, in units of C/m, must &
+                           &be specified in ' // trim(error_string) // ' block.'
+        call PrintMsg(option); num_errors = num_errors + 1
+      endif
+      if (len(trim(new_gtmod%intflux_name)) < 1) then
+        option%io_buffer = 'ERROR: INTEGRAL_FLUX name <string>, must &
+                           &be specified in ' // trim(error_string) // ' block.'
+        call PrintMsg(option); num_errors = num_errors + 1
+      endif
+      if (len(trim(new_gtmod%srcsink_name)) < 1) then
+        option%io_buffer = 'ERROR: SOURCE_SINK name <string>, must &
+                           &be specified in ' // trim(error_string) // ' block.'
+        call PrintMsg(option); num_errors = num_errors + 1
+      endif
+      if (num_errors > 0) then
+        write(option%io_buffer,*) num_errors
+        option%io_buffer = trim(adjustl(option%io_buffer)) // ' errors in &
+                           &the COUPLE_TO_GTMOD block. See above to fix.'
+        call PrintErrMsg(option)
+      endif
+      !------ save gtmod_coupler --------------------------------------
+      pm_fracture%gtmod_coupler => new_gtmod
+      nullify(new_gtmod)
+  !-------------------------------------
+    case default
+      found = PETSC_FALSE
+  !-------------------------------------
+  end select
+
+end subroutine PMFracReadGTMOD
+
+! ************************************************************************** !
+
 subroutine PMFracReadPass2(input,option)
   !
   ! Reads input file parameters associated with the fracture process model.
@@ -1625,6 +1910,9 @@ subroutine PMFracReadPass2(input,option)
         call InputSkipToEND(input,option,card)
         call InputSkipToEND(input,option,card)
         call InputSkipToEND(input,option,card)
+        call InputSkipToEND(input,option,card)
+      !--------------------
+      case('COUPLE_TO_GTMOD')
         call InputSkipToEND(input,option,card)
       !--------------------
     end select
@@ -1694,6 +1982,121 @@ function rnd4LHS(iseed)
   return
 
 end function rnd4LHS
+
+! ************************************************************************** !
+
+subroutine PMFracUpdateGTMOD(this)
+  !
+  ! This routine calls GTMOD and updates the reinjection temperature.
+  !
+  ! Author: Jennifer M. Frederick, SNL
+  ! Date: 11/04/2025
+  !
+  use Condition_module
+  use Integral_Flux_module
+
+  implicit none
+
+  class(pm_fracture_type) :: this
+
+  PetscReal :: T_new,bTOut_new ! GTMOD output
+  character(len=MAXWORDLENGTH) :: s1,s2,s3,s4,s5,s6,s7,s8,s9,s10
+  character(len=MAXSTRINGLENGTH) :: cmd, line
+  PetscInt :: istat,u
+  PetscReal :: specific_heat ! [J/kg-K]
+  PetscReal :: global_instval(2)
+  type(flow_condition_type), pointer :: flow_condition
+  type(integral_flux_type), pointer :: integral_flux
+  PetscErrorCode :: ierr
+
+  ! --- Injection Well Coupling ---
+  flow_condition => this%gtmod_coupler%inj_well_srcsink%flow_condition
+  this%gtmod_coupler%inj_well_mdot = &
+    flow_condition%rate%dataset%rarray(ONE_INTEGER) ! kg/sec
+
+  ! --- Production Well Coupling
+  integral_flux => this%gtmod_coupler%prod_well_intflux
+  ! need to do MPISUM on instantaneous_value because only the processor that
+  ! owns the integral flux surface has non-zero values
+  call MPI_Allreduce(integral_flux%instantaneous_value,global_instval, &
+    TWO_INTEGER,MPI_DOUBLE_PRECISION,MPI_SUM,this%option%mycomm, &
+    ierr);CHKERRQ(ierr)
+  this%gtmod_coupler%prod_well_mdot = global_instval(ONE_INTEGER)*FMWH2O !kg/sec
+  this%gtmod_coupler%prod_well_MW = global_instval(TWO_INTEGER) !MJ/sec = MW
+  ! a flux out of the domain is (-), but we want this to be (+) for GTMOD
+  this%gtmod_coupler%prod_well_mdot = abs(this%gtmod_coupler%prod_well_mdot)
+  this%gtmod_coupler%prod_well_MW = abs(this%gtmod_coupler%prod_well_MW)
+  ! define the specific heat
+  specific_heat = 4.2d3 ! [J/kg-C]
+  this%gtmod_coupler%prod_well_Tbot = (this%gtmod_coupler%prod_well_MW*1.d6)/ &
+                           (specific_heat*this%gtmod_coupler%prod_well_mdot)
+
+  ! ========================================================================== !
+  ! Format numbers in a C/US locale style (decimal point)
+  write(s1,'(ES24.16)') this%gtmod_coupler%prod_well_depth
+  write(s2,'(ES24.16)') this%gtmod_coupler%geothermal_gradient
+  write(s3,'(ES24.16)') this%gtmod_coupler%prod_well_Tbot ! T start
+  write(s4,'(ES24.16)') this%gtmod_coupler%prod_well_Tbot ! T in
+  write(s5,'(ES24.16)') this%gtmod_coupler%prod_well_mdot
+  write(s6,'(ES24.16)') this%gtmod_coupler%prod_well_MW
+  write(s7,'(ES24.16)') specific_heat
+  write(s8,'(ES24.16)') this%gtmod_coupler%inj_well_depth
+  write(s9,'(A)') trim(this%option%global_prefix)//'.gtmod'
+  write(s10,'(ES24.16)') this%option%time/this%output_option%tconv
+
+  ! Build command:
+  ! - LC_ALL=C forces dot decimal separator
+  ! - We redirect stdout to a temp file and then read it
+  cmd = 'env LC_ALL=C OCTAVE_PATH=./GTMOD_PFLOTRAN octave-cli -qf &
+        &GTMOD_PFLOTRAN/run_gtmod_cli.m ' //trim(adjustl(s1))//' ' &
+        //trim(adjustl(s2))//' '//trim(adjustl(s3))//' ' &
+        //trim(adjustl(s4))//' '//trim(adjustl(s5))//' '&
+        //trim(adjustl(s6))//' '//trim(adjustl(s7))//' ' &
+        //trim(adjustl(s8))//' '//trim(adjustl(s9))//' ' &
+        //trim(adjustl(s10))//' 2> gtmod_err.txt'
+
+  if (OptionIsIORank(this%option)) then
+    this%option%io_buffer = 'Call to GTMOD: GTMOD_PFLOTRAN/run_gtmod_cli.m'
+    call PrintMsg(this%option)
+    call execute_command_line(cmd, exitstat=istat)
+    if (istat /= 0) then
+       this%option%io_buffer = 'Octave returned, ERROR! See gtmod_err.txt'
+       call PrintMsg(this%option)
+       stop 1
+    endif
+  endif
+  call MPI_Barrier(this%option%mycomm,ierr);CHKERRQ(ierr)
+  open(newunit=u,file='gtmod_out.txt',status='old',action='read',iostat=istat)
+  if (istat /= 0) then
+     this%option%io_buffer = 'Could not open gtmod_out.txt'
+     call PrintMsgByRank(this%option)
+     stop 1
+  end if
+  read(u, '(A)') line
+  close(u)
+  call MPI_Barrier(this%option%mycomm,ierr);CHKERRQ(ierr)
+  if (OptionIsIORank(this%option)) then
+    call execute_command_line('rm -f gtmod_out.txt gtmod_err.txt')
+  endif
+
+  read(line, *) T_new, bTOut_new
+
+  this%gtmod_coupler%prod_well_Ttop = T_new
+  this%gtmod_coupler%inj_well_Tbot = bTOut_new
+  flow_condition%temperature%dataset%rarray(:) = bTOut_new
+  ! ========================================================================== !
+
+  !if (OptionIsIORank(this%option)) then
+  !print '(A,1X,F12.6)', 'inj_well_Tbot =', this%gtmod_coupler%inj_well_Tbot
+  !print '(A,1X,F12.6)', 'inj_well_depth =', this%gtmod_coupler%inj_well_depth
+  !print '(A,1X,F12.6)', 'prod_well_Tbot =', this%gtmod_coupler%prod_well_Tbot
+  !print '(A,1X,F12.6)', 'prod_well_Ttop =', this%gtmod_coupler%prod_well_Ttop
+  !print '(A,1X,F12.6)', 'prod_well_depth =', this%gtmod_coupler%prod_well_depth
+  !print '(A,1X,F12.6)', 'prod_well_mdot =', this%gtmod_coupler%prod_well_mdot
+  !print '(A,1X,F12.6)', 'prod_well_MW =', this%gtmod_coupler%prod_well_MW
+  !endif
+
+end subroutine PMFracUpdateGTMOD
 
 ! ************************************************************************** !
 
