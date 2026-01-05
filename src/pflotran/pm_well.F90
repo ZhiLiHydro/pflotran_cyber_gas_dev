@@ -498,6 +498,7 @@ module PM_Well_class
     PetscBool :: setup_complete
     PetscInt, pointer :: well_cells(:)
     PetscReal :: inlet_temperature
+    PetscReal :: initial_temperature
     PetscReal :: pipe_diameter
     PetscReal :: pipe_wall_thickness
     PetscReal :: pipe_wall_thermal_conductivity
@@ -729,6 +730,7 @@ function PMWellUShapeCreate()
   pm_well%use_well_index = PETSC_FALSE
   pm_well%setup_complete = PETSC_FALSE
   pm_well%inlet_temperature = UNINITIALIZED_DOUBLE
+  pm_well%initial_temperature = UNINITIALIZED_DOUBLE
   pm_well%pipe_diameter = UNINITIALIZED_DOUBLE
   pm_well%pipe_wall_thickness = UNINITIALIZED_DOUBLE
   pm_well%pipe_wall_thermal_conductivity = UNINITIALIZED_DOUBLE
@@ -4325,6 +4327,9 @@ subroutine PMWellReadWell(pm_well,input,option,keyword,error_string,found)
                   case('INLET_TEMPERATURE')
                     call InputReadDouble(input,option,pm%inlet_temperature)
                     call InputErrorMsg(input,option,word,error_string)
+                  case('INITIAL_TEMPERATURE')
+                    call InputReadDouble(input,option,pm%initial_temperature)
+                    call InputErrorMsg(input,option,word,error_string)
                   case('PIPE_DIAMETER')
                     call InputReadDouble(input,option,pm%pipe_diameter)
                     call InputErrorMsg(input,option,word,error_string)
@@ -5398,10 +5403,37 @@ recursive subroutine PMWellInitializeRunUShape(this)
   ! Author: Glenn Hammond
   ! Date: 09/11/25
   !
+  use Discretization_module
+  use Option_module
 
   implicit none
 
   class(pm_well_u_shape_type) :: this
+
+  type(option_type), pointer :: option
+  PetscReal, pointer :: vec_ptr(:)
+  PetscInt :: icell
+  PetscInt :: local_id
+  PetscInt :: offset
+  PetscErrorCode :: ierr
+
+  option => this%option
+
+  if (Initialized(this%initial_temperature)) then
+    call VecGetArray(this%realization%field%flow_xx,vec_ptr, &
+                     ierr);CHKERRQ(ierr)
+    do icell = 1, size(this%well_cells)
+      local_id = this%well_cells(icell)
+      offset = (local_id-1)*option%nflowdof
+      vec_ptr(offset+THREE_INTEGER) = this%initial_temperature
+    enddo
+    call VecRestoreArray(this%realization%field%flow_xx,vec_ptr, &
+                         ierr);CHKERRQ(ierr)
+    call DiscretizationGlobalToLocal(this%realization%discretization, &
+                                     this%realization%field%flow_xx, &
+                                     this%realization%field%flow_xx_loc, &
+                                     NFLOWDOF)
+  endif
 
 end subroutine PMWellInitializeRunUShape
 
