@@ -561,7 +561,8 @@ module PM_Well_class
             PMWellCopyReservoir, &
             PMWellSequentialInit, &
             PMWellQIInit, &
-            PMWellSetupBase
+            PMWellSetupBase, &
+            PMWellAssignInitTempClosedLoop
   contains
 
 ! ************************************************************************** !
@@ -625,6 +626,48 @@ subroutine PMWellBaseInit(pm_well)
   pm_well%print_output = PETSC_FALSE
 
 end subroutine PMWellBaseInit
+
+! ************************************************************************** !
+
+subroutine PMWellAssignInitTempClosedLoop(this)
+  !
+  ! Assign an initial temperature to the fluid in the pipe for a closed loop.
+  !
+  ! Author: Julia Camargo
+  ! Date: 01/06/2026
+
+  use Discretization_module
+  use Option_module
+
+  implicit none
+
+  class(pm_well_closed_loop_type) :: this
+
+  type(option_type), pointer :: option
+  PetscReal, pointer :: vec_ptr(:)
+  PetscInt :: icell
+  PetscInt :: local_id
+  PetscInt :: offset
+  PetscErrorCode :: ierr
+
+  option => this%option
+
+  if (Initialized(this%initial_temperature)) then
+    call VecGetArray(this%realization%field%flow_xx,vec_ptr, &
+                     ierr);CHKERRQ(ierr)
+    do icell = 1, size(this%well_cells)
+      local_id = this%well_cells(icell)
+      offset = (local_id-1)*option%nflowdof
+      vec_ptr(offset+THREE_INTEGER) = this%initial_temperature
+    enddo
+    call VecRestoreArray(this%realization%field%flow_xx,vec_ptr, &
+                         ierr);CHKERRQ(ierr)
+    call DiscretizationGlobalToLocal(this%realization%discretization, &
+                                     this%realization%field%flow_xx, &
+                                     this%realization%field%flow_xx_loc, &
+                                     NFLOWDOF)
+  endif
+end subroutine PMWellAssignInitTempClosedLoop
 
 ! ************************************************************************** !
 
@@ -5403,37 +5446,9 @@ recursive subroutine PMWellInitializeRunUShape(this)
   ! Author: Glenn Hammond
   ! Date: 09/11/25
   !
-  use Discretization_module
-  use Option_module
-
   implicit none
 
   class(pm_well_u_shape_type) :: this
-
-  type(option_type), pointer :: option
-  PetscReal, pointer :: vec_ptr(:)
-  PetscInt :: icell
-  PetscInt :: local_id
-  PetscInt :: offset
-  PetscErrorCode :: ierr
-
-  option => this%option
-
-  if (Initialized(this%initial_temperature)) then
-    call VecGetArray(this%realization%field%flow_xx,vec_ptr, &
-                     ierr);CHKERRQ(ierr)
-    do icell = 1, size(this%well_cells)
-      local_id = this%well_cells(icell)
-      offset = (local_id-1)*option%nflowdof
-      vec_ptr(offset+THREE_INTEGER) = this%initial_temperature
-    enddo
-    call VecRestoreArray(this%realization%field%flow_xx,vec_ptr, &
-                         ierr);CHKERRQ(ierr)
-    call DiscretizationGlobalToLocal(this%realization%discretization, &
-                                     this%realization%field%flow_xx, &
-                                     this%realization%field%flow_xx_loc, &
-                                     NFLOWDOF)
-  endif
 
 end subroutine PMWellInitializeRunUShape
 
