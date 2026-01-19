@@ -117,7 +117,9 @@ module PM_Fracture_class
     ! list of start region global cell ids
     PetscInt, pointer :: clip_region_cell_ids(:)
     ! name of region for clipping
-    character(len=MAXWORDLENGTH) :: region_name
+    character(len=MAXWORDLENGTH) :: start_region_name
+    ! name of end region for clipping
+    character(len=MAXWORDLENGTH) :: end_region_name
     ! maximum fracture perm at global cell ids
     PetscReal, pointer :: max_frac_kx(:)
     PetscReal, pointer :: max_frac_ky(:)
@@ -208,7 +210,8 @@ function PMFractureCreate()
   this%t_coeff = UNINITIALIZED_DOUBLE ! 40.d-6 is value for granite
   this%update_material_auxvar_perm = PETSC_FALSE
   this%clip_unconnected_fracs = PETSC_FALSE
-  this%region_name = ''
+  this%start_region_name = ''
+  this%end_region_name = ''
 
   PMFractureCreate => this
 
@@ -356,7 +359,6 @@ subroutine PMFracSetup(this)
   type(fracture_type), pointer :: cur_fracture,new_fracture_list
   type(fracfam_type), pointer :: cur_fracfam
   type(grid_type), pointer :: res_grid
-  type(region_type), pointer :: region
   type(material_auxvar_type), pointer :: material_auxvar
   character(len=MAXWORDLENGTH) :: word
   PetscInt, pointer :: temp_cell_ids(:)
@@ -365,11 +367,8 @@ subroutine PMFracSetup(this)
   PetscInt, pointer :: temp_frac_common_cell_ids(:)
   PetscInt :: k,j,i
   PetscInt :: nf,tfc,tcfc,read_max
-  PetscInt :: myregion_num_cells,region_num_cells
   PetscInt :: total_sum_glb
   PetscInt, pointer :: allfrac_num_cells(:)
-  PetscInt, pointer :: allregion_num_cells(:)
-  PetscInt, pointer :: myregion_cell_ids(:)
   PetscInt, pointer :: cell_positions(:)
   PetscReal, pointer :: d_vertex(:)
   PetscReal :: D,distance
@@ -381,6 +380,7 @@ subroutine PMFracSetup(this)
   PetscBool :: within_x,within_y,within_z
   PetscBool :: frac_is_within_grid_cell_volume
   PetscBool :: added
+  PetscBool, pointer :: connected(:)
   PetscErrorCode :: ierr
 
   call this%SetRealization()
@@ -733,59 +733,18 @@ subroutine PMFracSetup(this)
       option%io_buffer = 'GEOTHERMAL_FRACTURE_MODEL: Calculating connected &
                          &fractures . . . '
       call PrintMsg(option)
-      region => RegionGetPtrFromList(this%region_name, &
-                                     this%realization%patch%region_list)
-      if (.not.associated(region)) then
-        option%io_buffer = 'REGION ' // trim(this%region_name) // ' in &
-          &CLIP_UNCONNECTED_FRACTURES,REGION not found among the defined &
-          &REGIONs in the input deck.'
-        call PrintErrMsg(option)
-      endif
-      allocate(allregion_num_cells(option%comm%size))
-      myregion_num_cells = region%num_cells
-      if (myregion_num_cells > 0) then
-        allocate(myregion_cell_ids(myregion_num_cells))
-        do i = 1,myregion_num_cells
-          ! get global id for the region cell ids
-          myregion_cell_ids(i) = &
-                              res_grid%nG2A(res_grid%nL2G(region%cell_ids(i)))
-        enddo
-      else
-        allocate(myregion_cell_ids(1))
-        myregion_cell_ids = UNINITIALIZED_INTEGER
-      endif
-      call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
-      call MPI_Allgather(myregion_num_cells,ONE_INTEGER,MPI_INTEGER, &
-                         allregion_num_cells,ONE_INTEGER,MPI_INTEGER, &
-                         option%mycomm,ierr);CHKERRQ(ierr)
-      region_num_cells = SUM(allregion_num_cells)
-      do i = 1,option%comm%size
-        if (i == 1) then
-          cell_positions(i) = 0
-        else
-          cell_positions(i) = cell_positions(i-1) + allregion_num_cells(i-1)
-        endif
-      enddo
-      allocate(this%clip_region_cell_ids(region_num_cells))
-      call MPI_Gatherv(myregion_cell_ids,myregion_num_cells,MPI_INTEGER, &
-                       this%clip_region_cell_ids,allregion_num_cells, &
-                       cell_positions,MPI_INTEGER,ZERO_INTEGER, &
-                       option%mycomm,ierr);CHKERRQ(ierr)
-      ! only rank zero knows this%clip_region_cell_ids, so we need to share it
-      call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
-      call MPI_Bcast(this%clip_region_cell_ids,region_num_cells,MPI_INTEGER, &
-                     ZERO_INTEGER,option%mycomm,ierr);CHKERRQ(ierr)
-      deallocate(myregion_cell_ids)
-      deallocate(allregion_num_cells)
+      
+      !start region
+      call PMFracClipCells(this,this%connected_to_start, total_sum_glb,cell_positions,this%start_region_name)
 
-      allocate(this%connected_to_start(total_sum_glb))
-      this%connected_to_start(:) = PETSC_FALSE
-      allocate(this%connected_to_end(total_sum_glb))
-      this%connected_to_end(:) = PETSC_FALSE
-      do k = 1,size(this%clip_region_cell_ids)
-        ! this is a recursive subroutine which will call itself
-        call PMFracConnectedness(this,this%clip_region_cell_ids(k))
-      enddo
+      !end region
+      call PMFracClipCells(this,this%connected_to_end, total_sum_glb,cell_positions,this%end_region_name)
+
+      allocate(connected(total_sum_glb))
+
+      connected = this%connected_to_start .and. this%connected_to_end
+      this%connected_to_start = connected
+     
       ! write(*,*) "............................................................."
       ! write(*,*) "connected_to_start =", this%connected_to_start
 
@@ -840,7 +799,102 @@ end subroutine PMFracSetup
 
 ! ************************************************************************** !
 
-recursive subroutine PMFracConnectedness(this,natural_id)
+subroutine PMFracClipCells(this,connected_to_region,total_sum_glb,cell_positions,region_name)
+  !
+  ! Figures out what cells are in the clip region and connected to the region input
+  !
+
+  use Grid_module
+  use Region_module
+
+  implicit none
+
+  class(pm_fracture_type) :: this
+
+  type(option_type), pointer :: option
+  type(region_type), pointer :: region
+  type(grid_type), pointer :: res_grid
+  character(len=MAXWORDLENGTH) :: region_name
+  PetscInt :: k,i
+  PetscInt :: myregion_num_cells,region_num_cells
+  PetscInt :: total_sum_glb
+  PetscInt, pointer :: allregion_num_cells(:)
+  PetscInt, pointer :: myregion_cell_ids(:)
+  PetscInt, pointer :: cell_positions(:)
+  PetscBool, pointer :: connected(:)
+  PetscBool, pointer :: connected_to_region(:)
+  PetscErrorCode :: ierr
+  PetscInt, pointer :: visited_cells(:)
+
+  option => this%option
+  res_grid => this%realization%patch%grid
+
+  region => RegionGetPtrFromList(region_name, &
+                                 this%realization%patch%region_list)
+  
+  if (.not.associated(region)) then
+    option%io_buffer = 'REGION ' // trim(region_name) // ' in &
+                        &CLIP_UNCONNECTED_FRACTURES,REGION not found among the defined &
+                        &REGIONs in the input deck.'
+    call PrintErrMsg(option)
+  endif
+   
+  allocate(allregion_num_cells(option%comm%size))
+  myregion_num_cells = region%num_cells
+  if (myregion_num_cells > 0) then
+    allocate(myregion_cell_ids(myregion_num_cells))
+    do i = 1,myregion_num_cells
+      ! get global id for the region cell ids
+      myregion_cell_ids(i) = &
+        res_grid%nG2A(res_grid%nL2G(region%cell_ids(i)))
+    enddo
+  else
+    allocate(myregion_cell_ids(1))
+    myregion_cell_ids = UNINITIALIZED_INTEGER
+  endif
+   
+  call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
+  call MPI_Allgather(myregion_num_cells,ONE_INTEGER,MPI_INTEGER, &
+                     allregion_num_cells,ONE_INTEGER,MPI_INTEGER, &
+                     option%mycomm,ierr);CHKERRQ(ierr)
+  
+  region_num_cells = SUM(allregion_num_cells)
+  do i = 1,option%comm%size
+    if (i == 1) then
+      cell_positions(i) = 0
+    else
+      cell_positions(i) = cell_positions(i-1) + allregion_num_cells(i-1)
+    endif
+  enddo
+ 
+  allocate(this%clip_region_cell_ids(region_num_cells))
+  call MPI_Gatherv(myregion_cell_ids,myregion_num_cells,MPI_INTEGER, &
+                   this%clip_region_cell_ids,allregion_num_cells, &
+                   cell_positions,MPI_INTEGER,ZERO_INTEGER, &
+                   option%mycomm,ierr);CHKERRQ(ierr)
+  ! only rank zero knows this%clip_region_cell_ids, so we need to share it
+  call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
+  call MPI_Bcast(this%clip_region_cell_ids,region_num_cells,MPI_INTEGER, &
+                 ZERO_INTEGER,option%mycomm,ierr);CHKERRQ(ierr)
+  deallocate(myregion_cell_ids)
+  deallocate(allregion_num_cells)
+  nullify(connected)
+
+  allocate(connected_to_region(total_sum_glb))
+  connected_to_region(:) = PETSC_FALSE   
+  allocate(visited_cells(total_sum_glb))
+  
+  do k = 1,size(this%clip_region_cell_ids)
+    ! this is a recursive subroutine which will call itself
+    visited_cells = 0
+    call PMFracConnectedness(this,this%clip_region_cell_ids(k),visited_cells,connected_to_region)
+  enddo
+
+end subroutine PMFracClipCells
+
+! ************************************************************************** !
+
+recursive subroutine PMFracConnectedness(this,natural_id,visited_cells,connected)
   !
   ! Figures out the fracture cells which are connected between a start region
   ! and an end region.
@@ -855,6 +909,7 @@ recursive subroutine PMFracConnectedness(this,natural_id)
 
   class(pm_fracture_type) :: this
   PetscInt :: natural_id
+  PetscInt, pointer :: visited_cells(:)
 
   type(grid_type), pointer :: grid
   type(connection_set_type), pointer :: cur_connection_set
@@ -863,8 +918,8 @@ recursive subroutine PMFracConnectedness(this,natural_id)
   PetscInt :: local_id_up, local_id_dn
   PetscInt :: natural_id_up, natural_id_dn
   PetscInt :: iconn, i
-  PetscInt :: starting_cell_id
-
+  PetscBool, pointer :: connected(:)
+  
   grid => this%realization%patch%grid
   connection_set_list => grid%internal_connection_set_list
 
@@ -893,8 +948,13 @@ recursive subroutine PMFracConnectedness(this,natural_id)
     !i = FINDLOC(this%allfrac_unique_cell_ids_glb,natural_id,1)
     do i=1,size(this%allfrac_unique_cell_ids_glb)
       if (this%allfrac_unique_cell_ids_glb(i) == natural_id) exit
-    enddo
-    this%connected_to_start(i) = PETSC_TRUE
+   enddo
+   if (visited_cells(i) == 1) then
+      return
+   else
+      visited_cells(i) = 1
+   endif
+   connected(i) = PETSC_TRUE
   else
     return
   endif
@@ -914,7 +974,7 @@ recursive subroutine PMFracConnectedness(this,natural_id)
       if (natural_id_up == natural_id) then
          write(*,*) " "
          write(*,*) "Cell",natural_id,"is the natural_id_up of connection", iconn
-         write(*,*) "Connection", iconn, " connects cell",natural_id,"with cell", &
+       write(*,*) "Connection", iconn, " connects cell",natural_id,"with cell", &
                      natural_id_dn, "."
         if (any(this%allfrac_unique_cell_ids_glb == natural_id_dn)) then
           write(*,*) "!! Cell", natural_id_dn, "is a fracture cell!!"
@@ -923,8 +983,8 @@ recursive subroutine PMFracConnectedness(this,natural_id)
           do i=1,size(this%allfrac_unique_cell_ids_glb)
             if (this%allfrac_unique_cell_ids_glb(i) == natural_id) exit
           enddo
-          if (.not.this%connected_to_start(i)) then
-            call PMFracConnectedness(this,natural_id_dn)
+          if (connected(i)) then
+            call PMFracConnectedness(this,natural_id_dn,visited_cells,connected)
           endif
         endif
       endif
@@ -941,8 +1001,9 @@ recursive subroutine PMFracConnectedness(this,natural_id)
           do i=1,size(this%allfrac_unique_cell_ids_glb)
             if (this%allfrac_unique_cell_ids_glb(i) == natural_id) exit
           enddo
-          if (.not.this%connected_to_start(i)) then
-            call PMFracConnectedness(this,natural_id_up)
+
+          if (connected(i)) then
+            call PMFracConnectedness(this,natural_id_up,visited_cells,connected)
           endif
         endif
       endif
@@ -1145,6 +1206,7 @@ subroutine PMFracFinalizeRun(this)
   implicit none
 
   class(pm_fracture_type) :: this
+  
 
 end subroutine PMFracFinalizeRun
 
@@ -1897,8 +1959,12 @@ subroutine PMFracReadClipRegion(pm_fracture,input,option,keyword,error_string, &
         select case(trim(word))
         !-----------------------------
           case('REGION')
-            call InputReadWord(input,option,pm_fracture%region_name,PETSC_TRUE)
-            call InputErrorMsg(input,option,'REGION',error_string)
+            call InputReadWord(input,option,pm_fracture%start_region_name,PETSC_TRUE)
+       !     call InputErrorMsg(input,option,'REGION',error_string)
+                  !-----------------------------
+          case('REGION_END')
+            call InputReadWord(input,option,pm_fracture%end_region_name,PETSC_TRUE)
+       !     call InputErrorMsg(input,option,'END_REGION',error_string)
         !-----------------------------
           case default
             call InputKeywordUnrecognized(input,word,error_string,option)
