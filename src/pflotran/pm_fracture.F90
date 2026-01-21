@@ -101,12 +101,26 @@ module PM_Fracture_class
     class(realization_subsurface_type), pointer :: realization
     type(fracture_type), pointer :: fracture_list
     type(fracfam_type), pointer :: fracfam_list
-    ! list of all global cell ids that contain fractures (some repeated)
+    ! list of all local cell ids that contain fractures (some repeated)
     PetscInt, pointer :: allfrac_cell_ids(:)
-    ! list of all global cell ids that contain fractures (unique)
+    ! list of all local cell ids that contain fractures (unique)
     PetscInt, pointer :: allfrac_unique_cell_ids(:)
-    ! list of all global cell ids that contain fracture intersections
+    ! list of all global cell ids that contain fractures (unique)
+    PetscInt, pointer :: allfrac_unique_cell_ids_glb(:)
+    ! list of all local cell ids that contain fracture intersections
     PetscInt, pointer :: frac_common_cell_ids(:)
+    ! Flag indicating connection to starting region
+    PetscBool, pointer :: connected_to_start(:)
+    ! Flag indicating connection to ending region
+    PetscBool, pointer :: connected_to_end(:)
+    ! list of all global cell ids that contain connected fractures (unique)
+    PetscInt, pointer :: unique_connected_cell_ids(:)
+    ! list of start region global cell ids
+    PetscInt, pointer :: clip_region_cell_ids(:)
+    ! name of region for clipping
+    character(len=MAXWORDLENGTH) :: start_region_name
+    ! name of end region for clipping
+    character(len=MAXWORDLENGTH) :: end_region_name
     ! maximum fracture perm at global cell ids
     PetscReal, pointer :: max_frac_kx(:)
     PetscReal, pointer :: max_frac_ky(:)
@@ -115,6 +129,10 @@ module PM_Fracture_class
     PetscReal, pointer :: sum_frac_kx(:)
     PetscReal, pointer :: sum_frac_ky(:)
     PetscReal, pointer :: sum_frac_kz(:)
+    ! maximum fracture aperture at global cell ids
+    PetscReal, pointer :: max_frac_hap(:)
+    ! sum of fracture aperture at global cell ids
+    PetscReal, pointer :: sum_frac_hap(:)
     ! behavior at fracture intersections (1=sum,2=max)
     PetscInt :: frac_intersection_type
     ! thermal expansion coefficient # [1/C]
@@ -125,6 +143,7 @@ module PM_Fracture_class
     PetscInt :: max_frac
     ! flag to update material_auxvar (permeability) object
     PetscBool :: update_material_auxvar_perm
+    PetscBool :: clip_unconnected_fracs
   contains
     procedure, public :: Setup => PMFracSetup
     procedure, public :: ReadPMBlock => PMFracReadPMBlock
@@ -172,18 +191,28 @@ function PMFractureCreate()
   nullify(this%fracfam_list)
   nullify(this%allfrac_cell_ids)
   nullify(this%allfrac_unique_cell_ids)
+  nullify(this%allfrac_unique_cell_ids_glb)
   nullify(this%frac_common_cell_ids)
+  nullify(this%connected_to_start)
+  nullify(this%connected_to_end)
+  nullify(this%unique_connected_cell_ids)
+  nullify(this%clip_region_cell_ids)
   nullify(this%max_frac_kx)
   nullify(this%max_frac_ky)
   nullify(this%max_frac_kz)
   nullify(this%sum_frac_kx)
   nullify(this%sum_frac_ky)
   nullify(this%sum_frac_kz)
+  nullify(this%max_frac_hap)
+  nullify(this%sum_frac_hap)
   this%frac_intersection_type = 1  ! (1=sum;2=max)
   this%nfrac = 0
   this%max_frac = UNINITIALIZED_INTEGER
   this%t_coeff = UNINITIALIZED_DOUBLE ! 40.d-6 is value for granite
   this%update_material_auxvar_perm = PETSC_FALSE
+  this%clip_unconnected_fracs = PETSC_FALSE
+  this%start_region_name = ''
+  this%end_region_name = ''
 
   PMFractureCreate => this
 
@@ -319,7 +348,8 @@ subroutine PMFracSetup(this)
   ! Author: Jennifer M. Frederick, SNL
   ! Date: 12/13/2023
   !
-
+  use Region_module
+  use Material_Aux_module
   use Grid_module
 
   implicit none
@@ -330,13 +360,17 @@ subroutine PMFracSetup(this)
   type(fracture_type), pointer :: cur_fracture,new_fracture_list
   type(fracfam_type), pointer :: cur_fracfam
   type(grid_type), pointer :: res_grid
+  type(material_auxvar_type), pointer :: material_auxvar
   character(len=MAXWORDLENGTH) :: word
   PetscInt, pointer :: temp_cell_ids(:)
   PetscInt, pointer :: temp_allfrac_cell_ids(:)
   PetscInt, pointer :: temp_allfrac_unique_cell_ids(:)
   PetscInt, pointer :: temp_frac_common_cell_ids(:)
   PetscInt :: k,j,i
-  PetscInt :: nf,tfc,read_max
+  PetscInt :: nf,tfc,tcfc,read_max
+  PetscInt :: total_sum_glb
+  PetscInt, pointer :: allfrac_num_cells(:)
+  PetscInt, pointer :: cell_positions(:)
   PetscReal, pointer :: d_vertex(:)
   PetscReal :: D,distance
   PetscReal :: min_x,max_x,min_y,max_y,min_z,max_z
@@ -347,11 +381,20 @@ subroutine PMFracSetup(this)
   PetscBool :: within_x,within_y,within_z
   PetscBool :: frac_is_within_grid_cell_volume
   PetscBool :: added
+  PetscBool, pointer :: connected(:)
+  PetscErrorCode :: ierr
 
   call this%SetRealization()
 
   option => this%option
   res_grid => this%realization%patch%grid
+
+  do k = 1,res_grid%nlmax
+    material_auxvar => &
+        this%realization%patch%aux%material%auxvars(res_grid%nL2G(k))
+    material_auxvar%fracture_aperture = 0.d0
+  enddo
+
   nf = 0
   read_max = 15000 ! Set to a large but realistic number
 
@@ -645,17 +688,88 @@ subroutine PMFracSetup(this)
     j = 1
     temp_allfrac_unique_cell_ids(1) = this%allfrac_cell_ids(1)
     do i=2,tfc
-        ! if the number already exists in temp check next
-        if (any( temp_allfrac_unique_cell_ids == &
-                 this%allfrac_cell_ids(i) )) cycle
-        ! No match found so add it to the output
-        j = j + 1
-        temp_allfrac_unique_cell_ids(j) = this%allfrac_cell_ids(i)
+      ! if the number already exists in temp check next
+      if (any( temp_allfrac_unique_cell_ids == &
+               this%allfrac_cell_ids(i) )) cycle
+      ! No match found so add it to the output
+      j = j + 1
+      temp_allfrac_unique_cell_ids(j) = this%allfrac_cell_ids(i)
     enddo
     allocate(this%allfrac_unique_cell_ids(j))
     this%allfrac_unique_cell_ids(1:j) = temp_allfrac_unique_cell_ids(1:j)
+    ! reuse already allocated array to hold global ids before deallocating it
+    do i=1,j
+      temp_allfrac_unique_cell_ids(i) = &
+                  res_grid%nG2A(res_grid%nL2G(this%allfrac_unique_cell_ids(i)))
+    enddo
+    ! if in parallel, the list in this%allfrac_unique_cell_ids are local to the
+    ! processor, so we need to make a global id list from all processors
+    ! j is the total number of fractured cells on each process
+    allocate(allfrac_num_cells(option%comm%size))
+    call MPI_Allgather(j,ONE_INTEGER,MPI_INTEGER,allfrac_num_cells, &
+                       ONE_INTEGER,MPI_INTEGER,option%mycomm,ierr);CHKERRQ(ierr)
+    call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
+    total_sum_glb = SUM(allfrac_num_cells)
+    allocate(cell_positions(option%comm%size))
+    do i = 1,option%comm%size
+      if (i == 1) then
+        cell_positions(i) = 0
+      else
+        cell_positions(i) = cell_positions(i-1) + allfrac_num_cells(i-1)
+      endif
+    enddo
+    allocate(this%allfrac_unique_cell_ids_glb(total_sum_glb))
+    call MPI_Gatherv(temp_allfrac_unique_cell_ids,j,MPI_INTEGER, &
+                     this%allfrac_unique_cell_ids_glb,allfrac_num_cells, &
+                     cell_positions,MPI_INTEGER,ZERO_INTEGER, &
+                     option%mycomm,ierr);CHKERRQ(ierr)
+    ! only rank zero knows this%allfrac_unique_cell_ids_glb, so we need to share it
+    call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
+    call MPI_Bcast(this%allfrac_unique_cell_ids_glb,total_sum_glb,MPI_INTEGER, &
+                   ZERO_INTEGER,option%mycomm,ierr);CHKERRQ(ierr)
+    deallocate(allfrac_num_cells)
     deallocate(temp_allfrac_unique_cell_ids)
 
+    if (this%clip_unconnected_fracs) then
+      option%io_buffer = 'GEOTHERMAL_FRACTURE_MODEL: Calculating connected &
+                         &fractures . . . '
+      call PrintMsg(option)
+      
+      !start region
+      call PMFracClipCells(this,this%connected_to_start,total_sum_glb, &
+                           cell_positions,this%start_region_name)
+
+      !end region
+      call PMFracClipCells(this,this%connected_to_end,total_sum_glb, &
+                           cell_positions,this%end_region_name)
+
+      allocate(connected(total_sum_glb))
+
+      connected = this%connected_to_start .and. this%connected_to_end
+      this%connected_to_start = connected
+     
+      !write(*,*) "............................................................."
+      !write(*,*) "connected_to_start =", this%connected_to_start
+
+      tcfc = COUNT(this%connected_to_start,1) ! count the total number of TRUE
+      allocate(this%unique_connected_cell_ids(tcfc))
+      i = 1
+      do k = 1,size(this%connected_to_start)
+        if (this%connected_to_start(k)) then
+          this%unique_connected_cell_ids(i) = this%allfrac_unique_cell_ids(k)
+          i = i + 1
+        endif
+      enddo
+      write(*,*) "............................................................."
+      write(*,*) "connected cell ids =", this%unique_connected_cell_ids
+
+      if (tcfc < size(this%allfrac_unique_cell_ids_glb)) then
+        option%io_buffer = 'GEOTHERMAL_FRACTURE_MODEL: There are disconnected &
+          &fractures in the domain. Disconnected fractures have been clipped.'
+        call PrintMsg(option)
+      endif
+    endif
+    deallocate(cell_positions)
   endif
 
   if (.not.associated(this%realization%reaction)) then
@@ -670,17 +784,240 @@ subroutine PMFracSetup(this)
   allocate(this%max_frac_ky(res_grid%nmax))
   allocate(this%max_frac_kz(res_grid%nmax))
   this%max_frac_kx = 0.d0; this%max_frac_ky = 0.d0; this%max_frac_kz = 0.d0
+  allocate(this%max_frac_hap(res_grid%nmax))
+  this%max_frac_hap = 0.d0
 
   allocate(this%sum_frac_kx(res_grid%nmax))
   allocate(this%sum_frac_ky(res_grid%nmax))
   allocate(this%sum_frac_kz(res_grid%nmax))
   this%sum_frac_kx = 0.d0; this%sum_frac_ky = 0.d0; this%sum_frac_kz = 0.d0
+  allocate(this%sum_frac_hap(res_grid%nmax))
+  this%sum_frac_hap = 0.d0
 
   deallocate(temp_cell_ids)
   deallocate(temp_allfrac_cell_ids)
   deallocate(d_vertex)
 
 end subroutine PMFracSetup
+
+! ************************************************************************** !
+
+subroutine PMFracClipCells(this,connected_to_region,total_sum_glb, &
+                           cell_positions,region_name)
+  !
+  ! Figures out what cells are in the clip region and connected to the region input
+  !
+  use Grid_module
+  use Region_module
+
+  implicit none
+
+  class(pm_fracture_type) :: this
+  PetscBool, pointer :: connected_to_region(:)
+  PetscInt :: total_sum_glb
+  PetscInt, pointer :: cell_positions(:)
+  character(len=MAXWORDLENGTH) :: region_name
+
+  type(option_type), pointer :: option
+  type(region_type), pointer :: region
+  type(grid_type), pointer :: res_grid
+  PetscInt :: k,i
+  PetscInt :: myregion_num_cells,region_num_cells
+  PetscInt, pointer :: allregion_num_cells(:)
+  PetscInt, pointer :: myregion_cell_ids(:)
+  PetscBool, pointer :: connected(:)
+  PetscErrorCode :: ierr
+  PetscInt, pointer :: visited_cells(:)
+
+  option => this%option
+  res_grid => this%realization%patch%grid
+
+  region => RegionGetPtrFromList(region_name, &
+                                 this%realization%patch%region_list)
+  
+  if (.not.associated(region)) then
+    option%io_buffer = 'REGION ' // trim(region_name) // ' in &
+                        &CLIP_UNCONNECTED_FRACTURES,REGION not found among the &
+                        &defined REGIONs in the input deck.'
+    call PrintErrMsg(option)
+  endif
+   
+  allocate(allregion_num_cells(option%comm%size))
+  myregion_num_cells = region%num_cells
+  if (myregion_num_cells > 0) then
+    allocate(myregion_cell_ids(myregion_num_cells))
+    do i = 1,myregion_num_cells
+      ! get global id for the region cell ids
+      myregion_cell_ids(i) = &
+        res_grid%nG2A(res_grid%nL2G(region%cell_ids(i)))
+    enddo
+  else
+    allocate(myregion_cell_ids(1))
+    myregion_cell_ids = UNINITIALIZED_INTEGER
+  endif
+   
+  call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
+  call MPI_Allgather(myregion_num_cells,ONE_INTEGER,MPI_INTEGER, &
+                     allregion_num_cells,ONE_INTEGER,MPI_INTEGER, &
+                     option%mycomm,ierr);CHKERRQ(ierr)
+  
+  region_num_cells = SUM(allregion_num_cells)
+  do i = 1,option%comm%size
+    if (i == 1) then
+      cell_positions(i) = 0
+    else
+      cell_positions(i) = cell_positions(i-1) + allregion_num_cells(i-1)
+    endif
+  enddo
+ 
+  allocate(this%clip_region_cell_ids(region_num_cells))
+  call MPI_Gatherv(myregion_cell_ids,myregion_num_cells,MPI_INTEGER, &
+                   this%clip_region_cell_ids,allregion_num_cells, &
+                   cell_positions,MPI_INTEGER,ZERO_INTEGER, &
+                   option%mycomm,ierr);CHKERRQ(ierr)
+  ! only rank zero knows this%clip_region_cell_ids, so we need to share it
+  call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
+  call MPI_Bcast(this%clip_region_cell_ids,region_num_cells,MPI_INTEGER, &
+                 ZERO_INTEGER,option%mycomm,ierr);CHKERRQ(ierr)
+  deallocate(myregion_cell_ids)
+  deallocate(allregion_num_cells)
+  nullify(connected)
+
+  allocate(connected_to_region(total_sum_glb))
+  connected_to_region(:) = PETSC_FALSE   
+  allocate(visited_cells(total_sum_glb))
+  
+  do k = 1,size(this%clip_region_cell_ids)
+    ! this is a recursive subroutine which will call itself
+    visited_cells = 0
+    call PMFracConnectedness(this,this%clip_region_cell_ids(k),visited_cells, &
+                             connected_to_region)
+  enddo
+
+end subroutine PMFracClipCells
+
+! ************************************************************************** !
+
+recursive subroutine PMFracConnectedness(this,natural_id,visited_cells, &
+                                         connected)
+  !
+  ! Figures out the fracture cells which are connected between a start region
+  ! and an end region.
+  !
+  ! Author: Jennifer M. Frederick, SNL
+  ! Date: 04/23/2025
+  !
+  use Grid_module
+  use Connection_module
+
+  implicit none
+
+  class(pm_fracture_type) :: this
+  PetscInt :: natural_id
+  PetscInt, pointer :: visited_cells(:)
+
+  type(grid_type), pointer :: grid
+  type(connection_set_type), pointer :: cur_connection_set
+  type(connection_set_list_type), pointer :: connection_set_list
+  PetscInt :: ghosted_id_up, ghosted_id_dn
+  PetscInt :: local_id_up, local_id_dn
+  PetscInt :: natural_id_up, natural_id_dn
+  PetscInt :: iconn, i
+  PetscBool, pointer :: connected(:)
+  
+  grid => this%realization%patch%grid
+  connection_set_list => grid%internal_connection_set_list
+
+  if (.not.this%clip_unconnected_fracs) return
+
+
+
+
+
+
+
+
+  ! something with the connection set isn't working. connection sets are local
+  ! so how do i make the routine work to check for connections across processors?
+
+
+
+
+
+
+
+
+
+  if (any(this%allfrac_unique_cell_ids_glb == natural_id)) then
+    ! note: FINDLOC only works with gfortran > 9.x
+    !i = FINDLOC(this%allfrac_unique_cell_ids_glb,natural_id,1)
+    do i=1,size(this%allfrac_unique_cell_ids_glb)
+      if (this%allfrac_unique_cell_ids_glb(i) == natural_id) exit
+   enddo
+   if (visited_cells(i) == 1) then
+      return
+   else
+      visited_cells(i) = 1
+   endif
+   connected(i) = PETSC_TRUE
+  else
+    return
+  endif
+  
+  cur_connection_set => connection_set_list%first
+  do
+    if (.not.associated(cur_connection_set)) exit
+    do iconn = 1, cur_connection_set%num_connections
+
+      ghosted_id_up = cur_connection_set%id_up(iconn)
+      ghosted_id_dn = cur_connection_set%id_dn(iconn)
+      local_id_up = grid%nG2L(ghosted_id_up) ! = zero for ghost nodes
+      local_id_dn = grid%nG2L(ghosted_id_dn)
+      natural_id_up = grid%nG2A(ghosted_id_up)
+      natural_id_dn = grid%nG2A(ghosted_id_dn)
+
+      if (natural_id_up == natural_id) then
+        !write(*,*) " "
+        !write(*,*) "Cell",natural_id,"is the natural_id_up of connection", iconn
+        !write(*,*) "Connection", iconn, " connects cell",natural_id,"with cell", &
+        !             natural_id_dn, "."
+        if (any(this%allfrac_unique_cell_ids_glb == natural_id_dn)) then
+          !write(*,*) "!! Cell", natural_id_dn, "is a fracture cell!!"
+          ! note: FINDLOC only works with gfortran > 9.x
+          !i = FINDLOC(this%allfrac_unique_cell_ids_glb,natural_id_dn,1)
+          do i=1,size(this%allfrac_unique_cell_ids_glb)
+            if (this%allfrac_unique_cell_ids_glb(i) == natural_id) exit
+          enddo
+          if (connected(i)) then
+            call PMFracConnectedness(this,natural_id_dn,visited_cells,connected)
+          endif
+        endif
+      endif
+
+      if (natural_id_dn == natural_id) then
+        !write(*,*) " "
+        !write(*,*) "Cell",natural_id,"is the natural_id_dn of connection", iconn
+        !write(*,*) "Connection", iconn, " connects cell",natural_id,"with cell", &
+        !             natural_id_up, "."
+        if (any(this%allfrac_unique_cell_ids_glb == natural_id_up)) then
+          !write(*,*) "!! Cell", natural_id_up, "is a fracture cell!!"
+          ! note: FINDLOC only works with gfortran > 9.x
+          !i = FINDLOC(this%allfrac_unique_cell_ids_glb,natural_id_up,1)
+          do i=1,size(this%allfrac_unique_cell_ids_glb)
+            if (this%allfrac_unique_cell_ids_glb(i) == natural_id) exit
+          enddo
+
+          if (connected(i)) then
+            call PMFracConnectedness(this,natural_id_up,visited_cells,connected)
+          endif
+        endif
+      endif
+
+    enddo
+    cur_connection_set => cur_connection_set%next
+  enddo
+
+end subroutine PMFracConnectedness
 
 ! ************************************************************************** !
 
@@ -711,6 +1048,7 @@ subroutine PMFracInitializeRun(this)
   use Material_Aux_module
   use TH_Aux_module
   use General_Aux_module
+  use Output_Aux_module
   use Field_module
   use Grid_module
 
@@ -721,6 +1059,7 @@ subroutine PMFracInitializeRun(this)
   type(material_auxvar_type), pointer :: material_auxvar
   type(th_auxvar_type), pointer :: th_auxvar
   type(general_auxvar_type), pointer :: general_auxvar
+  type(output_variable_list_type), pointer :: output_var_list
   type(option_type), pointer :: option
   type(field_type), pointer :: field
   type(grid_type), pointer :: grid
@@ -728,6 +1067,8 @@ subroutine PMFracInitializeRun(this)
   PetscReal, pointer :: perm0_xx_p(:), perm0_yy_p(:), perm0_zz_p(:)
   PetscInt :: icell,k
   PetscReal :: kx,ky,kz,L
+  PetscBool :: sit1,sit2
+  PetscInt, pointer :: cellid_list(:)
   PetscErrorCode :: ierr
 
   option => this%option
@@ -739,6 +1080,10 @@ subroutine PMFracInitializeRun(this)
   call VecGetArrayRead(field%perm0_zz,perm0_zz_p,ierr);CHKERRQ(ierr)
   this%max_frac_kx = 0.d0; this%max_frac_ky = 0.d0; this%max_frac_kz = 0.d0
   this%sum_frac_kx = 0.d0; this%sum_frac_ky = 0.d0; this%sum_frac_kz = 0.d0
+  this%max_frac_hap = 0.d0; this%sum_frac_hap = 0.d0
+
+  sit1 = .not.this%clip_unconnected_fracs
+  sit2 = PETSC_FALSE
 
   cur_fracture => this%fracture_list
   do
@@ -761,18 +1106,27 @@ subroutine PMFracInitializeRun(this)
       this%max_frac_kx(icell) = max(kx,this%max_frac_kx(icell))
       this%max_frac_ky(icell) = max(ky,this%max_frac_ky(icell))
       this%max_frac_kz(icell) = max(kz,this%max_frac_kz(icell))
+      this%max_frac_hap(icell) = &
+        max(cur_fracture%hap0,this%max_frac_hap(icell))
 
       ! record the sum of permeability encountered so far
       this%sum_frac_kx(icell) = this%sum_frac_kx(icell) + kx
       this%sum_frac_ky(icell) = this%sum_frac_ky(icell) + ky
       this%sum_frac_kz(icell) = this%sum_frac_kz(icell) + kz
+      this%sum_frac_hap(icell) = this%sum_frac_hap(icell) + cur_fracture%hap0
 
-      material_auxvar%porosity_0 = material_auxvar%porosity_0 + &
+      if (this%clip_unconnected_fracs) then
+        sit2 = any(icell == this%unique_connected_cell_ids)
+      endif
+
+      if (sit1 .or. sit2) then
+        material_auxvar%porosity_0 = material_auxvar%porosity_0 + &
+                                     (cur_fracture%hap0/L)
+        material_auxvar%porosity_base = material_auxvar%porosity_base + &
+                                        (cur_fracture%hap0/L)
+        material_auxvar%porosity = material_auxvar%porosity + &
                                    (cur_fracture%hap0/L)
-      material_auxvar%porosity_base = material_auxvar%porosity_base + &
-                                      (cur_fracture%hap0/L)
-      material_auxvar%porosity = material_auxvar%porosity + &
-                                 (cur_fracture%hap0/L)
+      endif
 
       if (option%iflowmode == G_MODE) then
         general_auxvar => &
@@ -788,27 +1142,37 @@ subroutine PMFracInitializeRun(this)
     cur_fracture => cur_fracture%next
   enddo
 
+  if (this%clip_unconnected_fracs) then
+    cellid_list => this%unique_connected_cell_ids
+  else
+    cellid_list => this%allfrac_unique_cell_ids
+  endif
+
   ! update domain material permeability of cells with fractures
-  if (associated(this%allfrac_unique_cell_ids)) then
-    do k = 1,size(this%allfrac_unique_cell_ids)
-      icell = this%allfrac_unique_cell_ids(k)
+  if (associated(cellid_list)) then
+    do k = 1,size(cellid_list)
+      icell = cellid_list(k)
+      material_auxvar => &
+        this%realization%patch%aux%material%auxvars(grid%nL2G(icell))
       if (this%frac_intersection_type == 2) then ! maximum
         perm0_xx_p(icell) = perm0_xx_p(icell) + this%max_frac_kx(icell)
         perm0_yy_p(icell) = perm0_yy_p(icell) + this%max_frac_ky(icell)
         perm0_zz_p(icell) = perm0_zz_p(icell) + this%max_frac_kz(icell)
+        material_auxvar%fracture_aperture = this%max_frac_hap(icell)
       endif
       if (this%frac_intersection_type == 1) then ! summation
         perm0_xx_p(icell) = perm0_xx_p(icell) + this%sum_frac_kx(icell)
         perm0_yy_p(icell) = perm0_yy_p(icell) + this%sum_frac_ky(icell)
         perm0_zz_p(icell) = perm0_zz_p(icell) + this%sum_frac_kz(icell)
+        material_auxvar%fracture_aperture = this%sum_frac_hap(icell)
       endif
     enddo
   endif
 
   if (this%update_material_auxvar_perm) then
-    if (associated(this%allfrac_unique_cell_ids)) then
-      do k = 1,size(this%allfrac_unique_cell_ids)
-        icell = this%allfrac_unique_cell_ids(k)
+    if (associated(cellid_list)) then
+      do k = 1,size(cellid_list)
+        icell = cellid_list(k)
         material_auxvar => &
           this%realization%patch%aux%material%auxvars(grid%nL2G(icell))
         material_auxvar%permeability(1) = perm0_xx_p(icell)
@@ -821,6 +1185,16 @@ subroutine PMFracInitializeRun(this)
   call VecRestoreArrayRead(field%perm0_xx,perm0_xx_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayRead(field%perm0_yy,perm0_yy_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayRead(field%perm0_zz,perm0_zz_p,ierr);CHKERRQ(ierr)
+
+  ! Setup the output variables for snapshot and observation files
+  output_var_list => this%realization%output_option%output_snap_variable_list
+  call PMFracSetPlotVariables(output_var_list,this)
+  if (.not.associated( &
+                this%realization%output_option%output_snap_variable_list, &
+                this%realization%output_option%output_obs_variable_list)) then
+    output_var_list => this%realization%output_option%output_obs_variable_list
+    call PMFracSetPlotVariables(output_var_list,this)
+  endif
 
 end subroutine PMFracInitializeRun
 
@@ -992,6 +1366,10 @@ subroutine PMFracReadPMBlock(this,input)
     call PMFracReadFracFam(this,input,option,word,error_string,found)
     if (found) cycle
 
+    error_string = 'GEOTHERMAL_FRACTURE_MODEL'
+    call PMFracReadClipRegion(this,input,option,word,error_string,found)
+    if (found) cycle
+
     if (.not. found) then
       option%io_buffer = 'Keyword "' // trim(word) // &
                          '" does not exist for GEOTHERMAL_FRACTURE_MODEL.'
@@ -1026,7 +1404,7 @@ end subroutine PMFracReadPMBlock
 ! ************************************************************************** !
 
 subroutine PMFracReadFracture(pm_fracture,input,option,keyword,error_string, &
-                            found)
+                              found)
   !
   ! Reads input file parameters associated with the fracture model grid.
   !
@@ -1547,6 +1925,69 @@ end subroutine PMFracReadFracFam
 
 ! ************************************************************************** !
 
+subroutine PMFracReadClipRegion(pm_fracture,input,option,keyword,error_string, &
+                                found)
+  !
+  ! Reads input file parameters associated with the fracture model grid.
+  !
+  ! Author: Jennifer M. Frederick, SNL
+  ! Date: 05/06/2025
+  !
+
+  implicit none
+
+  class(pm_fracture_type) :: pm_fracture
+  type(input_type), pointer :: input
+  type(option_type) :: option
+  character(len=MAXWORDLENGTH) :: keyword
+  character(len=MAXSTRINGLENGTH) :: error_string
+  PetscBool :: found
+
+  character(len=MAXWORDLENGTH) :: word
+
+  error_string = trim(error_string) // ',CLIP_UNCONNECTED_FRACTURES'
+  found = PETSC_TRUE
+
+  select case(trim(keyword))
+  !-------------------------------------
+    case('CLIP_UNCONNECTED_FRACTURES')
+      pm_fracture%clip_unconnected_fracs = PETSC_TRUE
+      call InputPushBlock(input,option)
+      do
+        call InputReadPflotranString(input,option)
+        if (InputError(input)) exit
+        if (InputCheckExit(input,option)) exit
+        call InputReadCard(input,option,word)
+        call InputErrorMsg(input,option,'keyword',error_string)
+        call StringToUpper(word)
+        select case(trim(word))
+        !-----------------------------
+          case('REGION_START')
+            call InputReadWord(input,option,pm_fracture%start_region_name, &
+                               PETSC_TRUE)
+            call InputErrorMsg(input,option,'REGION',error_string)
+                  !-----------------------------
+          case('REGION_END')
+            call InputReadWord(input,option,pm_fracture%end_region_name, &
+                               PETSC_TRUE)
+            call InputErrorMsg(input,option,'END_REGION',error_string)
+        !-----------------------------
+          case default
+            call InputKeywordUnrecognized(input,word,error_string,option)
+        !-----------------------------
+        end select
+      enddo
+      call InputPopBlock(input,option)
+  !-------------------------------------
+    case default
+      found = PETSC_FALSE
+  !-------------------------------------
+  end select
+
+end subroutine PMFracReadClipRegion
+
+! ************************************************************************** !
+
 subroutine PMFracReadPass2(input,option)
   !
   ! Reads input file parameters associated with the fracture process model.
@@ -1581,6 +2022,9 @@ subroutine PMFracReadPass2(input,option)
     select case(trim(keyword))
       !--------------------
       case('FRACTURE')
+        call InputSkipToEND(input,option,card)
+      !--------------------
+      case('CLIP_UNCONNECTED_FRACTURES')
         call InputSkipToEND(input,option,card)
       !--------------------
       case('FRACTURE_FAMILY')
@@ -1837,6 +2281,7 @@ subroutine PMFracSolve(this,time,ierr)
   PetscReal, pointer :: perm0_xx_p(:), perm0_yy_p(:), perm0_zz_p(:)
   PetscReal :: cur_temperature,L
   PetscReal :: kx,ky,kz
+  PetscInt, pointer :: cellid_list(:)
   PetscInt :: icell,k
 
   option => this%option
@@ -1848,6 +2293,7 @@ subroutine PMFracSolve(this,time,ierr)
   call VecGetArrayRead(field%perm0_yy,perm0_yy_p,ierr);CHKERRQ(ierr)
   this%max_frac_kx = 0.d0; this%max_frac_ky = 0.d0; this%max_frac_kz = 0.d0
   this%sum_frac_kx = 0.d0; this%sum_frac_ky = 0.d0; this%sum_frac_kz = 0.d0
+  this%max_frac_hap = 0.d0; this%sum_frac_hap = 0.d0
 
   cur_fracture => this%fracture_list
   do
@@ -1891,11 +2337,14 @@ subroutine PMFracSolve(this,time,ierr)
       this%max_frac_kx(icell) = max(kx,this%max_frac_kx(icell))
       this%max_frac_ky(icell) = max(ky,this%max_frac_ky(icell))
       this%max_frac_kz(icell) = max(kz,this%max_frac_kz(icell))
+      this%max_frac_hap(icell) = &
+        max(cur_fracture%hap(k),this%max_frac_hap(icell))
 
       ! record the sum of permeability encountered so far
       this%sum_frac_kx(icell) = this%sum_frac_kx(icell) + kx
       this%sum_frac_ky(icell) = this%sum_frac_ky(icell) + ky
       this%sum_frac_kz(icell) = this%sum_frac_kz(icell) + kz
+      this%sum_frac_hap(icell) = this%sum_frac_hap(icell) + cur_fracture%hap(k)
 
       ! reset previous temperature for next time step
       cur_fracture%prev_temperature(k) = cur_temperature
@@ -1904,27 +2353,37 @@ subroutine PMFracSolve(this,time,ierr)
     cur_fracture => cur_fracture%next
   enddo
 
+  if (this%clip_unconnected_fracs) then
+    cellid_list => this%unique_connected_cell_ids
+  else
+    cellid_list => this%allfrac_unique_cell_ids
+  endif
+
   ! update domain material permeability of cells with fractures
-  if (associated(this%allfrac_unique_cell_ids)) then
-    do k = 1,size(this%allfrac_unique_cell_ids)
-      icell = this%allfrac_unique_cell_ids(k)
+  if (associated(cellid_list)) then
+    do k = 1,size(cellid_list)
+      icell = cellid_list(k)
+      material_auxvar => &
+        this%realization%patch%aux%material%auxvars(grid%nL2G(icell))
       if (this%frac_intersection_type == 2) then ! maximum
         perm0_xx_p(icell) = perm0_xx_p(icell) + this%max_frac_kx(icell)
         perm0_yy_p(icell) = perm0_yy_p(icell) + this%max_frac_ky(icell)
         perm0_zz_p(icell) = perm0_zz_p(icell) + this%max_frac_kz(icell)
+        material_auxvar%fracture_aperture = this%max_frac_hap(icell)
       endif
       if (this%frac_intersection_type == 1) then ! summation
         perm0_xx_p(icell) = perm0_xx_p(icell) + this%sum_frac_kx(icell)
         perm0_yy_p(icell) = perm0_yy_p(icell) + this%sum_frac_ky(icell)
         perm0_zz_p(icell) = perm0_zz_p(icell) + this%sum_frac_kz(icell)
+        material_auxvar%fracture_aperture = this%sum_frac_hap(icell)
       endif
     enddo
   endif
 
   if (this%update_material_auxvar_perm) then
-    if (associated(this%allfrac_unique_cell_ids)) then
-      do k = 1,size(this%allfrac_unique_cell_ids)
-        icell = this%allfrac_unique_cell_ids(k)
+    if (associated(cellid_list)) then
+      do k = 1,size(cellid_list)
+        icell = cellid_list(k)
         material_auxvar => &
           this%realization%patch%aux%material%auxvars(grid%nL2G(icell))
         material_auxvar%permeability(1) = perm0_xx_p(icell)
@@ -1941,6 +2400,29 @@ subroutine PMFracSolve(this,time,ierr)
   ierr = 0 ! If this is not set to zero, TS_STOP_FAILURE occurs
 
 end subroutine PMFracSolve
+
+! ************************************************************************** !
+
+subroutine PMFracSetPlotVariables(list,this)
+  !
+  ! Adds variables to be printed for plotting.
+  !
+  ! Author: Jenn Frederick
+  ! Date: 04/23/2025
+  !
+  use Output_Aux_module
+  use Variables_module
+
+  type(output_variable_list_type), pointer :: list
+  class(pm_fracture_type) :: this
+
+  character(len=MAXWORDLENGTH) :: name, units
+
+  name = 'Fracture Aperture'
+  units = 'm'
+  call OutputVariableAddToList(list,name,OUTPUT_GENERIC,units,FRACTURE_APERTURE)
+
+end subroutine PMFracSetPlotVariables
 
 ! ************************************************************************** !
 
@@ -1965,8 +2447,23 @@ subroutine PMFracDestroy(this)
   if (associated(this%allfrac_unique_cell_ids)) then
     call DeallocateArray(this%allfrac_unique_cell_ids)
   endif
+  if (associated(this%allfrac_unique_cell_ids_glb)) then
+    call DeallocateArray(this%allfrac_unique_cell_ids_glb)
+  endif
   if (associated(this%frac_common_cell_ids)) then
     call DeallocateArray(this%frac_common_cell_ids)
+  endif
+  if (associated(this%connected_to_start)) then
+    call DeallocateArray(this%connected_to_start)
+  endif
+  if (associated(this%connected_to_end)) then
+    call DeallocateArray(this%connected_to_end)
+  endif
+  if (associated(this%unique_connected_cell_ids)) then
+    call DeallocateArray(this%unique_connected_cell_ids)
+  endif
+  if (associated(this%clip_region_cell_ids)) then
+    call DeallocateArray(this%clip_region_cell_ids)
   endif
   if (associated(this%max_frac_kx)) then
     call DeallocateArray(this%max_frac_kx)

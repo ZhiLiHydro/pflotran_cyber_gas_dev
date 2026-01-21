@@ -8287,6 +8287,15 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
             enddo
         end select
       endif
+    ! PM FRACTURE (Geothermal Fracture Model)
+    case(FRACTURE_APERTURE)
+      select case(ivar)
+        case(FRACTURE_APERTURE)
+          do local_id=1,grid%nlmax
+            vec_ptr(local_id) = &
+              patch%aux%material%auxvars(grid%nL2G(local_id))%fracture_aperture
+          enddo
+      end select
     ! PM WELL (wellbore model)
     case(WELL_LIQ_PRESSURE,WELL_GAS_PRESSURE,WELL_LIQ_SATURATION, &
          WELL_GAS_SATURATION,WELL_AQ_CONC,WELL_AQ_MASS, &
@@ -9689,6 +9698,10 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
       value = grid%y(ghosted_id)
     case(Z_COORDINATE)
       value = grid%z(ghosted_id)
+    ! PM FRACTURE (Geothermal Fracture Model)
+    case(FRACTURE_APERTURE)
+      value = &
+        patch%aux%material%auxvars(grid%nL2G(ghosted_id))%fracture_aperture
     ! PM Well (wellbore model)
     case(WELL_LIQ_PRESSURE,WELL_GAS_PRESSURE,WELL_LIQ_SATURATION, &
          WELL_GAS_SATURATION,WELL_AQ_CONC,WELL_AQ_MASS, &
@@ -10674,6 +10687,15 @@ subroutine PatchSetVariable(patch,field,option,vec,vec_format,ivar,isubvar)
     case(GHOSTED_CELL_ID)
       call PrintErrMsg(option, &
                        'Cannot set GHOSTED_ID through PatchSetVariable()')
+    ! PM FRACTURE (Geothermal Fracture Model)
+    case(FRACTURE_APERTURE)
+      select case(ivar)
+        case(FRACTURE_APERTURE)
+          do local_id=1,grid%nlmax
+            patch%aux%material%auxvars(grid%nL2G(local_id))%fracture_aperture = &
+              vec_ptr(local_id)
+      enddo
+      end select
     ! PM Well (wellbore model)
     case(WELL_LIQ_PRESSURE,WELL_GAS_PRESSURE,WELL_LIQ_SATURATION, &
          WELL_GAS_SATURATION,WELL_AQ_CONC,WELL_AQ_MASS, &
