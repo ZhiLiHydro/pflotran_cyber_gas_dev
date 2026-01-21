@@ -361,21 +361,23 @@ subroutine PMFracSetup(this)
   type(fracfam_type), pointer :: cur_fracfam
   type(grid_type), pointer :: res_grid
   type(material_auxvar_type), pointer :: material_auxvar
-  character(len=MAXWORDLENGTH) :: word
+  character(len=MAXWORDLENGTH) :: word,filename
+  character(len=MAXSTRINGLENGTH) :: path
   PetscInt, pointer :: temp_cell_ids(:)
   PetscInt, pointer :: temp_allfrac_cell_ids(:)
   PetscInt, pointer :: temp_allfrac_unique_cell_ids(:)
   PetscInt, pointer :: temp_frac_common_cell_ids(:)
-  PetscInt :: k,j,i
+  PetscInt :: k,j,i,fid,status
   PetscInt :: nf,tfc,tcfc,read_max
   PetscInt :: total_sum_glb
   PetscInt, pointer :: allfrac_num_cells(:)
   PetscInt, pointer :: cell_positions(:)
   PetscReal, pointer :: d_vertex(:)
-  PetscReal :: D,distance
+  PetscReal :: D,distance,L2,L22
   PetscReal :: min_x,max_x,min_y,max_y,min_z,max_z
   PetscReal :: a1,a2,a3,b1,b2,b3,c1,c2,c3,vmag
   PetscReal :: ra, sinra, cosra
+  PetscReal :: fracture_volume
   type(point3d_type) :: grid_center,grid_dh ! grid cell center point and dh
   type(point3d_type) :: v1,v2,v3,v4,v5,v6,v7,v8 ! grid cell vertices
   PetscBool :: within_x,within_y,within_z
@@ -756,6 +758,7 @@ subroutine PMFracSetup(this)
       i = 1
       do k = 1,size(this%connected_to_start)
         if (this%connected_to_start(k)) then
+          ! these are local cell ids
           this%unique_connected_cell_ids(i) = this%allfrac_unique_cell_ids(k)
           i = i + 1
         endif
@@ -770,6 +773,52 @@ subroutine PMFracSetup(this)
       endif
     endif
     deallocate(cell_positions)
+
+    filename = trim(this%option%global_prefix)//'.info'
+    fid = 19181723
+110 format(100es16.8)
+    open(unit=fid,file=filename,action="write",status="replace")
+    write(fid,'(a)',advance="yes") "FRACTURE NETWORK METRICS FOR PFLOTRAN &
+                          &INPUT DECK: "//trim(this%option%global_prefix)//".in"
+    call GETCWD(path,status)
+    if (status==0) write(fid,'(a)',advance="yes") "INPUT DECK PATH: " &
+                                                  //trim(path)
+    if (status/=0) write(fid,'(a)',advance="yes") "INPUT DECK PATH: unknown"
+    write(fid,'(a)',advance="yes") "TIMESTAMP OF FILE CREATION: "//FDATE()
+    write(fid,'(a)',advance="yes") " "
+    write(fid,'(a)',advance="no") "NUMBER OF GRID CELLS IN DOMAIN: "
+    write(fid,'(I10)',advance="yes") res_grid%nmax
+    write(fid,'(a)',advance="no") "NUMBER OF CONNECTED FRACTURED GRID CELLS: "
+    write(fid,'(I10)',advance="yes") size(this%unique_connected_cell_ids)
+    write(fid,'(a)',advance="no") "PERCENT [%] OF DOMAIN GRID CELLS THAT &
+                                   &CONTAIN CONNECTED FRACTURES: "
+    write(fid,110,advance="yes") &
+        (REAL(size(this%unique_connected_cell_ids))/REAL(res_grid%nmax))*100.d0
+    
+    ! ! NOTE: This needs to be moved to after the first calc routine.
+    ! fracture_volume = 0.d0
+    ! do k = 1,size(this%unique_connected_cell_ids)
+    !   material_auxvar => this%realization%patch%aux%material% &
+    !                   auxvars(res_grid%nL2G(this%unique_connected_cell_ids(k)))
+    !   L2 = ((material_auxvar%volume)**(1.d0/3.d0))**(2)! [m^2]
+    !   write(*,*) "L2 = ", L2
+    !   write(*,*) "fracture_aperture = ",material_auxvar%fracture_aperture
+    !   write(*,*) "multiplying this is ",(L2*material_auxvar%fracture_aperture)
+    !   fracture_volume = fracture_volume + &
+    !                     (L2*material_auxvar%fracture_aperture) ! [m^3]
+    ! enddo
+    ! write(fid,'(a)',advance="no") "VOLUME [m^3] OF CONNECTED FRACTURES: "
+    ! write(fid,110,advance="yes") fracture_volume
+
+    L22 = 0.d0
+    do k = 1,size(this%unique_connected_cell_ids)
+      material_auxvar => this%realization%patch%aux%material% &
+                      auxvars(res_grid%nL2G(this%unique_connected_cell_ids(k)))
+      L22 = L22 + (2.d0*((material_auxvar%volume)**(1.d0/3.d0))**(2)) ! [m^2]
+    enddo
+    write(fid,'(a)',advance="no") "SURFACE AREA [m^2] OF CONNECTED FRACTURES: "
+    write(fid,110,advance="yes") L22
+    close(fid)
   endif
 
   if (.not.associated(this%realization%reaction)) then
