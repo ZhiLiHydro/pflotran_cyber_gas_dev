@@ -16,6 +16,8 @@ module Auxiliary_module
   use ERT_Aux_module
   use ZFlow_Aux_module
   use PNF_Aux_module
+  use PNF_Aux_module
+  use Stokes_Aux_module
   use SCO2_Aux_module
   use Secondary_Continuum_Aux_module
   use InlineSurface_Aux_module
@@ -35,6 +37,7 @@ module Auxiliary_module
     type(richards_type), pointer :: Richards
     type(zflow_type), pointer :: ZFlow
     type(pnf_type), pointer :: PNF
+    type(stokes_type), pointer :: Stokes
     type(mphase_type), pointer :: Mphase
     type(general_type), pointer :: General
     type(hydrate_type), pointer :: Hydrate
@@ -75,6 +78,7 @@ subroutine AuxInit(aux)
   nullify(aux%Richards)
   nullify(aux%ZFlow)
   nullify(aux%PNF)
+  nullify(aux%Stokes)
   nullify(aux%ERT)
 
   nullify(aux%Mphase)
@@ -112,6 +116,7 @@ subroutine AuxDestroy(aux)
   call RichardsAuxDestroy(aux%Richards)
   call ZFlowAuxDestroy(aux%ZFlow)
   call PNFAuxDestroy(aux%PNF)
+  call StokesAuxDestroy(aux%Stokes)
   call MphaseAuxDestroy(aux%Mphase)
   call GeneralAuxDestroy(aux%General)
   call HydrateAuxDestroy(aux%Hydrate)
@@ -131,6 +136,7 @@ subroutine AuxDestroy(aux)
   nullify(aux%Richards)
   nullify(aux%ZFlow)
   nullify(aux%PNF)
+  nullify(aux%Stokes)
   nullify(aux%Mphase)
   nullify(aux%General)
   nullify(aux%Hydrate)

@@ -47,6 +47,7 @@ subroutine FactorySubsurfReadFlowPM(input,option,pm)
   use PM_ZFlow_class
   use PM_PNF_class
   use PM_SCO2_class
+  use PM_Stokes_class
   use Init_Common_module
 
   implicit none
@@ -107,6 +108,8 @@ subroutine FactorySubsurfReadFlowPM(input,option,pm)
             pm => PMZFlowCreate()
           case ('PORE_FLOW')
             pm => PMPNFCreate()
+          case ('STOKES')
+            pm => PMStokesCreate()
           case ('STOMP-CO2','SCO2')
             pm => PMSCO2Create()
           case default
@@ -1635,6 +1638,10 @@ subroutine FactorySubsurfReadInput(simulation,input)
           case(PNF_MODE)
             option%io_buffer = 'Variably-saturated flow not supported &
               &in PORE mode.'
+            call PrintErrMsg(option)
+          case(STOKES_MODE)
+            option%io_buffer = 'Variably-saturated flow not supported &
+              &in STOKES mode.'
             call PrintErrMsg(option)
           case(NULL_MODE)
             option%io_buffer = 'CHARACTERISTIC_CURVES may not be used &

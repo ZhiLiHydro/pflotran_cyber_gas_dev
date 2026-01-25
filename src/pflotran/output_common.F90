@@ -2073,7 +2073,7 @@ subroutine OutputCommonGlobalMassHeader(realization_base,fid,icol, &
 
   ! catch request of energy header when not supported
   select case(option%iflowmode)
-    case(NULL_MODE,RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE)
+    case(NULL_MODE,RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE,STOKES_MODE)
     case(TH_MODE,TH_TS_MODE)
     case default
       option%io_buffer = 'Energy headers must be added for flow mode "' // &
@@ -2095,7 +2095,7 @@ subroutine OutputCommonGlobalMassHeader(realization_base,fid,icol, &
   endif
 
   select case(option%iflowmode)
-    case(RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE)
+    case(RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE,STOKES_MODE)
       call OutputWriteToHeader(fid,'Global Water Mass','kg','',icol)
     case(ZFLOW_MODE)
       call OutputWriteToHeader(fid,'Global Water Volume','m^3','',icol)
@@ -2281,7 +2281,7 @@ subroutine OutputCommonFluxHeader(realization_base,name,fid,icol, &
 
   ! catch request of energy header when not supported
   select case(option%iflowmode)
-    case(NULL_MODE,RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE)
+    case(NULL_MODE,RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE,STOKES_MODE)
     case(TH_MODE,TH_TS_MODE)
     case default
       option%io_buffer = 'Energy headers must be added for flow mode "' // &
@@ -2291,7 +2291,7 @@ subroutine OutputCommonFluxHeader(realization_base,name,fid,icol, &
   end select
 
   select case(option%iflowmode)
-    case(RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE)
+    case(RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE,STOKES_MODE)
       string = trim(name) // ' Water Mass'
       call OutputWriteToHeader(fid,string,'kg','',icol)
       units = 'kg/' // trim(output_option%tunit) // ''

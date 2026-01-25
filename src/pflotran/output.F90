@@ -1871,6 +1871,7 @@ subroutine OutputPrintCouplers(realization_base,debug,istep)
   use SCO2_Aux_module
   use ZFlow_Aux_module
   use PNF_Aux_module
+  use Stokes_Aux_module
   use Richards_Aux_module
 
   class(realization_base_type) :: realization_base
@@ -1914,6 +1915,9 @@ subroutine OutputPrintCouplers(realization_base,debug,istep)
       auxvar_names(1) = 'pressure'
     case(PNF_MODE)
       iauxvars(1) = PNF_LIQUID_PRESSURE_DOF
+      auxvar_names(1) = 'pressure'
+    case(STOKES_MODE)
+      iauxvars(1) = STOKES_P_DOF
       auxvar_names(1) = 'pressure'
     case(G_MODE)
       iauxvars(1) = GENERAL_LIQUID_PRESSURE_DOF
@@ -2013,6 +2017,7 @@ subroutine OutputPrintCouplersH5(realization_base,debug,istep)
   use WIPP_Flow_Aux_module
   use SCO2_Aux_module
   use PNF_Aux_module
+  use Stokes_Aux_module
   use ZFlow_Aux_module
   use String_module
   use Discretization_module
@@ -2078,6 +2083,9 @@ subroutine OutputPrintCouplersH5(realization_base,debug,istep)
       auxvar_names(1) = 'pressure'
     case(PNF_MODE)
       iauxvars(1) = PNF_LIQUID_PRESSURE_DOF
+      auxvar_names(1) = 'pressure'
+    case(STOKES_MODE)
+      iauxvars(1) = STOKES_P_DOF
       auxvar_names(1) = 'pressure'
     case(G_MODE)
       iauxvars(1) = GENERAL_LIQUID_PRESSURE_DOF

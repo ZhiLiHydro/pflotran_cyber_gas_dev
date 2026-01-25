@@ -337,6 +337,11 @@ subroutine RealizationCreateDiscretization(realization)
                                          field%flow_rhs)
     endif
 
+    if (option%iflowmode == STOKES_MODE) then
+      call DiscretizationDuplicateVector(discretization,field%flow_xx, &
+                                         field%flow_rhs)
+    endif
+
   endif
 
   if (option%ntrandof > 0) then
@@ -845,7 +850,7 @@ subroutine RealProcessMatPropAndSatFunc(realization)
 
     ! obtain saturation function id
     select case(option%iflowmode)
-      case(NULL_MODE,PNF_MODE)
+      case(NULL_MODE,PNF_MODE,STOKES_MODE)
       case default
         if (associated(patch%saturation_function_array)) then
           cur_material_property%saturation_function_id = &

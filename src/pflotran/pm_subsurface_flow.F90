@@ -599,6 +599,7 @@ subroutine PMSubsurfaceFlowSetSoilRefPres(realization)
   PetscObjectNullify(dataset_vec)
 
   if (option%iflowmode == PNF_MODE) return
+  if (option%iflowmode == STOKES_MODE) return
 
   if (option%iflowmode == WF_MODE) then
     call RealizationGetVariable(realization,realization%field%work, &

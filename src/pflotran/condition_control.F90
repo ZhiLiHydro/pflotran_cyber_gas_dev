@@ -47,6 +47,7 @@ subroutine CondControlAssignFlowInitCond(realization)
   use EOS_Water_module
   use Material_Aux_module
   use Material_module
+  use Stokes_Aux_module
 
   use Global_module
   use Variables_module, only : STATE
@@ -1334,6 +1335,89 @@ subroutine CondControlAssignFlowInitCond(realization)
         initial_condition => initial_condition%next
       enddo
       call VecRestoreArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+
+    case(STOKES_MODE)
+        ! assign initial conditions values to domain
+      call VecGetArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+
+      xx_p = UNINITIALIZED_DOUBLE
+
+      initial_condition => patch%initial_condition_list%first
+      do
+
+        if (.not.associated(initial_condition)) exit
+
+        dataset_flag = PETSC_FALSE
+        dataset =>  initial_condition%flow_condition% &
+                          sub_condition_ptr(STOKES_P_DOF)%ptr%dataset
+        select type(dataset_ptr => dataset)
+          class is(dataset_gridded_hdf5_type)
+            ! already mapped to flow_aux_real_var
+            if (.not.associated(initial_condition%flow_aux_real_var)) then
+              option%io_buffer = 'A gridded dataset is being &
+                &used with ' // trim(option%flowmode) // &
+                ', yet flow_aux_real_var is not allocated.'
+              call PrintErrMsgToDev(option,'')
+            endif
+          class is(dataset_common_hdf5_type)
+            dataset_flag(RICHARDS_PRESSURE_DOF) = PETSC_TRUE
+            call VecRestoreArray(field%flow_xx,xx_p, &
+                                    ierr);CHKERRQ(ierr)
+            do idof = 1, option%nflowdof
+              call ConditionControlMapDatasetToVec(realization, &
+                      initial_condition%flow_condition% &
+                      sub_condition_ptr(RICHARDS_PRESSURE_DOF)%ptr%dataset, &
+                      idof,field%flow_xx,GLOBAL)
+            enddo
+            call VecGetArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+        end select
+
+        if (.not.associated(initial_condition%flow_aux_real_var) .and. &
+            .not.associated(initial_condition%flow_condition)) then
+          option%io_buffer = 'Flow condition is NULL in initial condition'
+          call PrintErrMsg(option)
+        endif
+        if (associated(initial_condition%flow_aux_real_var)) then
+          num_connections = &
+            initial_condition%connection_set%num_connections
+          conn_id_ptr => initial_condition%connection_set%id_dn
+        else
+          num_connections = initial_condition%region%num_cells
+          conn_id_ptr => initial_condition%region%cell_ids
+        endif
+        do iconn=1, num_connections
+          local_id = conn_id_ptr(iconn)
+          ghosted_id = grid%nL2G(local_id)
+          iend = local_id*option%nflowdof
+          ibegin = iend-option%nflowdof+1
+          if (patch%imat(ghosted_id) <= 0) then
+            xx_p(ibegin:iend) = 0.d0
+            patch%aux%Global%auxvars(ghosted_id)%istate = 0
+            cycle
+          endif
+          if (associated(initial_condition%flow_aux_real_var)) then
+            do idof = 1, option%nflowdof
+              if (.not.dataset_flag(STOKES_P_DOF)) then
+                xx_p(ibegin+idof-1) =  &
+                  initial_condition%flow_aux_real_var(STOKES_P_DOF,iconn)
+              endif
+            enddo
+          else
+            do idof = 1, option%nflowdof
+              if (.not.dataset_flag(STOKES_P_DOF)) then
+                xx_p(ibegin+idof-1) = &
+                  initial_condition%flow_condition% &
+                    sub_condition_ptr(STOKES_P_DOF)%ptr%dataset%rarray(1)
+              endif
+            enddo
+          endif
+          patch%aux%Global%auxvars(ghosted_id)%istate = &
+            initial_condition%flow_condition%iphase
+        enddo
+        initial_condition => initial_condition%next
+      enddo
+      call VecRestoreArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+
     case default
       ! assign initial conditions values to domain
       call VecGetArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
@@ -1418,7 +1502,7 @@ subroutine CondControlAssignFlowInitCond(realization)
   end select
 
   select case(option%iflowmode)
-    case(RICHARDS_MODE,RICHARDS_TS_MODE,ZFLOW_MODE,PNF_MODE)
+    case(RICHARDS_MODE,RICHARDS_TS_MODE,ZFLOW_MODE,PNF_MODE,STOKES_MODE)
     case default
       call GlobalUpdateState(realization)
   end select
@@ -2261,7 +2345,7 @@ subroutine CondControlScaleSourceSink(realization)
   material_auxvars => realization%patch%aux%Material%auxvars
 
   select case(option%iflowmode)
-    case(TH_MODE,TH_TS_MODE,MPH_MODE,PNF_MODE)
+    case(TH_MODE,TH_TS_MODE,MPH_MODE,PNF_MODE,STOKES_MODE)
       option%io_buffer = 'Flow mode ' // trim(option%flowmode) // ' not &
         &supported in CondControlScaleSourceSink().'
       call PrintErrMsg(option)

@@ -15,6 +15,7 @@ auxiliary.o : \
   richards_aux.o \
   sco2_aux.o \
   secondary_continuum_aux.o \
+  stokes_aux.o \
   th_aux.o \
   wipp_flow_aux.o \
   zflow_aux.o
@@ -570,6 +571,7 @@ factory_subsurface.o : \
   pm_richards_ts.o \
   pm_rt.o \
   pm_sco2.o \
+  pm_stokes.o \
   pm_subsurface_flow.o \
   pm_th.o \
   pm_th_ts.o \
@@ -625,6 +627,7 @@ factory_subsurface_linkage.o : \
   pm_richards_ts.o \
   pm_rt.o \
   pm_sco2.o \
+  pm_stokes.o \
   pm_subsurface_flow.o \
   pm_th.o \
   pm_th_ts.o \
@@ -702,6 +705,7 @@ factory_subsurface_read.o : \
   pm_richards_ts.o \
   pm_rt.o \
   pm_sco2.o \
+  pm_stokes.o \
   pm_th.o \
   pm_th_ts.o \
   pm_ufd_biosphere.o \
@@ -1745,6 +1749,7 @@ output.o : \
   region.o \
   richards_aux.o \
   sco2_aux.o \
+  stokes_aux.o \
   string.o \
   units.o \
   utility.o \
@@ -2008,6 +2013,7 @@ patch.o : \
   richards_aux.o \
   saturation_function.o \
   sco2_aux.o \
+  stokes_aux.o \
   strata.o \
   string.o \
   th_aux.o \
@@ -2340,6 +2346,31 @@ pm_pnf.o : \
   pm_subsurface_flow.o \
   pnf.o \
   pnf_aux.o \
+  realization_base.o \
+  realization_subsurface.o \
+  string.o \
+  utility.o \
+  variables.o
+pm_stokes.o : \
+  checkpoint.o \
+  communicator_base.o \
+  connection.o \
+  coupler.o \
+  debug.o \
+  discretization.o \
+  eos_water.o \
+  field.o \
+  global.o \
+  grid.o \
+  input_aux.o \
+  material_aux.o \
+  option.o \
+  patch.o \
+  petsc_utility.o \
+  pflotran_constants.o \
+  pm_subsurface_flow.o \
+  stokes.o \
+  stokes.o \
   realization_base.o \
   realization_subsurface.o \
   string.o \
@@ -3927,6 +3958,31 @@ srcsink_sandbox_wipp_well.o : \
   srcsink_sandbox_base.o \
   string.o \
   units.o
+stokes.o : \
+  characteristic_curves.o \
+  connection.o \
+  coupler.o \
+  discretization.o \
+  eos_water.o \
+  field.o \
+  global_aux.o \
+  grid.o \
+  matrix_zeroing.o \
+  option.o \
+  output_aux.o \
+  patch.o \
+  pflotran_constants.o \
+  stokes_aux.o \
+  realization_subsurface.o \
+  upwind_direction.o \
+  variables.o
+stokes_aux.o : \
+  characteristic_curves.o \
+  global_aux.o \
+  matrix_zeroing.o \
+  option.o \
+  pflotran_constants.o \
+  utility.o
 strata.o : \
   input_aux.o \
   material.o \

@@ -1021,7 +1021,7 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
                 !coupler%flow_aux_int_var = 0
                 coupler%flow_aux_mapping => ZFlowAuxMapConditionIndices(iflag)
 
-              case(PNF_MODE)
+              case(PNF_MODE,STOKES_MODE)
                 allocate(coupler%flow_bc_type(1))
                 allocate(coupler%flow_aux_real_var(1,num_connections))
                 allocate(coupler%flow_aux_int_var(1,num_connections))
@@ -1135,7 +1135,7 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
                      VOLUMETRIC_RATE_SS,MASS_RATE_SS,PRES_REG_MASS_RATE_SS, &
                      HET_VOL_RATE_SS,HET_MASS_RATE_SS)
                   select case(option%iflowmode)
-                    case(RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE)
+                    case(RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE,STOKES_MODE)
                       allocate(coupler%flow_aux_real_var(1,num_connections))
                       coupler%flow_aux_real_var = 0.d0
                     case(TH_MODE,TH_TS_MODE)
@@ -1333,6 +1333,8 @@ subroutine PatchUpdateCouplerAuxVars(patch,coupler_list,force_update_flag, &
             call PatchUpdateCouplerAuxVarsZFlow(patch,coupler,option)
           case(PNF_MODE)
             call PatchUpdateCouplerAuxVarsPNF(patch,coupler,option)
+          case(STOKES_MODE)
+            call PatchUpdateCouplerAuxVarsStokes(patch,coupler,option)
           case(SCO2_MODE)
             call PatchUpdateCouplerAuxVarsSCO2(patch,coupler,option)
         end select
@@ -4640,6 +4642,144 @@ end subroutine PatchUpdateCouplerAuxVarsPNF
 
 ! ************************************************************************** !
 
+subroutine PatchUpdateCouplerAuxVarsStokes(patch,coupler,option)
+  !
+  ! Updates flow auxiliary variables associated
+  ! with a coupler for STOKES mode.
+  !
+  ! Analogous to PatchUpdateCouplerAuxVarsPNF, but:
+  !   - Uses Stokes DOF indices for pressure (and optionally velocity).
+  !   - Supports TYPE PRESSURE and TYPE VELOCITY flow conditions.
+  !
+  ! Author: Satish Karra, PNNL
+  ! Date:   01/24/2026
+  !
+  use Option_module
+  use Condition_module
+  use Grid_module
+  use Dataset_Common_HDF5_class
+  use Dataset_Gridded_HDF5_class
+  use Dataset_Ascii_class
+  use Dataset_module
+  use Stokes_Aux_module        ! for STOKES_*_DOF constants (or your constants module)
+  implicit none
+
+  type(patch_type)            :: patch
+  type(coupler_type), pointer :: coupler
+  type(option_type)           :: option
+  type(flow_condition_type), pointer :: flow_condition
+  PetscInt :: num_connections
+
+  num_connections = coupler%connection_set%num_connections
+  flow_condition => coupler%flow_condition
+
+  !------------------------------------------------------------
+  ! Pressure boundary conditions (TYPE PRESSURE)
+  !------------------------------------------------------------
+  if (associated(flow_condition%pressure)) then
+    select case(flow_condition%pressure%itype)
+      case(DIRICHLET_BC,NEUMANN_BC,ZERO_GRADIENT_BC)
+        select type(dataset => flow_condition%pressure%dataset)
+          class is(dataset_ascii_type)
+            ! Constant in time/space: use rarray(1)
+            coupler%flow_aux_real_var(STOKES_P_DOF,1:num_connections) = dataset%rarray(1)
+          class is(dataset_gridded_hdf5_type)
+            ! Cell/face-dependent pressure BC
+            call PatchUpdateCouplerGridDataset(coupler,option, &
+                 patch%grid,dataset,STOKES_P_DOF)
+          class is(dataset_common_hdf5_type)
+            ! Skip cell-indexed datasets used only in initial conditions
+          class default
+            call PrintMsg(option,'pressure%itype,DIRICHLET-type (Stokes)')
+            call DatasetUnknownClass(dataset,option, &
+                 'PatchUpdateCouplerAuxVarsStokes')
+        end select
+
+      case(HYDROSTATIC_BC,HYDROSTATIC_SEEPAGE_BC,HYDROSTATIC_CONDUCTANCE_BC)
+        option%io_buffer = 'HYDROSTATIC BCs not currently supported in STOKES flow'
+        call PrintErrMsg(option)
+
+      case(HET_DIRICHLET_BC,HET_HYDROSTATIC_SEEPAGE_BC, &
+           HET_HYDROSTATIC_CONDUCTANCE_BC)
+        option%io_buffer = 'Heterogeneous pressure BCs not currently supported in STOKES flow'
+        call PrintErrMsg(option)
+
+      case default
+        ! Unknown pressure BC type
+        option%io_buffer = 'Unknown pressure BC itype in STOKES flow'
+        call PrintErrMsg(option)
+    end select
+
+    ! Record the BC type for the pressure equation
+    coupler%flow_bc_type(STOKES_PRESSURE_EQUATION_INDEX) = &
+      flow_condition%pressure%itype
+  endif
+
+  !------------------------------------------------------------
+  ! Velocity boundary conditions (TYPE VELOCITY)
+  !------------------------------------------------------------
+  ! Here we assume that TYPE VELOCITY has been parsed such that:
+  !    flow_condition%itype(1) = VELOCITY_BC
+  ! and that flow_aux_real_var(1:3,iconn) will store (u_bc,v_bc,w_bc).
+  !
+  if (associated(flow_condition%velocity)) then
+    select case(flow_condition%velocity%itype)
+      case(DIRICHLET_BC)
+        select type(dataset => flow_condition%velocity%dataset)
+          class is(dataset_ascii_type)
+            ! Constant velocity (u,v,w) for all connections
+            coupler%flow_aux_real_var(STOKES_U_DOF,1:num_connections) = dataset%rarray(1)
+            coupler%flow_aux_real_var(STOKES_V_DOF,1:num_connections) = dataset%rarray(2)
+            coupler%flow_aux_real_var(STOKES_W_DOF,1:num_connections) = dataset%rarray(3)
+          class is(dataset_gridded_hdf5_type)
+            ! Space-dependent velocity BC from a gridded dataset
+            call PatchUpdateCouplerGridDataset(coupler,option,patch%grid, &
+                 dataset,STOKES_U_DOF)   ! x-component
+            call PatchUpdateCouplerGridDataset(coupler,option,patch%grid, &
+                 dataset,STOKES_V_DOF)   ! y-component
+            call PatchUpdateCouplerGridDataset(coupler,option,patch%grid, &
+                 dataset,STOKES_W_DOF)   ! z-component
+          class is(dataset_common_hdf5_type)
+            ! Skip cell-indexed datasets used for ICs
+          class default
+            call PrintMsg(option,'velocity%itype,VELOCITY_BC (Stokes)')
+            call DatasetUnknownClass(dataset,option, &
+                 'PatchUpdateCouplerAuxVarsStokes')
+        end select
+
+      case default
+        option%io_buffer = 'Unknown velocity BC type in STOKES flow'
+        call PrintErrMsg(option)
+    end select
+  endif
+
+  !------------------------------------------------------------
+  ! Saturation BCs: not applicable for single-phase Stokes
+  !------------------------------------------------------------
+  if (associated(flow_condition%saturation)) then
+    option%io_buffer = 'Saturation BCs not supported in STOKES flow'
+    call PrintErrMsg(option)
+  endif
+
+  !------------------------------------------------------------
+  ! Rate/source BCs (optional)
+  !------------------------------------------------------------
+  if (associated(flow_condition%rate)) then
+    select case(flow_condition%rate%itype)
+      case(SCALED_VOLUMETRIC_RATE_SS)
+        ! If you use this for Stokes body forces or inflow/outflow,
+        ! you can reuse the same scaling logic:
+        call PatchScaleSourceSink(patch,coupler, &
+                                  flow_condition%rate%isubtype,option)
+      case default
+        ! Leave other rate types for now or extend as needed
+    end select
+  endif
+
+end subroutine PatchUpdateCouplerAuxVarsStokes
+
+! ************************************************************************** !
+
 subroutine PatchUpdateCouplerAuxVarsSCO2(patch,coupler,option)
   !
   ! Updates flow auxiliary variables for SCO2 mode couplers.
@@ -5862,7 +6002,7 @@ subroutine PatchScaleSourceSink(patch,source_sink,iscale_type,option)
         source_sink%flow_aux_real_var( &
             source_sink%flow_aux_mapping(ZFLOW_COND_WATER_AUX_INDEX),&
             iconn) = vec_ptr(local_id)
-      case(MPH_MODE,PNF_MODE)
+      case(MPH_MODE,PNF_MODE,STOKES_MODE)
         option%io_buffer = 'PatchScaleSourceSink not set up for flow mode'
         call PrintErrMsg(option)
     end select

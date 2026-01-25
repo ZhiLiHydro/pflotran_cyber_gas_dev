@@ -177,6 +177,7 @@ subroutine FactorySubsurfaceSetFlowMode(pm_flow,pm_well,option)
   use ZFlow_Aux_module
   use PM_PNF_class
   use PM_Well_class
+  use PM_Stokes_class
 
   implicit none
 
@@ -245,6 +246,12 @@ subroutine FactorySubsurfaceSetFlowMode(pm_flow,pm_well,option)
       option%iflowmode = PNF_MODE
       option%nphase = 1
       option%nflowdof = 1
+      option%nflowspec = 1
+      option%flow%isothermal = PETSC_TRUE
+    class is (pm_stokes_type)
+      option%iflowmode = STOKES_MODE
+      option%nphase = 1
+      option%nflowdof = 4
       option%nflowspec = 1
       option%flow%isothermal = PETSC_TRUE
     class is (pm_th_type)

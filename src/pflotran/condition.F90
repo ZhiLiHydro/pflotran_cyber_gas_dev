@@ -34,6 +34,7 @@ module Condition_module
     type(time_storage_type), pointer :: default_time_storage
     class(dataset_base_type), pointer :: datum
     type(flow_sub_condition_type), pointer :: pressure
+    type(flow_sub_condition_type), pointer :: velocity
     type(flow_sub_condition_type), pointer :: saturation
     type(flow_sub_condition_type), pointer :: rate
     type(flow_sub_condition_type), pointer :: well
@@ -237,6 +238,7 @@ function FlowConditionCreate(option)
 
   allocate(condition)
   nullify(condition%pressure)
+  nullify(condition%velocity)
   nullify(condition%saturation)
   nullify(condition%rate)
   nullify(condition%energy_rate)
@@ -1089,7 +1091,7 @@ subroutine FlowConditionRead(condition,input,option)
   type(flow_sub_condition_type), pointer :: pressure, flux, temperature, &
                                        concentration, enthalpy, rate, well,&
                                        sub_condition_ptr, saturation, &
-                                       energy_rate, energy_flux
+                                       energy_rate, energy_flux, velocity
   PetscInt :: default_iphase
   PetscInt :: idof
   type(time_storage_type), pointer :: default_time_storage
@@ -1112,6 +1114,8 @@ subroutine FlowConditionRead(condition,input,option)
 
   pressure => FlowSubConditionCreate(option%nphase)
   pressure%name = 'pressure'
+  velocity  => FlowSubConditionCreate(THREE_INTEGER)
+  velocity%name = 'velocity'
   flux => pressure
   rate => FlowSubConditionCreate(option%nflowspec)
   rate%name = 'rate'
@@ -1225,6 +1229,8 @@ subroutine FlowConditionRead(condition,input,option)
           select case(trim(word))
             case('LIQUID_PRESSURE','LIQUID_HEAD')
               sub_condition_ptr => pressure
+            case('VELOCITY')
+              sub_condition_ptr => velocity
             case('RATE')
               sub_condition_ptr => rate
             case('ENERGY_RATE')
@@ -1503,6 +1509,11 @@ subroutine FlowConditionRead(condition,input,option)
       case('CONDUCTANCE')
         call InputReadDouble(input,option,pressure%aux_real(1))
         call InputErrorMsg(input,option,word,'CONDITION')
+      case('VELOCITY')
+        internal_units = 'meter/sec'
+        call ConditionReadValues(input,option,word, &
+                                 velocity%dataset, &
+                                 velocity%units,internal_units)
       case('THRESHOLD_PRESSURE')
         string = word
         call InputReadWord(input,option,word,PETSC_TRUE)
@@ -1577,6 +1588,9 @@ subroutine FlowConditionRead(condition,input,option)
   if (enthalpy%itype == NULL_CONDITION) then
     call FlowSubConditionDestroy(enthalpy)
   endif
+   if (velocity%itype == NULL_CONDITION) then
+    call FlowSubConditionDestroy(enthalpy)
+  endif
 
   !geh: simple check to ensure that DIRICHLET_SEEPAGE and
   !     DIRICHLET_CONDUCTANCE_BC are only used in TH and RICHARDS
@@ -1588,6 +1602,13 @@ subroutine FlowConditionRead(condition,input,option)
                   pressure%itype == NEUMANN_BC)) then
           option%io_buffer = 'Pressure FLOW_CONDITION type ' // &
             trim(StringWrite(pressure%itype)) // ' not supported by PNF_MODE.'
+          call PrintErrMsg(option)
+        endif
+      case(STOKES_MODE)
+        if (.not.(pressure%itype == DIRICHLET_BC .or. &
+                  pressure%itype == NEUMANN_BC)) then
+          option%io_buffer = 'Pressure FLOW_CONDITION type ' // &
+            trim(StringWrite(pressure%itype)) // ' not supported by STOKES_MODE.'
           call PrintErrMsg(option)
         endif
       case default
@@ -1678,6 +1699,12 @@ subroutine FlowConditionRead(condition,input,option)
   call FlowSubConditionVerify(option,condition,word,enthalpy, &
                               default_time_storage, &
                               PETSC_TRUE)
+
+  word = 'velocity'
+  call FlowSubConditionVerify(option,condition,word,velocity, &
+                              default_time_storage, &
+                              PETSC_TRUE)
+
 
   select case(option%iflowmode)
     case(G_MODE)
@@ -2024,6 +2051,41 @@ subroutine FlowConditionRead(condition,input,option)
         condition%itype(ONE_INTEGER) = pressure%itype
       else if (associated(rate)) then
         condition%itype(ONE_INTEGER) = rate%itype
+      endif
+
+      ! these are not used with PNF
+      if (associated(well)) call FlowSubConditionDestroy(well)
+      if (associated(saturation)) call FlowSubConditionDestroy(saturation)
+      if (associated(temperature)) call FlowSubConditionDestroy(temperature)
+      if (associated(enthalpy)) call FlowSubConditionDestroy(enthalpy)
+
+     case(STOKES_MODE)
+      if (.not.associated(pressure) .and. .not.associated(velocity)) then
+        option%io_buffer = 'pressure and velocity null in &
+                           &condition: ' // trim(condition%name)
+        call PrintErrMsg(option)
+      endif
+
+      if (associated(pressure)) then
+        condition%pressure => pressure
+      endif
+      if (associated(velocity)) then
+        condition%velocity => velocity
+      endif
+
+      condition%num_sub_conditions = 1
+      allocate(condition%sub_condition_ptr(condition%num_sub_conditions))
+      if (associated(pressure)) then
+        condition%sub_condition_ptr(ONE_INTEGER)%ptr => pressure
+      elseif (associated(velocity)) then
+        condition%sub_condition_ptr(ONE_INTEGER)%ptr => velocity
+      endif
+
+      allocate(condition%itype(ONE_INTEGER))
+      if (associated(pressure)) then
+        condition%itype(ONE_INTEGER) = pressure%itype
+      else if (associated(velocity)) then
+        condition%itype(ONE_INTEGER) = velocity%itype
       endif
 
       ! these are not used with PNF
