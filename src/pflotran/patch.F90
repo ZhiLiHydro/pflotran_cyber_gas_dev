@@ -4710,9 +4710,6 @@ subroutine PatchUpdateCouplerAuxVarsStokes(patch,coupler,option)
         call PrintErrMsg(option)
     end select
 
-    ! Record the BC type for the pressure equation
-    coupler%flow_bc_type(STOKES_PRESSURE_EQUATION_INDEX) = &
-      flow_condition%pressure%itype
   endif
 
   !------------------------------------------------------------
