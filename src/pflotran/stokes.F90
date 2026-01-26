@@ -72,6 +72,34 @@ subroutine StokesSetup(realization,rho,mu)
     stokes_aux%num_aux = grid%ngmax
   endif
 
+  ! count the number of boundary connections and allocate
+  ! auxvar data structures for them
+  sum_connection = CouplerGetNumConnectionsInList(patch%boundary_condition_list)
+  if (sum_connection > 0) then
+    allocate(stokes_aux%auxvars_bc(sum_connection))
+    do iconn = 1, sum_connection
+      call StokesAuxVarInit(stokes_aux%auxvars_bc(iconn),option)
+    enddo
+  endif
+  stokes_aux%num_aux_bc = sum_connection
+
+  ! count the number of source/sink connections and allocate
+  ! auxvar data structures for them
+  sum_connection = CouplerGetNumConnectionsInList(patch%source_sink_list)
+  if (sum_connection > 0) then
+    allocate(stokes_aux%auxvars_ss(sum_connection))
+    do iconn = 1, sum_connection
+      call StokesAuxVarInit(stokes_aux%auxvars_ss(iconn),option)
+    enddo
+  endif
+  stokes_aux%num_aux_ss = sum_connection
+
+  dof_is_active = PETSC_TRUE
+  call PatchCreateZeroArray(patch,dof_is_active, &
+                            patch%aux%Richards%matrix_zeroing,option)
+
+
+
 end subroutine StokesSetup
 
 ! ************************************************************************** !
