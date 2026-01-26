@@ -1337,86 +1337,268 @@ subroutine CondControlAssignFlowInitCond(realization)
       call VecRestoreArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
 
     case(STOKES_MODE)
-        ! assign initial conditions values to domain
-      call VecGetArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+        ! ----------------------------------------------------
+        ! Assign initial conditions values to domain for Stokes
+        ! DOFs: (u,v,w,p).
+        ! ----------------------------------------------------
+        call VecGetArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+        xx_p = UNINITIALIZED_DOUBLE
 
-      xx_p = UNINITIALIZED_DOUBLE
+        initial_condition => patch%initial_condition_list%first
+        do
+          if (.not.associated(initial_condition)) exit
 
-      initial_condition => patch%initial_condition_list%first
-      do
+          dataset_flag = PETSC_FALSE
 
-        if (.not.associated(initial_condition)) exit
+          !---------------------------------------------------
+          ! Handle dataset-based ICs for pressure and velocity,
+          ! following the pattern in PatchUpdateCouplerAuxVarsStokes.
+          !---------------------------------------------------
+          if (associated(initial_condition%flow_condition)) then
 
-        dataset_flag = PETSC_FALSE
-        dataset =>  initial_condition%flow_condition% &
-                          sub_condition_ptr(STOKES_P_DOF)%ptr%dataset
-        select type(dataset_ptr => dataset)
-          class is(dataset_gridded_hdf5_type)
-            ! already mapped to flow_aux_real_var
-            if (.not.associated(initial_condition%flow_aux_real_var)) then
-              option%io_buffer = 'A gridded dataset is being &
-                &used with ' // trim(option%flowmode) // &
-                ', yet flow_aux_real_var is not allocated.'
-              call PrintErrMsgToDev(option,'')
+            !-----------------------------
+            ! Pressure IC (STOKES_P_DOF)
+            !-----------------------------
+            if (associated(initial_condition%flow_condition% &
+                          sub_condition_ptr(STOKES_P_DOF)%ptr)) then
+              dataset => initial_condition%flow_condition% &
+                         sub_condition_ptr(STOKES_P_DOF)%ptr%dataset
+              select type(dataset_ptr => dataset)
+                class is (dataset_gridded_hdf5_type)
+                  ! Already mapped into flow_aux_real_var via IC coupler
+                  if (.not.associated(initial_condition%flow_aux_real_var)) then
+                    option%io_buffer = 'A gridded dataset is being &
+                      &used with STOKES (pressure), yet flow_aux_real_var is not allocated.'
+                    call PrintErrMsgToDev(option,'')
+                  endif
+                class is (dataset_common_hdf5_type)
+                  ! Common HDF5: map into vector
+                  dataset_flag(STOKES_P_DOF) = PETSC_TRUE
+                  call VecRestoreArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+                  call ConditionControlMapDatasetToVec(realization, &
+                       initial_condition%flow_condition% &
+                       sub_condition_ptr(STOKES_P_DOF)%ptr%dataset, &
+                       STOKES_P_DOF, field%flow_xx, GLOBAL)
+                  call VecGetArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+                class default
+                  ! ASCII or other: expect to be handled via flow_aux_real_var
+              end select
             endif
-          class is(dataset_common_hdf5_type)
-            dataset_flag(RICHARDS_PRESSURE_DOF) = PETSC_TRUE
-            call VecRestoreArray(field%flow_xx,xx_p, &
-                                    ierr);CHKERRQ(ierr)
-            do idof = 1, option%nflowdof
-              call ConditionControlMapDatasetToVec(realization, &
-                      initial_condition%flow_condition% &
-                      sub_condition_ptr(RICHARDS_PRESSURE_DOF)%ptr%dataset, &
-                      idof,field%flow_xx,GLOBAL)
-            enddo
-            call VecGetArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-        end select
 
-        if (.not.associated(initial_condition%flow_aux_real_var) .and. &
-            .not.associated(initial_condition%flow_condition)) then
-          option%io_buffer = 'Flow condition is NULL in initial condition'
-          call PrintErrMsg(option)
-        endif
-        if (associated(initial_condition%flow_aux_real_var)) then
-          num_connections = &
-            initial_condition%connection_set%num_connections
-          conn_id_ptr => initial_condition%connection_set%id_dn
-        else
-          num_connections = initial_condition%region%num_cells
-          conn_id_ptr => initial_condition%region%cell_ids
-        endif
-        do iconn=1, num_connections
-          local_id = conn_id_ptr(iconn)
-          ghosted_id = grid%nL2G(local_id)
-          iend = local_id*option%nflowdof
-          ibegin = iend-option%nflowdof+1
-          if (patch%imat(ghosted_id) <= 0) then
-            xx_p(ibegin:iend) = 0.d0
-            patch%aux%Global%auxvars(ghosted_id)%istate = 0
-            cycle
+            !-----------------------------
+            ! Velocity IC (STOKES_U/V/W_DOF)
+            !-----------------------------
+            if (associated(initial_condition%flow_condition% &
+                          sub_condition_ptr(STOKES_U_DOF)%ptr)) then
+              dataset => initial_condition%flow_condition% &
+                         sub_condition_ptr(STOKES_U_DOF)%ptr%dataset
+              select type(dataset_ptr => dataset)
+                class is (dataset_gridded_hdf5_type)
+                  if (.not.associated(initial_condition%flow_aux_real_var)) then
+                    option%io_buffer = 'A gridded dataset is being &
+                      &used with STOKES (u-velocity), yet flow_aux_real_var is not allocated.'
+                    call PrintErrMsgToDev(option,'')
+                  endif
+                class is (dataset_common_hdf5_type)
+                  dataset_flag(STOKES_U_DOF) = PETSC_TRUE
+                  call VecRestoreArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+                  call ConditionControlMapDatasetToVec(realization, &
+                       initial_condition%flow_condition% &
+                       sub_condition_ptr(STOKES_U_DOF)%ptr%dataset, &
+                       STOKES_U_DOF, field%flow_xx, GLOBAL)
+                  call VecGetArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+                class default
+              end select
+            endif
+
+            if (associated(initial_condition%flow_condition% &
+                          sub_condition_ptr(STOKES_V_DOF)%ptr)) then
+              dataset => initial_condition%flow_condition% &
+                         sub_condition_ptr(STOKES_V_DOF)%ptr%dataset
+              select type(dataset_ptr => dataset)
+                class is (dataset_gridded_hdf5_type)
+                  if (.not.associated(initial_condition%flow_aux_real_var)) then
+                    option%io_buffer = 'A gridded dataset is being &
+                      &used with STOKES (v-velocity), yet flow_aux_real_var is not allocated.'
+                    call PrintErrMsgToDev(option,'')
+                  endif
+                class is (dataset_common_hdf5_type)
+                  dataset_flag(STOKES_V_DOF) = PETSC_TRUE
+                  call VecRestoreArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+                  call ConditionControlMapDatasetToVec(realization, &
+                       initial_condition%flow_condition% &
+                       sub_condition_ptr(STOKES_V_DOF)%ptr%dataset, &
+                       STOKES_V_DOF, field%flow_xx, GLOBAL)
+                  call VecGetArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+                class default
+              end select
+            endif
+
+            if (associated(initial_condition%flow_condition% &
+                          sub_condition_ptr(STOKES_W_DOF)%ptr)) then
+              dataset => initial_condition%flow_condition% &
+                         sub_condition_ptr(STOKES_W_DOF)%ptr%dataset
+              select type(dataset_ptr => dataset)
+                class is (dataset_gridded_hdf5_type)
+                  if (.not.associated(initial_condition%flow_aux_real_var)) then
+                    option%io_buffer = 'A gridded dataset is being &
+                      &used with STOKES (w-velocity), yet flow_aux_real_var is not allocated.'
+                    call PrintErrMsgToDev(option,'')
+                  endif
+                class is (dataset_common_hdf5_type)
+                  dataset_flag(STOKES_W_DOF) = PETSC_TRUE
+                  call VecRestoreArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+                  call ConditionControlMapDatasetToVec(realization, &
+                       initial_condition%flow_condition% &
+                       sub_condition_ptr(STOKES_W_DOF)%ptr%dataset, &
+                       STOKES_W_DOF, field%flow_xx, GLOBAL)
+                  call VecGetArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+                class default
+              end select
+            endif
+          endif  ! associated(flow_condition)
+
+          !---------------------------------------------------
+          ! Sanity check: must have either flow_aux_real_var or flow_condition
+          !---------------------------------------------------
+          if (.not.associated(initial_condition%flow_aux_real_var) .and. &
+              .not.associated(initial_condition%flow_condition)) then
+            option%io_buffer = 'Flow condition is NULL in initial condition'
+            call PrintErrMsg(option)
           endif
+
+          !---------------------------------------------------
+          ! Decide if IC is given on connections (flow_aux_real_var) or region cells
+          !---------------------------------------------------
           if (associated(initial_condition%flow_aux_real_var)) then
-            do idof = 1, option%nflowdof
+            num_connections = initial_condition%connection_set%num_connections
+            conn_id_ptr     => initial_condition%connection_set%id_dn
+          else
+            num_connections = initial_condition%region%num_cells
+            conn_id_ptr     => initial_condition%region%cell_ids
+          endif
+
+          !---------------------------------------------------
+          ! Fill xx_p for each cell / connection
+          !---------------------------------------------------
+          do iconn = 1, num_connections
+            local_id   = conn_id_ptr(iconn)
+            ghosted_id = grid%nL2G(local_id)
+            iend       = local_id*option%nflowdof
+            ibegin     = iend-option%nflowdof+1
+
+            if (patch%imat(ghosted_id) <= 0) then
+              ! Solid cell: set to zero / inactive
+              xx_p(ibegin:iend) = 0.d0
+              patch%aux%Global%auxvars(ghosted_id)%istate = 0
+              cycle
+            endif
+
+            if (associated(initial_condition%flow_aux_real_var)) then
+              !------------------------------------------------
+              ! IC from flow_aux_real_var (component-wise)
+              !  - Pressure IC from STOKES_P_DOF, unless dataset flagged;
+              !  - Velocity ICs from U/V/W DOFs, if present;
+              !  - If not present, default 0 for velocities.
+              !------------------------------------------------
+              ! Initialize to zero
+              xx_p(ibegin    ) = 0.d0
+              xx_p(ibegin + 1) = 0.d0
+              xx_p(ibegin + 2) = 0.d0
+              xx_p(ibegin + 3) = 0.d0
+
+              ! u, v, w from auxvars if available
+              if (.not.dataset_flag(STOKES_U_DOF)) then
+                xx_p(ibegin + STOKES_U_DOF - 1) = &
+                  initial_condition%flow_aux_real_var(STOKES_U_DOF,iconn)
+              endif
+              if (.not.dataset_flag(STOKES_V_DOF)) then
+                xx_p(ibegin + STOKES_V_DOF - 1) = &
+                  initial_condition%flow_aux_real_var(STOKES_V_DOF,iconn)
+              endif
+              if (.not.dataset_flag(STOKES_W_DOF)) then
+                xx_p(ibegin + STOKES_W_DOF - 1) = &
+                  initial_condition%flow_aux_real_var(STOKES_W_DOF,iconn)
+              endif
+
+              ! pressure from auxvars
               if (.not.dataset_flag(STOKES_P_DOF)) then
-                xx_p(ibegin+idof-1) =  &
+                xx_p(ibegin + STOKES_P_DOF - 1) = &
                   initial_condition%flow_aux_real_var(STOKES_P_DOF,iconn)
               endif
-            enddo
-          else
-            do idof = 1, option%nflowdof
-              if (.not.dataset_flag(STOKES_P_DOF)) then
-                xx_p(ibegin+idof-1) = &
+
+            else
+              !------------------------------------------------
+              ! IC directly from flow_condition%sub_condition_ptr
+              ! (usually simple constant dataset/ASCII for pressure,
+              !  possibly velocities if you decide to support them).
+              !------------------------------------------------
+              ! Default u,v,w = 0
+              xx_p(ibegin    ) = 0.d0
+              xx_p(ibegin + 1) = 0.d0
+              xx_p(ibegin + 2) = 0.d0
+
+              ! Pressure from STOKES_P_DOF dataset
+              if (.not.dataset_flag(STOKES_P_DOF) .and. &
+                  associated(initial_condition%flow_condition) .and. &
+                  associated(initial_condition%flow_condition% &
+                             sub_condition_ptr(STOKES_P_DOF)%ptr)) then
+                xx_p(ibegin + STOKES_P_DOF - 1) = &
                   initial_condition%flow_condition% &
                     sub_condition_ptr(STOKES_P_DOF)%ptr%dataset%rarray(1)
+              else
+                ! If truly not specified, default to 0
+                xx_p(ibegin + STOKES_P_DOF - 1) = 0.d0
               endif
-            enddo
-          endif
-          patch%aux%Global%auxvars(ghosted_id)%istate = &
-            initial_condition%flow_condition%iphase
+
+              ! Pressure from STOKES_U_DOF dataset
+              if (.not.dataset_flag(STOKES_U_DOF) .and. &
+                  associated(initial_condition%flow_condition) .and. &
+                  associated(initial_condition%flow_condition% &
+                             sub_condition_ptr(STOKES_U_DOF)%ptr)) then
+                xx_p(ibegin + STOKES_U_DOF - 1) = &
+                  initial_condition%flow_condition% &
+                    sub_condition_ptr(STOKES_U_DOF)%ptr%dataset%rarray(1)
+              else
+                ! If truly not specified, default to 0
+                xx_p(ibegin + STOKES_U_DOF - 1) = 0.d0
+              endif
+
+              ! Pressure from STOKES_V_DOF dataset
+              if (.not.dataset_flag(STOKES_V_DOF) .and. &
+                  associated(initial_condition%flow_condition) .and. &
+                  associated(initial_condition%flow_condition% &
+                             sub_condition_ptr(STOKES_V_DOF)%ptr)) then
+                xx_p(ibegin + STOKES_V_DOF - 1) = &
+                  initial_condition%flow_condition% &
+                    sub_condition_ptr(STOKES_V_DOF)%ptr%dataset%rarray(1)
+              else
+                ! If truly not specified, default to 0
+                xx_p(ibegin + STOKES_V_DOF - 1) = 0.d0
+              endif
+
+              ! Pressure from STOKES_W_DOF dataset
+              if (.not.dataset_flag(STOKES_W_DOF) .and. &
+                  associated(initial_condition%flow_condition) .and. &
+                  associated(initial_condition%flow_condition% &
+                             sub_condition_ptr(STOKES_W_DOF)%ptr)) then
+                xx_p(ibegin + STOKES_W_DOF - 1) = &
+                  initial_condition%flow_condition% &
+                    sub_condition_ptr(STOKES_W_DOF)%ptr%dataset%rarray(1)
+              else
+                ! If truly not specified, default to 0
+                xx_p(ibegin + STOKES_W_DOF - 1) = 0.d0
+              endif
+            endif
+
+            patch%aux%Global%auxvars(ghosted_id)%istate = &
+              initial_condition%flow_condition%iphase
+          enddo
+
+          initial_condition => initial_condition%next
         enddo
-        initial_condition => initial_condition%next
-      enddo
-      call VecRestoreArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+
+        call VecRestoreArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
 
     case default
       ! assign initial conditions values to domain
@@ -1429,30 +1611,6 @@ subroutine CondControlAssignFlowInitCond(realization)
 
         if (.not.associated(initial_condition)) exit
 
-        dataset_flag = PETSC_FALSE
-        do idof = 1, option%nflowdof
-          dataset =>  initial_condition%flow_condition% &
-                            sub_condition_ptr(idof)%ptr%dataset
-          select type(dataset_ptr => dataset)
-            class is(dataset_gridded_hdf5_type)
-              ! already mapped to flow_aux_real_var
-              if (.not.associated(initial_condition%flow_aux_real_var)) then
-                option%io_buffer = 'A gridded dataset is being &
-                  &used with ' // trim(option%flowmode) // &
-                  ', yet flow_aux_real_var is not allocated.'
-                call PrintErrMsgToDev(option,'')
-              endif
-            class is(dataset_common_hdf5_type)
-              dataset_flag(idof) = PETSC_TRUE
-              call VecRestoreArray(field%flow_xx,xx_p, &
-                                      ierr);CHKERRQ(ierr)
-              call ConditionControlMapDatasetToVec(realization, &
-                      initial_condition%flow_condition% &
-                        sub_condition_ptr(idof)%ptr%dataset,idof, &
-                      field%flow_xx,GLOBAL)
-              call VecGetArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-          end select
-        enddo
         if (.not.associated(initial_condition%flow_aux_real_var) .and. &
             .not.associated(initial_condition%flow_condition)) then
           option%io_buffer = 'Flow condition is NULL in initial condition'
