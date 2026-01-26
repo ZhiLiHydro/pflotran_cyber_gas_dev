@@ -44,6 +44,9 @@ subroutine StokesSetup(realization,rho,mu)
   use Realization_Subsurface_class
   use Patch_module
   use Grid_module
+  use Option_module
+  use Coupler_module
+  use Connection_module
 
   implicit none
 
@@ -53,8 +56,11 @@ subroutine StokesSetup(realization,rho,mu)
   type(grid_type),          pointer :: grid
   type(material_auxvar_type), pointer :: mat_aux(:)
   type(stokes_type),    pointer :: stokes_aux
+  type(option_type), pointer :: option
+
   PetscInt :: gid
   PetscBool :: dof_is_active(1)
+  PetscInt :: iconn, sum_connection
 
   patch  => realization%patch
   grid   => patch%grid
