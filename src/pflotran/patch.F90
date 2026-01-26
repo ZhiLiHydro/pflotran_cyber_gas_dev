@@ -1021,7 +1021,7 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
                 !coupler%flow_aux_int_var = 0
                 coupler%flow_aux_mapping => ZFlowAuxMapConditionIndices(iflag)
 
-              case(PNF_MODE,STOKES_MODE)
+              case(PNF_MODE)
                 allocate(coupler%flow_bc_type(1))
                 allocate(coupler%flow_aux_real_var(1,num_connections))
                 allocate(coupler%flow_aux_int_var(1,num_connections))
@@ -1042,7 +1042,7 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
                 coupler%flow_aux_real_var = 0.d0
                 coupler%flow_aux_int_var = 0
 
-              case(MPH_MODE)
+              case(MPH_MODE,STOKES_MODE)
                 allocate(coupler%flow_aux_real_var(option%nflowdof, &
                                                    num_connections))
                 allocate(coupler%flow_aux_int_var(1,num_connections))
