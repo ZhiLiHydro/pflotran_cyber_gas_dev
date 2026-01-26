@@ -54,6 +54,7 @@ subroutine StokesSetup(realization,rho,mu)
   type(material_auxvar_type), pointer :: mat_aux(:)
   type(stokes_type),    pointer :: stokes_aux
   PetscInt :: gid
+  PetscBool :: dof_is_active(1)
 
   patch  => realization%patch
   grid   => patch%grid
@@ -96,7 +97,7 @@ subroutine StokesSetup(realization,rho,mu)
 
   dof_is_active = PETSC_TRUE
   call PatchCreateZeroArray(patch,dof_is_active, &
-                            patch%aux%Richards%matrix_zeroing,option)
+                            patch%aux%Stokes%matrix_zeroing,option)
 
 
 
