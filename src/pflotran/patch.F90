@@ -1045,7 +1045,7 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
               case(MPH_MODE,STOKES_MODE)
                 allocate(coupler%flow_aux_real_var(option%nflowdof, &
                                                    num_connections))
-                allocate(coupler%flow_aux_int_var(1,num_connections))
+                allocate(coupler%flow_aux_int_var(ONE_INTEGER,num_connections))
                 coupler%flow_aux_real_var = 0.d0
                 coupler%flow_aux_int_var = 0
 
@@ -4668,18 +4668,20 @@ subroutine PatchUpdateCouplerAuxVarsStokes(patch,coupler,option)
   type(coupler_type), pointer :: coupler
   type(option_type)           :: option
   type(flow_condition_type), pointer :: flow_condition
+  type(flow_stokes_condition_type), pointer :: stokes
   PetscInt :: num_connections
 
   num_connections = coupler%connection_set%num_connections
   flow_condition => coupler%flow_condition
 
+  stokes => flow_condition%stokes
   !------------------------------------------------------------
   ! Pressure boundary conditions (TYPE PRESSURE)
   !------------------------------------------------------------
-  if (associated(flow_condition%pressure)) then
-    select case(flow_condition%pressure%itype)
+  if (associated(stokes%pressure)) then
+    select case(stokes%pressure%itype)
       case(DIRICHLET_BC,NEUMANN_BC,ZERO_GRADIENT_BC)
-        select type(dataset => flow_condition%pressure%dataset)
+        select type(dataset => stokes%pressure%dataset)
           class is(dataset_ascii_type)
             ! Constant in time/space: use rarray(1)
             coupler%flow_aux_real_var(STOKES_P_DOF,1:num_connections) = dataset%rarray(1)
@@ -4719,10 +4721,10 @@ subroutine PatchUpdateCouplerAuxVarsStokes(patch,coupler,option)
   !    flow_condition%itype(1) = VELOCITY_BC
   ! and that flow_aux_real_var(1:3,iconn) will store (u_bc,v_bc,w_bc).
   !
-  if (associated(flow_condition%velocity)) then
-    select case(flow_condition%velocity%itype)
+  if (associated(stokes%velocity)) then
+    select case(stokes%velocity%itype)
       case(DIRICHLET_BC)
-        select type(dataset => flow_condition%velocity%dataset)
+        select type(dataset => stokes%velocity%dataset)
           class is(dataset_ascii_type)
             ! Constant velocity (u,v,w) for all connections
             coupler%flow_aux_real_var(STOKES_U_DOF,1:num_connections) = dataset%rarray(1)

@@ -1206,6 +1206,8 @@ subroutine FactorySubsurfReadInput(simulation,input)
             call FlowConditionHydrateRead(flow_condition,input,option)
           case(SCO2_MODE)
             call FlowConditionSCO2Read(flow_condition,input,option)
+          case(STOKES_MODE)
+            call FlowConditionStokesRead(flow_condition,input,option)
           case default
             call FlowConditionRead(flow_condition,input,option)
         end select

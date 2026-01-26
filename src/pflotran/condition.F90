@@ -34,7 +34,6 @@ module Condition_module
     type(time_storage_type), pointer :: default_time_storage
     class(dataset_base_type), pointer :: datum
     type(flow_sub_condition_type), pointer :: pressure
-    type(flow_sub_condition_type), pointer :: velocity
     type(flow_sub_condition_type), pointer :: saturation
     type(flow_sub_condition_type), pointer :: rate
     type(flow_sub_condition_type), pointer :: well
@@ -46,6 +45,7 @@ module Condition_module
     type(flow_general_condition_type), pointer :: general
     type(flow_hydrate_condition_type), pointer :: hydrate
     type(flow_sco2_condition_type), pointer :: sco2
+    type(flow_stokes_condition_type), pointer :: stokes
     ! any new sub conditions must be added to FlowConditionIsTransient
     type(sub_condition_ptr_type), pointer :: sub_condition_ptr(:)
     type(flow_condition_type), pointer :: next ! pointer to next condition_type for linked-lists
@@ -104,6 +104,13 @@ module Condition_module
     type(flow_sub_condition_type), pointer :: gas_flux
     type(flow_sub_condition_type), pointer :: energy_flux
   end type flow_sco2_condition_type
+
+
+  ! data structure for Stokes
+  type, public :: flow_stokes_condition_type
+    type(flow_sub_condition_type), pointer :: pressure
+    type(flow_sub_condition_type), pointer :: velocity
+  end type flow_stokes_condition_type
 
 
   type, public :: flow_sub_condition_type
@@ -179,12 +186,15 @@ module Condition_module
             FlowSubConditionCreate, &
             FlowGeneralConditionCreate, &
             FlowSCO2ConditionCreate, &
+            FlowStokesConditionCreate, &
             FlowHydrateConditionCreate, &
             FlowConditionGeneralRead, &
             FlowConditionHydrateRead, &
             FlowConditionSCO2Read, &
+            FlowConditionStokesRead, &
             FlowGeneralSubConditionPtr, &
             FlowSCO2SubConditionPtr, &
+            FlowStokesSubConditionPtr, &
             FlowHydrateSubConditionPtr, &
             FlowConditionAddToList, &
             FlowConditionInitList, &
@@ -238,7 +248,6 @@ function FlowConditionCreate(option)
 
   allocate(condition)
   nullify(condition%pressure)
-  nullify(condition%velocity)
   nullify(condition%saturation)
   nullify(condition%rate)
   nullify(condition%energy_rate)
@@ -442,6 +451,33 @@ function FlowSCO2ConditionCreate(option)
   FlowSCO2ConditionCreate => sco2_condition
 
 end function FlowSCO2ConditionCreate
+
+! ************************************************************************** !
+function FlowStokesConditionCreate(option)
+  !
+  ! Creates a condition for Stokes mode
+  !
+  ! Author: Satish Karra
+  ! Date: 1/26/2026
+  !
+
+  use Option_module
+
+  implicit none
+
+  type(option_type) :: option
+  type(flow_stokes_condition_type), pointer :: FlowStokesConditionCreate
+
+  type(flow_stokes_condition_type), pointer :: stokes_condition
+
+  allocate(stokes_condition)
+  nullify(stokes_condition%pressure)
+  nullify(stokes_condition%velocity)
+
+
+  FlowStokesConditionCreate => stokes_condition
+
+end function FlowStokesConditionCreate
 
 ! ************************************************************************** !
 
@@ -821,6 +857,55 @@ end function FlowSCO2SubConditionPtr
 
 ! ************************************************************************** !
 
+function FlowStokesSubConditionPtr(input,sub_condition_name,stokes, &
+                                    option)
+  !
+  ! Returns a pointer to a subcondition, creating them if necessary
+  !
+  ! Author: Satish Karra
+  ! Date: 1/26/26
+  !
+
+  use Option_module
+  use Input_Aux_module
+
+  implicit none
+
+  type(input_type) :: input
+  character(len=MAXWORDLENGTH) :: sub_condition_name
+  type(flow_stokes_condition_type) :: stokes
+  type(option_type) :: option
+
+  type(flow_sub_condition_type), pointer :: FlowStokesSubConditionPtr
+  type(flow_sub_condition_type), pointer :: sub_condition_ptr
+
+  select case(sub_condition_name)
+    case('LIQUID_PRESSURE')
+      if (associated(stokes%pressure)) then
+        sub_condition_ptr => stokes%pressure
+      else
+        sub_condition_ptr => FlowSubConditionCreate(ONE_INTEGER)
+        stokes%pressure => sub_condition_ptr
+      endif
+    case('VELOCITY')
+      if (associated(stokes%velocity)) then
+        sub_condition_ptr => stokes%velocity
+      else
+        sub_condition_ptr => FlowSubConditionCreate(THREE_INTEGER)
+        stokes%velocity => sub_condition_ptr
+      endif
+
+    case default
+      call InputKeywordUnrecognized(input,sub_condition_name, &
+                                    'Stokes condition,type',option)
+  end select
+
+  FlowStokesSubConditionPtr => sub_condition_ptr
+
+end function FlowStokesSubConditionPtr
+
+! ************************************************************************** !
+
 function FlowSubConditionCreate(ndof)
   !
   ! Creates a sub_condition
@@ -1114,8 +1199,6 @@ subroutine FlowConditionRead(condition,input,option)
 
   pressure => FlowSubConditionCreate(option%nphase)
   pressure%name = 'pressure'
-  velocity  => FlowSubConditionCreate(THREE_INTEGER)
-  velocity%name = 'velocity'
   flux => pressure
   rate => FlowSubConditionCreate(option%nflowspec)
   rate%name = 'rate'
@@ -1229,8 +1312,6 @@ subroutine FlowConditionRead(condition,input,option)
           select case(trim(word))
             case('LIQUID_PRESSURE','LIQUID_HEAD')
               sub_condition_ptr => pressure
-            case('VELOCITY')
-              sub_condition_ptr => velocity
             case('RATE')
               sub_condition_ptr => rate
             case('ENERGY_RATE')
@@ -1509,11 +1590,6 @@ subroutine FlowConditionRead(condition,input,option)
       case('CONDUCTANCE')
         call InputReadDouble(input,option,pressure%aux_real(1))
         call InputErrorMsg(input,option,word,'CONDITION')
-      case('VELOCITY')
-        internal_units = 'meter/sec'
-        call ConditionReadValues(input,option,word, &
-                                 velocity%dataset, &
-                                 velocity%units,internal_units)
       case('THRESHOLD_PRESSURE')
         string = word
         call InputReadWord(input,option,word,PETSC_TRUE)
@@ -2068,9 +2144,6 @@ subroutine FlowConditionRead(condition,input,option)
 
       if (associated(pressure)) then
         condition%pressure => pressure
-      endif
-      if (associated(velocity)) then
-        condition%velocity => velocity
       endif
 
       condition%num_sub_conditions = 1
@@ -3253,6 +3326,188 @@ subroutine FlowConditionSCO2Read(condition,input,option)
   call PetscLogEventEnd(logging%event_flow_condition_read,ierr);CHKERRQ(ierr)
 
 end subroutine FlowConditionSCO2Read
+
+! ************************************************************************** !
+
+subroutine FlowConditionStokesRead(condition,input,option)
+  !
+  ! Reads a condition from the input file for Stokes
+  !
+  ! Author: Satish Karra
+  ! Date: 1/26/26
+  !
+  use Option_module
+  use Input_Aux_module
+  use String_module
+  use Logging_module
+  use Time_Storage_module
+  use Dataset_module
+  use Stokes_Aux_module
+
+  implicit none
+
+  type(flow_condition_type) :: condition
+  type(input_type), pointer :: input
+  type(option_type) :: option
+
+  character(len=MAXSTRINGLENGTH) :: string
+  character(len=MAXWORDLENGTH) :: rate_string, internal_units
+  character(len=MAXWORDLENGTH) :: word
+  type(flow_stokes_condition_type), pointer :: stokes
+  type(flow_sub_condition_type), pointer :: sub_condition_ptr
+  PetscReal :: default_time
+  PetscInt :: idof, i
+  type(time_storage_type), pointer :: default_time_storage
+  class(dataset_ascii_type), pointer :: dataset_ascii
+  character(len=MAXWORDLENGTH) :: flow_mode_chars
+  PetscErrorCode :: ierr
+
+  call PetscLogEventBegin(logging%event_flow_condition_read, &
+                          ierr);CHKERRQ(ierr)
+
+
+  flow_mode_chars = 'Stokes Mode'
+
+  rate_string = 'not_assigned'
+  internal_units = 'not_assigned'
+
+  default_time = 0.d0
+
+  default_time_storage => TimeStorageCreate()
+  default_time_storage%is_cyclic = PETSC_FALSE
+  default_time_storage%time_interpolation_method = INTERPOLATION_STEP
+
+  stokes => FlowStokesConditionCreate(option)
+  condition%stokes => stokes
+
+ ! read the condition
+  input%ierr = INPUT_ERROR_NONE
+  call InputPushBlock(input,option)
+  do
+
+    internal_units = 'not_assigned'
+
+    call InputReadPflotranString(input,option)
+    call InputReadStringErrorMsg(input,option,'CONDITION')
+
+    if (InputCheckExit(input,option)) exit
+
+    call InputReadCard(input,option,word)
+    call InputErrorMsg(input,option,'keyword','CONDITION')
+
+    select case(trim(word))
+
+      case('CYCLIC')
+        ! by default, is_cyclic is set to PETSC_FALSE
+        default_time_storage%is_cyclic = PETSC_TRUE
+      case('SYNC_TIMESTEP_WITH_UPDATE')
+        condition%sync_time_with_update = PETSC_TRUE
+      case('INTERPOLATION')
+        call InputReadCard(input,option,word)
+        call InputErrorMsg(input,option,'INTERPOLATION','CONDITION')
+        call StringToUpper(word)
+        select case(word)
+          case('STEP')
+            default_time_storage%time_interpolation_method = &
+              INTERPOLATION_STEP
+          case('LINEAR')
+            default_time_storage%time_interpolation_method = &
+              INTERPOLATION_LINEAR
+        end select
+      case('TYPE') ! read condition type (dirichlet, neumann, etc) for each dof
+        call InputPushBlock(input,option)
+        do
+          call InputReadPflotranString(input,option)
+          call InputReadStringErrorMsg(input,option,'CONDITION')
+
+          if (InputCheckExit(input,option)) exit
+
+          if (InputError(input)) exit
+          call InputReadCard(input,option,word)
+          call InputErrorMsg(input,option,'keyword','CONDITION,TYPE')
+          call StringToUpper(word)
+          sub_condition_ptr => &
+                FlowStokesSubConditionPtr(input,word,stokes,option)
+          call InputReadCard(input,option,word)
+          call InputErrorMsg(input,option,'TYPE','CONDITION')
+          call StringToUpper(word)
+          sub_condition_ptr%ctype = word
+          select case(word)
+            case('DIRICHLET')
+              sub_condition_ptr%itype = DIRICHLET_BC
+            case default
+              call InputKeywordUnrecognized(input,word, &
+                                            'flow condition,type',option)
+          end select
+        enddo
+        call InputPopBlock(input,option)
+      case('LIQUID_PRESSURE','VELOCITY')
+        sub_condition_ptr => &
+                FlowStokesSubConditionPtr(input,word,stokes,option)
+        internal_units = 'not_assigned'
+        select case(trim(word))
+          case('LIQUID_PRESSURE')
+            internal_units = 'Pa'
+          case('VELOCITY')
+            internal_units = 'm/s'
+        end select
+        call ConditionReadValues(input,option,word, &
+                                 sub_condition_ptr%dataset, &
+                                 sub_condition_ptr%units,internal_units)
+        input%force_units = PETSC_FALSE
+      case default
+        call InputKeywordUnrecognized(input,word,'flow condition',option)
+    end select
+
+  enddo
+  call InputPopBlock(input,option)
+
+  ! verify the datasets
+  word = 'liquid pressure'
+  call FlowSubConditionVerify(option,condition,word,stokes%pressure, &
+                              default_time_storage, &
+                              PETSC_TRUE)
+  word = 'velocity'
+  call FlowSubConditionVerify(option,condition,word,stokes%velocity, &
+                              default_time_storage, &
+                              PETSC_TRUE)
+
+  condition%num_sub_conditions = 0
+  i = 0
+  if (associated(stokes%pressure)) &
+    i = i + 1
+  if (associated(stokes%velocity)) &
+    i = i + 1
+
+  condition%num_sub_conditions = i
+  allocate(condition%sub_condition_ptr(condition%num_sub_conditions))
+  do idof = 1, condition%num_sub_conditions
+    nullify(condition%sub_condition_ptr(idof)%ptr)
+  enddo
+  i = 0
+  if (associated(stokes%pressure)) then
+    i = i + 1
+    condition%sub_condition_ptr(i)%ptr => stokes%pressure
+  endif
+  if (associated(stokes%velocity)) then
+    i = i + 1
+    condition%sub_condition_ptr(i)%ptr => stokes%velocity
+  endif
+
+
+  ! set condition types
+  allocate(condition%itype(condition%num_sub_conditions))
+  do idof = 1, condition%num_sub_conditions
+    condition%itype(idof) = condition%sub_condition_ptr(idof)%ptr%itype
+  enddo
+
+  condition%default_time_storage => default_time_storage
+
+  call FlowConditionVerify(option,condition)
+
+  call PetscLogEventEnd(logging%event_flow_condition_read,ierr);CHKERRQ(ierr)
+
+end subroutine FlowConditionStokesRead
 
 ! ************************************************************************** !
 

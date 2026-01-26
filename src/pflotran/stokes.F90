@@ -321,6 +321,7 @@ subroutine StokesResidualPreliminaries(xx,r,realization,ierr)
   call StokesUpdateAuxVars(realization)
 
 end subroutine StokesResidualPreliminaries
+
 ! ************************************************************************** !
 
 subroutine StokesResidualInternalConn_structured(r,realization,mu,ierr)
@@ -513,27 +514,53 @@ subroutine StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
   bc => patch%boundary_condition_list%first
   do
     if (.not.associated(bc)) exit
+
+    ! Check if flow_condition is associated before proceeding
+    if (.not.associated(bc%flow_condition)) then
+      bc => bc%next
+      cycle
+    endif
+
+    ! Check if flow_aux_real_var is allocated
+    if (.not.associated(bc%flow_aux_real_var)) then
+      bc => bc%next
+      cycle
+    endif
+
     cset => bc%connection_set
+    if (.not.associated(cset)) then
+      bc => bc%next
+      cycle
+    endif
+
     do iconn = 1, cset%num_connections
       local_id = cset%id_dn(iconn)
       gid      = grid%nL2G(local_id)
       if (patch%imat(gid) <= 0) cycle
       ibeg = (local_id-1)*option%nflowdof + 1
 
+      ! Pressure BC
       select case(bc%flow_condition%itype(STOKES_P_DOF))
         case(DIRICHLET_BC)
-          p_bc = bc%flow_aux_real_var(1,iconn)
-          r_p(ibeg+3) = r_p(ibeg+3) + (u_loc(ibeg+3) - p_bc)
+          if (size(bc%flow_aux_real_var,1) >= 1 .and. &
+              size(bc%flow_aux_real_var,2) >= iconn) then
+            p_bc = bc%flow_aux_real_var(1,iconn)
+            r_p(ibeg+3) = r_p(ibeg+3) + (u_loc(ibeg+3) - p_bc)
+          endif
       end select
 
+      ! Velocity BC
       select case(bc%flow_condition%itype(STOKES_U_DOF))
         case(DIRICHLET_BC)
-          u_bc(1) = bc%flow_aux_real_var(1,iconn)
-          u_bc(2) = bc%flow_aux_real_var(2,iconn)
-          u_bc(3) = bc%flow_aux_real_var(3,iconn)
-          r_p(ibeg    ) = r_p(ibeg    ) + (u_loc(ibeg    ) - u_bc(1))
-          r_p(ibeg + 1) = r_p(ibeg + 1) + (u_loc(ibeg + 1) - u_bc(2))
-          r_p(ibeg + 2) = r_p(ibeg + 2) + (u_loc(ibeg + 2) - u_bc(3))
+          if (size(bc%flow_aux_real_var,1) >= 3 .and. &
+              size(bc%flow_aux_real_var,2) >= iconn) then
+            u_bc(1) = bc%flow_aux_real_var(1,iconn)
+            u_bc(2) = bc%flow_aux_real_var(2,iconn)
+            u_bc(3) = bc%flow_aux_real_var(3,iconn)
+            r_p(ibeg    ) = r_p(ibeg    ) + (u_loc(ibeg    ) - u_bc(1))
+            r_p(ibeg + 1) = r_p(ibeg + 1) + (u_loc(ibeg + 1) - u_bc(2))
+            r_p(ibeg + 2) = r_p(ibeg + 2) + (u_loc(ibeg + 2) - u_bc(3))
+          endif
       end select
     enddo
     bc => bc%next
@@ -868,6 +895,7 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,debug,ierr)
   type(option_type), pointer :: option
   type(coupler_type),pointer :: bc
   type(connection_set_type), pointer :: cset
+  PetscReal, pointer :: r_p(:), u_loc(:)
   PetscInt :: iconn, local_id, gid, istart
   PetscReal :: Jbc(4,4)
 
@@ -878,7 +906,25 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,debug,ierr)
   bc => patch%boundary_condition_list%first
   do
     if (.not.associated(bc)) exit
+
+    ! Check if flow_condition is associated before proceeding
+    if (.not.associated(bc%flow_condition)) then
+      bc => bc%next
+      cycle
+    endif
+
+    ! Check if flow_aux_real_var is allocated
+    if (.not.associated(bc%flow_aux_real_var)) then
+      bc => bc%next
+      cycle
+    endif
+
     cset => bc%connection_set
+    if (.not.associated(cset)) then
+      bc => bc%next
+      cycle
+    endif
+
     do iconn = 1, cset%num_connections
       local_id = cset%id_dn(iconn)
       gid      = grid%nL2G(local_id)
