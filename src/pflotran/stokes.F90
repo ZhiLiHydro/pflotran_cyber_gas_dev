@@ -65,6 +65,7 @@ subroutine StokesSetup(realization,rho,mu)
   patch  => realization%patch
   grid   => patch%grid
   mat_aux => patch%aux%Material%auxvars
+  option => realization%option
 
   if (.not.associated(patch%aux%Stokes)) then
     patch%aux%Stokes => StokesAuxCreate(realization%option)
