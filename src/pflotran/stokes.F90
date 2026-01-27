@@ -539,17 +539,17 @@ subroutine StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
       if (patch%imat(gid) <= 0) cycle
       ibeg = (local_id-1)*option%nflowdof + 1
 
-      ! Pressure BC
+      ! Pressure BC (index 4 in flow_aux_real_var)
       select case(bc%flow_condition%itype(STOKES_P_DOF))
         case(DIRICHLET_BC)
           if (size(bc%flow_aux_real_var,1) >= 1 .and. &
               size(bc%flow_aux_real_var,2) >= iconn) then
-            p_bc = bc%flow_aux_real_var(1,iconn)
+            p_bc = bc%flow_aux_real_var(4,iconn)
             r_p(ibeg+3) = r_p(ibeg+3) + (u_loc(ibeg+3) - p_bc)
           endif
       end select
 
-      ! Velocity BC
+      ! Velocity BC (indices 1-3 in flow_aux_real_var)
       select case(bc%flow_condition%itype(STOKES_U_DOF))
         case(DIRICHLET_BC)
           if (size(bc%flow_aux_real_var,1) >= 3 .and. &
@@ -898,7 +898,6 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,debug,ierr)
   type(option_type), pointer :: option
   type(coupler_type),pointer :: bc
   type(connection_set_type), pointer :: cset
-  PetscReal, pointer :: r_p(:), u_loc(:)
   PetscInt :: iconn, local_id, gid, istart
   PetscReal :: Jbc(4,4)
 
