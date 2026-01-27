@@ -1432,40 +1432,49 @@ subroutine CondControlAssignFlowInitCond(realization)
               xx_p(ibegin + STOKES_W_DOF - 1) = 0.d0
 
               ! Assign pressure from stokes%pressure if available
-              if (associated(stokes%pressure) .and. &
-                  associated(stokes%pressure%dataset)) then
-                if (size(stokes%pressure%dataset%rarray) >= 1) then
-                  xx_p(ibegin + STOKES_P_DOF - 1) = &
-                    stokes%pressure%dataset%rarray(1)
+              if (associated(stokes%pressure)) then
+                if (associated(stokes%pressure%dataset)) then
+                  if (associated(stokes%pressure%dataset%rarray)) then
+                    if (size(stokes%pressure%dataset%rarray) >= 1) then
+                      xx_p(ibegin + STOKES_P_DOF - 1) = &
+                        stokes%pressure%dataset%rarray(1)
+                    else
+                      xx_p(ibegin + STOKES_P_DOF - 1) = 0.d0
+                    endif
+                  else
+                    xx_p(ibegin + STOKES_P_DOF - 1) = 0.d0
+                  endif
                 else
                   xx_p(ibegin + STOKES_P_DOF - 1) = 0.d0
                 endif
               else
-                ! Pressure not specified; default to 0
                 xx_p(ibegin + STOKES_P_DOF - 1) = 0.d0
               endif
 
               ! Assign velocity from stokes%velocity if available (3 components)
-              if (associated(stokes%velocity) .and. &
-                  associated(stokes%velocity%dataset)) then
-                if (size(stokes%velocity%dataset%rarray) >= 3) then
-                  xx_p(ibegin + STOKES_U_DOF - 1) = &
-                    stokes%velocity%dataset%rarray(1)  ! u
-                  xx_p(ibegin + STOKES_V_DOF - 1) = &
-                    stokes%velocity%dataset%rarray(2)  ! v
-                  xx_p(ibegin + STOKES_W_DOF - 1) = &
-                    stokes%velocity%dataset%rarray(3)  ! w
-                else if (size(stokes%velocity%dataset%rarray) >= 1) then
-                  ! Partial specification: use what's available
-                  xx_p(ibegin + STOKES_U_DOF - 1) = &
-                    stokes%velocity%dataset%rarray(1)
-                  if (size(stokes%velocity%dataset%rarray) >= 2) then
-                    xx_p(ibegin + STOKES_V_DOF - 1) = &
-                      stokes%velocity%dataset%rarray(2)
-                  endif
-                  if (size(stokes%velocity%dataset%rarray) >= 3) then
-                    xx_p(ibegin + STOKES_W_DOF - 1) = &
-                      stokes%velocity%dataset%rarray(3)
+              if (associated(stokes%velocity)) then
+                if (associated(stokes%velocity%dataset)) then
+                  if (associated(stokes%velocity%dataset%rarray)) then
+                    if (size(stokes%velocity%dataset%rarray) >= 3) then
+                      xx_p(ibegin + STOKES_U_DOF - 1) = &
+                        stokes%velocity%dataset%rarray(1)  ! u
+                      xx_p(ibegin + STOKES_V_DOF - 1) = &
+                        stokes%velocity%dataset%rarray(2)  ! v
+                      xx_p(ibegin + STOKES_W_DOF - 1) = &
+                        stokes%velocity%dataset%rarray(3)  ! w
+                    else if (size(stokes%velocity%dataset%rarray) >= 1) then
+                      ! Partial specification: use what's available
+                      xx_p(ibegin + STOKES_U_DOF - 1) = &
+                        stokes%velocity%dataset%rarray(1)
+                      if (size(stokes%velocity%dataset%rarray) >= 2) then
+                        xx_p(ibegin + STOKES_V_DOF - 1) = &
+                          stokes%velocity%dataset%rarray(2)
+                      endif
+                      if (size(stokes%velocity%dataset%rarray) >= 3) then
+                        xx_p(ibegin + STOKES_W_DOF - 1) = &
+                          stokes%velocity%dataset%rarray(3)
+                      endif
+                    endif
                   endif
                 endif
               endif
