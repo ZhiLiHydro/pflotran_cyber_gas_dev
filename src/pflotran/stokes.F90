@@ -711,13 +711,13 @@ subroutine StokesJacobian(snes,xx,A,B,realization,rho,mu,debug,ierr)
   call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
 
   call MPI_Comm_rank(MPI_COMM_WORLD, mpi_rank, ierr);CHKERRQ(ierr)
-  
+
   if (mpi_rank == 0) then
     call MatGetSize(A, mat_rows, mat_cols, ierr)
     call MatNorm(A, NORM_FROBENIUS, mat_norm, ierr)
     write(*,'(a,i8,a,i8,a,e12.4)') &
       '  Matrix: ', mat_rows, 'x', mat_cols, ' Frobenius norm=', mat_norm
-    
+
     ! View first few diagonal elements to check for zeros
     write(*,'(a)') '  First 4 matrix diagonal blocks:'
     call MatView(A, PETSC_VIEWER_STDOUT_WORLD, ierr)

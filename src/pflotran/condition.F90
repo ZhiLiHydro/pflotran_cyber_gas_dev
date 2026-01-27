@@ -1014,6 +1014,7 @@ subroutine FlowSubConditionVerify(option, condition, sub_condition_name, &
   character(len=MAXSTRINGLENGTH) :: header
 
   if (.not.associated(sub_condition)) return
+  if (.not.associated(sub_condition%dataset)) return
 
   ! dataset is not optional
   if (.not.(associated(sub_condition%dataset%rarray) .or. &
@@ -1176,7 +1177,7 @@ subroutine FlowConditionRead(condition,input,option)
   type(flow_sub_condition_type), pointer :: pressure, flux, temperature, &
                                        concentration, enthalpy, rate, well,&
                                        sub_condition_ptr, saturation, &
-                                       energy_rate, energy_flux, velocity
+                                       energy_rate, energy_flux
   PetscInt :: default_iphase
   PetscInt :: idof
   type(time_storage_type), pointer :: default_time_storage
@@ -1664,9 +1665,6 @@ subroutine FlowConditionRead(condition,input,option)
   if (enthalpy%itype == NULL_CONDITION) then
     call FlowSubConditionDestroy(enthalpy)
   endif
-   if (velocity%itype == NULL_CONDITION) then
-    call FlowSubConditionDestroy(enthalpy)
-  endif
 
   !geh: simple check to ensure that DIRICHLET_SEEPAGE and
   !     DIRICHLET_CONDUCTANCE_BC are only used in TH and RICHARDS
@@ -1775,12 +1773,6 @@ subroutine FlowConditionRead(condition,input,option)
   call FlowSubConditionVerify(option,condition,word,enthalpy, &
                               default_time_storage, &
                               PETSC_TRUE)
-
-  word = 'velocity'
-  call FlowSubConditionVerify(option,condition,word,velocity, &
-                              default_time_storage, &
-                              PETSC_TRUE)
-
 
   select case(option%iflowmode)
     case(G_MODE)
@@ -2135,37 +2127,6 @@ subroutine FlowConditionRead(condition,input,option)
       if (associated(temperature)) call FlowSubConditionDestroy(temperature)
       if (associated(enthalpy)) call FlowSubConditionDestroy(enthalpy)
 
-     case(STOKES_MODE)
-      if (.not.associated(pressure) .and. .not.associated(velocity)) then
-        option%io_buffer = 'pressure and velocity null in &
-                           &condition: ' // trim(condition%name)
-        call PrintErrMsg(option)
-      endif
-
-      if (associated(pressure)) then
-        condition%pressure => pressure
-      endif
-
-      condition%num_sub_conditions = 1
-      allocate(condition%sub_condition_ptr(condition%num_sub_conditions))
-      if (associated(pressure)) then
-        condition%sub_condition_ptr(ONE_INTEGER)%ptr => pressure
-      elseif (associated(velocity)) then
-        condition%sub_condition_ptr(ONE_INTEGER)%ptr => velocity
-      endif
-
-      allocate(condition%itype(ONE_INTEGER))
-      if (associated(pressure)) then
-        condition%itype(ONE_INTEGER) = pressure%itype
-      else if (associated(velocity)) then
-        condition%itype(ONE_INTEGER) = velocity%itype
-      endif
-
-      ! these are not used with PNF
-      if (associated(well)) call FlowSubConditionDestroy(well)
-      if (associated(saturation)) call FlowSubConditionDestroy(saturation)
-      if (associated(temperature)) call FlowSubConditionDestroy(temperature)
-      if (associated(enthalpy)) call FlowSubConditionDestroy(enthalpy)
     case default
       option%io_buffer = 'The NULL flow mode not supported in original &
         &FlowConditionRead.'
