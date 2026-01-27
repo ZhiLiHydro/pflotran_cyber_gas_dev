@@ -694,6 +694,8 @@ subroutine StokesJacobian(snes,xx,A,B,realization,rho,mu,debug,ierr)
   call StokesJacobianAccumulation(J,realization,rho,debug,ierr)
   call StokesJacobianSourceSink(J,realization,rho,debug,ierr)
 
+  call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+  call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
 
   if (A /= B .and. mat_type_A /= MATMFFD) then
     call MatConvert(J,mat_type_B,MAT_REUSE_MATRIX,B,ierr);CHKERRQ(ierr)
