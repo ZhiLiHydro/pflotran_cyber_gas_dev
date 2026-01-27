@@ -1,7 +1,9 @@
 module Stokes_module
 
 #include "petsc/finclude/petscsnes.h"
+#include "petsc/finclude/petscsys.h"
   use petscsnes
+  use petscsys
   use PFLOTRAN_Constants_module
   use Global_Aux_module
   use Material_Aux_module
@@ -274,12 +276,20 @@ subroutine StokesResidual(snes,xx,r,realization,rho,mu,debug,ierr)
   PetscReal :: rho, mu
   type(debug_type) :: debug
   PetscErrorCode :: ierr
+  PetscReal:: r_norm
+  PetscMPIInt :: mpi_rank
 
   call StokesResidualPreliminaries(xx,r,realization,ierr)
   call StokesResidualInternalConn_structured(r,realization,mu,ierr)
   call StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
   call StokesResidualAccumulation(r,realization,rho,ierr)
   call StokesResidualSourceSink(r,realization,rho,ierr)
+
+  ! DIAGNOSTIC: Check residual vector
+  call VecNorm(r,NORM_2,r_norm,ierr)
+  write(*,'(a,e12.4)') '  Residual 2-norm=', r_norm
+  write(*,'(a)') '  First 4 residual values:'
+  call VecView(r, PETSC_VIEWER_STDOUT_WORLD, ierr);CHKERRQ(ierr)
 
   if (debug%vecview_residual) then
     call DebugVecView(debug,r,'Sresidual','',0,0,0,realization%option)
@@ -545,7 +555,7 @@ subroutine StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
           if (size(bc%flow_aux_real_var,1) >= 1 .and. &
               size(bc%flow_aux_real_var,2) >= iconn) then
             p_bc = bc%flow_aux_real_var(4,iconn)
-            r_p(ibeg+3) = r_p(ibeg+3) + (u_loc(ibeg+3) - p_bc)
+            r_p(ibeg+3) = (u_loc(ibeg+3) - p_bc)
           endif
       end select
 
@@ -557,9 +567,9 @@ subroutine StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
             u_bc(1) = bc%flow_aux_real_var(1,iconn)
             u_bc(2) = bc%flow_aux_real_var(2,iconn)
             u_bc(3) = bc%flow_aux_real_var(3,iconn)
-            r_p(ibeg    ) = r_p(ibeg    ) + (u_loc(ibeg    ) - u_bc(1))
-            r_p(ibeg + 1) = r_p(ibeg + 1) + (u_loc(ibeg + 1) - u_bc(2))
-            r_p(ibeg + 2) = r_p(ibeg + 2) + (u_loc(ibeg + 2) - u_bc(3))
+            r_p(ibeg    ) = (u_loc(ibeg    ) - u_bc(1))
+            r_p(ibeg + 1) = (u_loc(ibeg + 1) - u_bc(2))
+            r_p(ibeg + 2) = (u_loc(ibeg + 2) - u_bc(3))
           endif
       end select
     enddo
@@ -674,6 +684,9 @@ subroutine StokesJacobian(snes,xx,A,B,realization,rho,mu,debug,ierr)
   Mat :: J
   MatType :: mat_type_A, mat_type_B
   type(option_type), pointer :: option
+  PetscReal :: mat_norm
+  PetscInt :: mat_rows, mat_cols
+  PetscMPIInt :: mpi_rank
 
   option => realization%option
 
@@ -696,6 +709,21 @@ subroutine StokesJacobian(snes,xx,A,B,realization,rho,mu,debug,ierr)
 
   call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
   call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+
+  call MPI_Comm_rank(MPI_COMM_WORLD, mpi_rank, ierr);CHKERRQ(ierr)
+  
+  if (mpi_rank == 0) then
+    call MatGetSize(A, mat_rows, mat_cols, ierr)
+    call MatNorm(A, NORM_FROBENIUS, mat_norm, ierr)
+    write(*,'(a,i8,a,i8,a,e12.4)') &
+      '  Matrix: ', mat_rows, 'x', mat_cols, ' Frobenius norm=', mat_norm
+    
+    ! View first few diagonal elements to check for zeros
+    write(*,'(a)') '  First 4 matrix diagonal blocks:'
+    call MatView(A, PETSC_VIEWER_STDOUT_WORLD, ierr)
+  endif
+
+
 
   if (A /= B .and. mat_type_A /= MATMFFD) then
     call MatConvert(J,mat_type_B,MAT_REUSE_MATRIX,B,ierr);CHKERRQ(ierr)
