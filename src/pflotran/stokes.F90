@@ -694,6 +694,7 @@ subroutine StokesJacobian(snes,xx,A,B,realization,rho,mu,debug,ierr)
   call StokesJacobianAccumulation(J,realization,rho,debug,ierr)
   call StokesJacobianSourceSink(J,realization,rho,debug,ierr)
 
+
   if (A /= B .and. mat_type_A /= MATMFFD) then
     call MatConvert(J,mat_type_B,MAT_REUSE_MATRIX,B,ierr);CHKERRQ(ierr)
   endif
@@ -838,24 +839,24 @@ subroutine StokesJacobianInternalConn_structured(A,realization,mu,debug,ierr)
       J_LL(4,3) = -coef_div * n(3)
 
       if (lid_up > 0) then
-        istart_up = (lid_up-1)*option%nflowdof
+        istart_up = lid_up - 1  ! Block index for BAIJ matrix
         if (lid_dn > 0) then
-          istart_dn = (lid_dn-1)*option%nflowdof
-          call PUMSetValuesLocal(A,4,istart_up,4,istart_up,J_KK,ADD_VALUES,ierr);CHKERRQ(ierr)
-          call PUMSetValuesLocal(A,4,istart_up,4,istart_dn,J_KL,ADD_VALUES,ierr);CHKERRQ(ierr)
+          istart_dn = lid_dn - 1  ! Block index for BAIJ matrix
+          call PUMSetValuesBlockedLocal(A,1,istart_up,1,istart_up,J_KK,ADD_VALUES,ierr);CHKERRQ(ierr)
+          call PUMSetValuesBlockedLocal(A,1,istart_up,1,istart_dn,J_KL,ADD_VALUES,ierr);CHKERRQ(ierr)
         else
-          call PUMSetValuesLocal(A,4,istart_up,4,istart_up,J_KK,ADD_VALUES,ierr);CHKERRQ(ierr)
+          call PUMSetValuesBlockedLocal(A,1,istart_up,1,istart_up,J_KK,ADD_VALUES,ierr);CHKERRQ(ierr)
         endif
       endif
 
       if (lid_dn > 0) then
-        istart_dn = (lid_dn-1)*option%nflowdof
+        istart_dn = lid_dn - 1  ! Block index for BAIJ matrix
         if (lid_up > 0) then
-          istart_up = (lid_up-1)*option%nflowdof
-          call PUMSetValuesLocal(A,4,istart_dn,4,istart_dn,J_LL,ADD_VALUES,ierr);CHKERRQ(ierr)
-          call PUMSetValuesLocal(A,4,istart_dn,4,istart_up,J_LK,ADD_VALUES,ierr);CHKERRQ(ierr)
+          istart_up = lid_up - 1  ! Block index for BAIJ matrix
+          call PUMSetValuesBlockedLocal(A,1,istart_dn,1,istart_dn,J_LL,ADD_VALUES,ierr);CHKERRQ(ierr)
+          call PUMSetValuesBlockedLocal(A,1,istart_dn,1,istart_up,J_LK,ADD_VALUES,ierr);CHKERRQ(ierr)
         else
-          call PUMSetValuesLocal(A,4,istart_dn,4,istart_dn,J_LL,ADD_VALUES,ierr);CHKERRQ(ierr)
+          call PUMSetValuesBlockedLocal(A,1,istart_dn,1,istart_dn,J_LL,ADD_VALUES,ierr);CHKERRQ(ierr)
         endif
       endif
     enddo
@@ -929,7 +930,7 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,debug,ierr)
       local_id = cset%id_dn(iconn)
       gid      = grid%nL2G(local_id)
       if (patch%imat(gid) <= 0) cycle
-      istart = (local_id-1)*option%nflowdof
+      istart = local_id - 1  ! Block index for BAIJ matrix
 
       Jbc = 0.d0
       select case(bc%flow_condition%itype(STOKES_P_DOF))
@@ -943,7 +944,7 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,debug,ierr)
           Jbc(3,3) = 1.d0
       end select
 
-      call PUMSetValuesLocal(A,4,istart,4,istart,Jbc,ADD_VALUES,ierr);CHKERRQ(ierr)
+      call PUMSetValuesBlockedLocal(A,1,istart,1,istart,Jbc,ADD_VALUES,ierr);CHKERRQ(ierr)
     enddo
     bc => bc%next
   enddo
@@ -989,7 +990,7 @@ subroutine StokesJacobianAccumulation(A,realization,rho,debug,ierr)
   do lid = 1, grid%nlmax
     gid = grid%nL2G(lid)
     if (patch%imat(gid) <= 0) cycle
-    istart = (lid-1)*option%nflowdof
+    istart = lid - 1  ! Block index for BAIJ matrix
     vol    = patch%aux%Material%auxvars(gid)%volume
 
     Jacc = 0.d0
@@ -997,7 +998,7 @@ subroutine StokesJacobianAccumulation(A,realization,rho,debug,ierr)
     Jacc(2,2) = rho * vol
     Jacc(3,3) = rho * vol
 
-    call PUMSetValuesLocal(A,4,istart,4,istart,Jacc,ADD_VALUES,ierr);CHKERRQ(ierr)
+    call PUMSetValuesBlockedLocal(A,1,istart,1,istart,Jacc,ADD_VALUES,ierr);CHKERRQ(ierr)
   enddo
 
 end subroutine StokesJacobianAccumulation

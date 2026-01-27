@@ -136,6 +136,7 @@ subroutine PMCSubsurfaceSetupSolvers_TimestepperSNES(this)
   use PM_UFD_Decay_class
   use PM_Well_class
   use PM_SCO2_class
+  use PM_Stokes_class
   use Solver_module
   use Timestepper_Base_class
   use Timestepper_SNES_class
