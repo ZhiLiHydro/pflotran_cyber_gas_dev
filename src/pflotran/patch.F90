@@ -980,7 +980,8 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
               associated(coupler%flow_condition%temperature) .or. &
               associated(coupler%flow_condition%general) .or. &
               associated(coupler%flow_condition%hydrate) .or. &
-              associated(coupler%flow_condition%sco2)) then
+              associated(coupler%flow_condition%sco2) .or. &
+              associated(coupler%flow_condition%stokes)) then
 
             ! allocate arrays that match the number of connections
             select case(option%iflowmode)
@@ -4680,7 +4681,7 @@ subroutine PatchUpdateCouplerAuxVarsStokes(patch,coupler,option)
   !------------------------------------------------------------
   if (associated(stokes%pressure)) then
     select case(stokes%pressure%itype)
-      case(DIRICHLET_BC,NEUMANN_BC,ZERO_GRADIENT_BC)
+      case(DIRICHLET_BC)
         select type(dataset => stokes%pressure%dataset)
           class is(dataset_ascii_type)
             ! Constant in time/space: use rarray(1)
@@ -4697,8 +4698,9 @@ subroutine PatchUpdateCouplerAuxVarsStokes(patch,coupler,option)
                  'PatchUpdateCouplerAuxVarsStokes')
         end select
 
-      case(HYDROSTATIC_BC,HYDROSTATIC_SEEPAGE_BC,HYDROSTATIC_CONDUCTANCE_BC)
-        option%io_buffer = 'HYDROSTATIC BCs not currently supported in STOKES flow'
+      case(HYDROSTATIC_BC,HYDROSTATIC_SEEPAGE_BC,HYDROSTATIC_CONDUCTANCE_BC, &
+           NEUMANN_BC,ZERO_GRADIENT_BC)
+        option%io_buffer = 'HYDROSTATIC and NEUMANN BCs not currently supported in STOKES flow'
         call PrintErrMsg(option)
 
       case(HET_DIRICHLET_BC,HET_HYDROSTATIC_SEEPAGE_BC, &

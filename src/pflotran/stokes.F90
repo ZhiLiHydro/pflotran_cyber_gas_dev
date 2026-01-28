@@ -550,28 +550,30 @@ subroutine StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
       ibeg = (local_id-1)*option%nflowdof + 1
 
       ! Pressure BC (index 4 in flow_aux_real_var)
-      select case(bc%flow_condition%itype(STOKES_P_DOF))
-        case(DIRICHLET_BC)
-          if (size(bc%flow_aux_real_var,1) >= 1 .and. &
+      if (associated(bc%flow_condition%stokes%pressure)) then
+        if (bc%flow_condition%stokes%pressure%itype == DIRICHLET_BC) then
+          if (size(bc%flow_aux_real_var,1) >= 4 .and. &
               size(bc%flow_aux_real_var,2) >= iconn) then
             p_bc = bc%flow_aux_real_var(4,iconn)
-            r_p(ibeg+3) = (u_loc(ibeg+3) - p_bc)
+            r_p(ibeg+3) = u_loc(ibeg+3) - p_bc
           endif
-      end select
+        endif
+      endif
 
       ! Velocity BC (indices 1-3 in flow_aux_real_var)
-      select case(bc%flow_condition%itype(STOKES_U_DOF))
-        case(DIRICHLET_BC)
+      if (associated(bc%flow_condition%stokes%velocity)) then
+        if (bc%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
           if (size(bc%flow_aux_real_var,1) >= 3 .and. &
               size(bc%flow_aux_real_var,2) >= iconn) then
             u_bc(1) = bc%flow_aux_real_var(1,iconn)
             u_bc(2) = bc%flow_aux_real_var(2,iconn)
             u_bc(3) = bc%flow_aux_real_var(3,iconn)
-            r_p(ibeg    ) = (u_loc(ibeg    ) - u_bc(1))
-            r_p(ibeg + 1) = (u_loc(ibeg + 1) - u_bc(2))
-            r_p(ibeg + 2) = (u_loc(ibeg + 2) - u_bc(3))
+            r_p(ibeg    ) = u_loc(ibeg    ) - u_bc(1)
+            r_p(ibeg + 1) = u_loc(ibeg + 1) - u_bc(2)
+            r_p(ibeg + 2) = u_loc(ibeg + 2) - u_bc(3)
           endif
-      end select
+        endif
+      endif
     enddo
     bc => bc%next
   enddo
