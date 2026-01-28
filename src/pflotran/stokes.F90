@@ -130,6 +130,8 @@ subroutine StokesInitializeTimestep(realization)
 
   class(realization_subsurface_type) :: realization
 
+  call StokesUpdateFixedAccum(realization)
+
 end subroutine StokesInitializeTimestep
 
 ! ************************************************************************** !
@@ -488,7 +490,8 @@ end subroutine StokesResidualInternalConn_structured
 
 subroutine StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
   !
-  ! Boundary conditions: pressure, velocity (no-slip)
+  ! Boundary conditions: pressure (Dirichlet), velocity (Dirichlet or natural)
+  ! Natural BC: zero residual on unconstrained velocity at boundaries
   !
   ! Author: Satish Karra
   ! Date: 01/24/26
@@ -515,25 +518,32 @@ subroutine StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
   PetscReal, pointer :: r_p(:), u_loc(:)
   PetscInt :: iconn, local_id, gid, ibeg
   PetscReal :: u_bc(3), p_bc
+  ! Track which cells are on boundary and which velocity components have Dirichlet BC
+  PetscBool, allocatable :: on_boundary(:), vel_dirichlet(:,:)
 
   patch  => realization%patch
   grid   => patch%grid
   option => realization%option
 
+  ! Allocate tracking arrays
+  allocate(on_boundary(grid%nlmax))
+  allocate(vel_dirichlet(3, grid%nlmax))
+  on_boundary = PETSC_FALSE
+  vel_dirichlet = PETSC_FALSE
+
   call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
   call VecGetArrayRead(realization%field%flow_xx_loc,u_loc,ierr);CHKERRQ(ierr)
 
+  ! First pass: identify boundary cells and apply explicit Dirichlet BCs
   bc => patch%boundary_condition_list%first
   do
     if (.not.associated(bc)) exit
 
-    ! Check if flow_condition is associated before proceeding
     if (.not.associated(bc%flow_condition)) then
       bc => bc%next
       cycle
     endif
 
-    ! Check if flow_aux_real_var is allocated
     if (.not.associated(bc%flow_aux_real_var)) then
       bc => bc%next
       cycle
@@ -549,20 +559,25 @@ subroutine StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
       local_id = cset%id_dn(iconn)
       gid      = grid%nL2G(local_id)
       if (patch%imat(gid) <= 0) cycle
+
+      ! Mark this cell as being on a boundary
+      on_boundary(local_id) = PETSC_TRUE
+
       ibeg = (local_id-1)*option%nflowdof + 1
 
-      ! Pressure BC (index 4 in flow_aux_real_var)
+      ! Pressure BC (Dirichlet)
       if (associated(bc%flow_condition%stokes%pressure)) then
         if (bc%flow_condition%stokes%pressure%itype == DIRICHLET_BC) then
           if (size(bc%flow_aux_real_var,1) >= 4 .and. &
               size(bc%flow_aux_real_var,2) >= iconn) then
             p_bc = bc%flow_aux_real_var(4,iconn)
             r_p(ibeg+3) = u_loc(ibeg+3) - p_bc
+            write(*,'(a,i3,a,e12.4)') '    Pressure BC: local_id=', local_id, ' p_bc=', p_bc
           endif
         endif
       endif
 
-      ! Velocity BC (indices 1-3 in flow_aux_real_var)
+      ! Velocity BC (Dirichlet)
       if (associated(bc%flow_condition%stokes%velocity)) then
         if (bc%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
           if (size(bc%flow_aux_real_var,1) >= 3 .and. &
@@ -573,6 +588,10 @@ subroutine StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
             r_p(ibeg    ) = u_loc(ibeg    ) - u_bc(1)
             r_p(ibeg + 1) = u_loc(ibeg + 1) - u_bc(2)
             r_p(ibeg + 2) = u_loc(ibeg + 2) - u_bc(3)
+            ! Mark velocity as Dirichlet constrained
+            vel_dirichlet(1, local_id) = PETSC_TRUE
+            vel_dirichlet(2, local_id) = PETSC_TRUE
+            vel_dirichlet(3, local_id) = PETSC_TRUE
           endif
         endif
       endif
@@ -580,8 +599,34 @@ subroutine StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
     bc => bc%next
   enddo
 
+  ! Second pass: Apply natural BC (zero residual) ONLY on boundary cells
+  ! with unconstrained velocity
+  do local_id = 1, grid%nlmax
+    gid = grid%nL2G(local_id)
+    if (patch%imat(gid) <= 0) cycle
+
+    ! Only apply natural BC if this cell is ON the boundary
+    if (.not.on_boundary(local_id)) cycle
+
+    ibeg = (local_id-1)*option%nflowdof + 1
+
+    ! Zero velocity rows that don't have explicit Dirichlet BC (natural BC)
+    if (.not.vel_dirichlet(1, local_id)) then
+      r_p(ibeg    ) = 0.d0
+    endif
+    if (.not.vel_dirichlet(2, local_id)) then
+      r_p(ibeg + 1) = 0.d0
+    endif
+    if (.not.vel_dirichlet(3, local_id)) then
+      r_p(ibeg + 2) = 0.d0
+    endif
+  enddo
+
   call VecRestoreArrayRead(realization%field%flow_xx_loc,u_loc,ierr);CHKERRQ(ierr)
   call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
+
+  deallocate(on_boundary)
+  deallocate(vel_dirichlet)
 
 end subroutine StokesResidualBoundaryConn
 
@@ -590,6 +635,7 @@ end subroutine StokesResidualBoundaryConn
 subroutine StokesResidualAccumulation(r,realization,rho,ierr)
   !
   ! Accumulation terms for Stokes residual
+  ! r -= rho*vol*u^n, then r += rho*vol*u^{n+1}
   !
   ! Author: Satish Karra
   ! Date: 01/24/26
@@ -611,7 +657,7 @@ subroutine StokesResidualAccumulation(r,realization,rho,ierr)
   type(patch_type),  pointer :: patch
   type(option_type), pointer :: option
   type(field_type),  pointer :: field
-  PetscReal, pointer :: r_p(:), udot_loc(:)
+  PetscReal, pointer :: r_p(:), xx_loc_p(:), accum_p(:)
   PetscInt :: lid, gid, ibeg
   PetscReal :: vol
 
@@ -623,19 +669,28 @@ subroutine StokesResidualAccumulation(r,realization,rho,ierr)
   if (option%flow%steady_state) return
 
   call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayRead(field%flow_xxdot_loc,udot_loc,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
+  ! Subtract previous accumulation: r -= accum_p (which contains rho*vol*u^n)
+  r_p(1:grid%nlmax*option%nflowdof) = r_p(1:grid%nlmax*option%nflowdof) - &
+                                      accum_p(1:grid%nlmax*option%nflowdof)
+
+  ! Add current accumulation: r += rho*vol*u^{n+1}
   do lid = 1, grid%nlmax
     gid = grid%nL2G(lid)
     if (patch%imat(gid) <= 0) cycle
     ibeg = (lid-1)*option%nflowdof + 1
     vol  = patch%aux%Material%auxvars(gid)%volume
-    r_p(ibeg    ) = r_p(ibeg    ) + rho * udot_loc(ibeg    ) * vol
-    r_p(ibeg + 1) = r_p(ibeg + 1) + rho * udot_loc(ibeg + 1) * vol
-    r_p(ibeg + 2) = r_p(ibeg + 2) + rho * udot_loc(ibeg + 2) * vol
+
+    ! Add rho*volume*u^{n+1} to residual
+    r_p(ibeg    ) = r_p(ibeg    ) + rho * xx_loc_p(ibeg    ) * vol
+    r_p(ibeg + 1) = r_p(ibeg + 1) + rho * xx_loc_p(ibeg + 1) * vol
+    r_p(ibeg + 2) = r_p(ibeg + 2) + rho * xx_loc_p(ibeg + 2) * vol
   enddo
 
-  call VecRestoreArrayRead(field%flow_xxdot_loc,udot_loc,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
   call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 
 end subroutine StokesResidualAccumulation
@@ -906,6 +961,7 @@ end subroutine StokesJacobianInternalConn_structured
 subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,debug,ierr)
   !
   ! BC Jacobian for Stokes problem
+  ! Collects all BC constraints and applies once per cell
   !
   ! Author: Satish Karra
   ! Date: 01/24/26
@@ -932,13 +988,22 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,debug,ierr)
   type(option_type), pointer :: option
   type(coupler_type),pointer :: bc
   type(connection_set_type), pointer :: cset
-  PetscInt :: iconn, local_id, gid, iblock
+  PetscInt :: iconn, local_id, gid, iblock, lid
   PetscReal :: Jbc(4,4)
+  ! Track which rows have been constrained for this cell
+  PetscBool, allocatable :: bc_applied(:,:)
+  PetscInt :: max_local_id
 
   patch  => realization%patch
   grid   => patch%grid
   option => realization%option
 
+  ! Allocate tracking array for which DOFs have BCs
+  max_local_id = grid%nlmax
+  allocate(bc_applied(4, max_local_id))
+  bc_applied = PETSC_FALSE
+
+  ! First pass: identify all BC constraints
   bc => patch%boundary_condition_list%first
   do
     if (.not.associated(bc)) exit
@@ -961,31 +1026,51 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,debug,ierr)
       gid      = grid%nL2G(local_id)
       if (patch%imat(gid) <= 0) cycle
 
-      iblock = local_id - 1  ! Block index for BAIJ matrix
-
-      Jbc = 0.d0
-
-      ! Set velocity BC rows to identity
+      ! Mark which components have BCs
       if (associated(bc%flow_condition%stokes%velocity)) then
         if (bc%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
-          Jbc(1,1) = 1.d0
-          Jbc(2,2) = 1.d0
-          Jbc(3,3) = 1.d0
+          bc_applied(1, local_id) = PETSC_TRUE
+          bc_applied(2, local_id) = PETSC_TRUE
+          bc_applied(3, local_id) = PETSC_TRUE
         endif
       endif
 
-      ! Set pressure BC row to identity
       if (associated(bc%flow_condition%stokes%pressure)) then
         if (bc%flow_condition%stokes%pressure%itype == DIRICHLET_BC) then
-          Jbc(4,4) = 1.d0
+          bc_applied(4, local_id) = PETSC_TRUE
+          write(*,'(a,i3,a)') '    Pressure BC applied to local_id=', local_id
         endif
       endif
-
-      ! Use INSERT_VALUES to replace (zero) the entire block with BC constraint
-      call PUMSetValuesBlockedLocal(A,1,iblock,1,iblock,Jbc,INSERT_VALUES,ierr);CHKERRQ(ierr)
     enddo
     bc => bc%next
   enddo
+
+  ! Second pass: apply all accumulated BCs
+  do lid = 1, grid%nlmax
+    gid = grid%nL2G(lid)
+    if (patch%imat(gid) <= 0) cycle
+
+    iblock = lid - 1  ! Block index for BAIJ matrix
+
+    Jbc = 0.d0
+
+    ! ALWAYS apply velocity identity (Dirichlet or natural BC)
+    Jbc(1,1) = 1.d0
+    Jbc(2,2) = 1.d0
+    Jbc(3,3) = 1.d0
+
+    ! Apply pressure identity ONLY if Dirichlet BC
+    if (bc_applied(4, lid)) then
+      Jbc(4,4) = 1.d0
+    endif
+
+    ! Only call if at least one constraint applies
+    if (bc_applied(1, lid) .or. bc_applied(4, lid)) then
+      call PUMSetValuesBlockedLocal(A,1,iblock,1,iblock,Jbc,INSERT_VALUES,ierr);CHKERRQ(ierr)
+    endif
+  enddo
+
+  deallocate(bc_applied)
 
 end subroutine StokesJacobianBoundaryConn
 
@@ -1063,5 +1148,66 @@ subroutine StokesJacobianSourceSink(A,realization,rho,debug,ierr)
   PetscErrorCode :: ierr
 
 end subroutine StokesJacobianSourceSink
+
+! ************************************************************************** !
+
+subroutine StokesUpdateFixedAccum(realization)
+  !
+  ! Updates the fixed portion of the accumulation term
+  ! Called at the beginning of each time step
+  !
+  ! Author: Satish Karra
+  ! Date: 01/28/26
+  !
+
+  use Realization_Subsurface_class
+  use Patch_module
+  use Grid_module
+  use Option_module
+  use Field_module
+
+  implicit none
+
+  class(realization_subsurface_type) :: realization
+
+  type(patch_type),  pointer :: patch
+  type(grid_type),   pointer :: grid
+  type(option_type), pointer :: option
+  type(field_type),  pointer :: field
+  PetscReal, pointer :: xx_p(:), accum_p(:)
+  PetscInt :: lid, gid, istart
+  PetscReal :: vol
+  PetscErrorCode :: ierr
+
+  option => realization%option
+  field  => realization%field
+  patch  => realization%patch
+  grid   => patch%grid
+
+  call VecGetArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+
+  ! Zero accumulation storage
+  accum_p(:) = 0.d0
+
+  ! Store u^n (velocity at previous time step) for accumulation
+  ! This is the "fixed" part that doesn't change during Newton iterations
+  do lid = 1, grid%nlmax
+    gid = grid%nL2G(lid)
+    if (patch%imat(gid) <= 0) cycle
+    istart = (lid-1)*option%nflowdof + 1
+    vol    = patch%aux%Material%auxvars(gid)%volume
+
+    ! accum stores: rho * volume * u^n (previous velocity)
+    ! This will be subtracted from residual to get: rho*vol*(u^{n+1} - u^n)/dt
+    accum_p(istart    ) = xx_p(istart    ) * vol
+    accum_p(istart + 1) = xx_p(istart + 1) * vol
+    accum_p(istart + 2) = xx_p(istart + 2) * vol
+  enddo
+
+  call VecRestoreArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+
+end subroutine StokesUpdateFixedAccum
 
 end module Stokes_module
