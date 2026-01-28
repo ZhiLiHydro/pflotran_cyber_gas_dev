@@ -2,8 +2,10 @@ module Stokes_module
 
 #include "petsc/finclude/petscsnes.h"
 #include "petsc/finclude/petscsys.h"
+#include "petsc/finclude/petscmat.h"
   use petscsnes
   use petscsys
+  use petscmat
   use PFLOTRAN_Constants_module
   use Global_Aux_module
   use Material_Aux_module
@@ -705,12 +707,19 @@ subroutine StokesJacobian(snes,xx,A,B,realization,rho,mu,debug,ierr)
 
   call MatZeroEntries(J,ierr);CHKERRQ(ierr)
   call StokesJacobianInternalConn_structured(J,realization,mu,debug,ierr)
-  call StokesJacobianBoundaryConn(J,realization,rho,mu,debug,ierr)
   call StokesJacobianAccumulation(J,realization,rho,debug,ierr)
   call StokesJacobianSourceSink(J,realization,rho,debug,ierr)
 
-  call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
-  call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+  ! Assembly happens once at the end
+  call MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+  call MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+
+  ! NOW apply BC constraints AFTER assembly
+  call StokesJacobianBoundaryConn(J,realization,rho,mu,debug,ierr)
+
+  ! Re-assemble after BC modifications
+  call MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+  call MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
 
   call MPI_Comm_rank(MPI_COMM_WORLD, mpi_rank, ierr);CHKERRQ(ierr)
 
@@ -719,13 +728,9 @@ subroutine StokesJacobian(snes,xx,A,B,realization,rho,mu,debug,ierr)
     call MatNorm(A, NORM_FROBENIUS, mat_norm, ierr)
     write(*,'(a,i8,a,i8,a,e12.4)') &
       '  Matrix: ', mat_rows, 'x', mat_cols, ' Frobenius norm=', mat_norm
-
-    ! View first few diagonal elements to check for zeros
     write(*,'(a)') '  First 4 matrix diagonal blocks:'
     call MatView(A, PETSC_VIEWER_STDOUT_WORLD, ierr)
   endif
-
-
 
   if (A /= B .and. mat_type_A /= MATMFFD) then
     call MatConvert(J,mat_type_B,MAT_REUSE_MATRIX,B,ierr);CHKERRQ(ierr)
@@ -898,7 +903,6 @@ subroutine StokesJacobianInternalConn_structured(A,realization,mu,debug,ierr)
 end subroutine StokesJacobianInternalConn_structured
 
 ! ************************************************************************** !
-
 subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,debug,ierr)
   !
   ! BC Jacobian for Stokes problem
@@ -928,7 +932,7 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,debug,ierr)
   type(option_type), pointer :: option
   type(coupler_type),pointer :: bc
   type(connection_set_type), pointer :: cset
-  PetscInt :: iconn, local_id, gid, istart
+  PetscInt :: iconn, local_id, gid, iblock
   PetscReal :: Jbc(4,4)
 
   patch  => realization%patch
@@ -938,19 +942,14 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,debug,ierr)
   bc => patch%boundary_condition_list%first
   do
     if (.not.associated(bc)) exit
-
-    ! Check if flow_condition is associated before proceeding
     if (.not.associated(bc%flow_condition)) then
       bc => bc%next
       cycle
     endif
-
-    ! Check if flow_aux_real_var is allocated
     if (.not.associated(bc%flow_aux_real_var)) then
       bc => bc%next
       cycle
     endif
-
     cset => bc%connection_set
     if (.not.associated(cset)) then
       bc => bc%next
@@ -961,21 +960,29 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,debug,ierr)
       local_id = cset%id_dn(iconn)
       gid      = grid%nL2G(local_id)
       if (patch%imat(gid) <= 0) cycle
-      istart = local_id - 1  ! Block index for BAIJ matrix
+
+      iblock = local_id - 1  ! Block index for BAIJ matrix
 
       Jbc = 0.d0
-      select case(bc%flow_condition%itype(STOKES_P_DOF))
-        case(DIRICHLET_BC)
-          Jbc(4,4) = 1.d0
-      end select
-      select case(bc%flow_condition%itype(STOKES_U_DOF))
-        case(DIRICHLET_BC)
+
+      ! Set velocity BC rows to identity
+      if (associated(bc%flow_condition%stokes%velocity)) then
+        if (bc%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
           Jbc(1,1) = 1.d0
           Jbc(2,2) = 1.d0
           Jbc(3,3) = 1.d0
-      end select
+        endif
+      endif
 
-      call PUMSetValuesBlockedLocal(A,1,istart,1,istart,Jbc,ADD_VALUES,ierr);CHKERRQ(ierr)
+      ! Set pressure BC row to identity
+      if (associated(bc%flow_condition%stokes%pressure)) then
+        if (bc%flow_condition%stokes%pressure%itype == DIRICHLET_BC) then
+          Jbc(4,4) = 1.d0
+        endif
+      endif
+
+      ! Use INSERT_VALUES to replace (zero) the entire block with BC constraint
+      call PUMSetValuesBlockedLocal(A,1,iblock,1,iblock,Jbc,INSERT_VALUES,ierr);CHKERRQ(ierr)
     enddo
     bc => bc%next
   enddo
