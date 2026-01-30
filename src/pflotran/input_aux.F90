@@ -123,6 +123,11 @@ module Input_Aux_module
     module procedure InputPushBlock2
   end interface
 
+  interface InputCheckBounds
+    module procedure InputCheckBoundsInt
+    module procedure InputCheckBoundsDouble
+  end interface
+
   public :: InputCreate, InputDestroy, InputReadPflotranString, &
             InputReadWord, InputReadDouble, InputReadInt, InputCheckExit, &
             InputReadNDoubles, &
@@ -153,7 +158,8 @@ module Input_Aux_module
             InputPopBlock, &
             InputKeywordDeprecated, &
             InputCheckKeywordBlockCount, &
-            InputCountWordsInBuffer
+            InputCountWordsInBuffer, &
+            InputCheckBounds
 
 contains
 
@@ -2770,6 +2776,71 @@ subroutine InputCheckKeywordBlockCount(option)
   endif
 
 end subroutine InputCheckKeywordBlockCount
+
+
+! ************************************************************************** !
+
+subroutine InputCheckBoundsInt(card,value,lower_bound,upper_bound,option)
+  !
+  ! Checks to ensure that an integer value read from input is within
+  ! specified bounds.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 01/29/26
+  !
+  use Option_module
+  use String_module
+
+  implicit none
+
+  character(len=*) :: card
+  PetscInt :: value
+  PetscInt :: lower_bound
+  PetscInt :: upper_bound
+  type(option_type) :: option
+
+  if (value < lower_bound .or. value > upper_bound) then
+    option%io_buffer = 'Value for keyword ' // trim(adjustl(card)) // &
+      ' (' // StringWrite(value) // &
+      ') is out of bounds. Valid range is [' // &
+      StringWrite(lower_bound) // ', ' // &
+      StringWrite(upper_bound) // '].'
+    call PrintErrMsg(option)
+  endif
+
+end subroutine InputCheckBoundsInt
+
+! ************************************************************************** !
+
+subroutine InputCheckBoundsDouble(card,value,lower_bound,upper_bound,option)
+  !
+  ! Checks to ensure that a double precision value read from input is within
+  ! specified bounds.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 01/29/26
+  !
+  use Option_module
+  use String_module
+
+  implicit none
+
+  character(len=*) :: card
+  PetscReal :: value
+  PetscReal :: lower_bound
+  PetscReal :: upper_bound
+  type(option_type) :: option
+
+  if (value < lower_bound .or. value > upper_bound) then
+    option%io_buffer = 'Value for keyword ' // trim(adjustl(card)) // &
+      ' (' // StringWrite(value) // &
+      ') is out of bounds. Valid range is [' // &
+      StringWrite(lower_bound) // ', ' // &
+      StringWrite(upper_bound) // '].'
+    call PrintErrMsg(option)
+  endif
+
+end subroutine InputCheckBoundsDouble
 
 ! ************************************************************************** !
 
