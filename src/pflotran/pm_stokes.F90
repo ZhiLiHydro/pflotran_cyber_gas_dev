@@ -291,6 +291,7 @@ subroutine PMStokesPreSolve(this)
   class(pm_stokes_type) :: this
 
   call PMSubsurfaceFlowPreSolve(this)
+  call StokesApplyBoundaryConditions(this%realization)
 
 end subroutine PMStokesPreSolve
 
@@ -647,6 +648,8 @@ subroutine PMStokesUpdateSolution(this)
 
   call PMSubsurfaceFlowUpdateSolution(this)
   call StokesUpdateSolution(this%realization)
+  ! Output every successful time step
+  call StokesOutputVTK(this%realization, this%option%flow_time)
 
 end subroutine PMStokesUpdateSolution
 
