@@ -117,7 +117,7 @@ end subroutine StokesSetup
 
 ! ************************************************************************** !
 
-subroutine StokesInitializeTimestep(realization)
+subroutine StokesInitializeTimestep(realization,rho)
   !
   ! Update data in module prior to time step
   !
@@ -130,8 +130,9 @@ subroutine StokesInitializeTimestep(realization)
   implicit none
 
   class(realization_subsurface_type) :: realization
+  PetscReal :: rho
 
-  call StokesUpdateFixedAccum(realization)
+  call StokesUpdateFixedAccum(realization,rho)
 
 end subroutine StokesInitializeTimestep
 
@@ -261,7 +262,7 @@ end subroutine StokesDestroy
 
 ! ************************************************************************** !
 
-subroutine StokesResidual(snes,xx,r,realization,rho,mu,debug,ierr)
+subroutine StokesResidual(snes,xx,r,realization,rho,mu,add_convection,debug,ierr)
   !
   ! Computes Stokes residual for SNES solver
   !
@@ -276,11 +277,13 @@ subroutine StokesResidual(snes,xx,r,realization,rho,mu,debug,ierr)
   Vec :: xx, r
   class(realization_subsurface_type) :: realization
   PetscReal :: rho, mu
+  PetscBool :: add_convection
   type(debug_type) :: debug
   PetscErrorCode :: ierr
 
   call StokesResidualPreliminaries(xx,r,realization,ierr)
-  call StokesResidualInternalConn_structured(r,realization,mu,ierr)
+  call StokesResidualInternalConn_structured(r,realization,rho,mu, &
+                                            add_convection,ierr)
   call StokesResidualAccumulation(r,realization,rho,ierr)
   call StokesResidualSourceSink(r,realization,rho,ierr)
   call StokesResidualBoundaryFinal(r,xx,realization,ierr)
@@ -404,7 +407,7 @@ end subroutine StokesResidualPreliminaries
 
 ! ************************************************************************** !
 
-subroutine StokesResidualInternalConn_structured(r,realization,mu,ierr)
+subroutine StokesResidualInternalConn_structured(r,realization,rho,mu,add_convection,ierr)
   !
   ! Internal tractions for Stokes residual on structured grids,
   ! consistent with the LaTeX FV discretization.
@@ -423,7 +426,8 @@ subroutine StokesResidualInternalConn_structured(r,realization,mu,ierr)
 
   Vec :: r
   class(realization_subsurface_type) :: realization
-  PetscReal :: mu
+  PetscReal :: mu, rho
+  PetscBool :: add_convection
   PetscErrorCode :: ierr
   type(grid_type),          pointer :: grid
   type(patch_type),         pointer :: patch
@@ -441,7 +445,12 @@ subroutine StokesResidualInternalConn_structured(r,realization,mu,ierr)
   PetscReal :: Tvisc(3)
   PetscReal :: Tpx, Tpy, Tpz
   PetscReal :: u_n_up, u_n_dn
+  PetscReal :: u_n_K, u_n_L
   PetscReal :: flux_div
+  PetscReal :: u_F(3)
+  PetscReal :: u_n_F, phi
+  PetscReal :: u_n_est
+  PetscReal :: Fconv(3)
 
   patch  => realization%patch
   grid   => patch%grid
@@ -506,6 +515,20 @@ subroutine StokesResidualInternalConn_structured(r,realization,mu,ierr)
       Tpy = p_face * n(2) * area
       Tpz = p_face * n(3) * area
 
+      !-----------------------------------------
+      ! Convective flux (for NS equations)
+      !   T_conv,K = 0.5 rho |F| [ (u_K·n) u_K - (u_L·n) u_L ]
+      !-----------------------------------------
+      Fconv = 0.d0
+      if (add_convection) then
+        u_n_K = u_up(1)*n(1) + u_up(2)*n(2) + u_up(3)*n(3)
+        u_n_L = u_dn(1)*n(1) + u_dn(2)*n(2) + u_dn(3)*n(3)
+        Fconv(1) = 0.5d0 * rho * area * ( u_n_K*u_up(1) - u_n_L*u_dn(1) )
+        Fconv(2) = 0.5d0 * rho * area * ( u_n_K*u_up(2) - u_n_L*u_dn(2) )
+        Fconv(3) = 0.5d0 * rho * area * ( u_n_K*u_up(3) - u_n_L*u_dn(3) )
+      endif
+
+
       ! continuity: u_n,F = 0.5 (u_K·n - u_L·n)
       u_n_up = u_up(1)*n(1) + u_up(2)*n(2) + u_up(3)*n(3)
       u_n_dn = u_dn(1)*n(1) + u_dn(2)*n(2) + u_dn(3)*n(3)
@@ -514,21 +537,21 @@ subroutine StokesResidualInternalConn_structured(r,realization,mu,ierr)
       if (lid_up > 0) then
         ibeg_up_loc = (lid_up-1)*option%nflowdof + 1
         ! momentum residual for cell K
-        r_p(ibeg_up_loc    ) = r_p(ibeg_up_loc    ) - Tvisc(1) - Tpx
-        r_p(ibeg_up_loc + 1) = r_p(ibeg_up_loc + 1) - Tvisc(2) - Tpy
-        r_p(ibeg_up_loc + 2) = r_p(ibeg_up_loc + 2) - Tvisc(3) - Tpz
+        r_p(ibeg_up_loc    ) = r_p(ibeg_up_loc    ) + Tvisc(1) + Tpx + Fconv(1)
+        r_p(ibeg_up_loc + 1) = r_p(ibeg_up_loc + 1) + Tvisc(2) + Tpy + Fconv(2)
+        r_p(ibeg_up_loc + 2) = r_p(ibeg_up_loc + 2) + Tvisc(3) + Tpz + Fconv(3)
         ! continuity residual for cell K
-        r_p(ibeg_up_loc + 3) = r_p(ibeg_up_loc + 3) - flux_div
+        r_p(ibeg_up_loc + 3) = r_p(ibeg_up_loc + 3) + flux_div
 
       endif
 
       if (lid_dn > 0) then
         ! opposite sign in neighboring cell L
         ibeg_dn_loc = (lid_dn-1)*option%nflowdof + 1
-        r_p(ibeg_dn_loc    ) = r_p(ibeg_dn_loc    ) + Tvisc(1) + Tpx
-        r_p(ibeg_dn_loc + 1) = r_p(ibeg_dn_loc + 1) + Tvisc(2) + Tpy
-        r_p(ibeg_dn_loc + 2) = r_p(ibeg_dn_loc + 2) + Tvisc(3) + Tpz
-        r_p(ibeg_dn_loc + 3) = r_p(ibeg_dn_loc + 3) + flux_div
+        r_p(ibeg_dn_loc    ) = r_p(ibeg_dn_loc    ) - Tvisc(1) - Tpx - Fconv(1)
+        r_p(ibeg_dn_loc + 1) = r_p(ibeg_dn_loc + 1) - Tvisc(2) - Tpy - Fconv(2)
+        r_p(ibeg_dn_loc + 2) = r_p(ibeg_dn_loc + 2) - Tvisc(3) - Tpz - Fconv(3)
+        r_p(ibeg_dn_loc + 3) = r_p(ibeg_dn_loc + 3) - flux_div
 
       endif
 
@@ -549,11 +572,11 @@ subroutine StokesResidualAccumulation(r,realization,rho,ierr)
   !
   ! Accumulation terms for Stokes residual
   ! r -= rho*vol*u^n, then r += rho*vol*u^{n+1}
+  ! Pressure is NOT accumulated (stays determined by continuity)
   !
   ! Author: Satish Karra
   ! Date: 01/24/26
   !
-
   use Realization_Subsurface_class
   use Grid_module
   use Patch_module
@@ -572,7 +595,7 @@ subroutine StokesResidualAccumulation(r,realization,rho,ierr)
   type(field_type),  pointer :: field
   PetscReal, pointer :: r_p(:), xx_loc_p(:), accum_p(:)
   PetscInt :: lid, gid, ibeg
-  PetscReal :: vol
+  PetscReal :: vol, vol_over_dt
 
   patch  => realization%patch
   grid   => patch%grid
@@ -585,21 +608,26 @@ subroutine StokesResidualAccumulation(r,realization,rho,ierr)
   call VecGetArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
   call VecGetArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
 
-  ! Subtract previous accumulation: r -= accum_p (which contains rho*vol*u^n)
-  r_p(1:grid%nlmax*option%nflowdof) = r_p(1:grid%nlmax*option%nflowdof) - &
-                                      accum_p(1:grid%nlmax*option%nflowdof)
-
-  ! Add current accumulation: r += rho*vol*u^{n+1}
+  ! Subtract previous accumulation and add current accumulation
+  ! Only for velocity components (1,2,3), NOT pressure (4)
   do lid = 1, grid%nlmax
     gid = grid%nL2G(lid)
     if (patch%imat(gid) <= 0) cycle
     ibeg = (lid-1)*option%nflowdof + 1
     vol  = patch%aux%Material%auxvars(gid)%volume
+    vol_over_dt = vol / option%flow_dt
 
-    ! Add rho*volume*u^{n+1} to residual
-    r_p(ibeg    ) = r_p(ibeg    ) + rho * xx_loc_p(ibeg    ) * vol
-    r_p(ibeg + 1) = r_p(ibeg + 1) + rho * xx_loc_p(ibeg + 1) * vol
-    r_p(ibeg + 2) = r_p(ibeg + 2) + rho * xx_loc_p(ibeg + 2) * vol
+    ! Subtract old: r -= rho*vol*u^n (velocity only)
+    r_p(ibeg    ) = r_p(ibeg    ) - accum_p(ibeg    )
+    r_p(ibeg + 1) = r_p(ibeg + 1) - accum_p(ibeg + 1)
+    r_p(ibeg + 2) = r_p(ibeg + 2) - accum_p(ibeg + 2)
+    ! DO NOT touch pressure residual (ibeg + 3)
+
+    ! Add new: r += rho*vol*u^{n+1} (velocity only)
+    r_p(ibeg    ) = r_p(ibeg    ) + rho * xx_loc_p(ibeg    ) * vol_over_dt
+    r_p(ibeg + 1) = r_p(ibeg + 1) + rho * xx_loc_p(ibeg + 1) * vol_over_dt
+    r_p(ibeg + 2) = r_p(ibeg + 2) + rho * xx_loc_p(ibeg + 2) * vol_over_dt
+    ! DO NOT touch pressure residual (ibeg + 3)
   enddo
 
   call VecRestoreArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
@@ -630,7 +658,7 @@ subroutine StokesResidualSourceSink(r,realization,rho,ierr)
 end subroutine StokesResidualSourceSink
 ! ************************************************************************** !
 
-subroutine StokesJacobian(snes,xx,A,B,realization,rho,mu,debug,ierr)
+subroutine StokesJacobian(snes,xx,A,B,realization,rho,mu,add_convection,debug,ierr)
   !
   ! Computes Stokes Jacobian for SNES solver
   !
@@ -658,6 +686,7 @@ subroutine StokesJacobian(snes,xx,A,B,realization,rho,mu,debug,ierr)
   type(option_type), pointer :: option
   PetscReal :: mat_norm
   PetscInt :: mat_rows, mat_cols
+  PetscBool :: add_convection
 
   option => realization%option
 
@@ -673,20 +702,26 @@ subroutine StokesJacobian(snes,xx,A,B,realization,rho,mu,debug,ierr)
   endif
 
   call MatZeroEntries(J,ierr);CHKERRQ(ierr)
-  call StokesJacobianInternalConn_structured(J,realization,mu,debug,ierr)
-  call StokesJacobianAccumulation(J,realization,rho,debug,ierr)
-  call StokesJacobianSourceSink(J,realization,rho,debug,ierr)
+  call StokesJacobianInternalConn_structured(J,realization,mu,rho, &
+                                            add_convection, &
+                                            ierr)
+  call StokesJacobianAccumulation(J,realization,rho,ierr)
+  call StokesJacobianSourceSink(J,realization,rho,ierr)
 
   ! Assembly happens once at the end
   call MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
   call MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
 
   ! NOW apply BC constraints AFTER assembly
-  call StokesJacobianBoundaryConn(J,realization,rho,mu,debug,ierr)
+  call StokesJacobianBoundaryConn(J,realization,rho,mu,ierr)
 
   ! Re-assemble after BC modifications
   call MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
   call MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+
+  call MatSetOption(J,MAT_NEW_NONZERO_LOCATIONS,PETSC_FALSE, &
+                    ierr);CHKERRQ(ierr)
+
 
   if (A /= B .and. mat_type_A /= MATMFFD) then
     call MatConvert(J,mat_type_B,MAT_REUSE_MATRIX,B,ierr);CHKERRQ(ierr)
@@ -700,7 +735,7 @@ end subroutine StokesJacobian
 
 ! ************************************************************************** !
 
-subroutine StokesJacobianInternalConn_structured(A,realization,mu,debug,ierr)
+subroutine StokesJacobianInternalConn_structured(A,realization,mu,rho,add_convection,ierr)
   !
   ! Internal connection Jacobian for structured grids
   !
@@ -714,14 +749,13 @@ subroutine StokesJacobianInternalConn_structured(A,realization,mu,debug,ierr)
   use Option_module
   use Connection_module
   use Petsc_Utility_module
-  use Debug_module
 
   implicit none
 
   Mat, intent(inout) :: A
   class(realization_subsurface_type) :: realization
-  PetscReal :: mu
-  type(debug_type) :: debug
+  PetscReal :: mu, rho
+  PetscBool :: add_convection
   PetscErrorCode :: ierr
   type(grid_type),          pointer :: grid
   type(patch_type),         pointer :: patch
@@ -734,10 +768,19 @@ subroutine StokesJacobianInternalConn_structured(A,realization,mu,debug,ierr)
   PetscReal :: n(3)
   PetscReal :: J_KK(4,4), J_KL(4,4), J_LK(4,4), J_LL(4,4)
   PetscReal :: coef_mu, coef_p, coef_div
+  ! convection
+  PetscReal :: u_up(3), u_dn(3), u_F(3), s, u_n_est
+  PetscReal :: u_n_K, u_n_L
+  PetscReal :: coef_conv
+  PetscReal :: Cij
+  PetscInt :: i,j
+  PetscReal, pointer :: u_loc(:)
 
   patch  => realization%patch
   grid   => patch%grid
   option => realization%option
+
+  call VecGetArrayRead(realization%field%flow_xx_loc,u_loc,ierr);CHKERRQ(ierr)
 
   conn_list => grid%internal_connection_set_list
   cset      => conn_list%first
@@ -819,22 +862,70 @@ subroutine StokesJacobianInternalConn_structured(A,realization,mu,debug,ierr)
       ! Pressure has no self-coupling in continuity, so add scaling for stability
       ! This is equivalent to: R^p = div(u) + lambda*p = 0 with small lambda
       ! For steady Stokes, lambda = 0, but we add it for numerical stability
-      J_KK(4,4) = 1.d-12  ! Small stabilization
-      J_LL(4,4) = 1.d-12
+      J_KK(4,4) = 0.d0 ! Small stabilization
+      J_LL(4,4) = 0.d0
+
+      !------------------------------
+      ! Convective contribution (optional)
+      !------------------------------
+      if (add_convection) then
+        ! get u_K, u_L
+        u_up = 0.d0
+        u_dn = 0.d0
+        if (lid_up > 0) then
+          u_up(1) = u_loc((lid_up-1)*option%nflowdof + 1)
+          u_up(2) = u_loc((lid_up-1)*option%nflowdof + 2)
+          u_up(3) = u_loc((lid_up-1)*option%nflowdof + 3)
+        endif
+        if (lid_dn > 0) then
+          u_dn(1) = u_loc((lid_dn-1)*option%nflowdof + 1)
+          u_dn(2) = u_loc((lid_dn-1)*option%nflowdof + 2)
+          u_dn(3) = u_loc((lid_dn-1)*option%nflowdof + 3)
+        endif
+
+        u_n_K = u_up(1)*n(1) + u_up(2)*n(2) + u_up(3)*n(3)
+        u_n_L = u_dn(1)*n(1) + u_dn(2)*n(2) + u_dn(3)*n(3)
+
+        ! dT_conv,K / d u_K = 0.5 rho |F| [ (u_K·n) I + u_K n^T ]
+        ! dT_conv,K / d u_L = -0.5 rho |F| [ (u_L·n) I + u_L n^T ]
+        do i = 1,3
+          do j = 1,3
+            ! K-K block (velocity wrt u_K)
+            if (i == j) then
+              Cij = 0.5d0 * rho * area * ( u_n_K + u_up(i)*n(j) )
+            else
+              Cij = 0.5d0 * rho * area * u_up(i)*n(j)
+            endif
+            J_KK(i,j) = J_KK(i,j) + Cij
+            J_LK(i,j) = J_LK(i,j) - Cij
+
+            ! K-L block (velocity wrt u_L)
+            if (i == j) then
+              Cij = -0.5d0 * rho * area * ( u_n_L + u_dn(i)*n(j) )
+            else
+              Cij = -0.5d0 * rho * area * u_dn(i)*n(j)
+            endif
+            J_KL(i,j) = J_KL(i,j) + Cij
+            J_LL(i,j) = J_LL(i,j) - Cij
+          enddo
+        enddo
+
+      endif
+      !------------------------------
 
       if (lid_up > 0) then
         istart_up = (gid_up-1)  ! Block index for BAIJ matrix
         istart_dn = (gid_dn-1) ! Block index for BAIJ matrix
 
-        call PUMSetValuesBlockedLocal(A,1,istart_up,1,istart_up,-1.0d0*J_KK,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call PUMSetValuesBlockedLocal(A,1,istart_up,1,istart_dn,-1.0d0*J_KL,ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesBlockedLocal(A,1,istart_up,1,istart_up,J_KK,ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesBlockedLocal(A,1,istart_up,1,istart_dn,J_KL,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
 
       if (lid_dn > 0) then
         istart_dn = (gid_dn-1) ! Block index for BAIJ matrix
         istart_up = (gid_up-1) ! Block index for BAIJ matrix
-        call PUMSetValuesBlockedLocal(A,1,istart_dn,1,istart_dn,-1.0d0*J_LL,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call PUMSetValuesBlockedLocal(A,1,istart_dn,1,istart_up,-1.0d0*J_LK,ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesBlockedLocal(A,1,istart_dn,1,istart_dn,J_LL,ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesBlockedLocal(A,1,istart_dn,1,istart_up,J_LK,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
 
     enddo
@@ -844,7 +935,7 @@ subroutine StokesJacobianInternalConn_structured(A,realization,mu,debug,ierr)
 end subroutine StokesJacobianInternalConn_structured
 
 ! ************************************************************************** !
-subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,debug,ierr)
+subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,ierr)
   !
   ! BC Jacobian for Stokes problem
   ! Collects all BC constraints and applies once per cell
@@ -860,14 +951,12 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,debug,ierr)
   use Coupler_module
   use Connection_module
   use Petsc_Utility_module
-  use Debug_module
 
   implicit none
 
   Mat, intent(inout) :: A
   class(realization_subsurface_type) :: realization
   PetscReal :: rho, mu
-  type(debug_type) :: debug
   PetscErrorCode :: ierr
   type(patch_type),  pointer :: patch
   type(grid_type),   pointer :: grid
@@ -971,7 +1060,7 @@ end subroutine StokesJacobianBoundaryConn
 
 ! ************************************************************************** !
 
-subroutine StokesJacobianAccumulation(A,realization,rho,debug,ierr)
+subroutine StokesJacobianAccumulation(A,realization,rho,ierr)
   !
   ! Accumulation Jacobian for Stokes problem
   !
@@ -984,20 +1073,18 @@ subroutine StokesJacobianAccumulation(A,realization,rho,debug,ierr)
   use Grid_module
   use Option_module
   use Petsc_Utility_module
-  use Debug_module
 
   implicit none
 
   Mat, intent(inout) :: A
   class(realization_subsurface_type) :: realization
   PetscReal :: rho
-  type(debug_type) :: debug
   PetscErrorCode :: ierr
   type(patch_type),  pointer :: patch
   type(grid_type),   pointer :: grid
   type(option_type), pointer :: option
   PetscInt :: lid, gid, istart
-  PetscReal :: Jacc(4,4), vol
+  PetscReal :: Jacc(4,4), vol, vol_over_dt
 
   patch  => realization%patch
   grid   => patch%grid
@@ -1010,11 +1097,12 @@ subroutine StokesJacobianAccumulation(A,realization,rho,debug,ierr)
     if (patch%imat(gid) <= 0) cycle
     istart = lid - 1  ! Block index for BAIJ matrix
     vol    = patch%aux%Material%auxvars(gid)%volume
+    vol_over_dt = vol / option%flow_dt
 
     Jacc = 0.d0
-    Jacc(1,1) = rho * vol
-    Jacc(2,2) = rho * vol
-    Jacc(3,3) = rho * vol
+    Jacc(1,1) = rho * vol_over_dt
+    Jacc(2,2) = rho * vol_over_dt
+    Jacc(3,3) = rho * vol_over_dt
 
     call PUMSetValuesBlockedLocal(A,1,istart,1,istart,Jacc,ADD_VALUES,ierr);CHKERRQ(ierr)
   enddo
@@ -1023,7 +1111,7 @@ end subroutine StokesJacobianAccumulation
 
 ! ************************************************************************** !
 
-subroutine StokesJacobianSourceSink(A,realization,rho,debug,ierr)
+subroutine StokesJacobianSourceSink(A,realization,rho,ierr)
   !
   ! Source/sink Jacobian for Stokes problem
   !
@@ -1032,21 +1120,19 @@ subroutine StokesJacobianSourceSink(A,realization,rho,debug,ierr)
   !
 
   use Realization_Subsurface_class
-  use Debug_module
 
   implicit none
 
   Mat, intent(inout) :: A
   class(realization_subsurface_type) :: realization
   PetscReal :: rho
-  type(debug_type) :: debug
   PetscErrorCode :: ierr
 
 end subroutine StokesJacobianSourceSink
 
 ! ************************************************************************** !
 
-subroutine StokesUpdateFixedAccum(realization)
+subroutine StokesUpdateFixedAccum(realization,rho)
   !
   ! Updates the fixed portion of the accumulation term
   ! Called at the beginning of each time step
@@ -1071,7 +1157,7 @@ subroutine StokesUpdateFixedAccum(realization)
   type(field_type),  pointer :: field
   PetscReal, pointer :: xx_p(:), accum_p(:)
   PetscInt :: lid, gid, istart
-  PetscReal :: vol
+  PetscReal :: vol, vol_over_dt, rho
   PetscErrorCode :: ierr
 
   option => realization%option
@@ -1092,12 +1178,13 @@ subroutine StokesUpdateFixedAccum(realization)
     if (patch%imat(gid) <= 0) cycle
     istart = (lid-1)*option%nflowdof + 1
     vol    = patch%aux%Material%auxvars(gid)%volume
+    vol_over_dt = vol / option%flow_dt
 
     ! accum stores: rho * volume * u^n (previous velocity)
     ! This will be subtracted from residual to get: rho*vol*(u^{n+1} - u^n)/dt
-    accum_p(istart    ) = xx_p(istart    ) * vol
-    accum_p(istart + 1) = xx_p(istart + 1) * vol
-    accum_p(istart + 2) = xx_p(istart + 2) * vol
+    accum_p(istart    ) = rho * xx_p(istart    ) * vol_over_dt
+    accum_p(istart + 1) = rho * xx_p(istart + 1) * vol_over_dt
+    accum_p(istart + 2) = rho * xx_p(istart + 2) * vol_over_dt
   enddo
 
   call VecRestoreArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
@@ -1212,6 +1299,5 @@ subroutine StokesOutputVTK(realization, time_value)
 
 
 end subroutine StokesOutputVTK
-
 
 end module Stokes_module

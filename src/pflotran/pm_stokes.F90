@@ -27,6 +27,7 @@ module PM_Stokes_class
     PetscReal :: rel_update_inf_tol
     PetscReal :: rho
     PetscReal :: mu
+    PetscBool :: add_convection
   contains
     procedure, public :: ReadSimulationOptionsBlock => PMStokesReadSimOptionsBlock
     procedure, public :: ReadNewtonBlock            => PMStokesReadNewtonSelectCase
@@ -75,8 +76,9 @@ function PMStokesCreate()
   this%residual_scaled_inf_tol = 1.0d-6
   this%abs_update_inf_tol      = 1.0d-2
   this%rel_update_inf_tol      = 1.0d-4
-  this%rho = 1000.0d0
-  this%mu  = 1.0d-3
+  this%rho = 998.32d0 ! at 20 deg C
+  this%mu  = 1.002d-3 ! at 20 deg C
+  this%add_convection = PETSC_FALSE
 
   PMStokesCreate => this
 
@@ -145,6 +147,8 @@ subroutine PMStokesReadSimOptionsBlock(this,input)
         call InputReadDouble(input,option,tempreal); this%rho = tempreal
       case('VISCOSITY')
         call InputReadDouble(input,option,tempreal); this%mu  = tempreal
+      case('ADD_CONVECTION')
+        this%add_convection = PETSC_TRUE
       case default
         call InputKeywordUnrecognized(input,keyword,error_string,option)
     end select
@@ -251,6 +255,7 @@ recursive subroutine PMStokesInitializeRun(this)
   class(pm_stokes_type) :: this
 
   call PMSubsurfaceFlowInitializeRun(this)
+  call PMStokesRegisterFieldSplit(this)
 
 end subroutine PMStokesInitializeRun
 
@@ -271,7 +276,7 @@ subroutine PMStokesInitializeTimestep(this)
   class(pm_stokes_type) :: this
 
   call PMSubsurfaceFlowInitializeTimestepA(this)
-  call StokesInitializeTimestep(this%realization)
+  call StokesInitializeTimestep(this%realization,this%rho)
   call PMSubsurfaceFlowInitializeTimestepB(this)
 
 end subroutine PMStokesInitializeTimestep
@@ -361,7 +366,8 @@ subroutine PMStokesResidual(this,snes,xx,r,ierr)
 
   dbg = this%debug
   call PMSubsurfaceFlowUpdatePropertiesNI(this)
-  call StokesResidual(snes,xx,r,this%realization,this%rho,this%mu,dbg,ierr)
+  call StokesResidual(snes,xx,r,this%realization,this%rho,this%mu, &
+                      this%add_convection,dbg,ierr)
 
 end subroutine PMStokesResidual
 
@@ -387,7 +393,8 @@ subroutine PMStokesJacobian(this,snes,xx,A,B,ierr)
   type(debug_type) :: dbg
 
   dbg = this%debug
-  call StokesJacobian(snes,xx,A,B,this%realization,this%rho,this%mu,dbg,ierr)
+  call StokesJacobian(snes,xx,A,B,this%realization,this%rho,this%mu, &
+                      this%add_convection,dbg,ierr)
 
 end subroutine PMStokesJacobian
 
@@ -543,7 +550,6 @@ subroutine PMStokesCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
   PetscReal :: conv_abs_res_real, conv_scaled_res_real
   PetscInt  :: conv_abs_res_cell, conv_scaled_res_cell
   PetscMPIInt :: mpi_int
-  character(len=MAXSTRINGLENGTH) :: string
   character(len=15), parameter :: tol_string(MAX_INDEX) = &
        ['Absolute Update','Relative Update','Residual       ','Scaled Residual']
 
@@ -719,6 +725,55 @@ subroutine PMStokesInputRecord(this)
   write(id,'(a)') 'stokes'
 
 end subroutine PMStokesInputRecord
+
+! ************************************************************************** !
+
+subroutine PMStokesRegisterFieldSplit(this)
+  !
+  ! Register velocity (u) and pressure (p) fields for PCFIELDSPLIT.
+  ! Equivalent to the C code:
+  !   const PetscInt ufields[] = {0,1,2}, pfields[] = {3};
+  !   KSPGetPC(ksp_S, &pc);
+  !   PCFieldSplitSetBlockSize(pc, 4);
+  !   PCFieldSplitSetFields(pc, "u", 3, ufields, ufields);
+  !   PCFieldSplitSetFields(pc, "p", 1, pfields, pfields);
+  !
+  ! Author: Satish Karra
+  ! Date: 01/28/26
+  !
+
+  implicit none
+  class(pm_stokes_type)  :: this
+  KSP        :: ksp_flow
+  PC         :: pc
+  PetscErrorCode :: ierr
+  PetscInt   :: ufields(3), pfields(1)
+  character(len=*), parameter :: field_u = 'u'
+  character(len=*), parameter :: field_p = 'p'
+
+  ksp_flow = this%solver%ksp
+  pc = this%solver%pc
+
+  ! Define DOF positions inside the 4-wide block:
+  ! [0] -> u, [1] -> v, [2] -> w, [3] -> p
+  ufields(1) = 0
+  ufields(2) = 1
+  ufields(3) = 2
+  pfields(1) = 3
+
+  ! Get the preconditioner context
+  call KSPGetPC(ksp_flow, pc, ierr);CHKERRQ(ierr)
+
+  ! Set the block size (4 DOFs per cell: u,v,w,p)
+  call PCFieldSplitSetBlockSize(pc, 4, ierr);CHKERRQ(ierr)
+
+  ! Define velocity field "u" as DOFs 0,1,2 within each block
+  call PCFieldSplitSetFields(pc, field_u, 3, ufields, ufields, ierr);CHKERRQ(ierr)
+
+  ! Define pressure field "p" as DOF 3 within each block
+  call PCFieldSplitSetFields(pc, field_p, 1, pfields, pfields, ierr);CHKERRQ(ierr)
+
+end subroutine PMStokesRegisterFieldSplit
 
 ! ************************************************************************** !
 
