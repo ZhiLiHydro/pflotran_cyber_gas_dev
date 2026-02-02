@@ -1238,6 +1238,32 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       name = 'Smectite'
       category = OUTPUT_GENERIC
       id = SMECTITE
+    case('STOKES_VELOCITY_X','STOKES_VELOCITY_Y','STOKES_VELOCITY_Z')
+      if (option%iflowmode /= STOKES_MODE) then
+        call PrintErrMsg(option,trim(word)//' output only &
+          &supported when the STOKES process model is used.')
+      endif
+      select case(word)
+        case ('STOKES_VELOCITY_X')
+          units = 'm/s'
+          name = 'Stokes Velocity X'
+          category = OUTPUT_GENERIC
+          id = STOKES_VELOCITY_X
+        case ('STOKES_VELOCITY_Y')
+          units = 'm/s'
+          name = 'Stokes Velocity Y'
+          category = OUTPUT_GENERIC
+          id = STOKES_VELOCITY_Y
+        case ('STOKES_VELOCITY_Z')
+          units = 'm/s'
+          name = 'Stokes Velocity Z'
+          category = OUTPUT_GENERIC
+          id = STOKES_VELOCITY_Z
+        case default
+          option%io_buffer = 'Unknown keyword "' // trim(word) // &
+            '" in OutputVariableToID.'
+          call PrintErrMsg(option)
+      end select
     case('ELECTRICAL_CONDUCTIVITY','ELECTRICAL_POTENTIAL', &
          'ELECTRICAL_JACOBIAN','ELECTRICAL_POTENTIAL_DIPOLE', &
          'ARCHIE_CEMENTATION_EXPONENT','ARCHIE_SATURATION_EXPONENT', &

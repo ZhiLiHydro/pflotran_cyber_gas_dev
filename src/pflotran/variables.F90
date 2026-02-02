@@ -232,4 +232,10 @@ module Variables_module
   PetscInt, parameter, public :: IONIC_STRENGTH              = 177
   PetscInt, parameter, public :: AQUEOUS_ELECTRICAL_CONDUCTIVITY = 178
 
+  ! Stokes-related variables
+  PetscInt, parameter, public :: STOKES_VELOCITY_X = 179
+  PetscInt, parameter, public :: STOKES_VELOCITY_Y = 180
+  PetscInt, parameter, public :: STOKES_VELOCITY_Z = 181
+
+
 end module Variables_module

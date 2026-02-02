@@ -6814,6 +6814,18 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
             call PatchUnsupportedVariable('PNF',ivar,option)
           end select
 
+      else if (associated(patch%aux%Stokes)) then
+
+        select case(ivar)
+          case(LIQUID_PRESSURE)
+            do local_id=1,grid%nlmax
+              vec_ptr(local_id) = &
+                patch%aux%Stokes%auxvars(grid%nL2G(local_id))%pressure
+            enddo
+          case default
+            call PatchUnsupportedVariable('Stokes',ivar,option)
+          end select
+
       else if (associated(patch%aux%ZFlow)) then
 
         select case(ivar)
@@ -8593,6 +8605,27 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
               do local_id=1,grid%nlmax
                 vec_ptr(local_id) = &
                   patch%aux%richards%auxvars(grid%nL2G(local_id))%well%bh_p
+              enddo
+          end select
+      end select
+    case(STOKES_VELOCITY_X,STOKES_VELOCITY_Y,STOKES_VELOCITY_Z)
+      select case(option%iflowmode)
+        case(STOKES_MODE)
+          select case(ivar)
+            case(STOKES_VELOCITY_X)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = &
+                  patch%aux%Stokes%auxvars(grid%nL2G(local_id))%u
+              enddo
+            case(STOKES_VELOCITY_Y)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = &
+                  patch%aux%Stokes%auxvars(grid%nL2G(local_id))%v
+              enddo
+            case(STOKES_VELOCITY_Z)
+              do local_id=1,grid%nlmax
+                vec_ptr(local_id) = &
+                  patch%aux%Stokes%auxvars(grid%nL2G(local_id))%w
               enddo
           end select
       end select
