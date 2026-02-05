@@ -735,7 +735,7 @@ subroutine PMFracSetup(this)
       option%io_buffer = 'GEOTHERMAL_FRACTURE_MODEL: Calculating connected &
                          &fractures . . . '
       call PrintMsg(option)
-      
+
       !start region
       call PMFracClipCells(this,this%connected_to_start,total_sum_glb, &
                            cell_positions,this%start_region_name)
@@ -748,7 +748,7 @@ subroutine PMFracSetup(this)
 
       connected = this%connected_to_start .and. this%connected_to_end
       this%connected_to_start = connected
-     
+
       !write(*,*) "............................................................."
       !write(*,*) "connected_to_start =", this%connected_to_start
 
@@ -773,6 +773,7 @@ subroutine PMFracSetup(this)
     endif
     deallocate(cell_positions)
 
+    ! filename needs to be consistant w/ filename located at end of PMFracPrintStats()
     filename = trim(this%option%global_prefix)//'.info'
     fid = 19181723
 110 format(100es16.8)
@@ -801,7 +802,7 @@ subroutine PMFracSetup(this)
     enddo
     write(fid,'(a)',advance="no") "SURFACE AREA [m^2] OF CONNECTED FRACTURES: "
     write(fid,110,advance="yes") L22
-    
+
     write(fid,'(a)',advance="yes") ""
     ! header for time varying fracture network characteristics
     write(fid,'(a)',advance="no") "TIME ["//trim(this%output_option%tunit)//"]; "
@@ -811,21 +812,33 @@ subroutine PMFracSetup(this)
     write(fid,'(a)',advance="no") "RANGE FRAC APERTURE [m]; "
     write(fid,'(a)',advance="no") "MIDRANGE FRAC APERTURE [m]; "
     write(fid,'(a)',advance="no") "MEAN FRAC APERTURE [m]; "
+    write(fid,'(a)',advance="no") "VARIANCE FRAC APERTURE [m]; "
+    write(fid,'(a)',advance="no") "POP SKEWNESS FRAC APERTURE [m]; "
+    write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC APERTURE [m]; "
     write(fid,'(a)',advance="no") "MIN FRAC PERM-X [m]; "
     write(fid,'(a)',advance="no") "MAX FRAC PERM-X [m]; "
     write(fid,'(a)',advance="no") "RANGE FRAC PERM-X [m]; "
     write(fid,'(a)',advance="no") "MIDRANGE FRAC PERM-X [m]; "
     write(fid,'(a)',advance="no") "MEAN FRAC PERM-X [m]; "
+    write(fid,'(a)',advance="no") "VARIANCE FRAC PERM-X [m]; "
+    write(fid,'(a)',advance="no") "POP SKEWNESS FRAC PERM-X [m]; "
+    write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC PERM-X [m]; "
     write(fid,'(a)',advance="no") "MIN FRAC PERM-Y [m]; "
     write(fid,'(a)',advance="no") "MAX FRAC PERM-Y [m]; "
     write(fid,'(a)',advance="no") "RANGE FRAC PERM-Y [m]; "
     write(fid,'(a)',advance="no") "MIDRANGE FRAC PERM-Y [m]; "
     write(fid,'(a)',advance="no") "MEAN FRAC PERM-Y [m]; "
+    write(fid,'(a)',advance="no") "VARIANCE FRAC PERM-Y [m]; "
+    write(fid,'(a)',advance="no") "POP SKEWNESS FRAC PERM-Y [m]; "
+    write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC PERM-Y [m]; "
     write(fid,'(a)',advance="no") "MIN FRAC PERM-Z [m]; "
     write(fid,'(a)',advance="no") "MAX FRAC PERM-Z [m]; "
     write(fid,'(a)',advance="no") "RANGE FRAC PERM-Z [m]; "
     write(fid,'(a)',advance="no") "MIDRANGE FRAC PERM-Z [m]; "
     write(fid,'(a)',advance="no") "MEAN FRAC PERM-Z [m]; "
+    write(fid,'(a)',advance="no") "VARIANCE FRAC PERM-Z [m]; "
+    write(fid,'(a)',advance="no") "POP SKEWNESS FRAC PERM-Z [m]; "
+    write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC PERM-Z [m]; "
     close(fid)
   endif
 
@@ -891,14 +904,14 @@ subroutine PMFracClipCells(this,connected_to_region,total_sum_glb, &
 
   region => RegionGetPtrFromList(region_name, &
                                  this%realization%patch%region_list)
-  
+
   if (.not.associated(region)) then
     option%io_buffer = 'REGION ' // trim(region_name) // ' in &
                         &CLIP_UNCONNECTED_FRACTURES,REGION not found among the &
                         &defined REGIONs in the input deck.'
     call PrintErrMsg(option)
   endif
-   
+
   allocate(allregion_num_cells(option%comm%size))
   myregion_num_cells = region%num_cells
   if (myregion_num_cells > 0) then
@@ -912,12 +925,12 @@ subroutine PMFracClipCells(this,connected_to_region,total_sum_glb, &
     allocate(myregion_cell_ids(1))
     myregion_cell_ids = UNINITIALIZED_INTEGER
   endif
-   
+
   call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
   call MPI_Allgather(myregion_num_cells,ONE_INTEGER,MPI_INTEGER, &
                      allregion_num_cells,ONE_INTEGER,MPI_INTEGER, &
                      option%mycomm,ierr);CHKERRQ(ierr)
-  
+
   region_num_cells = SUM(allregion_num_cells)
   do i = 1,option%comm%size
     if (i == 1) then
@@ -926,7 +939,7 @@ subroutine PMFracClipCells(this,connected_to_region,total_sum_glb, &
       cell_positions(i) = cell_positions(i-1) + allregion_num_cells(i-1)
     endif
   enddo
- 
+
   allocate(this%clip_region_cell_ids(region_num_cells))
   call MPI_Gatherv(myregion_cell_ids,myregion_num_cells,MPI_INTEGER, &
                    this%clip_region_cell_ids,allregion_num_cells, &
@@ -941,9 +954,9 @@ subroutine PMFracClipCells(this,connected_to_region,total_sum_glb, &
   nullify(connected)
 
   allocate(connected_to_region(total_sum_glb))
-  connected_to_region(:) = PETSC_FALSE   
+  connected_to_region(:) = PETSC_FALSE
   allocate(visited_cells(total_sum_glb))
-  
+
   do k = 1,size(this%clip_region_cell_ids)
     ! this is a recursive subroutine which will call itself
     visited_cells = 0
@@ -981,7 +994,7 @@ recursive subroutine PMFracConnectedness(this,natural_id,visited_cells, &
   PetscInt :: natural_id_up, natural_id_dn
   PetscInt :: iconn, i
   PetscBool, pointer :: connected(:)
-  
+
   grid => this%realization%patch%grid
   connection_set_list => grid%internal_connection_set_list
 
@@ -1020,7 +1033,7 @@ recursive subroutine PMFracConnectedness(this,natural_id,visited_cells, &
   else
     return
   endif
-  
+
   cur_connection_set => connection_set_list%first
   do
     if (.not.associated(cur_connection_set)) exit
@@ -2471,6 +2484,7 @@ subroutine PMFracPrintStats(this)
   !
   use Material_Aux_module
   use Grid_module
+  use Utility_module
 
   class(pm_fracture_type) :: this
 
@@ -2479,17 +2493,30 @@ subroutine PMFracPrintStats(this)
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(grid_type), pointer :: grid
   PetscReal :: frac_aperture(size(this%unique_connected_cell_ids))
+  PetscReal :: frac_perm_x(size(this%unique_connected_cell_ids))
+  PetscReal :: frac_perm_y(size(this%unique_connected_cell_ids))
+  PetscReal :: frac_perm_z(size(this%unique_connected_cell_ids))
   PetscReal :: fracture_volume,L2
   PetscReal :: min_frac_aperture,max_frac_aperture,mean_frac_aperture
   PetscReal :: range_frac_aperture,midrange_frac_aperture
+  PetscReal :: variance_frac_aperture
+  PetscReal :: skewness_frac_aperture_p, skewness_frac_aperture_a
   PetscReal :: perm_sum_x,perm_sum_y,perm_sum_z
   PetscReal :: min_perm_x,max_perm_x
   PetscReal :: min_perm_y,max_perm_y
   PetscReal :: min_perm_z,max_perm_z
   PetscReal :: range_perm_x,range_perm_y,range_perm_z
   PetscReal :: midrange_perm_x,midrange_perm_y,midrange_perm_z
-  PetscInt :: k,fid
+  PetscReal :: mean_perm_x,mean_perm_y,mean_perm_z
+  PetscReal :: variance_perm_x,variance_perm_y,variance_perm_z
+  PetscReal :: skewness_perm_x_p, skewness_perm_x_a
+  PetscReal :: skewness_perm_y_p, skewness_perm_y_a
+  PetscReal :: skewness_perm_z_p, skewness_perm_z_a
+  PetscInt :: k,fid,nccells
 
+  nccells = size(this%unique_connected_cell_ids)
+
+  ! filename needs to be consistant w/ filename located at end of PMFracSetup()
   filename = trim(this%option%global_prefix)//'.info'
   fid = 19181723
 110 format(100es16.8)
@@ -2503,37 +2530,25 @@ subroutine PMFracPrintStats(this)
   material_auxvars => this%realization%patch%aux%material%auxvars
   grid => this%realization%patch%grid
 
-  do k = 1,size(this%unique_connected_cell_ids)
+  do k = 1,nccells
     material_auxvar => &
                material_auxvars(grid%nL2G(this%unique_connected_cell_ids(k)))
     L2 = ((material_auxvar%volume)**(1.d0/3.d0))**(2)! [m^2]
     frac_aperture(k) = material_auxvar%fracture_aperture
+    frac_perm_x(k) = material_auxvar%permeability(1)
+    frac_perm_y(k) = material_auxvar%permeability(2)
+    frac_perm_z(k) = material_auxvar%permeability(3)
     fracture_volume = fracture_volume + (L2*frac_aperture(k)) ! [m^3]
-    perm_sum_x = perm_sum_x + material_auxvar%permeability(1)
-    perm_sum_y = perm_sum_y + material_auxvar%permeability(2)
-    perm_sum_z = perm_sum_z + material_auxvar%permeability(3)
-    if (material_auxvar%permeability(1) > max_perm_x) then
-      max_perm_x = material_auxvar%permeability(1)
-    endif
-    if (material_auxvar%permeability(1) < min_perm_x) then
-      min_perm_x = material_auxvar%permeability(1)
-    endif
-    if (material_auxvar%permeability(2) > max_perm_y) then
-      max_perm_y = material_auxvar%permeability(2)
-    endif
-    if (material_auxvar%permeability(2) < min_perm_y) then
-      min_perm_y = material_auxvar%permeability(2)
-    endif
-    if (material_auxvar%permeability(3) > max_perm_z) then
-      max_perm_z = material_auxvar%permeability(3)
-    endif
-    if (material_auxvar%permeability(3) < min_perm_z) then
-      min_perm_z = material_auxvar%permeability(3)
-    endif
+    perm_sum_x = perm_sum_x + frac_perm_x(k)
+    perm_sum_y = perm_sum_y + frac_perm_y(k)
+    perm_sum_z = perm_sum_z + frac_perm_z(k)
   enddo
 
   max_frac_aperture = maxval(frac_aperture)
   min_frac_aperture = minval(frac_aperture)
+  max_perm_x = maxval(frac_perm_x); min_perm_x = minval(frac_perm_x)
+  max_perm_y = maxval(frac_perm_y); min_perm_y = minval(frac_perm_y)
+  max_perm_z = maxval(frac_perm_z); min_perm_z = minval(frac_perm_z)
 
   range_frac_aperture = max_frac_aperture-min_frac_aperture
   midrange_frac_aperture = range_frac_aperture/2.d0
@@ -2545,8 +2560,25 @@ subroutine PMFracPrintStats(this)
   range_perm_z = max_perm_z-min_perm_z
   midrange_perm_z = range_perm_z/2.d0
 
-  mean_frac_aperture = sum(material_auxvars%fracture_aperture)/ &
-                       size(this%unique_connected_cell_ids)
+  mean_frac_aperture = sum(material_auxvars%fracture_aperture)/nccells
+  mean_perm_x = perm_sum_x/nccells
+  mean_perm_y = perm_sum_y/nccells
+  mean_perm_z = perm_sum_z/nccells
+
+  variance_frac_aperture = &
+                         sum((frac_aperture-mean_frac_aperture)**2)/(nccells-1)
+  variance_perm_x = sum((frac_perm_x-mean_perm_x)**2)/(nccells-1)
+  variance_perm_y = sum((frac_perm_y-mean_perm_y)**2)/(nccells-1)
+  variance_perm_z = sum((frac_perm_z-mean_perm_z)**2)/(nccells-1)
+
+  skewness_frac_aperture_p = Skewness(frac_aperture)
+  skewness_frac_aperture_a = Skewness(frac_aperture,PETSC_TRUE)
+  skewness_perm_x_p = Skewness(frac_perm_x)
+  skewness_perm_x_a = Skewness(frac_perm_x,PETSC_TRUE)
+  skewness_perm_y_p = Skewness(frac_perm_y)
+  skewness_perm_y_a = Skewness(frac_perm_y,PETSC_TRUE)
+  skewness_perm_z_p = Skewness(frac_perm_z)
+  skewness_perm_z_a = Skewness(frac_perm_z,PETSC_TRUE)
 
   ! header for these values is located at end of PMFracSetup()
   ! TIME [tunit];
@@ -2563,6 +2595,12 @@ subroutine PMFracPrintStats(this)
   write(fid,110,advance="no") midrange_frac_aperture
   ! MEAN FRAC APERTURE [m];
   write(fid,110,advance="no") mean_frac_aperture
+  ! VARIANCE FRAC APERTURE [m];
+  write(fid,110,advance="no") variance_frac_aperture
+  ! POP SKEWNESS FRAC APERTURE [m];
+  write(fid,110,advance="no") skewness_frac_aperture_p
+  ! SAMPLE SKEWNESS FRAC APERTURE [m];
+  write(fid,110,advance="no") skewness_frac_aperture_a
   ! MIN FRAC PERM-X [m];
   write(fid,110,advance="no") min_perm_x
   ! MAX FRAC PERM-X [m];
@@ -2572,7 +2610,13 @@ subroutine PMFracPrintStats(this)
   ! MIDRANGE FRAC PERM-X [m];
   write(fid,110,advance="no") midrange_perm_x
   ! MEAN FRAC PERM-X [m];
-  write(fid,110,advance="no") perm_sum_x/size(this%unique_connected_cell_ids)
+  write(fid,110,advance="no") mean_perm_x
+  ! VARIANCE FRAC PERM-X [m];
+  write(fid,110,advance="no") variance_perm_x
+  ! POP SKEWNESS FRAC PERM-X [m];
+  write(fid,110,advance="no") skewness_perm_x_p
+  ! SAMPLE SKEWNESS FRAC PERM-X [m];
+  write(fid,110,advance="no") skewness_perm_x_a
   ! MIN FRAC PERM-Y [m];
   write(fid,110,advance="no") min_perm_y
   ! MAX FRAC PERM-Y [m];
@@ -2582,7 +2626,13 @@ subroutine PMFracPrintStats(this)
   ! MIDRANGE FRAC PERM-Y [m];
   write(fid,110,advance="no") midrange_perm_y
   ! MEAN FRAC PERM-Y [m];
-  write(fid,110,advance="no") perm_sum_y/size(this%unique_connected_cell_ids)
+  write(fid,110,advance="no") mean_perm_y
+  ! VARIANCE FRAC PERM-Y [m];
+  write(fid,110,advance="no") variance_perm_y
+  ! POP SKEWNESS FRAC PERM-Y [m];
+  write(fid,110,advance="no") skewness_perm_y_p
+  ! SAMPLE SKEWNESS FRAC PERM-Y [m];
+  write(fid,110,advance="no") skewness_perm_y_a
   ! MIN FRAC PERM-Z [m];
   write(fid,110,advance="no") min_perm_z
   ! MAX FRAC PERM-Z [m];
@@ -2592,7 +2642,14 @@ subroutine PMFracPrintStats(this)
   ! MIDRANGE FRAC PERM-Z [m];
   write(fid,110,advance="no") midrange_perm_z
   ! MEAN FRAC PERM-Z [m];
-  write(fid,110,advance="yes") perm_sum_z/size(this%unique_connected_cell_ids)
+  write(fid,110,advance="no") mean_perm_z
+  ! VARIANCE FRAC PERM-Z [m];
+  write(fid,110,advance="no") variance_perm_z
+  ! POP SKEWNESS FRAC PERM-Z [m];
+  write(fid,110,advance="no") skewness_perm_z_p
+  ! SAMPLE SKEWNESS FRAC PERM-Z [m];
+  write(fid,110,advance="yes") skewness_perm_z_a
+  ! make sure last write() says advance="yes", all others "no"
 
   close(fid)
 

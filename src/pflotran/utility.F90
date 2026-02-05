@@ -120,7 +120,8 @@ module Utility_module
             UtilityTensorToScalar, &
             ThrowRuntimeError, &
             Smoothstep, &
-            Arrhenius
+            Arrhenius, &
+            Skewness
 
 contains
 
@@ -2937,5 +2938,63 @@ function Arrhenius(activation_energy,temperature,reference_temperature)
                    1.d0/(temperature + T273K)))
 
 end function Arrhenius
+
+! ************************************************************************** !
+
+function Skewness(x,adjusted)
+  !
+  ! Calculates the skewness of an array of reals.
+  !
+  ! Author: Jennifer M. Frederick, SNL
+  ! Date: 02/04/2026
+
+  implicit none
+
+  PetscReal :: Skewness
+  PetscReal :: x(:)
+  PetscBool, optional :: adjusted ! if true, then Adjusted Fisher-Pearson sample skewness
+
+  PetscInt :: n,i
+  PetscReal :: mean,m2,m3
+  PetscReal :: delta, delta_n, term1
+  PetscBool :: do_adj
+
+  n = size(x)
+  do_adj = PETSC_FALSE
+  if (present(adjusted)) do_adj = adjusted
+
+  if (n < 3) then
+    Skewness = 0.d0
+    return
+  end if
+
+  mean = 0.0d0
+  m2   = 0.0d0   ! sum of squared deviations (unnormalized)
+  m3   = 0.0d0   ! sum of cubed deviations   (unnormalized)
+
+  do i = 1, n
+    delta    = x(i) - mean
+    delta_n  = delta / real(i)
+    term1    = delta * delta_n * real(i-1)
+    mean = mean + delta_n
+    m3   = m3 + term1*delta_n*(real(i-2)) - 3.0d0*delta_n*m2
+    m2   = m2 + term1
+  end do
+
+  if (m2 <= 0.0d0) then
+    Skewness = 0.0d0
+    return
+  end if
+
+  ! Population skewness: (m3/n) / ( (m2/n)^(3/2) ) == sqrt(n) * m3 / m2^(3/2)
+  Skewness = sqrt(real(n)) * m3 / (m2 ** 1.5d0)
+
+  if (do_adj) then
+    ! Adjusted Fisher-Pearson sample skewness:
+    ! skewness = sqrt(n*(n-1)) / (n-2) * g1
+    Skewness = sqrt(real(n*(n-1))) / real(n-2) * Skewness
+  end if
+
+end function Skewness
 
 end module Utility_module
