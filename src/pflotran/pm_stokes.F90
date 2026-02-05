@@ -335,10 +335,49 @@ subroutine PMStokesUpdateTimestep(this,update_dt, &
 
   class(pm_stokes_type) :: this
   PetscBool :: update_dt
-  PetscReal :: dt, dt_min, dt_max
-  PetscInt  :: iacceleration, num_newton_iterations
+  PetscReal :: dt
+  PetscReal :: dt_min,dt_max
+  PetscInt :: iacceleration
+  PetscInt :: num_newton_iterations
   PetscReal :: tfac(:)
   PetscReal :: time_step_max_growth_factor
+
+  PetscReal :: fac
+  PetscReal :: ut
+  PetscReal :: up
+  PetscReal :: dtt
+  PetscReal :: dt_p
+  PetscReal :: dt_tfac
+  PetscInt :: ifac
+
+  if (update_dt .and. iacceleration /= 0) then
+    if (iacceleration > 0) then
+      fac = 0.5d0
+      if (num_newton_iterations >= iacceleration) then
+        fac = 0.33d0
+        ut = 0.d0
+      else
+        up = this%pressure_change_governor/(this%max_pressure_change+0.1)
+        ut = up
+      endif
+      dtt = fac * dt * (1.d0 + ut)
+    else
+      ifac = max(min(num_newton_iterations,size(tfac)),1)
+      dt_tfac = tfac(ifac) * dt
+
+      fac = 0.5d0
+      up = this%pressure_change_governor/(this%max_pressure_change+0.1)
+      dt_p = fac * dt * (1.d0 + up)
+
+      dtt = min(dt_tfac,dt_p)
+    endif
+
+    dtt = min(time_step_max_growth_factor*dt,dtt)
+    if (dtt > dt_max) dtt = dt_max
+
+    dtt = max(dtt,dt_min)
+    dt = dtt
+  endif
 
   call RealizationLimitDTByCFL(this%realization,this%cfl_governor,dt,dt_max)
 
@@ -440,77 +479,91 @@ subroutine PMStokesCheckUpdatePost(this,snes,X0,dX,X1,dX_changed,X1_changed,ierr
 
   class(pm_stokes_type) :: this
   SNES :: snes
-  Vec  :: X0, dX, X1
-  PetscBool :: dX_changed, X1_changed
+  Vec :: X0
+  Vec :: dX
+  Vec :: X1
+  PetscBool :: dX_changed
+  PetscBool :: X1_changed
   PetscErrorCode :: ierr
-  PetscReal, pointer :: X0_p(:), dX_p(:)
-  type(grid_type),   pointer :: grid
-  type(patch_type),  pointer :: patch
-  type(option_type), pointer :: option
-  type(field_type),  pointer :: field
-  PetscInt :: lid, gid, nat_id
-  PetscReal :: dX_, X0_, dX_X0
-  PetscBool :: conv_abs_flag, conv_rel_flag
-  PetscReal :: conv_abs_real, conv_rel_real
-  PetscInt  :: conv_abs_cell, conv_rel_cell
-  PetscBool :: conv_abs, conv_rel
 
-  patch  => this%realization%patch
-  grid   => patch%grid
-  option => this%option
-  field  => this%realization%field
+  PetscReal, pointer :: X0_p(:)
+  PetscReal, pointer :: dX_p(:)
+  type(grid_type), pointer :: grid
+  type(option_type), pointer :: option
+  type(field_type), pointer :: field
+  type(patch_type), pointer :: patch
+  PetscInt :: local_id, ghosted_id, natural_id, ival
+  PetscReal :: dX_, X0_, dX_X0
+  PetscBool :: converged_abs_update_flag
+  PetscBool :: converged_rel_update_flag
+  PetscInt :: converged_abs_update_cell
+  PetscInt :: converged_rel_update_cell
+  PetscReal :: converged_abs_update_real
+  PetscReal :: converged_rel_update_real
+  PetscBool :: converged_absolute
+  PetscBool :: converged_relative
+
+  grid => this%realization%patch%grid
+  option => this%realization%option
+  field => this%realization%field
+  patch => this%realization%patch
 
   dX_changed = PETSC_FALSE
   X1_changed = PETSC_FALSE
 
   call VecGetArrayRead(dX,dX_p,ierr);CHKERRQ(ierr)
   call VecGetArrayRead(X0,X0_p,ierr);CHKERRQ(ierr)
-
-  conv_abs_flag = PETSC_TRUE
-  conv_rel_flag = PETSC_TRUE
-  conv_abs_real = 0.d0
-  conv_rel_real = 0.d0
-  conv_abs_cell = 0
-  conv_rel_cell = 0
-
-  do lid = 1, grid%nlmax
-    gid    = grid%nL2G(lid)
-    nat_id = grid%nG2A(gid)
-    if (patch%imat(gid) <= 0) cycle
-
-    dX_ = dabs(dX_p(lid))
-    X0_ = dabs(X0_p(lid))
-    if (X0_ < 1.d-40) X0_ = 1.d-40
+  converged_abs_update_flag = PETSC_TRUE
+  converged_rel_update_flag = PETSC_TRUE
+  converged_abs_update_cell = ZERO_INTEGER
+  converged_rel_update_cell = ZERO_INTEGER
+  converged_abs_update_real = 0.d0
+  converged_rel_update_real = 0.d0
+  do local_id = 1, grid%nlmax
+    ghosted_id = grid%nL2G(local_id)
+    natural_id = grid%nG2A(ghosted_id)
+    if (patch%imat(ghosted_id) <= 0) cycle
+    ival = local_id
+    ! infinity norms on update
+    converged_absolute = PETSC_TRUE
+    converged_relative = PETSC_TRUE
+    dX_ = dabs(dX_p(ival))
+    X0_ = dabs(X0_p(ival))
+    X0_ = max(X0_,1.d-40)
     dX_X0 = dX_/X0_
-
-    conv_abs = (dX_   <= this%abs_update_inf_tol)
-    conv_rel = (dX_X0 <= this%rel_update_inf_tol)
-
-    if (.not.conv_abs) then
-      conv_abs_flag = PETSC_FALSE
-      if (dX_ > conv_abs_real) then
-        conv_abs_real = dX_
-        conv_abs_cell = nat_id
-      endif
+    if (dX_ > this%abs_update_inf_tol) then
+      converged_absolute = PETSC_FALSE
     endif
-    if (.not.conv_rel) then
-      conv_rel_flag = PETSC_FALSE
-      if (dX_X0 > conv_rel_real) then
-        conv_rel_real = dX_X0
-        conv_rel_cell = nat_id
+    if (converged_abs_update_real < dX_) then
+      converged_abs_update_real = dX_
+      converged_abs_update_cell = natural_id
+    endif
+    if (dX_X0 > this%rel_update_inf_tol) then
+      converged_relative = PETSC_FALSE
+    endif
+    if (converged_rel_update_real < dX_X0) then
+      converged_rel_update_real = dX_X0
+      converged_rel_update_cell = natural_id
+    endif
+    ! only enter this condition if both are not converged
+    if (.not.(converged_absolute .or. converged_relative)) then
+      if (.not.converged_absolute) then
+        converged_abs_update_flag = PETSC_FALSE
+      endif
+      if (.not.converged_relative) then
+        converged_rel_update_flag = PETSC_FALSE
       endif
     endif
   enddo
-
   call VecRestoreArrayRead(dX,dX_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayRead(X0,X0_p,ierr);CHKERRQ(ierr)
 
-  this%converged_flag(ABS_UPDATE_INDEX) = conv_abs_flag
-  this%converged_flag(REL_UPDATE_INDEX) = conv_rel_flag
-  this%converged_real(ABS_UPDATE_INDEX) = conv_abs_real
-  this%converged_real(REL_UPDATE_INDEX) = conv_rel_real
-  this%converged_cell(ABS_UPDATE_INDEX) = conv_abs_cell
-  this%converged_cell(REL_UPDATE_INDEX) = conv_rel_cell
+  this%converged_flag(ABS_UPDATE_INDEX) = converged_abs_update_flag
+  this%converged_flag(REL_UPDATE_INDEX) = converged_rel_update_flag
+  this%converged_real(ABS_UPDATE_INDEX) = converged_abs_update_real
+  this%converged_real(REL_UPDATE_INDEX) = converged_rel_update_real
+  this%converged_cell(ABS_UPDATE_INDEX) = converged_abs_update_cell
+  this%converged_cell(REL_UPDATE_INDEX) = converged_rel_update_cell
 
 end subroutine PMStokesCheckUpdatePost
 
@@ -535,83 +588,139 @@ subroutine PMStokesCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
   class(pm_stokes_type) :: this
   SNES :: snes
   PetscInt :: it
-  PetscReal :: xnorm, unorm, fnorm
+  PetscReal :: xnorm
+  PetscReal :: unorm
+  PetscReal :: fnorm
   SNESConvergedReason :: reason
   PetscErrorCode :: ierr
+
+  type(grid_type), pointer :: grid
   type(option_type), pointer :: option
-  type(field_type),  pointer :: field
-  type(grid_type),   pointer :: grid
-  type(patch_type),  pointer :: patch
-  PetscReal, pointer :: r_p(:), accum2_p(:)
-  PetscInt :: lid, gid, nat_id
+  type(field_type), pointer :: field
+  type(patch_type), pointer :: patch
+  PetscReal, pointer :: r_p(:)
+  PetscReal, pointer :: accum2_p(:)
+  PetscInt :: local_id, ghosted_id, natural_id
+  PetscInt :: itol
   PetscReal :: R, A, R_A
   PetscReal, parameter :: A_zero = 1.d-15
-  PetscBool :: conv_abs_res_flag, conv_scaled_res_flag
-  PetscReal :: conv_abs_res_real, conv_scaled_res_real
-  PetscInt  :: conv_abs_res_cell, conv_scaled_res_cell
+  PetscBool :: converged_abs_residual_flag
+  PetscReal :: converged_abs_residual_real
+  PetscInt :: converged_abs_residual_cell
+  PetscBool :: converged_scaled_residual_flag
+  PetscReal :: converged_scaled_residual_real
+  PetscInt :: converged_scaled_residual_cell
+  PetscBool :: converged_absolute
+  PetscBool :: converged_scaled
   PetscMPIInt :: mpi_int
+  character(len=MAXSTRINGLENGTH) :: string
   character(len=15), parameter :: tol_string(MAX_INDEX) = &
-       ['Absolute Update','Relative Update','Residual       ','Scaled Residual']
+    ['Absolute Update','Relative Update','Residual       ','Scaled Residual']
 
-  option => this%option
-  patch  => this%realization%patch
-  field  => this%realization%field
-  grid   => patch%grid
+  patch => this%realization%patch
+  option => this%realization%option
+  field => this%realization%field
+  grid => patch%grid
 
-  call VecGetArrayRead(field%flow_r,r_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayRead(field%flow_accum2,accum2_p,ierr);CHKERRQ(ierr)
-
-  conv_abs_res_flag    = PETSC_TRUE
-  conv_scaled_res_flag = PETSC_TRUE
-  conv_abs_res_real    = 0.d0
-  conv_scaled_res_real = 0.d0
-  conv_abs_res_cell    = 0
-  conv_scaled_res_cell = 0
-
-  do lid = 1, grid%nlmax
-    gid    = grid%nL2G(lid)
-    nat_id = grid%nG2A(gid)
-    if (patch%imat(gid) <= 0) cycle
-
-    R   = dabs(r_p(lid))
-    A   = dabs(accum2_p(lid))
-    R_A = R / max(A,A_zero)
-
-    if (R > this%residual_abs_inf_tol) then
-      conv_abs_res_flag = PETSC_FALSE
-      if (R > conv_abs_res_real) then
-        conv_abs_res_real = R
-        conv_abs_res_cell = nat_id
+  if (this%check_post_convergence) then
+    call VecGetArrayRead(field%flow_r,r_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(field%flow_accum2,accum2_p,ierr);CHKERRQ(ierr)
+    converged_abs_residual_flag = PETSC_TRUE
+    converged_abs_residual_real = 0.d0
+    converged_abs_residual_cell = ZERO_INTEGER
+    converged_scaled_residual_flag = PETSC_TRUE
+    converged_scaled_residual_real = 0.d0
+    converged_scaled_residual_cell = ZERO_INTEGER
+    do local_id = 1, grid%nlmax
+      ghosted_id = grid%nL2G(local_id)
+      natural_id = grid%nG2A(ghosted_id)
+      if (patch%imat(ghosted_id) <= 0) cycle
+      converged_absolute = PETSC_TRUE
+      converged_scaled = PETSC_TRUE
+      ! infinity norms on residual
+      R = dabs(r_p(local_id))
+      A = dabs(accum2_p(local_id))
+      R_A = R/A
+      if (R > this%residual_abs_inf_tol) then
+        converged_absolute = PETSC_FALSE
       endif
-    endif
-
-    if (R_A > this%residual_scaled_inf_tol) then
-      conv_scaled_res_flag = PETSC_FALSE
-      if (R_A > conv_scaled_res_real) then
-        conv_scaled_res_real = R_A
-        conv_scaled_res_cell = nat_id
+      ! find max value regardless of convergence
+      if (converged_abs_residual_real < R) then
+        converged_abs_residual_real = R
+        converged_abs_residual_cell = natural_id
       endif
+      if (A > A_zero) then
+        if (R_A > this%residual_scaled_inf_tol) then
+          converged_scaled = PETSC_FALSE
+        endif
+        ! find max value regardless of convergence
+        if (converged_scaled_residual_real < R_A) then
+          converged_scaled_residual_real = R_A
+          converged_scaled_residual_cell = natural_id
+        endif
+      endif
+      ! only enter this condition if both are not converged
+      if (.not.(converged_absolute .or. converged_scaled)) then
+        if (.not.converged_absolute) then
+          converged_abs_residual_flag = PETSC_FALSE
+        endif
+        if (.not.converged_scaled) then
+          converged_scaled_residual_flag = PETSC_FALSE
+        endif
+      endif
+    enddo
+    call VecRestoreArrayRead(field%flow_r,r_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(field%flow_accum2,accum2_p, &
+                                ierr);CHKERRQ(ierr)
+
+    this%converged_flag(RESIDUAL_INDEX) = converged_abs_residual_flag
+    this%converged_real(RESIDUAL_INDEX) = converged_abs_residual_real
+    this%converged_cell(RESIDUAL_INDEX) = converged_abs_residual_cell
+    this%converged_flag(SCALED_RESIDUAL_INDEX) = converged_scaled_residual_flag
+    this%converged_real(SCALED_RESIDUAL_INDEX) = converged_scaled_residual_real
+    this%converged_cell(SCALED_RESIDUAL_INDEX) = converged_scaled_residual_cell
+    mpi_int = MAX_INDEX
+    ! do not perform an all reduce on cell id as this info is not printed
+    ! in parallel
+    call MPI_Allreduce(MPI_IN_PLACE,this%converged_flag,mpi_int,MPI_INTEGER, &
+                       MPI_LAND,option%mycomm,ierr);CHKERRQ(ierr)
+    call MPI_Allreduce(MPI_IN_PLACE,this%converged_real,mpi_int, &
+                       MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm, &
+                       ierr);CHKERRQ(ierr)
+
+    option%convergence = CONVERGENCE_CONVERGED
+
+    do itol = 1, MAX_INDEX
+      if (.not.this%converged_flag(itol)) then
+        option%convergence = CONVERGENCE_KEEP_ITERATING
+        if (this%logging_verbosity > 0) then
+          string = '   ' // trim(tol_string(itol)) // ', Liquid Pressure'
+          if (option%comm%size == 1) then
+            string = trim(string) // ' (' // &
+              trim(StringFormatInt(this%converged_cell(itol))) &
+              // ')'
+          endif
+          string = trim(string) // ' : ' // &
+            StringFormatDouble(this%converged_real(itol))
+          call PrintMsg(option,string)
+        endif
+      endif
+    enddo
+    if (this%logging_verbosity > 0 .and. it > 0 .and. &
+        option%convergence == CONVERGENCE_CONVERGED) then
+      string = '   Converged'
+      call PrintMsg(option,string)
+      write(string,'(4x," R:",es8.1)') this%converged_real(RESIDUAL_INDEX)
+      call PrintMsg(option,string)
+      write(string,'(4x,"SR:",es8.1)') &
+        this%converged_real(SCALED_RESIDUAL_INDEX)
+      call PrintMsg(option,string)
+      write(string,'(4x,"AU:",es8.1)') this%converged_real(ABS_UPDATE_INDEX)
+      call PrintMsg(option,string)
+      write(string,'(4x,"RU:",es8.1)') this%converged_real(REL_UPDATE_INDEX)
+      call PrintMsg(option,string)
     endif
-  enddo
-
-  call VecRestoreArrayRead(field%flow_r,r_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayRead(field%flow_accum2,accum2_p,ierr);CHKERRQ(ierr)
-
-  this%converged_flag(RESIDUAL_INDEX)        = conv_abs_res_flag
-  this%converged_real(RESIDUAL_INDEX)        = conv_abs_res_real
-  this%converged_cell(RESIDUAL_INDEX)        = conv_abs_res_cell
-  this%converged_flag(SCALED_RESIDUAL_INDEX) = conv_scaled_res_flag
-  this%converged_real(SCALED_RESIDUAL_INDEX) = conv_scaled_res_real
-  this%converged_cell(SCALED_RESIDUAL_INDEX) = conv_scaled_res_cell
-
-  mpi_int = MAX_INDEX
-  call MPI_Allreduce(MPI_IN_PLACE,this%converged_flag,mpi_int,MPI_INTEGER, &
-                     MPI_LAND,option%mycomm,ierr);CHKERRQ(ierr)
-  call MPI_Allreduce(MPI_IN_PLACE,this%converged_real,mpi_int, &
-                     MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm,ierr);CHKERRQ(ierr)
-
-  option%convergence = CONVERGENCE_CONVERGED
-  if (.not.all(this%converged_flag)) option%convergence = CONVERGENCE_KEEP_ITERATING
+  endif
 
   call PMSubsurfaceFlowCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
 
@@ -654,8 +763,6 @@ subroutine PMStokesUpdateSolution(this)
 
   call PMSubsurfaceFlowUpdateSolution(this)
   call StokesUpdateSolution(this%realization)
-  ! Output every successful time step
-  call StokesOutputVTK(this%realization, this%option%flow_time)
 
 end subroutine PMStokesUpdateSolution
 
@@ -723,6 +830,12 @@ subroutine PMStokesInputRecord(this)
   write(id,'(a)') this%name
   write(id,'(a29)',advance='no') 'mode: '
   write(id,'(a)') 'stokes'
+  if (this%check_post_convergence) then
+    write(id,'(a29)',advance='no') 'ITOL_SCALED_RESIDUAL: '
+    write(id,'(a)') 'ON'
+    write(id,'(a29)',advance='no') 'ITOL_RELATIVE_UPDATE: '
+    write(id,'(a)') 'ON'
+  endif
 
 end subroutine PMStokesInputRecord
 
