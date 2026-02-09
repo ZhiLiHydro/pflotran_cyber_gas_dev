@@ -1043,7 +1043,7 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
                 coupler%flow_aux_real_var = 0.d0
                 coupler%flow_aux_int_var = 0
 
-              case(MPH_MODE,STOKES_MODE)
+              case(MPH_MODE,STOKES_MODE,STOKES_TS_MODE)
                 allocate(coupler%flow_aux_real_var(option%nflowdof, &
                                                    num_connections))
                 allocate(coupler%flow_aux_int_var(ONE_INTEGER,num_connections))
@@ -1136,7 +1136,7 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
                      VOLUMETRIC_RATE_SS,MASS_RATE_SS,PRES_REG_MASS_RATE_SS, &
                      HET_VOL_RATE_SS,HET_MASS_RATE_SS)
                   select case(option%iflowmode)
-                    case(RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE,STOKES_MODE)
+                    case(RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE,STOKES_MODE,STOKES_TS_MODE)
                       allocate(coupler%flow_aux_real_var(1,num_connections))
                       coupler%flow_aux_real_var = 0.d0
                     case(TH_MODE,TH_TS_MODE)
@@ -1334,7 +1334,7 @@ subroutine PatchUpdateCouplerAuxVars(patch,coupler_list,force_update_flag, &
             call PatchUpdateCouplerAuxVarsZFlow(patch,coupler,option)
           case(PNF_MODE)
             call PatchUpdateCouplerAuxVarsPNF(patch,coupler,option)
-          case(STOKES_MODE)
+          case(STOKES_MODE,STOKES_TS_MODE)
             call PatchUpdateCouplerAuxVarsStokes(patch,coupler,option)
           case(SCO2_MODE)
             call PatchUpdateCouplerAuxVarsSCO2(patch,coupler,option)
@@ -6003,7 +6003,7 @@ subroutine PatchScaleSourceSink(patch,source_sink,iscale_type,option)
         source_sink%flow_aux_real_var( &
             source_sink%flow_aux_mapping(ZFLOW_COND_WATER_AUX_INDEX),&
             iconn) = vec_ptr(local_id)
-      case(MPH_MODE,PNF_MODE,STOKES_MODE)
+      case(MPH_MODE,PNF_MODE,STOKES_MODE,STOKES_TS_MODE)
         option%io_buffer = 'PatchScaleSourceSink not set up for flow mode'
         call PrintErrMsg(option)
     end select
@@ -8610,7 +8610,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
       end select
     case(STOKES_VELOCITY_X,STOKES_VELOCITY_Y,STOKES_VELOCITY_Z)
       select case(option%iflowmode)
-        case(STOKES_MODE)
+        case(STOKES_MODE,STOKES_TS_MODE)
           select case(ivar)
             case(STOKES_VELOCITY_X)
               do local_id=1,grid%nlmax

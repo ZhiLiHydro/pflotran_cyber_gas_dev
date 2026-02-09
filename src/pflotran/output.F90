@@ -1916,7 +1916,7 @@ subroutine OutputPrintCouplers(realization_base,debug,istep)
     case(PNF_MODE)
       iauxvars(1) = PNF_LIQUID_PRESSURE_DOF
       auxvar_names(1) = 'pressure'
-    case(STOKES_MODE)
+    case(STOKES_MODE,STOKES_TS_MODE)
       iauxvars(1) = STOKES_P_DOF
       auxvar_names(1) = 'pressure'
     case(G_MODE)
@@ -2084,7 +2084,7 @@ subroutine OutputPrintCouplersH5(realization_base,debug,istep)
     case(PNF_MODE)
       iauxvars(1) = PNF_LIQUID_PRESSURE_DOF
       auxvar_names(1) = 'pressure'
-    case(STOKES_MODE)
+    case(STOKES_MODE,STOKES_TS_MODE)
       iauxvars(1) = STOKES_P_DOF
       auxvar_names(1) = 'pressure'
     case(G_MODE)

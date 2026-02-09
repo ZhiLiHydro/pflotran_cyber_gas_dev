@@ -572,6 +572,7 @@ factory_subsurface.o : \
   pm_rt.o \
   pm_sco2.o \
   pm_stokes.o \
+  pm_stokes_ts.o \
   pm_subsurface_flow.o \
   pm_th.o \
   pm_th_ts.o \
@@ -628,6 +629,7 @@ factory_subsurface_linkage.o : \
   pm_rt.o \
   pm_sco2.o \
   pm_stokes.o \
+  pm_stokes_ts.o \
   pm_subsurface_flow.o \
   pm_th.o \
   pm_th_ts.o \
@@ -706,6 +708,7 @@ factory_subsurface_read.o : \
   pm_rt.o \
   pm_sco2.o \
   pm_stokes.o \
+  pm_stokes_ts.o \
   pm_th.o \
   pm_th_ts.o \
   pm_ufd_biosphere.o \
@@ -2370,6 +2373,31 @@ pm_stokes.o : \
   pflotran_constants.o \
   pm_subsurface_flow.o \
   stokes.o \
+  stokes.o \
+  realization_base.o \
+  realization_subsurface.o \
+  string.o \
+  utility.o \
+  variables.o
+pm_stokes_ts.o : \
+  checkpoint.o \
+  communicator_base.o \
+  connection.o \
+  coupler.o \
+  debug.o \
+  discretization.o \
+  eos_water.o \
+  field.o \
+  global.o \
+  grid.o \
+  input_aux.o \
+  material_aux.o \
+  option.o \
+  patch.o \
+  petsc_utility.o \
+  pflotran_constants.o \
+  pm_stokes.o \
+  pm_subsurface_flow.o \
   stokes.o \
   realization_base.o \
   realization_subsurface.o \

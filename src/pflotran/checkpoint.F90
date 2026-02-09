@@ -376,7 +376,7 @@ subroutine CheckpointFlowProcessModelBinary(viewer,realization)
     ! that holds variables derived from the primary ones via the translator.
     select case(option%iflowmode)
       case(RICHARDS_MODE,RICHARDS_TS_MODE,ZFLOW_MODE)
-      case(PNF_MODE,STOKES_MODE)
+      case(PNF_MODE,STOKES_MODE,STOKES_TS_MODE)
         option%io_buffer = 'Checkpointing must be implemented for PNF mode'
         call PrintErrMsg(option)
       case default

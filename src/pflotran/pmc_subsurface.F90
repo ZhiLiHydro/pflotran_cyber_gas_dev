@@ -128,6 +128,7 @@ subroutine PMCSubsurfaceSetupSolvers_TimestepperSNES(this)
   use PM_Hydrate_class
   use PM_WIPP_Flow_class
   use PM_Richards_class
+  use PM_Stokes_TS_class
   use PM_TH_class
   use PM_ZFlow_class
   use PM_RT_class
@@ -173,7 +174,7 @@ subroutine PMCSubsurfaceSetupSolvers_TimestepperSNES(this)
       call PrintMsg(option,"  Beginning setup of FLOW SNES ")
       call SolverCreateSNES(solver,option%mycomm,'flow_',option)
       if (solver%M_mat_type == MATAIJ .and. &
-          (option%iflowmode /= RICHARDS_MODE) .and. (option%iflowmode /= STOKES_MODE)) then
+          (option%iflowmode /= RICHARDS_MODE) .and. (option%iflowmode /= STOKES_MODE .and. option%iflowmode /= STOKES_TS_MODE)) then
         option%io_buffer = 'AIJ matrix not supported for current &
           &mode: '// option%flowmode
         call PrintErrMsg(option)
@@ -190,7 +191,7 @@ subroutine PMCSubsurfaceSetupSolvers_TimestepperSNES(this)
           string = " mode = Richards: p"
         case(PNF_MODE)
           string = " mode = PNF: h"
-        case(STOKES_MODE)
+        case(STOKES_MODE,STOKES_TS_MODE)
           string = " mode = STOKES: p, u, v, z"
         case(ZFLOW_MODE)
           string = " mode = ZFlow: p"
@@ -532,6 +533,7 @@ subroutine PMCSubsurfaceSetupSolvers_TS(this)
   use PM_Base_class
   use PM_Subsurface_Flow_class
   use PM_Richards_class
+  use PM_Stokes_TS_class
   use Solver_module
   use Timestepper_Base_class
   use Timestepper_TS_class
@@ -569,7 +571,7 @@ subroutine PMCSubsurfaceSetupSolvers_TS(this)
       call PrintMsg(option,"  Beginning setup of FLOW SNES ")
 
       select case(option%iflowmode)
-        case(RICHARDS_TS_MODE,TH_TS_MODE)
+        case(RICHARDS_TS_MODE,TH_TS_MODE,STOKES_TS_MODE)
         case default
           option%io_buffer = 'Timestepper TS unsupported for mode: '// &
                              option%flowmode
@@ -584,6 +586,8 @@ subroutine PMCSubsurfaceSetupSolvers_TS(this)
             option%io_buffer = " mode = Richards: p"
           case(TH_TS_MODE)
             option%io_buffer = " mode = TH: p, T"
+          case(STOKES_TS_MODE)
+            option%io_buffer = " mode = STOKES TS: p, u, v, z"
         end select
         call PrintMsg(option)
 
@@ -609,6 +613,12 @@ subroutine PMCSubsurfaceSetupSolvers_TS(this)
 
       call TSSetIFunction(solver%ts,this%pm_ptr%pm%residual_vec, &
                           PMIFunctionPtr,this%pm_ptr,ierr);CHKERRQ(ierr)
+
+      select type(pm => this%pm_ptr%pm)
+        class is (pm_stokes_ts_type)
+          call TSSetRHSFunction(solver%ts,this%pm_ptr%pm%residual_vec, &
+                                PMRHSFunctionPtr,this%pm_ptr,ierr);CHKERRQ(ierr)
+      end select
 
       call TSSetIJacobian(solver%ts,solver%M,solver%Mpre,PMIJacobianPtr, &
                           this%pm_ptr,ierr);CHKERRQ(ierr)

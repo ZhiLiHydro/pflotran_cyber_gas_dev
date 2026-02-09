@@ -48,6 +48,7 @@ subroutine FactorySubsurfReadFlowPM(input,option,pm)
   use PM_PNF_class
   use PM_SCO2_class
   use PM_Stokes_class
+  use PM_Stokes_TS_class
   use Init_Common_module
 
   implicit none
@@ -108,6 +109,8 @@ subroutine FactorySubsurfReadFlowPM(input,option,pm)
             pm => PMZFlowCreate()
           case ('PORE_FLOW')
             pm => PMPNFCreate()
+          case ('STOKES_TS')
+            pm => PMStokesTSCreate()
           case ('STOKES')
             pm => PMStokesCreate()
           case ('STOMP-CO2','SCO2')
@@ -1206,7 +1209,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
             call FlowConditionHydrateRead(flow_condition,input,option)
           case(SCO2_MODE)
             call FlowConditionSCO2Read(flow_condition,input,option)
-          case(STOKES_MODE)
+          case(STOKES_MODE,STOKES_TS_MODE)
             call FlowConditionStokesRead(flow_condition,input,option)
           case default
             call FlowConditionRead(flow_condition,input,option)
@@ -1641,7 +1644,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
             option%io_buffer = 'Variably-saturated flow not supported &
               &in PORE mode.'
             call PrintErrMsg(option)
-          case(STOKES_MODE)
+          case(STOKES_MODE,STOKES_TS_MODE)
             option%io_buffer = 'Variably-saturated flow not supported &
               &in STOKES mode.'
             call PrintErrMsg(option)

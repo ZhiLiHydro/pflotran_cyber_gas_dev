@@ -1337,7 +1337,7 @@ subroutine CondControlAssignFlowInitCond(realization)
       enddo
       call VecRestoreArray(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
 
-    case(STOKES_MODE)
+    case(STOKES_MODE,STOKES_TS_MODE)
         ! ----------------------------------------------------
         ! Assign initial conditions values to domain for Stokes
         ! DOFs: (u,v,w,p).
@@ -2392,7 +2392,7 @@ subroutine CondControlScaleSourceSink(realization)
   material_auxvars => realization%patch%aux%Material%auxvars
 
   select case(option%iflowmode)
-    case(TH_MODE,TH_TS_MODE,MPH_MODE,PNF_MODE,STOKES_MODE)
+    case(TH_MODE,TH_TS_MODE,MPH_MODE,PNF_MODE,STOKES_MODE,STOKES_TS_MODE)
       option%io_buffer = 'Flow mode ' // trim(option%flowmode) // ' not &
         &supported in CondControlScaleSourceSink().'
       call PrintErrMsg(option)

@@ -322,7 +322,8 @@ subroutine RealizationCreateDiscretization(realization)
                                     field%flow_xx_loc,LOCAL,option)
 
     if ((option%iflowmode == RICHARDS_TS_MODE) .or. &
-        (option%iflowmode == TH_TS_MODE)) then
+        (option%iflowmode == TH_TS_MODE) .or. &
+        (option%iflowmode == STOKES_TS_MODE)) then
       call DiscretizationCreateVector(discretization,NFLOWDOF, &
                                       field%flow_xxdot, &
                                       GLOBAL,option)
@@ -337,7 +338,7 @@ subroutine RealizationCreateDiscretization(realization)
                                          field%flow_rhs)
     endif
 
-    if (option%iflowmode == STOKES_MODE) then
+    if (option%iflowmode == STOKES_MODE .or. option%iflowmode == STOKES_TS_MODE) then
       call DiscretizationDuplicateVector(discretization,field%flow_xx, &
                                          field%flow_rhs)
     endif
@@ -850,7 +851,7 @@ subroutine RealProcessMatPropAndSatFunc(realization)
 
     ! obtain saturation function id
     select case(option%iflowmode)
-      case(NULL_MODE,PNF_MODE,STOKES_MODE)
+      case(NULL_MODE,PNF_MODE,STOKES_MODE,STOKES_TS_MODE)
       case default
         if (associated(patch%saturation_function_array)) then
           cur_material_property%saturation_function_id = &

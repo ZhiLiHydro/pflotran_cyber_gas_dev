@@ -386,6 +386,7 @@ subroutine FactSubLinkAddPMCSubsurfFlow(simulation,pm_flow,pmc_name)
   use Timestepper_Steady_class
   use PM_TH_TS_class
   use PM_Richards_TS_class
+  use PM_Stokes_TS_class
   use PM_PNF_class
   use Realization_Subsurface_class
   use Option_module
@@ -429,6 +430,8 @@ subroutine FactSubLinkAddPMCSubsurfFlow(simulation,pm_flow,pmc_name)
       class is(pm_richards_ts_type)
         pmc_subsurface%timestepper => TimestepperTSCreate()
       class is(pm_th_ts_type)
+        pmc_subsurface%timestepper => TimestepperTSCreate()
+      class is(pm_stokes_ts_type)
         pmc_subsurface%timestepper => TimestepperTSCreate()
       class is(pm_pnf_type)
         pmc_subsurface%timestepper => TimestepperKSPCreate()

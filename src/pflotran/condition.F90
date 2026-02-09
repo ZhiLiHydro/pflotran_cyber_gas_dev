@@ -1678,11 +1678,11 @@ subroutine FlowConditionRead(condition,input,option)
             trim(StringWrite(pressure%itype)) // ' not supported by PNF_MODE.'
           call PrintErrMsg(option)
         endif
-      case(STOKES_MODE)
+      case(STOKES_MODE,STOKES_TS_MODE)
         if (.not.(pressure%itype == DIRICHLET_BC .or. &
                   pressure%itype == NEUMANN_BC)) then
           option%io_buffer = 'Pressure FLOW_CONDITION type ' // &
-            trim(StringWrite(pressure%itype)) // ' not supported by STOKES_MODE.'
+            trim(StringWrite(pressure%itype)) // ' not supported by STOKES mode.'
           call PrintErrMsg(option)
         endif
       case default

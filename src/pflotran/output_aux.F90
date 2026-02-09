@@ -1239,7 +1239,7 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       category = OUTPUT_GENERIC
       id = SMECTITE
     case('STOKES_VELOCITY_X','STOKES_VELOCITY_Y','STOKES_VELOCITY_Z')
-      if (option%iflowmode /= STOKES_MODE) then
+      if (option%iflowmode /= STOKES_MODE .and. option%iflowmode /= STOKES_TS_MODE) then
         call PrintErrMsg(option,trim(word)//' output only &
           &supported when the STOKES process model is used.')
       endif
