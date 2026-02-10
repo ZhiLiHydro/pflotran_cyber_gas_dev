@@ -222,7 +222,13 @@ subroutine PMCSubsurfaceSetupSolvers_TimestepperSNES(this)
       if (Uninitialized(solver%Mpre_mat_type) .and. &
           Uninitialized(solver%M_mat_type)) then
         ! Matrix types not specified, so set to default.
-        solver%Mpre_mat_type = MATBAIJ
+        if (option%iflowmode == STOKES_TS_MODE .or. &
+            option%iflowmode == STOKES_MODE) then
+          solver%Mpre_mat_type = MATAIJ
+          solver%M_mat_type = MATAIJ
+        else
+          solver%Mpre_mat_type = MATBAIJ
+        endif
         solver%M_mat_type = solver%Mpre_mat_type
       else if (Uninitialized(solver%Mpre_mat_type)) then
         if (solver%M_mat_type == MATMFFD) then
@@ -606,6 +612,14 @@ subroutine PMCSubsurfaceSetupSolvers_TS(this)
                                         option)
 
         call MatSetOptionsPrefix(solver%Mpre,"flow_",ierr);CHKERRQ(ierr)
+
+        if (option%iflowmode == STOKES_TS_MODE .or. &
+            option%iflowmode == STOKES_MODE) then
+          call MatConvert(solver%Mpre,MATAIJ,MAT_INPLACE_MATRIX,solver%Mpre, &
+                          ierr);CHKERRQ(ierr)
+          call MatSetOption(solver%Mpre,MAT_NEW_NONZERO_ALLOCATION_ERR, &
+                            PETSC_FALSE,ierr);CHKERRQ(ierr)
+        endif
 
         if (solver%M_mat_type /= MATMFFD) then
           solver%M = solver%Mpre

@@ -60,6 +60,7 @@ subroutine StokesSetup(realization,rho,mu)
   use Grid_module
   use Coupler_module
   use Connection_module
+  use Option_module
 
   implicit none
 
@@ -68,7 +69,8 @@ subroutine StokesSetup(realization,rho,mu)
   type(patch_type),         pointer :: patch
   type(grid_type),          pointer :: grid
   type(material_auxvar_type), pointer :: mat_aux(:)
-  type(stokes_type),    pointer :: stokes_aux
+  type(stokes_type),        pointer :: stokes_aux
+  type(option_type),        pointer :: option
 
   PetscInt :: gid
   PetscBool :: dof_is_active(1)
@@ -332,6 +334,9 @@ end subroutine StokesDestroy
 subroutine StokesResidual(snes,xx,r,realization,rho,mu,add_convection,debug,ierr)
   !
   ! Computes Stokes residual for SNES solver
+  !
+  ! Author: Satish Karra
+  ! Date: 01/24/26
   !
   use Realization_Subsurface_class
   use Field_module
@@ -1387,7 +1392,7 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,ierr)
   type(option_type), pointer :: option
   type(coupler_type),pointer :: bc
   type(connection_set_type), pointer :: cset
-  PetscInt :: iconn, local_id, gid, iblock, lid
+  PetscInt :: iconn, local_id, gid, iblock, lid, ndof
   PetscReal :: Jbc(4,4)
   ! Track which rows have been constrained for this cell
   PetscBool, allocatable :: bc_applied(:,:)
@@ -1398,10 +1403,11 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,ierr)
   patch  => realization%patch
   grid   => patch%grid
   option => realization%option
+  ndof = option%nflowdof
 
   ! Allocate tracking array for which DOFs have BCs
   max_local_id = grid%nlmax
-  allocate(bc_applied(4, max_local_id))
+  allocate(bc_applied(ndof, max_local_id))
   bc_applied = PETSC_FALSE
 
   ! First pass: identify all BC constraints
@@ -1447,7 +1453,7 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,ierr)
   enddo
 
   ! Allocate array to store all BC rows
-  allocate(bc_rows(grid%nlmax * 4))  ! Max 4 rows per cell
+  allocate(bc_rows(grid%nlmax * ndof))  ! Max 4 rows per cell
   bc_row_count = 0
 
   ! Second pass: collect all constrained rows
@@ -1458,27 +1464,23 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,ierr)
 
     if (bc_applied(1, lid)) then
       bc_row_count = bc_row_count + 1
-      bc_rows(bc_row_count) = (lid-1)*4 + 0  ! u_x
+      bc_rows(bc_row_count) = (grid%global_offset + lid - 1)*ndof + 0  ! u_x (global)
       bc_row_count = bc_row_count + 1
-      bc_rows(bc_row_count) = (lid-1)*4 + 1  ! u_y
+      bc_rows(bc_row_count) = (grid%global_offset + lid - 1)*ndof + 1  ! u_y (global)
       bc_row_count = bc_row_count + 1
-      bc_rows(bc_row_count) = (lid-1)*4 + 2  ! u_z
+      bc_rows(bc_row_count) = (grid%global_offset + lid - 1)*ndof + 2  ! u_z (global)
     endif
 
     if (bc_applied(4, lid)) then
       bc_row_count = bc_row_count + 1
-      bc_rows(bc_row_count) = (lid-1)*4 + 3  ! p
+      bc_rows(bc_row_count) = (grid%global_offset + lid - 1)*ndof + 3  ! p (global)
     endif
   enddo
 
-  ! Apply all BC rows at once (requires assembled matrix)
-    call MatSetOption(A,MAT_NO_OFF_PROC_ZERO_ROWS,PETSC_TRUE,ierr);CHKERRQ(ierr)
-  if (bc_row_count > 0) then
-    call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
-    call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
-    call MatZeroRowsLocal(A,bc_row_count,bc_rows(1:bc_row_count),1.d0, &
-                          PETSC_NULL_VEC,PETSC_NULL_VEC,ierr);CHKERRQ(ierr)
-  endif
+  call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+  call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+  call MatZeroRows(A,bc_row_count,bc_rows,1.d0, &
+                   PETSC_NULL_VEC,PETSC_NULL_VEC,ierr);CHKERRQ(ierr)
 
   deallocate(bc_applied)
   deallocate(bc_rows)
@@ -1774,6 +1776,9 @@ subroutine StokesBCFluxConn(boundary_condition,iconn,area,dist,rho,mu,option,Uce
   !   momentum:  - p_b * S
   !
   ! No pressure Dirichlet equation is imposed here.
+  ! Author: Satish Karra
+  ! Date: 01/24/26
+  !
   !
   use Coupler_module
   use Option_module
@@ -1866,6 +1871,10 @@ subroutine StokesResidualBoundaryFinal(r,xx,realization,ierr)
   !
   ! Sets residuals for Dirichlet BC rows to (u - u_prescribed)
   !
+  ! Author: Satish Karra
+  ! Date: 01/24/26
+  !
+  !
   use Realization_Subsurface_class
   use Patch_module
   use Coupler_module
@@ -1932,6 +1941,9 @@ end subroutine StokesResidualBoundaryFinal
 subroutine StokesJacobianBoundaryFacesConn(A,realization,mu,ierr)
   !
   ! Boundary face Jacobian contributions for flux-based BCs.
+  !
+  ! Author: Satish Karra
+  ! Date: 01/24/26
   !
   use Connection_module
   use Realization_Subsurface_class
@@ -2048,7 +2060,8 @@ subroutine StokesResidualPinPressure(r,xx,realization,p_ref,ierr)
   ! Pins pressure at the first active local cell:
   !   r_p(row) = p(row) - p_ref
   !
-  ! Must be called AFTER residual assembly, before returning to SNES.
+  ! Author: Satish Karra
+  ! Date: 01/24/26
   !
   use Realization_Subsurface_class
   use Patch_module
@@ -2069,6 +2082,7 @@ subroutine StokesResidualPinPressure(r,xx,realization,p_ref,ierr)
   PetscReal, pointer :: xx_p(:)
 
   PetscInt :: lid, gid, ndof, row
+  PetscInt :: pin_gid_local, pin_gid_global
 
   patch => realization%patch
   grid  => patch%grid
@@ -2078,15 +2092,25 @@ subroutine StokesResidualPinPressure(r,xx,realization,p_ref,ierr)
   call VecGetArray(r, r_p, ierr);CHKERRQ(ierr)
   call VecGetArrayRead(xx, xx_p, ierr);CHKERRQ(ierr)
 
-  row = -1
+  pin_gid_local = HUGE(1)
   do lid = 1, grid%nlmax
     gid = grid%nL2G(lid)
     if (gid <= 0) cycle
     if (patch%imat(gid) <= 0) cycle
-    ! pressure dof is #4 -> 0-based offset 3
-    row = (lid-1)*ndof + 4   ! 1-based indexing into Vec array
+    pin_gid_local = grid%global_offset + lid
     exit
   enddo
+
+  call MPI_Allreduce(pin_gid_local,pin_gid_global,ONE_INTEGER_MPI, &
+                     MPIU_INTEGER,MPI_MIN,option%mycomm,ierr);CHKERRQ(ierr)
+
+  row = -1
+  if (pin_gid_global > 0 .and. pin_gid_global < HUGE(1)) then
+    if (pin_gid_global > grid%global_offset .and. &
+        pin_gid_global <= grid%global_offset + grid%nlmax) then
+      row = (pin_gid_global - grid%global_offset - 1)*ndof + 4
+    endif
+  endif
 
   if (row > 0) then
     r_p(row) = xx_p(row) - p_ref
@@ -2102,11 +2126,11 @@ end subroutine StokesResidualPinPressure
 subroutine StokesJacobianPinPressure(A,realization,ierr)
   !
   ! Pins pressure at the first active local cell by replacing that row with identity:
-  !   A(row,:) = 0; A(row,row)=1
+  ! A(row,:) = 0; A(row,row)=1
   !
-  ! Must be called AFTER Jacobian assembly and BEFORE MatAssemblyBegin/End finalization
-  ! if you are doing row operations on the unassembled matrix; or after final assembly
-  ! if your PFLOTRAN usage expects it (MatZeroRowsLocal works assembled/unassembled).
+  ! Author: Satish Karra
+  ! Date: 01/24/26
+  !
   !
   use Realization_Subsurface_class
   use Patch_module
@@ -2123,7 +2147,8 @@ subroutine StokesJacobianPinPressure(A,realization,ierr)
   type(option_type),pointer :: option
 
   PetscInt :: lid, gid, ndof
-  PetscInt :: row_local(1)
+  PetscInt :: row_global(1)
+  PetscInt :: pin_gid_local, pin_gid_global
   PetscBool :: found
 
   patch => realization%patch
@@ -2131,23 +2156,34 @@ subroutine StokesJacobianPinPressure(A,realization,ierr)
   option => realization%option
   ndof = option%nflowdof
 
-  found = PETSC_FALSE
-  row_local(1) = -1
-
+  pin_gid_local = HUGE(1)
   do lid = 1, grid%nlmax
     gid = grid%nL2G(lid)
     if (gid <= 0) cycle
     if (patch%imat(gid) <= 0) cycle
-    ! Local row index for MatZeroRowsLocal is 0-based.
-    row_local(1) = (lid-1)*ndof + 3   ! pressure dof (#4) -> local row offset 3 (0-based)
-    found = PETSC_TRUE
+    pin_gid_local = grid%global_offset + lid
     exit
   enddo
 
+  call MPI_Allreduce(pin_gid_local,pin_gid_global,ONE_INTEGER_MPI, &
+                     MPIU_INTEGER,MPI_MIN,option%mycomm,ierr);CHKERRQ(ierr)
+
+  found = PETSC_FALSE
+  row_global(1) = -1
+  if (pin_gid_global > 0 .and. pin_gid_global < HUGE(1)) then
+    if (pin_gid_global > grid%global_offset .and. &
+        pin_gid_global <= grid%global_offset + grid%nlmax) then
+      row_global(1) = (pin_gid_global - 1)*ndof + 3   ! global row for pressure dof
+      found = PETSC_TRUE
+    endif
+  endif
+
+  call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+  call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
   if (found) then
-    call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
-    call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
-    call MatZeroRowsLocal(A,1,row_local,1.d0,PETSC_NULL_VEC,PETSC_NULL_VEC,ierr);CHKERRQ(ierr)
+    call MatZeroRows(A,1,row_global,1.d0,PETSC_NULL_VEC,PETSC_NULL_VEC,ierr);CHKERRQ(ierr)
+  else
+    call MatZeroRows(A,0,row_global,1.d0,PETSC_NULL_VEC,PETSC_NULL_VEC,ierr);CHKERRQ(ierr)
   endif
 
 end subroutine StokesJacobianPinPressure
