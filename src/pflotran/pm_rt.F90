@@ -682,6 +682,8 @@ subroutine PMRTInitializeTimestep(this)
 
   use Reactive_Transport_module, only : RTInitializeTimestep, &
                                         RTUpdateActivityCoefficients
+  use Stokes_module, only : StokesUpdateAuxVars, &
+                            StokesUpdateTransportVelocities
   use Reaction_Aux_module, only : ACT_COEF_FREQUENCY_TIMESTEP
   use Global_module
   use Material_module
@@ -690,13 +692,19 @@ subroutine PMRTInitializeTimestep(this)
   implicit none
 
   class(pm_rt_type) :: this
-
   this%option%tran_dt = this%option%dt
 
   ! interpolate flow parameters/data
   ! this must remain here as these weighted values are used by both
   ! RTInitializeTimestep and RTTimeCut (which calls RTInitializeTimestep)
   call PMRTWeightFlowParameters(this,TIME_T)
+
+  ! Ensure Stokes-derived transport velocities are up-to-date
+  if (this%option%iflowmode == STOKES_MODE .or. &
+      this%option%iflowmode == STOKES_TS_MODE) then
+    call StokesUpdateAuxVars(this%realization)
+    call StokesUpdateTransportVelocities(this%realization)
+  endif
 
   call RTInitializeTimestep(this%realization)
 
@@ -1004,7 +1012,6 @@ subroutine PMRTResidual(this,snes,xx,r,ierr)
   Vec :: xx
   Vec :: r
   PetscErrorCode :: ierr
-
   call RTResidual(snes,xx,r,this%realization,this%debug,ierr)
 
 end subroutine PMRTResidual

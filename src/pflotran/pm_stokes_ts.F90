@@ -86,6 +86,7 @@ subroutine PMStokesTSIFunction(this,ts,time,U,Udot,F,ierr)
                                    NFLOWDOF)
 
   call StokesUpdateAuxVars(realization)
+  call StokesUpdateTransportVelocities(realization)
 
   call StokesResidualInternalConn(F,realization,this%rho,this%mu, &
                                   PETSC_FALSE,ierr)

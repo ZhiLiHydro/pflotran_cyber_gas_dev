@@ -2308,6 +2308,7 @@ subroutine RTResidual(snes,xx,r,realization,debug,ierr)
   use Option_module
   use Grid_module
   use Logging_module
+  use Print_module
   use Debug_module
   use Matrix_Zeroing_module
   use Debug_module

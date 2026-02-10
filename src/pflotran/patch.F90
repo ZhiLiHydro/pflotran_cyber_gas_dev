@@ -6791,7 +6791,7 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
           case(LIQUID_DENSITY)
             do local_id=1,grid%nlmax
               vec_ptr(local_id) = &
-                patch%aux%Global%auxvars(grid%nL2G(local_id))%den_kg(1)
+                patch%aux%Global%auxvars(grid%nL2G(local_id))%den_kg(option%liquid_phase)
             enddo
           case(LIQUID_MOBILITY)
             do local_id=1,grid%nlmax
@@ -6822,9 +6822,24 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
               vec_ptr(local_id) = &
                 patch%aux%Stokes%auxvars(grid%nL2G(local_id))%pressure
             enddo
+          case(LIQUID_DENSITY)
+            do local_id=1,grid%nlmax
+              vec_ptr(local_id) = &
+                patch%aux%Global%auxvars(grid%nL2G(local_id))%den_kg(option%liquid_phase)
+            enddo
+          case(LIQUID_SATURATION)
+            do local_id=1,grid%nlmax
+              vec_ptr(local_id) = &
+                patch%aux%Global%auxvars(grid%nL2G(local_id))%sat(option%liquid_phase)
+            enddo
+          case(GAS_SATURATION)
+            do local_id=1,grid%nlmax
+              vec_ptr(local_id) = &
+                patch%aux%Global%auxvars(grid%nL2G(local_id))%sat(option%gas_phase)
+            enddo
           case default
             call PatchUnsupportedVariable('Stokes',ivar,option)
-          end select
+        end select
 
       else if (associated(patch%aux%ZFlow)) then
 

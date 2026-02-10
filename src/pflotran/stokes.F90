@@ -19,6 +19,8 @@ module Stokes_module
   public :: StokesSetup, &
             StokesInitializeTimestep, &
             StokesUpdateAuxVars, &
+            StokesMapBCAuxVarsToGlobal, &
+            StokesUpdateTransportVelocities, &
             StokesUpdateSolution, &
             StokesMaxChange, &
             StokesDestroy, &
@@ -56,7 +58,6 @@ subroutine StokesSetup(realization,rho,mu)
   use Realization_Subsurface_class
   use Patch_module
   use Grid_module
-  use Option_module
   use Coupler_module
   use Connection_module
 
@@ -68,7 +69,6 @@ subroutine StokesSetup(realization,rho,mu)
   type(grid_type),          pointer :: grid
   type(material_auxvar_type), pointer :: mat_aux(:)
   type(stokes_type),    pointer :: stokes_aux
-  type(option_type), pointer :: option
 
   PetscInt :: gid
   PetscBool :: dof_is_active(1)
@@ -76,7 +76,6 @@ subroutine StokesSetup(realization,rho,mu)
 
   patch  => realization%patch
   grid   => patch%grid
-  mat_aux => patch%aux%Material%auxvars
   option => realization%option
 
   if (.not.associated(patch%aux%Stokes)) then
@@ -203,8 +202,68 @@ subroutine StokesUpdateAuxVars(realization)
 
   call VecRestoreArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
   stokes_aux%auxvars_up_to_date = PETSC_TRUE
+  call StokesMapBCAuxVarsToGlobal(realization)
 
 end subroutine StokesUpdateAuxVars
+
+! ************************************************************************** !
+
+subroutine StokesMapBCAuxVarsToGlobal(realization)
+  !
+  ! Maps Stokes boundary condition auxvars to global equivalent.
+  !
+  ! Author: Satish Karra
+  ! Date: 02/09/26
+  !
+
+  use Realization_Subsurface_class
+  use Option_module
+  use Patch_module
+  use Coupler_module
+  use Connection_module
+
+  implicit none
+
+  class(realization_subsurface_type) :: realization
+
+  type(option_type), pointer :: option
+  type(patch_type),  pointer :: patch
+  type(coupler_type), pointer :: boundary_condition
+  type(connection_set_type), pointer :: cur_connection_set
+  type(global_auxvar_type), pointer :: global_auxvars_bc(:)
+
+  PetscInt :: sum_connection, iconn, iphase
+
+  option => realization%option
+  patch => realization%patch
+
+  if (option%ntrandof == 0) return
+  if (.not.associated(patch%aux%Global%auxvars_bc)) return
+
+  global_auxvars_bc => patch%aux%Global%auxvars_bc
+
+  boundary_condition => patch%boundary_condition_list%first
+  sum_connection = 0
+  do
+    if (.not.associated(boundary_condition)) exit
+    cur_connection_set => boundary_condition%connection_set
+    do iconn = 1, cur_connection_set%num_connections
+      sum_connection = sum_connection + 1
+      global_auxvars_bc(sum_connection)%temp = option%flow%reference_temperature
+      do iphase = 1, option%nphase
+        global_auxvars_bc(sum_connection)%pres(iphase) = option%flow%reference_pressure
+        global_auxvars_bc(sum_connection)%sat(iphase) = 0.d0
+        global_auxvars_bc(sum_connection)%den_kg(iphase) = 0.d0
+      enddo
+      global_auxvars_bc(sum_connection)%sat(option%liquid_phase) = &
+        option%flow%reference_saturation
+      global_auxvars_bc(sum_connection)%den_kg(option%liquid_phase) = &
+        option%flow%reference_density(option%liquid_phase)
+    enddo
+    boundary_condition => boundary_condition%next
+  enddo
+
+end subroutine StokesMapBCAuxVarsToGlobal
 
 ! ************************************************************************** !
 
@@ -331,7 +390,7 @@ subroutine StokesApplyBoundaryConditions(realization)
   type(option_type), pointer :: option
   type(coupler_type), pointer :: boundary_condition
   type(connection_set_type), pointer :: cur_connection_set
-  PetscInt :: local_id, iconn, offset
+  PetscInt :: local_id, iconn, offset, gid
   PetscReal, pointer :: vec_ptr(:)
   PetscErrorCode :: ierr
 
@@ -380,6 +439,115 @@ subroutine StokesApplyBoundaryConditions(realization)
 
 
 end subroutine StokesApplyBoundaryConditions
+
+! ************************************************************************** !
+
+subroutine StokesUpdateTransportVelocities(realization)
+  !
+  ! Populate transport face velocities from Stokes velocity field.
+  !
+  ! Author: Satish Karra
+  ! Date: 02/09/26
+  !
+  use Realization_Subsurface_class
+  use Patch_module
+  use Grid_module
+  use Option_module
+  use Coupler_module
+  use Connection_module
+  use Stokes_Aux_module
+
+  implicit none
+
+  class(realization_subsurface_type) :: realization
+  type(patch_type), pointer :: patch
+  type(grid_type), pointer :: grid
+  type(option_type), pointer :: option
+  type(stokes_type), pointer :: stokes_aux
+  type(coupler_type), pointer :: boundary_condition
+  type(connection_set_list_type), pointer :: conn_list
+  type(connection_set_type), pointer :: cset
+
+  PetscInt :: iconn, sum_connection
+  PetscInt :: gid_up, gid_dn
+  PetscReal :: u_face(3)
+  PetscReal :: vdarcy
+
+  patch  => realization%patch
+  grid   => patch%grid
+  option => realization%option
+
+  if (.not.associated(patch%internal_velocities)) return
+  if (.not.associated(patch%boundary_velocities)) return
+  if (.not.associated(patch%aux%Stokes)) return
+
+  stokes_aux => patch%aux%Stokes
+
+  patch%internal_velocities = 0.d0
+  patch%boundary_velocities = 0.d0
+
+  ! Internal flux terms
+  conn_list => grid%internal_connection_set_list
+  cset      => conn_list%first
+  sum_connection = 0
+  do
+    if (.not.associated(cset)) exit
+    do iconn = 1, cset%num_connections
+      sum_connection = sum_connection + 1
+      gid_up = cset%id_up(iconn)
+      gid_dn = cset%id_dn(iconn)
+      if (gid_up <= 0 .or. gid_dn <= 0) cycle
+      if (patch%imat(gid_up) <= 0 .or. patch%imat(gid_dn) <= 0) cycle
+
+      u_face(1) = 0.5d0*(stokes_aux%auxvars(gid_up)%u + &
+                         stokes_aux%auxvars(gid_dn)%u)
+      u_face(2) = 0.5d0*(stokes_aux%auxvars(gid_up)%v + &
+                         stokes_aux%auxvars(gid_dn)%v)
+      u_face(3) = 0.5d0*(stokes_aux%auxvars(gid_up)%w + &
+                         stokes_aux%auxvars(gid_dn)%w)
+
+      vdarcy = dot_product(u_face, cset%dist(1:3,iconn))
+      patch%internal_velocities(1,sum_connection) = vdarcy
+    enddo
+    cset => cset%next
+  enddo
+
+  ! Boundary flux terms
+  boundary_condition => patch%boundary_condition_list%first
+  sum_connection = 0
+  do
+    if (.not.associated(boundary_condition)) exit
+    cset => boundary_condition%connection_set
+    do iconn = 1, cset%num_connections
+      sum_connection = sum_connection + 1
+
+      if (associated(boundary_condition%flow_condition%stokes%velocity)) then
+        if (boundary_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
+          u_face(1) = boundary_condition%flow_aux_real_var(1,iconn)
+          u_face(2) = boundary_condition%flow_aux_real_var(2,iconn)
+          u_face(3) = boundary_condition%flow_aux_real_var(3,iconn)
+        else
+          gid_dn = cset%id_dn(iconn)
+          if (gid_dn <= 0) cycle
+          u_face(1) = stokes_aux%auxvars(gid_dn)%u
+          u_face(2) = stokes_aux%auxvars(gid_dn)%v
+          u_face(3) = stokes_aux%auxvars(gid_dn)%w
+        endif
+      else
+        gid_dn = cset%id_dn(iconn)
+        if (gid_dn <= 0) cycle
+        u_face(1) = stokes_aux%auxvars(gid_dn)%u
+        u_face(2) = stokes_aux%auxvars(gid_dn)%v
+        u_face(3) = stokes_aux%auxvars(gid_dn)%w
+      endif
+
+      vdarcy = dot_product(u_face, cset%dist(1:3,iconn))
+      patch%boundary_velocities(1,sum_connection) = vdarcy
+    enddo
+    boundary_condition => boundary_condition%next
+  enddo
+
+end subroutine StokesUpdateTransportVelocities
 
 ! ************************************************************************** !
 
@@ -1304,6 +1472,7 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,ierr)
   enddo
 
   ! Apply all BC rows at once (requires assembled matrix)
+    call MatSetOption(A,MAT_NO_OFF_PROC_ZERO_ROWS,PETSC_TRUE,ierr);CHKERRQ(ierr)
   if (bc_row_count > 0) then
     call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
     call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
@@ -1829,6 +1998,7 @@ subroutine StokesJacobianBoundaryFacesConn(A,realization,mu,ierr)
       S(3) = dist(3)*area
 
       has_u_dir = PETSC_FALSE
+      has_p_trac = PETSC_FALSE
       if (associated(boundary_condition%flow_condition%stokes%velocity)) then
         if (boundary_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
           has_u_dir = PETSC_TRUE

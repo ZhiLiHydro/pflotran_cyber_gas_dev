@@ -206,6 +206,12 @@ subroutine StokesAuxVarCompute(x,auxvar,global_auxvar, &
   ! Vorticity magnitude and shear rate: left as zero by default.
 
   global_auxvar%temp = option%flow%reference_temperature
+  global_auxvar%den_kg(option%liquid_phase) = &
+    option%flow%reference_density(option%liquid_phase)
+  global_auxvar%sat(option%liquid_phase) = option%flow%reference_saturation
+  if (option%gas_phase > 0) then
+    global_auxvar%sat(option%gas_phase) = 0.d0
+  endif
 
 end subroutine StokesAuxVarCompute
 

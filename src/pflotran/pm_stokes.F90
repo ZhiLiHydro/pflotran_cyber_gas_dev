@@ -145,6 +145,7 @@ subroutine PMStokesReadSimOptionsBlock(this,input)
     select case(trim(keyword))
       case('DENSITY')
         call InputReadDouble(input,option,tempreal); this%rho = tempreal
+        option%flow%reference_density(option%liquid_phase) = tempreal
       case('VISCOSITY')
         call InputReadDouble(input,option,tempreal); this%mu  = tempreal
       case('ADD_CONVECTION')
@@ -776,13 +777,15 @@ subroutine PMStokesUpdateAuxVars(this)
   ! Date: 01/24/26
   !
 
-  use Stokes_module, only : StokesUpdateAuxVars
+  use Stokes_module, only : StokesUpdateAuxVars, &
+                            StokesUpdateTransportVelocities
 
   implicit none
 
   class(pm_stokes_type) :: this
 
   call StokesUpdateAuxVars(this%realization)
+  call StokesUpdateTransportVelocities(this%realization)
 
 end subroutine PMStokesUpdateAuxVars
 
