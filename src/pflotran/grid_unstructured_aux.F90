@@ -87,7 +87,7 @@ module Grid_Unstructured_Aux_module
     PetscInt :: num_vertices_local ! Number of vertices locally
     PetscInt :: output_mesh_type  ! Current options: VERTEX_CENTRED (default), CELL_CENTRED
     PetscInt :: explicit_grid_source ! DUAL_FILE or PRIMAL_VORONOI
-    PetscInt :: primal_mesh_format ! PFLOTRAN_UGI or AVS_UCD
+    PetscInt :: primal_mesh_format ! PFLOTRAN_UGI, AVS_UCD, or TETGEN
     PetscInt :: control_volume_type ! currently VORONOI
     PetscInt, pointer :: cell_vertices(:,:)
     type(point3d_type), pointer :: vertex_coordinates(:)

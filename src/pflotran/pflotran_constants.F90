@@ -274,6 +274,7 @@ module PFLOTRAN_Constants_module
   PetscInt, parameter, public :: PRIMAL_MESH_FORMAT_UNSET = 0
   PetscInt, parameter, public :: PRIMAL_MESH_FORMAT_PFLOTRAN_UGI = 1
   PetscInt, parameter, public :: PRIMAL_MESH_FORMAT_AVS_UCD = 2
+  PetscInt, parameter, public :: PRIMAL_MESH_FORMAT_TETGEN = 3
   PetscInt, parameter, public :: CONTROL_VOLUME_TYPE_VORONOI = 1
 
   ! Geomechanics

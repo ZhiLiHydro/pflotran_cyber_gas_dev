@@ -75,9 +75,11 @@ subroutine UGridExplicitGenerateVoronoi(unstructured_grid, filename, option)
         call UGridVoronoiReadPrimalUGI(trim(filename),option,num_pts,num_elem,elem_conn,xyz)
       case (PRIMAL_MESH_FORMAT_AVS_UCD)
         call UGridVoronoiReadPrimalAVS(trim(filename),option,num_pts,num_elem,elem_conn,xyz)
+      case (PRIMAL_MESH_FORMAT_TETGEN)
+        call UGridVoronoiReadPrimalTetGen(trim(filename),option,num_pts,num_elem,elem_conn,xyz)
       case default
         status = 1
-        option%io_buffer = 'PRIMAL_MESH_FORMAT must be PFLOTRAN_UGI or AVS_UCD for PRIMAL_VORONOI.'
+        option%io_buffer = 'PRIMAL_MESH_FORMAT must be PFLOTRAN_UGI, AVS_UCD, or TETGEN for PRIMAL_VORONOI.'
     end select
 
     if (status == 0) then
@@ -144,6 +146,7 @@ subroutine UGridVoronoiReadPrimalUGI(ugi_filename, option, num_pts, num_elem, el
   !
 
   use Option_module
+  use Input_Aux_module
 
   implicit none
 
@@ -154,38 +157,37 @@ subroutine UGridVoronoiReadPrimalUGI(ugi_filename, option, num_pts, num_elem, el
   PetscInt, allocatable, intent(out) :: elem_conn(:,:)
   PetscReal, allocatable, intent(out) :: xyz(:,:)
 
-  integer :: fid
-  integer :: ios
+  type(input_type), pointer :: input
+  PetscInt :: fid
   PetscInt :: i
   character(len=MAXWORDLENGTH) :: etype
 
   fid = 87
-  open(unit=fid,file=trim(ugi_filename),status='old',action='read',iostat=ios)
-  if (ios /= 0) then
-    option%io_buffer = 'Failed opening PFLOTRAN_UGI primal mesh: ' // trim(ugi_filename)
-    call PrintErrMsg(option)
-  endif
-
-  read(fid,*,iostat=ios) num_elem, num_pts
-  if (ios /= 0) then
-    close(fid)
-    option%io_buffer = 'Failed reading UGI header from: ' // trim(ugi_filename)
-    call PrintErrMsg(option)
-  endif
+  input => InputCreate(fid,trim(ugi_filename),option)
+  call InputReadPflotranString(input,option)
+  call InputReadInt(input,option,num_elem)
+  call InputErrorMsg(input,option,'number of elements','UGI header')
+  call InputReadInt(input,option,num_pts)
+  call InputErrorMsg(input,option,'number of points','UGI header')
 
   allocate(elem_conn(4,num_elem))
   elem_conn = 0
 
   do i = 1, num_elem
-    read(fid,*,iostat=ios) etype, elem_conn(1,i), elem_conn(2,i), elem_conn(3,i), elem_conn(4,i)
-    if (ios /= 0) then
-      close(fid)
-      option%io_buffer = 'Failed reading tetrahedron connectivity from UGI file.'
-      call PrintErrMsg(option)
-    endif
+    call InputReadPflotranString(input,option)
+    call InputReadCard(input,option,etype)
+    call InputErrorMsg(input,option,'element type','UGI element record')
+    call InputReadInt(input,option,elem_conn(1,i))
+    call InputErrorMsg(input,option,'vertex 1 id','UGI element record')
+    call InputReadInt(input,option,elem_conn(2,i))
+    call InputErrorMsg(input,option,'vertex 2 id','UGI element record')
+    call InputReadInt(input,option,elem_conn(3,i))
+    call InputErrorMsg(input,option,'vertex 3 id','UGI element record')
+    call InputReadInt(input,option,elem_conn(4,i))
+    call InputErrorMsg(input,option,'vertex 4 id','UGI element record')
     call UGridVoronoiToUpper(etype)
     if (trim(etype) /= 'T') then
-      close(fid)
+      call InputDestroy(input)
       option%io_buffer = 'UGI primal mesh currently supports only T (tetrahedron) elements for PRIMAL_VORONOI.'
       call PrintErrMsg(option)
     endif
@@ -193,15 +195,16 @@ subroutine UGridVoronoiReadPrimalUGI(ugi_filename, option, num_pts, num_elem, el
 
   allocate(xyz(3,num_pts))
   do i = 1, num_pts
-    read(fid,*,iostat=ios) xyz(1,i), xyz(2,i), xyz(3,i)
-    if (ios /= 0) then
-      close(fid)
-      option%io_buffer = 'Failed reading vertex coordinates from UGI file.'
-      call PrintErrMsg(option)
-    endif
+    call InputReadPflotranString(input,option)
+    call InputReadDouble(input,option,xyz(1,i))
+    call InputErrorMsg(input,option,'vertex x coordinate','UGI vertex record')
+    call InputReadDouble(input,option,xyz(2,i))
+    call InputErrorMsg(input,option,'vertex y coordinate','UGI vertex record')
+    call InputReadDouble(input,option,xyz(3,i))
+    call InputErrorMsg(input,option,'vertex z coordinate','UGI vertex record')
   enddo
 
-  close(fid)
+  call InputDestroy(input)
 
 end subroutine UGridVoronoiReadPrimalUGI
 
@@ -218,6 +221,7 @@ subroutine UGridVoronoiReadPrimalAVS(avs_filename, option, num_pts, num_elem, el
   !
 
   use Option_module
+  use Input_Aux_module
 
   implicit none
 
@@ -228,59 +232,255 @@ subroutine UGridVoronoiReadPrimalAVS(avs_filename, option, num_pts, num_elem, el
   PetscInt, allocatable, intent(out) :: elem_conn(:,:)
   PetscReal, allocatable, intent(out) :: xyz(:,:)
 
-  integer :: fid
-  integer :: ios
+  type(input_type), pointer :: input
+  PetscInt :: fid
   PetscInt :: i
   PetscInt :: n_node_atts, n_elem_atts, n_model_atts
   PetscInt :: id, mat
   character(len=MAXWORDLENGTH) :: etype
 
   fid = 86
-  open(unit=fid,file=trim(avs_filename),status='old',action='read',iostat=ios)
-  if (ios /= 0) then
-    option%io_buffer = 'Failed opening AVS primal mesh: ' // trim(avs_filename)
-    call PrintErrMsg(option)
-  endif
-
-  read(fid,*,iostat=ios) num_pts, num_elem, n_node_atts, n_elem_atts, n_model_atts
-  if (ios /= 0) then
-    close(fid)
-    option%io_buffer = 'Failed reading AVS header from: ' // trim(avs_filename)
-    call PrintErrMsg(option)
-  endif
+  input => InputCreate(fid,trim(avs_filename),option)
+  call InputReadPflotranString(input,option)
+  call InputReadInt(input,option,num_pts)
+  call InputErrorMsg(input,option,'number of points','AVS header')
+  call InputReadInt(input,option,num_elem)
+  call InputErrorMsg(input,option,'number of elements','AVS header')
+  call InputReadInt(input,option,n_node_atts)
+  call InputErrorMsg(input,option,'number of node attributes','AVS header')
+  call InputReadInt(input,option,n_elem_atts)
+  call InputErrorMsg(input,option,'number of element attributes','AVS header')
+  call InputReadInt(input,option,n_model_atts)
+  call InputErrorMsg(input,option,'number of model attributes','AVS header')
 
   allocate(xyz(3,num_pts))
   do i = 1, num_pts
-    read(fid,*,iostat=ios) id, xyz(1,i), xyz(2,i), xyz(3,i)
-    if (ios /= 0) then
-      close(fid)
-      option%io_buffer = 'Failed reading AVS node coordinates.'
-      call PrintErrMsg(option)
-    endif
+    call InputReadPflotranString(input,option)
+    call InputReadInt(input,option,id)
+    call InputErrorMsg(input,option,'node id','AVS node record')
+    call InputReadDouble(input,option,xyz(1,i))
+    call InputErrorMsg(input,option,'node x coordinate','AVS node record')
+    call InputReadDouble(input,option,xyz(2,i))
+    call InputErrorMsg(input,option,'node y coordinate','AVS node record')
+    call InputReadDouble(input,option,xyz(3,i))
+    call InputErrorMsg(input,option,'node z coordinate','AVS node record')
   enddo
 
   allocate(elem_conn(4,num_elem))
   elem_conn = 0
   do i = 1, num_elem
-    read(fid,*,iostat=ios) id, mat, etype, elem_conn(1,i), elem_conn(2,i), elem_conn(3,i), elem_conn(4,i)
-    if (ios /= 0) then
-      close(fid)
-      option%io_buffer = 'Failed reading AVS tetrahedron connectivity.'
-      call PrintErrMsg(option)
-    endif
+    call InputReadPflotranString(input,option)
+    call InputReadInt(input,option,id)
+    call InputErrorMsg(input,option,'element id','AVS element record')
+    call InputReadInt(input,option,mat)
+    call InputErrorMsg(input,option,'material id','AVS element record')
+    call InputReadCard(input,option,etype)
+    call InputErrorMsg(input,option,'element type','AVS element record')
+    call InputReadInt(input,option,elem_conn(1,i))
+    call InputErrorMsg(input,option,'vertex 1 id','AVS element record')
+    call InputReadInt(input,option,elem_conn(2,i))
+    call InputErrorMsg(input,option,'vertex 2 id','AVS element record')
+    call InputReadInt(input,option,elem_conn(3,i))
+    call InputErrorMsg(input,option,'vertex 3 id','AVS element record')
+    call InputReadInt(input,option,elem_conn(4,i))
+    call InputErrorMsg(input,option,'vertex 4 id','AVS element record')
     call UGridVoronoiToUpper(etype)
     if (trim(etype) /= 'TET') then
-      close(fid)
+      call InputDestroy(input)
       option%io_buffer = 'AVS primal mesh currently supports only tet elements for PRIMAL_VORONOI.'
       call PrintErrMsg(option)
     endif
   enddo
 
-  close(fid)
+  call InputDestroy(input)
 
 end subroutine UGridVoronoiReadPrimalAVS
 
 ! ************************************************************************** !
+
+subroutine UGridVoronoiReadPrimalTetGen(mesh_filename, option, num_pts, num_elem, elem_conn, xyz)
+  !
+  ! Read a TetGen primal mesh from .node/.ele files into in-memory vertex
+  ! coordinates and tetrahedral connectivity arrays used by the internal
+  ! Voronoi generator. The routine is for 4-node tet elements only.
+  !
+  ! Author: Satish Karra
+  ! Date: 02/12/2026
+  !
+
+  use Option_module
+  use Input_Aux_module
+
+  implicit none
+
+  character(len=*), intent(in) :: mesh_filename
+  type(option_type) :: option
+  PetscInt, intent(out) :: num_pts
+  PetscInt, intent(out) :: num_elem
+  PetscInt, allocatable, intent(out) :: elem_conn(:,:)
+  PetscReal, allocatable, intent(out) :: xyz(:,:)
+
+  character(len=MAXSTRINGLENGTH) :: node_filename, ele_filename
+  type(input_type), pointer :: input
+  PetscInt :: fid
+  PetscInt :: i
+  PetscInt :: num_dim, num_node_atts, node_has_markers
+  PetscInt :: num_nodes_per_elem, num_elem_atts
+  PetscInt :: id
+  PetscInt :: id_min, id_max, id_shift
+  PetscReal :: x, y, z
+  PetscInt :: m1, m2, m3, m4
+
+  call UGridVoronoiTetGenFilenames(trim(mesh_filename),node_filename,ele_filename)
+
+  fid = 84
+  input => InputCreate(fid,trim(node_filename),option)
+  call InputReadPflotranString(input,option)
+  call InputReadInt(input,option,num_pts)
+  call InputErrorMsg(input,option,'number of points','TetGen .node header')
+  call InputReadInt(input,option,num_dim)
+  call InputErrorMsg(input,option,'node dimension','TetGen .node header')
+  call InputReadInt(input,option,num_node_atts)
+  call InputErrorMsg(input,option,'number of node attributes','TetGen .node header')
+  call InputReadInt(input,option,node_has_markers)
+  call InputErrorMsg(input,option,'node marker flag','TetGen .node header')
+  if (num_dim /= 3) then
+    call InputDestroy(input)
+    option%io_buffer = 'TetGen primal mesh must be 3D (node dimension = 3).'
+    call PrintErrMsg(option)
+  endif
+
+  allocate(xyz(3,num_pts))
+  id_shift = 0
+  id_min = huge(id_min)
+  id_max = -huge(id_max)
+  do i = 1, num_pts
+    call InputReadPflotranString(input,option)
+    call InputReadInt(input,option,id)
+    call InputErrorMsg(input,option,'node id','TetGen .node record')
+    call InputReadDouble(input,option,x)
+    call InputErrorMsg(input,option,'node x coordinate','TetGen .node record')
+    call InputReadDouble(input,option,y)
+    call InputErrorMsg(input,option,'node y coordinate','TetGen .node record')
+    call InputReadDouble(input,option,z)
+    call InputErrorMsg(input,option,'node z coordinate','TetGen .node record')
+    id_min = min(id_min,id)
+    id_max = max(id_max,id)
+    if (id < 1 .or. id > num_pts) then
+      ! id may be 0-based or sparse; remap below after reading all ids
+    else
+      xyz(1,id) = x
+      xyz(2,id) = y
+      xyz(3,id) = z
+    endif
+  enddo
+  call InputDestroy(input)
+
+  ! Handle 0-based TetGen ids by shifting to 1-based indexing.
+  if (id_min == 0 .and. id_max == num_pts-1) then
+    id_shift = 1
+  elseif (id_min == 1 .and. id_max == num_pts) then
+    id_shift = 0
+  else
+    option%io_buffer = 'TetGen node ids must be contiguous and either 0-based or 1-based.'
+    call PrintErrMsg(option)
+  endif
+
+  if (id_shift /= 0) then
+    input => InputCreate(fid,trim(node_filename),option)
+    call InputReadPflotranString(input,option)
+    xyz = 0.d0
+    do i = 1, num_pts
+      call InputReadPflotranString(input,option)
+      call InputReadInt(input,option,id)
+      call InputErrorMsg(input,option,'node id','TetGen .node record')
+      call InputReadDouble(input,option,x)
+      call InputErrorMsg(input,option,'node x coordinate','TetGen .node record')
+      call InputReadDouble(input,option,y)
+      call InputErrorMsg(input,option,'node y coordinate','TetGen .node record')
+      call InputReadDouble(input,option,z)
+      call InputErrorMsg(input,option,'node z coordinate','TetGen .node record')
+      xyz(1,id+id_shift) = x
+      xyz(2,id+id_shift) = y
+      xyz(3,id+id_shift) = z
+    enddo
+    call InputDestroy(input)
+  endif
+
+  fid = 85
+  input => InputCreate(fid,trim(ele_filename),option)
+  call InputReadPflotranString(input,option)
+  call InputReadInt(input,option,num_elem)
+  call InputErrorMsg(input,option,'number of elements','TetGen .ele header')
+  call InputReadInt(input,option,num_nodes_per_elem)
+  call InputErrorMsg(input,option,'nodes per element','TetGen .ele header')
+  call InputReadInt(input,option,num_elem_atts)
+  call InputErrorMsg(input,option,'number of element attributes','TetGen .ele header')
+
+  if (num_nodes_per_elem /= 4) then
+    call InputDestroy(input)
+    option%io_buffer = 'TetGen primal mesh must contain 4-node tetrahedra only for PRIMAL_VORONOI.'
+    call PrintErrMsg(option)
+  endif
+
+  allocate(elem_conn(4,num_elem))
+  do i = 1, num_elem
+    call InputReadPflotranString(input,option)
+    call InputReadInt(input,option,id)
+    call InputErrorMsg(input,option,'element id','TetGen .ele record')
+    call InputReadInt(input,option,m1)
+    call InputErrorMsg(input,option,'vertex 1 id','TetGen .ele record')
+    call InputReadInt(input,option,m2)
+    call InputErrorMsg(input,option,'vertex 2 id','TetGen .ele record')
+    call InputReadInt(input,option,m3)
+    call InputErrorMsg(input,option,'vertex 3 id','TetGen .ele record')
+    call InputReadInt(input,option,m4)
+    call InputErrorMsg(input,option,'vertex 4 id','TetGen .ele record')
+    elem_conn(1,i) = m1 + id_shift
+    elem_conn(2,i) = m2 + id_shift
+    elem_conn(3,i) = m3 + id_shift
+    elem_conn(4,i) = m4 + id_shift
+    if (minval(elem_conn(:,i)) < 1 .or. maxval(elem_conn(:,i)) > num_pts) then
+      call InputDestroy(input)
+      option%io_buffer = 'TetGen element connectivity references an out-of-range vertex id.'
+      call PrintErrMsg(option)
+    endif
+  enddo
+  call InputDestroy(input)
+
+end subroutine UGridVoronoiReadPrimalTetGen
+
+! ************************************************************************** !
+
+subroutine UGridVoronoiTetGenFilenames(mesh_filename, node_filename, ele_filename)
+  !
+  ! Resolve TetGen .node/.ele filenames from an input mesh token. Supports
+  ! base-name input or direct .node/.ele filename input.
+  !
+  ! Author: Satish Karra
+  ! Date: 02/12/2026
+  !
+
+  implicit none
+
+  character(len=*), intent(in) :: mesh_filename
+  character(len=*), intent(out) :: node_filename
+  character(len=*), intent(out) :: ele_filename
+  PetscInt :: n
+
+  n = len_trim(mesh_filename)
+  if (n >= 5 .and. mesh_filename(n-4:n) == '.node') then
+    node_filename = trim(mesh_filename)
+    ele_filename = trim(mesh_filename(1:n-5)) // '.ele'
+  elseif (n >= 4 .and. mesh_filename(n-3:n) == '.ele') then
+    ele_filename = trim(mesh_filename)
+    node_filename = trim(mesh_filename(1:n-4)) // '.node'
+  else
+    node_filename = trim(mesh_filename) // '.node'
+    ele_filename = trim(mesh_filename) // '.ele'
+  endif
+
+end subroutine UGridVoronoiTetGenFilenames
 
 subroutine UGridVoronoiComputeFromTets(num_pts, num_elem, elem_conn, xyz, cell_vol, &
                                        edge_i, edge_j, edge_area, num_edges, option)

@@ -270,6 +270,8 @@ subroutine DiscretizationReadRequiredCards(discretization,input,option)
             primal_mesh_format = PRIMAL_MESH_FORMAT_PFLOTRAN_UGI
           case('AVS_UCD')
             primal_mesh_format = PRIMAL_MESH_FORMAT_AVS_UCD
+          case('TETGEN')
+            primal_mesh_format = PRIMAL_MESH_FORMAT_TETGEN
           case default
             call InputKeywordUnrecognized(input,word, &
                                           'GRID,PRIMAL_MESH_FORMAT',option)
@@ -612,6 +614,9 @@ subroutine DiscretizationRead(discretization,input,option)
               case('AVS_UCD')
                 discretization%grid%unstructured_grid%explicit_grid% &
                   primal_mesh_format = PRIMAL_MESH_FORMAT_AVS_UCD
+              case('TETGEN')
+                discretization%grid%unstructured_grid%explicit_grid% &
+                  primal_mesh_format = PRIMAL_MESH_FORMAT_TETGEN
               case default
                 call InputKeywordUnrecognized(input,word, &
                                               'GRID,PRIMAL_MESH_FORMAT', &
