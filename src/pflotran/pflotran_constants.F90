@@ -269,6 +269,12 @@ module PFLOTRAN_Constants_module
   PetscInt, parameter, public :: THREE_DIM_GRID = 3
   PetscInt, parameter, public :: VERTEX_CENTERED_OUTPUT_MESH = 1
   PetscInt, parameter, public :: CELL_CENTERED_OUTPUT_MESH = 2
+  PetscInt, parameter, public :: EXPLICIT_GRID_SOURCE_DUAL_FILE = 1
+  PetscInt, parameter, public :: EXPLICIT_GRID_SOURCE_PRIMAL_VORONOI = 2
+  PetscInt, parameter, public :: PRIMAL_MESH_FORMAT_UNSET = 0
+  PetscInt, parameter, public :: PRIMAL_MESH_FORMAT_PFLOTRAN_UGI = 1
+  PetscInt, parameter, public :: PRIMAL_MESH_FORMAT_AVS_UCD = 2
+  PetscInt, parameter, public :: CONTROL_VOLUME_TYPE_VORONOI = 1
 
   ! Geomechanics
   PetscInt, parameter, public :: GEOMECH_DISP_X_DOF = 1

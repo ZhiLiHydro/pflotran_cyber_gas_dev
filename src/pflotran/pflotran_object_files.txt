@@ -184,7 +184,6 @@ grid_obj = \
 	${common_src}communicator_base.o \
 	${common_src}communicator_structured.o \
 	${common_src}communicator_unstructured.o \
-	${common_src}discretization.o \
 	${common_src}dm_custom.o \
 	${common_src}grid.o \
 	${common_src}grid_eclipse.o \
@@ -194,7 +193,9 @@ grid_obj = \
 	${common_src}grid_unstructured_explicit.o \
 	${common_src}grid_unstructured_aux.o \
 	${common_src}grid_unstructured.o \
+	${common_src}grid_unstructured_voronoi.o \
 	${common_src}grid_unstructured_polyhedra.o \
+	${common_src}discretization.o \
 	${common_src}well_grid.o
 
 relations_obj = \

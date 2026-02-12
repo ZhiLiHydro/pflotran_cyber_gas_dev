@@ -9,6 +9,7 @@ module Discretization_module
   use Grid_Unstructured_Aux_module
   use Grid_Unstructured_Explicit_module
   use Grid_Unstructured_Polyhedra_module
+  use Grid_Unstructured_Voronoi_module
   use DM_Custom_module
 
   use PFLOTRAN_Constants_module
@@ -146,11 +147,17 @@ subroutine DiscretizationReadRequiredCards(discretization,input,option)
 
   PetscInt :: structured_grid_itype
   PetscInt :: unstructured_grid_itype
+  PetscInt :: explicit_grid_source
+  PetscInt :: primal_mesh_format
+  PetscInt :: control_volume_type
   PetscInt :: nx, ny, nz
 
   nx = 0
   ny = 0
   nz = 0
+  explicit_grid_source = EXPLICIT_GRID_SOURCE_DUAL_FILE
+  primal_mesh_format = PRIMAL_MESH_FORMAT_UNSET
+  control_volume_type = CONTROL_VOLUME_TYPE_VORONOI
 
 ! we initialize the word to blanks to avoid error reported by valgrind
   word = ''
@@ -240,6 +247,44 @@ subroutine DiscretizationReadRequiredCards(discretization,input,option)
            'UPWIND_FRACTION_METHOD','PERM_TENSOR_TO_SCALAR_MODEL', &
            '2ND_ORDER_BOUNDARY_CONDITION','IMPLICIT_GRID_AREA_CALCULATION', &
            'RIGHT_HAND_RULE_CHECK_ALL')
+      case('EXPLICIT_GRID_SOURCE')
+        call InputReadCard(input,option,word)
+        call InputErrorMsg(input,option,'EXPLICIT_GRID_SOURCE','GRID')
+        call StringToUpper(word)
+        select case(trim(word))
+          case('DUAL_FILE')
+            explicit_grid_source = EXPLICIT_GRID_SOURCE_DUAL_FILE
+          case('PRIMAL_VORONOI')
+            explicit_grid_source = EXPLICIT_GRID_SOURCE_PRIMAL_VORONOI
+          case default
+            call InputKeywordUnrecognized(input,word, &
+                                          'GRID,EXPLICIT_GRID_SOURCE', &
+                                          option)
+        end select
+      case('PRIMAL_MESH_FORMAT')
+        call InputReadCard(input,option,word)
+        call InputErrorMsg(input,option,'PRIMAL_MESH_FORMAT','GRID')
+        call StringToUpper(word)
+        select case(trim(word))
+          case('PFLOTRAN_UGI')
+            primal_mesh_format = PRIMAL_MESH_FORMAT_PFLOTRAN_UGI
+          case('AVS_UCD')
+            primal_mesh_format = PRIMAL_MESH_FORMAT_AVS_UCD
+          case default
+            call InputKeywordUnrecognized(input,word, &
+                                          'GRID,PRIMAL_MESH_FORMAT',option)
+        end select
+      case('CONTROL_VOLUME_TYPE')
+        call InputReadCard(input,option,word)
+        call InputErrorMsg(input,option,'CONTROL_VOLUME_TYPE','GRID')
+        call StringToUpper(word)
+        select case(trim(word))
+          case('VORONOI')
+            control_volume_type = CONTROL_VOLUME_TYPE_VORONOI
+          case default
+            call InputKeywordUnrecognized(input,word, &
+                                          'GRID,CONTROL_VOLUME_TYPE',option)
+        end select
       case('DXYZ','BOUNDS')
         call InputSkipToEND(input,option,word)
       case default
@@ -272,12 +317,25 @@ subroutine DiscretizationReadRequiredCards(discretization,input,option)
           grid%unstructured_grid => un_str_grid
         case(EXPLICIT_UNSTRUCTURED_GRID)
           un_str_grid%explicit_grid => UGridExplicitCreate()
-          if (index(discretization%filename,'.h5') > 0) then
-            call UGridExplicitReadHDF5(un_str_grid, &
-                                       discretization%filename,option)
+          un_str_grid%explicit_grid%explicit_grid_source = explicit_grid_source
+          un_str_grid%explicit_grid%primal_mesh_format = primal_mesh_format
+          un_str_grid%explicit_grid%control_volume_type = control_volume_type
+          if (explicit_grid_source == EXPLICIT_GRID_SOURCE_DUAL_FILE) then
+            if (index(discretization%filename,'.h5') > 0) then
+              call UGridExplicitReadHDF5(un_str_grid, &
+                                         discretization%filename,option)
+            else
+              call UGridExplicitRead(un_str_grid, &
+                                     discretization%filename,option)
+            endif
           else
-            call UGridExplicitRead(un_str_grid, &
-                                   discretization%filename,option)
+            if (primal_mesh_format == PRIMAL_MESH_FORMAT_UNSET) then
+              option%io_buffer = 'PRIMAL_MESH_FORMAT is required when ' // &
+                                 'EXPLICIT_GRID_SOURCE is PRIMAL_VORONOI.'
+              call PrintErrMsg(option)
+            endif
+            call UGridExplicitGenerateVoronoi(un_str_grid, &
+                                              discretization%filename,option)
           endif
           grid%unstructured_grid => un_str_grid
         case(POLYHEDRA_UNSTRUCTURED_GRID)
@@ -518,6 +576,72 @@ subroutine DiscretizationRead(discretization,input,option)
                                &unstructured grids.'
             call PrintErrMsg(option)
         end select
+      case('EXPLICIT_GRID_SOURCE')
+        select case(discretization%grid%itype)
+          case(EXPLICIT_UNSTRUCTURED_GRID)
+            call InputReadCard(input,option,word)
+            call InputErrorMsg(input,option,'EXPLICIT_GRID_SOURCE','GRID')
+            call StringToUpper(word)
+            select case(trim(word))
+              case('DUAL_FILE')
+                discretization%grid%unstructured_grid%explicit_grid% &
+                  explicit_grid_source = EXPLICIT_GRID_SOURCE_DUAL_FILE
+              case('PRIMAL_VORONOI')
+                discretization%grid%unstructured_grid%explicit_grid% &
+                  explicit_grid_source = EXPLICIT_GRID_SOURCE_PRIMAL_VORONOI
+              case default
+                call InputKeywordUnrecognized(input,word, &
+                                              'GRID,EXPLICIT_GRID_SOURCE', &
+                                              option)
+            end select
+          case default
+            option%io_buffer = 'EXPLICIT_GRID_SOURCE only supported for ' // &
+                               'UNSTRUCTURED_EXPLICIT grids.'
+            call PrintErrMsg(option)
+        end select
+      case('PRIMAL_MESH_FORMAT')
+        select case(discretization%grid%itype)
+          case(EXPLICIT_UNSTRUCTURED_GRID)
+            call InputReadCard(input,option,word)
+            call InputErrorMsg(input,option,'PRIMAL_MESH_FORMAT','GRID')
+            call StringToUpper(word)
+            select case(trim(word))
+              case('PFLOTRAN_UGI')
+                discretization%grid%unstructured_grid%explicit_grid% &
+                  primal_mesh_format = PRIMAL_MESH_FORMAT_PFLOTRAN_UGI
+              case('AVS_UCD')
+                discretization%grid%unstructured_grid%explicit_grid% &
+                  primal_mesh_format = PRIMAL_MESH_FORMAT_AVS_UCD
+              case default
+                call InputKeywordUnrecognized(input,word, &
+                                              'GRID,PRIMAL_MESH_FORMAT', &
+                                              option)
+            end select
+          case default
+            option%io_buffer = 'PRIMAL_MESH_FORMAT only supported for ' // &
+                               'UNSTRUCTURED_EXPLICIT grids.'
+            call PrintErrMsg(option)
+        end select
+      case('CONTROL_VOLUME_TYPE')
+        select case(discretization%grid%itype)
+          case(EXPLICIT_UNSTRUCTURED_GRID)
+            call InputReadCard(input,option,word)
+            call InputErrorMsg(input,option,'CONTROL_VOLUME_TYPE','GRID')
+            call StringToUpper(word)
+            select case(trim(word))
+              case('VORONOI')
+                discretization%grid%unstructured_grid%explicit_grid% &
+                  control_volume_type = CONTROL_VOLUME_TYPE_VORONOI
+              case default
+                call InputKeywordUnrecognized(input,word, &
+                                              'GRID,CONTROL_VOLUME_TYPE', &
+                                              option)
+            end select
+          case default
+            option%io_buffer = 'CONTROL_VOLUME_TYPE only supported for ' // &
+                               'UNSTRUCTURED_EXPLICIT grids.'
+            call PrintErrMsg(option)
+        end select
       case('UPWIND_FRACTION_METHOD')
         if (discretization%itype == STRUCTURED_GRID) then
           option%io_buffer = 'UPWIND_FRACTION_METHOD not supported for &
@@ -610,6 +734,20 @@ subroutine DiscretizationRead(discretization,input,option)
     option%io_buffer = 'Only BOUNDS or DXYZ may be set in the GRID &
                        &block, not both.'
     call PrintErrMsg(option)
+  endif
+
+  if (discretization%itype == UNSTRUCTURED_GRID) then
+    if (discretization%grid%itype == EXPLICIT_UNSTRUCTURED_GRID) then
+      if (discretization%grid%unstructured_grid%explicit_grid% &
+            explicit_grid_source == EXPLICIT_GRID_SOURCE_PRIMAL_VORONOI) then
+        if (discretization%grid%unstructured_grid%explicit_grid% &
+              primal_mesh_format == PRIMAL_MESH_FORMAT_UNSET) then
+          option%io_buffer = 'PRIMAL_MESH_FORMAT is required when ' // &
+                             'EXPLICIT_GRID_SOURCE is PRIMAL_VORONOI.'
+          call PrintErrMsg(option)
+        endif
+      endif
+    endif
   endif
 
 end subroutine DiscretizationRead
