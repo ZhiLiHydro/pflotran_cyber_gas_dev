@@ -35,6 +35,7 @@ module Stokes_Aux_module
     PetscReal :: u
     PetscReal :: v
     PetscReal :: w
+    PetscReal :: du_dt(3)
     ! Magnitude of vorticity |curl u| (placeholder, computed if needed)
     PetscReal :: vorticity_mag
     ! Shear rate (placeholder; e.g., effective strain rate)
@@ -138,6 +139,7 @@ subroutine StokesAuxVarInit(auxvar,option)
   auxvar%u = 0.d0
   auxvar%v = 0.d0
   auxvar%w = 0.d0
+  auxvar%du_dt = 0.d0
   auxvar%vorticity_mag = 0.d0
   auxvar%shear_rate    = 0.d0
   auxvar%pressure_ref  = 0.d0
@@ -165,6 +167,7 @@ subroutine StokesAuxVarCopy(auxvar_src,auxvar_dst,option)
   auxvar_dst%u = auxvar_src%u
   auxvar_dst%v = auxvar_src%v
   auxvar_dst%w = auxvar_src%w
+  auxvar_dst%du_dt = auxvar_src%du_dt
   auxvar_dst%vorticity_mag = auxvar_src%vorticity_mag
   auxvar_dst%shear_rate    = auxvar_src%shear_rate
   auxvar_dst%pressure_ref  = auxvar_src%pressure_ref
@@ -174,7 +177,7 @@ end subroutine StokesAuxVarCopy
 ! ************************************************************************** !
 
 subroutine StokesAuxVarCompute(x,auxvar,global_auxvar, &
-                               natural_id,option)
+                               option)
   !
   ! Compute auxiliary variables for each grid cell, given the primary DOFs.
   !
@@ -194,7 +197,6 @@ subroutine StokesAuxVarCompute(x,auxvar,global_auxvar, &
   PetscReal :: x(STOKES_NUM_DOF)
   type(stokes_auxvar_type) :: auxvar
   type(global_auxvar_type) :: global_auxvar
-  PetscInt :: natural_id
   type(option_type) :: option
 
   ! Pressure reference (for example)

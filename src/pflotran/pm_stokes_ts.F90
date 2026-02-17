@@ -3,6 +3,9 @@ module PM_Stokes_TS_class
 #include "petsc/finclude/petscts.h"
   use petscts
   use Stokes_module
+  use Stokes_Aux_module
+  use Global_Aux_module
+  use Material_Aux_module
   use PM_Base_class
   use PM_Subsurface_Flow_class
   use PM_Stokes_class
@@ -14,13 +17,15 @@ module PM_Stokes_TS_class
 
   type, public, extends(pm_stokes_type) :: pm_stokes_ts_type
   contains
+    procedure, public :: UpdateAuxVars => PMStokesTSUpdateAuxVars
     procedure, public :: IFunction => PMStokesTSIFunction
     procedure, public :: IJacobian => PMStokesTSIJacobian
     procedure, public :: RHSFunction => PMStokesTSRHSFunction
     procedure, public :: InitializeTimestep => PMStokesTSInitializeTimestep
   end type pm_stokes_ts_type
 
-  public :: PMStokesTSCreate
+  public :: PMStokesTSCreate, &
+            PMStokesTSUpdateAuxVarsPatch
 
 contains
 
@@ -50,6 +55,80 @@ end function PMStokesTSCreate
 
 ! ************************************************************************** !
 
+subroutine PMStokesTSUpdateAuxVars(this)
+  !
+  ! Author: Satish Karra
+  ! Date: 02/06/26
+
+  implicit none
+
+  class(pm_stokes_ts_type) :: this
+
+  call PMStokesTSUpdateAuxVarsPatch(this%realization)
+
+end subroutine PMStokesTSUpdateAuxVars
+
+! ************************************************************************** !
+
+subroutine PMStokesTSUpdateAuxVarsPatch(realization)
+  !
+  ! Author: Satish Karra
+  ! Date: 02/06/26
+
+  use Realization_Subsurface_class
+  use Field_module
+  use Grid_module
+  use Patch_module
+  use Option_module
+
+  implicit none
+
+  class(realization_subsurface_type) :: realization
+
+  type(option_type), pointer :: option
+  type(field_type), pointer :: field
+  type(grid_type), pointer :: grid
+  type(patch_type), pointer :: patch
+  type(stokes_auxvar_type), pointer :: stokes_auxvars(:)
+  type(global_auxvar_type), pointer :: global_auxvars(:)
+  type(material_auxvar_type), pointer :: material_auxvars(:)
+  PetscInt :: ghosted_id
+  PetscReal, pointer :: xx_loc_p(:),xxdot_loc_p(:)
+  PetscErrorCode :: ierr
+
+  option => realization%option
+  field => realization%field
+  patch => realization%patch
+  grid => patch%grid
+  stokes_auxvars => patch%aux%Stokes%auxvars
+  global_auxvars => patch%aux%Global%auxvars
+  material_auxvars => patch%aux%Material%auxvars
+
+  ! 1. Update auxvars based on new values of pressure
+  call StokesUpdateAuxVars(realization)
+
+  ! 2. Update auxvars based on new values
+  call VecGetArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%flow_xxdot_loc,xxdot_loc_p, &
+                          ierr);CHKERRQ(ierr)
+
+  do ghosted_id = 1, grid%ngmax
+    if (grid%nG2L(ghosted_id) < 0) cycle ! bypass ghosted corner cells
+    !Ignore inactive cells with inactive materials
+    if (patch%imat(ghosted_id) <= 0) cycle
+    stokes_auxvars(ghosted_id)%du_dt(1) = xxdot_loc_p((ghosted_id-1)*option%nflowdof+1)
+    stokes_auxvars(ghosted_id)%du_dt(2) = xxdot_loc_p((ghosted_id-1)*option%nflowdof+2)
+    stokes_auxvars(ghosted_id)%du_dt(3) = xxdot_loc_p((ghosted_id-1)*option%nflowdof+3)
+  enddo
+
+  call VecRestoreArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(field%flow_xxdot_loc,xxdot_loc_p, &
+                              ierr);CHKERRQ(ierr)
+
+end subroutine PMStokesTSUpdateAuxVarsPatch
+
+! ************************************************************************** !
+
 subroutine PMStokesTSIFunction(this,ts,time,U,Udot,F,ierr)
   !
   ! TS IFunction for Stokes IMEX split
@@ -60,6 +139,7 @@ subroutine PMStokesTSIFunction(this,ts,time,U,Udot,F,ierr)
   use Realization_Subsurface_class
   use Field_module
   use Discretization_module
+  use Matrix_Zeroing_module
 
   implicit none
 
@@ -85,16 +165,18 @@ subroutine PMStokesTSIFunction(this,ts,time,U,Udot,F,ierr)
   call DiscretizationGlobalToLocal(discretization,Udot,field%flow_xxdot_loc, &
                                    NFLOWDOF)
 
-  call StokesUpdateAuxVars(realization)
+  call PMStokesTSUpdateAuxVarsPatch(realization)
   call StokesUpdateTransportVelocities(realization)
 
   call StokesResidualInternalConn(F,realization,this%rho,this%mu, &
-                                  PETSC_FALSE,ierr)
-  call StokesResidualBoundaryConn(F,realization,this%rho,this%mu,ierr)
+                                  this%add_convection,ierr)
   call StokesResidualSourceSink(F,realization,this%rho,ierr)
   call StokesIFunctionAccumulation(F,realization,this%rho,ierr)
   call StokesResidualPinPressure(F,U,realization,0.d0,ierr)
   call StokesResidualBoundaryFinal(F,U,realization,ierr)
+  if (associated(realization%patch%aux%Stokes)) then
+    call MatrixZeroingZeroVecEntries(realization%patch%aux%Stokes%matrix_zeroing,F)
+  endif
 
 end subroutine PMStokesTSIFunction
 
@@ -153,6 +235,7 @@ subroutine PMStokesTSIJacobian(this,ts,time,U,Udot,shift,A,B,ierr)
   use Realization_Subsurface_class
   use Field_module
   use Discretization_module
+  use Matrix_Zeroing_module, only : MatrixZeroingZeroMatEntries
 
   implicit none
 
@@ -173,19 +256,33 @@ subroutine PMStokesTSIJacobian(this,ts,time,U,Udot,shift,A,B,ierr)
   field => realization%field
   discretization => realization%discretization
 
+  ! Follow Richards/TH TS convention: assemble Jacobian in B
   J = B
 
   call MatZeroEntries(J,ierr);CHKERRQ(ierr)
 
-  call StokesJacobianInternalConn(J,realization,this%mu,this%rho, &
-                                      PETSC_FALSE,ierr)
-  call StokesIJacobianAccumulation(J,shift,realization,this%rho,ierr)
-  call StokesJacobianBoundaryFacesConn(J,realization,this%mu,ierr)
-  call StokesJacobianPinPressure(J,realization,ierr)
-  call StokesJacobianBoundaryConn(J,realization,this%rho,this%mu,ierr)
+  call DiscretizationGlobalToLocal(discretization,U,field%flow_xx_loc,NFLOWDOF)
+  call DiscretizationGlobalToLocal(discretization,Udot,field%flow_xxdot_loc,&
+                                   NFLOWDOF)
+  call PMStokesTSUpdateAuxVarsPatch(realization)
+  call StokesUpdateTransportVelocities(realization)
 
+  call StokesJacobianInternalConn(J,realization,this%mu,this%rho,&
+                                     PETSC_FALSE,ierr)
+  call StokesJacobianSourceSink(J,realization,this%rho,ierr)
+  call StokesIJacobianAccumulation(J,shift,realization,this%rho,ierr)
+
+  ! Match steady STOKES assembly sequence: complete ADD_VALUES exchange
+  ! before any row zeroing operations.
   call MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
   call MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+
+  if (associated(realization%patch%aux%Stokes)) then
+    call MatrixZeroingZeroMatEntries(realization%patch%aux%Stokes%matrix_zeroing,J)
+  endif
+
+  call StokesJacobianPinPressure(J,realization,ierr)
+  call StokesJacobianBoundaryConn(J,realization,this%rho,this%mu,ierr)
 
   if (A /= B) then
     call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
@@ -203,11 +300,16 @@ subroutine PMStokesTSInitializeTimestep(this)
   ! Author: Satish Karra
   ! Date: 02/06/26
   !
+  use Stokes_module, only : StokesInitializeTimestep
   implicit none
 
   class(pm_stokes_ts_type) :: this
 
   call PMSubsurfaceFlowInitializeTimestepA(this)
+  if (associated(this%solver)) then
+    ! TS nonlinear solve can legitimately converge at iter 0.
+    this%solver%newton_min_iterations = 0
+  endif
   call PMSubsurfaceFlowInitializeTimestepB(this)
 
 end subroutine PMStokesTSInitializeTimestep

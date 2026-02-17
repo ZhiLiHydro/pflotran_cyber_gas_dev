@@ -11,6 +11,7 @@ module Stokes_module
   use Material_Aux_module
   use Utility_module, only : Equal
   use Stokes_Aux_module
+  use Matrix_Zeroing_module
 
   implicit none
 
@@ -73,7 +74,7 @@ subroutine StokesSetup(realization,rho,mu)
   type(option_type),        pointer :: option
 
   PetscInt :: gid
-  PetscBool :: dof_is_active(1)
+  PetscBool, allocatable :: dof_is_active(:)
   PetscInt :: iconn, sum_connection
 
   patch  => realization%patch
@@ -115,9 +116,11 @@ subroutine StokesSetup(realization,rho,mu)
   endif
   stokes_aux%num_aux_ss = sum_connection
 
+  allocate(dof_is_active(option%nflowdof))
   dof_is_active = PETSC_TRUE
   call PatchCreateZeroArray(patch,dof_is_active, &
                             patch%aux%Stokes%matrix_zeroing,option)
+  deallocate(dof_is_active)
 
 
 
@@ -190,7 +193,7 @@ subroutine StokesUpdateAuxVars(realization)
     lid = grid%nG2L(gid)
     if (lid < 0) cycle
     if (patch%imat(gid) <= 0) cycle
-    istart = (lid-1)*option%nflowdof + 1
+    istart = (gid-1)*option%nflowdof + 1
     Ucell(1) = xx_loc_p(istart    )
     Ucell(2) = xx_loc_p(istart + 1)
     Ucell(3) = xx_loc_p(istart + 2)
@@ -198,7 +201,6 @@ subroutine StokesUpdateAuxVars(realization)
     call StokesAuxVarCompute(Ucell, &
                              stokes_aux%auxvars(gid), &
                              global_auxvars(gid), &
-                             grid%nG2A(gid), &
                              option)
   enddo
 
@@ -360,6 +362,9 @@ subroutine StokesResidual(snes,xx,r,realization,rho,mu,add_convection,debug,ierr
   call StokesResidualSourceSink(r,realization,rho,ierr)
   call StokesResidualPinPressure(r,xx,realization,0.d0,ierr)
   call StokesResidualBoundaryFinal(r,xx,realization,ierr)
+  if (associated(realization%patch%aux%Stokes)) then
+    call MatrixZeroingZeroVecEntries(realization%patch%aux%Stokes%matrix_zeroing,r)
+  endif
 
 
   if (debug%vecview_residual) then
@@ -395,7 +400,7 @@ subroutine StokesApplyBoundaryConditions(realization)
   type(option_type), pointer :: option
   type(coupler_type), pointer :: boundary_condition
   type(connection_set_type), pointer :: cur_connection_set
-  PetscInt :: local_id, iconn, offset, gid
+  PetscInt :: local_id, iconn, offset, gid, ghosted_id
   PetscReal, pointer :: vec_ptr(:)
   PetscErrorCode :: ierr
 
@@ -404,7 +409,7 @@ subroutine StokesApplyBoundaryConditions(realization)
 
   if (.not.associated(patch%boundary_condition_list%first)) return
 
-  call VecGetArray(realization%field%flow_xx, vec_ptr, ierr);CHKERRQ(ierr)
+  call VecGetArray(realization%field%flow_xx,vec_ptr,ierr);CHKERRQ(ierr)
 
   boundary_condition => patch%boundary_condition_list%first
   do
@@ -412,6 +417,9 @@ subroutine StokesApplyBoundaryConditions(realization)
     cur_connection_set => boundary_condition%connection_set
     do iconn = 1, cur_connection_set%num_connections
       local_id = cur_connection_set%id_dn(iconn)
+      if (local_id <= 0 .or. local_id > patch%grid%nlmax) cycle
+      ghosted_id = patch%grid%nL2G(local_id)
+      if (ghosted_id <= 0 .or. ghosted_id > patch%grid%ngmax) cycle
       offset = (local_id-1)*option%nflowdof
 
       ! Apply velocity BC (all 3 components)
@@ -434,7 +442,7 @@ subroutine StokesApplyBoundaryConditions(realization)
     boundary_condition => boundary_condition%next
   enddo
 
-  call VecRestoreArray(realization%field%flow_xx, vec_ptr, ierr);CHKERRQ(ierr)
+  call VecRestoreArray(realization%field%flow_xx,vec_ptr,ierr);CHKERRQ(ierr)
 
 
   call DiscretizationGlobalToLocal(realization%discretization, &
@@ -619,9 +627,9 @@ subroutine StokesResidualInternalConn(r,realization,rho,mu,add_convection,ierr)
   type(option_type),        pointer :: option
   type(connection_set_list_type), pointer :: conn_list
   type(connection_set_type),      pointer :: cset
+  type(stokes_type),        pointer :: stokes_aux
 
   PetscReal, pointer :: r_p(:)
-  PetscReal, pointer :: u_loc(:)
 
   PetscInt :: iconn, gid_up, gid_dn, lid_up, lid_dn
   PetscInt :: ibeg_up_loc, ibeg_dn_loc
@@ -642,8 +650,10 @@ subroutine StokesResidualInternalConn(r,realization,rho,mu,add_convection,ierr)
 
   gamma_pstab = 0.05  ! add this to input deck; start ~0.05
 
+  if (.not.associated(patch%aux%Stokes)) return
+  stokes_aux => patch%aux%Stokes
+
   call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayRead(realization%field%flow_xx_loc,u_loc,ierr);CHKERRQ(ierr)
 
   conn_list => grid%internal_connection_set_list
   cset      => conn_list%first
@@ -658,7 +668,8 @@ subroutine StokesResidualInternalConn(r,realization,rho,mu,add_convection,ierr)
 
       lid_up = grid%nG2L(gid_up)
       lid_dn = grid%nG2L(gid_dn)
-      if (lid_up <= 0 .and. lid_dn <= 0) cycle
+      if ((lid_up <= 0 .or. lid_up > grid%nlmax) .and. &
+          (lid_dn <= 0 .or. lid_dn > grid%nlmax)) cycle
 
       area = cset%area(iconn)
       dx   = cset%dist(0,iconn)
@@ -669,24 +680,19 @@ subroutine StokesResidualInternalConn(r,realization,rho,mu,add_convection,ierr)
       S(2) = n(2)*area
       S(3) = n(3)*area
 
-      ! Initialize
-      u_up = 0.d0; u_dn = 0.d0
-      p_up = 0.d0; p_dn = 0.d0
+      u_up(1) = stokes_aux%auxvars(gid_up)%u
+      u_up(2) = stokes_aux%auxvars(gid_up)%v
+      u_up(3) = stokes_aux%auxvars(gid_up)%w
+      p_up    = stokes_aux%auxvars(gid_up)%pressure
 
-      if (lid_up > 0) then
-        ibeg_up_loc = (lid_up-1)*option%nflowdof + 1
-        u_up(1) = u_loc(ibeg_up_loc    )
-        u_up(2) = u_loc(ibeg_up_loc + 1)
-        u_up(3) = u_loc(ibeg_up_loc + 2)
-        p_up    = u_loc(ibeg_up_loc + 3)
-      endif
-
-      if (lid_dn > 0) then
-        ibeg_dn_loc = (lid_dn-1)*option%nflowdof + 1
-        u_dn(1) = u_loc(ibeg_dn_loc    )
-        u_dn(2) = u_loc(ibeg_dn_loc + 1)
-        u_dn(3) = u_loc(ibeg_dn_loc + 2)
-        p_dn    = u_loc(ibeg_dn_loc + 3)
+      u_dn(1) = stokes_aux%auxvars(gid_dn)%u
+      u_dn(2) = stokes_aux%auxvars(gid_dn)%v
+      u_dn(3) = stokes_aux%auxvars(gid_dn)%w
+      p_dn    = stokes_aux%auxvars(gid_dn)%pressure
+      if (u_up(1) /= u_up(1) .or. u_up(2) /= u_up(2) .or. u_up(3) /= u_up(3) .or. &
+          p_up /= p_up .or. u_dn(1) /= u_dn(1) .or. u_dn(2) /= u_dn(2) .or. &
+          u_dn(3) /= u_dn(3) .or. p_dn /= p_dn) then
+        print *, "StokesResidualInternalConn: NaN in auxvars", gid_up, gid_dn
       endif
 
       ! Face velocity (central)
@@ -732,7 +738,7 @@ subroutine StokesResidualInternalConn(r,realization,rho,mu,add_convection,ierr)
       pstab_L = -tau*(p_dn - p_up)
 
       ! Assemble into residual vector
-      if (lid_up > 0) then
+      if (lid_up > 0 .and. lid_up <= grid%nlmax) then
         ibeg_up_loc = (lid_up-1)*option%nflowdof + 1
         r_p(ibeg_up_loc    ) = r_p(ibeg_up_loc    ) + Tvisc(1) + Tpress(1) + mconv(1)
         r_p(ibeg_up_loc + 1) = r_p(ibeg_up_loc + 1) + Tvisc(2) + Tpress(2) + mconv(2)
@@ -740,7 +746,7 @@ subroutine StokesResidualInternalConn(r,realization,rho,mu,add_convection,ierr)
         r_p(ibeg_up_loc + 3) = r_p(ibeg_up_loc + 3) + flux_div + pstab_K
       endif
 
-      if (lid_dn > 0) then
+      if (lid_dn > 0 .and. lid_dn <= grid%nlmax) then
         ibeg_dn_loc = (lid_dn-1)*option%nflowdof + 1
         r_p(ibeg_dn_loc    ) = r_p(ibeg_dn_loc    ) - Tvisc(1) - Tpress(1) - mconv(1)
         r_p(ibeg_dn_loc + 1) = r_p(ibeg_dn_loc + 1) - Tvisc(2) - Tpress(2) - mconv(2)
@@ -753,7 +759,6 @@ subroutine StokesResidualInternalConn(r,realization,rho,mu,add_convection,ierr)
     cset => cset%next
   enddo
 
-  call VecRestoreArrayRead(realization%field%flow_xx_loc,u_loc,ierr);CHKERRQ(ierr)
   call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 
 end subroutine StokesResidualInternalConn
@@ -786,9 +791,9 @@ subroutine StokesResidualConvectionInternalConn(r,realization,rho,ierr)
   type(option_type),        pointer :: option
   type(connection_set_list_type), pointer :: conn_list
   type(connection_set_type),      pointer :: cset
+  type(stokes_type),        pointer :: stokes_aux
 
   PetscReal, pointer :: r_p(:)
-  PetscReal, pointer :: u_loc(:)
 
   PetscInt :: iconn, gid_up, gid_dn, lid_up, lid_dn
   PetscInt :: ibeg_up_loc, ibeg_dn_loc
@@ -803,8 +808,10 @@ subroutine StokesResidualConvectionInternalConn(r,realization,rho,ierr)
   grid   => patch%grid
   option => realization%option
 
+  if (.not.associated(patch%aux%Stokes)) return
+  stokes_aux => patch%aux%Stokes
+
   call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayRead(realization%field%flow_xx_loc,u_loc,ierr);CHKERRQ(ierr)
 
   conn_list => grid%internal_connection_set_list
   cset      => conn_list%first
@@ -819,7 +826,8 @@ subroutine StokesResidualConvectionInternalConn(r,realization,rho,ierr)
 
       lid_up = grid%nG2L(gid_up)
       lid_dn = grid%nG2L(gid_dn)
-      if (lid_up <= 0 .and. lid_dn <= 0) cycle
+      if ((lid_up <= 0 .or. lid_up > grid%nlmax) .and. &
+          (lid_dn <= 0 .or. lid_dn > grid%nlmax)) cycle
 
       area = cset%area(iconn)
       n    = 0.d0
@@ -829,21 +837,13 @@ subroutine StokesResidualConvectionInternalConn(r,realization,rho,ierr)
       S(2) = n(2)*area
       S(3) = n(3)*area
 
-      u_up = 0.d0; u_dn = 0.d0
+      u_up(1) = stokes_aux%auxvars(gid_up)%u
+      u_up(2) = stokes_aux%auxvars(gid_up)%v
+      u_up(3) = stokes_aux%auxvars(gid_up)%w
 
-      if (lid_up > 0) then
-        ibeg_up_loc = (lid_up-1)*option%nflowdof + 1
-        u_up(1) = u_loc(ibeg_up_loc    )
-        u_up(2) = u_loc(ibeg_up_loc + 1)
-        u_up(3) = u_loc(ibeg_up_loc + 2)
-      endif
-
-      if (lid_dn > 0) then
-        ibeg_dn_loc = (lid_dn-1)*option%nflowdof + 1
-        u_dn(1) = u_loc(ibeg_dn_loc    )
-        u_dn(2) = u_loc(ibeg_dn_loc + 1)
-        u_dn(3) = u_loc(ibeg_dn_loc + 2)
-      endif
+      u_dn(1) = stokes_aux%auxvars(gid_dn)%u
+      u_dn(2) = stokes_aux%auxvars(gid_dn)%v
+      u_dn(3) = stokes_aux%auxvars(gid_dn)%w
 
       u_face(1) = 0.5d0*(u_up(1) + u_dn(1))
       u_face(2) = 0.5d0*(u_up(2) + u_dn(2))
@@ -861,14 +861,14 @@ subroutine StokesResidualConvectionInternalConn(r,realization,rho,ierr)
       mconv(2) = rho * phi * u_upwind(2)
       mconv(3) = rho * phi * u_upwind(3)
 
-      if (lid_up > 0) then
+      if (lid_up > 0 .and. lid_up <= grid%nlmax) then
         ibeg_up_loc = (lid_up-1)*option%nflowdof + 1
         r_p(ibeg_up_loc    ) = r_p(ibeg_up_loc    ) + mconv(1)
         r_p(ibeg_up_loc + 1) = r_p(ibeg_up_loc + 1) + mconv(2)
         r_p(ibeg_up_loc + 2) = r_p(ibeg_up_loc + 2) + mconv(3)
       endif
 
-      if (lid_dn > 0) then
+      if (lid_dn > 0 .and. lid_dn <= grid%nlmax) then
         ibeg_dn_loc = (lid_dn-1)*option%nflowdof + 1
         r_p(ibeg_dn_loc    ) = r_p(ibeg_dn_loc    ) - mconv(1)
         r_p(ibeg_dn_loc + 1) = r_p(ibeg_dn_loc + 1) - mconv(2)
@@ -880,7 +880,6 @@ subroutine StokesResidualConvectionInternalConn(r,realization,rho,ierr)
     cset => cset%next
   enddo
 
-  call VecRestoreArrayRead(realization%field%flow_xx_loc,u_loc,ierr);CHKERRQ(ierr)
   call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 
 end subroutine StokesResidualConvectionInternalConn
@@ -912,14 +911,16 @@ subroutine StokesResidualAccumulation(r,realization,rho,ierr)
   type(patch_type),  pointer :: patch
   type(option_type), pointer :: option
   type(field_type),  pointer :: field
+  type(stokes_auxvar_type), pointer :: stokes_auxvars(:)
   PetscReal, pointer :: r_p(:), xx_loc_p(:), accum_p(:), accum_p2(:)
-  PetscInt :: lid, gid, ibeg
+  PetscInt :: lid, gid, ibeg_loc
   PetscReal :: vol, vol_over_dt
 
   patch  => realization%patch
   grid   => patch%grid
   option => realization%option
   field  => realization%field
+  stokes_auxvars => patch%aux%Stokes%auxvars
 
   if (option%flow%steady_state) return
 
@@ -936,26 +937,26 @@ subroutine StokesResidualAccumulation(r,realization,rho,ierr)
   do lid = 1, grid%nlmax
     gid = grid%nL2G(lid)
     if (patch%imat(gid) <= 0) cycle
-    ibeg = (lid-1)*option%nflowdof + 1
+    ibeg_loc   = (lid-1)*option%nflowdof + 1
     vol  = patch%aux%Material%auxvars(gid)%volume
     vol_over_dt = vol / option%flow_dt
 
     ! Subtract old: r -= rho*vol*u^n (velocity only)
-    r_p(ibeg    ) = r_p(ibeg    ) - accum_p(ibeg    )
-    r_p(ibeg + 1) = r_p(ibeg + 1) - accum_p(ibeg + 1)
-    r_p(ibeg + 2) = r_p(ibeg + 2) - accum_p(ibeg + 2)
+    r_p(ibeg_loc    ) = r_p(ibeg_loc    ) - accum_p(ibeg_loc    )
+    r_p(ibeg_loc + 1) = r_p(ibeg_loc + 1) - accum_p(ibeg_loc + 1)
+    r_p(ibeg_loc + 2) = r_p(ibeg_loc + 2) - accum_p(ibeg_loc + 2)
     ! DO NOT touch pressure residual (ibeg + 3)
 
     ! Add new: r += rho*vol*u^{n+1} (velocity only)
-    r_p(ibeg    ) = r_p(ibeg    ) + rho * xx_loc_p(ibeg    ) * vol_over_dt
-    r_p(ibeg + 1) = r_p(ibeg + 1) + rho * xx_loc_p(ibeg + 1) * vol_over_dt
-    r_p(ibeg + 2) = r_p(ibeg + 2) + rho * xx_loc_p(ibeg + 2) * vol_over_dt
+    r_p(ibeg_loc    ) = r_p(ibeg_loc    ) + rho * stokes_auxvars(gid)%u * vol_over_dt
+    r_p(ibeg_loc + 1) = r_p(ibeg_loc + 1) + rho * stokes_auxvars(gid)%v * vol_over_dt
+    r_p(ibeg_loc + 2) = r_p(ibeg_loc + 2) + rho * stokes_auxvars(gid)%w * vol_over_dt
     ! DO NOT touch pressure residual (ibeg + 3)
 
-    accum_p2(ibeg    ) = rho * xx_loc_p(ibeg    ) * vol_over_dt
-    accum_p2(ibeg + 1) = rho * xx_loc_p(ibeg + 1) * vol_over_dt
-    accum_p2(ibeg + 2) = rho * xx_loc_p(ibeg + 2) * vol_over_dt
-    accum_p2(ibeg + 3) = 0.d0
+    accum_p2(ibeg_loc    ) = rho * stokes_auxvars(gid)%u * vol_over_dt
+    accum_p2(ibeg_loc + 1) = rho * stokes_auxvars(gid)%v * vol_over_dt
+    accum_p2(ibeg_loc + 2) = rho * stokes_auxvars(gid)%w * vol_over_dt
+    accum_p2(ibeg_loc + 3) = 0.d0
   enddo
 
   call VecRestoreArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
@@ -991,30 +992,33 @@ subroutine StokesIFunctionAccumulation(r,realization,rho,ierr)
   type(patch_type),  pointer :: patch
   type(option_type), pointer :: option
   type(field_type),  pointer :: field
+  type(stokes_auxvar_type), pointer :: stokes_auxvars(:)
+
   PetscReal, pointer :: r_p(:), xxdot_p(:)
-  PetscInt :: lid, gid, ibeg
+  PetscInt :: lid, gid, istart, iend
   PetscReal :: vol
+
 
   patch  => realization%patch
   grid   => patch%grid
   option => realization%option
   field  => realization%field
+  stokes_auxvars => patch%aux%Stokes%auxvars
 
   call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayRead(field%flow_xxdot_loc,xxdot_p,ierr);CHKERRQ(ierr)
 
   do lid = 1, grid%nlmax
     gid = grid%nL2G(lid)
     if (patch%imat(gid) <= 0) cycle
-    ibeg = (lid-1)*option%nflowdof + 1
+    iend = lid*option%nflowdof
+    istart = iend-option%nflowdof+1
     vol  = patch%aux%Material%auxvars(gid)%volume
 
-    r_p(ibeg    ) = r_p(ibeg    ) + rho * xxdot_p(ibeg    ) * vol
-    r_p(ibeg + 1) = r_p(ibeg + 1) + rho * xxdot_p(ibeg + 1) * vol
-    r_p(ibeg + 2) = r_p(ibeg + 2) + rho * xxdot_p(ibeg + 2) * vol
+    r_p(istart    ) = r_p(istart    ) + rho * stokes_auxvars(gid)%du_dt(1) * vol
+    r_p(istart + 1) = r_p(istart + 1) + rho * stokes_auxvars(gid)%du_dt(2) * vol
+    r_p(istart + 2) = r_p(istart + 2) + rho * stokes_auxvars(gid)%du_dt(3) * vol
   enddo
 
-  call VecRestoreArrayRead(field%flow_xxdot_loc,xxdot_p,ierr);CHKERRQ(ierr)
   call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 
 end subroutine StokesIFunctionAccumulation
@@ -1095,6 +1099,9 @@ subroutine StokesJacobian(snes,xx,A,B,realization,rho,mu,add_convection,debug,ie
   ! Assembly happens once at the end
   call MatAssemblyBegin(J,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
   call MatAssemblyEnd(J,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+  if (associated(realization%patch%aux%Stokes)) then
+    call MatrixZeroingZeroMatEntries(realization%patch%aux%Stokes%matrix_zeroing,J)
+  endif
 
   call StokesJacobianPinPressure(J,realization,ierr)
 
@@ -1136,6 +1143,7 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
   use Option_module
   use Connection_module
   use Petsc_Utility_module
+  use Matrix_Zeroing_module
   implicit none
 
   Mat, intent(inout) :: A
@@ -1149,11 +1157,10 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
   type(option_type),        pointer :: option
   type(connection_set_list_type), pointer :: conn_list
   type(connection_set_type),      pointer :: cset
-
-  PetscReal, pointer :: u_loc(:)
+  type(stokes_type),        pointer :: stokes_aux
 
   PetscInt :: iconn, gid_up, gid_dn, lid_up, lid_dn
-  PetscInt :: istart_up, istart_dn
+  PetscInt :: rowstart_up, rowstart_dn, colstart_up, colstart_dn
   PetscReal :: dx, area
   PetscReal :: n(3), S(3)
 
@@ -1165,6 +1172,7 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
   PetscReal :: dm_dUK(3,3), dm_dUL(3,3)
   PetscReal :: I3(3,3)
   PetscInt :: i,j
+  PetscInt :: gid, lid
 
   patch  => realization%patch
   grid   => patch%grid
@@ -1177,7 +1185,8 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
     I3(i,i)=1.d0
   enddo
 
-  call VecGetArrayRead(realization%field%flow_xx_loc,u_loc,ierr);CHKERRQ(ierr)
+  if (.not.associated(patch%aux%Stokes)) return
+  stokes_aux => patch%aux%Stokes
 
   conn_list => grid%internal_connection_set_list
   cset      => conn_list%first
@@ -1192,7 +1201,6 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
 
       lid_up = grid%nG2L(gid_up)
       lid_dn = grid%nG2L(gid_dn)
-      if (lid_up <= 0 .and. lid_dn <= 0) cycle
 
       area = cset%area(iconn)
       dx   = cset%dist(0,iconn)
@@ -1207,17 +1215,16 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
       tau  = gamma_pstab * area / dx
 
       ! Fetch uK/uL (for convection Jacobian)
-      uK = 0.d0
-      uL = 0.d0
-      if (lid_up > 0) then
-        uK(1) = u_loc((lid_up-1)*option%nflowdof + 1)
-        uK(2) = u_loc((lid_up-1)*option%nflowdof + 2)
-        uK(3) = u_loc((lid_up-1)*option%nflowdof + 3)
-      endif
-      if (lid_dn > 0) then
-        uL(1) = u_loc((lid_dn-1)*option%nflowdof + 1)
-        uL(2) = u_loc((lid_dn-1)*option%nflowdof + 2)
-        uL(3) = u_loc((lid_dn-1)*option%nflowdof + 3)
+      uK(1) = stokes_aux%auxvars(gid_up)%u
+      uK(2) = stokes_aux%auxvars(gid_up)%v
+      uK(3) = stokes_aux%auxvars(gid_up)%w
+
+      uL(1) = stokes_aux%auxvars(gid_dn)%u
+      uL(2) = stokes_aux%auxvars(gid_dn)%v
+      uL(3) = stokes_aux%auxvars(gid_dn)%w
+      if (uK(1) /= uK(1) .or. uK(2) /= uK(2) .or. uK(3) /= uK(3) .or. &
+          uL(1) /= uL(1) .or. uL(2) /= uL(2) .or. uL(3) /= uL(3)) then
+        print *, "StokesJacobianInternalConn: NaN in auxvars", gid_up, gid_dn
       endif
 
       u_face(1)=0.5d0*(uK(1)+uL(1))
@@ -1332,24 +1339,27 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
       ! Insert blocks into PETSc matrix (local indexing)
       ! ---------------------------------------------------
       if (lid_up > 0) then
-        istart_up = (lid_up-1)*option%nflowdof
-        istart_dn = (lid_dn-1)*option%nflowdof
+        rowstart_up = (gid_up-1)*option%nflowdof
+        colstart_up = (gid_up-1)*option%nflowdof
+        colstart_dn = (gid_dn-1)*option%nflowdof
 
         do i=1,4
           do j=1,4
-            call PUMSetValuesLocal(A,1,istart_up+i-1,1,istart_up+j-1, J_KK(i,j),ADD_VALUES,ierr);CHKERRQ(ierr)
-            call PUMSetValuesLocal(A,1,istart_up+i-1,1,istart_dn+j-1, J_KL(i,j),ADD_VALUES,ierr);CHKERRQ(ierr)
+            call PUMSetValuesLocal(A,1,rowstart_up+i-1,1,colstart_up+j-1,J_KK(i,j),ADD_VALUES,ierr);CHKERRQ(ierr)
+            call PUMSetValuesLocal(A,1,rowstart_up+i-1,1,colstart_dn+j-1,J_KL(i,j),ADD_VALUES,ierr);CHKERRQ(ierr)
           enddo
         enddo
       endif
 
       if (lid_dn > 0) then
-        istart_up = (lid_up-1)*option%nflowdof
-        istart_dn = (lid_dn-1)*option%nflowdof
+        rowstart_dn = (gid_dn-1)*option%nflowdof
+        colstart_up = (gid_up-1)*option%nflowdof
+        colstart_dn = (gid_dn-1)*option%nflowdof
+
         do i=1,4
           do j=1,4
-            call PUMSetValuesLocal(A,1,istart_dn+i-1,1,istart_up+j-1, J_LK(i,j),ADD_VALUES,ierr);CHKERRQ(ierr)
-            call PUMSetValuesLocal(A,1,istart_dn+i-1,1,istart_dn+j-1, J_LL(i,j),ADD_VALUES,ierr);CHKERRQ(ierr)
+            call PUMSetValuesLocal(A,1,rowstart_dn+i-1,1,colstart_up+j-1,J_LK(i,j),ADD_VALUES,ierr);CHKERRQ(ierr)
+            call PUMSetValuesLocal(A,1,rowstart_dn+i-1,1,colstart_dn+j-1,J_LL(i,j),ADD_VALUES,ierr);CHKERRQ(ierr)
           enddo
         enddo
       endif
@@ -1358,8 +1368,6 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
 
     cset => cset%next
   enddo
-
-  call VecRestoreArrayRead(realization%field%flow_xx_loc,u_loc,ierr);CHKERRQ(ierr)
 
 end subroutine StokesJacobianInternalConn
 
@@ -1392,13 +1400,13 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,ierr)
   type(option_type), pointer :: option
   type(coupler_type),pointer :: bc
   type(connection_set_type), pointer :: cset
-  PetscInt :: iconn, local_id, gid, iblock, lid, ndof
+  PetscInt :: iconn, local_id, ghosted_id, gid, iblock, lid, ndof
   PetscReal :: Jbc(4,4)
   ! Track which rows have been constrained for this cell
   PetscBool, allocatable :: bc_applied(:,:)
   PetscInt, allocatable :: bc_rows(:)
   PetscInt :: bc_row_count
-  PetscInt :: max_local_id, irow
+  PetscInt :: max_local_id
 
   patch  => realization%patch
   grid   => patch%grid
@@ -1430,9 +1438,10 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,ierr)
 
     do iconn = 1, cset%num_connections
       local_id = cset%id_dn(iconn)
-      gid      = grid%nL2G(local_id)
-
-      if (patch%imat(gid) <= 0) cycle
+      if (local_id <= 0 .or. local_id > grid%nlmax) cycle
+      ghosted_id = grid%nL2G(local_id)
+      if (ghosted_id <= 0 .or. ghosted_id > grid%ngmax) cycle
+      if (patch%imat(ghosted_id) <= 0) cycle
 
       ! Mark which components have BCs
       if (associated(bc%flow_condition%stokes%velocity)) then
@@ -1512,7 +1521,7 @@ subroutine StokesJacobianAccumulation(A,realization,rho,ierr)
   type(patch_type),  pointer :: patch
   type(grid_type),   pointer :: grid
   type(option_type), pointer :: option
-  PetscInt :: lid, gid, istart
+  PetscInt :: lid, gid, rowstart
   PetscReal :: Jacc(4,4), vol, vol_over_dt
   PetscInt :: i,j
 
@@ -1525,7 +1534,7 @@ subroutine StokesJacobianAccumulation(A,realization,rho,ierr)
   do lid = 1, grid%nlmax
     gid = grid%nL2G(lid)
     if (patch%imat(gid) <= 0) cycle
-    istart = (lid - 1) * option%nflowdof + 1  !  index for BAIJ matrixBlock
+    rowstart = (gid - 1) * option%nflowdof
     vol    = patch%aux%Material%auxvars(gid)%volume
     vol_over_dt = vol / option%flow_dt
 
@@ -1538,7 +1547,7 @@ subroutine StokesJacobianAccumulation(A,realization,rho,ierr)
       do j = 1,4
         if (i /= j) cycle
         if (i == 4) cycle  ! No accumulation for pressure
-          call PUMSetValuesLocal(A,1,istart+i-1,1,istart+j-1,Jacc(i,j),ADD_VALUES,ierr);CHKERRQ(ierr)
+          call PUMSetValuesLocal(A,1,rowstart+i-1,1,rowstart+j-1,Jacc(i,j),ADD_VALUES,ierr);CHKERRQ(ierr)
       enddo
     enddo
 
@@ -1572,8 +1581,8 @@ subroutine StokesIJacobianAccumulation(A,shift,realization,rho,ierr)
   type(patch_type),  pointer :: patch
   type(grid_type),   pointer :: grid
   type(option_type), pointer :: option
-  PetscInt :: lid, gid, istart
-  PetscReal :: vol, val
+  PetscInt :: lid, gid, rowstart, i, j
+  PetscReal :: vol, val, val_p
 
   patch  => realization%patch
   grid   => patch%grid
@@ -1582,13 +1591,17 @@ subroutine StokesIJacobianAccumulation(A,shift,realization,rho,ierr)
   do lid = 1, grid%nlmax
     gid = grid%nL2G(lid)
     if (patch%imat(gid) <= 0) cycle
-    istart = (lid - 1) * option%nflowdof
+    rowstart = (gid - 1) * option%nflowdof
     vol    = patch%aux%Material%auxvars(gid)%volume
     val    = shift * rho * vol
 
-    call PUMSetValuesLocal(A,1,istart+0,1,istart+0,val,ADD_VALUES,ierr);CHKERRQ(ierr)
-    call PUMSetValuesLocal(A,1,istart+1,1,istart+1,val,ADD_VALUES,ierr);CHKERRQ(ierr)
-    call PUMSetValuesLocal(A,1,istart+2,1,istart+2,val,ADD_VALUES,ierr);CHKERRQ(ierr)
+    do i = 1,4
+      do j = 1,4
+        if (i /= j) cycle
+        if (i == 4) cycle  ! No accumulation for pressure
+          call PUMSetValuesLocal(A,1,rowstart+i-1,1,rowstart+j-1,val,ADD_VALUES,ierr);CHKERRQ(ierr)
+      enddo
+    enddo
   enddo
 
 end subroutine StokesIJacobianAccumulation
@@ -1708,7 +1721,7 @@ subroutine StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
   PetscReal, pointer :: r_p(:)
   PetscReal, pointer :: u_loc(:)
 
-  PetscInt :: iconn, local_id, gid, istart, ndof
+  PetscInt :: iconn, local_id, ghosted_id, gid, istart, istart_ghost, ndof
   PetscReal :: Ucell(4), Res(4)
 
   patch => realization%patch
@@ -1722,26 +1735,36 @@ subroutine StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
   boundary_condition => patch%boundary_condition_list%first
   do
     if (.not.associated(boundary_condition)) exit
+    if (.not.associated(boundary_condition%flow_condition)) then
+      boundary_condition => boundary_condition%next
+      cycle
+    endif
     cset => boundary_condition%connection_set
+    if (.not.associated(cset)) then
+      boundary_condition => boundary_condition%next
+      cycle
+    endif
+    if (.not.associated(boundary_condition%flow_condition%stokes%velocity) .and. &
+        .not.associated(boundary_condition%flow_condition%stokes%pressure)) then
+      boundary_condition => boundary_condition%next
+      cycle
+    endif
 
     do iconn = 1, cset%num_connections
 
       local_id = cset%id_dn(iconn)
-      gid = grid%nL2G(local_id)
-
-      if (patch%imat(gid) <= 0) cycle
-
-      if (gid <= 0) then
-        print *, "Wrong boundary node index... STOP!!!"
-        stop
-      endif
+      if (local_id <= 0 .or. local_id > grid%nlmax) cycle
+      ghosted_id = grid%nL2G(local_id)
+      if (ghosted_id <= 0 .or. ghosted_id > grid%ngmax) cycle
+      if (patch%imat(ghosted_id) <= 0) cycle
 
       istart = (local_id-1)*ndof + 1
+      istart_ghost = (ghosted_id-1)*ndof + 1
 
-      Ucell(1) = u_loc(istart    )
-      Ucell(2) = u_loc(istart + 1)
-      Ucell(3) = u_loc(istart + 2)
-      Ucell(4) = u_loc(istart + 3)
+      Ucell(1) = u_loc(istart_ghost    )
+      Ucell(2) = u_loc(istart_ghost + 1)
+      Ucell(3) = u_loc(istart_ghost + 2)
+      Ucell(4) = u_loc(istart_ghost + 3)
 
       call StokesBCFluxConn(boundary_condition,iconn, &
                             cset%area(iconn),cset%dist(:,iconn), &
@@ -1891,9 +1914,9 @@ subroutine StokesResidualBoundaryFinal(r,xx,realization,ierr)
   type(option_type), pointer :: option
   type(coupler_type), pointer :: boundary_condition
   type(connection_set_type), pointer :: cur_connection_set
-  PetscInt :: local_id, iconn, offset
+  PetscInt :: local_id, iconn, offset, ghosted_id
   PetscReal, pointer :: r_ptr(:), xx_ptr(:)
-  PetscInt :: nflowdof
+  PetscInt :: nflowdof, istart, iend
 
   patch => realization%patch
   option => realization%option
@@ -1901,8 +1924,8 @@ subroutine StokesResidualBoundaryFinal(r,xx,realization,ierr)
 
   if (.not.associated(patch%boundary_condition_list%first)) return
 
-  call VecGetArray(r, r_ptr, ierr);CHKERRQ(ierr)
-  call VecGetArrayRead(xx, xx_ptr, ierr);CHKERRQ(ierr)
+  call VecGetArray(r,r_ptr,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(xx,xx_ptr,ierr);CHKERRQ(ierr)
 
   boundary_condition => patch%boundary_condition_list%first
   do
@@ -1910,21 +1933,26 @@ subroutine StokesResidualBoundaryFinal(r,xx,realization,ierr)
     cur_connection_set => boundary_condition%connection_set
     do iconn = 1, cur_connection_set%num_connections
       local_id = cur_connection_set%id_dn(iconn)
-      offset = (local_id-1)*nflowdof
+      if (local_id <= 0 .or. local_id > patch%grid%nlmax) cycle
+      ghosted_id = patch%grid%nL2G(local_id)
+      if (ghosted_id <= 0 .or. ghosted_id > patch%grid%ngmax) cycle
+      if (patch%imat(ghosted_id) <= 0) cycle
+      iend = local_id*nflowdof
+      istart = iend-nflowdof+1
 
       ! Set velocity BC residual to (u - u_prescribed)
       if (associated(boundary_condition%flow_condition%stokes%velocity)) then
         if (boundary_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
-          r_ptr(offset+1) = xx_ptr(offset+1) - boundary_condition%flow_aux_real_var(1,iconn)
-          r_ptr(offset+2) = xx_ptr(offset+2) - boundary_condition%flow_aux_real_var(2,iconn)
-          r_ptr(offset+3) = xx_ptr(offset+3) - boundary_condition%flow_aux_real_var(3,iconn)
+          r_ptr(istart) = xx_ptr(istart) - boundary_condition%flow_aux_real_var(1,iconn)
+          r_ptr(istart+1) = xx_ptr(istart+1) - boundary_condition%flow_aux_real_var(2,iconn)
+          r_ptr(istart+2) = xx_ptr(istart+2) - boundary_condition%flow_aux_real_var(3,iconn)
         endif
       endif
 
       ! Set pressure BC residual to (p - p_prescribed)
       if (associated(boundary_condition%flow_condition%stokes%pressure)) then
         if (boundary_condition%flow_condition%stokes%pressure%itype == DIRICHLET_BC) then
-          r_ptr(offset+4) = xx_ptr(offset+4) - boundary_condition%flow_aux_real_var(4,iconn)
+          r_ptr(istart+3) = xx_ptr(istart+3) - boundary_condition%flow_aux_real_var(4,iconn)
         endif
       endif
 
@@ -1932,8 +1960,8 @@ subroutine StokesResidualBoundaryFinal(r,xx,realization,ierr)
     boundary_condition => boundary_condition%next
   enddo
 
-  call VecRestoreArrayRead(xx, xx_ptr, ierr);CHKERRQ(ierr)
-  call VecRestoreArray(r, r_ptr, ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(xx,xx_ptr,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(r,r_ptr,ierr);CHKERRQ(ierr)
 
 end subroutine StokesResidualBoundaryFinal
 
@@ -1965,7 +1993,7 @@ subroutine StokesJacobianBoundaryFacesConn(A,realization,mu,ierr)
   type(coupler_type), pointer :: boundary_condition
   type(connection_set_type), pointer :: cset
 
-  PetscInt :: iconn, local_id, gid, istart, ndof
+  PetscInt :: iconn, local_id, ghosted_id, gid, rowstart, ndof
   PetscReal :: area, dist(-1:3), d_b, a_b
   PetscBool :: has_u_dir, has_p_trac
   PetscReal :: S(3)
@@ -1983,21 +2011,25 @@ subroutine StokesJacobianBoundaryFacesConn(A,realization,mu,ierr)
       boundary_condition => boundary_condition%next
       cycle
     endif
+    if (.not.associated(boundary_condition%flow_condition)) then
+      boundary_condition => boundary_condition%next
+      cycle
+    endif
+    if (.not.associated(boundary_condition%flow_condition%stokes%velocity) .and. &
+        .not.associated(boundary_condition%flow_condition%stokes%pressure)) then
+      boundary_condition => boundary_condition%next
+      cycle
+    endif
 
     do iconn = 1, cset%num_connections
 
       local_id = cset%id_dn(iconn)
-      gid = grid%nL2G(local_id)
+      if (local_id <= 0 .or. local_id > grid%nlmax) cycle
+      ghosted_id = grid%nL2G(local_id)
+      if (ghosted_id <= 0 .or. ghosted_id > grid%ngmax) cycle
+      if (patch%imat(ghosted_id) <= 0) cycle
 
-
-      if (patch%imat(gid) <= 0) cycle
-
-      if (gid <= 0) then
-        print *, "Wrong boundary node index... STOP!!!"
-        stop
-      endif
-
-      istart = (local_id-1)*ndof   ! 0-based for PUMSetValuesLocal
+      rowstart = (ghosted_id-1)*ndof
 
       area = cset%area(iconn)
       dist = cset%dist(:,iconn)
@@ -2028,23 +2060,23 @@ subroutine StokesJacobianBoundaryFacesConn(A,realization,mu,ierr)
       ! If velocity Dirichlet: momentum has +a_b(uK-u_b) => diag += a_b
       if (has_u_dir) then
         a_b = mu * area / d_b
-        call PUMSetValuesLocal(A,1,istart+0,1,istart+0,a_b,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call PUMSetValuesLocal(A,1,istart+1,1,istart+1,a_b,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call PUMSetValuesLocal(A,1,istart+2,1,istart+2,a_b,ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesLocal(A,1,rowstart+0,1,rowstart+0,a_b,ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesLocal(A,1,rowstart+1,1,rowstart+1,a_b,ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesLocal(A,1,rowstart+2,1,rowstart+2,a_b,ADD_VALUES,ierr);CHKERRQ(ierr)
         ! continuity uses prescribed flux u_b·S -> no Jacobian
       else
         ! do-nothing continuity flux: phi = -uK·S -> J(p,u) -= S^T
 
-        call PUMSetValuesLocal(A,1,istart+3,1,istart+0,-S(1),ADD_VALUES,ierr);CHKERRQ(ierr)
-        call PUMSetValuesLocal(A,1,istart+3,1,istart+1,-S(2),ADD_VALUES,ierr);CHKERRQ(ierr)
-        call PUMSetValuesLocal(A,1,istart+3,1,istart+2,-S(3),ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesLocal(A,1,rowstart+3,1,rowstart+0,-S(1),ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesLocal(A,1,rowstart+3,1,rowstart+1,-S(2),ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesLocal(A,1,rowstart+3,1,rowstart+2,-S(3),ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
 
       if (has_p_trac) then
         ! If pressure traction: momentum has -(pK - p_b)*S/d_b => diag -= S/d_b
-        call PUMSetValuesLocal(A,1,istart+0,1,istart+3,-S(1)/d_b,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call PUMSetValuesLocal(A,1,istart+1,1,istart+3,-S(2)/d_b,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call PUMSetValuesLocal(A,1,istart+2,1,istart+3,-S(3)/d_b,ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesLocal(A,1,rowstart+0,1,rowstart+3,-S(1)/d_b,ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesLocal(A,1,rowstart+1,1,rowstart+3,-S(2)/d_b,ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesLocal(A,1,rowstart+2,1,rowstart+3,-S(3)/d_b,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
 
     enddo
@@ -2089,8 +2121,8 @@ subroutine StokesResidualPinPressure(r,xx,realization,p_ref,ierr)
   option => realization%option
   ndof = option%nflowdof
 
-  call VecGetArray(r, r_p, ierr);CHKERRQ(ierr)
-  call VecGetArrayRead(xx, xx_p, ierr);CHKERRQ(ierr)
+  call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(xx,xx_p,ierr);CHKERRQ(ierr)
 
   pin_gid_local = HUGE(1)
   do lid = 1, grid%nlmax
@@ -2116,8 +2148,8 @@ subroutine StokesResidualPinPressure(r,xx,realization,p_ref,ierr)
     r_p(row) = xx_p(row) - p_ref
   endif
 
-  call VecRestoreArrayRead(xx, xx_p, ierr);CHKERRQ(ierr)
-  call VecRestoreArray(r, r_p, ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(xx,xx_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 
 end subroutine StokesResidualPinPressure
 

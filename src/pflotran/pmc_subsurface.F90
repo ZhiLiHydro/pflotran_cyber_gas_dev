@@ -602,7 +602,11 @@ subroutine PMCSubsurfaceSetupSolvers_TS(this)
 
         call SolverCheckCommandLine(solver)
 
-        solver%Mpre_mat_type = MATBAIJ
+        if (option%iflowmode == STOKES_TS_MODE) then
+          solver%Mpre_mat_type = MATAIJ
+        else
+          solver%Mpre_mat_type = MATBAIJ
+        endif
 
         call DiscretizationCreateMatrix(pm%realization%discretization, &
                                         NFLOWDOF, &
@@ -615,8 +619,10 @@ subroutine PMCSubsurfaceSetupSolvers_TS(this)
 
         if (option%iflowmode == STOKES_TS_MODE .or. &
             option%iflowmode == STOKES_MODE) then
-          call MatConvert(solver%Mpre,MATAIJ,MAT_INPLACE_MATRIX,solver%Mpre, &
-                          ierr);CHKERRQ(ierr)
+          if (solver%Mpre_mat_type /= MATAIJ) then
+            call MatConvert(solver%Mpre,MATAIJ,MAT_INPLACE_MATRIX,solver%Mpre, &
+                            ierr);CHKERRQ(ierr)
+          endif
           call MatSetOption(solver%Mpre,MAT_NEW_NONZERO_ALLOCATION_ERR, &
                             PETSC_FALSE,ierr);CHKERRQ(ierr)
         endif
