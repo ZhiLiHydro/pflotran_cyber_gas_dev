@@ -522,7 +522,7 @@ subroutine WriteVTKDataSet(fid,realization_base,dataset_name,array,datatype, &
     if (datatype == VTK_INTEGER) then
       write(fid,'(''SCALARS '',a20,'' int 1'')') dataset_name
     else
-      write(fid,'(''SCALARS '',a20,'' float 1'')') dataset_name
+      write(fid,'(''SCALARS '',a20,'' double 1'')') dataset_name
     endif
 
     write(fid,'(''LOOKUP_TABLE default'')')

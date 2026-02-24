@@ -493,7 +493,7 @@ subroutine PMStokesCheckUpdatePost(this,snes,X0,dX,X1,dX_changed,X1_changed,ierr
   type(option_type), pointer :: option
   type(field_type), pointer :: field
   type(patch_type), pointer :: patch
-  PetscInt :: local_id, ghosted_id, natural_id, ival
+  PetscInt :: local_id, ghosted_id, natural_id, ival, idof
   PetscReal :: dX_, X0_, dX_X0
   PetscBool :: converged_abs_update_flag
   PetscBool :: converged_rel_update_flag
@@ -524,37 +524,39 @@ subroutine PMStokesCheckUpdatePost(this,snes,X0,dX,X1,dX_changed,X1_changed,ierr
     ghosted_id = grid%nL2G(local_id)
     natural_id = grid%nG2A(ghosted_id)
     if (patch%imat(ghosted_id) <= 0) cycle
-    ival = local_id
-    ! infinity norms on update
-    converged_absolute = PETSC_TRUE
-    converged_relative = PETSC_TRUE
-    dX_ = dabs(dX_p(ival))
-    X0_ = dabs(X0_p(ival))
-    X0_ = max(X0_,1.d-40)
-    dX_X0 = dX_/X0_
-    if (dX_ > this%abs_update_inf_tol) then
-      converged_absolute = PETSC_FALSE
-    endif
-    if (converged_abs_update_real < dX_) then
-      converged_abs_update_real = dX_
-      converged_abs_update_cell = natural_id
-    endif
-    if (dX_X0 > this%rel_update_inf_tol) then
-      converged_relative = PETSC_FALSE
-    endif
-    if (converged_rel_update_real < dX_X0) then
-      converged_rel_update_real = dX_X0
-      converged_rel_update_cell = natural_id
-    endif
-    ! only enter this condition if both are not converged
-    if (.not.(converged_absolute .or. converged_relative)) then
-      if (.not.converged_absolute) then
-        converged_abs_update_flag = PETSC_FALSE
+    do idof = 1, option%nflowdof
+      ival = (local_id-1)*option%nflowdof + idof
+      ! infinity norms on update
+      converged_absolute = PETSC_TRUE
+      converged_relative = PETSC_TRUE
+      dX_ = dabs(dX_p(ival))
+      X0_ = dabs(X0_p(ival))
+      X0_ = max(X0_,1.d-40)
+      dX_X0 = dX_/X0_
+      if (dX_ > this%abs_update_inf_tol) then
+        converged_absolute = PETSC_FALSE
       endif
-      if (.not.converged_relative) then
-        converged_rel_update_flag = PETSC_FALSE
+      if (converged_abs_update_real < dX_) then
+        converged_abs_update_real = dX_
+        converged_abs_update_cell = natural_id
       endif
-    endif
+      if (dX_X0 > this%rel_update_inf_tol) then
+        converged_relative = PETSC_FALSE
+      endif
+      if (converged_rel_update_real < dX_X0) then
+        converged_rel_update_real = dX_X0
+        converged_rel_update_cell = natural_id
+      endif
+      ! only enter this condition if both are not converged
+      if (.not.(converged_absolute .or. converged_relative)) then
+        if (.not.converged_absolute) then
+          converged_abs_update_flag = PETSC_FALSE
+        endif
+        if (.not.converged_relative) then
+          converged_rel_update_flag = PETSC_FALSE
+        endif
+      endif
+    enddo
   enddo
   call VecRestoreArrayRead(dX,dX_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayRead(X0,X0_p,ierr);CHKERRQ(ierr)
@@ -601,7 +603,7 @@ subroutine PMStokesCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
   type(patch_type), pointer :: patch
   PetscReal, pointer :: r_p(:)
   PetscReal, pointer :: accum2_p(:)
-  PetscInt :: local_id, ghosted_id, natural_id
+  PetscInt :: local_id, ghosted_id, natural_id, idof, ival
   PetscInt :: itol
   PetscReal :: R, A, R_A
   PetscReal, parameter :: A_zero = 1.d-15
@@ -636,39 +638,42 @@ subroutine PMStokesCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
       ghosted_id = grid%nL2G(local_id)
       natural_id = grid%nG2A(ghosted_id)
       if (patch%imat(ghosted_id) <= 0) cycle
-      converged_absolute = PETSC_TRUE
-      converged_scaled = PETSC_TRUE
-      ! infinity norms on residual
-      R = dabs(r_p(local_id))
-      A = dabs(accum2_p(local_id))
-      R_A = R/A
-      if (R > this%residual_abs_inf_tol) then
-        converged_absolute = PETSC_FALSE
-      endif
-      ! find max value regardless of convergence
-      if (converged_abs_residual_real < R) then
-        converged_abs_residual_real = R
-        converged_abs_residual_cell = natural_id
-      endif
-      if (A > A_zero) then
-        if (R_A > this%residual_scaled_inf_tol) then
-          converged_scaled = PETSC_FALSE
+      do idof = 1, option%nflowdof
+        ival = (local_id-1)*option%nflowdof + idof
+        converged_absolute = PETSC_TRUE
+        converged_scaled = PETSC_TRUE
+        ! infinity norms on residual
+        R = dabs(r_p(ival))
+        A = dabs(accum2_p(ival))
+        R_A = R/A
+        if (R > this%residual_abs_inf_tol) then
+          converged_absolute = PETSC_FALSE
         endif
         ! find max value regardless of convergence
-        if (converged_scaled_residual_real < R_A) then
-          converged_scaled_residual_real = R_A
-          converged_scaled_residual_cell = natural_id
+        if (converged_abs_residual_real < R) then
+          converged_abs_residual_real = R
+          converged_abs_residual_cell = natural_id
         endif
-      endif
-      ! only enter this condition if both are not converged
-      if (.not.(converged_absolute .or. converged_scaled)) then
-        if (.not.converged_absolute) then
-          converged_abs_residual_flag = PETSC_FALSE
+        if (A > A_zero) then
+          if (R_A > this%residual_scaled_inf_tol) then
+            converged_scaled = PETSC_FALSE
+          endif
+          ! find max value regardless of convergence
+          if (converged_scaled_residual_real < R_A) then
+            converged_scaled_residual_real = R_A
+            converged_scaled_residual_cell = natural_id
+          endif
         endif
-        if (.not.converged_scaled) then
-          converged_scaled_residual_flag = PETSC_FALSE
+        ! only enter this condition if both are not converged
+        if (.not.(converged_absolute .or. converged_scaled)) then
+          if (.not.converged_absolute) then
+            converged_abs_residual_flag = PETSC_FALSE
+          endif
+          if (.not.converged_scaled) then
+            converged_scaled_residual_flag = PETSC_FALSE
+          endif
         endif
-      endif
+      enddo
     enddo
     call VecRestoreArrayRead(field%flow_r,r_p,ierr);CHKERRQ(ierr)
     call VecRestoreArrayRead(field%flow_accum2,accum2_p, &

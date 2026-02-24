@@ -48,6 +48,13 @@ function PMStokesTSCreate()
   call PMStokesInit(stokes_ts_pm)
   stokes_ts_pm%name = 'Stokes TS Flow'
   stokes_ts_pm%header = 'STOKES TS FLOW'
+  stokes_ts_pm%residual_abs_inf_tol    = 1.0d-6
+  stokes_ts_pm%residual_scaled_inf_tol = 1.0d-6
+  stokes_ts_pm%abs_update_inf_tol      = 1.0d-2
+  stokes_ts_pm%rel_update_inf_tol      = 1.0d-4
+  stokes_ts_pm%rho = 998.32d0
+  stokes_ts_pm%mu  = 1.002d-3
+  stokes_ts_pm%add_convection = PETSC_FALSE
 
   PMStokesTSCreate => stokes_ts_pm
 
@@ -169,7 +176,7 @@ subroutine PMStokesTSIFunction(this,ts,time,U,Udot,F,ierr)
   call StokesUpdateTransportVelocities(realization)
 
   call StokesResidualInternalConn(F,realization,this%rho,this%mu, &
-                                  this%add_convection,ierr)
+                                  PETSC_FALSE,ierr)
   call StokesResidualSourceSink(F,realization,this%rho,ierr)
   call StokesIFunctionAccumulation(F,realization,this%rho,ierr)
   call StokesResidualPinPressure(F,U,realization,0.d0,ierr)
@@ -300,7 +307,7 @@ subroutine PMStokesTSInitializeTimestep(this)
   ! Author: Satish Karra
   ! Date: 02/06/26
   !
-  use Stokes_module, only : StokesInitializeTimestep
+  use Stokes_module, only : StokesApplyBoundaryConditions
   implicit none
 
   class(pm_stokes_ts_type) :: this
@@ -310,6 +317,7 @@ subroutine PMStokesTSInitializeTimestep(this)
     ! TS nonlinear solve can legitimately converge at iter 0.
     this%solver%newton_min_iterations = 0
   endif
+  call StokesApplyBoundaryConditions(this%realization)
   call PMSubsurfaceFlowInitializeTimestepB(this)
 
 end subroutine PMStokesTSInitializeTimestep
