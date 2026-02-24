@@ -1,0 +1,15 @@
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE STOKES_TS
+      OPTIONS
+        DENSITY 1.d0
+        VISCOSITY 1.d0
+        ADD_CONVECTION
+      /
+    /
+  /
+END
+
+EXTERNAL_FILE stokes_lid_common.txt

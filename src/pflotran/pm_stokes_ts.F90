@@ -176,7 +176,7 @@ subroutine PMStokesTSIFunction(this,ts,time,U,Udot,F,ierr)
   call StokesUpdateTransportVelocities(realization)
 
   call StokesResidualInternalConn(F,realization,this%rho,this%mu, &
-                                  PETSC_FALSE,ierr)
+                                  this%add_convection,ierr)
   call StokesResidualSourceSink(F,realization,this%rho,ierr)
   call StokesIFunctionAccumulation(F,realization,this%rho,ierr)
   call StokesResidualPinPressure(F,U,realization,0.d0,ierr)
@@ -222,11 +222,8 @@ subroutine PMStokesTSRHSFunction(this,ts,time,xx,ff,ierr)
 
   call DiscretizationGlobalToLocal(discretization,xx,field%flow_xx_loc,NFLOWDOF)
 
-  if (this%add_convection) then
-    call StokesResidualConvectionInternalConn(ff,realization,this%rho,ierr)
-  endif
-
-  call VecScale(ff,-1.d0,ierr);CHKERRQ(ierr)
+  ! Fully implicit STOKES_TS (BEULER): convection is assembled in IFunction/IJacobian.
+  ! Keep RHS identically zero to avoid double-counting explicit terms.
 
 end subroutine PMStokesTSRHSFunction
 
@@ -275,7 +272,7 @@ subroutine PMStokesTSIJacobian(this,ts,time,U,Udot,shift,A,B,ierr)
   call StokesUpdateTransportVelocities(realization)
 
   call StokesJacobianInternalConn(J,realization,this%mu,this%rho,&
-                                     PETSC_FALSE,ierr)
+                                     this%add_convection,ierr)
   call StokesJacobianSourceSink(J,realization,this%rho,ierr)
   call StokesIJacobianAccumulation(J,shift,realization,this%rho,ierr)
 
