@@ -110,6 +110,7 @@ module Condition_module
   type, public :: flow_stokes_condition_type
     type(flow_sub_condition_type), pointer :: pressure
     type(flow_sub_condition_type), pointer :: velocity
+    type(flow_sub_condition_type), pointer :: rate
   end type flow_stokes_condition_type
 
 
@@ -473,6 +474,7 @@ function FlowStokesConditionCreate(option)
   allocate(stokes_condition)
   nullify(stokes_condition%pressure)
   nullify(stokes_condition%velocity)
+  nullify(stokes_condition%rate)
 
 
   FlowStokesConditionCreate => stokes_condition
@@ -893,6 +895,14 @@ function FlowStokesSubConditionPtr(input,sub_condition_name,stokes, &
       else
         sub_condition_ptr => FlowSubConditionCreate(THREE_INTEGER)
         stokes%velocity => sub_condition_ptr
+      endif
+    case('RATE')
+      if (associated(stokes%rate)) then
+        sub_condition_ptr => stokes%rate
+      else
+        ! Stokes RATE is a body-force vector (u,v,w)
+        sub_condition_ptr => FlowSubConditionCreate(THREE_INTEGER)
+        stokes%rate => sub_condition_ptr
       endif
 
     case default
@@ -3389,6 +3399,7 @@ subroutine FlowConditionStokesRead(condition,input,option)
           call StringToUpper(word)
           sub_condition_ptr => &
                 FlowStokesSubConditionPtr(input,word,stokes,option)
+          if (trim(word) == 'RATE') condition%rate => sub_condition_ptr
           call InputReadCard(input,option,word)
           call InputErrorMsg(input,option,'TYPE','CONDITION')
           call StringToUpper(word)
@@ -3396,13 +3407,42 @@ subroutine FlowConditionStokesRead(condition,input,option)
           select case(word)
             case('DIRICHLET')
               sub_condition_ptr%itype = DIRICHLET_BC
+            case('VOLUMETRIC_RATE')
+              sub_condition_ptr%itype = VOLUMETRIC_RATE_SS
+              rate_string = 'm^3/sec'
+            case('SCALED_VOLUMETRIC_RATE')
+              sub_condition_ptr%itype = SCALED_VOLUMETRIC_RATE_SS
+              rate_string = 'm^3/sec'
+              call InputReadWord(input,option,word,PETSC_TRUE)
+              if (.not.InputError(input)) then
+                call InputPushCard(input,word,option)
+                call StringToUpper(word)
+                sub_condition_ptr%ctype = trim(sub_condition_ptr%ctype) // word
+                select case(word)
+                  case('NEIGHBOR_PERM')
+                    sub_condition_ptr%isubtype = SCALE_BY_NEIGHBOR_PERM
+                  case('VOLUME')
+                    sub_condition_ptr%isubtype = SCALE_BY_VOLUME
+                  case('PERM')
+                    sub_condition_ptr%isubtype = SCALE_BY_PERM
+                  case default
+                    string = 'flow condition "' // trim(condition%name) // &
+                      '" scaled_volumetric_rate type'
+                    call InputKeywordUnrecognized(input,word,string,option)
+                end select
+              else
+                option%io_buffer = 'Specify one of NEIGHBOR_PERM, ' // &
+                  'VOLUME, PERM subtypes in flow condition "' // &
+                  trim(condition%name) // '" scaled_volumetric_rate type'
+                call PrintErrMsg(option)
+              endif
             case default
               call InputKeywordUnrecognized(input,word, &
                                             'flow condition,type',option)
           end select
         enddo
         call InputPopBlock(input,option)
-      case('LIQUID_PRESSURE','VELOCITY')
+      case('LIQUID_PRESSURE','VELOCITY','RATE')
         sub_condition_ptr => &
                 FlowStokesSubConditionPtr(input,word,stokes,option)
         internal_units = 'not_assigned'
@@ -3411,6 +3451,10 @@ subroutine FlowConditionStokesRead(condition,input,option)
             internal_units = 'Pa'
           case('VELOCITY')
             internal_units = 'm/s'
+          case('RATE')
+            input%force_units = PETSC_TRUE
+            input%err_buf = word
+            internal_units = trim(rate_string)
         end select
         call ConditionReadValues(input,option,word, &
                                  sub_condition_ptr%dataset, &
@@ -3432,12 +3476,18 @@ subroutine FlowConditionStokesRead(condition,input,option)
   call FlowSubConditionVerify(option,condition,word,stokes%velocity, &
                               default_time_storage, &
                               PETSC_TRUE)
+  word = 'rate'
+  call FlowSubConditionVerify(option,condition,word,stokes%rate, &
+                              default_time_storage, &
+                              PETSC_FALSE)
 
   condition%num_sub_conditions = 0
   i = 0
   if (associated(stokes%pressure)) &
     i = i + 1
   if (associated(stokes%velocity)) &
+    i = i + 1
+  if (associated(stokes%rate)) &
     i = i + 1
 
   condition%num_sub_conditions = i
@@ -3453,6 +3503,11 @@ subroutine FlowConditionStokesRead(condition,input,option)
   if (associated(stokes%velocity)) then
     i = i + 1
     condition%sub_condition_ptr(i)%ptr => stokes%velocity
+  endif
+  if (associated(stokes%rate)) then
+    i = i + 1
+    condition%sub_condition_ptr(i)%ptr => stokes%rate
+    condition%rate => stokes%rate
   endif
 
 

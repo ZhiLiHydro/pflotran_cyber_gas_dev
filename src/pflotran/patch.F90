@@ -1136,8 +1136,14 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
                      VOLUMETRIC_RATE_SS,MASS_RATE_SS,PRES_REG_MASS_RATE_SS, &
                      HET_VOL_RATE_SS,HET_MASS_RATE_SS)
                   select case(option%iflowmode)
-                    case(RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE,STOKES_MODE,STOKES_TS_MODE)
+                    case(RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE)
                       allocate(coupler%flow_aux_real_var(1,num_connections))
+                      coupler%flow_aux_real_var = 0.d0
+                    case(STOKES_MODE,STOKES_TS_MODE)
+                      allocate(coupler%flow_bc_type(option%nflowdof))
+                      allocate(coupler%flow_aux_real_var(option%nflowdof, &
+                                                         num_connections))
+                      coupler%flow_bc_type = 0
                       coupler%flow_aux_real_var = 0.d0
                     case(TH_MODE,TH_TS_MODE)
                       allocate(coupler%flow_aux_real_var(option%nflowdof, &
@@ -4766,14 +4772,41 @@ subroutine PatchUpdateCouplerAuxVarsStokes(patch,coupler,option)
   ! Rate/source BCs (optional)
   !------------------------------------------------------------
   if (associated(flow_condition%rate)) then
+    coupler%flow_bc_type(STOKES_U_DOF) = flow_condition%rate%itype
+    coupler%flow_bc_type(STOKES_V_DOF) = flow_condition%rate%itype
+    coupler%flow_bc_type(STOKES_W_DOF) = flow_condition%rate%itype
+
+    select type(dataset => flow_condition%rate%dataset)
+      class is(dataset_ascii_type)
+        coupler%flow_aux_real_var(STOKES_U_DOF,1:num_connections) = dataset%rarray(1)
+        coupler%flow_aux_real_var(STOKES_V_DOF,1:num_connections) = 0.d0
+        coupler%flow_aux_real_var(STOKES_W_DOF,1:num_connections) = 0.d0
+        if (size(dataset%rarray) >= 2) then
+          coupler%flow_aux_real_var(STOKES_V_DOF,1:num_connections) = dataset%rarray(2)
+        endif
+        if (size(dataset%rarray) >= 3) then
+          coupler%flow_aux_real_var(STOKES_W_DOF,1:num_connections) = dataset%rarray(3)
+        endif
+      class is(dataset_gridded_hdf5_type)
+        call PatchUpdateCouplerGridDataset(coupler,option,patch%grid, &
+             dataset,STOKES_U_DOF)
+        call PatchUpdateCouplerGridDataset(coupler,option,patch%grid, &
+             dataset,STOKES_V_DOF)
+        call PatchUpdateCouplerGridDataset(coupler,option,patch%grid, &
+             dataset,STOKES_W_DOF)
+      class is(dataset_common_hdf5_type)
+        ! Skip cell-indexed datasets used in initial conditions
+      class default
+        call PrintMsg(option,'rate%itype,source/sink (Stokes)')
+        call DatasetUnknownClass(dataset,option, &
+             'PatchUpdateCouplerAuxVarsStokes')
+    end select
+
     select case(flow_condition%rate%itype)
       case(SCALED_VOLUMETRIC_RATE_SS)
-        ! If you use this for Stokes body forces or inflow/outflow,
-        ! you can reuse the same scaling logic:
         call PatchScaleSourceSink(patch,coupler, &
                                   flow_condition%rate%isubtype,option)
       case default
-        ! Leave other rate types for now or extend as needed
     end select
   endif
 
@@ -5856,6 +5889,7 @@ subroutine PatchScaleSourceSink(patch,source_sink,iscale_type,option)
   use Grid_module
   use Material_Aux_module
   use ZFlow_Aux_module
+  use Stokes_Aux_module
   use Variables_module, only : PERMEABILITY_X, PERMEABILITY_Y, PERMEABILITY_Z
 
   implicit none
@@ -6003,7 +6037,14 @@ subroutine PatchScaleSourceSink(patch,source_sink,iscale_type,option)
         source_sink%flow_aux_real_var( &
             source_sink%flow_aux_mapping(ZFLOW_COND_WATER_AUX_INDEX),&
             iconn) = vec_ptr(local_id)
-      case(MPH_MODE,PNF_MODE,STOKES_MODE,STOKES_TS_MODE)
+      case(STOKES_MODE,STOKES_TS_MODE)
+        source_sink%flow_aux_real_var(STOKES_U_DOF,iconn) = &
+          source_sink%flow_aux_real_var(STOKES_U_DOF,iconn)*vec_ptr(local_id)
+        source_sink%flow_aux_real_var(STOKES_V_DOF,iconn) = &
+          source_sink%flow_aux_real_var(STOKES_V_DOF,iconn)*vec_ptr(local_id)
+        source_sink%flow_aux_real_var(STOKES_W_DOF,iconn) = &
+          source_sink%flow_aux_real_var(STOKES_W_DOF,iconn)*vec_ptr(local_id)
+      case(MPH_MODE,PNF_MODE)
         option%io_buffer = 'PatchScaleSourceSink not set up for flow mode'
         call PrintErrMsg(option)
     end select

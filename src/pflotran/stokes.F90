@@ -1034,6 +1034,12 @@ subroutine StokesResidualSourceSink(r,realization,rho,ierr)
   !
 
   use Realization_Subsurface_class
+  use Patch_module
+  use Grid_module
+  use Option_module
+  use Coupler_module
+  use Connection_module
+  use Stokes_Aux_module
 
   implicit none
 
@@ -1041,6 +1047,70 @@ subroutine StokesResidualSourceSink(r,realization,rho,ierr)
   class(realization_subsurface_type) :: realization
   PetscReal :: rho
   PetscErrorCode :: ierr
+
+  type(patch_type), pointer :: patch
+  type(grid_type), pointer :: grid
+  type(option_type), pointer :: option
+  type(coupler_type), pointer :: source_sink
+  type(connection_set_type), pointer :: cset
+
+  PetscReal, pointer :: r_p(:)
+  PetscInt :: iconn, id_dn, local_id, ghosted_id
+  PetscInt :: istart, iend
+  PetscReal :: vol
+  PetscReal :: force_u, force_v, force_w
+
+  patch  => realization%patch
+  grid   => patch%grid
+  option => realization%option
+
+  if (.not.associated(patch%source_sink_list%first)) return
+
+  call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
+
+  source_sink => patch%source_sink_list%first
+  do
+    if (.not.associated(source_sink)) exit
+    if (.not.associated(source_sink%flow_condition%rate)) then
+      source_sink => source_sink%next
+      cycle
+    endif
+
+    cset => source_sink%connection_set
+    do iconn = 1, cset%num_connections
+      id_dn = cset%id_dn(iconn)
+      local_id = 0
+      ghosted_id = 0
+
+      if (id_dn > 0 .and. id_dn <= grid%nlmax) then
+        local_id = id_dn
+        ghosted_id = grid%nL2G(local_id)
+      elseif (id_dn > 0 .and. id_dn <= grid%ngmax) then
+        ghosted_id = id_dn
+        local_id = grid%nG2L(ghosted_id)
+      endif
+
+      if (local_id <= 0 .or. local_id > grid%nlmax) cycle
+      if (ghosted_id <= 0 .or. ghosted_id > grid%ngmax) cycle
+      if (patch%imat(ghosted_id) <= 0) cycle
+
+      iend = local_id*option%nflowdof
+      istart = iend-option%nflowdof+1
+      vol = patch%aux%Material%auxvars(ghosted_id)%volume
+
+      force_u = source_sink%flow_aux_real_var(STOKES_U_DOF,iconn)
+      force_v = source_sink%flow_aux_real_var(STOKES_V_DOF,iconn)
+      force_w = source_sink%flow_aux_real_var(STOKES_W_DOF,iconn)
+
+      r_p(istart    ) = r_p(istart    ) - rho*force_u*vol
+      r_p(istart + 1) = r_p(istart + 1) - rho*force_v*vol
+      r_p(istart + 2) = r_p(istart + 2) - rho*force_w*vol
+    enddo
+
+    source_sink => source_sink%next
+  enddo
+
+  call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 
 end subroutine StokesResidualSourceSink
 ! ************************************************************************** !
