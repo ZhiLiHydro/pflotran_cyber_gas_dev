@@ -25,7 +25,8 @@ module PM_Fracture_class
     ! cell permeability, initial [m]
     PetscReal, pointer :: kz0(:)
     ! fracture hydraulic aperture, initial [m]
-    PetscReal :: hap0
+    PetscReal :: hap0 ! 
+    ! ejb : add dip here -- do Ctrl+F for hap0, can follow procedures for that
     ! fracture hydraulic aperture, dynamic [m]
     PetscReal, pointer :: hap(:)
     ! fracture radius - x [m]
@@ -53,7 +54,7 @@ module PM_Fracture_class
     ! total number of cells this fracture occupies
     PetscInt :: ncells
     ! linked list next object
-    type(fracture_type), pointer :: next
+    type(fracture_type), pointer :: next ! ejb: pointer to the next fracture -- know you hit the end when the next pointer is unassociated
   end type fracture_type
 
   type :: fracfam_type
@@ -92,14 +93,14 @@ module PM_Fracture_class
     ! fracture family radius seed [-]
     PetscInt :: radius_seed
     ! list of fractures in this family
-    type(fracture_type), pointer :: fracture_list
+    type(fracture_type), pointer :: fracture_list 
     ! linked list next object
     type(fracfam_type), pointer :: next
   end type fracfam_type
 
   type, public, extends(pm_base_type) :: pm_fracture_type
     class(realization_subsurface_type), pointer :: realization
-    type(fracture_type), pointer :: fracture_list
+    type(fracture_type), pointer :: fracture_list ! ejb:list of all the fractures in the domain (this includes fractures created within a fracture family) (call it global fracture list)
     type(fracfam_type), pointer :: fracfam_list
     ! list of all local cell ids that contain fractures (some repeated)
     PetscInt, pointer :: allfrac_cell_ids(:)
@@ -928,18 +929,17 @@ subroutine PMFracSetup(this)
     this%frac_intersection_ids(:) = UNINITIALIZED_INTEGER
     if (k > 0) this%frac_intersection_ids = temp_gbl_cell_ids(1:k)
     deallocate(temp_gbl_cell_ids)
-
   endif ! if (this%clip_unconnected_fracs) then
-  deallocate(cell_positions)
 
+  deallocate(cell_positions)
   ! filename needs to be consistant w/ filename located at end of PMFracPrintStats()
-  filename = trim(this%option%global_prefix)//'.info'
-  fid = 19181723
-110 format(100es16.8)
-  open(unit=fid,file=filename,action="write",status="replace")
+  filename = trim(this%option%global_prefix)//'.info' ! ejb: can call our other file .fracinfo
+  fid = 19181723    ! ejb: can randomly choose an fid
+110 format(100es16.8) ! ejb: 110 <-- shortcut, wherever you see "110", insert the formatting code
+  open(unit=fid,file=filename,action="write",status="replace") ! ejb: open and write are fortran inherent fxns, best to all-caps them if possible
   write(fid,'(a)',advance="yes") "FRACTURE NETWORK METRICS FOR PFLOTRAN &
                         &INPUT DECK: "//trim(this%option%global_prefix)//".in"
-  call GETCWD(path,status)
+  call GETCWD(path,status) ! ejb: another fortran-inherent
   if (status==0) write(fid,'(a)',advance="yes") "INPUT DECK PATH: " &
                                                 //trim(path)
   if (status/=0) write(fid,'(a)',advance="yes") "INPUT DECK PATH: unknown"
@@ -947,11 +947,12 @@ subroutine PMFracSetup(this)
   write(fid,'(a)',advance="yes") " "
   write(fid,'(a)',advance="no") "NUMBER OF GRID CELLS IN DOMAIN: "
   write(fid,'(I10)',advance="yes") res_grid%nmax
+  
   if (this%clip_unconnected_fracs) then
-    write(fid,'(a)',advance="no") "NUMBER OF CONNECTED FRACTURED GRID CELLS: "
+    write(fid,'(a)',advance="no") "NUMBER OF FRACTURED GRID CELLS: "
     write(fid,'(I10)',advance="yes") size(this%unique_connected_cell_ids_glb)
     write(fid,'(a)',advance="no") "PERCENT [%] OF DOMAIN GRID CELLS THAT &
-                                   &CONTAIN CONNECTED FRACTURES: "
+                                   &CONTAIN FRACTURES: "
     write(fid,110,advance="yes") &
                          (REAL(size(this%unique_connected_cell_ids_glb))/ &
                           REAL(res_grid%nmax))*100.d0
@@ -975,6 +976,7 @@ subroutine PMFracSetup(this)
       L22 = L22 + (2.d0*((material_auxvar%volume)**(1.d0/3.d0))**(2)) ! [m^2]
     enddo
   endif
+  
   ! need to get all processes value for L22 and sum them
   call MPI_Allreduce(MPI_IN_PLACE,L22,option%comm%size,MPI_DOUBLE_PRECISION, &
                      MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
@@ -985,40 +987,40 @@ subroutine PMFracSetup(this)
 
   write(fid,'(a)',advance="yes") ""
   ! header for time varying fracture network characteristics
-  write(fid,'(a)',advance="no") "TIME ["//trim(this%output_option%tunit)//"]; "
-  write(fid,'(a)',advance="no") "VOL [m^3] OF FRACS; "
-  write(fid,'(a)',advance="no") "MIN FRAC APERTURE [m]; "
-  write(fid,'(a)',advance="no") "MAX FRAC APERTURE [m]; "
-  write(fid,'(a)',advance="no") "RANGE FRAC APERTURE [m]; "
-  write(fid,'(a)',advance="no") "MIDRANGE FRAC APERTURE [m]; "
-  write(fid,'(a)',advance="no") "MEAN FRAC APERTURE [m]; "
-  write(fid,'(a)',advance="no") "VARIANCE FRAC APERTURE [m]; "
-  write(fid,'(a)',advance="no") "POP SKEWNESS FRAC APERTURE [m]; "
-  write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC APERTURE [m]; "
-  write(fid,'(a)',advance="no") "MIN FRAC PERM-X [m]; "
-  write(fid,'(a)',advance="no") "MAX FRAC PERM-X [m]; "
-  write(fid,'(a)',advance="no") "RANGE FRAC PERM-X [m]; "
-  write(fid,'(a)',advance="no") "MIDRANGE FRAC PERM-X [m]; "
-  write(fid,'(a)',advance="no") "MEAN FRAC PERM-X [m]; "
-  write(fid,'(a)',advance="no") "VARIANCE FRAC PERM-X [m]; "
-  write(fid,'(a)',advance="no") "POP SKEWNESS FRAC PERM-X [m]; "
-  write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC PERM-X [m]; "
-  write(fid,'(a)',advance="no") "MIN FRAC PERM-Y [m]; "
-  write(fid,'(a)',advance="no") "MAX FRAC PERM-Y [m]; "
-  write(fid,'(a)',advance="no") "RANGE FRAC PERM-Y [m]; "
-  write(fid,'(a)',advance="no") "MIDRANGE FRAC PERM-Y [m]; "
-  write(fid,'(a)',advance="no") "MEAN FRAC PERM-Y [m]; "
-  write(fid,'(a)',advance="no") "VARIANCE FRAC PERM-Y [m]; "
-  write(fid,'(a)',advance="no") "POP SKEWNESS FRAC PERM-Y [m]; "
-  write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC PERM-Y [m]; "
-  write(fid,'(a)',advance="no") "MIN FRAC PERM-Z [m]; "
-  write(fid,'(a)',advance="no") "MAX FRAC PERM-Z [m]; "
-  write(fid,'(a)',advance="no") "RANGE FRAC PERM-Z [m]; "
-  write(fid,'(a)',advance="no") "MIDRANGE FRAC PERM-Z [m]; "
-  write(fid,'(a)',advance="no") "MEAN FRAC PERM-Z [m]; "
-  write(fid,'(a)',advance="no") "VARIANCE FRAC PERM-Z [m]; "
-  write(fid,'(a)',advance="no") "POP SKEWNESS FRAC PERM-Z [m]; "
-  write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC PERM-Z [m]; "
+  write(fid,'(a)',advance="no") "TIME ["//trim(this%output_option%tunit)//"],"
+  write(fid,'(a)',advance="no") "VOL [m^3] OF FRACTURES,"
+  write(fid,'(a)',advance="no") "MIN FRAC APERTURE [m],"
+  write(fid,'(a)',advance="no") "MAX FRAC APERTURE [m],"
+  write(fid,'(a)',advance="no") "RANGE FRAC APERTURE [m],"
+  write(fid,'(a)',advance="no") "MIDRANGE FRAC APERTURE [m],"
+  write(fid,'(a)',advance="no") "MEAN FRAC APERTURE [m],"
+  write(fid,'(a)',advance="no") "VARIANCE FRAC APERTURE [m],"
+  write(fid,'(a)',advance="no") "POP SKEWNESS FRAC APERTURE [m],"
+  write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC APERTURE [m],"
+  write(fid,'(a)',advance="no") "MIN FRAC PERM-X [m],"
+  write(fid,'(a)',advance="no") "MAX FRAC PERM-X [m],"
+  write(fid,'(a)',advance="no") "RANGE FRAC PERM-X [m],"
+  write(fid,'(a)',advance="no") "MIDRANGE FRAC PERM-X [m],"
+  write(fid,'(a)',advance="no") "MEAN FRAC PERM-X [m],"
+  write(fid,'(a)',advance="no") "VARIANCE FRAC PERM-X [m],"
+  write(fid,'(a)',advance="no") "POP SKEWNESS FRAC PERM-X [m],"
+  write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC PERM-X [m],"
+  write(fid,'(a)',advance="no") "MIN FRAC PERM-Y [m],"
+  write(fid,'(a)',advance="no") "MAX FRAC PERM-Y [m],"
+  write(fid,'(a)',advance="no") "RANGE FRAC PERM-Y [m],"
+  write(fid,'(a)',advance="no") "MIDRANGE FRAC PERM-Y [m],"
+  write(fid,'(a)',advance="no") "MEAN FRAC PERM-Y [m],"
+  write(fid,'(a)',advance="no") "VARIANCE FRAC PERM-Y [m],"
+  write(fid,'(a)',advance="no") "POP SKEWNESS FRAC PERM-Y [m],"
+  write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC PERM-Y [m],"
+  write(fid,'(a)',advance="no") "MIN FRAC PERM-Z [m],"
+  write(fid,'(a)',advance="no") "MAX FRAC PERM-Z [m],"
+  write(fid,'(a)',advance="no") "RANGE FRAC PERM-Z [m],"
+  write(fid,'(a)',advance="no") "MIDRANGE FRAC PERM-Z [m],"
+  write(fid,'(a)',advance="no") "MEAN FRAC PERM-Z [m],"
+  write(fid,'(a)',advance="no") "VARIANCE FRAC PERM-Z [m],"
+  write(fid,'(a)',advance="no") "POP SKEWNESS FRAC PERM-Z [m],"
+  write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC PERM-Z [m],"
   close(fid)
 
   if (.not.associated(this%realization%reaction)) then
@@ -2842,70 +2844,103 @@ subroutine PMFracPrintStats(this)
   ! header for these values is located at end of PMFracSetup()
   ! TIME [tunit];
   write(fid,110,advance="no") this%option%time/this%output_option%tconv
-  ! VOL [m^3] OF CONNECTED FRACS;
+  write(fid,'(a)',advance="no") ","
+  ! VOL [m^3] OF FRACTURES;
   write(fid,110,advance="no") SUM(fracture_volume_glb)
+  write(fid,'(a)',advance="no") ","
   ! MIN FRAC APERTURE [m];
   write(fid,110,advance="no") min_frac_aperture
+  write(fid,'(a)',advance="no") ","
   ! MAX FRAC APERTURE [m];
   write(fid,110,advance="no") max_frac_aperture
+  write(fid,'(a)',advance="no") ","
   ! RANGE FRAC APERTURE [m];
   write(fid,110,advance="no") range_frac_aperture
+  write(fid,'(a)',advance="no") ","
   ! MIDRANGE FRAC APERTURE [m];
   write(fid,110,advance="no") midrange_frac_aperture
+  write(fid,'(a)',advance="no") ","
   ! MEAN FRAC APERTURE [m];
   write(fid,110,advance="no") mean_frac_aperture
+  write(fid,'(a)',advance="no") ","
   ! VARIANCE FRAC APERTURE [m];
   write(fid,110,advance="no") variance_frac_aperture
+  write(fid,'(a)',advance="no") ","
   ! POP SKEWNESS FRAC APERTURE [m];
   write(fid,110,advance="no") skewness_frac_aperture_p
+  write(fid,'(a)',advance="no") ","
   ! SAMPLE SKEWNESS FRAC APERTURE [m];
   write(fid,110,advance="no") skewness_frac_aperture_a
+  write(fid,'(a)',advance="no") ","
   ! MIN FRAC PERM-X [m];
   write(fid,110,advance="no") min_perm_x
+  write(fid,'(a)',advance="no") ","
   ! MAX FRAC PERM-X [m];
   write(fid,110,advance="no") max_perm_x
+  write(fid,'(a)',advance="no") ","
   ! RANGE FRAC PERM-X [m];
   write(fid,110,advance="no") range_perm_x
+  write(fid,'(a)',advance="no") ","
   ! MIDRANGE FRAC PERM-X [m];
   write(fid,110,advance="no") midrange_perm_x
+  write(fid,'(a)',advance="no") ","
   ! MEAN FRAC PERM-X [m];
   write(fid,110,advance="no") mean_perm_x
+  write(fid,'(a)',advance="no") ","
   ! VARIANCE FRAC PERM-X [m];
   write(fid,110,advance="no") variance_perm_x
+  write(fid,'(a)',advance="no") ","
   ! POP SKEWNESS FRAC PERM-X [m];
   write(fid,110,advance="no") skewness_perm_x_p
+  write(fid,'(a)',advance="no") ","
   ! SAMPLE SKEWNESS FRAC PERM-X [m];
   write(fid,110,advance="no") skewness_perm_x_a
+  write(fid,'(a)',advance="no") ","
   ! MIN FRAC PERM-Y [m];
   write(fid,110,advance="no") min_perm_y
+  write(fid,'(a)',advance="no") ","
   ! MAX FRAC PERM-Y [m];
   write(fid,110,advance="no") max_perm_y
+  write(fid,'(a)',advance="no") ","
   ! RANGE FRAC PERM-Y [m];
   write(fid,110,advance="no") range_perm_y
+  write(fid,'(a)',advance="no") ","
   ! MIDRANGE FRAC PERM-Y [m];
   write(fid,110,advance="no") midrange_perm_y
+  write(fid,'(a)',advance="no") ","
   ! MEAN FRAC PERM-Y [m];
   write(fid,110,advance="no") mean_perm_y
+  write(fid,'(a)',advance="no") ","
   ! VARIANCE FRAC PERM-Y [m];
   write(fid,110,advance="no") variance_perm_y
+  write(fid,'(a)',advance="no") ","
   ! POP SKEWNESS FRAC PERM-Y [m];
   write(fid,110,advance="no") skewness_perm_y_p
+  write(fid,'(a)',advance="no") ","
   ! SAMPLE SKEWNESS FRAC PERM-Y [m];
   write(fid,110,advance="no") skewness_perm_y_a
+  write(fid,'(a)',advance="no") ","
   ! MIN FRAC PERM-Z [m];
   write(fid,110,advance="no") min_perm_z
+  write(fid,'(a)',advance="no") ","
   ! MAX FRAC PERM-Z [m];
   write(fid,110,advance="no") max_perm_z
+  write(fid,'(a)',advance="no") ","
   ! RANGE FRAC PERM-Z [m];
   write(fid,110,advance="no") range_perm_z
+  write(fid,'(a)',advance="no") ","
   ! MIDRANGE FRAC PERM-Z [m];
   write(fid,110,advance="no") midrange_perm_z
+  write(fid,'(a)',advance="no") ","
   ! MEAN FRAC PERM-Z [m];
   write(fid,110,advance="no") mean_perm_z
+  write(fid,'(a)',advance="no") ","
   ! VARIANCE FRAC PERM-Z [m];
   write(fid,110,advance="no") variance_perm_z
+  write(fid,'(a)',advance="no") ","
   ! POP SKEWNESS FRAC PERM-Z [m];
   write(fid,110,advance="no") skewness_perm_z_p
+  write(fid,'(a)',advance="no") ","
   ! SAMPLE SKEWNESS FRAC PERM-Z [m];
   write(fid,110,advance="yes") skewness_perm_z_a
   ! make sure last write() says advance="yes", all others "no"
