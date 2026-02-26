@@ -297,7 +297,7 @@ subroutine PMStokesPreSolve(this)
   class(pm_stokes_type) :: this
 
   call PMSubsurfaceFlowPreSolve(this)
-  call StokesApplyBoundaryConditions(this%realization)
+  call StokesApplyPrescribedConditions(this%realization)
 
 end subroutine PMStokesPreSolve
 

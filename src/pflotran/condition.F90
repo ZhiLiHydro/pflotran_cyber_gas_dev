@@ -3313,7 +3313,6 @@ subroutine FlowConditionStokesRead(condition,input,option)
   use Logging_module
   use Time_Storage_module
   use Dataset_module
-  use Stokes_Aux_module
 
   implicit none
 
@@ -3407,6 +3406,8 @@ subroutine FlowConditionStokesRead(condition,input,option)
           select case(word)
             case('DIRICHLET')
               sub_condition_ptr%itype = DIRICHLET_BC
+            case('PERIODIC')
+              sub_condition_ptr%itype = PERIODIC_BC
             case('VOLUMETRIC_RATE')
               sub_condition_ptr%itype = VOLUMETRIC_RATE_SS
               rate_string = 'm^3/sec'

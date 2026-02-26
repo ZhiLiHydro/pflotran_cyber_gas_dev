@@ -42,7 +42,8 @@ module Stokes_module
             StokesJacobianAccumulation, &
             StokesIJacobianAccumulation, &
             StokesJacobianSourceSink, &
-            StokesApplyBoundaryConditions
+            StokesApplyBoundaryConditions, &
+            StokesApplyPrescribedConditions
 
 contains
 
@@ -60,6 +61,7 @@ subroutine StokesSetup(realization,rho,mu)
   use Patch_module
   use Grid_module
   use Coupler_module
+  use String_module
   use Connection_module
   use Option_module
 
@@ -76,6 +78,7 @@ subroutine StokesSetup(realization,rho,mu)
   PetscInt :: gid
   PetscBool, allocatable :: dof_is_active(:)
   PetscInt :: iconn, sum_connection
+  type(coupler_type), pointer :: coupler
 
   patch  => realization%patch
   grid   => patch%grid
@@ -121,6 +124,37 @@ subroutine StokesSetup(realization,rho,mu)
   call PatchCreateZeroArray(patch,dof_is_active, &
                             patch%aux%Stokes%matrix_zeroing,option)
   deallocate(dof_is_active)
+
+  ! ensure that prescribed_conditions are solely DIRICHLET type
+  coupler => patch%prescribed_condition_list%first
+  do
+    if (.not.associated(coupler)) exit
+    if (associated(coupler%flow_condition%stokes%velocity)) then
+      select case(coupler%flow_condition%stokes%velocity%itype)
+        case(DIRICHLET_BC)
+        case default
+          option%io_buffer = 'FLOW_CONDITION "' // &
+            trim(coupler%flow_condition%name) // '" STOKES VELOCITY TYPE (' // &
+            StringWrite(coupler%flow_condition%stokes%velocity%itype) // &
+            ') not supported in STOKES PRESCRIBED_CONDITION "' // &
+            coupler%name // '".'
+          call PrintErrMsg(option)
+      end select
+    endif
+    if (associated(coupler%flow_condition%stokes%pressure)) then
+      select case(coupler%flow_condition%stokes%pressure%itype)
+        case(DIRICHLET_BC)
+        case default
+          option%io_buffer = 'FLOW_CONDITION "' // &
+            trim(coupler%flow_condition%name) // '" STOKES PRESSURE TYPE (' // &
+            StringWrite(coupler%flow_condition%stokes%pressure%itype) // &
+            ') not supported in STOKES PRESCRIBED_CONDITION "' // &
+            coupler%name // '".'
+          call PrintErrMsg(option)
+      end select
+    endif
+    coupler => coupler%next
+  enddo
 
 
 
@@ -358,6 +392,7 @@ subroutine StokesResidual(snes,xx,r,realization,rho,mu,add_convection,debug,ierr
   call StokesResidualPreliminaries(xx,r,realization,ierr)
   call StokesResidualInternalConn(r,realization,rho,mu, &
                                             add_convection,ierr)
+  call StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
   call StokesResidualAccumulation(r,realization,rho,ierr)
   call StokesResidualSourceSink(r,realization,rho,ierr)
   call StokesResidualPinPressure(r,xx,realization,0.d0,ierr)
@@ -380,7 +415,18 @@ end subroutine StokesResidual
 
 subroutine StokesApplyBoundaryConditions(realization)
   !
-  ! Apply Dirichlet BCs to solution vector
+  ! Backwards-compatible wrapper for prescribed conditions
+  !
+
+  call StokesApplyPrescribedConditions(realization)
+
+end subroutine StokesApplyBoundaryConditions
+
+! ************************************************************************** !
+
+subroutine StokesApplyPrescribedConditions(realization)
+  !
+  ! Apply prescribed Dirichlet conditions to solution vector
   !
   ! Author: Satish Karra
   ! Date: 01/28/26
@@ -398,23 +444,23 @@ subroutine StokesApplyBoundaryConditions(realization)
   class(realization_subsurface_type) :: realization
   type(patch_type), pointer :: patch
   type(option_type), pointer :: option
-  type(coupler_type), pointer :: boundary_condition
+  type(coupler_type), pointer :: prescribed_condition
   type(connection_set_type), pointer :: cur_connection_set
-  PetscInt :: local_id, iconn, offset, gid, ghosted_id
+  PetscInt :: local_id, iconn, offset, ghosted_id
   PetscReal, pointer :: vec_ptr(:)
   PetscErrorCode :: ierr
 
   patch => realization%patch
   option => realization%option
 
-  if (.not.associated(patch%boundary_condition_list%first)) return
+  if (.not.associated(patch%prescribed_condition_list%first)) return
 
   call VecGetArray(realization%field%flow_xx,vec_ptr,ierr);CHKERRQ(ierr)
 
-  boundary_condition => patch%boundary_condition_list%first
+  prescribed_condition => patch%prescribed_condition_list%first
   do
-    if (.not.associated(boundary_condition)) exit
-    cur_connection_set => boundary_condition%connection_set
+    if (.not.associated(prescribed_condition)) exit
+    cur_connection_set => prescribed_condition%connection_set
     do iconn = 1, cur_connection_set%num_connections
       local_id = cur_connection_set%id_dn(iconn)
       if (local_id <= 0 .or. local_id > patch%grid%nlmax) cycle
@@ -422,24 +468,24 @@ subroutine StokesApplyBoundaryConditions(realization)
       if (ghosted_id <= 0 .or. ghosted_id > patch%grid%ngmax) cycle
       offset = (local_id-1)*option%nflowdof
 
-      ! Apply velocity BC (all 3 components)
-      if (associated(boundary_condition%flow_condition%stokes%velocity)) then
-        if (boundary_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
-          vec_ptr(offset+1) = boundary_condition%flow_aux_real_var(1,iconn)
-          vec_ptr(offset+2) = boundary_condition%flow_aux_real_var(2,iconn)
-          vec_ptr(offset+3) = boundary_condition%flow_aux_real_var(3,iconn)
+      ! Apply prescribed velocity (all 3 components)
+      if (associated(prescribed_condition%flow_condition%stokes%velocity)) then
+        if (prescribed_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
+          vec_ptr(offset+1) = prescribed_condition%flow_aux_real_var(1,iconn)
+          vec_ptr(offset+2) = prescribed_condition%flow_aux_real_var(2,iconn)
+          vec_ptr(offset+3) = prescribed_condition%flow_aux_real_var(3,iconn)
         endif
       endif
 
-      ! Apply pressure BC
-      if (associated(boundary_condition%flow_condition%stokes%pressure)) then
-        if (boundary_condition%flow_condition%stokes%pressure%itype == DIRICHLET_BC) then
-          vec_ptr(offset+4) = boundary_condition%flow_aux_real_var(4,iconn)
+      ! Apply prescribed pressure
+      if (associated(prescribed_condition%flow_condition%stokes%pressure)) then
+        if (prescribed_condition%flow_condition%stokes%pressure%itype == DIRICHLET_BC) then
+          vec_ptr(offset+4) = prescribed_condition%flow_aux_real_var(4,iconn)
         endif
       endif
 
     enddo
-    boundary_condition => boundary_condition%next
+    prescribed_condition => prescribed_condition%next
   enddo
 
   call VecRestoreArray(realization%field%flow_xx,vec_ptr,ierr);CHKERRQ(ierr)
@@ -451,7 +497,7 @@ subroutine StokesApplyBoundaryConditions(realization)
                                    realization%option%nflowdof)
 
 
-end subroutine StokesApplyBoundaryConditions
+end subroutine StokesApplyPrescribedConditions
 
 ! ************************************************************************** !
 
@@ -1163,6 +1209,7 @@ subroutine StokesJacobian(snes,xx,A,B,realization,rho,mu,add_convection,debug,ie
   call StokesJacobianInternalConn(J,realization,mu,rho, &
                                             add_convection, &
                                             ierr)
+  call StokesJacobianBoundaryFacesConn(J,realization,mu,ierr)
   call StokesJacobianAccumulation(J,realization,rho,ierr)
   call StokesJacobianSourceSink(J,realization,rho,ierr)
 
@@ -1444,8 +1491,8 @@ end subroutine StokesJacobianInternalConn
 ! ************************************************************************** !
 subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,ierr)
   !
-  ! BC Jacobian for Stokes problem
-  ! Collects all BC constraints and applies once per cell
+  ! Prescribed-condition Jacobian for Stokes problem
+  ! Collects all prescribed constraints and applies once per cell
   !
   ! Author: Satish Karra
   ! Date: 01/24/26
@@ -1470,8 +1517,7 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,ierr)
   type(option_type), pointer :: option
   type(coupler_type),pointer :: bc
   type(connection_set_type), pointer :: cset
-  PetscInt :: iconn, local_id, ghosted_id, gid, iblock, lid, ndof
-  PetscReal :: Jbc(4,4)
+  PetscInt :: iconn, local_id, ghosted_id, gid, lid, ndof
   ! Track which rows have been constrained for this cell
   PetscBool, allocatable :: bc_applied(:,:)
   PetscInt, allocatable :: bc_rows(:)
@@ -1483,13 +1529,17 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,ierr)
   option => realization%option
   ndof = option%nflowdof
 
+  if (.not.associated(patch%prescribed_condition_list%first)) then
+    return
+  endif
+
   ! Allocate tracking array for which DOFs have BCs
   max_local_id = grid%nlmax
   allocate(bc_applied(ndof, max_local_id))
   bc_applied = PETSC_FALSE
 
-  ! First pass: identify all BC constraints
-  bc => patch%boundary_condition_list%first
+  ! First pass: identify all prescribed constraints
+  bc => patch%prescribed_condition_list%first
   do
     if (.not.associated(bc)) exit
     if (.not.associated(bc%flow_condition)) then
@@ -1962,7 +2012,7 @@ end subroutine StokesBCFluxConn
 
 subroutine StokesResidualBoundaryFinal(r,xx,realization,ierr)
   !
-  ! Sets residuals for Dirichlet BC rows to (u - u_prescribed)
+  ! Sets residuals for prescribed rows to (u - u_prescribed)
   !
   ! Author: Satish Karra
   ! Date: 01/24/26
@@ -1982,7 +2032,7 @@ subroutine StokesResidualBoundaryFinal(r,xx,realization,ierr)
   PetscErrorCode :: ierr
   type(patch_type), pointer :: patch
   type(option_type), pointer :: option
-  type(coupler_type), pointer :: boundary_condition
+  type(coupler_type), pointer :: prescribed_condition
   type(connection_set_type), pointer :: cur_connection_set
   PetscInt :: local_id, iconn, offset, ghosted_id
   PetscReal, pointer :: r_ptr(:), xx_ptr(:)
@@ -1992,15 +2042,15 @@ subroutine StokesResidualBoundaryFinal(r,xx,realization,ierr)
   option => realization%option
   nflowdof = option%nflowdof
 
-  if (.not.associated(patch%boundary_condition_list%first)) return
+  if (.not.associated(patch%prescribed_condition_list%first)) return
 
   call VecGetArray(r,r_ptr,ierr);CHKERRQ(ierr)
   call VecGetArrayRead(xx,xx_ptr,ierr);CHKERRQ(ierr)
 
-  boundary_condition => patch%boundary_condition_list%first
+  prescribed_condition => patch%prescribed_condition_list%first
   do
-    if (.not.associated(boundary_condition)) exit
-    cur_connection_set => boundary_condition%connection_set
+    if (.not.associated(prescribed_condition)) exit
+    cur_connection_set => prescribed_condition%connection_set
     do iconn = 1, cur_connection_set%num_connections
       local_id = cur_connection_set%id_dn(iconn)
       if (local_id <= 0 .or. local_id > patch%grid%nlmax) cycle
@@ -2010,24 +2060,24 @@ subroutine StokesResidualBoundaryFinal(r,xx,realization,ierr)
       iend = local_id*nflowdof
       istart = iend-nflowdof+1
 
-      ! Set velocity BC residual to (u - u_prescribed)
-      if (associated(boundary_condition%flow_condition%stokes%velocity)) then
-        if (boundary_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
-          r_ptr(istart) = xx_ptr(istart) - boundary_condition%flow_aux_real_var(1,iconn)
-          r_ptr(istart+1) = xx_ptr(istart+1) - boundary_condition%flow_aux_real_var(2,iconn)
-          r_ptr(istart+2) = xx_ptr(istart+2) - boundary_condition%flow_aux_real_var(3,iconn)
+      ! Set prescribed velocity residual to (u - u_prescribed)
+      if (associated(prescribed_condition%flow_condition%stokes%velocity)) then
+        if (prescribed_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
+          r_ptr(istart) = xx_ptr(istart) - prescribed_condition%flow_aux_real_var(1,iconn)
+          r_ptr(istart+1) = xx_ptr(istart+1) - prescribed_condition%flow_aux_real_var(2,iconn)
+          r_ptr(istart+2) = xx_ptr(istart+2) - prescribed_condition%flow_aux_real_var(3,iconn)
         endif
       endif
 
-      ! Set pressure BC residual to (p - p_prescribed)
-      if (associated(boundary_condition%flow_condition%stokes%pressure)) then
-        if (boundary_condition%flow_condition%stokes%pressure%itype == DIRICHLET_BC) then
-          r_ptr(istart+3) = xx_ptr(istart+3) - boundary_condition%flow_aux_real_var(4,iconn)
+      ! Set prescribed pressure residual to (p - p_prescribed)
+      if (associated(prescribed_condition%flow_condition%stokes%pressure)) then
+        if (prescribed_condition%flow_condition%stokes%pressure%itype == DIRICHLET_BC) then
+          r_ptr(istart+3) = xx_ptr(istart+3) - prescribed_condition%flow_aux_real_var(4,iconn)
         endif
       endif
 
     enddo
-    boundary_condition => boundary_condition%next
+    prescribed_condition => prescribed_condition%next
   enddo
 
   call VecRestoreArrayRead(xx,xx_ptr,ierr);CHKERRQ(ierr)

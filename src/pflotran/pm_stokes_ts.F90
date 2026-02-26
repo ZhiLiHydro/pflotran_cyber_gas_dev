@@ -172,11 +172,13 @@ subroutine PMStokesTSIFunction(this,ts,time,U,Udot,F,ierr)
   call DiscretizationGlobalToLocal(discretization,Udot,field%flow_xxdot_loc, &
                                    NFLOWDOF)
 
+  call StokesApplyPrescribedConditions(realization)
   call PMStokesTSUpdateAuxVarsPatch(realization)
   call StokesUpdateTransportVelocities(realization)
 
   call StokesResidualInternalConn(F,realization,this%rho,this%mu, &
                                   this%add_convection,ierr)
+  call StokesResidualBoundaryConn(F,realization,this%rho,this%mu,ierr)
   call StokesResidualSourceSink(F,realization,this%rho,ierr)
   call StokesIFunctionAccumulation(F,realization,this%rho,ierr)
   call StokesResidualPinPressure(F,U,realization,0.d0,ierr)
@@ -268,11 +270,13 @@ subroutine PMStokesTSIJacobian(this,ts,time,U,Udot,shift,A,B,ierr)
   call DiscretizationGlobalToLocal(discretization,U,field%flow_xx_loc,NFLOWDOF)
   call DiscretizationGlobalToLocal(discretization,Udot,field%flow_xxdot_loc,&
                                    NFLOWDOF)
+  call StokesApplyPrescribedConditions(realization)
   call PMStokesTSUpdateAuxVarsPatch(realization)
   call StokesUpdateTransportVelocities(realization)
 
   call StokesJacobianInternalConn(J,realization,this%mu,this%rho,&
                                      this%add_convection,ierr)
+  call StokesJacobianBoundaryFacesConn(J,realization,this%mu,ierr)
   call StokesJacobianSourceSink(J,realization,this%rho,ierr)
   call StokesIJacobianAccumulation(J,shift,realization,this%rho,ierr)
 
@@ -304,7 +308,7 @@ subroutine PMStokesTSInitializeTimestep(this)
   ! Author: Satish Karra
   ! Date: 02/06/26
   !
-  use Stokes_module, only : StokesApplyBoundaryConditions
+  use Stokes_module, only : StokesApplyPrescribedConditions
   implicit none
 
   class(pm_stokes_ts_type) :: this
@@ -314,7 +318,7 @@ subroutine PMStokesTSInitializeTimestep(this)
     ! TS nonlinear solve can legitimately converge at iter 0.
     this%solver%newton_min_iterations = 0
   endif
-  call StokesApplyBoundaryConditions(this%realization)
+  call StokesApplyPrescribedConditions(this%realization)
   call PMSubsurfaceFlowInitializeTimestepB(this)
 
 end subroutine PMStokesTSInitializeTimestep
