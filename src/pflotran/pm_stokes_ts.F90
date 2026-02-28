@@ -168,6 +168,7 @@ subroutine PMStokesTSIFunction(this,ts,time,U,Udot,F,ierr)
 
   call VecZeroEntries(F,ierr);CHKERRQ(ierr)
 
+  call VecCopy(U,field%flow_xx,ierr);CHKERRQ(ierr)
   call DiscretizationGlobalToLocal(discretization,U,field%flow_xx_loc,NFLOWDOF)
   call DiscretizationGlobalToLocal(discretization,Udot,field%flow_xxdot_loc, &
                                    NFLOWDOF)
@@ -267,6 +268,7 @@ subroutine PMStokesTSIJacobian(this,ts,time,U,Udot,shift,A,B,ierr)
 
   call MatZeroEntries(J,ierr);CHKERRQ(ierr)
 
+  call VecCopy(U,field%flow_xx,ierr);CHKERRQ(ierr)
   call DiscretizationGlobalToLocal(discretization,U,field%flow_xx_loc,NFLOWDOF)
   call DiscretizationGlobalToLocal(discretization,Udot,field%flow_xxdot_loc,&
                                    NFLOWDOF)

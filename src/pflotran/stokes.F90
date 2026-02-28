@@ -417,6 +417,10 @@ subroutine StokesApplyBoundaryConditions(realization)
   !
   ! Backwards-compatible wrapper for prescribed conditions
   !
+  use Realization_Subsurface_class
+  implicit none
+
+  class(realization_subsurface_type) :: realization
 
   call StokesApplyPrescribedConditions(realization)
 
@@ -687,19 +691,40 @@ subroutine StokesResidualInternalConn(r,realization,rho,mu,add_convection,ierr)
   PetscReal :: a_mu, phi
   PetscReal :: Tvisc(3), Tpress(3), mconv(3)
   PetscReal :: flux_div
-  PetscReal :: tau, gamma_pstab
-  PetscReal :: pstab_K, pstab_L
+  PetscReal :: gamma_pstab
+  PetscReal, allocatable :: aP(:)
+  PetscReal :: a_f, rc
 
   patch  => realization%patch
   grid   => patch%grid
   option => realization%option
 
-  gamma_pstab = 0.05  ! add this to input deck; start ~0.05
+  gamma_pstab = 0.05  ! unused when Rhie-Chow is enabled
 
   if (.not.associated(patch%aux%Stokes)) return
   stokes_aux => patch%aux%Stokes
 
   call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
+
+  ! Build viscous diagonal aP for Rhie-Chow (internal connections only)
+  allocate(aP(grid%ngmax))
+  aP = 0.d0
+  conn_list => grid%internal_connection_set_list
+  cset      => conn_list%first
+  do
+    if (.not.associated(cset)) exit
+    do iconn = 1, cset%num_connections
+      gid_up = cset%id_up(iconn)
+      gid_dn = cset%id_dn(iconn)
+      if (patch%imat(gid_up) <= 0 .or. patch%imat(gid_dn) <= 0) cycle
+      area = cset%area(iconn)
+      dx   = cset%dist(0,iconn)
+      a_mu = mu * area / dx
+      aP(gid_up) = aP(gid_up) + a_mu
+      aP(gid_dn) = aP(gid_dn) + a_mu
+    enddo
+    cset => cset%next
+  enddo
 
   conn_list => grid%internal_connection_set_list
   cset      => conn_list%first
@@ -749,19 +774,18 @@ subroutine StokesResidualInternalConn(r,realization,rho,mu,add_convection,ierr)
       ! Volumetric flux phi = u_face · S (from up(K) to dn(L))
       phi = u_face(1)*S(1) + u_face(2)*S(2) + u_face(3)*S(3)
 
-      ! Diffusion coefficient and stabilization
+      ! Diffusion coefficient
       a_mu = mu * area / dx
-      tau  = gamma_pstab * area / dx
 
       ! Diffusion contribution: +a_mu (uK - uL)
       Tvisc(1) = a_mu*(u_up(1) - u_dn(1))
       Tvisc(2) = a_mu*(u_up(2) - u_dn(2))
       Tvisc(3) = a_mu*(u_up(3) - u_dn(3))
 
-      ! Pressure gradient contribution: +((pL - pK)/dx)*S
-      Tpress(1) = ((p_dn - p_up)/dx) * S(1)
-      Tpress(2) = ((p_dn - p_up)/dx) * S(2)
-      Tpress(3) = ((p_dn - p_up)/dx) * S(3)
+      ! Pressure contribution: +p_face * S, with p_face = 0.5(pK+pL)
+      Tpress(1) = 0.5d0*(p_up + p_dn) * S(1)
+      Tpress(2) = 0.5d0*(p_up + p_dn) * S(2)
+      Tpress(3) = 0.5d0*(p_up + p_dn) * S(3)
 
       ! Convection: + rho*phi*u_upwind (optional)
       mconv = 0.d0
@@ -777,11 +801,11 @@ subroutine StokesResidualInternalConn(r,realization,rho,mu,add_convection,ierr)
       endif
 
       ! Continuity flux (divergence): +phi for K, -phi for L
-      flux_div = phi
-
-      ! Pressure stabilization in continuity: -tau(pK - pL)
-      pstab_K = -tau*(p_up - p_dn)
-      pstab_L = -tau*(p_dn - p_up)
+      ! Rhie-Chow pressure correction: - (A^2/a_f) * (pL - pK)/dx
+      a_f = 0.5d0*(aP(gid_up) + aP(gid_dn))
+      if (a_f <= 0.d0) a_f = a_mu
+      rc = (area*area/a_f) * (p_dn - p_up) / dx
+      flux_div = phi - rc
 
       ! Assemble into residual vector
       if (lid_up > 0 .and. lid_up <= grid%nlmax) then
@@ -789,7 +813,7 @@ subroutine StokesResidualInternalConn(r,realization,rho,mu,add_convection,ierr)
         r_p(ibeg_up_loc    ) = r_p(ibeg_up_loc    ) + Tvisc(1) + Tpress(1) + mconv(1)
         r_p(ibeg_up_loc + 1) = r_p(ibeg_up_loc + 1) + Tvisc(2) + Tpress(2) + mconv(2)
         r_p(ibeg_up_loc + 2) = r_p(ibeg_up_loc + 2) + Tvisc(3) + Tpress(3) + mconv(3)
-        r_p(ibeg_up_loc + 3) = r_p(ibeg_up_loc + 3) + flux_div + pstab_K
+        r_p(ibeg_up_loc + 3) = r_p(ibeg_up_loc + 3) + flux_div
       endif
 
       if (lid_dn > 0 .and. lid_dn <= grid%nlmax) then
@@ -797,7 +821,7 @@ subroutine StokesResidualInternalConn(r,realization,rho,mu,add_convection,ierr)
         r_p(ibeg_dn_loc    ) = r_p(ibeg_dn_loc    ) - Tvisc(1) - Tpress(1) - mconv(1)
         r_p(ibeg_dn_loc + 1) = r_p(ibeg_dn_loc + 1) - Tvisc(2) - Tpress(2) - mconv(2)
         r_p(ibeg_dn_loc + 2) = r_p(ibeg_dn_loc + 2) - Tvisc(3) - Tpress(3) - mconv(3)
-        r_p(ibeg_dn_loc + 3) = r_p(ibeg_dn_loc + 3) - flux_div + pstab_L
+        r_p(ibeg_dn_loc + 3) = r_p(ibeg_dn_loc + 3) - flux_div
       endif
 
     enddo
@@ -806,6 +830,7 @@ subroutine StokesResidualInternalConn(r,realization,rho,mu,add_convection,ierr)
   enddo
 
   call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
+  deallocate(aP)
 
 end subroutine StokesResidualInternalConn
 
@@ -1282,7 +1307,9 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
   PetscReal :: n(3), S(3)
 
   PetscReal :: J_KK(4,4), J_KL(4,4), J_LK(4,4), J_LL(4,4)
-  PetscReal :: a_mu, tau, gamma_pstab
+  PetscReal :: a_mu, gamma_pstab
+  PetscReal, allocatable :: aP(:)
+  PetscReal :: a_f, rc
 
   ! convection Jacobian
   PetscReal :: uK(3), uL(3), u_face(3), phi
@@ -1295,7 +1322,7 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
   grid   => patch%grid
   option => realization%option
 
-  gamma_pstab = 0.05
+  gamma_pstab = 0.05  ! unused when Rhie-Chow is enabled
 
   I3 = 0.d0
   do i=1,3
@@ -1304,6 +1331,26 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
 
   if (.not.associated(patch%aux%Stokes)) return
   stokes_aux => patch%aux%Stokes
+
+  ! Build viscous diagonal aP for Rhie-Chow (internal connections only)
+  allocate(aP(grid%ngmax))
+  aP = 0.d0
+  conn_list => grid%internal_connection_set_list
+  cset      => conn_list%first
+  do
+    if (.not.associated(cset)) exit
+    do iconn = 1, cset%num_connections
+      gid_up = cset%id_up(iconn)
+      gid_dn = cset%id_dn(iconn)
+      if (patch%imat(gid_up) <= 0 .or. patch%imat(gid_dn) <= 0) cycle
+      area = cset%area(iconn)
+      dx   = cset%dist(0,iconn)
+      a_mu = mu * area / dx
+      aP(gid_up) = aP(gid_up) + a_mu
+      aP(gid_dn) = aP(gid_dn) + a_mu
+    enddo
+    cset => cset%next
+  enddo
 
   conn_list => grid%internal_connection_set_list
   cset      => conn_list%first
@@ -1329,7 +1376,6 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
       S(3)=n(3)*area
 
       a_mu = mu * area / dx
-      tau  = gamma_pstab * area / dx
 
       ! Fetch uK/uL (for convection Jacobian)
       uK(1) = stokes_aux%auxvars(gid_up)%u
@@ -1366,24 +1412,16 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
       enddo
 
       ! ---------------------------------------------------
-      ! Pressure gradient in momentum: +((pL - pK)/dx) * S
-      ! dR^u_K/dpK = +(1/dx)*S, dR^u_K/dpL = -(1/dx)*S
+      ! Pressure contribution in momentum: +p_face * S, p_face=0.5(pK+pL)
+      ! dR^u_K/dpK = +0.5*S, dR^u_K/dpL = +0.5*S
+      ! dR^u_L/dpK = -0.5*S, dR^u_L/dpL = -0.5*S
       ! ---------------------------------------------------
-      J_KK(1,4) = J_KK(1,4) - S(1)/dx
-      J_KK(2,4) = J_KK(2,4) - S(2)/dx
-      J_KK(3,4) = J_KK(3,4) - S(3)/dx
-      J_KL(1,4) = J_KL(1,4) + S(1)/dx
-      J_KL(2,4) = J_KL(2,4) + S(2)/dx
-      J_KL(3,4) = J_KL(3,4) + S(3)/dx
-
-      ! L-row gets opposite face contribution
-      J_LK(1,4) = J_LK(1,4) + S(1)/dx
-      J_LK(2,4) = J_LK(2,4) + S(2)/dx
-      J_LK(3,4) = J_LK(3,4) + S(3)/dx
-
-      J_LL(1,4) = J_LL(1,4) - S(1)/dx
-      J_LL(2,4) = J_LL(2,4) - S(2)/dx
-      J_LL(3,4) = J_LL(3,4) - S(3)/dx
+      do i=1,3
+        J_KK(i,4) = J_KK(i,4) + 0.5d0*S(i)
+        J_KL(i,4) = J_KL(i,4) + 0.5d0*S(i)
+        J_LK(i,4) = J_LK(i,4) - 0.5d0*S(i)
+        J_LL(i,4) = J_LL(i,4) - 0.5d0*S(i)
+      enddo
       ! ---------------------------------------------------
       ! Continuity (divergence): R^p_K += phi, R^p_L -= phi
       ! phi = 0.5(uK+uL)·S
@@ -1405,14 +1443,17 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
       J_LL(4,3) = J_LL(4,3) - 0.5d0*S(3)
 
       ! ---------------------------------------------------
-      ! Pressure stabilization in continuity: -tau(pK-pL)
-      ! R^p_K adds: -tau*pK + tau*pL
-      ! R^p_L adds:  tau*pK - tau*pL
+      ! Rhie-Chow pressure correction in continuity:
+      ! flux = phi - rc*(pL - pK), rc = (A^2/a_f)/dx
+      ! K row: +rc*pK - rc*pL ; L row: -rc*pK + rc*pL
       ! ---------------------------------------------------
-      J_KK(4,4) = J_KK(4,4) - tau
-      J_KL(4,4) = J_KL(4,4) + tau
-      J_LK(4,4) = J_LK(4,4) + tau
-      J_LL(4,4) = J_LL(4,4) - tau
+      a_f = 0.5d0*(aP(gid_up) + aP(gid_dn))
+      if (a_f <= 0.d0) a_f = a_mu
+      rc = (area*area/a_f)/dx
+      J_KK(4,4) = J_KK(4,4) + rc
+      J_KL(4,4) = J_KL(4,4) - rc
+      J_LK(4,4) = J_LK(4,4) - rc
+      J_LL(4,4) = J_LL(4,4) + rc
 
       ! ---------------------------------------------------
       ! Convection in momentum (optional): R^u_K += m, R^u_L -= m
@@ -1486,7 +1527,9 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
     cset => cset%next
   enddo
 
-end subroutine StokesJacobianInternalConn
+  deallocate(aP)
+
+  end subroutine StokesJacobianInternalConn
 
 ! ************************************************************************** !
 subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,ierr)
@@ -1837,9 +1880,11 @@ subroutine StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
   type(option_type), pointer :: option
   type(coupler_type), pointer :: boundary_condition
   type(connection_set_type), pointer :: cset
+  type(connection_set_list_type), pointer :: conn_list
 
   PetscReal, pointer :: r_p(:)
   PetscReal, pointer :: u_loc(:)
+  PetscReal, allocatable :: aP(:)
 
   PetscInt :: iconn, local_id, ghosted_id, gid, istart, istart_ghost, ndof
   PetscReal :: Ucell(4), Res(4)
@@ -1851,6 +1896,24 @@ subroutine StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
 
   call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
   call VecGetArrayRead(realization%field%flow_xx_loc,u_loc,ierr);CHKERRQ(ierr)
+
+  ! Build viscous diagonal aP for Rhie-Chow (internal connections only)
+  allocate(aP(grid%ngmax))
+  aP = 0.d0
+  conn_list => grid%internal_connection_set_list
+  cset      => conn_list%first
+  do
+    if (.not.associated(cset)) exit
+    do iconn = 1, cset%num_connections
+      gid = cset%id_up(iconn)
+      local_id = cset%id_dn(iconn)
+      if (gid <= 0 .or. local_id <= 0) cycle
+      if (patch%imat(gid) <= 0 .or. patch%imat(local_id) <= 0) cycle
+      aP(gid) = aP(gid) + mu * cset%area(iconn) / cset%dist(0,iconn)
+      aP(local_id) = aP(local_id) + mu * cset%area(iconn) / cset%dist(0,iconn)
+    enddo
+    cset => cset%next
+  enddo
 
   boundary_condition => patch%boundary_condition_list%first
   do
@@ -1888,7 +1951,7 @@ subroutine StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
 
       call StokesBCFluxConn(boundary_condition,iconn, &
                             cset%area(iconn),cset%dist(:,iconn), &
-                            rho,mu,option,Ucell,Res)
+                            rho,mu,option,Ucell,aP(ghosted_id),Res)
 
       r_p(istart    ) = r_p(istart    ) + Res(1)
       r_p(istart + 1) = r_p(istart + 1) + Res(2)
@@ -1902,12 +1965,13 @@ subroutine StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
 
   call VecRestoreArrayRead(realization%field%flow_xx_loc,u_loc,ierr);CHKERRQ(ierr)
   call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
+  deallocate(aP)
 
 end subroutine StokesResidualBoundaryConn
 
 ! ************************************************************************** !
 
-subroutine StokesBCFluxConn(boundary_condition,iconn,area,dist,rho,mu,option,Ucell,Res)
+subroutine StokesBCFluxConn(boundary_condition,iconn,area,dist,rho,mu,option,Ucell,aP,Res)
   !
   ! Compute boundary-face residual contribution for ONE boundary connection (ONE face).
   !
@@ -1916,7 +1980,7 @@ subroutine StokesBCFluxConn(boundary_condition,iconn,area,dist,rho,mu,option,Uce
   !   continuity: + (u_b · S)
   !
   ! Pressure traction (Option B):
-  !   momentum:  - p_b * S
+  !   momentum:  + p_b * S
   !
   ! No pressure Dirichlet equation is imposed here.
   ! Author: Satish Karra
@@ -1935,13 +1999,15 @@ subroutine StokesBCFluxConn(boundary_condition,iconn,area,dist,rho,mu,option,Uce
   PetscReal, intent(in) :: rho, mu
   type(option_type), intent(in) :: option
   PetscReal, intent(in) :: Ucell(4)
+  PetscReal, intent(in) :: aP
   PetscReal, intent(out) :: Res(4)
 
   PetscReal :: n(3), S(3), d_b, a_b
   PetscReal :: uK(3), pK
   PetscReal :: u_b(3), p_b
   PetscReal :: phi_b
-  PetscBool :: has_u_dir, has_p_trac
+  PetscReal :: rc
+  PetscBool :: has_u_dir, has_p_bc
 
   Res = 0.d0
   u_b = 0.d0
@@ -1961,7 +2027,7 @@ subroutine StokesBCFluxConn(boundary_condition,iconn,area,dist,rho,mu,option,Uce
   pK = Ucell(4)
 
   has_u_dir  = PETSC_FALSE
-  has_p_trac = PETSC_FALSE
+  has_p_bc   = PETSC_FALSE
 
   ! Velocity Dirichlet present?
   if (associated(boundary_condition%flow_condition%stokes%velocity)) then
@@ -1973,17 +2039,26 @@ subroutine StokesBCFluxConn(boundary_condition,iconn,area,dist,rho,mu,option,Uce
     endif
   endif
 
-  ! Pressure traction present? (treat LIQUID_PRESSURE DIRICHLET as traction value p_b)
+  ! Pressure BC present? (treat LIQUID_PRESSURE DIRICHLET as traction value p_b)
   if (associated(boundary_condition%flow_condition%stokes%pressure)) then
     if (boundary_condition%flow_condition%stokes%pressure%itype == DIRICHLET_BC) then
-      if (.not.has_u_dir) then
-        p_b = boundary_condition%flow_aux_real_var(4,iconn)
-        has_p_trac = PETSC_TRUE
-      endif
+      p_b = boundary_condition%flow_aux_real_var(4,iconn)
+      has_p_bc = PETSC_TRUE
     endif
   endif
 
+  ! If no pressure BC, use interior pressure (no correction)
+  if (.not.has_p_bc) p_b = pK
+
   ! ---- Flux-based velocity Dirichlet via viscous diffusion ----
+  ! Boundary continuity uses the same Rhie-Chow correction as interior faces:
+  !   phi_f = u_f·S - (A^2/aP) * (p_b - pK)/d_b
+  ! If no pressure BC, set p_b = pK so the correction is zero.
+  rc = 0.d0
+  if (aP > 0.d0) then
+    rc = (area*area/aP) * (p_b - pK) / d_b
+  endif
+
   if (has_u_dir) then
     a_b = mu * area / d_b
     Res(1) = Res(1) + a_b*(uK(1) - u_b(1))
@@ -1992,19 +2067,17 @@ subroutine StokesBCFluxConn(boundary_condition,iconn,area,dist,rho,mu,option,Uce
 
     ! continuity boundary flux uses prescribed u_b
     phi_b = u_b(1)*S(1) + u_b(2)*S(2) + u_b(3)*S(3)
-    Res(4) = Res(4) - phi_b
+    Res(4) = Res(4) + phi_b - rc
   else
     ! No velocity Dirichlet: use "do-nothing/outflow" flux for continuity
     phi_b = uK(1)*S(1) + uK(2)*S(2) + uK(3)*S(3)
-    Res(4) = Res(4) - phi_b
+    Res(4) = Res(4) + phi_b - rc
   endif
 
   ! ---- Pressure traction ----
-  if (has_p_trac) then
-    Res(1) = Res(1) - (pK - p_b)*S(1)/d_b
-    Res(2) = Res(2) - (pK - p_b)*S(2)/d_b
-    Res(3) = Res(3) - (pK - p_b)*S(3)/d_b
-  endif
+  Res(1) = Res(1) + p_b*S(1)
+  Res(2) = Res(2) + p_b*S(2)
+  Res(3) = Res(3) + p_b*S(3)
 
 end subroutine StokesBCFluxConn
 
@@ -2111,17 +2184,38 @@ subroutine StokesJacobianBoundaryFacesConn(A,realization,mu,ierr)
   type(patch_type), pointer :: patch
   type(option_type), pointer :: option
   type(coupler_type), pointer :: boundary_condition
+  type(connection_set_list_type), pointer :: conn_list
   type(connection_set_type), pointer :: cset
 
   PetscInt :: iconn, local_id, ghosted_id, gid, rowstart, ndof
   PetscReal :: area, dist(-1:3), d_b, a_b
-  PetscBool :: has_u_dir, has_p_trac
+  PetscReal, allocatable :: aP(:)
+  PetscReal :: rc
+  PetscBool :: has_u_dir, has_p_bc
   PetscReal :: S(3)
 
   patch => realization%patch
   grid  => patch%grid
   option => realization%option
   ndof = option%nflowdof
+
+  ! Build viscous diagonal aP for Rhie-Chow (internal connections only)
+  allocate(aP(grid%ngmax))
+  aP = 0.d0
+  conn_list => grid%internal_connection_set_list
+  cset      => conn_list%first
+  do
+    if (.not.associated(cset)) exit
+    do iconn = 1, cset%num_connections
+      local_id = cset%id_up(iconn)
+      ghosted_id = cset%id_dn(iconn)
+      if (local_id <= 0 .or. ghosted_id <= 0) cycle
+      if (patch%imat(local_id) <= 0 .or. patch%imat(ghosted_id) <= 0) cycle
+      aP(local_id) = aP(local_id) + mu * cset%area(iconn) / cset%dist(0,iconn)
+      aP(ghosted_id) = aP(ghosted_id) + mu * cset%area(iconn) / cset%dist(0,iconn)
+    enddo
+    cset => cset%next
+  enddo
 
   boundary_condition => patch%boundary_condition_list%first
   do
@@ -2162,7 +2256,7 @@ subroutine StokesJacobianBoundaryFacesConn(A,realization,mu,ierr)
       S(3) = dist(3)*area
 
       has_u_dir = PETSC_FALSE
-      has_p_trac = PETSC_FALSE
+      has_p_bc = PETSC_FALSE
       if (associated(boundary_condition%flow_condition%stokes%velocity)) then
         if (boundary_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
           has_u_dir = PETSC_TRUE
@@ -2171,9 +2265,7 @@ subroutine StokesJacobianBoundaryFacesConn(A,realization,mu,ierr)
 
       if (associated(boundary_condition%flow_condition%stokes%pressure)) then
         if (boundary_condition%flow_condition%stokes%pressure%itype == DIRICHLET_BC) then
-          if (.not.has_u_dir) then
-            has_p_trac = PETSC_TRUE
-          endif
+          has_p_bc = PETSC_TRUE
         endif
       endif
 
@@ -2185,18 +2277,15 @@ subroutine StokesJacobianBoundaryFacesConn(A,realization,mu,ierr)
         call PUMSetValuesLocal(A,1,rowstart+2,1,rowstart+2,a_b,ADD_VALUES,ierr);CHKERRQ(ierr)
         ! continuity uses prescribed flux u_b·S -> no Jacobian
       else
-        ! do-nothing continuity flux: phi = -uK·S -> J(p,u) -= S^T
-
-        call PUMSetValuesLocal(A,1,rowstart+3,1,rowstart+0,-S(1),ADD_VALUES,ierr);CHKERRQ(ierr)
-        call PUMSetValuesLocal(A,1,rowstart+3,1,rowstart+1,-S(2),ADD_VALUES,ierr);CHKERRQ(ierr)
-        call PUMSetValuesLocal(A,1,rowstart+3,1,rowstart+2,-S(3),ADD_VALUES,ierr);CHKERRQ(ierr)
+        ! do-nothing continuity flux: phi = uK·S -> J(p,u) += S^T
+        call PUMSetValuesLocal(A,1,rowstart+3,1,rowstart+0,S(1),ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesLocal(A,1,rowstart+3,1,rowstart+1,S(2),ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesLocal(A,1,rowstart+3,1,rowstart+2,S(3),ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
 
-      if (has_p_trac) then
-        ! If pressure traction: momentum has -(pK - p_b)*S/d_b => diag -= S/d_b
-        call PUMSetValuesLocal(A,1,rowstart+0,1,rowstart+3,-S(1)/d_b,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call PUMSetValuesLocal(A,1,rowstart+1,1,rowstart+3,-S(2)/d_b,ADD_VALUES,ierr);CHKERRQ(ierr)
-        call PUMSetValuesLocal(A,1,rowstart+2,1,rowstart+3,-S(3)/d_b,ADD_VALUES,ierr);CHKERRQ(ierr)
+      if (aP(ghosted_id) > 0.d0) then
+        rc = (area*area/aP(ghosted_id)) / d_b
+        call PUMSetValuesLocal(A,1,rowstart+3,1,rowstart+3,rc,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
 
     enddo
@@ -2204,7 +2293,9 @@ subroutine StokesJacobianBoundaryFacesConn(A,realization,mu,ierr)
     boundary_condition => boundary_condition%next
   enddo
 
-end subroutine StokesJacobianBoundaryFacesConn
+  deallocate(aP)
+
+  end subroutine StokesJacobianBoundaryFacesConn
 
 ! ************************************************************************** !
 subroutine StokesResidualPinPressure(r,xx,realization,p_ref,ierr)
