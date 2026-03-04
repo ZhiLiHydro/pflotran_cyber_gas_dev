@@ -299,6 +299,8 @@ module EOS_Water_module
             EOSWaterSurfaceTension, &
             EOSWaterKelvin
 
+  public :: EOSWaterThermalConductivityIF97
+
   public :: TestEOSWaterBatzleAndWang, &
             EOSWaterTest, &
             EOSWaterSteamTest
@@ -6211,8 +6213,6 @@ subroutine EOSWaterSurfaceTension(T,sigma)
 
 end subroutine EOSWaterSurfaceTension
 
-
-
 ! ************************************************************************** !
 
 subroutine EOSWaterKelvin(Pc,rhow,T,Psat,Pv)
@@ -6246,5 +6246,187 @@ subroutine EOSWaterKelvin(Pc,rhow,T,Psat,Pv)
 end subroutine EOSWaterKelvin
 
 ! ************************************************************************** !
+
+subroutine EOSWaterThermalConductivityIF97(rho,T,lambda, &
+                           calculate_derivative,drho_dp,drho_dT, &
+                           dlambda_dp,dlambda_dT)
+  !
+  ! Calculates the thermal conductivity of water
+  !
+  ! Wagner and Kretzschmar (2008) International Steam Tables: Properties
+  ! of Water and Stream Based on the Industrial Formulation IAPWS-IF97,
+  ! 2nd Edition, Springer-Verlag, Berlin.
+  ! Eq. 3.4-7 (pg 155-156)
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/12/26
+  !
+  implicit none
+
+  PetscReal :: rho    ! [kg/m^3]
+  PetscReal :: T      ! [C]
+  PetscReal :: lambda ! [MW/m/K]
+  PetscBool, intent(in) :: calculate_derivative
+  PetscReal, intent(in) :: drho_dp, drho_dT
+  PetscReal, intent(out) :: dlambda_dp, dlambda_dT
+
+  PetscReal, parameter :: Tref = 647.26d0
+  PetscReal, parameter :: rhoref = 317.7d0
+
+  PetscReal, parameter :: n35(4) = [0.102811d-1,0.299621d-1, &
+                                    0.156146d-1,-0.422464d-2]
+  PetscReal, parameter :: n36(5) = [-0.397070d0,0.400302d0,0.106d1, &
+                                    -0.171587d0,0.239219d1]
+  PetscReal, parameter :: n37(10) = [0.701309d-1,0.118520d-1,0.642857d0, &
+                                     0.169937d-2,-0.102d1,-0.411717d1, &
+                                     0.617937d1,0.822994d-1,0.100932d2, &
+                                     0.308976d-2]
+
+  PetscReal :: theta
+  PetscReal :: delta
+  PetscReal :: Lambda0, Lambda1, Lambda2
+  PetscReal :: delta_theta
+  PetscReal :: tempreal
+  PetscReal :: A, B
+  PetscInt :: i
+
+  PetscReal :: dLambda0_dtheta, dLambda1_ddelta, dLambda2_ddelta, dLambda2_dtheta
+  PetscReal :: dlambda_drho
+  PetscReal :: dtheta_dT
+  PetscReal :: ddelta_drho
+  PetscReal :: dA_dtheta, dB_dtheta, ddelta_theta_dtheta
+  PetscReal :: eq35sum
+  PetscReal :: eq37a_theta_pow_neg10
+  PetscReal :: eq37a_1_minus_delta28
+  PetscReal :: eq37b_b_over_1pb
+  PetscReal :: eq37b_1_minus_delta1pb
+  PetscReal :: eq37c_theta_pow_15
+  PetscReal :: eq37c_delta_pow_neg5
+
+  theta = (T+T273K)/Tref
+  delta = rho/rhoref
+
+  eq35sum = 0.d0
+  do i = 1, 4
+    eq35sum = eq35sum + n35(i)*theta**(i-1)
+  enddo
+  Lambda0 = sqrt(theta)*eq35sum
+
+  Lambda1 = n36(1) + n36(2)*delta + &
+            n36(3) * exp(n36(4) * (delta + n36(5))**2)
+
+  delta_theta = dabs(theta-1.d0) + n37(10)
+  A = 2.d0 + n37(8)*delta_theta**(-0.6d0)
+  if (theta >= 1.d0) then
+    B = 1.d0/delta_theta
+  else
+    B = n37(9)*delta_theta**(-0.6d0)
+  endif
+  eq37a_theta_pow_neg10 = theta**(-10)
+  eq37a_1_minus_delta28 = 1.d0 - delta**2.8d0
+  eq37b_b_over_1pb = B/(1.d0+B)
+  eq37b_1_minus_delta1pb = 1.d0-delta**(1.d0+B)
+  eq37c_theta_pow_15 = theta**1.5d0
+  eq37c_delta_pow_neg5 = delta**(-5)
+  Lambda2 = &
+    !eq37a
+    (n37(1)*eq37a_theta_pow_neg10 + n37(2)) * delta**1.8d0 * &
+              exp(n37(3)*eq37a_1_minus_delta28) + &
+    !eq37b
+    n37(4) * A * delta**B * exp(eq37b_b_over_1pb*eq37b_1_minus_delta1pb) + &
+    !eq37c
+    n37(5) * exp(n37(6)*eq37c_theta_pow_15 + n37(7)*eq37c_delta_pow_neg5)
+
+  lambda = (Lambda0 + Lambda1 + Lambda2)
+
+  dlambda_dp = UNINITIALIZED_DOUBLE
+  dlambda_dT = UNINITIALIZED_DOUBLE
+
+  if (calculate_derivative) then
+
+    ! Derivative of Lambda0 with respect to theta
+    tempreal = 0.d0
+    do i = 1, 4
+      tempreal = tempreal + (i-1)*n35(i)*theta**(i-2)
+    enddo
+    dLambda0_dtheta = 0.5d0*theta**(-0.5d0)*eq35sum + &
+              sqrt(theta)*tempreal
+
+    ! Derivative of Lambda1 with respect to delta
+    dLambda1_ddelta = n36(2) + &
+              2.d0*n36(3)*n36(4)*(delta + n36(5))* &
+              exp(n36(4) * (delta + n36(5))**2)
+
+    ! Derivative of delta_theta with respect to theta
+    !   theta will always be positive
+    if (theta < 1.d0) then
+      ddelta_theta_dtheta = -1.d0
+    else
+      ddelta_theta_dtheta = 1.d0
+    endif
+
+    ! Derivatives of A and B with respect to theta
+    dA_dtheta = -0.6d0*n37(8)*delta_theta**(-1.6d0)*ddelta_theta_dtheta
+    if (theta >= 1.d0) then
+      dB_dtheta = -delta_theta**(-2)*ddelta_theta_dtheta
+    else
+      dB_dtheta = -0.6d0*n37(9)*delta_theta**(-1.6d0)*ddelta_theta_dtheta
+    endif
+
+    ! Derivative of Lambda2 with respect to delta
+    dLambda2_ddelta = &
+      !eq37a
+      1.8d0*(n37(1)*eq37a_theta_pow_neg10 + n37(2))*delta**0.8d0* &
+        exp(n37(3)*eq37a_1_minus_delta28) - &
+      2.8d0*n37(3)*(n37(1)*eq37a_theta_pow_neg10 + n37(2))*delta**3.6d0 * &
+        exp(n37(3)*eq37a_1_minus_delta28) + &
+      !eq37b
+      n37(4)*A*B*delta**(B-1.d0)*exp(eq37b_b_over_1pb*eq37b_1_minus_delta1pb) + &
+      !eq37c
+      !  eq37c_delta_pow_neg5/delta = delta**(-6)
+      (-5.d0)*n37(7)*eq37c_delta_pow_neg5/delta*n37(5)* &
+        exp(n37(6)*eq37c_theta_pow_15 + n37(7)*eq37c_delta_pow_neg5)
+
+
+    ! Derivative of Lambda2 with respect to theta
+    dLambda2_dtheta = &
+      !eq37a
+      ! eq37a_theta_pow_neg10/theta = theta**-11
+      -10.d0*n37(1)*eq37a_theta_pow_neg10/theta*delta**1.8d0* &
+        exp(n37(3)*eq37a_1_minus_delta28) + &
+      !eq37b
+      n37(4)*dA_dtheta*delta**B*exp(eq37b_b_over_1pb*eq37b_1_minus_delta1pb) + &
+      n37(4)*A*delta**B*log(delta)*dB_dtheta* &
+        exp(eq37b_b_over_1pb*eq37b_1_minus_delta1pb) + &
+      n37(4)*A*delta**B*exp(eq37b_b_over_1pb*eq37b_1_minus_delta1pb)* &
+        (dB_dtheta/(1.d0+B)*eq37b_1_minus_delta1pb + &
+         -eq37b_b_over_1pb**2*dB_dtheta*eq37b_1_minus_delta1pb + &
+         -eq37b_b_over_1pb*(1.d0+B)*delta**B*dB_dtheta) + &
+      !eq37c
+      !  eq37c_theta_pow_15/theta = theta**0.5
+      n37(5)*exp(n37(6)*eq37c_theta_pow_15+n37(7)*eq37c_delta_pow_neg5)* &
+        n37(6)*1.5d0*eq37c_theta_pow_15/theta
+
+
+    dtheta_dT = 1.d0 / Tref
+    ddelta_drho = 1.d0 / rhoref
+
+    ! Total derivatives
+    dlambda_drho = (dLambda1_ddelta + dLambda2_ddelta) * ddelta_drho
+    dlambda_dp = dlambda_drho * drho_dp
+    dlambda_dT = (dLambda0_dtheta + &
+                  dLambda2_dtheta) * dtheta_dT + &
+                 dlambda_drho * drho_dT
+
+    ! convert from W/m/K to MW/m/K
+    dlambda_dp = dlambda_dp * 1.d-6
+    dlambda_dT = dlambda_dT * 1.d-6
+
+  endif
+
+  ! convert from W/m/K to MW/m/K
+  lambda = lambda * 1.d-6
+
+end subroutine EOSWaterThermalConductivityIF97
 
 end module EOS_Water_module

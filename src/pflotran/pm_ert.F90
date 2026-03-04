@@ -390,11 +390,18 @@ subroutine PMERTSetup(this)
       call PrintErrMsg(this%option)
     endif
   else if (this%option%itranmode == RT_MODE) then
+    if (this%calc_fluid_cond_from_chemistry .and. &
+        Uninitialized(this%realization%reaction%elec_cond_method)) then
+      this%option%io_buffer = 'Calculation of fluid conductivity from &
+        &water chemistry for ERT has been specified without an &
+        &ELECTRICAL_CONDUCTIVITY_METHOD being specified under CHEMISTRY.'
+      call PrintErrMsg(this%option)
+    endif
   else ! no transport
     if (this%calc_fluid_cond_from_chemistry) then
       this%option%io_buffer = 'Calculation of fluid conductivity from &
-        &water chemistry has be specified without a reactive transport &
-        &process model being employed.'
+        &water chemistry for ERT has been specified without a reactive &
+        &transport process model being employed.'
       call PrintErrMsg(this%option)
     endif
     if (Initialized(this%tracer_water_conductivity )) then
@@ -777,8 +784,23 @@ subroutine PMERTSetupSolvers(this)
   call KSPSetOptionsPrefix(solver%ksp,"geop_",ierr);CHKERRQ(ierr)
   call SolverCheckCommandLine(solver)
 
-  solver%M_mat_type = MATAIJ
-  solver%Mpre_mat_type = MATAIJ
+  ! Default to MATAIJ (not MATBAIJ, the default in most other process models)
+  ! if the user has not specified otherwise.
+  if (Uninitialized(solver%Mpre_mat_type) .and. &
+      Uninitialized(solver%M_mat_type)) then
+        ! Matrix types not specified, so set to default.
+    solver%M_mat_type = MATAIJ
+    solver%Mpre_mat_type = MATAIJ
+  else if (Uninitialized(solver%Mpre_mat_type)) then
+    if (solver%M_mat_type == MATMFFD) then
+      solver%Mpre_mat_type = MATAIJ
+    else
+      solver%Mpre_mat_type = solver%M_mat_type
+    endif
+  else if (Uninitialized(solver%M_mat_type)) then
+    solver%M_mat_type = solver%Mpre_mat_type
+  endif
+
   call DiscretizationCreateMatrix(this%realization%discretization, &
                                   ONEDOF, &
                                   solver%Mpre_mat_type, &
@@ -1804,13 +1826,12 @@ subroutine PMERTStrip(this)
   ! Author: Piyoosh Jaysaval
   ! Date: 01/22/21
   !
+  use Petsc_Utility_module
   use Utility_module
 
   implicit none
 
   class(pm_ert_type) :: this
-
-  PetscErrorCode :: ierr
 
   call PMBaseDestroy(this)
   ! destroyed in realization
@@ -1819,18 +1840,10 @@ subroutine PMERTStrip(this)
   nullify(this%survey)
   call WaypointListDestroy(this%waypoint_list)
 
-  if (.not.PetscObjectIsNull(this%rhs)) then
-    call VecDestroy(this%rhs,ierr);CHKERRQ(ierr)
-  endif
-  if (.not.PetscObjectIsNull(this%dconductivity_dsaturation)) then
-    call VecDestroy(this%dconductivity_dsaturation,ierr);CHKERRQ(ierr)
-  endif
-  if (.not.PetscObjectIsNull(this%dconductivity_dconcentration)) then
-    call VecDestroy(this%dconductivity_dconcentration,ierr);CHKERRQ(ierr)
-  endif
-  if (.not.PetscObjectIsNull(this%dconductivity_dporosity)) then
-    call VecDestroy(this%dconductivity_dporosity,ierr);CHKERRQ(ierr)
-  endif
+  call PUVecDestroy(this%rhs)
+  call PUVecDestroy(this%dconductivity_dsaturation)
+  call PUVecDestroy(this%dconductivity_dconcentration)
+  call PUVecDestroy(this%dconductivity_dporosity)
 
 end subroutine PMERTStrip
 

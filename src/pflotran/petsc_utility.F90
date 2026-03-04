@@ -67,7 +67,15 @@ module Petsc_Utility_module
 
   public :: PUCreateViewer, &
             PUVecView, &
-            PUMatView, &
+            PUMatView
+
+  public :: PUVecDestroy, &
+            PUMatDestroy, &
+            PUISDestroy, &
+            PUISLocalToGlobalMappingDestroy, &
+            PUVecScatterDestroy, &
+            PUDMDestroy, &
+            PUAODestroy, &
             PUViewerDestroy
 
   public :: PUTestFile, &
@@ -739,5 +747,151 @@ subroutine PUViewerDestroy(viewer,iformat)
   call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
 
 end subroutine PUViewerDestroy
+
+! ************************************************************************** !
+
+subroutine PUVecDestroy(vec)
+  !
+  ! Destroys PETSc Vec
+  !
+  ! Author: Glenn Hammond
+  ! Date: 01/22/26
+  !
+  implicit none
+
+  Vec :: vec
+  PetscErrorCode :: ierr
+
+  if (.not.PetscObjectIsNull(vec)) then
+    call VecDestroy(vec,ierr);CHKERRQ(ierr)
+  endif
+
+end subroutine PUVecDestroy
+
+! ************************************************************************** !
+
+subroutine PUMatDestroy(mat)
+  !
+  ! Destroys PETSc Mat
+  !
+  ! Author: Glenn Hammond
+  ! Date: 01/22/26
+  !
+  implicit none
+
+  Mat :: mat
+  PetscErrorCode :: ierr
+
+  if (.not.PetscObjectIsNull(mat)) then
+    call MatDestroy(mat,ierr);CHKERRQ(ierr)
+  endif
+
+end subroutine PUMatDestroy
+
+! ************************************************************************** !
+
+subroutine PUISDestroy(is)
+  !
+  ! Destroys PETSc index set
+  !
+  ! Author: Glenn Hammond
+  ! Date: 01/22/26
+  !
+  implicit none
+
+  IS :: is
+  PetscErrorCode :: ierr
+
+  if (.not.PetscObjectIsNull(is)) then
+    call ISDestroy(is,ierr);CHKERRQ(ierr)
+  endif
+
+end subroutine PUISDestroy
+
+! ************************************************************************** !
+
+subroutine PUISLocalToGlobalMappingDestroy(mapping)
+  !
+  ! Destroys PETSc index set
+  !
+  ! Author: Glenn Hammond
+  ! Date: 01/22/26
+  !
+  implicit none
+
+  ISLocalToGlobalMapping :: mapping
+  PetscErrorCode :: ierr
+
+  if (.not.PetscObjectIsNull(mapping)) then
+    call ISLocalToGlobalMappingDestroy(mapping,ierr);CHKERRQ(ierr)
+  endif
+
+end subroutine PUISLocalToGlobalMappingDestroy
+
+! ************************************************************************** !
+
+subroutine PUVecScatterDestroy(vecscatter)
+  !
+  ! Destroys PETSc vec scatter
+  !
+  ! Author: Glenn Hammond
+  ! Date: 01/22/26
+  !
+  implicit none
+
+  VecScatter :: vecscatter
+  PetscErrorCode :: ierr
+
+  if (.not.PetscObjectIsNull(vecscatter)) then
+    call VecScatterDestroy(vecscatter,ierr);CHKERRQ(ierr)
+  endif
+
+end subroutine PUVecScatterDestroy
+
+! ************************************************************************** !
+
+subroutine PUDMDestroy(dm)
+  !
+  ! Destroys PETSc distributed mesh object
+  !
+  ! Author: Glenn Hammond
+  ! Date: 01/22/26
+  !
+#include "petsc/finclude/petscdmda.h"
+  use petscdmda
+
+  implicit none
+
+  DM :: dm
+  PetscErrorCode :: ierr
+
+  if (.not.PetscObjectIsNull(dm)) then
+    call DMDestroy(dm,ierr);CHKERRQ(ierr)
+  endif
+
+end subroutine PUDMDestroy
+
+! ************************************************************************** !
+
+subroutine PUAODestroy(ao)
+  !
+  ! Destroys PETSc application ordering object
+  !
+  ! Author: Glenn Hammond
+  ! Date: 01/22/26
+  !
+#include "petsc/finclude/petscdmda.h"
+  use petscdmda
+
+  implicit none
+
+  AO :: ao
+  PetscErrorCode :: ierr
+
+  if (.not.PetscObjectIsNull(ao)) then
+    call AODestroy(ao,ierr);CHKERRQ(ierr)
+  endif
+
+end subroutine PUAODestroy
 
 end module Petsc_Utility_module

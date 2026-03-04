@@ -632,15 +632,6 @@ recursive subroutine PMRTInitializeRun(this)
                  this%realization%field%porosity_tpdt,ierr);CHKERRQ(ierr)
   endif
 
-  ! restart
-  !geh: the below equilibrates the original (non-restarted) chemistry
-  !     with restarted flow state variables. but we should not need it
-  !     with the skip restart refactor - 12/13/18
-!  if (this%option%restart_flag .and. this%skip_restart) then
-!    call RTClearActivityCoefficients(this%realization)
-!    call CondControlAssignTranInitCond(this%realization)
-!  endif
-
   if (this%option%iflowmode /= NULL_MODE) then
     ! at this point, global_auxvars%xxx_store(:,1) holds the correct values
     ! and weighting by 0. obtains that value
@@ -1269,7 +1260,7 @@ subroutine PMRTCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
   PetscReal, pointer :: C0_p(:)
   PetscReal, pointer :: dC_p(:)
   PetscReal, pointer :: r_p(:)
-  PetscReal, pointer :: accum_p(:)
+  PetscReal, pointer :: accum_t_p(:)
   PetscReal :: original_concentration
   PetscReal :: change
   PetscReal :: absolute_change
@@ -1298,7 +1289,7 @@ subroutine PMRTCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
     call VecGetArrayRead(dX,dC_p,ierr);CHKERRQ(ierr)
     call VecGetArrayRead(X0,C0_p,ierr);CHKERRQ(ierr)
     call VecGetArrayRead(field%tran_r,r_p,ierr);CHKERRQ(ierr)
-    call VecGetArrayRead(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(field%tran_accum_t,accum_t_p,ierr);CHKERRQ(ierr)
     do local_id = 1, grid%nlmax
       offset = (local_id-1)*option%ntrandof
       natural_id = grid%nG2A(grid%nL2G(local_id))
@@ -1335,7 +1326,7 @@ subroutine PMRTCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
           this%converged_cell(idof,ABS_REL_UPDATE_INDEX) = natural_id
         endif
         ! scaled residual
-        scaled_residual = dabs(r_p(index)/accum_p(index))
+        scaled_residual = dabs(r_p(index)/accum_t_p(index))
         if (scaled_residual > &
             this%converged_real(idof,ABS_SCALED_RESIDUAL_INDEX)) then
           this%converged_real(idof,ABS_SCALED_RESIDUAL_INDEX) = scaled_residual
@@ -1346,7 +1337,7 @@ subroutine PMRTCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
     call VecRestoreArrayRead(dX,dC_p,ierr);CHKERRQ(ierr)
     call VecRestoreArrayRead(X0,C0_p,ierr);CHKERRQ(ierr)
     call VecRestoreArrayRead(field%tran_r,r_p,ierr);CHKERRQ(ierr)
-    call VecRestoreArrayRead(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(field%tran_accum_t,accum_t_p,ierr);CHKERRQ(ierr)
     i = NEG_UPDATE_INDEX
     this%converged_real(:,i) = -this%converged_real(:,i)
     i = NEG_REL_UPDATE_INDEX
@@ -1841,6 +1832,7 @@ subroutine PMRTCheckpointBinary(this,viewer)
   use Discretization_module
   use Grid_module
   use Patch_module
+  use Petsc_Utility_module
   use Secondary_Continuum_module
   use Reactive_Transport_module, only : RTCheckpointKineticSorptionBinary
   use Reaction_Aux_module, only : ACT_COEF_FREQUENCY_OFF
@@ -2003,9 +1995,7 @@ subroutine PMRTCheckpointBinary(this,viewer)
     endif
   endif
 
-  if (.not.PetscObjectIsNull(global_vec)) then
-    call VecDestroy(global_vec,ierr);CHKERRQ(ierr)
-  endif
+  call PUVecDestroy(global_vec)
 
 end subroutine PMRTCheckpointBinary
 
@@ -2028,6 +2018,7 @@ subroutine PMRTRestartBinary(this,viewer)
   use Discretization_module
   use Grid_module
   use Patch_module
+  use Petsc_Utility_module
   use Reactive_Transport_module, only : RTCheckpointKineticSorptionBinary, &
                                         RTUpdateAuxVars
   use Reaction_Aux_module, only : ACT_COEF_FREQUENCY_OFF
@@ -2189,12 +2180,8 @@ subroutine PMRTRestartBinary(this,viewer)
   endif
 
   ! We are finished, so clean up.
-  if (.not.PetscObjectIsNull(global_vec)) then
-    call VecDestroy(global_vec,ierr);CHKERRQ(ierr)
-  endif
-  if (.not.PetscObjectIsNull(local_vec)) then
-    call VecDestroy(local_vec,ierr);CHKERRQ(ierr)
-  endif
+  call PUVecDestroy(global_vec)
+  call PUVecDestroy(local_vec)
 
   call PetscBagDestroy(bag,ierr);CHKERRQ(ierr)
 
