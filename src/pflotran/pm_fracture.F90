@@ -45,7 +45,7 @@ module PM_Fracture_class
     type(point3d_type) :: parallel
     ! rotation matrix
     PetscReal :: RM(3,3)
-    ! list of global cell ids the fracture occupies
+    ! list of local cell ids the fracture occupies
     PetscInt, pointer :: cell_ids(:)
     ! list of previous temperatures in the fracture cells
     PetscReal, pointer :: prev_temperature(:)
@@ -116,8 +116,10 @@ module PM_Fracture_class
     PetscBool, pointer :: connected_to_start(:)
     ! Flag indicating connection to ending region
     PetscBool, pointer :: connected_to_end(:)
-    ! list of all global cell ids that contain connected fractures (unique)
+    ! list of all local cell ids that contain connected fractures (unique)
     PetscInt, pointer :: unique_connected_cell_ids(:)
+    ! list of all global cell ids that contain connected fractures (unique)
+    PetscInt, pointer :: unique_connected_cell_ids_glb(:)
     ! list of start region global cell ids
     PetscInt, pointer :: clip_region_cell_ids(:)
     ! name of region for clipping
@@ -136,6 +138,8 @@ module PM_Fracture_class
     PetscReal, pointer :: max_frac_hap(:)
     ! sum of fracture aperture at global cell ids
     PetscReal, pointer :: sum_frac_hap(:)
+    ! global cell ids where fracture intersections occur
+    PetscInt, pointer :: frac_intersection_ids(:)
     ! behavior at fracture intersections (1=sum,2=max)
     PetscInt :: frac_intersection_type
     ! thermal expansion coefficient # [1/C]
@@ -199,6 +203,7 @@ function PMFractureCreate()
   nullify(this%connected_to_start)
   nullify(this%connected_to_end)
   nullify(this%unique_connected_cell_ids)
+  nullify(this%unique_connected_cell_ids_glb)
   nullify(this%clip_region_cell_ids)
   nullify(this%max_frac_kx)
   nullify(this%max_frac_ky)
@@ -208,6 +213,7 @@ function PMFractureCreate()
   nullify(this%sum_frac_kz)
   nullify(this%max_frac_hap)
   nullify(this%sum_frac_hap)
+  nullify(this%frac_intersection_ids)
   this%frac_intersection_type = 1  ! (1=sum;2=max)
   this%nfrac = 0
   this%max_frac = UNINITIALIZED_INTEGER
@@ -370,14 +376,15 @@ subroutine PMFracSetup(this)
   type(material_auxvar_type), pointer :: material_auxvar
   character(len=MAXWORDLENGTH) :: word,filename, filename_frac_info
   character(len=MAXSTRINGLENGTH) :: path
-  PetscInt, pointer :: temp_cell_ids(:)
+  PetscInt, pointer :: temp_cell_ids(:),temp_gbl_cell_ids(:)
   PetscInt, pointer :: temp_allfrac_cell_ids(:)
   PetscInt, pointer :: temp_allfrac_unique_cell_ids(:)
   PetscInt, pointer :: temp_frac_common_cell_ids(:)
-  PetscInt :: k,j,i,fid,status, fid_frac_info
+  PetscInt :: k,j,i,fid,status, fid_frac_info, glb_id
   PetscInt :: nf,tfc,tcfc,read_max
   PetscInt :: total_sum_glb
-  PetscInt, pointer :: allfrac_num_cells(:)
+  PetscInt, pointer :: allfrac_num_cells(:),common_num_cells(:)
+  PetscInt, pointer :: uniq_conn_num_cells(:)
   PetscInt, pointer :: cell_positions(:)
   PetscReal, pointer :: d_vertex(:)
   PetscReal :: D,distance,L22
@@ -580,7 +587,7 @@ subroutine PMFracSetup(this)
         if (abs(max_z-min_z) < 1.d-5) within_z = PETSC_TRUE
         if (within_x .and. within_y .and. within_z) then
           j = j + 1
-          temp_cell_ids(j) = k
+          temp_cell_ids(j) = k ! local cell id
         endif
       endif
     enddo
@@ -684,32 +691,86 @@ subroutine PMFracSetup(this)
     cur_fracture => cur_fracture%next
   enddo
 
+  allocate(this%allfrac_cell_ids(tfc)) ! list of local cell ids, ok if tfc=0
+  this%allfrac_cell_ids(:) = UNINITIALIZED_INTEGER
+  if (tfc > 0) this%allfrac_cell_ids(1:tfc) = temp_allfrac_cell_ids(1:tfc)
+  deallocate(temp_allfrac_cell_ids)
+  allocate(temp_allfrac_cell_ids(tfc)) ! reuse the array, now re-sized
+  temp_allfrac_cell_ids(:) = UNINITIALIZED_INTEGER
+  deallocate(temp_cell_ids)
+  allocate(temp_cell_ids(tfc)) ! reuse the array, now re-sized
+  temp_cell_ids(:) = UNINITIALIZED_INTEGER
   if (tfc > 0) then
-    allocate(this%allfrac_cell_ids(tfc))
-    this%allfrac_cell_ids(1:tfc) = temp_allfrac_cell_ids(1:tfc)
-    deallocate(temp_allfrac_cell_ids)
-    allocate(temp_allfrac_cell_ids(tfc))
-    temp_allfrac_cell_ids(:) = UNINITIALIZED_INTEGER
-
-    deallocate(temp_cell_ids)
-    allocate(temp_cell_ids(tfc))
-    temp_cell_ids(:) = UNINITIALIZED_INTEGER
-    j = 1
-    do k = 1,tfc
-      if (any(temp_allfrac_cell_ids == this%allfrac_cell_ids(k))) then
-        temp_cell_ids(j) = this%allfrac_cell_ids(k)
+    ! sort list of local cell ids in this%allfrac_cell_ids
+    do i = 2,tfc
+      k = this%allfrac_cell_ids(i)
+      j = i - 1
+      do while (j >= 1 .and. this%allfrac_cell_ids(j) > k)
+        this%allfrac_cell_ids(j+1) = this%allfrac_cell_ids(j)
+        j = j - 1
+      end do
+      this%allfrac_cell_ids(j+1) = k
+    end do
+    ! pull out the duplicated/repeated cell ids (these are intersections)
+    k = 0; i = 1
+    do while (i <= tfc)
+      j = 1
+      do while (((i + j) <= tfc) .and. &
+                (this%allfrac_cell_ids(i+j) == this%allfrac_cell_ids(i)))
         j = j + 1
-      endif
-      temp_allfrac_cell_ids(k) = this%allfrac_cell_ids(k)
-    enddo
-    allocate(this%frac_common_cell_ids(j))
-    this%frac_common_cell_ids(1:j) = temp_cell_ids(1:j)
-    deallocate(temp_frac_common_cell_ids)
+      end do
+      if (j >= 2) then
+        k = k + 1
+        temp_cell_ids(k) = this%allfrac_cell_ids(i)
+      end if
+      i = i + j
+    end do
+    allocate(this%frac_common_cell_ids(k))
+    if (k > 0) this%frac_common_cell_ids = temp_cell_ids(1:k)
+  endif
+  deallocate(temp_frac_common_cell_ids)
 
-    allocate(temp_allfrac_unique_cell_ids(tfc))
-    temp_allfrac_unique_cell_ids(:) = 0
-    j = 1
+  ! if in parallel, the list in this%frac_common_cell_ids are local to the
+  ! processor, so we need to make a global id list from all processors
+  ! j is the total number of common cells on each process (ie intersections)
+  allocate(common_num_cells(option%comm%size))
+  j = size(this%frac_common_cell_ids)
+  allocate(temp_gbl_cell_ids(j)) ! ok if j=0
+  do i=1,j ! will not enter if j=0
+    temp_gbl_cell_ids(i) = &
+                     res_grid%nG2A(res_grid%nL2G(this%frac_common_cell_ids(i)))
+  enddo
+  call MPI_Allgather(j,ONE_INTEGER,MPI_INTEGER,common_num_cells, &
+                     ONE_INTEGER,MPI_INTEGER,option%mycomm,ierr);CHKERRQ(ierr)
+  call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
+  allocate(cell_positions(option%comm%size))
+  do i = 1,option%comm%size
+    if (i == 1) then
+      cell_positions(i) = 0
+    else
+      cell_positions(i) = cell_positions(i-1) + common_num_cells(i-1)
+    endif
+  enddo
+  allocate(this%frac_intersection_ids(SUM(common_num_cells))) ! ok if SUM=0
+  if (SUM(common_num_cells) > 0) then
+    call MPI_Gatherv(temp_gbl_cell_ids,j,MPI_INTEGER, &
+                     this%frac_intersection_ids,common_num_cells, &
+                     cell_positions,MPI_INTEGER,ZERO_INTEGER, &
+                     option%mycomm,ierr);CHKERRQ(ierr)
+    ! only rank zero knows this%frac_intersection_ids, so we need to share it
+    call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
+    call MPI_Bcast(this%frac_intersection_ids,SUM(common_num_cells), &
+                   MPI_INTEGER,ZERO_INTEGER,option%mycomm,ierr);CHKERRQ(ierr)
+  endif
+  deallocate(common_num_cells)
+  deallocate(temp_gbl_cell_ids)
+
+  allocate(temp_allfrac_unique_cell_ids(tfc)) ! list of local cell ids
+  temp_allfrac_unique_cell_ids(:) = UNINITIALIZED_INTEGER
+  j = 0
+  if (tfc > 0) then
     temp_allfrac_unique_cell_ids(1) = this%allfrac_cell_ids(1)
+    j = j + 1
     do i=2,tfc
       ! if the number already exists in temp check next
       if (any( temp_allfrac_unique_cell_ids == &
@@ -718,30 +779,34 @@ subroutine PMFracSetup(this)
       j = j + 1
       temp_allfrac_unique_cell_ids(j) = this%allfrac_cell_ids(i)
     enddo
-    allocate(this%allfrac_unique_cell_ids(j))
+  endif
+  allocate(this%allfrac_unique_cell_ids(j)) ! ok if j=0
+  this%allfrac_unique_cell_ids(:) = UNINITIALIZED_INTEGER
+  if (j > 0) then
     this%allfrac_unique_cell_ids(1:j) = temp_allfrac_unique_cell_ids(1:j)
-    ! reuse already allocated array to hold global ids before deallocating it
-    do i=1,j
-      temp_allfrac_unique_cell_ids(i) = &
+  endif
+  ! reuse already allocated array to hold global ids before deallocating it
+  do i=1,j ! will not enter if j=0
+    temp_allfrac_unique_cell_ids(i) = &
                   res_grid%nG2A(res_grid%nL2G(this%allfrac_unique_cell_ids(i)))
-    enddo
-    ! if in parallel, the list in this%allfrac_unique_cell_ids are local to the
-    ! processor, so we need to make a global id list from all processors
-    ! j is the total number of fractured cells on each process
-    allocate(allfrac_num_cells(option%comm%size))
-    call MPI_Allgather(j,ONE_INTEGER,MPI_INTEGER,allfrac_num_cells, &
-                       ONE_INTEGER,MPI_INTEGER,option%mycomm,ierr);CHKERRQ(ierr)
-    call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
-    total_sum_glb = SUM(allfrac_num_cells)
-    allocate(cell_positions(option%comm%size))
-    do i = 1,option%comm%size
-      if (i == 1) then
-        cell_positions(i) = 0
-      else
-        cell_positions(i) = cell_positions(i-1) + allfrac_num_cells(i-1)
-      endif
-    enddo
-    allocate(this%allfrac_unique_cell_ids_glb(total_sum_glb))
+  enddo
+  ! if in parallel, the list in this%allfrac_unique_cell_ids are local to the
+  ! processor, so we need to make a global id list from all processors
+  ! j is the total number of fractured cells on each process
+  allocate(allfrac_num_cells(option%comm%size))
+  call MPI_Allgather(j,ONE_INTEGER,MPI_INTEGER,allfrac_num_cells, &
+                     ONE_INTEGER,MPI_INTEGER,option%mycomm,ierr);CHKERRQ(ierr)
+  call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
+  total_sum_glb = SUM(allfrac_num_cells)
+  do i = 1,option%comm%size
+    if (i == 1) then
+      cell_positions(i) = 0
+    else
+      cell_positions(i) = cell_positions(i-1) + allfrac_num_cells(i-1)
+    endif
+  enddo
+  allocate(this%allfrac_unique_cell_ids_glb(total_sum_glb)) ! ok if SUM=0
+  if (total_sum_glb > 0) then
     call MPI_Gatherv(temp_allfrac_unique_cell_ids,j,MPI_INTEGER, &
                      this%allfrac_unique_cell_ids_glb,allfrac_num_cells, &
                      cell_positions,MPI_INTEGER,ZERO_INTEGER, &
@@ -750,76 +815,185 @@ subroutine PMFracSetup(this)
     call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
     call MPI_Bcast(this%allfrac_unique_cell_ids_glb,total_sum_glb,MPI_INTEGER, &
                    ZERO_INTEGER,option%mycomm,ierr);CHKERRQ(ierr)
-    deallocate(allfrac_num_cells)
-    deallocate(temp_allfrac_unique_cell_ids)
+  endif
+  deallocate(allfrac_num_cells)
+  deallocate(temp_allfrac_unique_cell_ids)
 
-    if (this%clip_unconnected_fracs) then
-      option%io_buffer = 'GEOTHERMAL_FRACTURE_MODEL: Calculating connected &
-                         &fractures . . . '
-      call PrintMsg(option)
+  if (this%clip_unconnected_fracs) then
+    option%io_buffer = 'GEOTHERMAL_FRACTURE_MODEL: Calculating connected &
+                       &fractures . . . '
+    call PrintMsg(option)
+    if (option%comm%size > 1) then
+      option%io_buffer = 'GEOTHERMAL_FRACTURE_MODEL: The feature to clip &
+        &unconnected fractures is not yet available when running in parallel.'
+      call PrintErrMsg(option)
+    endif
 
-      !start region
-      call PMFracClipCells(this,this%connected_to_start,total_sum_glb, &
-                           cell_positions,this%start_region_name)
+    !start region
+    call PMFracClipCells(this,this%connected_to_start,total_sum_glb, &
+                         cell_positions,this%start_region_name)
+    !end region
+    call PMFracClipCells(this,this%connected_to_end,total_sum_glb, &
+                         cell_positions,this%end_region_name)
 
-      !end region
-      call PMFracClipCells(this,this%connected_to_end,total_sum_glb, &
-                           cell_positions,this%end_region_name)
+    allocate(connected(total_sum_glb))
 
-      allocate(connected(total_sum_glb))
+    connected = this%connected_to_start .and. this%connected_to_end
 
-      connected = this%connected_to_start .and. this%connected_to_end
-      this%connected_to_start = connected
 
-      !write(*,*) "............................................................."
-      !write(*,*) "connected_to_start =", this%connected_to_start
 
-      tcfc = COUNT(this%connected_to_start,1) ! count the total number of TRUE
-      allocate(this%unique_connected_cell_ids(tcfc))
-      i = 1
-      do k = 1,size(this%connected_to_start)
-        if (this%connected_to_start(k)) then
-          ! these are local cell ids
-          this%unique_connected_cell_ids(i) = this%allfrac_unique_cell_ids(k)
-          i = i + 1
+
+
+
+
+
+    this%connected_to_start = connected
+
+
+
+
+
+
+
+
+
+    !write(*,*) "............................................................."
+    !write(*,*) "connected_to_start =", this%connected_to_start
+
+    tcfc = COUNT(connected,1) ! count the total number of TRUE (whole domain)
+    allocate(this%unique_connected_cell_ids_glb(tcfc))
+    ! how do I check if a glb id is owned by my process and what the corresponding
+    ! local id is?
+    j = 0
+    do k = 1,res_grid%nlmax
+      glb_id = res_grid%nG2A(res_grid%nL2G(k))
+      ! count how many of the local ids I own have a gbl id that is connected
+      do i=1,size(this%allfrac_unique_cell_ids_glb)
+        if (this%allfrac_unique_cell_ids_glb(i) == glb_id) exit
+      enddo
+      if (connected(i)) j = j+1
+    enddo
+    allocate(this%unique_connected_cell_ids(j)) ! ok if j=0
+    if (size(this%unique_connected_cell_ids) > 0) then
+      j = 0
+      do k = 1,res_grid%nlmax
+        glb_id = res_grid%nG2A(res_grid%nL2G(k))
+        ! load the local ids I own which have a gbl id that is connected
+        do i=1,size(this%allfrac_unique_cell_ids_glb)
+          if (this%allfrac_unique_cell_ids_glb(i) == glb_id) exit
+        enddo
+        if (connected(i)) then
+          j = j+1
+          this%unique_connected_cell_ids(j) = k ! k is the local id
         endif
       enddo
-      write(*,*) "............................................................."
-      write(*,*) "connected cell ids =", this%unique_connected_cell_ids
-
-      if (tcfc < size(this%allfrac_unique_cell_ids_glb)) then
-        option%io_buffer = 'GEOTHERMAL_FRACTURE_MODEL: There are disconnected &
-          &fractures in the domain. Disconnected fractures have been clipped.'
-        call PrintMsg(option)
-      endif
     endif
-    deallocate(cell_positions)
 
-    ! filename needs to be consistant w/ filename located at end of PMFracPrintStats()
-    filename = trim(this%option%global_prefix)//'.info' ! ejb: can call our other file .fracinfo
-    fid = 19181723    ! ejb: can randomly choose an fid
+    ! if in parallel, the list in this%unique_connected_cell_ids are local to
+    ! the processor, so we need to make a global id list from all processors
+    allocate(uniq_conn_num_cells(option%comm%size))
+    j = size(this%unique_connected_cell_ids)
+    call MPI_Allgather(j,ONE_INTEGER,MPI_INTEGER,uniq_conn_num_cells, &
+                       ONE_INTEGER,MPI_INTEGER,option%mycomm,ierr);CHKERRQ(ierr)
+    call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
+    allocate(temp_gbl_cell_ids(j)) ! ok if j=0
+    allocate(this%unique_connected_cell_ids_glb(SUM(uniq_conn_num_cells)))
+    do i=1,j ! never enters if j=0
+      temp_gbl_cell_ids(i) = &
+                res_grid%nG2A(res_grid%nL2G(this%unique_connected_cell_ids(i)))
+    enddo
+    do i = 1,option%comm%size
+      if (i == 1) then
+        cell_positions(i) = 0
+      else
+        cell_positions(i) = cell_positions(i-1) + uniq_conn_num_cells(i-1)
+      endif
+    enddo
+    if (SUM(uniq_conn_num_cells) > 0) then
+      call MPI_Gatherv(temp_gbl_cell_ids,j,MPI_INTEGER, &
+                       this%unique_connected_cell_ids_glb,uniq_conn_num_cells, &
+                       cell_positions,MPI_INTEGER,ZERO_INTEGER, &
+                       option%mycomm,ierr);CHKERRQ(ierr)
+      ! only rank zero knows this%unique_connected_cell_ids_glb, so share it
+      call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
+      call MPI_Bcast(this%unique_connected_cell_ids_glb, &
+                     SUM(uniq_conn_num_cells),MPI_INTEGER,ZERO_INTEGER, &
+                     option%mycomm,ierr);CHKERRQ(ierr)
+    endif
+    deallocate(uniq_conn_num_cells)
+    deallocate(temp_gbl_cell_ids)
+
+    !write(*,*) "............................................................."
+    !write(*,*) "connected cell ids =", this%unique_connected_cell_ids_glb
+
+    if (tcfc < size(this%allfrac_unique_cell_ids_glb)) then
+      option%io_buffer = 'GEOTHERMAL_FRACTURE_MODEL: There are disconnected &
+        &fractures in the domain. Disconnected fractures have been clipped.'
+      call PrintMsg(option)
+    endif
+
+    ! After clipping, the number of fracture intersections may be reduced.
+    ! Need to keep only the cells inside this%frac_intersection_ids that also
+    ! still exist in this%unique_connected_cell_ids_glb. Reuse temp_gbl_cell_ids.
+    allocate(temp_gbl_cell_ids(size(this%frac_intersection_ids)))
+    temp_gbl_cell_ids(:) = UNINITIALIZED_INTEGER
+    k = 0
+    do i = 1, size(this%frac_intersection_ids)
+      if (any(this%unique_connected_cell_ids_glb == &
+              this%frac_intersection_ids(i))) then
+        k = k+1
+        temp_gbl_cell_ids(k) = this%frac_intersection_ids(i)
+      endif
+    enddo
+    deallocate(this%frac_intersection_ids)
+    allocate(this%frac_intersection_ids(k)) ! resize (shorten)
+    this%frac_intersection_ids(:) = UNINITIALIZED_INTEGER
+    if (k > 0) this%frac_intersection_ids = temp_gbl_cell_ids(1:k)
+    deallocate(temp_gbl_cell_ids)
+  endif ! if (this%clip_unconnected_fracs) then
+
+  deallocate(cell_positions)
+  ! filename needs to be consistant w/ filename located at end of PMFracPrintStats()
+  filename = trim(this%option%global_prefix)//'.info' ! ejb: can call our other file .fracinfo
+  fid = 19181723    ! ejb: can randomly choose an fid
 110 format(100es16.8) ! ejb: 110 <-- shortcut, wherever you see "110", insert the formatting code
-    open(unit=fid,file=filename,action="write",status="replace") ! ejb: open and write are fortran inherent fxns, best to all-caps them if possible
-    write(fid,'(a)',advance="yes") "FRACTURE NETWORK METRICS FOR PFLOTRAN &
-                          &INPUT DECK: "//trim(this%option%global_prefix)//".in"
-    call GETCWD(path,status) ! ejb: another fortran-inherent
-    if (status==0) write(fid,'(a)',advance="yes") "INPUT DECK PATH: " &
-                                                  //trim(path)
-    if (status/=0) write(fid,'(a)',advance="yes") "INPUT DECK PATH: unknown"
-    write(fid,'(a)',advance="yes") "TIMESTAMP OF FILE CREATION: "//FDATE()
-    write(fid,'(a)',advance="yes") " "
-    write(fid,'(a)',advance="no") "NUMBER OF GRID CELLS IN DOMAIN: "
-    write(fid,'(I10)',advance="yes") res_grid%nmax
-    write(fid,'(a)',advance="no") "NUMBER OF CONNECTED FRACTURED GRID CELLS: "
-    write(fid,'(I10)',advance="yes") size(this%unique_connected_cell_ids)
+  open(unit=fid,file=filename,action="write",status="replace") ! ejb: open and write are fortran inherent fxns, best to all-caps them if possible
+  write(fid,'(a)',advance="yes") "FRACTURE NETWORK METRICS FOR PFLOTRAN &
+                        &INPUT DECK: "//trim(this%option%global_prefix)//".in"
+  call GETCWD(path,status) ! ejb: another fortran-inherent
+  if (status==0) write(fid,'(a)',advance="yes") "INPUT DECK PATH: " &
+                                                //trim(path)
+  if (status/=0) write(fid,'(a)',advance="yes") "INPUT DECK PATH: unknown"
+  write(fid,'(a)',advance="yes") "TIMESTAMP OF FILE CREATION: "//FDATE()
+  write(fid,'(a)',advance="yes") " "
+  write(fid,'(a)',advance="no") "NUMBER OF GRID CELLS IN DOMAIN: "
+  write(fid,'(I10)',advance="yes") res_grid%nmax
+  
+  if (this%clip_unconnected_fracs) then
+    write(fid,'(a)',advance="no") "NUMBER OF FRACTURED GRID CELLS: "
+    write(fid,'(I10)',advance="yes") size(this%unique_connected_cell_ids_glb)
     write(fid,'(a)',advance="no") "PERCENT [%] OF DOMAIN GRID CELLS THAT &
-                                   &CONTAIN CONNECTED FRACTURES: "
+                                   &CONTAIN FRACTURES: "
     write(fid,110,advance="yes") &
-        (REAL(size(this%unique_connected_cell_ids))/REAL(res_grid%nmax))*100.d0
+                         (REAL(size(this%unique_connected_cell_ids_glb))/ &
+                          REAL(res_grid%nmax))*100.d0
     L22 = 0.d0
     do k = 1,size(this%unique_connected_cell_ids)
       material_auxvar => this%realization%patch%aux%material% &
-                      auxvars(res_grid%nL2G(this%unique_connected_cell_ids(k)))
+                    auxvars(res_grid%nL2G(this%unique_connected_cell_ids(k)))
+      L22 = L22 + (2.d0*((material_auxvar%volume)**(1.d0/3.d0))**(2)) ! [m^2]
+    enddo
+  else
+    write(fid,'(a)',advance="no") "NUMBER OF FRACTURED GRID CELLS: "
+    write(fid,'(I10)',advance="yes") size(this%allfrac_unique_cell_ids_glb)
+    write(fid,'(a)',advance="no") "PERCENT [%] OF DOMAIN GRID CELLS THAT &
+                                   &CONTAIN FRACTURES: "
+    write(fid,110,advance="yes") &
+      (REAL(size(this%allfrac_unique_cell_ids_glb))/REAL(res_grid%nmax))*100.d0
+    L22 = 0.d0
+    do k = 1,size(this%allfrac_unique_cell_ids)
+      material_auxvar => this%realization%patch%aux%material% &
+                  auxvars(res_grid%nL2G(this%allfrac_unique_cell_ids(k)))
       L22 = L22 + (2.d0*((material_auxvar%volume)**(1.d0/3.d0))**(2)) ! [m^2]
     enddo
     write(fid,'(a)',advance="no") "SURFACE AREA [m^2] OF CONNECTED FRACTURES: "
@@ -889,6 +1063,52 @@ subroutine PMFracSetup(this)
     call PMFracGeomPrintStats(this)
 
   endif
+  
+  ! need to get all processes value for L22 and sum them
+  call MPI_Allreduce(MPI_IN_PLACE,L22,option%comm%size,MPI_DOUBLE_PRECISION, &
+                     MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
+  write(fid,'(a)',advance="no") "SURFACE AREA [m^2] OF FRACTURES: "
+  write(fid,110,advance="yes") L22
+  write(fid,'(a)',advance="no") "NUMBER OF FRAC INTERSECTIONS IN DOMAIN: "
+  write(fid,'(I10)',advance="yes") size(this%frac_intersection_ids)
+
+  write(fid,'(a)',advance="yes") ""
+  ! header for time varying fracture network characteristics
+  write(fid,'(a)',advance="no") "TIME ["//trim(this%output_option%tunit)//"],"
+  write(fid,'(a)',advance="no") "VOL [m^3] OF FRACTURES,"
+  write(fid,'(a)',advance="no") "MIN FRAC APERTURE [m],"
+  write(fid,'(a)',advance="no") "MAX FRAC APERTURE [m],"
+  write(fid,'(a)',advance="no") "RANGE FRAC APERTURE [m],"
+  write(fid,'(a)',advance="no") "MIDRANGE FRAC APERTURE [m],"
+  write(fid,'(a)',advance="no") "MEAN FRAC APERTURE [m],"
+  write(fid,'(a)',advance="no") "VARIANCE FRAC APERTURE [m],"
+  write(fid,'(a)',advance="no") "POP SKEWNESS FRAC APERTURE [m],"
+  write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC APERTURE [m],"
+  write(fid,'(a)',advance="no") "MIN FRAC PERM-X [m],"
+  write(fid,'(a)',advance="no") "MAX FRAC PERM-X [m],"
+  write(fid,'(a)',advance="no") "RANGE FRAC PERM-X [m],"
+  write(fid,'(a)',advance="no") "MIDRANGE FRAC PERM-X [m],"
+  write(fid,'(a)',advance="no") "MEAN FRAC PERM-X [m],"
+  write(fid,'(a)',advance="no") "VARIANCE FRAC PERM-X [m],"
+  write(fid,'(a)',advance="no") "POP SKEWNESS FRAC PERM-X [m],"
+  write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC PERM-X [m],"
+  write(fid,'(a)',advance="no") "MIN FRAC PERM-Y [m],"
+  write(fid,'(a)',advance="no") "MAX FRAC PERM-Y [m],"
+  write(fid,'(a)',advance="no") "RANGE FRAC PERM-Y [m],"
+  write(fid,'(a)',advance="no") "MIDRANGE FRAC PERM-Y [m],"
+  write(fid,'(a)',advance="no") "MEAN FRAC PERM-Y [m],"
+  write(fid,'(a)',advance="no") "VARIANCE FRAC PERM-Y [m],"
+  write(fid,'(a)',advance="no") "POP SKEWNESS FRAC PERM-Y [m],"
+  write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC PERM-Y [m],"
+  write(fid,'(a)',advance="no") "MIN FRAC PERM-Z [m],"
+  write(fid,'(a)',advance="no") "MAX FRAC PERM-Z [m],"
+  write(fid,'(a)',advance="no") "RANGE FRAC PERM-Z [m],"
+  write(fid,'(a)',advance="no") "MIDRANGE FRAC PERM-Z [m],"
+  write(fid,'(a)',advance="no") "MEAN FRAC PERM-Z [m],"
+  write(fid,'(a)',advance="no") "VARIANCE FRAC PERM-Z [m],"
+  write(fid,'(a)',advance="no") "POP SKEWNESS FRAC PERM-Z [m],"
+  write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC PERM-Z [m],"
+  close(fid)
 
   if (.not.associated(this%realization%reaction)) then
     this%update_material_auxvar_perm = PETSC_TRUE
@@ -1208,7 +1428,7 @@ subroutine PMFracInitializeRun(this)
     if (.not.associated(cur_fracture)) exit
 
     do k = 1,cur_fracture%ncells
-      icell = cur_fracture%cell_ids(k)
+      icell = cur_fracture%cell_ids(k) ! local cell ids
       material_auxvar => &
         this%realization%patch%aux%material%auxvars(grid%nL2G(icell))
       ! if cells aren't too pancaked, L should be a good estimate of length
@@ -1261,9 +1481,9 @@ subroutine PMFracInitializeRun(this)
   enddo
 
   if (this%clip_unconnected_fracs) then
-    cellid_list => this%unique_connected_cell_ids
+    cellid_list => this%unique_connected_cell_ids ! local cell ids
   else
-    cellid_list => this%allfrac_unique_cell_ids
+    cellid_list => this%allfrac_unique_cell_ids ! local cell ids
   endif
 
   ! update domain material permeability of cells with fractures
@@ -2472,9 +2692,9 @@ subroutine PMFracSolve(this,time,ierr)
   enddo
 
   if (this%clip_unconnected_fracs) then
-    cellid_list => this%unique_connected_cell_ids
+    cellid_list => this%unique_connected_cell_ids ! local cell id list
   else
-    cellid_list => this%allfrac_unique_cell_ids
+    cellid_list => this%allfrac_unique_cell_ids ! local cell id list
   endif
 
   ! update domain material permeability of cells with fractures
@@ -2525,7 +2745,7 @@ end subroutine PMFracSolve
 
 subroutine PMFracPrintStats(this)
   !
-  ! Adds fracture netowrk statistics to .info file.
+  ! Adds fracture network statistics to .info file.
   !
   ! Author: Jenn Frederick
   ! Date: 02/04/2026
@@ -2540,11 +2760,12 @@ subroutine PMFracPrintStats(this)
   type(material_auxvar_type), pointer :: material_auxvar
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(grid_type), pointer :: grid
-  PetscReal :: frac_aperture(size(this%unique_connected_cell_ids))
-  PetscReal :: frac_perm_x(size(this%unique_connected_cell_ids))
-  PetscReal :: frac_perm_y(size(this%unique_connected_cell_ids))
-  PetscReal :: frac_perm_z(size(this%unique_connected_cell_ids))
-  PetscReal :: fracture_volume,L2
+  PetscReal, pointer :: frac_aperture_lcl(:),frac_aperture_glb(:)
+  PetscReal, pointer :: frac_perm_x_lcl(:),frac_perm_x_glb(:)
+  PetscReal, pointer :: frac_perm_y_lcl(:),frac_perm_y_glb(:)
+  PetscReal, pointer :: frac_perm_z_lcl(:),frac_perm_z_glb(:)
+  PetscReal, pointer :: fracture_volume_glb(:)
+  PetscReal :: fracture_volume_lcl,L2
   PetscReal :: min_frac_aperture,max_frac_aperture,mean_frac_aperture
   PetscReal :: range_frac_aperture,midrange_frac_aperture
   PetscReal :: variance_frac_aperture
@@ -2560,9 +2781,25 @@ subroutine PMFracPrintStats(this)
   PetscReal :: skewness_perm_x_p, skewness_perm_x_a
   PetscReal :: skewness_perm_y_p, skewness_perm_y_a
   PetscReal :: skewness_perm_z_p, skewness_perm_z_a
-  PetscInt :: k,fid,nccells
+  PetscInt, pointer :: lcl_cells(:),cell_positions(:)
+  PetscInt :: i,k,fid,nlcl_cells,nglb_cells
+  PetscErrorCode :: ierr
 
-  nccells = size(this%unique_connected_cell_ids)
+  if (this%clip_unconnected_fracs) then
+    nlcl_cells = size(this%unique_connected_cell_ids) ! local cell ids
+    nglb_cells = size(this%unique_connected_cell_ids_glb) ! global cell ids
+  else
+    nlcl_cells = size(this%allfrac_unique_cell_ids)
+    nglb_cells = size(this%allfrac_unique_cell_ids_glb)
+  endif
+  allocate(frac_aperture_lcl(nlcl_cells)) ! ok if nlcl_cells = 0
+  allocate(frac_aperture_glb(nglb_cells)) ! ok if nlcl_cells = 0
+  allocate(frac_perm_x_lcl(nlcl_cells))
+  allocate(frac_perm_y_lcl(nlcl_cells))
+  allocate(frac_perm_z_lcl(nlcl_cells))
+  allocate(frac_perm_x_glb(nglb_cells))
+  allocate(frac_perm_y_glb(nglb_cells))
+  allocate(frac_perm_z_glb(nglb_cells))
 
   ! filename needs to be consistant w/ filename located at end of PMFracSetup()
   filename = trim(this%option%global_prefix)//'.info'
@@ -2570,7 +2807,7 @@ subroutine PMFracPrintStats(this)
 110 format(100es16.8)
   OPEN(UNIT=fid,FILE=filename,STATUS='OLD',POSITION='APPEND',ACTION='WRITE')
 
-  fracture_volume = 0.d0
+  fracture_volume_lcl = 0.d0
   min_perm_x = 1.d20; min_perm_y = 1.d20; min_perm_z = 1.d20
   max_perm_x = 0.d0; max_perm_y = 0.d0; max_perm_z = 0.d0
   perm_sum_x = 0.d0; perm_sum_y = 0.d0; perm_sum_z = 0.d0
@@ -2578,25 +2815,88 @@ subroutine PMFracPrintStats(this)
   material_auxvars => this%realization%patch%aux%material%auxvars
   grid => this%realization%patch%grid
 
-  do k = 1,nccells
-    material_auxvar => &
+  do k = 1,nlcl_cells
+    if (this%clip_unconnected_fracs) then
+      material_auxvar => &
                material_auxvars(grid%nL2G(this%unique_connected_cell_ids(k)))
+    else
+      material_auxvar => &
+               material_auxvars(grid%nL2G(this%allfrac_unique_cell_ids(k)))
+    endif
     L2 = ((material_auxvar%volume)**(1.d0/3.d0))**(2)! [m^2]
-    frac_aperture(k) = material_auxvar%fracture_aperture
-    frac_perm_x(k) = material_auxvar%permeability(1)
-    frac_perm_y(k) = material_auxvar%permeability(2)
-    frac_perm_z(k) = material_auxvar%permeability(3)
-    fracture_volume = fracture_volume + (L2*frac_aperture(k)) ! [m^3]
-    perm_sum_x = perm_sum_x + frac_perm_x(k)
-    perm_sum_y = perm_sum_y + frac_perm_y(k)
-    perm_sum_z = perm_sum_z + frac_perm_z(k)
+    frac_aperture_lcl(k) = material_auxvar%fracture_aperture
+    frac_perm_x_lcl(k) = material_auxvar%permeability(1)
+    frac_perm_y_lcl(k) = material_auxvar%permeability(2)
+    frac_perm_z_lcl(k) = material_auxvar%permeability(3)
+    fracture_volume_lcl = fracture_volume_lcl + (L2*frac_aperture_lcl(k)) ![m^3]
   enddo
 
-  max_frac_aperture = maxval(frac_aperture)
-  min_frac_aperture = minval(frac_aperture)
-  max_perm_x = maxval(frac_perm_x); min_perm_x = minval(frac_perm_x)
-  max_perm_y = maxval(frac_perm_y); min_perm_y = minval(frac_perm_y)
-  max_perm_z = maxval(frac_perm_z); min_perm_z = minval(frac_perm_z)
+  ! create global arrays of aperture and perm local vectors
+  allocate(fracture_volume_glb(this%option%comm%size))
+  if (nglb_cells > 0) then
+    allocate(lcl_cells(this%option%comm%size))
+    call MPI_Allgather(nlcl_cells,ONE_INTEGER,MPI_INTEGER,lcl_cells, &
+      ONE_INTEGER,MPI_INTEGER,this%option%mycomm,ierr);CHKERRQ(ierr)
+    call MPI_Barrier(this%option%mycomm,ierr);CHKERRQ(ierr)
+    allocate(cell_positions(this%option%comm%size))
+    do i = 1,this%option%comm%size
+      if (i == 1) then
+        cell_positions(i) = 0
+      else
+        cell_positions(i) = cell_positions(i-1) + lcl_cells(i-1)
+      endif
+    enddo
+    ! fracture aperture -------------------------------------------------------
+    call MPI_Gatherv(frac_aperture_lcl,nlcl_cells,MPI_DOUBLE_PRECISION, &
+      frac_aperture_glb,lcl_cells,cell_positions,MPI_DOUBLE_PRECISION, &
+      ZERO_INTEGER,this%option%mycomm,ierr);CHKERRQ(ierr)
+         ! only rank zero knows frac_aperture_glb, so we need to share it
+    call MPI_Barrier(this%option%mycomm,ierr);CHKERRQ(ierr)
+    call MPI_Bcast(frac_aperture_glb,nglb_cells,MPI_DOUBLE_PRECISION, &
+                   ZERO_INTEGER,this%option%mycomm,ierr);CHKERRQ(ierr)
+    ! fracture x-permeability -------------------------------------------------
+    call MPI_Gatherv(frac_perm_x_lcl,nlcl_cells,MPI_DOUBLE_PRECISION, &
+      frac_perm_x_glb,lcl_cells,cell_positions,MPI_DOUBLE_PRECISION, &
+      ZERO_INTEGER,this%option%mycomm,ierr);CHKERRQ(ierr)
+         ! only rank zero knows frac_perm_x_glb, so we need to share it
+    call MPI_Barrier(this%option%mycomm,ierr);CHKERRQ(ierr)
+    call MPI_Bcast(frac_perm_x_glb,nglb_cells,MPI_DOUBLE_PRECISION, &
+                   ZERO_INTEGER,this%option%mycomm,ierr);CHKERRQ(ierr)
+    ! fracture y-permeability -------------------------------------------------
+    call MPI_Gatherv(frac_perm_y_lcl,nlcl_cells,MPI_DOUBLE_PRECISION, &
+      frac_perm_y_glb,lcl_cells,cell_positions,MPI_DOUBLE_PRECISION, &
+      ZERO_INTEGER,this%option%mycomm,ierr);CHKERRQ(ierr)
+         ! only rank zero knows frac_perm_y_glb, so we need to share it
+    call MPI_Barrier(this%option%mycomm,ierr);CHKERRQ(ierr)
+    call MPI_Bcast(frac_perm_y_glb,nglb_cells,MPI_DOUBLE_PRECISION, &
+                   ZERO_INTEGER,this%option%mycomm,ierr);CHKERRQ(ierr)
+    ! fracture z-permeability -------------------------------------------------
+    call MPI_Gatherv(frac_perm_z_lcl,nlcl_cells,MPI_DOUBLE_PRECISION, &
+      frac_perm_z_glb,lcl_cells,cell_positions,MPI_DOUBLE_PRECISION, &
+      ZERO_INTEGER,this%option%mycomm,ierr);CHKERRQ(ierr)
+         ! only rank zero knows frac_perm_z_glb, so we need to share it
+    call MPI_Barrier(this%option%mycomm,ierr);CHKERRQ(ierr)
+    call MPI_Bcast(frac_perm_z_glb,nglb_cells,MPI_DOUBLE_PRECISION, &
+                   ZERO_INTEGER,this%option%mycomm,ierr);CHKERRQ(ierr)
+    ! fracture volume ---------------------------------------------------------
+    call MPI_Allgather(fracture_volume_lcl,ONE_INTEGER,MPI_DOUBLE_PRECISION, &
+      fracture_volume_glb,ONE_INTEGER,MPI_DOUBLE_PRECISION, &
+      this%option%mycomm,ierr);CHKERRQ(ierr)
+    call MPI_Barrier(this%option%mycomm,ierr);CHKERRQ(ierr)
+    !call MPI_Barrier(this%option%mycomm,ierr);CHKERRQ(ierr)
+    !call MPI_Allreduce(MPI_IN_PLACE,fracture_volume,this%option%comm%size, &
+    !  MPI_DOUBLE_PRECISION,MPI_SUM,this%option%mycomm,ierr);CHKERRQ(ierr)
+  endif
+
+  perm_sum_x = SUM(frac_perm_x_glb)
+  perm_sum_y = SUM(frac_perm_y_glb)
+  perm_sum_z = SUM(frac_perm_z_glb)
+
+  max_frac_aperture = maxval(frac_aperture_glb)
+  min_frac_aperture = minval(frac_aperture_glb)
+  max_perm_x = maxval(frac_perm_x_glb); min_perm_x = minval(frac_perm_x_glb)
+  max_perm_y = maxval(frac_perm_y_glb); min_perm_y = minval(frac_perm_y_glb)
+  max_perm_z = maxval(frac_perm_z_glb); min_perm_z = minval(frac_perm_z_glb)
 
   range_frac_aperture = max_frac_aperture-min_frac_aperture
   midrange_frac_aperture = range_frac_aperture/2.d0
@@ -2608,32 +2908,32 @@ subroutine PMFracPrintStats(this)
   range_perm_z = max_perm_z-min_perm_z
   midrange_perm_z = range_perm_z/2.d0
 
-  mean_frac_aperture = sum(material_auxvars%fracture_aperture)/nccells
-  mean_perm_x = perm_sum_x/nccells
-  mean_perm_y = perm_sum_y/nccells
-  mean_perm_z = perm_sum_z/nccells
+  mean_frac_aperture = SUM(frac_aperture_glb)/nglb_cells
+  mean_perm_x = perm_sum_x/nglb_cells
+  mean_perm_y = perm_sum_y/nglb_cells
+  mean_perm_z = perm_sum_z/nglb_cells
 
   variance_frac_aperture = &
-                         sum((frac_aperture-mean_frac_aperture)**2)/(nccells-1)
-  variance_perm_x = sum((frac_perm_x-mean_perm_x)**2)/(nccells-1)
-  variance_perm_y = sum((frac_perm_y-mean_perm_y)**2)/(nccells-1)
-  variance_perm_z = sum((frac_perm_z-mean_perm_z)**2)/(nccells-1)
+                  SUM((frac_aperture_glb-mean_frac_aperture)**2)/(nglb_cells-1)
+  variance_perm_x = SUM((frac_perm_x_glb-mean_perm_x)**2)/(nglb_cells-1)
+  variance_perm_y = SUM((frac_perm_y_glb-mean_perm_y)**2)/(nglb_cells-1)
+  variance_perm_z = SUM((frac_perm_z_glb-mean_perm_z)**2)/(nglb_cells-1)
 
-  skewness_frac_aperture_p = Skewness(frac_aperture)
-  skewness_frac_aperture_a = Skewness(frac_aperture,PETSC_TRUE)
-  skewness_perm_x_p = Skewness(frac_perm_x)
-  skewness_perm_x_a = Skewness(frac_perm_x,PETSC_TRUE)
-  skewness_perm_y_p = Skewness(frac_perm_y)
-  skewness_perm_y_a = Skewness(frac_perm_y,PETSC_TRUE)
-  skewness_perm_z_p = Skewness(frac_perm_z)
-  skewness_perm_z_a = Skewness(frac_perm_z,PETSC_TRUE)
+  skewness_frac_aperture_p = Skewness(frac_aperture_glb)
+  skewness_frac_aperture_a = Skewness(frac_aperture_glb,PETSC_TRUE)
+  skewness_perm_x_p = Skewness(frac_perm_x_glb)
+  skewness_perm_x_a = Skewness(frac_perm_x_glb,PETSC_TRUE)
+  skewness_perm_y_p = Skewness(frac_perm_y_glb)
+  skewness_perm_y_a = Skewness(frac_perm_y_glb,PETSC_TRUE)
+  skewness_perm_z_p = Skewness(frac_perm_z_glb)
+  skewness_perm_z_a = Skewness(frac_perm_z_glb,PETSC_TRUE)
 
   ! header for these values is located at end of PMFracSetup()
   ! TIME [tunit];
   write(fid,110,advance="no") this%option%time/this%output_option%tconv
   write(fid,'(a)',advance="no") ","
-  ! VOL [m^3] OF CONNECTED FRACS;
-  write(fid,110,advance="no") fracture_volume
+  ! VOL [m^3] OF FRACTURES;
+  write(fid,110,advance="no") SUM(fracture_volume_glb)
   write(fid,'(a)',advance="no") ","
   ! MIN FRAC APERTURE [m];
   write(fid,110,advance="no") min_frac_aperture
@@ -2734,6 +3034,14 @@ subroutine PMFracPrintStats(this)
 
   close(fid)
 
+  deallocate(fracture_volume_glb)
+  deallocate(lcl_cells); deallocate(cell_positions)
+  deallocate(frac_perm_z_glb); deallocate(frac_perm_y_glb)
+  deallocate(frac_perm_x_glb)
+  deallocate(frac_perm_z_lcl); deallocate(frac_perm_y_lcl)
+  deallocate(frac_perm_x_lcl)
+  deallocate(frac_aperture_glb)
+  deallocate(frac_aperture_lcl)
 
 end subroutine PMFracPrintStats
 ! ************************************************************************** !
@@ -2890,8 +3198,8 @@ subroutine PMFracDestroy(this)
   if (associated(this%connected_to_end)) then
     call DeallocateArray(this%connected_to_end)
   endif
-  if (associated(this%unique_connected_cell_ids)) then
-    call DeallocateArray(this%unique_connected_cell_ids)
+  if (associated(this%unique_connected_cell_ids_glb)) then
+    call DeallocateArray(this%unique_connected_cell_ids_glb)
   endif
   if (associated(this%clip_region_cell_ids)) then
     call DeallocateArray(this%clip_region_cell_ids)
