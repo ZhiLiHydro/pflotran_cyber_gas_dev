@@ -514,7 +514,7 @@ subroutine THComputeMassBalance(realization, mass_balance, energy_balance)
     ! [kmol water]
     mass_kmol = th_auxvars(ghosted_id)%den * &
                 th_auxvars(ghosted_id)%sat * &
-                material_auxvars(ghosted_id)%porosity * &
+                th_auxvars(ghosted_id)%effective_porosity * &
                 material_auxvars(ghosted_id)%volume
 
     ! [kg water]
@@ -523,7 +523,7 @@ subroutine THComputeMassBalance(realization, mass_balance, energy_balance)
     ! [MJ]
     energy_balance = energy_balance + &
       mass_kmol * th_auxvars(ghosted_id)%u + &  ! u units [MJ/kmol water]
-      (1.d0 - material_auxvars(ghosted_id)%porosity) * &
+      (1.d0 - th_auxvars(ghosted_id)%effective_porosity) * &
       material_auxvars(ghosted_id)%volume * &
       th_parameter%dencpr(patch%cct_id(ghosted_id)) * &
       th_auxvars(ghosted_id)%temp
@@ -533,7 +533,7 @@ subroutine THComputeMassBalance(realization, mass_balance, energy_balance)
       mass_balance = mass_balance + &
         th_auxvars(ghosted_id)%ice%den_ice*FMWH2O* &
         th_auxvars(ghosted_id)%ice%sat_ice* &
-        material_auxvars(ghosted_id)%porosity* &
+        th_auxvars(ghosted_id)%effective_porosity* &
         material_auxvars(ghosted_id)%volume
       option%io_buffer = 'THComputeMassBalance must be verified for ice &
         &mass balance,'
@@ -735,6 +735,7 @@ subroutine THUpdateAuxVars(realization,pm_well)
 
   call VecGetArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
+  option%iflag = TH_UPDATE_FOR_ACCUM
   do ghosted_id = 1, grid%ngmax
     if (grid%nG2L(ghosted_id) < 0) cycle ! bypass ghosted corner cells
 
@@ -763,10 +764,11 @@ subroutine THUpdateAuxVars(realization,pm_well)
             th_parameter, icct, &
             grid%nG2A(ghosted_id),PETSC_TRUE,option)
     endif
-
     global_auxvars(ghosted_id)%istate = iphase
   enddo
 
+  ! boundary conditions
+  option%iflag = TH_UPDATE_FOR_BOUNDARY
   boundary_condition => patch%boundary_condition_list%first
   sum_connection = 0
   do
@@ -827,6 +829,7 @@ subroutine THUpdateAuxVars(realization,pm_well)
   enddo
 
   ! source/sinks
+  option%iflag = TH_UPDATE_FOR_SS
   source_sink => patch%source_sink_list%first
   sum_connection = 0
   allocate(xx(option%nflowdof))
@@ -1060,6 +1063,7 @@ subroutine THUpdateFixedAccumulation(realization)
 
   vol_frac_prim = 1.d0
 
+  option%iflag = TH_UPDATE_FOR_FIXED_ACCUM
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
     if (patch%imat(ghosted_id) <= 0) cycle
@@ -1089,13 +1093,11 @@ subroutine THUpdateFixedAccumulation(realization)
             grid%nG2A(ghosted_id),PETSC_TRUE,option)
     endif
 
-
     if (option%use_sc) then
       vol_frac_prim = material_auxvars(ghosted_id)%secondary_prop%epsilon
     endif
 
     global_auxvars(ghosted_id)%istate = iphase
-    option%iflag = TH_UPDATE_FOR_FIXED_ACCUM
     call THAccumulation(th_auxvars(ghosted_id),global_auxvars(ghosted_id), &
                         material_auxvars(ghosted_id), &
                         th_parameter,geomech_parameter, &
@@ -1322,8 +1324,8 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
   du_dT = th_auxvar%du_dT
   du_dp = th_auxvar%du_dp
 
-  por = material_auxvar%porosity
-  dcompressed_porosity_dp = material_auxvar%dporosity_dp
+  por = th_auxvar%effective_porosity
+  dcompressed_porosity_dp = th_auxvar%dpor_dp
 
   porXvol = por*vol
 
@@ -1471,6 +1473,7 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
                         rock_dencpr,option, &
                         vol_frac_prim,res)
 
+    option%iflag = TH_UPDATE_FOR_DERIVATIVE
     do ideriv = 1,option%nflowdof
       pert = x(ideriv)*perturbation_tolerance
       x_pert = x
@@ -1573,7 +1576,7 @@ subroutine THAccumulation(th_auxvar,global_auxvar,material_auxvar, &
   Res = 0.d0
 
   vol = material_auxvar%volume
-  por = material_auxvar%porosity
+  por = th_auxvar%effective_porosity
 
   ! jaa update 12/18/2025
   select case(option%geomechanics%flow_coupling)
@@ -2283,6 +2286,7 @@ subroutine THFluxDerivative(th_auxvar_up,global_auxvar_up, &
       alpha_up,alpha_dn,alpha_fr_up,alpha_fr_dn, &
       res)
 
+    option%iflag = TH_UPDATE_FOR_DERIVATIVE
     do ideriv = 1,option%nflowdof
       pert_up = x_up(ideriv)*perturbation_tolerance
       pert_dn = x_dn(ideriv)*perturbation_tolerance
@@ -3187,6 +3191,7 @@ subroutine THBCFluxDerivative(ibndtype,bc_auxvars, &
 
 #if 0
   if (option%flow%numerical_derivatives) then
+    option%iflag = TH_UPDATE_FOR_DERIVATIVE
     allocate(material_auxvar_pert_up,material_auxvar_pert_dn)
 
     call MaterialAuxVarInit(material_auxvar_pert_up,option)
@@ -4333,6 +4338,8 @@ subroutine THResidualAccumulation(r,realization,ierr)
   r_p = r_p - accum_t_p
   call VecRestoreArrayRead(field%flow_accum_t,accum_t_p,ierr);CHKERRQ(ierr)
 
+  ! non-fixed here
+  option%iflag = TH_UPDATE_FOR_ACCUM
   do local_id = 1, grid%nlmax  ! For each local node do...
     ghosted_id = grid%nL2G(local_id)
     if (patch%imat(ghosted_id) <= 0) cycle
@@ -4343,8 +4350,6 @@ subroutine THResidualAccumulation(r,realization,ierr)
       vol_frac_prim = material_auxvars(ghosted_id)%secondary_prop%epsilon
     endif
 
-    ! non-fixed here
-    option%iflag = TH_UPDATE_FOR_ACCUM
     call THAccumulation(th_auxvars(ghosted_id),global_auxvars(ghosted_id), &
                         material_auxvars(ghosted_id), &
                         th_parameter,geomech_parameter, &
