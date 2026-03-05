@@ -996,74 +996,8 @@ subroutine PMFracSetup(this)
                   auxvars(res_grid%nL2G(this%allfrac_unique_cell_ids(k)))
       L22 = L22 + (2.d0*((material_auxvar%volume)**(1.d0/3.d0))**(2)) ! [m^2]
     enddo
-    write(fid,'(a)',advance="no") "SURFACE AREA [m^2] OF CONNECTED FRACTURES: "
-    write(fid,110,advance="yes") L22
-
-    write(fid,'(a)',advance="yes") ""
-    ! header for time varying fracture network characteristics
-    write(fid,'(a)',advance="no") "TIME ["//trim(this%output_option%tunit)//"],"
-    write(fid,'(a)',advance="no") "VOL [m^3] OF CONNECTED FRACS,"
-    write(fid,'(a)',advance="no") "MIN FRAC APERTURE [m],"
-    write(fid,'(a)',advance="no") "MAX FRAC APERTURE [m],"
-    write(fid,'(a)',advance="no") "RANGE FRAC APERTURE [m],"
-    write(fid,'(a)',advance="no") "MIDRANGE FRAC APERTURE [m],"
-    write(fid,'(a)',advance="no") "MEAN FRAC APERTURE [m],"
-    write(fid,'(a)',advance="no") "VARIANCE FRAC APERTURE [m],"
-    write(fid,'(a)',advance="no") "POP SKEWNESS FRAC APERTURE [m],"
-    write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC APERTURE [m],"
-    write(fid,'(a)',advance="no") "MIN FRAC PERM-X [m],"
-    write(fid,'(a)',advance="no") "MAX FRAC PERM-X [m],"
-    write(fid,'(a)',advance="no") "RANGE FRAC PERM-X [m],"
-    write(fid,'(a)',advance="no") "MIDRANGE FRAC PERM-X [m],"
-    write(fid,'(a)',advance="no") "MEAN FRAC PERM-X [m],"
-    write(fid,'(a)',advance="no") "VARIANCE FRAC PERM-X [m],"
-    write(fid,'(a)',advance="no") "POP SKEWNESS FRAC PERM-X [m],"
-    write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC PERM-X [m],"
-    write(fid,'(a)',advance="no") "MIN FRAC PERM-Y [m],"
-    write(fid,'(a)',advance="no") "MAX FRAC PERM-Y [m],"
-    write(fid,'(a)',advance="no") "RANGE FRAC PERM-Y [m],"
-    write(fid,'(a)',advance="no") "MIDRANGE FRAC PERM-Y [m],"
-    write(fid,'(a)',advance="no") "MEAN FRAC PERM-Y [m],"
-    write(fid,'(a)',advance="no") "VARIANCE FRAC PERM-Y [m],"
-    write(fid,'(a)',advance="no") "POP SKEWNESS FRAC PERM-Y [m],"
-    write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC PERM-Y [m],"
-    write(fid,'(a)',advance="no") "MIN FRAC PERM-Z [m],"
-    write(fid,'(a)',advance="no") "MAX FRAC PERM-Z [m],"
-    write(fid,'(a)',advance="no") "RANGE FRAC PERM-Z [m],"
-    write(fid,'(a)',advance="no") "MIDRANGE FRAC PERM-Z [m],"
-    write(fid,'(a)',advance="no") "MEAN FRAC PERM-Z [m],"
-    write(fid,'(a)',advance="no") "VARIANCE FRAC PERM-Z [m],"
-    write(fid,'(a)',advance="no") "POP SKEWNESS FRAC PERM-Z [m],"
-    write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC PERM-Z [m],"
-    close(fid)
-
-    ! filename_frac_info needs to be consistent w/ filename_frac_info located at end of PMFracPrintStats()
-    ! EJB: filename for printing out fracture geometry information: 
-    filename_frac_info = trim(this%option%global_prefix)//'.frac_geom_info'
-    fid_frac_info = 20846713
-    OPEN(unit=fid_frac_info,file=filename_frac_info,action="write",status="replace") 
-    WRITE(fid_frac_info,'(a)',advance="yes") "FRACTURE NETWORK METRICS FOR PFLOTRAN &
-                          &INPUT DECK: "//trim(this%option%global_prefix)//".in"
-    call GETCWD(path,status) ! ejb: another fortran-inherent
-    if (status==0) WRITE(fid_frac_info,'(a)',advance="yes") "INPUT DECK PATH: " &
-                                                  //trim(path)
-    if (status/=0) WRITE(fid_frac_info,'(a)',advance="yes") "INPUT DECK PATH: unknown"
-    WRITE(fid_frac_info,'(a)',advance="yes") "TIMESTAMP OF FILE CREATION: "//FDATE()
-    WRITE(fid_frac_info,'(a)',advance="no") "fracture_id,"
-    WRITE(fid_frac_info,'(a)',advance="no") "center_x,center_y,center_z,"
-    WRITE(fid_frac_info,'(a)',advance="no") "normal_x,normal_y,normal_z,"
-    WRITE(fid_frac_info,'(a)',advance="no") "radius_x,radius_y,radius_z,"
-    WRITE(fid_frac_info,'(a)',advance="no") "aperture_initial,"
-    WRITE(fid_frac_info,'(a)',advance="no") "strike_x,strike_y,strike_z,"
-    WRITE(fid_frac_info,'(a)',advance="yes") "dip"
-    ! WRITE(fid_frac_info,'(a)',advance="yes") ""
-    CLOSE(fid_frac_info)
-
-    ! now, call our fxn to write frac geom stats: 
-    call PMFracGeomPrintStats(this)
-
   endif
-  
+
   ! need to get all processes value for L22 and sum them
   call MPI_Allreduce(MPI_IN_PLACE,L22,option%comm%size,MPI_DOUBLE_PRECISION, &
                      MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
@@ -1109,6 +1043,31 @@ subroutine PMFracSetup(this)
   write(fid,'(a)',advance="no") "POP SKEWNESS FRAC PERM-Z [m],"
   write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC PERM-Z [m],"
   close(fid)
+
+  ! filename_frac_info needs to be consistent w/ filename_frac_info located at end of PMFracPrintStats()
+  ! EJB: filename for printing out fracture geometry information: 
+  filename_frac_info = trim(this%option%global_prefix)//'.frac_geom_info'
+  fid_frac_info = 20846713
+  OPEN(unit=fid_frac_info,file=filename_frac_info,action="write",status="replace") 
+  WRITE(fid_frac_info,'(a)',advance="yes") "FRACTURE NETWORK METRICS FOR PFLOTRAN &
+                        &INPUT DECK: "//trim(this%option%global_prefix)//".in"
+  call GETCWD(path,status) ! ejb: another fortran-inherent
+  if (status==0) WRITE(fid_frac_info,'(a)',advance="yes") "INPUT DECK PATH: " &
+                                                //trim(path)
+  if (status/=0) WRITE(fid_frac_info,'(a)',advance="yes") "INPUT DECK PATH: unknown"
+  WRITE(fid_frac_info,'(a)',advance="yes") "TIMESTAMP OF FILE CREATION: "//FDATE()
+  WRITE(fid_frac_info,'(a)',advance="no") "fracture_id,"
+  WRITE(fid_frac_info,'(a)',advance="no") "center_x,center_y,center_z,"
+  WRITE(fid_frac_info,'(a)',advance="no") "normal_x,normal_y,normal_z,"
+  WRITE(fid_frac_info,'(a)',advance="no") "radius_x,radius_y,radius_z,"
+  WRITE(fid_frac_info,'(a)',advance="no") "aperture_initial,"
+  WRITE(fid_frac_info,'(a)',advance="no") "strike_x,strike_y,strike_z,"
+  WRITE(fid_frac_info,'(a)',advance="yes") "dip"
+  ! WRITE(fid_frac_info,'(a)',advance="yes") ""
+  CLOSE(fid_frac_info)
+
+  ! now, call our subroutine to write frac geom stats: 
+  call PMFracGeomPrintStats(this)
 
   if (.not.associated(this%realization%reaction)) then
     this%update_material_auxvar_perm = PETSC_TRUE
@@ -3070,21 +3029,11 @@ subroutine PMFracGeomPrintStats(this)
   OPEN(UNIT=fid_frac_info,FILE=filename_frac_info,STATUS='OLD',POSITION='APPEND',ACTION='WRITE')
 
   ! Loop over each fracture in the domain and print its properties
-  this%option%io_buffer = 'EJB: PRINT TEST!'
-  call PrintMsg(this%option)
-  
-  ! okay ... time to try and loop over the fracture list ... 
   frac_count = 1
   cur_fracture => this%fracture_list
   do 
     if (.not.associated(cur_fracture)) exit
-    
-    ! this%option%io_buffer = 'Frac ID: ' // StringWrite(cur_fracture%id)
-    ! call PrintMsg(this%option)
 
-    ! this%option%io_buffer = 'Frac radx: ' // StringWrite(cur_fracture%radx)
-    ! call PrintMsg(this%option)
-    
     ! data to write is: 
     ! fracture_id, cx, cy, cz, nx, ny, nz, rx, ry, rz, aperture
     write(fid_frac_info,'(I8)',advance="no") cur_fracture%id
