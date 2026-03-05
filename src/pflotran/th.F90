@@ -1361,6 +1361,7 @@ subroutine THAccumDerivative(th_auxvar,global_auxvar, &
             ((biot_coeff-porosity_0)*(1.d0-biot_coeff))/dr_bulk_modulus
           id_porosity = geomech_parameter%flow_porosity_id
           por = global_auxvar%parameters(id_porosity)
+
           dpor_dT = alpha
 
           porXvol = por*vol
@@ -1619,8 +1620,9 @@ subroutine THAccumulation(th_auxvar,global_auxvar,material_auxvar, &
                   ( alpha * (th_auxvar%temp - temp_0 ))
             ! store new (mass conserved) flow porosity for threshold check
             global_auxvar%parameters(flow_porosity_id) = por
+            ! update material_auxvar porosity
+            material_auxvar%porosity = por
           endif
-
     end select ! split_scheme
   end select ! flow_coupling
 
