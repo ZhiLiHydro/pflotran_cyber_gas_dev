@@ -1326,7 +1326,7 @@ subroutine PMRTCheckUpdatePost(this,snes,X0,dX,X1,dX_changed, &
           this%converged_cell(idof,ABS_REL_UPDATE_INDEX) = natural_id
         endif
         ! scaled residual
-        scaled_residual = dabs(r_p(index)/accum_t_p(index))
+        scaled_residual = dabs(r_p(index)/accum_t_p(index))*option%tran_dt
         if (scaled_residual > &
             this%converged_real(idof,ABS_SCALED_RESIDUAL_INDEX)) then
           this%converged_real(idof,ABS_SCALED_RESIDUAL_INDEX) = scaled_residual
