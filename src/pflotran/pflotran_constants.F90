@@ -31,7 +31,7 @@ module PFLOTRAN_Constants_module
   PetscInt, parameter, public :: CHECKPOINT_REVISION_NUMBER = 1
 
   PetscInt, parameter, public :: MAXSTRINGLENGTH = 512
-  PetscInt, parameter, public :: MAXWORDLENGTH = 32
+  PetscInt, parameter, public :: MAXWORDLENGTH = 64
 
   ! Comment on file units: There are several ranges of file units that are
   ! reserved for nested I/O, where nested file accesses cannot use the same
