@@ -1522,9 +1522,6 @@ subroutine GeomechGridLocalizeRegFromVertIDs(geomech_grid,geomech_region, &
 
   deallocate(flag)
 
-  write(*,'(a,i2,a,a,a,i5)') 'DBG LOCALIZED rank=',option%myrank, &
-    ' region=',trim(geomech_region%name),' local_count=',geomech_region%num_verts
-
 #ifdef GEOMECH_DEBUG
   write(string,*) option%myrank
   write(string1,*) geomech_region%name
