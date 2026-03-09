@@ -1057,11 +1057,11 @@ subroutine GeomechForceSetupLinearSystem(A,solution,rhs,geomech_realization, &
                                   ((1.d0 - porosity_vec(ivertex)) * &
                                    density_rock_vec(ivertex))
       local_body_force(ivertex,GEOMECH_DISP_X_DOF) = &
-        temp_body_force_x_p(grid%nG2L(ghosted_id))
+        temp_body_force_x_p(ghosted_id)
       local_body_force(ivertex,GEOMECH_DISP_Y_DOF) = &
-        temp_body_force_y_p(grid%nG2L(ghosted_id))
+        temp_body_force_y_p(ghosted_id)
       local_body_force(ivertex,GEOMECH_DISP_Z_DOF) = &
-        temp_body_force_z_p(grid%nG2L(ghosted_id))
+        temp_body_force_z_p(ghosted_id)
     enddo
     call GeomechForceLocalElemRHS(size_elenodes,local_coordinates(1:size_elenodes,:), &
        local_press(1:size_elenodes),local_temp(1:size_elenodes), &
