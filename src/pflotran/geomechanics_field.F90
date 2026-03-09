@@ -43,6 +43,9 @@ module Geomechanics_Field_module
     Vec :: density
     Vec :: biot_coeff
     Vec :: thermal_exp_coeff
+    Vec :: body_force_x
+    Vec :: body_force_y
+    Vec :: body_force_z
 
     Vec :: fluid_density ! store density from subsurf
     Vec :: fluid_density_loc
@@ -118,6 +121,9 @@ function GeomechFieldCreate()
   PetscObjectNullify(geomech_field%density)
   PetscObjectNullify(geomech_field%biot_coeff)
   PetscObjectNullify(geomech_field%thermal_exp_coeff)
+  PetscObjectNullify(geomech_field%body_force_x)
+  PetscObjectNullify(geomech_field%body_force_y)
+  PetscObjectNullify(geomech_field%body_force_z)
 
   PetscObjectNullify(geomech_field%fluid_density)
   PetscObjectNullify(geomech_field%fluid_density_loc)
@@ -179,6 +185,9 @@ subroutine GeomechFieldDestroy(geomech_field)
   call PUVecDestroy(geomech_field%density)
   call PUVecDestroy(geomech_field%biot_coeff)
   call PUVecDestroy(geomech_field%thermal_exp_coeff)
+  call PUVecDestroy(geomech_field%body_force_x)
+  call PUVecDestroy(geomech_field%body_force_y)
+  call PUVecDestroy(geomech_field%body_force_z)
   call PUVecDestroy(geomech_field%fluid_density)
   call PUVecDestroy(geomech_field%fluid_density_loc)
   call PUVecDestroy(geomech_field%fluid_density_init_loc)
