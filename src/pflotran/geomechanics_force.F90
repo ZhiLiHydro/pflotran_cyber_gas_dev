@@ -1021,31 +1021,31 @@ subroutine GeomechForceSetupLinearSystem(A,solution,rhs,geomech_realization, &
       local_press(ivertex) = press(ghosted_id) - press_init(ghosted_id)  ! p - p_0
       local_temp(ivertex) = temp(ghosted_id) - temp_init(ghosted_id)     ! T - T_0
       if (geomech_parameter%thermal_exp_coeff_spatially_varying) then
-        alpha_vec(ivertex) = temp_thermal_exp_coeff_p(grid%nG2L(ghosted_id))
+        alpha_vec(ivertex) = temp_thermal_exp_coeff_p(ghosted_id)
       else
         alpha_vec(ivertex) = &
           geomech_parameter%thermal_exp_coeff(nint(imech_loc_p(ghosted_id)))
       endif
       if (geomech_parameter%biot_coeff_spatially_varying) then
-        beta_vec(ivertex) = temp_biot_coeff_p(grid%nG2L(ghosted_id))
+        beta_vec(ivertex) = temp_biot_coeff_p(ghosted_id)
       else
         beta_vec(ivertex) = &
           geomech_parameter%biot_coeff(nint(imech_loc_p(ghosted_id)))
       endif
       if (geomech_parameter%density_spatially_varying) then
-        density_rock_vec(ivertex) = temp_density_p(grid%nG2L(ghosted_id))
+        density_rock_vec(ivertex) = temp_density_p(ghosted_id)
       else
         density_rock_vec(ivertex) = &
           geomech_parameter%density(nint(imech_loc_p(ghosted_id)))
       endif
       if (geomech_parameter%youngs_modulus_spatially_varying) then
-        youngs_vec(ivertex) = temp_youngs_modulus_p(grid%nG2L(ghosted_id))
+        youngs_vec(ivertex) = temp_youngs_modulus_p(ghosted_id)
       else
         youngs_vec(ivertex) = &
           geomech_parameter%youngs_modulus(nint(imech_loc_p(ghosted_id)))
       endif
       if (geomech_parameter%poissons_ratio_spatially_varying) then
-        poissons_vec(ivertex) = temp_poissons_ratio_p(grid%nG2L(ghosted_id))
+        poissons_vec(ivertex) = temp_poissons_ratio_p(ghosted_id)
       else
         poissons_vec(ivertex) = &
           geomech_parameter%poissons_ratio(nint(imech_loc_p(ghosted_id)))
@@ -1838,13 +1838,13 @@ subroutine GeomechForceAssembleCoeffMatrix(A,geomech_realization)
     do ivertex = 1, size_elenodes
       ghosted_id = elenodes(ivertex)
       if (geomech_parameter%youngs_modulus_spatially_varying) then
-        youngs_vec(ivertex) = temp_youngs_modulus_p(grid%nG2L(ghosted_id))
+        youngs_vec(ivertex) = temp_youngs_modulus_p(ghosted_id)
       else
         youngs_vec(ivertex) = &
           geomech_parameter%youngs_modulus(nint(imech_loc_p(ghosted_id)))
       endif
       if (geomech_parameter%poissons_ratio_spatially_varying) then
-        poissons_vec(ivertex) = temp_poissons_ratio_p(grid%nG2L(ghosted_id))
+        poissons_vec(ivertex) = temp_poissons_ratio_p(ghosted_id)
       else
         poissons_vec(ivertex) = &
           geomech_parameter%poissons_ratio(nint(imech_loc_p(ghosted_id)))
@@ -2490,25 +2490,25 @@ subroutine GeomechForceStressStrain(geomech_realization)
       local_press(ivertex) = &
         press_loc_p(ghosted_id) - press_init_loc_p(ghosted_id)
       if (geomech_parameter%youngs_modulus_spatially_varying) then
-        youngs_vec(ivertex) = temp_youngs_modulus_p(grid%nG2L(ghosted_id))
+        youngs_vec(ivertex) = temp_youngs_modulus_p(ghosted_id)
       else
         youngs_vec(ivertex) = &
           geomech_parameter%youngs_modulus(nint(imech_loc_p(ghosted_id)))
       endif
       if (geomech_parameter%poissons_ratio_spatially_varying) then
-        poissons_vec(ivertex) = temp_poissons_ratio_p(grid%nG2L(ghosted_id))
+        poissons_vec(ivertex) = temp_poissons_ratio_p(ghosted_id)
       else
         poissons_vec(ivertex) = &
           geomech_parameter%poissons_ratio(nint(imech_loc_p(ghosted_id)))
       endif
       if (geomech_parameter%biot_coeff_spatially_varying) then
-        beta_vec(ivertex) = temp_biot_coeff_p(grid%nG2L(ghosted_id))
+        beta_vec(ivertex) = temp_biot_coeff_p(ghosted_id)
       else
         beta_vec(ivertex) = &
           geomech_parameter%biot_coeff(nint(imech_loc_p(ghosted_id)))
       endif
       if (geomech_parameter%thermal_exp_coeff_spatially_varying) then
-        alpha_vec(ivertex) = temp_thermal_exp_coeff_p(grid%nG2L(ghosted_id))
+        alpha_vec(ivertex) = temp_thermal_exp_coeff_p(ghosted_id)
       else
         alpha_vec(ivertex) = &
           geomech_parameter%thermal_exp_coeff(nint(imech_loc_p(ghosted_id)))

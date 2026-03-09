@@ -1204,6 +1204,24 @@ subroutine InitMatPropToGeomechRegions(geomech_realization)
       call VecRestoreArray(field%thermal_exp_coeff,temp_vec_p,ierr);CHKERRQ(ierr)
     endif
   enddo
+
+  ! Scatter owned-node property values to ghost nodes
+  call GeomechDiscretizationLocalToLocal(geomech_discretization, &
+                                         field%youngs_modulus, &
+                                         field%youngs_modulus,ONEDOF)
+  call GeomechDiscretizationLocalToLocal(geomech_discretization, &
+                                         field%poissons_ratio, &
+                                         field%poissons_ratio,ONEDOF)
+  call GeomechDiscretizationLocalToLocal(geomech_discretization, &
+                                         field%density, &
+                                         field%density,ONEDOF)
+  call GeomechDiscretizationLocalToLocal(geomech_discretization, &
+                                         field%biot_coeff, &
+                                         field%biot_coeff,ONEDOF)
+  call GeomechDiscretizationLocalToLocal(geomech_discretization, &
+                                         field%thermal_exp_coeff, &
+                                         field%thermal_exp_coeff,ONEDOF)
+
   call VecSet(field%body_force_x,geomech_realization%body_force(X_DIRECTION),ierr);CHKERRQ(ierr)
   call VecSet(field%body_force_y,geomech_realization%body_force(Y_DIRECTION),ierr);CHKERRQ(ierr)
   call VecSet(field%body_force_z,geomech_realization%body_force(Z_DIRECTION),ierr);CHKERRQ(ierr)
