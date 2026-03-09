@@ -1413,6 +1413,20 @@ end subroutine GeomechGridLocalizeRegFromSideSet
 ! ************************************************************************** !
 subroutine GeomechGridLocalizeRegFromVertIDs(geomech_grid,geomech_region, &
                                              option)
+  !
+  ! Restricts a vertex-set region to the nodes locally owned by this rank.
+  !
+  ! The region's vertex_ids array is distributed: each rank holds only a
+  ! contiguous chunk of the full natural-ID list (set during file reading).
+  ! To determine which local nodes belong to the region we:
+  !   1. Gather all natural IDs from every rank onto every rank
+  !      (MPI_Allgatherv).
+  !   2. Build a direct-address flag array indexed by natural ID.
+  !   3. For each locally-owned node, check the flag and keep matches.
+  !
+  ! This replaces a previous Vec/scatter/AO implementation that produced
+  ! incorrect node counts in parallel due to a mismatch between PETSc
+  ! ordering and the natural-ID indexing used by VecSetValues.
 
   use Option_module
   use Geomechanics_Region_module
@@ -1423,136 +1437,93 @@ subroutine GeomechGridLocalizeRegFromVertIDs(geomech_grid,geomech_region, &
   type(gm_region_type) :: geomech_region
   type(option_type) :: option
 
-  Vec :: vec_vertex_ids,vec_vertex_ids_loc
-  IS :: is_from, is_to
-  VecScatter :: vec_scat
   PetscErrorCode :: ierr
-  PetscInt :: ii,count
-  PetscInt :: istart,iend
-  PetscInt :: ghosted_id,local_id
-  PetscInt :: natural_id
-  PetscInt, pointer :: tmp_int_array(:)
-  PetscScalar, pointer :: v_loc_p(:)
-  PetscScalar, pointer :: tmp_scl_array(:)
+  PetscInt :: ii, count, local_id, natural_id
+  PetscInt :: irank, nsize, total_verts
+  PetscInt, allocatable :: num_verts_per_rank(:)
+  PetscInt, allocatable :: displs(:)
+  PetscInt, allocatable :: all_natural_ids(:)
+  PetscInt, allocatable :: flag(:)
+  PetscInt :: num_verts_mpi
 
 #ifdef GEOMECH_DEBUG
   character(len=MAXSTRINGLENGTH) :: string, string1
-  PetscViewer :: viewer
 #endif
 
-  if (associated(geomech_region%vertex_ids)) then
-    call VecCreateMPI(option%mycomm,geomech_grid%nlmax_node,PETSC_DECIDE, &
-                      vec_vertex_ids,ierr);CHKERRQ(ierr)
-    call VecCreateMPI(option%mycomm,geomech_grid%nlmax_node,PETSC_DECIDE, &
-                      vec_vertex_ids_loc,ierr);CHKERRQ(ierr)
-    call VecZeroEntries(vec_vertex_ids,ierr);CHKERRQ(ierr)
+  if (.not. associated(geomech_region%vertex_ids)) return
 
-    allocate(tmp_int_array(geomech_region%num_verts))
-    allocate(tmp_scl_array(geomech_region%num_verts))
+  ! -----------------------------------------------------------------------
+  ! Step 1: gather the number of vertices each rank holds for this region
+  ! -----------------------------------------------------------------------
+  nsize = option%comm%size
+  allocate(num_verts_per_rank(nsize))
+  num_verts_mpi = geomech_region%num_verts
+  call MPI_Allgather(num_verts_mpi, ONE_INTEGER_MPI, MPIU_INTEGER, &
+                     num_verts_per_rank, ONE_INTEGER_MPI, MPIU_INTEGER, &
+                     option%mycomm, ierr); CHKERRQ(ierr)
 
-    count = 0
-    do ii = 1, geomech_region%num_verts
-      count = count + 1
-      ! Change to zero-based numbering
-      tmp_int_array(count) = geomech_region%vertex_ids(ii) - 1
-      tmp_scl_array(count) = 1.d0
-    enddo
+  ! -----------------------------------------------------------------------
+  ! Step 2: compute total count and displacements for MPI_Allgatherv
+  ! -----------------------------------------------------------------------
+  allocate(displs(nsize))
+  displs(1) = 0
+  do irank = 2, nsize
+    displs(irank) = displs(irank-1) + num_verts_per_rank(irank-1)
+  enddo
+  total_verts = displs(nsize) + num_verts_per_rank(nsize)
 
-#ifdef GEOMECH_DEBUG
-    call PetscViewerASCIIOpen(option%mycomm,'vec_vertex_ids_bef.out',viewer, &
-                              ierr);CHKERRQ(ierr)
-    call VecView(vec_vertex_ids,viewer,ierr);CHKERRQ(ierr)
-    call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
-#endif
+  ! -----------------------------------------------------------------------
+  ! Step 3: gather ALL natural IDs onto every rank
+  ! -----------------------------------------------------------------------
+  allocate(all_natural_ids(total_verts))
+  call MPI_Allgatherv(geomech_region%vertex_ids, num_verts_mpi, &
+                      MPIU_INTEGER, all_natural_ids, num_verts_per_rank, &
+                      displs, MPIU_INTEGER, option%mycomm, ierr); CHKERRQ(ierr)
 
-    call VecSetValues(vec_vertex_ids,geomech_region%num_verts,tmp_int_array, &
-                      tmp_scl_array,ADD_VALUES,ierr);CHKERRQ(ierr)
+  deallocate(num_verts_per_rank)
+  deallocate(displs)
 
-    deallocate(tmp_int_array)
-    deallocate(tmp_scl_array)
+  ! -----------------------------------------------------------------------
+  ! Step 4: build a direct-address flag array (natural IDs are 1-based)
+  ! -----------------------------------------------------------------------
+  allocate(flag(geomech_grid%nmax_node))
+  flag = 0
+  do ii = 1, total_verts
+    flag(all_natural_ids(ii)) = 1
+  enddo
+  deallocate(all_natural_ids)
 
-    call VecAssemblyBegin(vec_vertex_ids,ierr);CHKERRQ(ierr)
-    call VecAssemblyEnd(vec_vertex_ids,ierr);CHKERRQ(ierr)
-
-#ifdef GEOMECH_DEBUG
-    call PetscViewerASCIIOpen(option%mycomm,'vec_vertex_ids_aft.out',viewer, &
-                              ierr);CHKERRQ(ierr)
-    call VecView(vec_vertex_ids,viewer,ierr);CHKERRQ(ierr)
-    call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
-#endif
-
-  endif
-
-  allocate(tmp_int_array(geomech_grid%nlmax_node))
+  ! -----------------------------------------------------------------------
+  ! Step 5: count matching local nodes
+  ! -----------------------------------------------------------------------
   count = 0
-  do ghosted_id = 1, geomech_grid%ngmax_node
-    local_id = geomech_grid%nG2L(ghosted_id)
-    if (local_id < 1) cycle
-    count = count + 1
-    natural_id = geomech_grid%nG2A(ghosted_id)
-    tmp_int_array(count) = natural_id
+  do local_id = 1, geomech_grid%nlmax_node
+    natural_id = geomech_grid%node_ids_local_natural(local_id)
+    if (flag(natural_id) == 1) count = count + 1
   enddo
 
-  tmp_int_array = tmp_int_array - 1
-  call ISCreateBlock(option%mycomm,1,geomech_grid%nlmax_node,tmp_int_array, &
-                     PETSC_COPY_VALUES,is_from,ierr);CHKERRQ(ierr)
-
-  call VecGetOwnershipRange(vec_vertex_ids_loc,istart,iend, &
-                            ierr);CHKERRQ(ierr)
-  do ii = 1,geomech_grid%nlmax_node
-    tmp_int_array(ii) = ii + istart
-  enddo
-
-  ! is_from is natural_numbering
-  ! is_to is PETSc_numbering
-
-  tmp_int_array = tmp_int_array - 1
-  call ISCreateBlock(option%mycomm,1,geomech_grid%nlmax_node,tmp_int_array, &
-                     PETSC_COPY_VALUES,is_to,ierr);CHKERRQ(ierr)
-
-  deallocate(tmp_int_array)
-
-  call VecScatterCreate(vec_vertex_ids,is_from,vec_vertex_ids_loc,is_to, &
-                        vec_scat,ierr);CHKERRQ(ierr)
-
-  call ISDestroy(is_from,ierr);CHKERRQ(ierr)
-  call ISDestroy(is_to,ierr);CHKERRQ(ierr)
-
-  call VecScatterBegin(vec_scat,vec_vertex_ids,vec_vertex_ids_loc, &
-                       INSERT_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
-  call VecScatterEnd(vec_scat,vec_vertex_ids,vec_vertex_ids_loc,INSERT_VALUES, &
-                     SCATTER_FORWARD,ierr);CHKERRQ(ierr)
-  call VecScatterDestroy(vec_scat,ierr);CHKERRQ(ierr)
-
-#if GEOMECH_DEBUG
-    call PetscViewerASCIIOpen(option%mycomm,'vec_vertex_ids_loc.out',viewer, &
-                              ierr);CHKERRQ(ierr)
-    call VecView(vec_vertex_ids_loc,viewer,ierr);CHKERRQ(ierr)
-    call PetscViewerDestroy(viewer,ierr);CHKERRQ(ierr)
-#endif
-
-  call VecGetArray(vec_vertex_ids_loc,v_loc_p,ierr);CHKERRQ(ierr)
-  count = 0
-  do ii = 1,geomech_grid%nlmax_node
-    if (v_loc_p(ii) == 1) count = count + 1
-  enddo
-
+  ! -----------------------------------------------------------------------
+  ! Step 6: build the new local vertex_ids list
+  ! -----------------------------------------------------------------------
   geomech_region%num_verts = count
+  deallocate(geomech_region%vertex_ids)
+  nullify(geomech_region%vertex_ids)
   if (count > 0) then
-    allocate(tmp_int_array(count))
+    allocate(geomech_region%vertex_ids(count))
     count = 0
-    do ii = 1,geomech_grid%nlmax_node
-      if (v_loc_p(ii) == 1) then
+    do local_id = 1, geomech_grid%nlmax_node
+      natural_id = geomech_grid%node_ids_local_natural(local_id)
+      if (flag(natural_id) == 1) then
         count = count + 1
-        tmp_int_array(count) = ii
+        geomech_region%vertex_ids(count) = local_id
       endif
     enddo
-
-    deallocate(geomech_region%vertex_ids)
-    allocate(geomech_region%vertex_ids(geomech_region%num_verts))
-    geomech_region%vertex_ids = tmp_int_array
-    deallocate(tmp_int_array)
   endif
+
+  deallocate(flag)
+
+  write(*,'(a,i2,a,a,a,i5)') 'DBG LOCALIZED rank=',option%myrank, &
+    ' region=',trim(geomech_region%name),' local_count=',geomech_region%num_verts
 
 #ifdef GEOMECH_DEBUG
   write(string,*) option%myrank
@@ -1565,11 +1536,6 @@ subroutine GeomechGridLocalizeRegFromVertIDs(geomech_grid,geomech_region, &
   enddo
   close(86)
 #endif
-
-  call VecRestoreArray(vec_vertex_ids_loc,v_loc_p,ierr);CHKERRQ(ierr)
-
-  call VecDestroy(vec_vertex_ids,ierr);CHKERRQ(ierr)
-  call VecDestroy(vec_vertex_ids_loc,ierr);CHKERRQ(ierr)
 
 end subroutine GeomechGridLocalizeRegFromVertIDs
 
