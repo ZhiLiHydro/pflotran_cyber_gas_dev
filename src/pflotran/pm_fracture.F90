@@ -27,6 +27,8 @@ module PM_Fracture_class
     ! fracture hydraulic aperture, initial [m]
     PetscReal :: hap0 ! 
     ! ejb : add dip here -- do Ctrl+F for hap0, can follow procedures for that
+    type(point3d_type) :: strike ! direction along which the fracture plane intersects with the horizontal (assumed xz) plane
+    PetscReal :: dip  ! angle in degrees between the horizontal plane and the fracture. goes along with strike
     ! fracture hydraulic aperture, dynamic [m]
     PetscReal, pointer :: hap(:)
     ! fracture radius - x [m]
@@ -312,6 +314,7 @@ subroutine FractureInit(this)
   this%ncells = UNINITIALIZED_INTEGER
   this%id = UNINITIALIZED_INTEGER
   this%hap0 = UNINITIALIZED_DOUBLE
+  this%dip = UNINITIALIZED_DOUBLE
   this%radx = UNINITIALIZED_DOUBLE
   this%rady = UNINITIALIZED_DOUBLE
   this%radz = UNINITIALIZED_DOUBLE
@@ -321,6 +324,9 @@ subroutine FractureInit(this)
   this%normal%x = UNINITIALIZED_DOUBLE
   this%normal%y = UNINITIALIZED_DOUBLE
   this%normal%z = UNINITIALIZED_DOUBLE
+  this%strike%x = UNINITIALIZED_DOUBLE
+  this%strike%y = UNINITIALIZED_DOUBLE
+  this%strike%z = UNINITIALIZED_DOUBLE
   this%parallel%x = UNINITIALIZED_DOUBLE
   this%parallel%y = UNINITIALIZED_DOUBLE
   this%parallel%z = UNINITIALIZED_DOUBLE
@@ -399,7 +405,7 @@ subroutine PMFracSetup(this)
   type(material_auxvar_type), pointer :: material_auxvar
   type(connection_set_type), pointer :: cur_local_conn_set
   type(connection_set_list_type), pointer :: local_conn_set_list
-  character(len=MAXWORDLENGTH) :: word,filename
+  character(len=MAXWORDLENGTH) :: word,filename,filename_frac_info
   character(len=MAXSTRINGLENGTH) :: path
   PetscInt, pointer :: temp_cell_ids(:),temp_gbl_cell_ids(:)
   PetscInt, pointer :: temp_allfrac_cell_ids(:)
@@ -411,7 +417,7 @@ subroutine PMFracSetup(this)
   PetscInt, pointer :: num_connections(:)
   PetscInt, pointer :: local_id_up_list(:),local_id_dn_list(:)
   PetscInt :: num_local_conns, iconn
-  PetscInt :: k,j,i,fid,status,glb_id
+  PetscInt :: k,j,i,fid,status,fid_frac_info,glb_id
   PetscInt :: nf,tfc,tcfc,read_max
   PetscInt :: total_sum_glb
   PetscReal, pointer :: d_vertex(:)
@@ -700,6 +706,21 @@ subroutine PMFracSetup(this)
     cur_fracture%RM(3,1) = c3*c1*(1.d0-cosra) -c2*sinra
     cur_fracture%RM(3,2) = c3*c2*(1.d0-cosra) + c1*sinra
     cur_fracture%RM(3,3) = cosra + c3*c3*(1.d0-cosra)
+
+    ! calculate the dip and strike of the fracture 
+    ! where strike is: the direction along which the fracture plane intersects the horizontal plane
+    ! and dip is: the angle the fracture plane makes with the horizontal plane
+    ! in our case, we assume the horizontal plane is the xy plane, with unit normal n = <0, 0, 1>
+    ! Letting nfrac = unit vector for the fracture, nxy = xy plane unit vector, and nstrike = unit vector in strike direction, we have: 
+    ! nstrike = nfrac X nxy =<(nfrac_y*1), -(nfrac_x*1), (0)> = <nfrac_y, -nfrac_x>
+    cur_fracture%strike%x = cur_fracture%normal%y
+    cur_fracture%strike%y = -1.d0*cur_fracture%normal%y
+    cur_fracture%strike%z = 0.d0
+
+    ! Then for dip, we have : ||nfrac||||nxy||cos(theta) = nfrac dot nxy, where theta is the dip angle
+    ! since ||nfrac|| = ||nxy|| = 1, and nxy = <0,0,1> we have
+    cur_fracture%dip = acos(cur_fracture%normal%z)
+
 
     cur_fracture => cur_fracture%next
   enddo
@@ -1080,7 +1101,7 @@ subroutine PMFracSetup(this)
       L22 = L22 + (2.d0*((material_auxvar%volume)**(1.d0/3.d0))**(2)) ! [m^2]
     enddo
   endif
-  
+
   ! need to get all processes value for L22 and sum them
   call MPI_Allreduce(MPI_IN_PLACE,L22,option%comm%size,MPI_DOUBLE_PRECISION, &
                      MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
@@ -1126,6 +1147,31 @@ subroutine PMFracSetup(this)
   write(fid,'(a)',advance="no") "POP SKEWNESS FRAC PERM-Z [m],"
   write(fid,'(a)',advance="no") "SAMPLE SKEWNESS FRAC PERM-Z [m],"
   close(fid)
+
+  ! filename_frac_info needs to be consistent w/ filename_frac_info located at end of PMFracPrintStats()
+  ! EJB: filename for printing out fracture geometry information: 
+  filename_frac_info = trim(this%option%global_prefix)//'.frac_geom_info'
+  fid_frac_info = 20846713
+  OPEN(unit=fid_frac_info,file=filename_frac_info,action="write",status="replace") 
+  WRITE(fid_frac_info,'(a)',advance="yes") "FRACTURE NETWORK METRICS FOR PFLOTRAN &
+                        &INPUT DECK: "//trim(this%option%global_prefix)//".in"
+  call GETCWD(path,status) ! ejb: another fortran-inherent
+  if (status==0) WRITE(fid_frac_info,'(a)',advance="yes") "INPUT DECK PATH: " &
+                                                //trim(path)
+  if (status/=0) WRITE(fid_frac_info,'(a)',advance="yes") "INPUT DECK PATH: unknown"
+  WRITE(fid_frac_info,'(a)',advance="yes") "TIMESTAMP OF FILE CREATION: "//FDATE()
+  WRITE(fid_frac_info,'(a)',advance="no") "fracture_id,"
+  WRITE(fid_frac_info,'(a)',advance="no") "center_x,center_y,center_z,"
+  WRITE(fid_frac_info,'(a)',advance="no") "normal_x,normal_y,normal_z,"
+  WRITE(fid_frac_info,'(a)',advance="no") "radius_x,radius_y,radius_z,"
+  WRITE(fid_frac_info,'(a)',advance="no") "aperture_initial,"
+  WRITE(fid_frac_info,'(a)',advance="no") "strike_x,strike_y,strike_z,"
+  WRITE(fid_frac_info,'(a)',advance="yes") "dip"
+  ! WRITE(fid_frac_info,'(a)',advance="yes") ""
+  CLOSE(fid_frac_info)
+
+  ! now, call our subroutine to write frac geom stats: 
+  call PMFracGeomPrintStats(this)
 
   if (.not.associated(this%realization%reaction)) then
     this%update_material_auxvar_perm = PETSC_TRUE
@@ -2716,7 +2762,7 @@ subroutine PMFracSolve(this,time,ierr)
   call VecRestoreArrayRead(field%perm0_yy,perm0_yy_p,ierr);CHKERRQ(ierr)
 
   call PMFracPrintStats(this)
-
+  
   ierr = 0 ! If this is not set to zero, TS_STOP_FAILURE occurs
 
 end subroutine PMFracSolve
@@ -3024,6 +3070,91 @@ subroutine PMFracPrintStats(this)
   deallocate(frac_aperture_lcl)
 
 end subroutine PMFracPrintStats
+! ************************************************************************** !
+subroutine PMFracGeomPrintStats(this)
+  !
+  ! Adds fracture netowrk geometry information to .frac_geom_info file.
+  !
+  ! Author: Elyce Bayat
+  ! Date: 02/25/2026
+  !
+  use Material_Aux_module
+  use Grid_module
+  use Utility_module
+
+  class(pm_fracture_type) :: this
+
+  character(len=MAXWORDLENGTH) :: filename_frac_info ! EJB
+  type(fracture_type), pointer :: cur_fracture
+  PetscInt :: fid_frac_info, frac_count
+
+  ! filename_frac_info needs to be consistent w/ filename_frac_info located at end of PMFracSetup()
+  ! EJB: filename for printing out fracture geometry information: 
+  filename_frac_info = trim(this%option%global_prefix)//'.frac_geom_info'
+  fid_frac_info = 20846713 ! fid here also needs to be consistent w one at end of PMFracSetup()
+110 format(100es16.8)  
+  OPEN(UNIT=fid_frac_info,FILE=filename_frac_info,STATUS='OLD',POSITION='APPEND',ACTION='WRITE')
+
+  ! Loop over each fracture in the domain and print its properties
+  frac_count = 1
+  cur_fracture => this%fracture_list
+  do 
+    if (.not.associated(cur_fracture)) exit
+
+    ! data to write is: 
+    ! fracture_id, cx, cy, cz, nx, ny, nz, rx, ry, rz, aperture
+    write(fid_frac_info,'(I8)',advance="no") cur_fracture%id
+    write(fid_frac_info,'(a)', advance="no") ","
+    
+    ! center_x, center_y, center_z
+    write(fid_frac_info,110,advance="no") cur_fracture%center%x
+    write(fid_frac_info,'(a)', advance="no") ","
+    write(fid_frac_info,110,advance="no") cur_fracture%center%y
+    write(fid_frac_info,'(a)', advance="no") ","
+    write(fid_frac_info,110,advance="no") cur_fracture%center%z
+    write(fid_frac_info,'(a)', advance="no") ","
+
+    ! normal_x, normal_y, normal_z
+    write(fid_frac_info,110,advance="no") cur_fracture%normal%x
+    write(fid_frac_info,'(a)', advance="no") ","
+    write(fid_frac_info,110,advance="no") cur_fracture%normal%y
+    write(fid_frac_info,'(a)', advance="no") ","
+    write(fid_frac_info,110,advance="no") cur_fracture%normal%z
+    write(fid_frac_info,'(a)', advance="no") ","
+
+    ! radius_x, radius_y, radius_z
+    write(fid_frac_info,110,advance="no") cur_fracture%radx
+    write(fid_frac_info,'(a)', advance="no") ","
+    write(fid_frac_info,110,advance="no") cur_fracture%rady
+    write(fid_frac_info,'(a)', advance="no") ","
+    write(fid_frac_info,110,advance="no") cur_fracture%radz
+    write(fid_frac_info,'(a)', advance="no") ","
+
+    ! initial aperture    
+    write(fid_frac_info,110,advance="no") cur_fracture%hap0
+    write(fid_frac_info,'(a)', advance="no") ","
+
+    ! strike
+    write(fid_frac_info, 110, advance="no") cur_fracture%strike%x
+    write(fid_frac_info,'(a)', advance="no") ","
+    write(fid_frac_info, 110, advance="no") cur_fracture%strike%y
+    write(fid_frac_info,'(a)', advance="no") ","
+    write(fid_frac_info, 110, advance="no") cur_fracture%strike%z
+    write(fid_frac_info,'(a)', advance="no") ","
+
+    ! dip
+    write(fid_frac_info, 110, advance="yes") cur_fracture%dip
+    
+    this%option%io_buffer = 'Frac count: ' // StringWrite(frac_count)
+    call PrintMsg(this%option)
+
+    frac_count = frac_count + 1
+    cur_fracture => cur_fracture%next
+
+  enddo
+
+  CLOSE(fid_frac_info)
+end subroutine PMFracGeomPrintStats
 
 ! ************************************************************************** !
 
