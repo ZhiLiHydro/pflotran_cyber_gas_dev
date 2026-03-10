@@ -593,6 +593,17 @@ subroutine PMCGeomechanicsSetAuxData(this)
           call VecGetArray(pmc%subsurf_realization%field%flow_xx,press_p, &
                               ierr);CHKERRQ(ierr)
 
+          ! Hoist constant parameter ID lookups outside the element loop
+          if (option%geomechanics%split_scheme == &
+              GEOMECH_FIXED_STRESS_SPLIT) then
+            strainv_0_id = ParameterGetIDFromName('vol_strain_0',option)
+            strainv_id = ParameterGetIDFromName('vol_strain', option)
+            press_0_id = ParameterGetIDFromName('press_0', option)
+            flow_porosity_id = ParameterGetIDFromName('flow_porosity',option)
+            temp_0_id = ParameterGetIDFromName('temp_0',option)
+            id_porosity_mech=ParameterGetIDFromName('stored_porosity',option)
+            id_pressure_mech=ParameterGetIDFromName('stored_pressure', option)
+          endif
 
           do local_id = 1, grid%nlmax
             do i = 1, SIX_INTEGER
@@ -623,16 +634,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
             select case(option%geomechanics%split_scheme)
             case(GEOMECH_FIXED_STRESS_SPLIT)
               ! ID's are registered in factory_subsurface.F90
-              strainv_0_id = ParameterGetIDFromName('vol_strain_0',option)
-              strainv_id = ParameterGetIDFromName('vol_strain', option)
-              press_0_id = ParameterGetIDFromName('press_0', option)
-              flow_porosity_id = ParameterGetIDFromName('flow_porosity',option)
-              temp_0_id = ParameterGetIDFromName('temp_0',option)
-              ! used to track threshold updates
-              ! needed since this routine will be skipped
-              ! if threshold is not met
-              id_porosity_mech=ParameterGetIDFromName('stored_porosity',option)
-              id_pressure_mech=ParameterGetIDFromName('stored_pressure', option)
+              ! (lookups hoisted before loop)
               ghosted_id = grid%nL2G(local_id)
               global_auxvar => global_auxvars(ghosted_id)
               imat = pmc%subsurf_realization%patch%aux%Material% &
