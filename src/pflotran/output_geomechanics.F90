@@ -104,6 +104,12 @@ subroutine OutputGeomechanics(geomech_realization,snapshot_plot_flag, &
       call PetscTime(tend,ierr);CHKERRQ(ierr)
     endif
 
+    if (geomech_realization%output_option%print_vtk) then
+      option%io_buffer = 'VTK output is not yet supported for ' // &
+        'geomechanics. Use TECPLOT or HDF5 format instead.'
+      call PrintWrnMsg(option)
+    endif
+
   endif
 
 !......................................

@@ -1404,7 +1404,7 @@ subroutine GeomechForceLocalElemRHS(size_elenodes,local_coordinates, &
   PetscReal :: lambda, mu, beta, alpha, density, youngs_mod, poissons_ratio
   PetscReal :: bf(3)
   PetscReal :: wdet, dp, dT, coefP, coefT
-  PetscReal, allocatable :: gauss_tet_vol_weight(:)
+  PetscReal :: gauss_tet_vol_weight(4)
   PetscReal :: gauss_tot_weight
   integer :: i
 
@@ -1418,7 +1418,6 @@ subroutine GeomechForceLocalElemRHS(size_elenodes,local_coordinates, &
 
   ! Optional improved tet weighting (unchanged logic)
   if(option%geomechanics%improve_tet_weighting .and. eletype == TET_TYPE .and. len_w == 4) then
-    allocate(gauss_tet_vol_weight(len_w))
     call ComputeTetVolAtVertex(local_coordinates(1,:), &
                                local_coordinates(2,:), &
                                local_coordinates(3,:), &
@@ -1461,7 +1460,6 @@ subroutine GeomechForceLocalElemRHS(size_elenodes,local_coordinates, &
     if (detJ_map <= 0.0d0) then
       call GeomechForceError('GEOMECHANICS: Determinant of J_map has to be positive!', option)
       call ShapeFunctionDestroy(shapefunction)
-      if (allocated(gauss_tet_vol_weight)) deallocate(gauss_tet_vol_weight)
       return
     end if
 
@@ -1518,7 +1516,6 @@ subroutine GeomechForceLocalElemRHS(size_elenodes,local_coordinates, &
   end do
 
   call ShapeFunctionDestroy(shapefunction)
-  if (allocated(gauss_tet_vol_weight)) deallocate(gauss_tet_vol_weight)
 
 end subroutine GeomechForceLocalElemRHS
 
