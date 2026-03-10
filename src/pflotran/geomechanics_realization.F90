@@ -599,7 +599,8 @@ subroutine GeomechRealizMapSubsurfGeomechGrid(realization, &
       ! One-to-one projection.
     case(GEOMECH_FLOW_INTERP_ORDER_1ST)
       if (trim(geomech_realization%geomech_discretization%ctype) /= 'STRUCTURED_INTERNAL') then
-        option%io_buffer = 'GEOMECHANICS_FLOW_INTERPOLATION_ORDER=1 is currently implemented for GEOMECHANICS_GRID TYPE STRUCTURED_INTERNAL.'
+        option%io_buffer = 'GEOMECHANICS_FLOW_INTERPOLATION_ORDER=1 is currently implemented for ' // &
+                           'GEOMECHANICS_GRID TYPE STRUCTURED_INTERNAL.'
         call PrintErrMsg(option)
       endif
     case default
