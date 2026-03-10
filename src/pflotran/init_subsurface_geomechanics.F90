@@ -125,6 +125,7 @@ subroutine InitSubsurfGeomechReadInput(geomech,geomech_solver, &
   type(geomech_strata_type), pointer :: strata
   type(geomech_condition_type), pointer :: condition
   type(geomech_coupler_type), pointer :: coupler
+  type(geomech_observation_type), pointer :: geomech_observation
   type(waypoint_list_type), pointer :: waypoint_list
 
   character(len=MAXWORDLENGTH) :: word, internal_units
@@ -377,6 +378,11 @@ subroutine InitSubsurfGeomechReadInput(geomech,geomech_solver, &
                   call InputKeywordUnrecognized(input,word, &
                                  'GEOMECHANICS_OUTPUT,FORMAT',option)
               end select
+            case('PERIODIC_OBSERVATION_TIMESTEP')
+              call InputReadInt(input,option, &
+                   output_option%periodic_obs_output_ts_imod)
+              call InputErrorMsg(input,option,'timestep modulus', &
+                   'GEOMECHANICS_OUTPUT,PERIODIC_OBSERVATION_TIMESTEP')
             case default
               call InputKeywordUnrecognized(input,word, &
                              'GEOMECHANICS_OUTPUT',option)
@@ -390,6 +396,40 @@ subroutine InitSubsurfGeomechReadInput(geomech,geomech_solver, &
         call GeomechStrataRead(strata,input,option)
         call GeomechRealizAddStrata(geomech_realization,strata)
         nullify(strata)
+
+      !.........................................................................
+      case ('GEOMECHANICS_OBSERVATION')
+        geomech_observation => GeomechObservationCreate()
+        call InputReadWord(input,option,geomech_observation%name,PETSC_TRUE)
+        call InputErrorMsg(input,option,'name','GEOMECHANICS_OBSERVATION')
+        call InputPushBlock(input,option)
+        do
+          call InputReadPflotranString(input,option)
+          if (InputCheckExit(input,option)) exit
+          call InputReadCard(input,option,word)
+          call InputErrorMsg(input,option,'keyword','GEOMECHANICS_OBSERVATION')
+          call StringToUpper(word)
+          select case(trim(word))
+            case('GEOMECHANICS_REGION','REGION')
+              call InputReadWord(input,option, &
+                                 geomech_observation%region_name,PETSC_TRUE)
+              call InputErrorMsg(input,option,'REGION', &
+                                 'GEOMECHANICS_OBSERVATION')
+            case default
+              call InputKeywordUnrecognized(input,word, &
+                                 'GEOMECHANICS_OBSERVATION',option)
+          end select
+        enddo
+        call InputPopBlock(input,option)
+        if (len_trim(geomech_observation%region_name) < 1) then
+          option%io_buffer = 'A GEOMECHANICS_REGION must be specified ' // &
+            'in GEOMECHANICS_OBSERVATION: ' // &
+            trim(geomech_observation%name) // '.'
+          call PrintErrMsg(option)
+        endif
+        call GeomechObservationAddToList(geomech_observation, &
+          geomech_realization%geomech_patch%geomech_observation_list)
+        nullify(geomech_observation)
 
       !.........................................................................
       case ('GEOMECHANICS_IMPROVE_TET_WEIGHT')
