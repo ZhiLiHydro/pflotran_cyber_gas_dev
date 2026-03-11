@@ -957,7 +957,7 @@ subroutine ReactionMnrlProcessConstraint(mineral,constraint_name, &
     if (.not.found) then
       option%io_buffer = &
                 'Mineral ' // trim(constraint%names(imnrl)) // &
-                'from CONSTRAINT ' // trim(constraint_name) // &
+                ' from CONSTRAINT ' // trim(constraint_name) // &
                 ' not found among kinetic minerals.'
       call PrintErrMsg(option)
     else
@@ -1798,7 +1798,7 @@ print *, 'numerical derivative: ',  (dlnQK_dQK-nucleation_rate)/(1.d-6*lnQK)
 #endif
     if (store_rate) then
       rt_auxvar%mnrl_rate(imnrl) = rt_auxvar%mnrl_rate(imnrl) + &
-                                   nucleation_rate
+                                   nucleation_rate/material_auxvar%volume
     endif
     do i = 1, mineral%kinmnrlspecid_in_residual(0,imnrl)
       icomp = mineral%kinmnrlspecid_in_residual(i,imnrl)
@@ -2195,10 +2195,13 @@ subroutine ReactionMnrlUpdateKineticState(rt_auxvar,global_auxvar, &
           rt_auxvar%mnrl_rate(imnrl)*option%tran_dt * &
           reaction%mineral%kinmnrlh2ostoich_in_residual(imnrl)
       endif
-      if (option%iflowmode /= SCO2_MODE) global_auxvar%reaction_rate = &
-                                   global_auxvar%reaction_rate / option%flow_dt
     endif
   enddo
+
+  if (option%iflowmode /= SCO2_MODE) then
+    global_auxvar%reaction_rate = &
+      global_auxvar%reaction_rate / option%flow_dt
+  endif
 
 end subroutine ReactionMnrlUpdateKineticState
 
