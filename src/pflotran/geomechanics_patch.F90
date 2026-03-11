@@ -525,6 +525,11 @@ subroutine GeomechPatchUpdateCouplerAuxVars(patch,coupler_list, &
               coupler%geomech_aux_real_var(GEOMECH_DISP_X_DOF, &
                                            1:num_verts) = &
               geomech_condition%force_x%dataset%rarray(1)
+            case default
+              option%io_buffer = 'FORCE_X sub-condition must use ' // &
+                'DIRICHLET type in geomechanics condition "' // &
+                trim(geomech_condition%name) // '".'
+              call PrintErrMsg(option)
             end select
         endif
         if (associated(geomech_condition%force_y)) then
@@ -533,6 +538,11 @@ subroutine GeomechPatchUpdateCouplerAuxVars(patch,coupler_list, &
               coupler%geomech_aux_real_var(GEOMECH_DISP_Y_DOF, &
                                            1:num_verts) = &
               geomech_condition%force_y%dataset%rarray(1)
+            case default
+              option%io_buffer = 'FORCE_Y sub-condition must use ' // &
+                'DIRICHLET type in geomechanics condition "' // &
+                trim(geomech_condition%name) // '".'
+              call PrintErrMsg(option)
              end select
         endif
         if (associated(geomech_condition%force_z)) then
@@ -541,6 +551,11 @@ subroutine GeomechPatchUpdateCouplerAuxVars(patch,coupler_list, &
               coupler%geomech_aux_real_var(GEOMECH_DISP_Z_DOF, &
                                            1:num_verts) = &
               geomech_condition%force_z%dataset%rarray(1)
+            case default
+              option%io_buffer = 'FORCE_Z sub-condition must use ' // &
+                'DIRICHLET type in geomechanics condition "' // &
+                trim(geomech_condition%name) // '".'
+              call PrintErrMsg(option)
           end select
         endif
       endif
