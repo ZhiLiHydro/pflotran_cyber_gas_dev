@@ -197,6 +197,18 @@ subroutine GeomechanicsSimulationExecuteRun(this)
       call PrintErrMsg(this%option)
     else
 
+      ! Clear checkpoint flags from subsurface waypoints. In the coupled
+      ! geomechanics path, checkpoints are handled explicitly in this
+      ! loop via waypoint_list_outer. If we leave the flags on the
+      ! subsurface waypoints, the flow PMC (which has is_master=TRUE)
+      ! will also trigger its own checkpoint inside PMCBaseRunToTime,
+      ! resulting in duplicate checkpoint writes.
+      cur_waypoint => this%waypoint_list_subsurface%first
+      do while (associated(cur_waypoint))
+        cur_waypoint%print_checkpoint = PETSC_FALSE
+        cur_waypoint => cur_waypoint%next
+      enddo
+
       ! Initialize waypoint pointer for checkpoint tracking
       cur_waypoint => this%waypoint_list_outer%first
       ! Checkpoint at initial time if the first waypoint says so (restart case)

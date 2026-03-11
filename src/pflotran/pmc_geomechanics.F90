@@ -200,6 +200,20 @@ recursive subroutine PMCGeomechanicsInitializeRun(this)
   if (this%option%geomechanics%split_scheme == GEOMECH_DRAINED_SPLIT) &
     return
 
+  ! On restart, the geomech state is already restored from checkpoint.
+  ! The RunToTime(0.0) initialization solve must be skipped because the
+  ! KSP timestepper's target_time is already past 0 (= the restart time),
+  ! and calling SetTargetTime(0.0) would produce a negative dt.
+  ! Also seed option%flow_dt from the restored flow timestepper so that
+  ! the first post-restart coupling step has a valid value for the
+  ! overwrite in PMCGeomechanicsRunToTime.
+  if (this%option%restart_flag) then
+    if (associated(this%peer)) then
+      this%option%flow_dt = this%peer%timestepper%dt
+    endif
+    return
+  endif
+
   ! continue to initialize geomechanics
   ! used for GEOMECH_FIXED_STRESS_SPLIT and
   ! GEOMECH_FIXED_STRAIN_SPLIT
@@ -239,6 +253,8 @@ recursive subroutine PMCGeomechanicsRunToTime(this,sync_time,stop_flag)
   PetscBool :: peer_already_run_to_time
 
   class(pm_base_type), pointer :: cur_pm
+  PetscReal :: geomech_target_time
+  PetscReal :: geomech_dt
 
   if (stop_flag == TS_STOP_FAILURE) return
 
@@ -264,6 +280,14 @@ recursive subroutine PMCGeomechanicsRunToTime(this,sync_time,stop_flag)
                                       observation_plot_flag, &
                                       massbal_plot_flag, &
                                       conserv_plot_flag,checkpoint_flag)
+
+  ! Save the correct geomech target_time and dt before the overwrite below.
+  ! For fixed-stress/fixed-strain splits, lines 271-272 overwrite the KSP
+  ! timestepper's dt and target_time with flow values needed for the solve.
+  ! We restore the correct geomech values at the end of this routine so that
+  ! checkpoint writes consistent state.
+  geomech_target_time = this%timestepper%target_time
+  geomech_dt = this%timestepper%dt
 
   ! overwrites target time and dt for geomech when flow is the master pm
   select case(this%option%geomechanics%split_scheme)
@@ -344,6 +368,16 @@ recursive subroutine PMCGeomechanicsRunToTime(this,sync_time,stop_flag)
     call this%peer%RunToTime(sync_time,local_stop_flag)
     call this%GetAuxData()
   endif
+
+  ! Restore the correct geomech target_time and dt for the KSP timestepper.
+  ! The overwrite at lines 271-272 set the KSP timestepper to flow values
+  ! needed during StepDT, but the timestepper must reflect the actual geomech
+  ! coupling step for checkpoint correctness.
+  select case(this%option%geomechanics%split_scheme)
+    case(GEOMECH_FIXED_STRAIN_SPLIT, GEOMECH_FIXED_STRESS_SPLIT)
+      this%timestepper%target_time = geomech_target_time
+      this%timestepper%dt = geomech_dt
+  end select
 
   stop_flag = max(stop_flag,local_stop_flag)
 
@@ -992,6 +1026,13 @@ recursive subroutine PMCGeomechanicsRestartBinary(this,viewer)
         trim(this%peer%pm_list%realization_base%output_option%tunit) // ').'
       call PrintMsg(this%option)
     endif
+    ! dt_max is not saved in the checkpoint header, so restore it from the
+    ! current waypoint to avoid UNINITIALIZED_DOUBLE (-999) corrupting dt
+    ! when revert_dt is TRUE in SetTargetTime.
+    if (associated(this%peer%timestepper%cur_waypoint)) then
+      this%peer%timestepper%dt_max = &
+        this%peer%timestepper%cur_waypoint%dt_max
+    endif
     this%option%time = this%peer%timestepper%target_time
   endif
   ! Flow PM(s)
@@ -1028,6 +1069,12 @@ recursive subroutine PMCGeomechanicsRestartBinary(this,viewer)
         trim(adjustl(this%option%io_buffer)) // &
         trim(this%pm_list%realization_base%output_option%tunit) // ').'
       call PrintMsg(this%option)
+    endif
+    ! dt_max is not saved in the checkpoint header, so restore it from the
+    ! current waypoint to avoid UNINITIALIZED_DOUBLE (-999) corrupting dt
+    ! when revert_dt is TRUE in SetTargetTime.
+    if (associated(this%timestepper%cur_waypoint)) then
+      this%timestepper%dt_max = this%timestepper%cur_waypoint%dt_max
     endif
     this%option%time = this%timestepper%target_time
   endif
@@ -1232,6 +1279,13 @@ recursive subroutine PMCGeomechanicsRestartHDF5(this,h5_chk_grp_id)
         trim(this%peer%pm_list%realization_base%output_option%tunit) // ').'
       call PrintErrMsg(this%option)
     endif
+    ! dt_max is not saved in the checkpoint header, so restore it from the
+    ! current waypoint to avoid UNINITIALIZED_DOUBLE (-999) corrupting dt
+    ! when revert_dt is TRUE in SetTargetTime.
+    if (associated(this%peer%timestepper%cur_waypoint)) then
+      this%peer%timestepper%dt_max = &
+        this%peer%timestepper%cur_waypoint%dt_max
+    endif
     this%option%time = this%peer%timestepper%target_time
   endif
   cur_pm => this%peer%pm_list
@@ -1268,6 +1322,12 @@ recursive subroutine PMCGeomechanicsRestartHDF5(this,h5_chk_grp_id)
         trim(adjustl(this%option%io_buffer)) // &
         trim(this%pm_list%realization_base%output_option%tunit) // ').'
       call PrintErrMsg(this%option)
+    endif
+    ! dt_max is not saved in the checkpoint header, so restore it from the
+    ! current waypoint to avoid UNINITIALIZED_DOUBLE (-999) corrupting dt
+    ! when revert_dt is TRUE in SetTargetTime.
+    if (associated(this%timestepper%cur_waypoint)) then
+      this%timestepper%dt_max = this%timestepper%cur_waypoint%dt_max
     endif
     this%option%time = this%timestepper%target_time
   endif
