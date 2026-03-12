@@ -89,6 +89,7 @@ module Grid_Unstructured_Aux_module
     PetscInt :: explicit_grid_source ! DUAL_FILE or PRIMAL_VORONOI
     PetscInt :: primal_mesh_format ! PFLOTRAN_UGI, AVS_UCD, or TETGEN
     PetscInt :: control_volume_type ! currently VORONOI
+    PetscBool :: voronoi_debug_vtk ! write VTU/PVTU debug visualization
     PetscInt, pointer :: cell_vertices(:,:)
     type(point3d_type), pointer :: vertex_coordinates(:)
     character(len=MAXSTRINGLENGTH) :: domain_filename
@@ -326,6 +327,7 @@ function UGridExplicitCreate()
   explicit_grid%explicit_grid_source = EXPLICIT_GRID_SOURCE_DUAL_FILE
   explicit_grid%primal_mesh_format = PRIMAL_MESH_FORMAT_UNSET
   explicit_grid%control_volume_type = CONTROL_VOLUME_TYPE_VORONOI
+  explicit_grid%voronoi_debug_vtk = PETSC_FALSE
   explicit_grid%domain_filename = ''
 
   UGridExplicitCreate => explicit_grid

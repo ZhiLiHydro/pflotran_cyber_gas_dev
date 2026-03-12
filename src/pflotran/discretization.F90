@@ -150,6 +150,7 @@ subroutine DiscretizationReadRequiredCards(discretization,input,option)
   PetscInt :: explicit_grid_source
   PetscInt :: primal_mesh_format
   PetscInt :: control_volume_type
+  PetscBool :: voronoi_debug_vtk
   PetscInt :: nx, ny, nz
 
   nx = 0
@@ -158,6 +159,7 @@ subroutine DiscretizationReadRequiredCards(discretization,input,option)
   explicit_grid_source = EXPLICIT_GRID_SOURCE_DUAL_FILE
   primal_mesh_format = PRIMAL_MESH_FORMAT_UNSET
   control_volume_type = CONTROL_VOLUME_TYPE_VORONOI
+  voronoi_debug_vtk = PETSC_FALSE
 
 ! we initialize the word to blanks to avoid error reported by valgrind
   word = ''
@@ -287,6 +289,8 @@ subroutine DiscretizationReadRequiredCards(discretization,input,option)
             call InputKeywordUnrecognized(input,word, &
                                           'GRID,CONTROL_VOLUME_TYPE',option)
         end select
+      case('VORONOI_DEBUG_VTK')
+        voronoi_debug_vtk = PETSC_TRUE
       case('DXYZ','BOUNDS')
         call InputSkipToEND(input,option,word)
       case default
@@ -322,6 +326,7 @@ subroutine DiscretizationReadRequiredCards(discretization,input,option)
           un_str_grid%explicit_grid%explicit_grid_source = explicit_grid_source
           un_str_grid%explicit_grid%primal_mesh_format = primal_mesh_format
           un_str_grid%explicit_grid%control_volume_type = control_volume_type
+          un_str_grid%explicit_grid%voronoi_debug_vtk = voronoi_debug_vtk
           if (explicit_grid_source == EXPLICIT_GRID_SOURCE_DUAL_FILE) then
             if (index(discretization%filename,'.h5') > 0) then
               call UGridExplicitReadHDF5(un_str_grid, &
@@ -644,6 +649,16 @@ subroutine DiscretizationRead(discretization,input,option)
             end select
           case default
             option%io_buffer = 'CONTROL_VOLUME_TYPE only supported for ' // &
+                               'UNSTRUCTURED_EXPLICIT grids.'
+            call PrintErrMsg(option)
+        end select
+      case('VORONOI_DEBUG_VTK')
+        select case(discretization%grid%itype)
+          case(EXPLICIT_UNSTRUCTURED_GRID)
+            discretization%grid%unstructured_grid%explicit_grid% &
+              voronoi_debug_vtk = PETSC_TRUE
+          case default
+            option%io_buffer = 'VORONOI_DEBUG_VTK only supported for ' // &
                                'UNSTRUCTURED_EXPLICIT grids.'
             call PrintErrMsg(option)
         end select
