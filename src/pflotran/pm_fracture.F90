@@ -100,10 +100,17 @@ module PM_Fracture_class
     type(fracfam_type), pointer :: next
   end type fracfam_type
 
+  type :: glb_conn_set_type ! used to calculate connected fracture cells
+    PetscInt :: num_connections
+    PetscInt, pointer :: id_up(:)      ! list of global ids of upwind cells
+    PetscInt, pointer :: id_dn(:)      ! list of global ids of downwind cells
+  end type glb_conn_set_type
+
   type, public, extends(pm_base_type) :: pm_fracture_type
     class(realization_subsurface_type), pointer :: realization
     type(fracture_type), pointer :: fracture_list ! ejb:list of all the fractures in the domain (this includes fractures created within a fracture family) (call it global fracture list)
     type(fracfam_type), pointer :: fracfam_list
+    type(glb_conn_set_type), pointer :: glb_conn_set
     ! list of all local cell ids that contain fractures (some repeated)
     PetscInt, pointer :: allfrac_cell_ids(:)
     ! list of all local cell ids that contain fractures (unique)
@@ -196,6 +203,7 @@ function PMFractureCreate()
   nullify(this%realization)
   nullify(this%fracture_list)
   nullify(this%fracfam_list)
+  nullify(this%glb_conn_set)
   nullify(this%allfrac_cell_ids)
   nullify(this%allfrac_unique_cell_ids)
   nullify(this%allfrac_unique_cell_ids_glb)
@@ -262,6 +270,26 @@ function FractureFamCreate()
   call FractureFamInit(FractureFamCreate)
 
 end function FractureFamCreate
+
+! ************************************************************************** !
+
+function GlbConnSetCreate()
+  !
+  ! Creates a global connection set object.
+  !
+  ! Author: Jennifer M. Frederick, SNL
+  ! Date: 03/04/2026
+
+  implicit none
+
+  type(glb_conn_set_type), pointer :: GlbConnSetCreate
+
+  allocate(GlbConnSetCreate)
+  nullify(GlbConnSetCreate%id_up)
+  nullify(GlbConnSetCreate%id_dn)
+  GlbConnSetCreate%num_connections = 0
+
+end function GlbConnSetCreate
 
 ! ************************************************************************** !
 
@@ -364,6 +392,7 @@ subroutine PMFracSetup(this)
   use Region_module
   use Material_Aux_module
   use Grid_module
+  use Connection_module
 
   implicit none
 
@@ -374,18 +403,23 @@ subroutine PMFracSetup(this)
   type(fracfam_type), pointer :: cur_fracfam
   type(grid_type), pointer :: res_grid
   type(material_auxvar_type), pointer :: material_auxvar
-  character(len=MAXWORDLENGTH) :: word,filename, filename_frac_info
+  type(connection_set_type), pointer :: cur_local_conn_set
+  type(connection_set_list_type), pointer :: local_conn_set_list
+  character(len=MAXWORDLENGTH) :: word,filename,filename_frac_info
   character(len=MAXSTRINGLENGTH) :: path
   PetscInt, pointer :: temp_cell_ids(:),temp_gbl_cell_ids(:)
   PetscInt, pointer :: temp_allfrac_cell_ids(:)
   PetscInt, pointer :: temp_allfrac_unique_cell_ids(:)
   PetscInt, pointer :: temp_frac_common_cell_ids(:)
-  PetscInt :: k,j,i,fid,status, fid_frac_info, glb_id
-  PetscInt :: nf,tfc,tcfc,read_max
-  PetscInt :: total_sum_glb
   PetscInt, pointer :: allfrac_num_cells(:),common_num_cells(:)
   PetscInt, pointer :: uniq_conn_num_cells(:)
   PetscInt, pointer :: cell_positions(:)
+  PetscInt, pointer :: num_connections(:)
+  PetscInt, pointer :: local_id_up_list(:),local_id_dn_list(:)
+  PetscInt :: num_local_conns, iconn
+  PetscInt :: k,j,i,fid,status,fid_frac_info,glb_id
+  PetscInt :: nf,tfc,tcfc,read_max
+  PetscInt :: total_sum_glb
   PetscReal, pointer :: d_vertex(:)
   PetscReal :: D,distance,L22
   PetscReal :: min_x,max_x,min_y,max_y,min_z,max_z
@@ -684,8 +718,10 @@ subroutine PMFracSetup(this)
     cur_fracture%strike%z = 0.d0
 
     ! Then for dip, we have : ||nfrac||||nxy||cos(theta) = nfrac dot nxy, where theta is the dip angle
-    ! since ||nfrac|| = ||nxy|| = 1, and nxy = <0,0,1> we have
-    cur_fracture%dip = acos(cur_fracture%normal%z)
+    ! since ||nfrac|| = ||nxy|| = 1, and nxy = <0,0,1> OR nxy = <0,0,-1> we have
+    ! note: i take the min bw the angle produced by using an nxy pointing up or down, 
+    ! bc i want to bound the dip angle between 0 and pi
+    cur_fracture%dip = min(acos(cur_fracture%normal%z), acos(-1.d0*cur_fracture%normal%z))
 
 
     cur_fracture => cur_fracture%next
@@ -823,16 +859,86 @@ subroutine PMFracSetup(this)
     option%io_buffer = 'GEOTHERMAL_FRACTURE_MODEL: Calculating connected &
                        &fractures . . . '
     call PrintMsg(option)
+
+    ! Build the global stripped down connection set
+    this%glb_conn_set => GlbConnSetCreate()
+    num_local_conns = 0
+    local_conn_set_list => res_grid%internal_connection_set_list
+    cur_local_conn_set => local_conn_set_list%first
+    do
+      if (.not.associated(cur_local_conn_set)) exit
+      num_local_conns = num_local_conns + cur_local_conn_set%num_connections
+      cur_local_conn_set => cur_local_conn_set%next
+    enddo
+
+    allocate(local_id_up_list(num_local_conns))
+    allocate(local_id_dn_list(num_local_conns))
+    local_conn_set_list => res_grid%internal_connection_set_list
+    cur_local_conn_set => local_conn_set_list%first
+    j = 0
+    do
+      if (.not.associated(cur_local_conn_set)) exit
+      do iconn = 1, cur_local_conn_set%num_connections
+        j = j+1
+        local_id_up_list(j) = cur_local_conn_set%id_up(iconn) ! ghosted id
+        local_id_up_list(j) = res_grid%nG2A(local_id_up_list(j)) ! global id
+        local_id_dn_list(j) = cur_local_conn_set%id_dn(iconn) ! ghosted id
+        local_id_dn_list(j) = res_grid%nG2A(local_id_dn_list(j)) ! global id
+      enddo
+      cur_local_conn_set => cur_local_conn_set%next
+    enddo
+
+    allocate(num_connections(option%comm%size))
+    call MPI_Allgather(num_local_conns,ONE_INTEGER,MPI_INTEGER, &
+      num_connections,ONE_INTEGER,MPI_INTEGER,option%mycomm,ierr);CHKERRQ(ierr)
+    call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
+    this%glb_conn_set%num_connections = SUM(num_connections)
+    ! the value for this%glb_conn_set%num_connections will contain double
+    ! counted connections which exist on the face between two processes, so
+    ! it will be larger than the true amount of connections, if in parallel
+    ! Does that actually matter?
+    allocate(this%glb_conn_set%id_up(this%glb_conn_set%num_connections))
+    allocate(this%glb_conn_set%id_dn(this%glb_conn_set%num_connections))
+    do i = 1,option%comm%size
+      if (i == 1) then
+        cell_positions(i) = 0
+      else
+        cell_positions(i) = cell_positions(i-1) + num_connections(i-1)
+      endif
+    enddo
+    this%glb_conn_set%id_up = UNINITIALIZED_INTEGER
+    this%glb_conn_set%id_dn = UNINITIALIZED_INTEGER
+    if (SUM(num_connections) > 0) then
+      call MPI_Gatherv(local_id_up_list,num_local_conns,MPI_INTEGER, &
+                       this%glb_conn_set%id_up,num_connections, &
+                       cell_positions,MPI_INTEGER,ZERO_INTEGER, &
+                       option%mycomm,ierr);CHKERRQ(ierr)
+      ! only rank zero knows this%glb_conn_set%id_up, so we need to share it
+      call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
+      call MPI_Bcast(this%glb_conn_set%id_up,SUM(num_connections),MPI_INTEGER, &
+                     ZERO_INTEGER,option%mycomm,ierr);CHKERRQ(ierr)
+      call MPI_Gatherv(local_id_dn_list,num_local_conns,MPI_INTEGER, &
+                       this%glb_conn_set%id_dn,num_connections, &
+                       cell_positions,MPI_INTEGER,ZERO_INTEGER, &
+                       option%mycomm,ierr);CHKERRQ(ierr)
+      ! only rank zero knows this%glb_conn_set%id_dn, so we need to share it
+      call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
+      call MPI_Bcast(this%glb_conn_set%id_dn,SUM(num_connections),MPI_INTEGER, &
+                     ZERO_INTEGER,option%mycomm,ierr);CHKERRQ(ierr)
+    endif
+    deallocate(num_connections)
+    deallocate(local_id_up_list); deallocate(local_id_dn_list)
+
     if (option%comm%size > 1) then
       option%io_buffer = 'GEOTHERMAL_FRACTURE_MODEL: The feature to clip &
         &unconnected fractures is not yet available when running in parallel.'
-      call PrintErrMsg(option)
+      !call PrintErrMsg(option)
     endif
 
-    !start region
+    ! ----- start region
     call PMFracClipCells(this,this%connected_to_start,total_sum_glb, &
                          cell_positions,this%start_region_name)
-    !end region
+    ! ----- end region
     call PMFracClipCells(this,this%connected_to_end,total_sum_glb, &
                          cell_positions,this%end_region_name)
 
@@ -1204,8 +1310,6 @@ recursive subroutine PMFracConnectedness(this,natural_id,visited_cells, &
   ! Author: Jennifer M. Frederick, SNL
   ! Date: 04/23/2025
   !
-  use Grid_module
-  use Connection_module
 
   implicit none
 
@@ -1213,37 +1317,11 @@ recursive subroutine PMFracConnectedness(this,natural_id,visited_cells, &
   PetscInt :: natural_id
   PetscInt, pointer :: visited_cells(:)
 
-  type(grid_type), pointer :: grid
-  type(connection_set_type), pointer :: cur_connection_set
-  type(connection_set_list_type), pointer :: connection_set_list
-  PetscInt :: ghosted_id_up, ghosted_id_dn
-  PetscInt :: local_id_up, local_id_dn
   PetscInt :: natural_id_up, natural_id_dn
   PetscInt :: iconn, i
   PetscBool, pointer :: connected(:)
 
-  grid => this%realization%patch%grid
-  connection_set_list => grid%internal_connection_set_list
-
   if (.not.this%clip_unconnected_fracs) return
-
-
-
-
-
-
-
-
-  ! something with the connection set isn't working. connection sets are local
-  ! so how do i make the routine work to check for connections across processors?
-
-
-
-
-
-
-
-
 
   if (any(this%allfrac_unique_cell_ids_glb == natural_id)) then
     ! note: FINDLOC only works with gfortran > 9.x
@@ -1261,57 +1339,48 @@ recursive subroutine PMFracConnectedness(this,natural_id,visited_cells, &
     return
   endif
 
-  cur_connection_set => connection_set_list%first
-  do
-    if (.not.associated(cur_connection_set)) exit
-    do iconn = 1, cur_connection_set%num_connections
+  do iconn = 1,this%glb_conn_set%num_connections
 
-      ghosted_id_up = cur_connection_set%id_up(iconn)
-      ghosted_id_dn = cur_connection_set%id_dn(iconn)
-      local_id_up = grid%nG2L(ghosted_id_up) ! = zero for ghost nodes
-      local_id_dn = grid%nG2L(ghosted_id_dn)
-      natural_id_up = grid%nG2A(ghosted_id_up)
-      natural_id_dn = grid%nG2A(ghosted_id_dn)
+    natural_id_up = this%glb_conn_set%id_up(iconn)
+    natural_id_dn = this%glb_conn_set%id_dn(iconn)
 
-      if (natural_id_up == natural_id) then
-        !write(*,*) " "
-        !write(*,*) "Cell",natural_id,"is the natural_id_up of connection", iconn
-        !write(*,*) "Connection", iconn, " connects cell",natural_id,"with cell", &
-        !             natural_id_dn, "."
-        if (any(this%allfrac_unique_cell_ids_glb == natural_id_dn)) then
-          !write(*,*) "!! Cell", natural_id_dn, "is a fracture cell!!"
-          ! note: FINDLOC only works with gfortran > 9.x
-          !i = FINDLOC(this%allfrac_unique_cell_ids_glb,natural_id_dn,1)
-          do i=1,size(this%allfrac_unique_cell_ids_glb)
-            if (this%allfrac_unique_cell_ids_glb(i) == natural_id) exit
-          enddo
-          if (connected(i)) then
-            call PMFracConnectedness(this,natural_id_dn,visited_cells,connected)
-          endif
+    if (natural_id_up == natural_id) then
+      !write(*,*) " "
+      !write(*,*) "Cell",natural_id,"is the natural_id_up of connection", iconn
+      !write(*,*) "Connection", iconn, " connects cell",natural_id,"with cell", &
+      !             natural_id_dn, "."
+      if (any(this%allfrac_unique_cell_ids_glb == natural_id_dn)) then
+        !write(*,*) "!! Cell", natural_id_dn, "is a fracture cell!!"
+        ! note: FINDLOC only works with gfortran > 9.x
+        !i = FINDLOC(this%allfrac_unique_cell_ids_glb,natural_id_dn,1)
+        do i=1,size(this%allfrac_unique_cell_ids_glb)
+          if (this%allfrac_unique_cell_ids_glb(i) == natural_id) exit
+        enddo
+        if (connected(i)) then
+          call PMFracConnectedness(this,natural_id_dn,visited_cells,connected)
         endif
       endif
+    endif
 
-      if (natural_id_dn == natural_id) then
-        !write(*,*) " "
-        !write(*,*) "Cell",natural_id,"is the natural_id_dn of connection", iconn
-        !write(*,*) "Connection", iconn, " connects cell",natural_id,"with cell", &
-        !             natural_id_up, "."
-        if (any(this%allfrac_unique_cell_ids_glb == natural_id_up)) then
-          !write(*,*) "!! Cell", natural_id_up, "is a fracture cell!!"
-          ! note: FINDLOC only works with gfortran > 9.x
-          !i = FINDLOC(this%allfrac_unique_cell_ids_glb,natural_id_up,1)
-          do i=1,size(this%allfrac_unique_cell_ids_glb)
-            if (this%allfrac_unique_cell_ids_glb(i) == natural_id) exit
-          enddo
+    if (natural_id_dn == natural_id) then
+      !write(*,*) " "
+      !write(*,*) "Cell",natural_id,"is the natural_id_dn of connection", iconn
+      !write(*,*) "Connection", iconn, " connects cell",natural_id,"with cell", &
+      !             natural_id_up, "."
+      if (any(this%allfrac_unique_cell_ids_glb == natural_id_up)) then
+        !write(*,*) "!! Cell", natural_id_up, "is a fracture cell!!"
+        ! note: FINDLOC only works with gfortran > 9.x
+        !i = FINDLOC(this%allfrac_unique_cell_ids_glb,natural_id_up,1)
+        do i=1,size(this%allfrac_unique_cell_ids_glb)
+          if (this%allfrac_unique_cell_ids_glb(i) == natural_id) exit
+        enddo
 
-          if (connected(i)) then
-            call PMFracConnectedness(this,natural_id_up,visited_cells,connected)
-          endif
+        if (connected(i)) then
+          call PMFracConnectedness(this,natural_id_up,visited_cells,connected)
         endif
       endif
+    endif
 
-    enddo
-    cur_connection_set => cur_connection_set%next
   enddo
 
 end subroutine PMFracConnectedness

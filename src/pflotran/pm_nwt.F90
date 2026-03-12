@@ -1283,7 +1283,7 @@ subroutine PMNWTCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
   PetscReal, pointer :: X0_p(:)    ! previous solution
   PetscReal, pointer :: X1_p(:)    ! current solution
   PetscReal, pointer :: r_p(:)     ! current residual R
-  PetscReal, pointer :: accum_p(:) ! current accumulation term in R
+  PetscReal, pointer :: accum_t_p(:) ! current accumulation term in R
   type(grid_type), pointer :: grid
   type(option_type), pointer :: option
   type(field_type), pointer :: field
@@ -1383,14 +1383,14 @@ subroutine PMNWTCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
   call VecGetArrayRead(field%tran_yy,X0_p,ierr);CHKERRQ(ierr)
   call VecGetArrayRead(field%tran_xx,X1_p,ierr);CHKERRQ(ierr)
   call VecGetArrayRead(field%tran_r,r_p,ierr);CHKERRQ(ierr)
-  call VecGetArrayRead(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%tran_accum_t,accum_t_p,ierr);CHKERRQ(ierr)
 
   max_relative_change = maxval(dabs(dX_p(:)/X0_p(:)))
   max_absolute_change = maxval(dabs(dX_p(:)))
   max_absolute_residual = maxval(dabs(r_p(:)))
-  max_scaled_residual = maxval(dabs(r_p(:)/accum_p(:)))
+  max_scaled_residual = maxval(dabs(r_p(:)/accum_t_p(:)))
 
-  loc_max_scaled_residual = maxloc(dabs(r_p(:)/accum_p(:)),1)
+  loc_max_scaled_residual = maxloc(dabs(r_p(:)/accum_t_p(:)),1)
   loc_max_abs_residual = maxloc(dabs(r_p(:)),1)
   loc_max_rel_update = maxloc(dabs(dX_p(:)/X0_p(:)),1)
   loc_max_abs_update = maxloc(dabs(dX_p(:)),1)
@@ -1431,7 +1431,7 @@ subroutine PMNWTCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
           max(species_max_absolute_residual(idof),tempreal)
     !-----------------------------------------------------------------
     !---scaled-residual-----------------------------------------------
-      tempreal = dabs(r_p(index)/accum_p(index))
+      tempreal = dabs(r_p(index)/accum_t_p(index))
       if (tempreal < this%controls%itol_scaled_res(idof)) then
         idof_cnvgd_due_to_scaled_res(idof,local_id) = PETSC_TRUE
       endif
@@ -1445,7 +1445,7 @@ subroutine PMNWTCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
   call VecRestoreArrayRead(field%tran_yy,X0_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayRead(field%tran_xx,X1_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayRead(field%tran_r,r_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayRead(field%tran_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(field%tran_accum_t,accum_t_p,ierr);CHKERRQ(ierr)
 
 
   do idof = 1, option%ntrandof
@@ -1855,6 +1855,7 @@ subroutine PMNWTCheckpointBinary(this,viewer)
   use Realization_Subsurface_class
   use Realization_Base_class
   use Field_module
+  use Petsc_Utility_module
   use Discretization_module
   use Variables_module, only : NWT_AUXILIARY
 
@@ -1921,9 +1922,7 @@ subroutine PMNWTCheckpointBinary(this,viewer)
     endif
   endif
 
-  if (.not.PetscObjectIsNull(global_vec)) then
-    call VecDestroy(global_vec,ierr);CHKERRQ(ierr)
-  endif
+  call PUVecDestroy(global_vec)
 
 end subroutine PMNWTCheckpointBinary
 
@@ -2045,6 +2044,7 @@ subroutine PMNWTRestartBinary(this,viewer)
   use Discretization_module
   use Grid_module
   use Patch_module
+  use Petsc_Utility_module
   use Variables_module, only : NWT_AUXILIARY
 
   implicit none
@@ -2111,9 +2111,7 @@ subroutine PMNWTRestartBinary(this,viewer)
     enddo
   endif
 
-  if (.not.PetscObjectIsNull(global_vec)) then
-    call VecDestroy(global_vec,ierr);CHKERRQ(ierr)
-  endif
+  call PUVecDestroy(global_vec)
 
   call PetscBagDestroy(bag,ierr);CHKERRQ(ierr)
   call NWTUpdateAuxVars(realization,PETSC_FALSE,PETSC_TRUE)

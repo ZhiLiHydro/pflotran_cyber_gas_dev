@@ -956,14 +956,20 @@ subroutine RichardsUpdateAuxVarsPatch(realization,pm_well)
         well_flow_condition => cur_well%flow_condition
         if (associated(well_flow_condition%rate)) then
           cur_well%well%well_constraint_type = WELL_CONSTANT_RATE
+          if (trim(well_flow_condition%rate%units) /= " kg/s") then
+            option%io_buffer = 'The WELL_COUPLER FLOW_CONDITION for ' // trim(well_flow_condition%name) // ' &
+                              & must be of type MASS_RATE [kg/s].'
+            call PrintErrMsg(option)
+          endif
+          ! keep the units as kg/s, as this is what is used within pm_well
           if (any(well_flow_condition%rate%dataset%rarray(:) < 0.d0)) then
             cur_well%well%total_rate = well_flow_condition%rate%dataset% &
-                                       rarray(1)
+                                       rarray(1)  ! [kg/s]
             if (cur_well%well%total_rate > 0.d0) then
               option%io_buffer = "The well model does not support a concurrent &
                                 & injection and production well."
             endif
-            cur_well%well%th_ql = 0.d0
+            cur_well%well%th_ql = 0.d0  ! [kg/s]
           else
             cur_well%well%th_ql = well_flow_condition%rate%dataset% &
                                   rarray(1)
@@ -973,7 +979,7 @@ subroutine RichardsUpdateAuxVarsPatch(realization,pm_well)
           cur_well%well%well_constraint_type = WELL_CONSTANT_PRESSURE_HYDROSTATIC
           cur_well%well%th_p = well_flow_condition%pressure%dataset% &
                                        rarray(1)
-          cur_well%well%th_ql = 0.d0
+          cur_well%well%th_ql = 0.d0  ! [kg/s]
         endif
         if (Initialized(cur_well%well%bh_p)) then
           do idof = 1,option%nflowdof
@@ -1129,6 +1135,7 @@ subroutine RichardsUpdateFixedAccumPatch(realization)
   use Grid_module
   use Connection_module
   use Region_module
+  use Geomechanics_Linear_Aux_module
 
   implicit none
 
@@ -1142,11 +1149,12 @@ subroutine RichardsUpdateFixedAccumPatch(realization)
   type(richards_auxvar_type), pointer :: rich_auxvars(:)
   type(global_auxvar_type), pointer :: global_auxvars(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
+  type(geomech_linear_parameter_type), pointer :: geomech_parameter
 
   PetscInt :: ghosted_id, local_id, istart
   PetscInt :: region_id
   PetscReal, pointer :: xx_p(:)
-  PetscReal, pointer :: accum_p(:)
+  PetscReal, pointer :: accum_t_p(:)
   PetscReal :: Res(1)
   PetscErrorCode :: ierr
 
@@ -1158,10 +1166,10 @@ subroutine RichardsUpdateFixedAccumPatch(realization)
   rich_auxvars => patch%aux%Richards%auxvars
   global_auxvars => patch%aux%Global%auxvars
   material_auxvars => patch%aux%Material%auxvars
+  geomech_parameter => patch%aux%Material%geomech_parameter
 
   call VecGetArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-
-  call VecGetArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%flow_accum_t,accum_t_p,ierr);CHKERRQ(ierr)
 
 !  numfaces = 6     ! hex only
 !  allocate(sq_faces(numfaces))
@@ -1186,7 +1194,8 @@ subroutine RichardsUpdateFixedAccumPatch(realization)
     call RichardsAccumulation(rich_auxvars(ghosted_id), &
                               global_auxvars(ghosted_id), &
                               material_auxvars(ghosted_id), &
-                              option,accum_p(istart:istart))
+                              geomech_parameter, &
+                              option,accum_t_p(istart:istart))
   enddo
 
 
@@ -1204,12 +1213,12 @@ subroutine RichardsUpdateFixedAccumPatch(realization)
       call InlineSurfaceAccumulation(patch%aux%InlineSurface% &
                                        auxvars(region_id), &
                                      material_auxvars(ghosted_id),option,Res)
-      accum_p(istart:istart) = accum_p(istart:istart) + Res(1)
+      accum_t_p(istart:istart) = accum_t_p(istart:istart) + Res(1)
     enddo
   endif
 
   call VecRestoreArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%flow_accum_t,accum_t_p,ierr);CHKERRQ(ierr)
 
 end subroutine RichardsUpdateFixedAccumPatch
 
@@ -1871,7 +1880,7 @@ subroutine RichardsResidualSourceSink(r,realization,pm_well,ierr)
   PetscReal, pointer :: qflx_pf_p(:)
 #endif
   PetscReal :: qsrc, qsrc_mol
-  PetscReal, pointer :: r_p(:)
+  PetscReal, pointer :: r_p(:)  ! [kmol/s]
   PetscReal, pointer :: mmsrc(:)
   PetscReal :: well_status
   PetscReal :: well_factor
@@ -2128,6 +2137,7 @@ subroutine RichardsResidualAccumulation(r,realization,pm_well,ierr)
   use Debug_module
   use Region_module
   use PM_Well_class
+  use Geomechanics_Linear_Aux_module
 
   implicit none
 
@@ -2145,11 +2155,12 @@ subroutine RichardsResidualAccumulation(r,realization,pm_well,ierr)
   type(global_auxvar_type), pointer :: global_auxvars(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(inlinesurface_auxvar_type), pointer :: inlinesurface_auxvars(:)
+  type(geomech_linear_parameter_type), pointer :: geomech_parameter
 
   PetscInt :: local_id, ghosted_id, region_id, ghosted_end
   PetscInt :: istart
 
-  PetscReal, pointer :: r_p(:), accum_p(:), accum2_p(:)
+  PetscReal, pointer :: r_p(:), accum_t_p(:), accum_tpdt_p(:)
   PetscReal :: Res(realization%option%nflowdof)
 
   PetscErrorCode :: ierr
@@ -2161,6 +2172,7 @@ subroutine RichardsResidualAccumulation(r,realization,pm_well,ierr)
   rich_auxvars => patch%aux%Richards%auxvars
   global_auxvars => patch%aux%Global%auxvars
   material_auxvars => patch%aux%Material%auxvars
+  geomech_parameter => patch%aux%Material%geomech_parameter
 
   if (option%flow%inline_surface_flow) then
     region => RegionGetPtrFromList(option%flow%inline_surface_region_name, &
@@ -2170,13 +2182,14 @@ subroutine RichardsResidualAccumulation(r,realization,pm_well,ierr)
 
   ! now assign access pointer to local variables
   call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
-  call VecGetArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
-  call VecGetArray(field%flow_accum2,accum2_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%flow_accum_tpdt,accum_tpdt_p,ierr);CHKERRQ(ierr)
 
   ! Accumulation terms ------------------------------------
   if (.not.option%flow%steady_state) then
+    call VecGetArrayRead(field%flow_accum_t,accum_t_p,ierr);CHKERRQ(ierr)
     r_p(1:grid%nlmax*option%nflowdof) = r_p(1:grid%nlmax*option%nflowdof) - &
-                                        accum_p(1:grid%nlmax*option%nflowdof)
+                                        accum_t_p(1:grid%nlmax*option%nflowdof)
+    call VecRestoreArrayRead(field%flow_accum_t,accum_t_p,ierr);CHKERRQ(ierr)
 
     do local_id = 1, grid%nlmax  ! For each local node do...
       ghosted_id = grid%nL2G(local_id)
@@ -2185,10 +2198,11 @@ subroutine RichardsResidualAccumulation(r,realization,pm_well,ierr)
       call RichardsAccumulation(rich_auxvars(ghosted_id), &
            global_auxvars(ghosted_id), &
            material_auxvars(ghosted_id), &
+           geomech_parameter, &
            option,Res)
       istart = (local_id-1)*option%nflowdof + 1
       r_p(istart) = r_p(istart) + Res(1)
-      accum2_p(istart) = Res(1)
+      accum_tpdt_p(istart) = Res(1)
 
       ! This is for the convergence check.
       if (richards_well_coupling == RICHARDS_FULLY_IMPLICIT_WELL) then
@@ -2202,9 +2216,9 @@ subroutine RichardsResidualAccumulation(r,realization,pm_well,ierr)
                                   cur_well%well_grid%bottom_seg_index)
               ghosted_end = ghosted_id * option%nflowdof
               if (dabs(cur_well%well%th_ql) > 0.d0) then
-                accum2_p(ghosted_end) = cur_well%well%th_ql
+                accum_tpdt_p(ghosted_end) = cur_well%well%th_ql
               else
-                accum2_p(ghosted_end) = 0.d0
+                accum_tpdt_p(ghosted_end) = 0.d0
               endif
               r_p(ghosted_end) = 0.d0
             endif
@@ -2224,15 +2238,14 @@ subroutine RichardsResidualAccumulation(r,realization,pm_well,ierr)
              material_auxvars(ghosted_id),option,Res)
         istart = (local_id-1)*option%nflowdof + 1
         r_p(istart) = r_p(istart) + Res(1)
-        accum2_p(istart) = accum2_p(istart) + Res(1)
+        accum_tpdt_p(istart) = accum_tpdt_p(istart) + Res(1)
       enddo
     endif
 
   endif
 
   call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArray(field%flow_accum,accum_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArray(field%flow_accum2,accum2_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%flow_accum_tpdt,accum_tpdt_p,ierr);CHKERRQ(ierr)
 
 end subroutine RichardsResidualAccumulation
 
@@ -2819,6 +2832,7 @@ subroutine RichardsJacobianAccumulation(A,realization,debug,ierr)
   use Region_module
   use Petsc_Utility_module
   use Debug_module
+  use Geomechanics_Linear_Aux_module
 
   implicit none
 
@@ -2841,6 +2855,7 @@ subroutine RichardsJacobianAccumulation(A,realization,debug,ierr)
   type(global_auxvar_type), pointer :: global_auxvars(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(inlinesurface_auxvar_type), pointer :: inlinesurface_auxvars(:)
+  type(geomech_linear_parameter_type), pointer :: geomech_parameter
 
   patch => realization%patch
   grid => patch%grid
@@ -2848,6 +2863,7 @@ subroutine RichardsJacobianAccumulation(A,realization,debug,ierr)
   rich_auxvars => patch%aux%Richards%auxvars
   global_auxvars => patch%aux%Global%auxvars
   material_auxvars => patch%aux%Material%auxvars
+  geomech_parameter => patch%aux%Material%geomech_parameter
 
   if (option%flow%inline_surface_flow) then
     region => &
@@ -2866,6 +2882,7 @@ subroutine RichardsJacobianAccumulation(A,realization,debug,ierr)
       call RichardsAccumDerivative(rich_auxvars(ghosted_id), &
            global_auxvars(ghosted_id), &
            material_auxvars(ghosted_id), &
+           geomech_parameter, &
            option, &
            patch%characteristic_curves_array( &
            patch%cc_id(ghosted_id))%ptr, &

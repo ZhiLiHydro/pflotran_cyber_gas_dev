@@ -159,11 +159,13 @@ subroutine PMGeneralSetFlowMode(pm,option)
 !   PetscReal, pointer :: abs_update_inf_tol(:,:)
 !   PetscReal, pointer :: rel_update_inf_tol(:,:)
 
-   PetscReal, allocatable :: residual_abs_inf_tol(:)
-   PetscReal, allocatable :: residual_scaled_inf_tol(:)
-   PetscReal, allocatable :: abs_update_inf_tol(:,:)
-   PetscReal, allocatable :: rel_update_inf_tol(:,:)
+  PetscReal, allocatable :: residual_abs_inf_tol(:)
+  PetscReal, allocatable :: residual_scaled_inf_tol(:)
+  PetscReal, allocatable :: abs_update_inf_tol(:,:)
+  PetscReal, allocatable :: rel_update_inf_tol(:,:)
+
   option%iflowmode = G_MODE
+  option%flowmode = 'general'
   allocate(general_max_states)
   allocate(max_change_index)
 
@@ -1483,7 +1485,7 @@ subroutine PMGeneralCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
   type(patch_type), pointer :: patch
   type(global_auxvar_type), pointer :: global_auxvars(:)
   PetscReal, pointer :: r_p(:)
-  PetscReal, pointer :: accum2_p(:)
+  PetscReal, pointer :: accum_tpdt_p(:)
   PetscInt :: local_id, ghosted_id, natural_id
   PetscInt :: offset, ival, idof, itol
   PetscReal :: R, A, R_A
@@ -1562,7 +1564,7 @@ subroutine PMGeneralCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
   endif
   if (this%check_post_convergence) then
     call VecGetArrayRead(field%flow_r,r_p,ierr);CHKERRQ(ierr)
-    call VecGetArrayRead(field%flow_accum2,accum2_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(field%flow_accum_tpdt,accum_tpdt_p,ierr);CHKERRQ(ierr)
     converged_abs_residual_flag = PETSC_TRUE
     converged_abs_residual_real = 0.d0
     converged_abs_residual_cell = ZERO_INTEGER
@@ -1581,7 +1583,7 @@ subroutine PMGeneralCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
         converged_scaled = PETSC_TRUE
         ! infinity norms on residual
         R = dabs(r_p(ival))
-        A = dabs(accum2_p(ival))
+        A = dabs(accum_tpdt_p(ival))
 !         R_A = R/A
 
         !TOUGH3 way:
@@ -1618,7 +1620,7 @@ subroutine PMGeneralCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
       enddo
     enddo
     call VecRestoreArrayRead(field%flow_r,r_p,ierr);CHKERRQ(ierr)
-    call VecRestoreArrayRead(field%flow_accum2,accum2_p, &
+    call VecRestoreArrayRead(field%flow_accum_tpdt,accum_tpdt_p, &
                                 ierr);CHKERRQ(ierr)
 
     this%converged_flag(:,:,RESIDUAL_INDEX) = converged_abs_residual_flag(:,:)

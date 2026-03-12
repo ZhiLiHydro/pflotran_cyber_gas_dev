@@ -143,10 +143,10 @@ module Reaction_Aux_module
     PetscBool :: ionic_strength
     PetscBool :: auxiliary
     PetscBool :: verbose_constraints
+    PetscBool :: electrical_conductivity
     PetscInt :: free_conc_type
     PetscInt :: tot_conc_type
     PetscInt :: secondary_conc_type
-    PetscInt :: electrical_conductivity_type
   end type rt_print_type
 
   type, public, extends(reaction_base_type) :: reaction_rt_type
@@ -182,7 +182,7 @@ module Reaction_Aux_module
     type(generic_parameter_type), pointer :: gas_diffusion_coefficients
     PetscInt :: act_coef_update_frequency
     PetscInt :: act_coef_update_algorithm
-    PetscInt :: elec_cond_algorithm
+    PetscInt :: elec_cond_method
     PetscBool :: checkpoint_activity_coefs
     PetscBool :: act_coef_use_bdot
     PetscBool :: use_activity_h2o
@@ -217,6 +217,7 @@ module Reaction_Aux_module
     PetscReal, pointer :: primary_spec_Z(:)
     PetscReal, pointer :: primary_spec_mobility(:)
     PetscReal, pointer :: primary_spec_molar_wt(:)
+    PetscBool, pointer :: primary_total_can_be_negative(:)
 
     ! aqueous complexes
     PetscInt :: neqcplx
@@ -360,6 +361,7 @@ module Reaction_Aux_module
             ReactionAuxInputRecord, &
             ReactionAuxNetworkToStoich, &
             ReactionOutputRequiresDatabase, &
+            ReactionAuxTotalCanBeNegative, &
             ReactionAuxDestroyAux
 
 contains
@@ -390,7 +392,7 @@ function ReactionAuxCreateAux()
   reaction%act_coef_use_bdot = PETSC_TRUE
   reaction%act_coef_update_frequency = ACT_COEF_FREQUENCY_OFF
   reaction%act_coef_update_algorithm = ACT_COEF_ALGORITHM_LAG
-  reaction%elec_cond_algorithm = ELEC_COND_MOBILITY
+  reaction%elec_cond_method = UNINITIALIZED_INTEGER
   reaction%checkpoint_activity_coefs = PETSC_TRUE
   reaction%truncated_concentration = UNINITIALIZED_DOUBLE
   reaction%check_update = PETSC_TRUE
@@ -423,10 +425,10 @@ function ReactionAuxCreateAux()
   reaction%print%total_component = PETSC_FALSE
   reaction%print%free_ion = PETSC_FALSE
   reaction%print%total_bulk = PETSC_FALSE
+  reaction%print%electrical_conductivity = PETSC_FALSE
   reaction%print%free_conc_type = UNINITIALIZED_INTEGER
   reaction%print%tot_conc_type = UNINITIALIZED_INTEGER
   reaction%print%secondary_conc_type = UNINITIALIZED_INTEGER
-  reaction%print%electrical_conductivity_type = UNINITIALIZED_INTEGER
 
   reaction%logging_verbosity = 0
   reaction%maximum_reaction_cuts = 10
@@ -474,6 +476,7 @@ function ReactionAuxCreateAux()
   nullify(reaction%primary_spec_Z)
   nullify(reaction%primary_spec_mobility)
   nullify(reaction%primary_spec_molar_wt)
+  nullify(reaction%primary_total_can_be_negative)
 
   reaction%neqcplx = 0
   nullify(reaction%eqcplxspecid)
@@ -1662,6 +1665,38 @@ end subroutine ReactionAuxDestroyAqSpeciesIndex
 
 ! ************************************************************************** !
 
+subroutine ReactionAuxTotalCanBeNegative(reaction)
+  !
+  ! Deallocates a species index object
+  !
+  ! Author: Glenn Hammond
+  ! Date: 01/29/10
+  !
+
+  implicit none
+
+  class(reaction_rt_type) :: reaction
+
+  PetscInt :: icplx
+  PetscInt :: i
+  PetscInt :: icomp
+
+  allocate(reaction%primary_total_can_be_negative(reaction%naqcomp))
+  reaction%primary_total_can_be_negative = PETSC_FALSE
+
+  do icplx = 1, reaction%neqcplx
+    do i = 1, reaction%eqcplxspecid(0,icplx)
+      icomp = reaction%eqcplxspecid(i,icplx)
+      if (reaction%eqcplxspecid(i,icplx) < 0) then
+        reaction%primary_total_can_be_negative(icomp) = PETSC_TRUE
+      endif
+    enddo
+  enddo
+
+end subroutine ReactionAuxTotalCanBeNegative
+
+! ************************************************************************** !
+
 function ReactionOutputRequiresDatabase(reaction)
   !
   ! Determines whether prescribed output requires the reading of the database
@@ -1695,7 +1730,7 @@ function ReactionOutputRequiresDatabase(reaction)
      print%total_mass_kg .or. &
      print%ionic_strength .or. &
      print%verbose_constraints .or. &
-     Initialized(print%electrical_conductivity_type))
+     print%electrical_conductivity)
 
 end function ReactionOutputRequiresDatabase
 
@@ -2023,7 +2058,9 @@ subroutine ReactionAuxDestroyAux(reaction,option)
 
   call DeallocateArray(reaction%primary_spec_a0)
   call DeallocateArray(reaction%primary_spec_Z)
+  call DeallocateArray(reaction%primary_spec_mobility)
   call DeallocateArray(reaction%primary_spec_molar_wt)
+  call DeallocateArray(reaction%primary_total_can_be_negative)
 
   call DeallocateArray(reaction%eqcplxspecid)
   call DeallocateArray(reaction%eqcplxstoich)

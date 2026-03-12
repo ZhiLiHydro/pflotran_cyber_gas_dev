@@ -18,13 +18,13 @@ module PFLOTRAN_Constants_module
 
 #define VMAJOR 3
 #define VMINOR 24
-#define VSUBMINOR 0
+#define VSUBMINOR 3
 #if (PETSC_VERSION_MAJOR < VMAJOR ||                    \
      (PETSC_VERSION_MAJOR == VMAJOR &&                  \
       (PETSC_VERSION_MINOR < VMINOR ||                  \
        (PETSC_VERSION_MINOR == VMINOR &&                \
         (PETSC_VERSION_SUBMINOR < VSUBMINOR)))))
-#error "Please use PETSc version 3.24.0 or later: 'git checkout v3.24.0' in $PETSC_DIR"
+#error "Please use PETSc version 3.24.3 or later: 'git checkout v3.24.3' in $PETSC_DIR"
 #endif
   ! MUST INCREMENT THIS NUMBER EVERYTIME A CHECKPOINT FILE IS
   ! MODIFIED TO PREVENT COMPATIBILITY ISSUES - geh.
@@ -279,6 +279,7 @@ module PFLOTRAN_Constants_module
   PetscInt, parameter, public :: GEOMECH_ERT_COUPLING = 6
   PetscInt, parameter, public :: GEOMECH_DRAINED_SPLIT = 1
   PetscInt, parameter, public :: GEOMECH_FIXED_STRAIN_SPLIT = 2
+  PetscInt, parameter, public :: GEOMECH_FIXED_STRESS_SPLIT = 3
 
   ! Macros that are used as 'vscatter_index' values
   PetscInt, parameter, public :: SUBSURF_TO_GEOMECHANICS = 3

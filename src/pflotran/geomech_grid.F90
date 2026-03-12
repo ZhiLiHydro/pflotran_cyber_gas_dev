@@ -692,7 +692,7 @@ subroutine CopySubsurfaceGridtoGeomechGrid(ugrid,geomech_grid,option)
       geomech_grid%gauss_node(local_id)%num_gauss_pts = FIVE_INTEGER
     if (geomech_grid%gauss_node(local_id)%entity_type == TET_TYPE) &
       geomech_grid%gauss_node(local_id)%num_gauss_pts = FOUR_INTEGER
-    call GaussCalculatePoints(geomech_grid%gauss_node(local_id))
+    call GaussCalculatePoints(geomech_grid%gauss_node(local_id),option)
   enddo
 
   ! from grid_unstructured_cell.F90, we have
@@ -706,7 +706,7 @@ subroutine CopySubsurfaceGridtoGeomechGrid(ugrid,geomech_grid,option)
     geomech_grid%gauss_surf_node(face_type_id)%entity_type = face_type_id
     geomech_grid%gauss_surf_node(face_type_id)%dim = TWO_DIM_GRID
     geomech_grid%gauss_surf_node(face_type_id)%num_gauss_pts = ONE_INTEGER
-    call GaussCalculatePoints(geomech_grid%gauss_surf_node(face_type_id))
+    call GaussCalculatePoints(geomech_grid%gauss_surf_node(face_type_id),option)
   enddo
 
   ! Store petsc ids of the local and ghost nodes in the new re-ordered system on
@@ -876,13 +876,13 @@ subroutine GeomechGridLocalizeRegFromSideSet(geomech_grid, &
   tet_faces_vert(2,:) = (/ 1, 4, 3 /)! face opposite to v2
   tet_faces_vert(3,:) = (/ 1, 2, 4 /)! face opposite to v3
   tet_faces_vert(4,:) = (/ 1, 3, 2 /)! face opposite to v4
-  ! jaa: my own experimentation shows this gives outward pointing normal
-  quad_faces_vert(1,:) = (/ 4, 3, 2, 1 /)
-  quad_faces_vert(2,:) = (/ 8, 7, 6, 5 /)
-  quad_faces_vert(3,:) = (/ 2, 6, 5, 1 /)
-  quad_faces_vert(4,:) = (/ 8, 7, 3, 4 /)
-  quad_faces_vert(5,:) = (/ 5, 8, 4, 1 /)
-  quad_faces_vert(6,:) = (/ 3, 7, 6, 2 /)
+  ! convension from EXODUS II
+  quad_faces_vert(1,:) = (/ 1, 4, 3, 2 /)! zmin (bottom) face
+  quad_faces_vert(2,:) = (/ 5, 6, 7, 8 /)! zmax (top) face
+  quad_faces_vert(3,:) = (/ 1, 2, 6, 5 /)! ymin (south) face
+  quad_faces_vert(4,:) = (/ 3, 4, 8, 7 /)! ymax (north) face
+  quad_faces_vert(5,:) = (/ 4, 1, 5, 8 /)! xmin (west) face
+  quad_faces_vert(6,:) = (/ 2, 3, 7, 6 /)! xmax (east) face
 
   face_type = TRI_FACE_TYPE
   num_faces_per_ele = FOUR_INTEGER

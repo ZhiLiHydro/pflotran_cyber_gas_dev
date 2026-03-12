@@ -32,8 +32,6 @@ subroutine OutputGeomechInit(num_steps)
   ! Date: 07/2/13
   !
 
-  use Option_module
-
   implicit none
 
   PetscInt :: num_steps
@@ -43,6 +41,7 @@ subroutine OutputGeomechInit(num_steps)
   else
     geomech_hdf5_first = PETSC_FALSE
   endif
+
 
 end subroutine OutputGeomechInit
 
