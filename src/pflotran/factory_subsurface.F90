@@ -195,6 +195,7 @@ subroutine FactorySubsurfaceSetFlowMode(pm_flow,pm_well,option)
   select type(pm_flow)
     class is (pm_wippflo_type)
       option%iflowmode = WF_MODE
+      option%flowmode = 'wipp_flow'
       option%nphase = 2
       option%capillary_pressure_id = 3
       option%saturation_pressure_id = 4
@@ -208,6 +209,7 @@ subroutine FactorySubsurfaceSetFlowMode(pm_flow,pm_well,option)
       call PMHydrateSetFlowMode(pm_well,option)
     class is (pm_mphase_type)
       option%iflowmode = MPH_MODE
+      option%flowmode = 'mphase'
       option%nphase = 2
       option%nflowdof = 3
       option%nflowspec = 2
@@ -220,6 +222,7 @@ subroutine FactorySubsurfaceSetFlowMode(pm_flow,pm_well,option)
       call PMRichardsSetFlowMode(pm_well,option)
     class is (pm_zflow_type)
       option%iflowmode = ZFLOW_MODE
+      option%flowmode = 'zflow'
       option%nphase = 1
       option%nflowdof = 0
       option%nflowspec = 0
@@ -251,12 +254,14 @@ subroutine FactorySubsurfaceSetFlowMode(pm_flow,pm_well,option)
       call PMTHSetFlowMode(pm_flow,pm_well,option)
     class is (pm_richards_ts_type)
       option%iflowmode = RICHARDS_TS_MODE
+      option%flowmode = 'richards ts'
       option%nphase = 1
       option%nflowdof = 1
       option%nflowspec = 1
       option%flow%isothermal = PETSC_TRUE
     class is (pm_th_ts_type)
       option%iflowmode = TH_TS_MODE
+      option%flowmode = 'th ts'
       option%nphase = 1
       option%nflowdof = 2
       option%nflowspec = 1
@@ -370,6 +375,30 @@ subroutine FactorySubsurfaceInitSimulation(simulation)
       call RealizationRegisterParameter(realization,'geomechanics_stress')
       call RealizationRegisterParameter(realization,'geomechanics_strain')
   end select
+
+  select case(option%geomechanics%flow_coupling)
+    case(GEOMECH_TWO_WAY_COUPLED)
+      select case(option%geomechanics%split_scheme)
+        case(GEOMECH_FIXED_STRESS_SPLIT)
+          call RealizationRegisterParameter(realization, &
+                                            'vol_strain_0')
+          call RealizationRegisterParameter(realization, &
+                                            'vol_strain')
+          call RealizationRegisterParameter(realization, &
+                                            'press_old')
+          call RealizationRegisterParameter(realization, &
+                                            'press_0')
+          call RealizationRegisterParameter(realization, &
+                                            'temp_0')
+          call RealizationRegisterParameter(realization, &
+                                            'flow_porosity')
+          call RealizationRegisterParameter(realization, &
+                                            'stored_porosity')
+          call RealizationRegisterParameter(realization, &
+                                            'stored_pressure')
+    end select
+  end select
+
   call FactorySubsurfSetupRealization(simulation)
 
   call InitCommonAddOutputWaypoints(option,simulation%output_option, &
@@ -440,6 +469,7 @@ subroutine FactorySubsurfSetupRealization(simulation)
   use Reaction_Aux_module, only : ACT_COEF_FREQUENCY_OFF
   use Reaction_Database_module
   use Reaction_Setup_module
+  use Reaction_Aux_module
   use EOS_module
   use Dataset_module
   use Patch_module
@@ -525,6 +555,7 @@ subroutine FactorySubsurfSetupRealization(simulation)
       endif
       call ReactionSetupKinetics(realization%reaction,option)
       call ReactionSetupSpecificSpecies(realization%reaction,option)
+      call ReactionAuxTotalCanBeNegative(realization%reaction)
       call ReactionSetupSpeciesSummary(realization%reaction,option)
 
       ! SK 09/30/13, Added to check if Mphase is called with OS

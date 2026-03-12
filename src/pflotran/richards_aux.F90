@@ -36,7 +36,7 @@ module Richards_Aux_module
     PetscReal :: pl   ! liquid pressure
     PetscReal :: sl   ! liquid saturation
     PetscReal :: dpl  ! reservoir-well liquid pressure differential
-    PetscReal :: Ql   ! liquid exchange flux
+    PetscReal :: Ql   ! liquid exchange flux [kg/s]
     PetscReal :: bh_p ! bottom hole pressure
     PetscReal :: pressure_bump ! pressure change for initialization  ! TODO: JOE: Can I remove this as I am not creating a numerical jacobian?
   end type richards_well_aux_type
@@ -356,7 +356,7 @@ subroutine RichardsAuxVarCompute(x,auxvar,global_auxvar,material_auxvar, &
     auxvar%pc = 0.d0
     global_auxvar%sat = 1.d0
     kr = 1.d0
-    pw = global_auxvar%pres(1)
+    pw = max(global_auxvar%pres(1),pw)
   endif
 
   if (.not.option%flow%density_depends_on_salinity) then

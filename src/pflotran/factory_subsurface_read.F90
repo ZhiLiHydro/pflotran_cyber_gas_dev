@@ -182,14 +182,17 @@ subroutine FactorySubsurfReadTransportPM(input,option,pm)
           case('GIRT')
             pm => PMRTCreate()
             option%itranmode = RT_MODE
+            option%tranmode = 'gi reactive transport'
             option%transport%reaction_coupling = GLOBAL_IMPLICIT
           case('OSRT')
             pm => PMOSRTCreate()
             option%itranmode = RT_MODE
+            option%tranmode = 'os reactive transport'
             option%transport%reaction_coupling = OPERATOR_SPLIT
           case('NWT')
             pm => PMNWTCreate()
             option%itranmode = NWT_MODE
+            option%tranmode = 'nw transport'
             option%transport%reaction_coupling = GLOBAL_IMPLICIT
           case default
             error_string = trim(error_string) // ',MODE'
@@ -963,6 +966,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
   PetscBool :: vel_face
   PetscBool :: fluxes
   PetscBool :: mass_flowrate
+  PetscBool :: mass_flowrate_as_hdf5
   PetscBool :: energy_flowrate
   PetscBool :: aveg_mass_flowrate
   PetscBool :: aveg_energy_flowrate
@@ -1010,6 +1014,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
 
   PetscReal :: dt_init
   PetscReal :: dt_min
+  PetscReal :: time_incr
   PetscReal :: units_conversion
 
   class(timestepper_base_type), pointer :: temp_timestepper
@@ -1779,6 +1784,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
         vel_face = PETSC_FALSE
         fluxes = PETSC_FALSE
         mass_flowrate = PETSC_FALSE
+        mass_flowrate_as_hdf5 = PETSC_FALSE
         energy_flowrate = PETSC_FALSE
         aveg_mass_flowrate = PETSC_FALSE
         aveg_energy_flowrate = PETSC_FALSE
@@ -1965,14 +1971,15 @@ subroutine FactorySubsurfReadInput(simulation,input)
               select case(trim(word))
                 case('TIME')
                   string = 'OUTPUT,PERIODIC,TIME'
-                  call InputReadDouble(input,option,temp_real)
+                  call InputReadDouble(input,option,time_incr)
                   call InputErrorMsg(input,option,'time increment',string)
                   internal_units = 'sec'
-                  call InputReadAndConvertUnits(input,temp_real, &
+                  call InputReadAndConvertUnits(input,time_incr, &
                                                 internal_units,string,option)
-                  output_option%periodic_snap_output_time_incr = temp_real
                   call InputReadCard(input,option,word)
-                  if (.not.InputError(input)) then
+                  if (InputError(input)) then
+                    output_option%periodic_snap_output_time_incr = time_incr
+                  else
                     if (StringCompareIgnoreCase(word,'between')) then
                       call InputReadDouble(input,option,temp_real)
                       call InputErrorMsg(input,option,'start time',string)
@@ -1999,11 +2006,9 @@ subroutine FactorySubsurfReadInput(simulation,input)
                         waypoint%print_snap_output = PETSC_TRUE
                         call WaypointInsertInList(waypoint,waypoint_list, &
                                                   option)
-                        temp_real = temp_real + &
-                          output_option%periodic_snap_output_time_incr
+                        temp_real = temp_real + time_incr
                         if (temp_real > temp_real2) exit
                       enddo
-                      output_option%periodic_snap_output_time_incr = 0.d0
                     else
                       input%ierr = INPUT_ERROR_DEFAULT
                       call InputErrorMsg(input,option,'BETWEEN', &
@@ -2146,6 +2151,8 @@ subroutine FactorySubsurfReadInput(simulation,input)
               energy_flowrate = PETSC_TRUE
             case('MASS_FLOWRATE')
               mass_flowrate = PETSC_TRUE
+            case('MASS_FLOWRATE_AS_HDF5')
+              mass_flowrate_as_hdf5 = PETSC_TRUE
             case('ENERGY_FLOWRATE')
               energy_flowrate = PETSC_TRUE
             case('AVERAGE_FLOWRATES','AVERAGE_FLOWRATE')
@@ -2240,6 +2247,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
             if (associated(grid%unstructured_grid%explicit_grid)) then
               option%flow%store_fluxes = PETSC_TRUE
               output_option%print_explicit_flowrate = mass_flowrate
+              output_option%print_explicit_flowrate_hdf5 = mass_flowrate_as_hdf5
             endif
           endif
         endif
@@ -2566,6 +2574,11 @@ subroutine FactorySubsurfReadInput(simulation,input)
 !....................
       case ('GEOTHERMAL_FRACTURE_MODEL')
         call PMFracReadPass2(input,option)
+
+!....................
+      case('INACTIVE_CELL_VOLUME_THRESHOLD')
+        call InputReadDouble(input,option,option%inactive_cell_volume_threshold)
+        call InputErrorMsg(input,option,card,'threshold volume')
 
 !....................
       case ('END_SUBSURFACE')

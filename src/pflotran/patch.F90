@@ -297,7 +297,7 @@ subroutine PatchProcessCouplers(patch,flow_conditions,transport_conditions, &
         len_trim(coupler%name) == 0) then
       option%io_buffer = 'All BOUNDARY_CONDITIONs &
         &must be named in the input file to differentiate &
-        &MASS_BALANCE outputs.'
+        &CONSERVATION and/or MASS_BALANCE outputs.'
       call PrintErrMsg(option)
     endif
 
@@ -601,6 +601,16 @@ subroutine PatchProcessCouplers(patch,flow_conditions,transport_conditions, &
   coupler => patch%prescribed_condition_list%first
   do
     if (.not.associated(coupler)) exit
+
+    ! ensure named for mass balance output
+    if (option%compute_mass_balance_new .and. &
+        len_trim(coupler%name) == 0) then
+      option%io_buffer = 'All PRESCRIBED_CONDITIONs &
+        &must be named in the input file to differentiate &
+        &CONSERVATION and/or MASS_BALANCE outputs.'
+      call PrintErrMsg(option)
+    endif
+
     ! pointer to region
     coupler%region => RegionGetPtrFromList(coupler%region_name, &
                                            patch%region_list)
@@ -973,6 +983,25 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
         if (coupler%itype == INITIAL_COUPLER_TYPE .or. &
             coupler%itype == BOUNDARY_COUPLER_TYPE .or. &
             coupler%itype == PRESCRIBED_COUPLER_TYPE) then
+
+          if (coupler%itype == PRESCRIBED_COUPLER_TYPE) then
+            select case(option%iflowmode)
+              case(NULL_MODE)
+              case(RICHARDS_MODE,RICHARDS_TS_MODE,TH_MODE,TH_TS_MODE)
+              case default
+                option%io_buffer = 'PRESCRIBED_CONDITIONs are not supported by &
+                  &flow mode: ' // trim(option%flowmode)
+                call PrintErrMsg(option)
+            end select
+            select case(option%itranmode)
+              case(NULL_MODE)
+              case(RT_MODE)
+              case default
+                option%io_buffer = 'PRESCRIBED_CONDITIONs are not supported by &
+                  &transport mode: ' // trim(option%tranmode)
+                call PrintErrMsg(option)
+            end select
+          endif
 
           if (associated(coupler%flow_condition%pressure) .or. &
               associated(coupler%flow_condition%concentration) .or. &

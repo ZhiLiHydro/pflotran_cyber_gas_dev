@@ -1883,7 +1883,7 @@ subroutine PMWIPPFloCheckConvergence(this,snes,it,xnorm,unorm, &
 
   Vec :: residual_vec
   PetscReal, pointer :: r_p(:)
-  PetscReal, pointer :: accum2_p(:)
+  PetscReal, pointer :: accum_tpdt_p(:)
   PetscReal, pointer :: X1_p(:)
   PetscReal :: residual
   PetscReal :: accumulation
@@ -1965,7 +1965,7 @@ subroutine PMWIPPFloCheckConvergence(this,snes,it,xnorm,unorm, &
     enddo
     close(IUNIT_TEMP)
   endif
-  call VecGetArrayRead(field%flow_accum2,accum2_p,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(field%flow_accum_tpdt,accum_tpdt_p,ierr);CHKERRQ(ierr)
   call VecGetArrayRead(field%flow_xx,X1_p,ierr);CHKERRQ(ierr)
   converged_liquid_equation = PETSC_TRUE
   converged_gas_equation = PETSC_TRUE
@@ -1984,7 +1984,7 @@ subroutine PMWIPPFloCheckConvergence(this,snes,it,xnorm,unorm, &
 
 
     bragflo_residual = r_p(liquid_equation_index:gas_equation_index)
-    bragflo_accum = accum2_p(liquid_equation_index:gas_equation_index)
+    bragflo_accum = accum_tpdt_p(liquid_equation_index:gas_equation_index)
     if (.not.wippflo_use_bragflo_units) then
       pflotran_to_bragflo = fmw_comp * option%flow_dt / &
                             material_auxvars(ghosted_id)%volume
@@ -2323,7 +2323,7 @@ subroutine PMWIPPFloCheckConvergence(this,snes,it,xnorm,unorm, &
   option%convergence = converged_flag
 
   call VecRestoreArrayRead(residual_vec,r_p,ierr);CHKERRQ(ierr)
-  call VecRestoreArrayRead(field%flow_accum2,accum2_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(field%flow_accum_tpdt,accum_tpdt_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayRead(field%flow_xx,X1_p,ierr);CHKERRQ(ierr)
 
   call PMSubsurfaceFlowCheckConvergence(this,snes,it,xnorm,unorm,fnorm, &
@@ -2625,13 +2625,6 @@ subroutine PMWIPPFloRestartBinary(this,viewer)
     endif
   endif
 
-  !MAN: not sure if this is needed
-  !if (associated(this%pmwell_ptr)) then
-  !  if (.not.this%pmwell_ptr%skip_restart) then
-  !    call PMWellRestartBinary(this%pmwell_ptr,viewer)
-  !  endif
-  !endif
-
 end subroutine PMWIPPFloRestartBinary
 
 ! ************************************************************************** !
@@ -2667,13 +2660,6 @@ subroutine PMWIPPFloRestartHDF5(this,pm_grp_id)
     endif
   endif
 
-  !MAN: not sure if this is needed
-  !if (associated(this%pmwell_ptr)) then
-  !  if (.not.this%pmwell_ptr%skip_restart) then
-  !    call PMWellRestartHDF5(this%pmwell_ptr,pm_grp_id)
-  !  endif
-  !endif
-
 end subroutine PMWIPPFloRestartHDF5
 
 ! ************************************************************************** !
@@ -2688,12 +2674,11 @@ subroutine PMWIPPFloDestroy(this)
 
   use WIPP_Flow_module, only : WIPPFloDestroy
   use Utility_module, only : DeallocateArray
+  use Petsc_Utility_module, only : PUVecDestroy
 
   implicit none
 
   class(pm_wippflo_type) :: this
-
-  PetscErrorCode :: ierr
 
   if (associated(this%next)) then
     call this%next%Destroy()
@@ -2702,12 +2687,8 @@ subroutine PMWIPPFloDestroy(this)
   call DeallocateArray(this%max_change_ivar)
   call DeallocateArray(this%rotation_region_names)
   call DeallocateArray(this%auto_pressure_material_ids)
-  if (.not.PetscObjectIsNull(this%stored_residual_vec)) then
-    call VecDestroy(this%stored_residual_vec,ierr);CHKERRQ(ierr)
-  endif
-  if (.not.PetscObjectIsNull(this%scaling_vec)) then
-    call VecDestroy(this%scaling_vec,ierr);CHKERRQ(ierr)
-  endif
+  call PUVecDestroy(this%stored_residual_vec)
+  call PUVecDestroy(this%scaling_vec)
   if (associated(this%dirichlet_dofs_ghosted)) then
     deallocate(this%dirichlet_dofs_ghosted)
     nullify(this%dirichlet_dofs_ghosted)
