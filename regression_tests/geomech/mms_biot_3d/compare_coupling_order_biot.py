@@ -91,15 +91,23 @@ def generate_body_force(nx, ny, nz, outpath):
 
 
 def patch_input(template_text, nx, coupling_order):
-    """Return input-deck text with NXYZ and COUPLING_ORDER replaced."""
+    """Return input-deck text with NXYZ and GEOMECHANICS_FLOW_INTERPOLATION block replaced."""
     lines = template_text.splitlines()
     out = []
+    skip_until_slash = False
     for line in lines:
+        if skip_until_slash:
+            if line.strip() == '/':
+                skip_until_slash = False
+            continue
         stripped = line.strip().upper()
         if stripped.startswith("NXYZ"):
             out.append(f"    NXYZ {nx} {nx} {nx}")
-        elif stripped.startswith("GEOMECHANICS_FLOW_INTERPOLATION_ORDER"):
-            out.append(f"  GEOMECHANICS_FLOW_INTERPOLATION_ORDER {coupling_order}")
+        elif stripped.startswith("GEOMECHANICS_FLOW_INTERPOLATION"):
+            out.append(f"  GEOMECHANICS_FLOW_INTERPOLATION")
+            out.append(f"    ORDER {coupling_order}")
+            out.append(f"  /")
+            skip_until_slash = True
         else:
             out.append(line)
     return "\n".join(out) + "\n"
