@@ -58,15 +58,23 @@ def analytical_pressure(xc, yc, zc):
 
 
 def update_input(template_text, nx, ny, nz, coupling_order):
-    """Replace NXYZ and GEOMECHANICS_FLOW_INTERPOLATION_ORDER in input deck."""
+    """Replace NXYZ and GEOMECHANICS_FLOW_INTERPOLATION block in input deck."""
     lines = template_text.splitlines()
     out = []
+    skip_until_slash = False
     for line in lines:
+        if skip_until_slash:
+            if line.strip() == '/':
+                skip_until_slash = False
+            continue
         stripped = line.strip().upper()
         if stripped.startswith("NXYZ"):
             out.append(f"    NXYZ {nx} {ny} {nz}")
-        elif stripped.startswith("GEOMECHANICS_FLOW_INTERPOLATION_ORDER"):
-            out.append(f"  GEOMECHANICS_FLOW_INTERPOLATION_ORDER {coupling_order}")
+        elif stripped.startswith("GEOMECHANICS_FLOW_INTERPOLATION"):
+            out.append(f"  GEOMECHANICS_FLOW_INTERPOLATION")
+            out.append(f"    ORDER {coupling_order}")
+            out.append(f"  /")
+            skip_until_slash = True
         else:
             out.append(line)
     return "\n".join(out) + "\n"
@@ -181,7 +189,7 @@ def main():
 
     for co in [0, 1]:
         print(f"\n{'='*60}")
-        print(f"  GEOMECHANICS_FLOW_INTERPOLATION_ORDER = {co}")
+        print(f"  GEOMECHANICS_FLOW_INTERPOLATION ORDER = {co}")
         print(f"{'='*60}")
         results = []
         for n in levels:

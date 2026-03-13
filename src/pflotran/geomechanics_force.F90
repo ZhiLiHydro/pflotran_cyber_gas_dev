@@ -2000,7 +2000,7 @@ subroutine GeomechUpdateFromSubsurf(realization,geomech_realization)
       trim(geomech_realization%geomech_discretization%ctype) == 'STRUCTURED_INTERNAL') then
 
     if (grid%itype /= STRUCTURED_GRID) then
-      option%io_buffer = 'GEOMECHANICS_FLOW_INTERPOLATION_ORDER=1 requires a structured flow grid.'
+      option%io_buffer = 'GEOMECHANICS_FLOW_INTERPOLATION ORDER 1 requires a structured flow grid.'
       call PrintErrMsg(option)
     endif
 

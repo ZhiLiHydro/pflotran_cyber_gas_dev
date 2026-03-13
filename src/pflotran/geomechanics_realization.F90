@@ -599,12 +599,12 @@ subroutine GeomechRealizMapSubsurfGeomechGrid(realization, &
       ! One-to-one projection.
     case(GEOMECH_FLOW_INTERP_ORDER_1ST)
       if (trim(geomech_realization%geomech_discretization%ctype) /= 'STRUCTURED_INTERNAL') then
-        option%io_buffer = 'GEOMECHANICS_FLOW_INTERPOLATION_ORDER=1 is currently implemented for ' // &
+        option%io_buffer = 'GEOMECHANICS_FLOW_INTERPOLATION ORDER 1 is currently implemented for ' // &
                            'GEOMECHANICS_GRID TYPE STRUCTURED_INTERNAL.'
         call PrintErrMsg(option)
       endif
     case default
-      option%io_buffer = 'Invalid GEOMECHANICS_FLOW_INTERPOLATION_ORDER. Use 0 (0th order) or 1 (1st order).'
+      option%io_buffer = 'Invalid GEOMECHANICS_FLOW_INTERPOLATION ORDER. Use 0 (0th order) or 1 (1st order).'
       call PrintErrMsg(option)
   end select
 

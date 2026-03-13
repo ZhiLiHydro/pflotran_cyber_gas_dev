@@ -303,16 +303,35 @@ subroutine InitSubsurfGeomechReadInput(geomech,geomech_solver, &
         call InputPopBlock(input,option)
 
       !.........................................................................
-      case ('GEOMECHANICS_FLOW_INTERPOLATION_ORDER')
-        call InputReadInt(input,option,option%geomechanics%flow_interp_order)
-        call InputErrorMsg(input,option,'GEOMECHANICS_FLOW_INTERPOLATION_ORDER', &
-                           'GEOMECHANICS')
-        select case(option%geomechanics%flow_interp_order)
-          case(GEOMECH_FLOW_INTERP_ORDER_0TH,GEOMECH_FLOW_INTERP_ORDER_1ST)
-          case default
-            option%io_buffer = 'GEOMECHANICS_FLOW_INTERPOLATION_ORDER must be 0 (0th order) or 1 (1st order).'
-            call PrintErrMsg(option)
-        end select
+      case ('GEOMECHANICS_FLOW_INTERPOLATION')
+        call InputPushBlock(input,option)
+        do
+          call InputReadPflotranString(input,option)
+          if (InputError(input)) exit
+          if (InputCheckExit(input,option)) exit
+          call InputReadCard(input,option,word)
+          call InputErrorMsg(input,option,word,'GEOMECHANICS_FLOW_INTERPOLATION')
+          call StringToUpper(word)
+          select case(trim(word))
+            case('ORDER')
+              call InputReadInt(input,option, &
+                                option%geomechanics%flow_interp_order)
+              call InputErrorMsg(input,option,'ORDER', &
+                                 'GEOMECHANICS_FLOW_INTERPOLATION')
+              select case(option%geomechanics%flow_interp_order)
+                case(GEOMECH_FLOW_INTERP_ORDER_0TH,GEOMECH_FLOW_INTERP_ORDER_1ST)
+                case default
+                  option%io_buffer = 'GEOMECHANICS_FLOW_INTERPOLATION ORDER ' // &
+                    'must be 0 (0th order) or 1 (1st order).'
+                  call PrintErrMsg(option)
+              end select
+            case default
+              call InputKeywordUnrecognized(input,word, &
+                                           'GEOMECHANICS_FLOW_INTERPOLATION', &
+                                           option)
+          end select
+        enddo
+        call InputPopBlock(input,option)
 
       !.........................................................................
       case ('GEOMECHANICS_DEBUG')
@@ -926,7 +945,7 @@ subroutine InitSubsurfGeomechBuildStructuredInternalGrid(subsurf_realization, &
       endif
 
     case default
-      option%io_buffer = 'Invalid GEOMECHANICS_FLOW_INTERPOLATION_ORDER for structured-internal coupling. Use 0 or 1.'
+      option%io_buffer = 'Invalid GEOMECHANICS_FLOW_INTERPOLATION ORDER for structured-internal coupling. Use 0 or 1.'
       call PrintErrMsg(option)
   end select
 
