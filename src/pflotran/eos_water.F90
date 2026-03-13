@@ -1382,31 +1382,31 @@ subroutine EOSWaterSaturationPressureIF97(T, calculate_derivatives, &
                -0.17073846940092d2,0.12020824702470d5,-0.32325550322333d7, &
                0.14915108613530d2,-0.48232657361591d4,0.40511340542057d6, &
                -0.23855557567849d0,0.65017534844798d3]
-  PetscReal :: theta, T_temp, A, B, C
+  PetscReal :: theta, T_Kelvin, A, B, C
   PetscReal :: B2_4AC, dtheta_dt, da_dt, db_dt, dc_dt
 
-  T_temp = T + T273K
+  T_Kelvin = T + T273K
 
-  if (T_temp > 623.15d0) then
-    PS = 1.d6*(0.34805185628969d3 - 0.11671859879975d1*T_temp + &
-               0.10192970039326d-2 * T_temp*T_temp)
+  if (T_Kelvin > 623.15d0) then
+    PS = 1.d6*(0.34805185628969d3 - 0.11671859879975d1*T_Kelvin + &
+               0.10192970039326d-2 * T_Kelvin*T_Kelvin)
     if (calculate_derivatives) then
-      dPS_DT = 1.d6*(-0.11671859879975d1 + 2.d0 * 0.10192970039326d-2 * T_temp)
+      dPS_DT = 1.d6*(-0.11671859879975d1 + 2.d0 * 0.10192970039326d-2 * T_Kelvin)
     else
       dPS_DT = UNINITIALIZED_DOUBLE
     endif
   else
 
-    if (T_temp < T273K) T_temp = T273K
+    if (T_Kelvin < T273K) T_Kelvin = T273K
 
-    theta = T_temp + n(9)/(T_temp-n(10))
+    theta = T_Kelvin + n(9)/(T_Kelvin-n(10))
     A = theta*theta + n(1)*theta +n(2)
     B = n(3)*theta*theta + n(4)*theta + n(5)
     C = n(6)*theta*theta + n(7)*theta + n(8)
     B2_4AC = (B*B-4.d0*A*C)**(0.5d0)
     PS = 1.d6*(2.d0*C/((B2_4AC)-B))**4
     if (calculate_derivatives) then
-      dtheta_dt = 1.d0 - n(9)/((T_temp - n(10))*(T_temp - n(10)))
+      dtheta_dt = 1.d0 - n(9)/((T_Kelvin - n(10))*(T_Kelvin - n(10)))
       da_dt = 2.d0*theta*dtheta_dt +n(1)*dtheta_dt
       db_dt = 2.d0*n(3)*theta*dtheta_dt + n(4)*dtheta_dt
       dc_dt = 2.d0*n(6)*theta*dtheta_dt + n(7)*dtheta_dt
@@ -1765,19 +1765,18 @@ end subroutine EOSWaterDensityIFC67
 
 ! ************************************************************************** !
 
-subroutine EOSWaterDensityIF97(T,P,calculate_derivatives,dw,dwmol, &
+subroutine EOSWaterDensityIF97(T_Celsius,P,calculate_derivatives,dw,dwmol, &
                                 dwp,dwt,ierr,table_idxs)
 
   implicit none
 
-  PetscReal, intent(in) :: T   ! Temperature in centigrade
+  PetscReal, intent(in) :: T_Celsius   ! Temperature in centigrade
   PetscReal, intent(in) :: P   ! Pressure in Pascals
   PetscBool, intent(in) :: calculate_derivatives
   PetscReal, intent(out) :: dw,dwmol,dwp,dwt
   PetscErrorCode, intent(inout) :: ierr
   PetscInt, pointer, optional, intent(inout) :: table_idxs(:)
 
-  PetscReal, parameter :: Tf = T273K !K
   PetscReal, parameter :: p_ref = 16.53d6 !Pa
   PetscReal, parameter :: T_ref = 1386.d0  ! K
   PetscReal, parameter :: R = 0.461526d0 ! kJ/kg-K
@@ -1798,31 +1797,31 @@ subroutine EOSWaterDensityIF97(T,P,calculate_derivatives,dw,dwmol, &
   PetscInt, parameter :: J_i(34) = [-2,-1,0,1,2,3,4,5,-9,-7,-1,0,1,3,-3,0,1, &
                                      3,17,-4,0,6,-5,-2,10,-8,-11,-6,-29,-31, &
                                      -38,-39,-40,-41]
-  PetscReal :: pi, tao, g_pi, T_temp
+  PetscReal :: pi, tao, g_pi, T_Kelvin
   PetscReal :: dg_pi_dT, dv_dt, dg_pi_dp, dv_dp
 
-  T_temp = T + T273K
-  if (T_temp <= 623.15d0) then
+  T_Kelvin = T_Celsius + T273K
+  if (T_Kelvin <= 623.15d0) then
     ! Region 1: Valid from 273.15 K to 623.15 K, Ps(T) to 100MPa
 
     pi = P/p_ref
-    tao = T_ref/T_temp
+    tao = T_ref/T_Kelvin
 
     g_pi = sum((-n_i*I_i*(7.1d0-pi)**(I_i-1))*(tao-1.222d0)**(J_i))
-    dw = g_pi * pi*R*T_temp/P * 1.d3
+    dw = g_pi * pi*R*T_Kelvin/P * 1.d3
 
     dw = 1.d0/dw
     dwmol = dw/FMWH2O
 
     if (calculate_derivatives) then
-      dg_pi_dT = T_ref/(T_temp*T_temp) * sum(n_i*I_i*(7.1d0-pi)**(I_i-1)* &
+      dg_pi_dT = T_ref/(T_Kelvin*T_Kelvin) * sum(n_i*I_i*(7.1d0-pi)**(I_i-1)* &
                                              J_i*(tao-1.222d0)**(J_i-1))
-      dv_dt = R*pi/P * (g_pi+T_temp*dg_pi_dT)
+      dv_dt = R*pi/P * (g_pi+T_Kelvin*dg_pi_dT)
       dwt = -1.d3/FMWH2O*dw*dw * dv_dt
 
       dg_pi_dp = sum(n_i*I_i*(I_i-1)*(7.1d0-pi)**(I_i-2)* &
                      (tao-1.222d0)**(J_i)) / p_ref
-      dv_dp = R*T_temp*(-g_pi*pi/(P*P) + (g_pi/p_ref + dg_pi_dp*pi)/P)
+      dv_dp = R*T_Kelvin*(-g_pi*pi/(P*P) + (g_pi/p_ref + dg_pi_dp*pi)/P)
       dwp = -1.d3/FMWH2O*dw*dw *dv_dp
     else
       dwp = UNINITIALIZED_DOUBLE
@@ -1832,41 +1831,38 @@ subroutine EOSWaterDensityIF97(T,P,calculate_derivatives,dw,dwmol, &
     ! Region 3: Valid in "wedge" >623.15K, >Ps(T), and 100MPa
     ! put into separate routine, to minimize weighing down this
     ! much more commonly used routine (Region 1)
-    call EOSWaterDensityIF97Region3(T,P,calculate_derivatives,dw,dwmol, &
-                                    dwp,dwt)
+    call EOSWaterDensityIF97Region3(T_Celsius,P,calculate_derivatives, &
+                                    dw,dwmol,dwp,dwt,ierr)
   end if
 
 end subroutine EOSWaterDensityIF97
 
 ! ************************************************************************** !
 
-subroutine EOSWaterDensityIF97Region3(T,P,calculate_derivatives,dw,dwmol, &
-                                     dwp,dwt)
+subroutine EOSWaterDensityIF97Region3(T_Celsius,P,calculate_derivatives, &
+                                      dw,dwmol,dwp,dwt,ierr)
   ! only ever called by EOSWaterDensityIF97()
   ! implements "backward equations" and "auxiliary equations" for
   ! specific volume as a funciton of p,T near the critical point
   ! in report IAPWS SR5-05(2016).
 
   implicit none
-  PetscReal, intent(in) :: T   ! Temperature [C]
+  PetscReal, intent(in) :: T_Celsius   ! Temperature [C]
   PetscReal, intent(in) :: P   ! Pressure [Pa]
   PetscBool, intent(in) :: calculate_derivatives
   PetscReal, intent(out) :: dw,dwmol,dwp,dwt
   PetscErrorCode :: ierr
 
-  PetscReal :: dumb, psat_64315, psat_62315, T_temp, nu
+  PetscReal :: dumb, psat_64315, psat_62315, T_Kelvin, nu
   PetscInt, parameter :: T3ab=1, T3cd=2, T3gh=3
   PetscInt, parameter :: T3ij=4, T3jk=5, T3mn=6
   PetscInt, parameter :: T3op=7, T3qu=8, T3rx=9
   PetscInt, parameter :: T3ef=12, T3uv=10, T3wx=11
 
-  PetscReal, parameter :: Tf = T273K !K
-  PetscReal, parameter :: R = 0.461526d0 ! kJ/kg-K
-
   ! Region 3:  Region 3: Valid in "wedge" >623.15K, >Ps(T), and 100MPa
   ! first, determine which of 24 sub-regions we fall into:
 
-  T_temp = T+Tf
+  T_Kelvin = T_Celsius + T273K
 
   ! 21.0434 MPa
   call EOSWaterSaturationPressureIF97(370.d0, PETSC_FALSE, &
@@ -1878,181 +1874,188 @@ subroutine EOSWaterDensityIF97Region3(T,P,calculate_derivatives,dw,dwmol, &
   ! ranges given in Table 2 and Table 10 (near critical point)
   nu = UNINITIALIZED_DOUBLE
   if (P <= 100.0D+6 .and. P > 40.0D+6) then
-    if (T_temp > T3bdry(P,T3ab)) then
-      nu = IF97_subregion_3b(P,T_temp)
+    if (T_Kelvin > T3bdry(P,T3ab)) then
+      nu = IF97_subregion_3b(P,T_Kelvin)
     else
-      nu = IF97_subregion_3a(P,T_temp)
+      nu = IF97_subregion_3a(P,T_Kelvin)
     end if
   else if (P > 25.0D+6) then
-    if (T_temp  > T3bdry(P,T3ef)) then
-      nu = IF97_subregion_3f(P,T_temp)
-    else if (T_temp > T3bdry(P,T3ab)) then
-      nu = IF97_subregion_3e(P,T_temp)
-    else if (T_temp > T3bdry(P,T3cd)) then
-      nu = IF97_subregion_3d(P,T_temp)
+    if (T_Kelvin  > T3bdry(P,T3ef)) then
+      nu = IF97_subregion_3f(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3ab)) then
+      nu = IF97_subregion_3e(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3cd)) then
+      nu = IF97_subregion_3d(P,T_Kelvin)
     else
-      nu = IF97_subregion_3c(P,T_temp)
+      nu = IF97_subregion_3c(P,T_Kelvin)
     end if
   else if (P > 23.5D+6) then
-    if (T_temp > T3bdry(P,T3jk)) then
-      nu = IF97_subregion_3k(P,T_temp)
-    else if (T_temp > T3bdry(P,T3ij)) then
-      nu = IF97_subregion_3j(P,T_temp)
-    else if (T_temp > T3bdry(P,T3ef)) then
-      nu = IF97_subregion_3i(P,T_temp)
-    else if (T_temp > T3bdry(P,T3gh)) then
-      nu = IF97_subregion_3h(P,T_temp)
-    else if (T_temp > T3bdry(P,T3cd)) then
-      nu = IF97_subregion_3g(P,T_temp)
+    if (T_Kelvin > T3bdry(P,T3jk)) then
+      nu = IF97_subregion_3k(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3ij)) then
+      nu = IF97_subregion_3j(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3ef)) then
+      nu = IF97_subregion_3i(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3gh)) then
+      nu = IF97_subregion_3h(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3cd)) then
+      nu = IF97_subregion_3g(P,T_Kelvin)
     else
-      nu = IF97_subregion_3c(P,T_temp)
+      nu = IF97_subregion_3c(P,T_Kelvin)
     end if
   else if (P > 23.0D+6) then
-    if (T_temp > T3bdry(P,T3jk)) then
-      nu = IF97_subregion_3k(P,T_temp)
-    else if (T_temp > T3bdry(P,T3ij)) then
-      nu = IF97_subregion_3j(P,T_temp)
-    else if (T_temp > T3bdry(P,T3ef)) then
-      nu = IF97_subregion_3i(P,T_temp)
-    else if (T_temp > T3bdry(P,T3gh)) then
-      nu = IF97_subregion_3h(P,T_temp)
-    else if (T_temp > T3bdry(P,T3cd)) then
-      nu = IF97_subregion_3l(P,T_temp)
+    if (T_Kelvin > T3bdry(P,T3jk)) then
+      nu = IF97_subregion_3k(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3ij)) then
+      nu = IF97_subregion_3j(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3ef)) then
+      nu = IF97_subregion_3i(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3gh)) then
+      nu = IF97_subregion_3h(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3cd)) then
+      nu = IF97_subregion_3l(P,T_Kelvin)
     else
-      nu = IF97_subregion_3c(P,T_temp)
+      nu = IF97_subregion_3c(P,T_Kelvin)
     end if
   else if (P > 22.5D+6) then
-    if (T_temp > T3bdry(P,T3jk)) then
-      nu = IF97_subregion_3k(P,T_temp)
-    else if (T_temp > T3bdry(P,T3ij)) then
-      nu = IF97_subregion_3j(P,T_temp)
-    else if (T_temp > T3bdry(P,T3op)) then
-      nu = IF97_subregion_3p(P,T_temp)
-    else if (T_temp > T3bdry(P,T3ef)) then
-      nu = IF97_subregion_3o(P,T_temp)
-    else if (T_temp > T3bdry(P,T3mn)) then
-      nu = IF97_subregion_3n(P,T_temp)
-    else if (T_temp > T3bdry(P,T3gh)) then
-      nu = IF97_subregion_3m(P,T_temp)
-    else if (T_temp > T3bdry(P,T3cd)) then
-      nu = IF97_subregion_3l(P,T_temp)
+    if (T_Kelvin > T3bdry(P,T3jk)) then
+      nu = IF97_subregion_3k(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3ij)) then
+      nu = IF97_subregion_3j(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3op)) then
+      nu = IF97_subregion_3p(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3ef)) then
+      nu = IF97_subregion_3o(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3mn)) then
+      nu = IF97_subregion_3n(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3gh)) then
+      nu = IF97_subregion_3m(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3cd)) then
+      nu = IF97_subregion_3l(P,T_Kelvin)
     else
-      nu = IF97_subregion_3c(P,T_temp)
+      nu = IF97_subregion_3c(P,T_Kelvin)
     end if
-  else if (P > 21.11D+6) then
-    if (T_temp > T3bdry(P,T3jk)) then
-      nu = IF97_subregion_3k(P,T_temp)
-    else if (T_temp > T3bdry(P,T3rx)) then
-      nu = IF97_subregion_3r(P,T_temp)
-    else if (T_temp > T3bdry(P,T3wx)) then
-      nu = IF97_subregion_3x(P,T_Temp)
-    else if (T_temp > T3bdry(P,T3ef)) then
-      nu = IF97_subregion_3w(P,T_Temp)
-    else if (T_temp > T3bdry(P,T3uv)) then
-      nu = IF97_subregion_3v(P,T_Temp)
-    else if (T_temp > T3bdry(P,T3qu)) then
-      nu = IF97_subregion_3u(P,T_Temp)
-    else if (T_temp > T3bdry(P,T3cd)) then
-      nu = IF97_subregion_3q(P,T_Temp)
+  else if (P > 22.11D+6) then
+    if (T_Kelvin > T3bdry(P,T3jk)) then
+      nu = IF97_subregion_3k(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3rx)) then
+      nu = IF97_subregion_3r(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3wx)) then
+      nu = IF97_subregion_3x(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3ef)) then
+      nu = IF97_subregion_3w(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3uv)) then
+      nu = IF97_subregion_3v(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3qu)) then
+      nu = IF97_subregion_3u(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3cd)) then
+      nu = IF97_subregion_3q(P,T_Kelvin)
     else
-      nu = IF97_subregion_3c(P,T_temp)
+      nu = IF97_subregion_3c(P,T_Kelvin)
     end if
   else if (P > 22.064D+6) then ! P_crit
-    if (T_temp > T3bdry(P,T3jk)) then
-      nu = IF97_subregion_3k(P,T_temp)
-    else if (T_temp > T3bdry(P,T3rx)) then
-      nu = IF97_subregion_3r(P,T_temp)
-    else if (T_temp > T3bdry(P,T3wx)) then
-      nu = IF97_subregion_3x(P,T_Temp)
-    else if (T_temp > T3bdry(P,T3ef)) then
-      nu = IF97_subregion_3z(P,T_Temp)
-    else if (T_temp > T3bdry(P,T3uv)) then
-      nu = IF97_subregion_3y(P,T_Temp)
-    else if (T_temp > T3bdry(P,T3qu)) then
-      nu = IF97_subregion_3u(P,T_Temp)
-    else if (T_temp > T3bdry(P,T3cd)) then
-      nu = IF97_subregion_3q(P,T_Temp)
+    if (T_Kelvin > T3bdry(P,T3jk)) then
+      nu = IF97_subregion_3k(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3rx)) then
+      nu = IF97_subregion_3r(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3wx)) then
+      nu = IF97_subregion_3x(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3ef)) then
+      nu = IF97_subregion_3z(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3uv)) then
+      nu = IF97_subregion_3y(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3qu)) then
+      nu = IF97_subregion_3u(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3cd)) then
+      nu = IF97_subregion_3q(P,T_Kelvin)
     else
-      nu = IF97_subregion_3c(P,T_temp)
+      nu = IF97_subregion_3c(P,T_Kelvin)
     end if
   else if (P > 21.93161551d+6) then
-    if (T_temp > T3bdry(P,T3jk)) then
-      nu = IF97_subregion_3k(P,T_temp)
-    else if (T_temp > T3bdry(P,T3rx)) then
-      nu = IF97_subregion_3r(P,T_temp)
-    else if (T_temp > T3bdry(P,T3wx)) then
-      nu = IF97_subregion_3x(P,T_Temp)
-    else if (T_temp > IF97SaturationTemperature(P)) then
-      nu = IF97_subregion_3z(P,T_Temp)
-    else if (T_temp > T3bdry(P,T3uv)) then
-      nu = IF97_subregion_3y(P,T_Temp)
-    else if (T_temp > T3bdry(P,T3qu)) then
-      nu = IF97_subregion_3u(P,T_Temp)
-    else if (T_temp > T3bdry(P,T3cd)) then
-      nu = IF97_subregion_3q(P,T_Temp)
+    if (T_Kelvin > T3bdry(P,T3jk)) then
+      nu = IF97_subregion_3k(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3rx)) then
+      nu = IF97_subregion_3r(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3wx)) then
+      nu = IF97_subregion_3x(P,T_Kelvin)
+    else if (T_Kelvin > IF97SaturationTemperature(P)) then
+      nu = IF97_subregion_3z(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3uv)) then
+      nu = IF97_subregion_3y(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3qu)) then
+      nu = IF97_subregion_3u(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3cd)) then
+      nu = IF97_subregion_3q(P,T_Kelvin)
     else
-      nu = IF97_subregion_3c(P,T_temp)
+      nu = IF97_subregion_3c(P,T_Kelvin)
     end if
   else if (P > 21.90096265d+6) then
-    if (T_temp > T3bdry(P,T3jk)) then
-      nu = IF97_subregion_3k(P,T_temp)
-    else if (T_temp > T3bdry(P,T3rx)) then
-      nu = IF97_subregion_3r(P,T_temp)
-    else if (T_temp > T3bdry(P,T3wx)) then
-      nu = IF97_subregion_3x(P,T_Temp)
-    else if (T_temp > IF97SaturationTemperature(P)) then
-      nu = IF97_subregion_3z(P,T_Temp)
-    else if (T_temp > T3bdry(P,T3qu)) then
-      nu = IF97_subregion_3u(P,T_Temp)
-    else if (T_temp > T3bdry(P,T3cd)) then
-      nu = IF97_subregion_3q(P,T_Temp)
+    if (T_Kelvin > T3bdry(P,T3jk)) then
+      nu = IF97_subregion_3k(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3rx)) then
+      nu = IF97_subregion_3r(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3wx)) then
+      nu = IF97_subregion_3x(P,T_Kelvin)
+    else if (T_Kelvin > IF97SaturationTemperature(P)) then
+      nu = IF97_subregion_3z(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3qu)) then
+      nu = IF97_subregion_3u(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3cd)) then
+      nu = IF97_subregion_3q(P,T_Kelvin)
     else
-      nu = IF97_subregion_3c(P,T_temp)
+      nu = IF97_subregion_3c(P,T_Kelvin)
     end if
   else if (P > psat_64315) then ! 21.0434 MPa
-    if (T_temp > T3bdry(P,T3jk)) then
-      nu = IF97_subregion_3k(P,T_temp)
-    else if (T_temp > T3bdry(P,T3rx)) then
-      nu = IF97_subregion_3r(P,T_temp)
-    else if (T_temp > IF97SaturationTemperature(P)) then
-      nu = IF97_subregion_3x(P,T_temp)
-    else if (T_temp > T3bdry(P,T3qu)) then
-      nu = IF97_subregion_3u(P,T_temp)
-    else if (T_temp > T3bdry(P,T3cd)) then
-      nu = IF97_subregion_3q(P,T_temp)
+    if (T_Kelvin > T3bdry(P,T3jk)) then
+      nu = IF97_subregion_3k(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3rx)) then
+      nu = IF97_subregion_3r(P,T_Kelvin)
+    else if (T_Kelvin > IF97SaturationTemperature(P)) then
+      nu = IF97_subregion_3x(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3qu)) then
+      nu = IF97_subregion_3u(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3cd)) then
+      nu = IF97_subregion_3q(P,T_Kelvin)
     else
-      nu = IF97_subregion_3c(P,T_temp)
+      nu = IF97_subregion_3c(P,T_Kelvin)
     end if
   else if (P > 20.5D+6) then
-    if (T_temp > T3bdry(P,T3jk)) then
-      nu = IF97_subregion_3k(P,T_temp)
-    else if (T_temp > IF97SaturationTemperature(p)) then
-      nu = IF97_subregion_3r(P,T_temp)
-    else if (T_temp > T3bdry(P,T3cd)) then
-      nu = IF97_subregion_3s(P,T_temp)
+    if (T_Kelvin > T3bdry(P,T3jk)) then
+      nu = IF97_subregion_3k(P,T_Kelvin)
+    else if (T_Kelvin > IF97SaturationTemperature(p)) then
+      nu = IF97_subregion_3r(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3cd)) then
+      nu = IF97_subregion_3s(P,T_Kelvin)
     else
-      nu = IF97_subregion_3c(P,T_temp)
+      nu = IF97_subregion_3c(P,T_Kelvin)
     end if
-  else if (P > 1.900881189173929D+1) then
-    if (T_temp > IF97SaturationTemperature(P)) then
-      nu = IF97_subregion_3t(P,T_temp)
-    else if (T_temp > T3bdry(P,T3cd)) then
-      nu = IF97_subregion_3s(P,T_temp)
+  else if (P > 1.900881189173929D+7) then
+    if (T_Kelvin > IF97SaturationTemperature(P)) then
+      nu = IF97_subregion_3t(P,T_Kelvin)
+    else if (T_Kelvin > T3bdry(P,T3cd)) then
+      nu = IF97_subregion_3s(P,T_Kelvin)
     else
-      nu = IF97_subregion_3c(P,T_temp)
+      nu = IF97_subregion_3c(P,T_Kelvin)
     end if
   else if (P > psat_62315) then ! 16.5292 MPa
-    if (T_temp >= IF97SaturationTemperature(P)) then
-      nu = IF97_subregion_3t(P,T_temp)
+    if (T_Kelvin >= IF97SaturationTemperature(P)) then
+      nu = IF97_subregion_3t(P,T_Kelvin)
     else
-      nu = IF97_subregion_3c(P,T_temp)
+      nu = IF97_subregion_3c(P,T_Kelvin)
     end if
   else
     !stop 'IF97 Region 3 ERROR: either > 100 MPa or < 16.5292 MPa'
+    dw = UNINITIALIZED_DOUBLE
+    dwmol = UNINITIALIZED_DOUBLE
+    dwp = UNINITIALIZED_DOUBLE
+    dwt = UNINITIALIZED_DOUBLE
+    ierr = 1
+    return
   end if
 
-  dw = 1.d0 / (nu * R * T_temp / P * 1.0D+3)
-  dwmol = dw/FMWH2O
+  ! nu is the specific volume in m^3/kg, so density is 1/nu
+  dw = 1.d0 / nu ! kg/m^3
+  dwmol = dw/FMWH2O ! kmol/m^3
 
   if (calculate_derivatives) then
     stop 'IF97 region 3 water density derivative not implemented yet'
@@ -2064,6 +2067,8 @@ subroutine EOSWaterDensityIF97Region3(T,P,calculate_derivatives,dw,dwmol, &
 end subroutine EOSWaterDensityIF97Region3
 
 function T3bdry(P,idx)
+  ! Returns the temperature (in Kelvin) of the boundary between sub-regions
+  ! in IF97 Region 3, as a function of pressure (in Pa)
   implicit none
   PetscReal, parameter :: n_i(11,5) = reshape([ &
         0.154793642129415D4, -0.187661219490113D3, 0.213144632222113D2, & !T3ab
@@ -2091,10 +2096,12 @@ function T3bdry(P,idx)
   PetscInt, parameter :: I_i(11,5) = reshape([0,1,2,-1,-2, 0,1,2,3,0, 0,1,2,3,4, &
        0,1,2,3,4, 0,1,2,3,4, 0,1,2,3,0, 0,1,2,-1,-2, 0,1,2,3,0, 0,1,2,3,0, 0,1,2,3,0, &
        0,1,2,-1,-2],shape=[11,5],order=[2,1])
-  PetscReal, intent(in) :: P
+  PetscReal, intent(in) :: P ! Pa
   PetscInt, intent(in) :: idx
   PetscReal :: T3bdry, pi
 
+  ! pi is p/p^* where p^* 1 MPa, so convert P from Pa to MPa and your done
+  ! T^* is 1 K, so no conversion needed for T
   pi = P * 1.0D-6
   select case(idx)
   case(1,7,11)
@@ -2110,7 +2117,7 @@ end function T3bdry
 
 ! ************************************************************************** !
 
-function IF97_subregion_3a(p,T) result (v)
+function IF97_subregion_3a(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(30) = [0.110879558823853D-2, &
           0.572616740810616D3, -0.767051948380852D5, -0.253321069529674D-1, &
@@ -2128,18 +2135,18 @@ function IF97_subregion_3a(p,T) result (v)
                                     2]
   PetscInt, parameter :: J_i(30) = [5,10,12,5,10,12,5,8,10,1,1,5,10,8,0,1,3,6,0, &
                                     2,3,0,1,2,0,1,0,2,0,2]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0024d0, p_star = 100.d0, T_star = 760.d0
   PetscReal, parameter :: a = 0.085d0, b = 0.817d0
   PetscReal, parameter :: c = 1.0d0, d = 1.00d0, e = 1.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3a
 
 ! ************************************************************************** !
 
-function IF97_subregion_3b(p,T) result (v)
+function IF97_subregion_3b(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(32) = [-0.827670470003621D-1, &
           0.416887126010565D2, 0.483651982197059D-1, -0.291032084950276D5, &
@@ -2158,18 +2165,18 @@ function IF97_subregion_3b(p,T) result (v)
                                     3,4,4]
   PetscInt, parameter :: J_i(32) = [10,12,8,14,8,5,6,8,5,8,10,2,4,5,0,1,2,3,5,0, &
                                     2,5,0,2,0,1,0,2,0,2,0,1]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0041d0, p_star = 100.d0, T_star = 860.d0
   PetscReal, parameter :: a = 0.280d0, b = 0.779d0
   PetscReal, parameter :: c = 1.0d0, d = 1.00d0, e = 1.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3b
 
 ! ************************************************************************** !
 
-function IF97_subregion_3c(p,T) result (v)
+function IF97_subregion_3c(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(35) = [0.311967788763030D1, &
           0.276713458847564D5, 0.322583103403269D8, -0.342416065095363D3, &
@@ -2189,18 +2196,18 @@ function IF97_subregion_3c(p,T) result (v)
                                     2,2,3,3,8]
   PetscInt, parameter :: J_i(35) = [6,8,10,6,8,10,5,6,7,8,1,4,7,2,8,0,3,0,4,5,0, &
                                     1,2,0,1,2,0,2,0,1,3,7,0,7,1]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0022d0, p_star = 40.d0, T_star = 690.d0
   PetscReal, parameter :: a = 0.259d0, b = 0.903d0
   PetscReal, parameter :: c = 1.0d0, d = 1.00d0, e = 1.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3c
 
 ! ************************************************************************** !
 
-function IF97_subregion_3d(p,T) result (v)
+function IF97_subregion_3d(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(38) = [-0.452484847171645D-9, &
           0.315210389538801D-4, -0.214991352047545D-2, 0.508058874808345D3, &
@@ -2221,18 +2228,18 @@ function IF97_subregion_3d(p,T) result (v)
                                     -4,-3,-3,-2,-2,-1,-1,-1,0,0,1,1,3]
   PetscInt, parameter :: J_i(38) = [4,6,7,10,12,16,0,2,4,6,8,10,14,3,7,8,10,6,8, &
                                     1,2,5,7,0,1,7,2,4,0,1,0,1,5,0,2,0,6,0]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0029d0, p_star = 40.d0, T_star = 690.d0
   PetscReal, parameter :: a = 0.559d0, b = 0.939d0
   PetscReal, parameter :: c = 1.0d0, d = 1.00d0, e = 4.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3d
 
 ! ************************************************************************** !
 
-function IF97_subregion_3e(p,T) result (v)
+function IF97_subregion_3e(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(29) = [0.715815808404721D9, &
           -0.114328360753449D12, 0.376531002015720D-11, -0.903983668691157D-4, &
@@ -2250,18 +2257,18 @@ function IF97_subregion_3e(p,T) result (v)
                                     ]
   PetscInt, parameter :: J_i(29) = [14,16,3,6,10,14,16,7,8,10,6,6,2,4,2,6,7,0,1, &
                                     3,4,0,0,1,0,4,6,0,2]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0032d0, p_star = 40.d0, T_star = 710.d0
   PetscReal, parameter :: a = 0.587d0, b = 0.918d0
   PetscReal, parameter :: c = 1.0d0, d = 1.00d0, e = 1.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3e
 
 ! ************************************************************************** !
 
-function IF97_subregion_3f(p,T) result (v)
+function IF97_subregion_3f(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(42) = [-0.251756547792325D-7, &
           0.601307193668763D-5, -0.100615977450049D-2, 0.999969140252192D0, &
@@ -2284,18 +2291,18 @@ function IF97_subregion_3f(p,T) result (v)
   PetscInt, parameter :: J_i(42) = [-3,-2,-1,0,1,2,-1,1,2,3,0,1,-5,-2,0,-3,-8,1, &
                                     -6,-4,1,-6,-10,-8,-4,-12,-10,-8,-6,-4,-10,-8, &
                                     -12,-10,-12,-10,-6,-12,-12,-4,-12,-12]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0064d0, p_star = 40.d0, T_star = 730.d0
   PetscReal, parameter :: a = 0.587d0, b = 0.891d0
   PetscReal, parameter :: c = 0.5d0, d = 1.00d0, e = 4.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3f
 
 ! ************************************************************************** !
 
-function IF97_subregion_3g(p,T) result (v)
+function IF97_subregion_3g(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(38) = [0.412209020652996D-4, &
           -0.114987238280587D7, 0.948180885032080D10, -0.195788865718971D18, &
@@ -2317,18 +2324,18 @@ function IF97_subregion_3g(p,T) result (v)
   PetscInt, parameter :: J_i(38) = [7,12,14,18,22,24,14,20,24,7,8,10,12,8,22,7, &
                                     20,22,7,3,5,14,24,2,8,18,0,1,2,0,1,3,24,22, &
                                     12,3,0,6]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0027d0, p_star = 25.d0, T_star = 660.d0
   PetscReal, parameter :: a = 0.872d0, b = 0.971d0
   PetscReal, parameter :: c = 1.0d0, d = 1.00d0, e = 4.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3g
 
 ! ************************************************************************** !
 
-function IF97_subregion_3h(p,T) result (v)
+function IF97_subregion_3h(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(29) = [0.561379678887577D-1, &
           0.774135421587083D10, 0.111482975877938D-8, -0.143987128208183D-2, &
@@ -2346,18 +2353,18 @@ function IF97_subregion_3h(p,T) result (v)
                                     1,1]
   PetscInt, parameter :: J_i(29) = [8,12,4,6,8,10,14,16,0,1,6,7,8,4,6,8,2,3,4,2, &
                                     4,1,2,0,0,2,0,0,2]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0032d0, p_star = 25.d0, T_star = 660.d0
   PetscReal, parameter :: a = 0.898d0, b = 0.983d0
   PetscReal, parameter :: c = 1.0d0, d = 1.00d0, e = 4.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3h
 
 ! ************************************************************************** !
 
-function IF97_subregion_3i(p,T) result (v)
+function IF97_subregion_3i(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(42) = [0.106905684359136D1, &
           -0.148620857922333D1, 0.259862256980408D15, -0.446352055678749D-11, &
@@ -2380,18 +2387,18 @@ function IF97_subregion_3i(p,T) result (v)
   PetscInt, parameter :: J_i(42) = [0,1,10,-4,-2,-1,0,0,-5,0,-3,-2,-1,-6,-1,12, &
                                     -4,-3,-6,10,-8,-12,-6,-4,-10,-8,-4,5,-12,-10, &
                                     -8,-6,2,-12,-10,-12,-12,-8,-10,-5,-10,-8]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0041d0, p_star = 25.d0, T_star = 660.d0
   PetscReal, parameter :: a = 0.910d0, b = 0.984d0
   PetscReal, parameter :: c = 0.5d0, d = 1.00d0, e = 4.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3i
 
 ! ************************************************************************** !
 
-function IF97_subregion_3j(p,T) result (v)
+function IF97_subregion_3j(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(29) = [-0.111371317395540D-3, &
           0.100342892423685D1, 0.530615581928979D1, 0.179058760078792D-5, &
@@ -2408,18 +2415,18 @@ function IF97_subregion_3j(p,T) result (v)
                                     14,16,18,20,20,24,24,28,28]
   PetscInt, parameter :: J_i(29) = [-1,0,1,-2,-1,1,-1,1,-2,-2,2,-3,-2,0,3,-6,-8, &
                                     -3,-10,-8,-5,-10,-12,-12,-10,-12,-6,-12,-5]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0054d0, p_star = 25.d0, T_star = 670.d0
   PetscReal, parameter :: a = 0.875d0, b = 0.964d0
   PetscReal, parameter :: c = 0.5d0, d = 1.00d0, e = 4.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3j
 
 ! ************************************************************************** !
 
-function IF97_subregion_3k(p,T) result (v)
+function IF97_subregion_3k(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(34) = [-0.401215699576099D9, &
           0.484501478318406D11, 0.394721471363678D-14, 0.372629967374147D5, &
@@ -2438,18 +2445,18 @@ function IF97_subregion_3k(p,T) result (v)
   PetscInt, parameter :: J_i(34) = [10,12,-5,6,-12,-6,-2,-1,0,1,2,3,14,-3,-2,0, &
                                     1,2,-8,-6,-3,-2,0,4,-12,-6,-3,-12,-10,-8,-5, &
                                     -12,-12,-10]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0077d0, p_star = 25.d0, T_star = 680.d0
   PetscReal, parameter :: a = 0.802d0, b = 0.935d0
   PetscReal, parameter :: c = 1.0d0, d = 1.00d0, e = 1.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3k
 
 ! ************************************************************************** !
 
-function IF97_subregion_3l(p,T) result (v)
+function IF97_subregion_3l(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(43) = [0.260702058647537D10, &
           -0.188277213604704D15, 0.554923870289667D19, -0.758966946387758D23, &
@@ -2472,18 +2479,18 @@ function IF97_subregion_3l(p,T) result (v)
   PetscInt, parameter :: J_i(43) = [14,16,18,20,22,14,24,6,10,12,14,18,24,36,8, &
                                     4,5,7,16,1,3,18,20,2,3,10,0,1,3,0,1,2,12,0, &
                                     16,1,0,0,1,14,4,12,10]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0026d0, p_star = 24.d0, T_star = 650.d0
   PetscReal, parameter :: a = 0.908d0, b = 0.989d0
   PetscReal, parameter :: c = 1.0d0, d = 1.00d0, e = 4.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3l
 
 ! ************************************************************************** !
 
-function IF97_subregion_3m(p,T) result (v)
+function IF97_subregion_3m(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(40) = [0.811384363481847D0, &
           -0.568199310990094D4, -0.178657198172556D11, 0.795537657613427D32, &
@@ -2505,18 +2512,18 @@ function IF97_subregion_3m(p,T) result (v)
   PetscInt, parameter :: J_i(40) = [0,0,0,2,5,5,5,5,6,6,7,8,8,10,10,12,14,14,18, &
                                     20,20,22,22,24,24,28,28,28,28,28,32,32,32,36, &
                                     36,36,36,36,36,36]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0028d0, p_star = 23.d0, T_star = 650.d0
   PetscReal, parameter :: a = 1.000d0, b = 0.997d0
   PetscReal, parameter :: c = 1.0d0, d = 0.25d0, e = 1.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3m
 
 ! ************************************************************************** !
 
-function IF97_subregion_3n(p,T) result (v)
+function IF97_subregion_3n(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(39) = [0.280967799943151D-38, &
           0.614869006573609D-30, 0.582238667048942D-27, 0.390628369238462D-22, &
@@ -2537,15 +2544,15 @@ function IF97_subregion_3n(p,T) result (v)
   PetscInt, parameter :: J_i(39) = [-12,-12,-12,-12,-12,-12,-12,-12,-12,-10,-10, &
                                     -10,-10,-10,-10,-8,-8,-8,-8,-6,-6,-6,-5,-5, &
                                     -5,-4,-3,-3,-3,-2,-1,-1,0,1,1,2,4,5,6]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0031d0, p_star = 23.d0, T_star = 650.d0
   PetscReal, parameter :: a = 0.976d0, b = 0.997d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = exp(sum(n_i * (pi - a)**I_i * (theta - b)**J_i)) * v_star
 end function IF97_subregion_3n
 
-function IF97_subregion_3o(p,T) result (v)
+function IF97_subregion_3o(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(24) = [0.128746023979718D-34, &
           -0.735234770382342D-11, 0.289078692149150D-2, 0.244482731907223D0, &
@@ -2560,18 +2567,18 @@ function IF97_subregion_3o(p,T) result (v)
                                     14,20,20,24]
   PetscInt, parameter :: J_i(24) = [-12,-4,-1,-1,-10,-12,-8,-5,-4,-1,-4,-3,-8,-12, &
                                     -10,-8,-4,-12,-8,-12,-8,-12,-10,-12]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0034d0, p_star = 23.d0, T_star = 650.d0
   PetscReal, parameter :: a = 0.974d0, b = 0.996d0
   PetscReal, parameter :: c = 0.5d0, d = 1.00d0, e = 1.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3o
 
 ! ************************************************************************** !
 
-function IF97_subregion_3p(p,T) result (v)
+function IF97_subregion_3p(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(27) = [-0.982825342010366D-4, &
           0.105145700850612D1, 0.116033094095084D3, 0.324664750281543D4, &
@@ -2587,18 +2594,18 @@ function IF97_subregion_3p(p,T) result (v)
                                     14,16,18,20,22,24,24,36]
   PetscInt, parameter :: J_i(27) = [-1,0,1,2,1,-1,-3,0,-2,-2,-5,-4,-2,-3,-12,-6, &
                                     -5,-10,-8,-3,-8,-8,-10,-10,-12,-8,-12]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0041d0, p_star = 23.d0, T_star = 650.d0
   PetscReal, parameter :: a = 0.972d0, b = 0.997d0
   PetscReal, parameter :: c = 0.5d0, d = 1.00d0, e = 1.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3p
 
 ! ************************************************************************** !
 
-function IF97_subregion_3q(p,T) result (v)
+function IF97_subregion_3q(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(24) = [-0.820433843259950D5, &
           0.473271518461586D11, -0.805950021005413D-1, 0.328600025435980D2, &
@@ -2613,18 +2620,18 @@ function IF97_subregion_3q(p,T) result (v)
                                     -2,-2,-2,-2,-1,-1,-1,0,1,1,1]
   PetscInt, parameter :: J_i(24) = [10,12,6,7,8,10,8,6,2,5,3,4,3,0,1,2,4,0,1,2, &
                                     0,0,1,3]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0022d0, p_star = 23.d0, T_star = 650.d0
   PetscReal, parameter :: a = 0.848d0, b = 0.983d0
   PetscReal, parameter :: c = 1.0d0, d = 1.00d0, e = 4.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3q
 
 ! ************************************************************************** !
 
-function IF97_subregion_3r(p,T) result (v)
+function IF97_subregion_3r(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(27) = [0.144165955660863D-2, &
           -0.701438599628258D13, -0.830946716459219D-16, 0.261975135368109D0, &
@@ -2640,18 +2647,18 @@ function IF97_subregion_3r(p,T) result (v)
                                     10,10,10,10,10,10,10,12,14]
   PetscInt, parameter :: J_i(27) = [6,14,-3,3,4,5,8,-1,0,1,5,-6,-2,-12,-10,-8,-5, &
                                     -12,-10,-8,-6,-5,-4,-3,-2,-12,-12]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0054d0, p_star = 23.d0, T_star = 650.d0
   PetscReal, parameter :: a = 0.874d0, b = 0.982d0
   PetscReal, parameter :: c = 1.0d0, d = 1.00d0, e = 1.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3r
 
 ! ************************************************************************** !
 
-function IF97_subregion_3s(p,T) result (v)
+function IF97_subregion_3s(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(29) = [-0.532466612140254D23, &
           0.100415480000824D32, -0.191540001821367D30, 0.105618377808847D17, &
@@ -2668,18 +2675,18 @@ function IF97_subregion_3s(p,T) result (v)
                                     -1,0,0,0,0,1,1,3,3,3,4,4,4,5,14]
   PetscInt, parameter :: J_i(29) = [20,24,22,14,36,8,16,6,32,3,8,4,1,2,3,0,1,4, &
                                     28,0,32,0,1,2,3,18,24,4,24]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0022d0, p_star = 21.d0, T_star = 640.d0
   PetscReal, parameter :: a = 0.886d0, b = 0.990d0
   PetscReal, parameter :: c = 1.0d0, d = 1.00d0, e = 4.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3s
 
 ! ************************************************************************** !
 
-function IF97_subregion_3t(p,T) result (v)
+function IF97_subregion_3t(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(33) = [0.155287249586268D1, &
           0.664235115009031D1, -0.289366236727210D4, -0.385923202309848D13, &
@@ -2697,18 +2704,18 @@ function IF97_subregion_3t(p,T) result (v)
                                     10,10,18,20,22,22,24,28,32,32,32,36]
   PetscInt, parameter :: J_i(33) = [0,1,4,12,0,10,0,6,14,3,8,0,10,3,4,7,20,36,10, &
                                     12,14,16,22,18,32,22,36,24,28,22,32,36,36]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0088d0, p_star = 20.d0, T_star = 650.d0
   PetscReal, parameter :: a = 0.803d0, b = 1.020d0
   PetscReal, parameter :: c = 1.0d0, d = 1.00d0, e = 1.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3t
 
 ! ************************************************************************** !
 
-function IF97_subregion_3u(p,T) result (v)
+function IF97_subregion_3u(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(38) = [0.122088349258355D18, &
           0.104216468608488D10, -0.882666931564652D16, 0.259929510849499D20, &
@@ -2730,18 +2737,18 @@ function IF97_subregion_3u(p,T) result (v)
   PetscInt, parameter :: J_i(38) = [14,10,12,14,10,12,14,8,12,4,8,12,2,-1,1,12, &
                                     14,-3,1,-2,5,10,-5,-4,2,3,-5,2,-8,8,-4,-12, &
                                     -4,4,-12,-10,-6,6]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0026d0, p_star = 23.d0, T_star = 650.d0
   PetscReal, parameter :: a = 0.902d0, b = 0.988d0
   PetscReal, parameter :: c = 1.0d0, d = 1.00d0, e = 1.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3u
 
 ! ************************************************************************** !
 
-function IF97_subregion_3v(p,T) result (v)
+function IF97_subregion_3v(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(39) = [-0.415652812061591D-54, &
           0.177441742924043D-60, -0.357078668203377D-54, 0.359252213604114D-25, &
@@ -2763,18 +2770,18 @@ function IF97_subregion_3v(p,T) result (v)
   PetscInt, parameter :: J_i(39) = [-8,-12,-12,-3,5,6,8,10,1,2,6,8,10,14,-12,-10, &
                                     -6,10,-3,10,12,2,4,-2,0,-2,6,10,-12,-10,3,-6, &
                                     3,10,2,-12,-2,-3,1]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0031d0, p_star = 23.d0, T_star = 650.d0
   PetscReal, parameter :: a = 0.960d0, b = 0.995d0
   PetscReal, parameter :: c = 1.0d0, d = 1.00d0, e = 1.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3v
 
 ! ************************************************************************** !
 
-function IF97_subregion_3w(p,T) result (v)
+function IF97_subregion_3w(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(35) = [-0.586219133817016D-7, &
           -0.894460355005526D11, 0.531168037519774D-30, 0.109892402329239D0, &
@@ -2795,18 +2802,18 @@ function IF97_subregion_3w(p,T) result (v)
   PetscInt, parameter :: J_i(35) = [8,14,-1,8,6,8,14,-4,-3,2,8,-10,-1,3,-10,3,1, &
                                     2,-8,-4,1,-12,1,-1,-1,2,-12,-5,-10,-8,-6,-12, &
                                     -10,-12,-8]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0039d0, p_star = 23.d0, T_star = 650.d0
   PetscReal, parameter :: a = 0.959d0, b = 0.995d0
   PetscReal, parameter :: c = 1.0d0, d = 1.00d0, e = 4.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3w
 
 ! ************************************************************************** !
 
-function IF97_subregion_3x(p,T) result (v)
+function IF97_subregion_3x(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(36) = [0.377373741298151D19, &
           -0.507100883722913D13, -0.103363225598860D16, 0.184790814320773D-5, &
@@ -2827,16 +2834,16 @@ function IF97_subregion_3x(p,T) result (v)
   PetscInt, parameter :: J_i(36) = [14,10,10,1,2,14,-2,12,5,0,4,10,-10,-1,6,-12, &
                                     0,8,3,-6,-2,1,1,-6,-3,1,8,-8,-10,-8,-5,-4,-12, &
                                     -10,-8,-6]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0049d0, p_star = 23.d0, T_star = 650.d0
   PetscReal, parameter :: a = 0.910d0, b = 0.988d0
   PetscReal, parameter :: c = 1.0d0, d = 1.00d0, e = 1.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3x
 
-function IF97_subregion_3y(p,T) result (v)
+function IF97_subregion_3y(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(20) = [-0.525597995024633D-9, &
           0.583441305228407D4, -0.134778968457925D17, 0.118973500934212D26, &
@@ -2849,18 +2856,18 @@ function IF97_subregion_3y(p,T) result (v)
   PetscInt, parameter :: I_i(20) = [0,0,0,0,1,2,2,2,2,3,3,3,4,4,5,5,8,8,10,12]
   PetscInt, parameter :: J_i(20) = [-3,1,5,8,8,-4,-1,4,5,-8,4,8,-6,6,-2,1,-8,-2, &
                                     -5,-8]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0031d0, p_star = 22.d0, T_star = 650.d0
   PetscReal, parameter :: a = 0.996d0, b = 0.994d0
   PetscReal, parameter :: c = 1.0d0, d = 1.00d0, e = 4.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3y
 
 ! ************************************************************************** !
 
-function IF97_subregion_3z(p,T) result (v)
+function IF97_subregion_3z(p,T_Kelvin) result (v)
   implicit none
   PetscReal, parameter :: n_i(23) = [0.244007892290650D-10, &
           -0.463057430331242D7, 0.728803274777712D10, 0.327776302858856D16, &
@@ -2875,12 +2882,12 @@ function IF97_subregion_3z(p,T) result (v)
                                     3,6,6,6,6,8,8]
   PetscInt, parameter :: J_i(23) = [3,6,6,8,5,6,8,-2,5,6,2,-6,3,1,6,-6,-2,-6,-5, &
                                     -4,-1,-8,-4]
-  PetscReal :: p, T, v, pi, theta
+  PetscReal :: p, T_Kelvin, v, pi, theta
   PetscReal, parameter :: v_star = 0.0038d0, p_star = 22.d0, T_star = 650.d0
   PetscReal, parameter :: a = 0.993d0, b = 0.994d0
   PetscReal, parameter :: c = 1.0d0, d = 1.00d0, e = 4.d0
   pi = p/(p_star * 1.0D+6)
-  theta = (T + T273K)/T_star
+  theta = T_Kelvin/T_star
   v = sum(n_i * ((pi - a)**c)**I_i * ((theta - b)**d)**J_i)**e * v_star
 end function IF97_subregion_3z
 
@@ -3160,17 +3167,16 @@ subroutine EOSWaterEnthalpyIFC67(t,p,calculate_derivatives,hw, &
 
 end subroutine EOSWaterEnthalpyIFC67
 
-subroutine EOSWaterEnthalpyIF97(T,P,calculate_derivatives,hw, &
+subroutine EOSWaterEnthalpyIF97(T_Celsius,P,calculate_derivatives,hw, &
                                  hwp,hwt,ierr)
   implicit none
 
-  PetscReal, intent(in) :: T   ! Temperature in centigrade
+  PetscReal, intent(in) :: T_Celsius   ! Temperature in centigrade
   PetscReal, intent(in) :: P   ! Pressure in Pascals
   PetscBool, intent(in) :: calculate_derivatives
   PetscReal, intent(out) :: hw,hwp,hwt
   PetscErrorCode, intent(inout) :: ierr
 
-  PetscReal, parameter :: Tf = T273K !K
   PetscReal, parameter :: p_ref = 16.53d6 !Pa
   PetscReal, parameter :: T_ref = 1386.d0  ! K
   PetscReal, parameter :: R = 0.461526d0 ! kJ/kg-K
@@ -3191,26 +3197,26 @@ subroutine EOSWaterEnthalpyIF97(T,P,calculate_derivatives,hw, &
   PetscInt, parameter :: J_i(34) = [-2,-1,0,1,2,3,4,5,-9,-7,-1,0,1,3,-3,0,1, &
                                      3,17,-4,0,6,-5,-2,10,-8,-11,-6,-29,-31, &
                                      -38,-39,-40,-41]
-  PetscReal :: pi, tao,  g_tao, T_temp
+  PetscReal :: pi, tao,  g_tao, T_Kelvin
 
-  T_temp = T+Tf
+  T_Kelvin = T_Celsius + T273K
   pi = P/p_ref
-  tao = T_ref/T_temp
+  tao = T_ref/T_Kelvin
 
-  if (T_temp <= 623.15d0) then
+  if (T_Kelvin <= 623.15d0) then
     ! Region 1: Valid from 273.15 K to 623.15 K, Ps(T) to 100MPa
     g_tao = sum((n_i*(7.1d0-pi)**(I_i))*J_i*(tao-1.222d0)**(J_i-1))
 
-    hw = g_tao *T_ref*R
-    hw = hw*FMWH2O * 1.d3
+    hw = g_tao * T_ref * R
+    hw = hw * FMWH2O * 1.d3
 
     if (calculate_derivatives) then
       hwp = T_ref*R/p_ref * sum(-n_i*I_i*(7.1d0-pi)**(I_i-1) * &
            J_i*(tao-1.222d0)**(J_i-1))
-      hwt = -T_ref*T_ref*R/(T_temp*T_temp) * sum(n_i*(7.1d0-pi)**(I_i)* &
+      hwt = -T_ref*T_ref*R/(T_Kelvin*T_Kelvin) * sum(n_i*(7.1d0-pi)**(I_i)* &
            J_i*(J_i-1)*(tao-1.222d0)**(J_i-2))
-      hwp = hwp*FMWH2O * 1.d3
-      hwt = hwt*FMWH2O * 1.d3
+      hwp = hwp * FMWH2O * 1.d3
+      hwt = hwt * FMWH2O * 1.d3
     else
       hwp = UNINITIALIZED_DOUBLE
       hwt = UNINITIALIZED_DOUBLE
@@ -3218,26 +3224,27 @@ subroutine EOSWaterEnthalpyIF97(T,P,calculate_derivatives,hw, &
   else
     ! Region 3: Valid in "wedge" >623.15K, >Ps(T), and 100MPa
     ! moved to subroutine to avoid weighting down this more-used routine
-    call EOSWaterEnthalpyIF97Region3(T,P,PETSC_FALSE,hw,hwp,hwt)
+    call EOSWaterEnthalpyIF97Region3(T_Celsius,P,calculate_derivatives, &
+                                     hw,hwp,hwt)
   end if
 
 end subroutine EOSWaterEnthalpyIF97
 
 ! ************************************************************************** !
 
-subroutine EOSWaterEnthalpyIF97Region3(T,P,calculate_derivatives,hw,hwp,hwt)
+subroutine EOSWaterEnthalpyIF97Region3(T_Celsius,P,calculate_derivatives, &
+                                       hw,hwp,hwt)
 
   ! Region 3 is in terms of Helmholtz free energy, rather than
   ! Gibbs free energy. Enthalpy is in terms of density and temperature.
 
   implicit none
 
-  PetscReal, intent(in) :: T   ! Temperature in centigrade
+  PetscReal, intent(in) :: T_Celsius   ! Temperature in centigrade
   PetscReal, intent(in) :: P   ! Pressure in Pascals
   PetscBool, intent(in) :: calculate_derivatives
   PetscReal, intent(out) :: hw,hwp,hwt
 
-  PetscReal, parameter :: Tf = T273K !K
   PetscReal, parameter :: T_c = 647.096d0 ! K
   PetscReal, parameter :: rho_c = 322.d0 ! kg/m^3
   PetscReal, parameter :: R = 0.461526d0 ! kJ/kg-K
@@ -3259,14 +3266,15 @@ subroutine EOSWaterEnthalpyIF97Region3(T,P,calculate_derivatives,hw,hwp,hwt)
        2,2,2,3,3, 3,3,3,4,4, 4,4,5,5,5, 6,6,6,7,8, 9,9,10,10,11]
   PetscInt, parameter :: J_i(40) = [0,0,1,2,7, 10,12,23,2,6, 15,17,0,2,6, &
        7,22,26,0,2, 4,16,26,0,2, 4,26,1,3,26, 0,2,26,2,26, 2,26,0,1,26]
-  PetscReal :: tau,  phi_tau, phi_delta, T_temp, delta, dw
+  PetscReal :: tau,  phi_tau, phi_delta, T_Kelvin, delta, dw
   PetscReal :: dum1, dum2, dum3
+  PetscErrorCode :: ierr
 
-  T_temp = T+Tf
+  T_Kelvin = T_Celsius + T273K
   ! P only used to compute density
-  call EOSWaterDensityIF97Region3(T,P,PETSC_FALSE,dw,dum1,dum2,dum3)
+  call EOSWaterDensityIF97Region3(T_Celsius,P,PETSC_FALSE,dw,dum1,dum2,dum3,ierr)
   delta = dw/rho_c
-  tau = T_c/T_temp
+  tau = T_c/T_Kelvin
 
   ! Table 32
   phi_tau = sum(n_i(2:) * delta ** I_i(2:) * &
@@ -3275,7 +3283,8 @@ subroutine EOSWaterEnthalpyIF97Region3(T,P,calculate_derivatives,hw,hwp,hwt)
                                  delta ** (I_i(2:) - 1) * tau ** J_i(2:))
 
   ! Table 31
-  hw = (tau * phi_tau + delta * phi_delta) * R * T_temp
+  hw = (tau * phi_tau + delta * phi_delta) * R * T_Kelvin
+  hw = hw * FMWH2O * 1.d3  ! convert kJ/kg -> J/kmol to match Region 1
 
   if (calculate_derivatives) then
     stop 'IF97 region 3 water enthalpy derivative not implemented yet'
@@ -4403,9 +4412,10 @@ end subroutine EOSWaterSteamDenEnthTPPlanar
 
 ! ************************************************************************** !
 
-subroutine EOSWaterSteamDensityEnthalpyIF97(T, Pv, calculate_derivatives, &
-                                             dg, dgmol, hg, dgp, dgt, hgp, &
-                                             hgt, ierr)
+subroutine EOSWaterSteamDensityEnthalpyIF97(T_Celsius, Pv, &
+                                            calculate_derivatives, &
+                                            dg, dgmol, hg, dgp, dgt, hgp, &
+                                            hgt, ierr)
 
   !Author: Michael Nole
   !Date: 01/20/19
@@ -4418,7 +4428,7 @@ subroutine EOSWaterSteamDensityEnthalpyIF97(T, Pv, calculate_derivatives, &
 
   implicit none
 
-  PetscReal, intent(in) :: T
+  PetscReal, intent(in) :: T_Celsius
   PetscReal, intent(in) :: Pv
   PetscBool, intent(in) :: calculate_derivatives
   PetscReal, intent(out) :: dg,dgmol,dgp,dgt
@@ -4428,8 +4438,7 @@ subroutine EOSWaterSteamDensityEnthalpyIF97(T, Pv, calculate_derivatives, &
   PetscReal, parameter :: p_ref = 1.d6 !16.53d6 !Pa
   PetscReal, parameter :: T_ref = 540d0 !1386  ! K
   PetscReal, parameter :: R = 0.461526d0 ! kJ/kg-K
-  PetscReal, parameter :: Tf = T273K
-  PetscReal :: pi, tao, T_temp
+  PetscReal :: pi, tao, T_Kelvin
   PetscReal :: gamma_0_pi, gamma_r_pi, gamma_0_tao, gamma_r_tao
   ! region 2, Tables 10 and 11
   PetscReal, parameter :: n_i0(9) = [-0.96927686500217d1, 0.10086655968018d2, &
@@ -4469,26 +4478,26 @@ subroutine EOSWaterSteamDensityEnthalpyIF97(T, Pv, calculate_derivatives, &
   PetscInt, parameter :: I5_i(6) = [1,1,1,2,2,3]
   PetscInt, parameter :: J5_i(6) = [1,2,3,3,9,7]
 
-  T_temp = T+Tf
+  T_Kelvin = T_Celsius + T273K
   pi = Pv/p_ref
-  tao = T_ref/T_temp
+  tao = T_ref/T_Kelvin
 
-  if (T_temp <= 1073.15d0) then
+  if (T_Kelvin <= 1073.15d0) then
     ! region 2, tables 13 & 14
     gamma_0_pi = 1.d0/pi
     gamma_r_pi = sum(n_i*I_i*(pi**(I_i-1))*(tao-0.5)**J_i)
     gamma_0_tao = sum(n_i0*J_i0*tao**(J_i0-1))
     gamma_r_tao = sum(n_i*pi**(I_i)*J_i*(tao-0.5)**(J_i-1))
-    dg = R*T_temp/Pv * pi * (gamma_0_pi + gamma_r_pi) *1.d3
-    hg = R*T_temp * tao * (gamma_0_tao + gamma_r_tao)
+    dg = R*T_Kelvin/Pv * pi * (gamma_0_pi + gamma_r_pi) *1.d3
+    hg = R*T_Kelvin * tao * (gamma_0_tao + gamma_r_tao)
 
     dg = 1/dg
     dgmol = dg/FMWH2O
 
     if (calculate_derivatives) then
-      dgt = R/p_ref*((gamma_0_pi+gamma_r_pi)-T_ref/(T_temp)* &
+      dgt = R/p_ref*((gamma_0_pi+gamma_r_pi)-T_ref/(T_Kelvin)* &
            sum(n_i*I_i*pi**(I_i-1)*J_i*(tao-0.5d0)**(J_i-1)))
-      dgp = R*T_temp/(p_ref*p_ref)*(-1.d0/(pi*pi)+ &
+      dgp = R*T_Kelvin/(p_ref*p_ref)*(-1.d0/(pi*pi)+ &
            sum(n_i*I_i*(I_i-1)*pi**(I_i-2)*(tao-0.5d0)**(J_i)))
       hgt = -tao*tao*R*(sum(n_i0*J_i0*(J_i0-1)*tao**(J_i0-2))+ &
            sum(n_i*pi**(I_i)*J_i*(J_i-1)*(tao-0.5d0)**(J_i-2)))
@@ -4505,15 +4514,15 @@ subroutine EOSWaterSteamDensityEnthalpyIF97(T, Pv, calculate_derivatives, &
       hgp = UNINITIALIZED_DOUBLE
     endif
     hg = hg*FMWH2O * 1.d3
-  else if (T_temp <= T273K) then
+  else if (T_Kelvin <= T273K) then
     ! region 5: table 40
     gamma_0_pi = 1.d0/pi
     gamma_0_tao = sum(n5_i0*J5_i0*tao**(J5_i0-1))
     ! table 41
     gamma_r_pi = sum(n5_i*I5_i*(pi**(I5_i-1))*tao**J5_i)
     gamma_r_tao = sum(n5_i*pi**(I5_i)*J5_i*tao**(J5_i-1))
-    dg = R*T_temp/Pv * pi * (gamma_0_pi + gamma_r_pi) * 1.d3
-    hg = R*T_temp * tao * (gamma_0_tao + gamma_r_tao)
+    dg = R*T_Kelvin/Pv * pi * (gamma_0_pi + gamma_r_pi) * 1.d3
+    hg = R*T_Kelvin * tao * (gamma_0_tao + gamma_r_tao)
 
     dg = 1/dg
     dgmol = dg/FMWH2O
@@ -4839,25 +4848,25 @@ subroutine EOSWaterInternalEnergyIceFukusako(T, u_ice, calculate_derivatives, &
   PetscErrorCode, intent(out) :: ierr
 
   PetscReal, parameter :: Lw = -3.34110d5 ! Latent heat of fusion, J/kg
-  PetscReal :: T_temp
+  PetscReal :: T_Kelvin
 
-  T_temp = T + T273K
+  T_Kelvin = T + T273K
 
-  if (T_temp >= 90.d0) then
-    u_ice = Lw + 185.d0 * (T_temp-T273K) + 3.445 * &
-                 (T_temp**2 - T273K**2)
+  if (T_Kelvin >= 90.d0) then
+    u_ice = Lw + 185.d0 * (T_Kelvin-T273K) + 3.445 * &
+                 (T_Kelvin**2 - T273K**2)
   else
-    u_ice = Lw + 4.475 * (T_temp**2 - T273K**2)
+    u_ice = Lw + 4.475 * (T_Kelvin**2 - T273K**2)
   endif
 
   ! J/kg to J/mol
   u_ice = u_ice * FMWH2O * 1.d-3
 
   if (calculate_derivatives) then
-    if (T_temp >= 90.d0) then
-      du_ice_dT = 185.d0 + 2 * 3.445 * T_temp
+    if (T_Kelvin >= 90.d0) then
+      du_ice_dT = 185.d0 + 2 * 3.445 * T_Kelvin
     else
-      du_ice_dT = 4.475 * 2 * T_temp
+      du_ice_dT = 4.475 * 2 * T_Kelvin
     endif
     du_ice_dP = 0.d0
   endif
@@ -6234,12 +6243,12 @@ subroutine EOSWaterKelvin(Pc,rhow,T,Psat,Pv)
   PetscReal, intent(in) :: Pc, T, Psat, rhow
   PetscReal, intent(out) :: Pv
 
-  PetscReal :: vp_factor, T_temp
+  PetscReal :: vp_factor, T_Kelvin
 
-  T_temp = T + T273K
+  T_Kelvin = T + T273K
 
   ! For water:
-  vp_factor = -Pc / (rhow * 1000.0d0 * IDEAL_GAS_CONSTANT * T_temp)
+  vp_factor = -Pc / (rhow * 1000.0d0 * IDEAL_GAS_CONSTANT * T_Kelvin)
 
   Pv = exp(vp_factor) * Psat
 
