@@ -107,6 +107,7 @@ subroutine ReactionMnrlReadKinetics(mineral,input,option)
   character(len=MAXWORDLENGTH) :: keyword
   character(len=MAXWORDLENGTH) :: word
   character(len=MAXWORDLENGTH) :: name
+  character(len=MAXWORDLENGTH) :: internal_units
 
   type(mineral_rxn_type), pointer :: cur_mineral
   type(transition_state_rxn_type), pointer :: tstrxn, cur_tstrxn
@@ -161,8 +162,9 @@ subroutine ReactionMnrlReadKinetics(mineral,input,option)
             case('RATE_CONSTANT','PRECIPITATION_RATE_CONSTANT', &
                  'DISSOLUTION_RATE_CONSTANT')
               rate_constant = UNINITIALIZED_DOUBLE
+              internal_units = 'mol/m^2-sec'
               call ReactionMnrlReadRateConstant(input,cur_mineral%name, &
-                                                'mol/m^2-sec', &
+                                                internal_units, &
                                                 rate_constant,error_string, &
                                                 '',option)
               select case(keyword)
@@ -242,9 +244,10 @@ subroutine ReactionMnrlReadKinetics(mineral,input,option)
                   case('RATE_CONSTANT','PRECIPITATION_RATE_CONSTANT', &
                        'DISSOLUTION_RATE_CONSTANT')
                     rate_constant = UNINITIALIZED_DOUBLE
+                    internal_units = 'mol/m^2-sec'
                     call ReactionMnrlReadRateConstant(input, &
                                                       cur_mineral%name, &
-                                                      'mol/m^2-sec', &
+                                                      internal_units, &
                                                       rate_constant, &
                                                       error_string, &
                                                       'PREFACTOR',option)
@@ -562,10 +565,11 @@ subroutine ReactionMnrlReadRateConstant(input,mineral_name, &
   type(option_type) :: option
 
   character(len=MAXWORDLENGTH) :: word
+  character(len=MAXSTRINGLENGTH) :: string
 
   if (len_trim(internal_units) == 0) then
     option%io_buffer = 'Internal units must be specified as an argument &
-      & for ReactionMnrlReadRateConstant.'
+      &for ReactionMnrlReadRateConstant.'
     call PrintErrMsg(option)
   endif
 
@@ -577,14 +581,21 @@ subroutine ReactionMnrlReadRateConstant(input,mineral_name, &
   ! read units if they exist
   call InputReadWord(input,option,word,PETSC_TRUE)
   if (InputError(input)) then
-    input%err_buf = trim(mineral_name) // ' ' // trim(error_string2) // &
-      ' RATE_CONSTANT UNITS'
+    if (len_trim(error_string2) > 0) then
+      input%err_buf = trim(mineral_name) // ' ' // trim(error_string2) // &
+        ' RATE_CONSTANT UNITS'
+    else
+      input%err_buf = trim(mineral_name) // ' RATE_CONSTANT UNITS'
+    endif
     call InputDefaultMsg(input,option)
   else
+    if (len_trim(error_string2) > 0) then
+      string = trim(error_string)//','//trim(error_string2)//',RATE_CONSTANT'
+    else
+      string = trim(error_string)//',RATE_CONSTANT'
+    endif
     rate_constant = rate_constant * &
-      UnitsConvertToInternal(word,internal_units, &
-                             trim(error_string)//','//trim(error_string2)// &
-                             ',RATE_CONSTANT',option)
+      UnitsConvertToInternal(word,internal_units,string,option)
   endif
 
 end subroutine ReactionMnrlReadRateConstant
@@ -714,6 +725,7 @@ subroutine ReactionMnrlReadNucleation(mineral,input,option)
   type(nucleation_type), pointer :: last_nucleation
   character(len=MAXSTRINGLENGTH) :: error_string
   character(len=MAXWORDLENGTH) :: keyword
+  character(len=MAXWORDLENGTH) :: internal_units
 
   ! find last in list, if the list exists
   last_nucleation => mineral%nucleation_list
@@ -766,8 +778,9 @@ subroutine ReactionMnrlReadNucleation(mineral,input,option)
         case(MINERAL_NUCLEATION_CLASSICAL)
           select case(keyword)
             case('RATE_CONSTANT')
+              internal_units = 'mol/sec'
               call ReactionMnrlReadRateConstant(input,nucleation%name, &
-                                                'mol/m^2-sec', &
+                                                internal_units, &
                                                 nucleation%rate_constant, &
                                                 error_string, &
                                                 'NUCLEATION',option)
@@ -788,8 +801,9 @@ subroutine ReactionMnrlReadNucleation(mineral,input,option)
         case(MINERAL_NUCLEATION_SIMPLIFIED)
           select case(keyword)
             case('RATE_CONSTANT')
+              internal_units = 'mol/sec'
               call ReactionMnrlReadRateConstant(input,nucleation%name, &
-                                                'mol/sec'
+                                                internal_units, &
                                                 nucleation%rate_constant, &
                                                 error_string, &
                                                 'NUCLEATION',option)
@@ -2208,7 +2222,7 @@ subroutine ReactionMnrlUpdateKineticState(rt_auxvar,global_auxvar, &
     endif
   enddo
 
-  if (option%iflowmode /= SCO2_MODE) then
+  if (option%transport%couple_co2 .and. option%iflowmode /= SCO2_MODE) then
     global_auxvar%reaction_rate = &
       global_auxvar%reaction_rate / option%flow_dt
   endif
