@@ -1,0 +1,219 @@
+SUBSURFACE
+  GRID
+    TYPE STRUCTURED
+    BOUNDS
+      0.0 0.0 0.0
+      1.0 1.0 1.0
+    /
+    NXYZ 4 4 4
+    GRAVITY 0.0 0.0 0.0
+  END
+
+  EOS WATER
+    DENSITY CONSTANT 997.16d0
+    VISCOSITY CONSTANT 1.0d-3
+  END
+
+  MATERIAL_PROPERTY soil
+    ID 1
+    POROSITY 0.2d0
+    TORTUOSITY 1
+    CHARACTERISTIC_CURVES cc_default
+    SOIL_COMPRESSIBILITY_FUNCTION LINEAR
+    SOIL_REFERENCE_PRESSURE 200000.d0
+    PERMEABILITY
+      PERM_ISO 1.0d-12
+    END
+    SOIL_COMPRESSIBILITY 0.d0
+  END
+
+  CHARACTERISTIC_CURVES cc_default
+    SATURATION_FUNCTION VAN_GENUCHTEN
+      M 0.5d0
+      ALPHA 1.0d-4
+      LIQUID_RESIDUAL_SATURATION 0.1d0
+      MAX_CAPILLARY_PRESSURE 1.0d8
+    END
+    PERMEABILITY_FUNCTION MUALEM_VG_LIQ
+      M 0.5d0
+      LIQUID_RESIDUAL_SATURATION 0.1d0
+    END
+  END
+
+  TIME
+    INITIAL_TIMESTEP_SIZE 1.d10 s
+    MAXIMUM_TIMESTEP_SIZE 1.d10 s
+    FINAL_TIME 1.d10 s
+  END
+
+  OUTPUT
+    SNAPSHOT_FILE
+      FORMAT HDF5
+      NO_PRINT_INITIAL
+      VARIABLES
+        LIQUID_PRESSURE
+        X_COORDINATE
+        Y_COORDINATE
+        Z_COORDINATE
+      END
+    END
+  END
+
+  #=========================== datasets ======================================
+  DATASET MAPPED mms_source_rate
+    FILENAME mms_flow_source.h5
+    HDF5_DATASET_NAME Flow_Source
+    MAP_HDF5_DATASET_NAME Flow_Source_Map
+  END
+
+  #=========================== regions =======================================
+  REGION All
+    COORDINATES
+      0.0 0.0 0.0
+      1.0 1.0 1.0
+    END
+  END
+
+  REGION west
+    FACE WEST
+    COORDINATES
+      0.0 0.0 0.0
+      0.0 1.0 1.0
+    END
+  END
+
+  REGION east
+    FACE EAST
+    COORDINATES
+      1.0 0.0 0.0
+      1.0 1.0 1.0
+    END
+  END
+
+  REGION south
+    FACE SOUTH
+    COORDINATES
+      0.0 0.0 0.0
+      1.0 0.0 1.0
+    END
+  END
+
+  REGION north
+    FACE NORTH
+    COORDINATES
+      0.0 1.0 0.0
+      1.0 1.0 1.0
+    END
+  END
+
+  REGION bottom
+    FACE BOTTOM
+    COORDINATES
+      0.0 0.0 0.0
+      1.0 1.0 0.0
+    END
+  END
+
+  REGION top
+    FACE TOP
+    COORDINATES
+      0.0 0.0 1.0
+      1.0 1.0 1.0
+    END
+  END
+
+  #=========================== flow conditions ================================
+  # Initial condition: uniform pressure p0 (so dp = p - p_init is non-trivial)
+  FLOW_CONDITION initial
+    UNITS Pa
+    TYPE
+      LIQUID_PRESSURE DIRICHLET
+    END
+    LIQUID_PRESSURE 200000.d0
+  END
+
+  # Boundary condition: p = p0 on all faces (sin(pi*x)=0 at x=0,1)
+  FLOW_CONDITION bc_pressure
+    UNITS Pa
+    TYPE
+      LIQUID_PRESSURE DIRICHLET
+    END
+    LIQUID_PRESSURE 200000.d0
+  END
+
+  # MMS source term (spatially varying, kg/s per cell)
+  FLOW_CONDITION mms_source
+    TYPE
+      RATE HETEROGENEOUS_MASS_RATE
+    END
+    RATE DATASET mms_source_rate
+  END
+
+  #=========================== initial / boundary / source ====================
+  INITIAL_CONDITION initial
+    FLOW_CONDITION initial
+    REGION All
+  END
+
+  BOUNDARY_CONDITION west
+    FLOW_CONDITION bc_pressure
+    REGION west
+  END
+
+  BOUNDARY_CONDITION east
+    FLOW_CONDITION bc_pressure
+    REGION east
+  END
+
+  BOUNDARY_CONDITION south
+    FLOW_CONDITION bc_pressure
+    REGION south
+  END
+
+  BOUNDARY_CONDITION north
+    FLOW_CONDITION bc_pressure
+    REGION north
+  END
+
+  BOUNDARY_CONDITION bottom
+    FLOW_CONDITION bc_pressure
+    REGION bottom
+  END
+
+  BOUNDARY_CONDITION top
+    FLOW_CONDITION bc_pressure
+    REGION top
+  END
+
+  SOURCE_SINK mms_source
+    FLOW_CONDITION mms_source
+    REGION All
+  END
+
+  STRATA
+    REGION All
+    MATERIAL soil
+  END
+
+  NUMERICAL_METHODS FLOW
+    LINEAR_SOLVER
+      SOLVER BCGS
+      PC_TYPE ILU
+      ATOL 1.0d-50
+      RTOL 1.0d-12
+      DTOL 10000
+      MAXIMUM_NUMBER_OF_ITERATIONS 10000
+    END
+    TIMESTEPPER
+      PRESSURE_CHANGE_GOVERNOR 1.0d20
+      TIMESTEP_OVERSTEP_REL_TOLERANCE 0.5
+    END
+    NEWTON_SOLVER FLOW
+      ATOL 1.0d-50
+      RTOL 1.0d-10
+      STOL 1.0d-10
+      DTOL 10000
+      MAXIMUM_NUMBER_OF_ITERATIONS 25
+    END
+  END
+END_SUBSURFACE
