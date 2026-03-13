@@ -469,37 +469,37 @@ subroutine GeomechRealizCreateDiscretization(geomech_realization)
 
   call GeomechDiscretizationDuplicateVector(geomech_discretization, &
                                             geomech_field%press_loc, &
-                                            geomech_field%youngs_modulus)
+                                            geomech_field%youngs_modulus_loc)
 
   call GeomechDiscretizationDuplicateVector(geomech_discretization, &
                                             geomech_field%press_loc, &
-                                            geomech_field%poissons_ratio)
+                                            geomech_field%poissons_ratio_loc)
 
   call GeomechDiscretizationDuplicateVector(geomech_discretization, &
                                             geomech_field%press_loc, &
-                                            geomech_field%density)
+                                            geomech_field%density_loc)
 
   call GeomechDiscretizationDuplicateVector(geomech_discretization, &
                                             geomech_field%press_loc, &
-                                            geomech_field%biot_coeff)
+                                            geomech_field%biot_coeff_loc)
 
   call GeomechDiscretizationDuplicateVector(geomech_discretization, &
                                             geomech_field%press_loc, &
-                                            geomech_field%thermal_exp_coeff)
+                                            geomech_field%thermal_exp_coeff_loc)
 
   call GeomechDiscretizationDuplicateVector(geomech_discretization, &
                                             geomech_field%press_loc, &
-                                            geomech_field%body_force_x)
+                                            geomech_field%body_force_x_loc)
 
   call GeomechDiscretizationDuplicateVector(geomech_discretization, &
                                             geomech_field%press_loc, &
-                                            geomech_field%body_force_y)
+                                            geomech_field%body_force_y_loc)
 
   call GeomechDiscretizationDuplicateVector(geomech_discretization, &
                                             geomech_field%press_loc, &
-                                            geomech_field%body_force_z)
+                                            geomech_field%body_force_z_loc  )
 
-  ! 6 dof for strain and stress
+  ! 6 dof for strain and stress, local
   call GeomechDiscretizationCreateVector(geomech_discretization,SIX_INTEGER, &
                                          geomech_field%strain_loc, &
                                          LOCAL,option)
@@ -511,9 +511,10 @@ subroutine GeomechRealizCreateDiscretization(geomech_realization)
                                             geomech_field%stress_loc)
 
   call GeomechDiscretizationDuplicateVector(geomech_discretization, &
-                                            geomech_field%stress_loc, &
+                                            geomech_field%strain_loc, &
                                             geomech_field%stress_total_loc)
 
+  ! 6 dof for strain and stress, global
   call GeomechDiscretizationCreateVector(geomech_discretization,SIX_INTEGER, &
                                          geomech_field%strain, &
                                          GLOBAL,option)
@@ -525,7 +526,7 @@ subroutine GeomechRealizCreateDiscretization(geomech_realization)
                                             geomech_field%stress)
 
   call GeomechDiscretizationDuplicateVector(geomech_discretization, &
-                                            geomech_field%stress, &
+                                            geomech_field%strain, &
                                             geomech_field%stress_total)
 
   grid => geomech_discretization%grid

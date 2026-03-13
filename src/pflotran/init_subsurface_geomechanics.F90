@@ -1060,8 +1060,8 @@ subroutine InitMatPropToGeomechRegions(geomech_realization)
   character(len=MAXSTRINGLENGTH) :: dataset_name
   PetscErrorCode :: ierr
 
-  Vec :: temp_vec
-  PetscReal, pointer :: temp_vec_p(:)
+  Vec :: temp_vec_loc
+  PetscReal, pointer :: temp_vec_loc_p(:)
 
   type(option_type), pointer :: option
   type(geomech_grid_type), pointer :: grid
@@ -1177,7 +1177,7 @@ subroutine InitMatPropToGeomechRegions(geomech_realization)
   ! read in any user-defined geomech property fields
   call GeomechDiscretizationDuplicateVector(geomech_discretization, &
                                             field%press_loc, &
-                                            temp_vec)
+                                            temp_vec_loc)
   do geomech_material_id = 1, size(patch%geomech_material_property_array)
     geomech_material_property => &
             patch%geomech_material_property_array(geomech_material_id)%ptr
@@ -1187,121 +1187,121 @@ subroutine InitMatPropToGeomechRegions(geomech_realization)
       ! Set the value of field%youngs_modulus for this material to the dataset values
       call GeomechReadDatasetToVecWithMask(geomech_realization, &
             geomech_material_property%youngs_modulus_dataset, &
-            geomech_material_property%id,PETSC_FALSE,field%youngs_modulus,temp_vec)
+            geomech_material_property%id,PETSC_FALSE,field%youngs_modulus_loc,temp_vec_loc)
     else
       ! Set the value of field%youngs_modulus for this material to the constant value
-      call VecGetArray(field%youngs_modulus,temp_vec_p,ierr);CHKERRQ(ierr)
+      call VecGetArray(field%youngs_modulus_loc,temp_vec_loc_p,ierr);CHKERRQ(ierr)
       do local_id = 1, grid%nlmax_node
         if (patch%imat(grid%nL2G(local_id)) == geomech_material_property%id) then
-          temp_vec_p(local_id) = geomech_material_property%youngs_modulus
+          temp_vec_loc_p(local_id) = geomech_material_property%youngs_modulus
         endif
       enddo
-      call VecRestoreArray(field%youngs_modulus,temp_vec_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(field%youngs_modulus_loc,temp_vec_loc_p,ierr);CHKERRQ(ierr)
     endif
     ! Poisson's ratio
     if (associated(geomech_material_property%poissons_ratio_dataset)) then
       ! Set the value of field%poissons_ratio for this material to the dataset values
       call GeomechReadDatasetToVecWithMask(geomech_realization, &
             geomech_material_property%poissons_ratio_dataset, &
-            geomech_material_property%id,PETSC_FALSE,field%poissons_ratio,temp_vec)
+            geomech_material_property%id,PETSC_FALSE,field%poissons_ratio_loc,temp_vec_loc)
     else
       ! Set the value of field%poissons_ratio for this material to the constant value
-      call VecGetArray(field%poissons_ratio,temp_vec_p,ierr);CHKERRQ(ierr)
+      call VecGetArray(field%poissons_ratio_loc,temp_vec_loc_p,ierr);CHKERRQ(ierr)
       do local_id = 1, grid%nlmax_node
         if (patch%imat(grid%nL2G(local_id)) == geomech_material_property%id) then
-          temp_vec_p(local_id) = geomech_material_property%poissons_ratio
+          temp_vec_loc_p(local_id) = geomech_material_property%poissons_ratio
         endif
       enddo
-      call VecRestoreArray(field%poissons_ratio,temp_vec_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(field%poissons_ratio_loc,temp_vec_loc_p,ierr);CHKERRQ(ierr)
     endif
     ! Density
     if (associated(geomech_material_property%density_dataset)) then
       ! Set the value of field%density for this material to the dataset values
       call GeomechReadDatasetToVecWithMask(geomech_realization, &
             geomech_material_property%density_dataset, &
-            geomech_material_property%id,PETSC_FALSE,field%density,temp_vec)
+            geomech_material_property%id,PETSC_FALSE,field%density_loc,temp_vec_loc)
     else
       ! Set the value of field%density for this material to the constant value
-      call VecGetArray(field%density,temp_vec_p,ierr);CHKERRQ(ierr)
+      call VecGetArray(field%density_loc,temp_vec_loc_p,ierr);CHKERRQ(ierr)
       do local_id = 1, grid%nlmax_node
         if (patch%imat(grid%nL2G(local_id)) == geomech_material_property%id) then
-          temp_vec_p(local_id) = geomech_material_property%density
+          temp_vec_loc_p(local_id) = geomech_material_property%density
         endif
       enddo
-      call VecRestoreArray(field%density,temp_vec_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(field%density_loc,temp_vec_loc_p,ierr);CHKERRQ(ierr)
     endif
     ! Biot's coefficient
     if (associated(geomech_material_property%biot_coeff_dataset)) then
       ! Set the value of field%biot_coeff for this material to the dataset values
       call GeomechReadDatasetToVecWithMask(geomech_realization, &
             geomech_material_property%biot_coeff_dataset, &
-            geomech_material_property%id,PETSC_FALSE,field%biot_coeff,temp_vec)
+            geomech_material_property%id,PETSC_FALSE,field%biot_coeff_loc,temp_vec_loc)
     else
       ! Set the value of field%biot_coeff for this material to the constant value
-      call VecGetArray(field%biot_coeff,temp_vec_p,ierr);CHKERRQ(ierr)
+      call VecGetArray(field%biot_coeff_loc,temp_vec_loc_p,ierr);CHKERRQ(ierr)
       do local_id = 1, grid%nlmax_node
         if (patch%imat(grid%nL2G(local_id)) == geomech_material_property%id) then
-          temp_vec_p(local_id) = geomech_material_property%biot_coeff
+          temp_vec_loc_p(local_id) = geomech_material_property%biot_coeff
         endif
       enddo
-      call VecRestoreArray(field%biot_coeff,temp_vec_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(field%biot_coeff_loc,temp_vec_loc_p,ierr);CHKERRQ(ierr)
     endif
     ! Thermal expansion coefficient
     if (associated(geomech_material_property%thermal_exp_coeff_dataset)) then
       ! Set the value of field%thermal_exp_coeff for this material to the dataset values
       call GeomechReadDatasetToVecWithMask(geomech_realization, &
             geomech_material_property%thermal_exp_coeff_dataset, &
-            geomech_material_property%id,PETSC_FALSE,field%thermal_exp_coeff,temp_vec)
+            geomech_material_property%id,PETSC_FALSE,field%thermal_exp_coeff_loc,temp_vec_loc)
     else
       ! Set the value of field%thermal_exp_coeff for this material to the constant value
-      call VecGetArray(field%thermal_exp_coeff,temp_vec_p,ierr);CHKERRQ(ierr)
+      call VecGetArray(field%thermal_exp_coeff_loc,temp_vec_loc_p,ierr);CHKERRQ(ierr)
       do local_id = 1, grid%nlmax_node
         if (patch%imat(grid%nL2G(local_id)) == geomech_material_property%id) then
-          temp_vec_p(local_id) = geomech_material_property%thermal_exp_coeff
+          temp_vec_loc_p(local_id) = geomech_material_property%thermal_exp_coeff
         endif
       enddo
-      call VecRestoreArray(field%thermal_exp_coeff,temp_vec_p,ierr);CHKERRQ(ierr)
+      call VecRestoreArray(field%thermal_exp_coeff_loc,temp_vec_loc_p,ierr);CHKERRQ(ierr)
     endif
   enddo
 
   ! Scatter owned-node property values to ghost nodes
   call GeomechDiscretizationLocalToLocal(geomech_discretization, &
-                                         field%youngs_modulus, &
-                                         field%youngs_modulus,ONEDOF)
+                                         field%youngs_modulus_loc, &
+                                         field%youngs_modulus_loc,ONEDOF)
   call GeomechDiscretizationLocalToLocal(geomech_discretization, &
-                                         field%poissons_ratio, &
-                                         field%poissons_ratio,ONEDOF)
+                                         field%poissons_ratio_loc, &
+                                         field%poissons_ratio_loc,ONEDOF)
   call GeomechDiscretizationLocalToLocal(geomech_discretization, &
-                                         field%density, &
-                                         field%density,ONEDOF)
+                                         field%density_loc, &
+                                         field%density_loc,ONEDOF)
   call GeomechDiscretizationLocalToLocal(geomech_discretization, &
-                                         field%biot_coeff, &
-                                         field%biot_coeff,ONEDOF)
+                                         field%biot_coeff_loc, &
+                                         field%biot_coeff_loc,ONEDOF)
   call GeomechDiscretizationLocalToLocal(geomech_discretization, &
-                                         field%thermal_exp_coeff, &
-                                         field%thermal_exp_coeff,ONEDOF)
+                                         field%thermal_exp_coeff_loc, &
+                                         field%thermal_exp_coeff_loc,ONEDOF)
 
-  call VecSet(field%body_force_x,geomech_realization%body_force(X_DIRECTION),ierr);CHKERRQ(ierr)
-  call VecSet(field%body_force_y,geomech_realization%body_force(Y_DIRECTION),ierr);CHKERRQ(ierr)
-  call VecSet(field%body_force_z,geomech_realization%body_force(Z_DIRECTION),ierr);CHKERRQ(ierr)
+  call VecSet(field%body_force_x_loc,geomech_realization%body_force(X_DIRECTION),ierr);CHKERRQ(ierr)
+  call VecSet(field%body_force_y_loc,geomech_realization%body_force(Y_DIRECTION),ierr);CHKERRQ(ierr)
+  call VecSet(field%body_force_z_loc,geomech_realization%body_force(Z_DIRECTION),ierr);CHKERRQ(ierr)
 
   if (associated(geomech_realization%body_force_x_dataset)) then
     call GeomechReadDatasetToVecWithMask(geomech_realization, &
           geomech_realization%body_force_x_dataset, &
-          0,PETSC_TRUE,field%body_force_x,temp_vec)
+          0,PETSC_TRUE,field%body_force_x_loc,temp_vec_loc)
   endif
   if (associated(geomech_realization%body_force_y_dataset)) then
     call GeomechReadDatasetToVecWithMask(geomech_realization, &
           geomech_realization%body_force_y_dataset, &
-          0,PETSC_TRUE,field%body_force_y,temp_vec)
+          0,PETSC_TRUE,field%body_force_y_loc,temp_vec_loc)
   endif
   if (associated(geomech_realization%body_force_z_dataset)) then
     call GeomechReadDatasetToVecWithMask(geomech_realization, &
           geomech_realization%body_force_z_dataset, &
-          0,PETSC_TRUE,field%body_force_z,temp_vec)
+          0,PETSC_TRUE,field%body_force_z_loc,temp_vec_loc)
   endif
 
-  call VecDestroy(temp_vec,ierr);CHKERRQ(ierr)
+  call VecDestroy(temp_vec_loc,ierr);CHKERRQ(ierr)
 
   call GeomechanicsMaterialPropertyDestroy(null_geomech_material_property)
   nullify(null_geomech_material_property)
