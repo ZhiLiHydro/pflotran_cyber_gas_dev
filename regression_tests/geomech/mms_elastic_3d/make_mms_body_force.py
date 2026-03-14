@@ -63,7 +63,7 @@ for iz in range(nzv):
 
 cell_ids = np.arange(1, nnode + 1, dtype=np.int32)
 
-with h5py.File("mms_body_force.h5", "w") as h5:
+with h5py.File("mms_body_force_elastic.h5", "w") as h5:
     h5.create_dataset("Cell Ids", data=cell_ids)
     h5.create_dataset("Body_force_x", data=body_x)
     h5.create_dataset("Body_force_y", data=body_y)

@@ -178,15 +178,16 @@ GEOCHEMISTRY_CFG = \
 	wipp/nuts/nuts.cfg
 
 GEOMECHANICS_CFG = \
+	geomech/coupling_order/coupling_order.cfg \
+	geomech/mms/mms.cfg \
+	geomech/spatially_varying/spatially_varying.cfg \
+	geomech/terzaghi/terzaghi.cfg \
+	geomech/thin_plate/thin_plate.cfg \
+	geomech/traction_bc/traction_bc.cfg \
 	geomech/uniaxial_loading/uniaxial_loading.cfg \
 	geomech/uniaxial_loading_biot/uniaxial_loading_biot.cfg \
 	geomech/uniaxial_strain/uniaxial_strain.cfg \
 	geomech/uniaxial_strain_tets/uniaxial_strain_tets.cfg \
-	geomech/terzaghi/terzaghi.cfg \
-	geomech/spatially_varying/spatially_varying.cfg \
-	geomech/coupling_order/coupling_order.cfg \
-	geomech/thin_plate/thin_plate.cfg \
-	geomech/traction_bc/traction_bc.cfg \
 	multiphysics/hm/hm.cfg \
 	multiphysics/thm/thm.cfg
 

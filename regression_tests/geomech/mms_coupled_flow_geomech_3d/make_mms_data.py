@@ -219,9 +219,9 @@ def main():
 
     # ---- Generate files ----
     generate_body_force(nx, ny, nz, E, nu, rho_s, rho_f, phi, Au, Ap, beta,
-                        "mms_body_force.h5")
+                        "mms_body_force_coupled.h5")
     generate_flow_source(nx, ny, nz, k, mu_l, rho_l, Ap,
-                         "mms_flow_source.h5")
+                         "mms_flow_source_coupled.h5")
 
     print(f"Generated MMS data for {nx}x{ny}x{nz} grid:")
     print(f"  mms_body_force.h5  ({(nx+1)*(ny+1)*(nz+1)} vertices)")
