@@ -17,7 +17,7 @@ END
 
 SUBSURFACE
 
-  EXTERNAL_FILE ../common/subsurface_common.txt
+  EXTERNAL_FILE ./common/subsurface_common.txt
 
   GRID
     TYPE STRUCTURED
@@ -78,7 +78,7 @@ END_SUBSURFACE
 
 GEOMECHANICS
 
-  EXTERNAL_FILE ../common/geomechanics_common.txt
+  EXTERNAL_FILE ./common/geomechanics_common.txt
 
   GEOMECHANICS_GRID
     TYPE STRUCTURED_INTERNAL

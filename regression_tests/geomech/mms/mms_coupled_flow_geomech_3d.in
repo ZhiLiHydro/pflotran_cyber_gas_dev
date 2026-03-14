@@ -37,7 +37,7 @@ END
 
 SUBSURFACE
 
-  EXTERNAL_FILE ../mms_biot_3d/new_subsurface_common.txt
+  EXTERNAL_FILE ./common/subsurface_common.txt
 
   GRID
     TYPE STRUCTURED
@@ -178,7 +178,7 @@ END_SUBSURFACE
 
 GEOMECHANICS
 
-EXTERNAL_FILE ../mms_biot_3d/new_geomechanics_common.txt
+EXTERNAL_FILE ./common/geomechanics_common.txt
 
   GEOMECHANICS_FLOW_INTERPOLATION
     ORDER 1

@@ -104,7 +104,7 @@ GEOMECHANICS
     ORDER 1
   /
 
-EXTERNAL_FILE ./geomechanics_common.txt
+EXTERNAL_FILE ./common/geomechanics_common.txt
 
   GEOMECHANICS_REGRESSION
     VARIABLES
