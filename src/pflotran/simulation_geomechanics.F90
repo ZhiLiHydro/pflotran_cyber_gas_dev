@@ -155,7 +155,7 @@ subroutine GeomechanicsSimulationExecuteRun(this)
   !
 
   use Waypoint_module
-  use Timestepper_Base_class, only : TS_CONTINUE
+  use Timestepper_Base_class, only : TS_CONTINUE, TS_STOP_FAILURE, TS_STOP_MAX_TIME_STEP, TS_STOP_WALLCLOCK_EXCEEDED
 
   implicit none
 
@@ -165,6 +165,8 @@ subroutine GeomechanicsSimulationExecuteRun(this)
   PetscReal :: final_time
   PetscReal :: dt
   PetscReal, parameter :: tolerance = 1.d-3
+  character(len=MAXSTRINGLENGTH) :: append_name
+  class(pmc_base_type), pointer :: cur_pmc
 
   time = this%option%time
   dt = this%geomech%realization%dt_coupling
@@ -200,6 +202,28 @@ subroutine GeomechanicsSimulationExecuteRun(this)
         if (this%stop_flag /= TS_CONTINUE) exit ! end simulation
 
         if (time >= final_time) exit
+      enddo
+    endif
+  endif
+
+  ! only checkpoint successful simulations
+  if (this%stop_flag /= TS_STOP_FAILURE) then
+    select case(this%stop_flag)
+      case(TS_STOP_MAX_TIME_STEP)
+        append_name = '-restart-max-ts'
+      case(TS_STOP_WALLCLOCK_EXCEEDED)
+        append_name = '-restart-max-wc'
+      case default ! TS_STOP_END_SIMULATION
+        append_name = '-restart'
+    end select
+    if (associated(this%option%checkpoint)) then
+      cur_pmc => this%process_model_coupler_list
+      do while (associated(cur_pmc))
+        if (cur_pmc%is_master) then
+          call cur_pmc%Checkpoint(append_name)
+          exit
+        endif
+        cur_pmc => cur_pmc%peer
       enddo
     endif
   endif
