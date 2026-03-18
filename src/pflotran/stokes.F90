@@ -25,6 +25,7 @@ module Stokes_module
             StokesUpdateSolution, &
             StokesMaxChange, &
             StokesDestroy, &
+            StokesComputeViscousDiag, &
             StokesResidual, &
             StokesJacobian, &
             StokesResidualInternalConn, &
@@ -156,9 +157,73 @@ subroutine StokesSetup(realization,rho,mu)
     coupler => coupler%next
   enddo
 
-
+  ! Allocate cached viscous diagonal for Rhie-Chow stabilization
+  if (.not.associated(stokes_aux%aP)) then
+    allocate(stokes_aux%aP(grid%ngmax))
+    stokes_aux%aP = 0.d0
+  endif
 
 end subroutine StokesSetup
+
+! ************************************************************************** !
+
+subroutine StokesComputeViscousDiag(realization,mu)
+  !
+  ! Computes the viscous diagonal aP(gid) = sum_faces (mu * A / dx)
+  ! over internal connections.  Result is stored in
+  ! patch%aux%Stokes%aP(:) (pre-allocated in StokesSetup).
+  !
+  ! Must be called once per residual/Jacobian evaluation BEFORE any
+  ! routine that uses the Rhie-Chow pressure stabilization.
+  !
+  ! Author: Satish Karra
+  ! Date: 03/17/26
+  !
+
+  use Realization_Subsurface_class
+  use Grid_module
+  use Patch_module
+  use Connection_module
+
+  implicit none
+
+  class(realization_subsurface_type) :: realization
+  PetscReal, intent(in) :: mu
+
+  type(patch_type),  pointer :: patch
+  type(grid_type),   pointer :: grid
+  type(stokes_type), pointer :: stokes_aux
+  type(connection_set_list_type), pointer :: conn_list
+  type(connection_set_type),      pointer :: cset
+
+  PetscInt  :: iconn, gid_up, gid_dn
+  PetscReal :: area, dx, a_mu
+
+  patch => realization%patch
+  grid  => patch%grid
+  if (.not.associated(patch%aux%Stokes)) return
+  stokes_aux => patch%aux%Stokes
+
+  stokes_aux%aP = 0.d0
+
+  conn_list => grid%internal_connection_set_list
+  cset      => conn_list%first
+  do
+    if (.not.associated(cset)) exit
+    do iconn = 1, cset%num_connections
+      gid_up = cset%id_up(iconn)
+      gid_dn = cset%id_dn(iconn)
+      if (patch%imat(gid_up) <= 0 .or. patch%imat(gid_dn) <= 0) cycle
+      area = cset%area(iconn)
+      dx   = cset%dist(0,iconn)
+      a_mu = mu * area / dx
+      stokes_aux%aP(gid_up) = stokes_aux%aP(gid_up) + a_mu
+      stokes_aux%aP(gid_dn) = stokes_aux%aP(gid_dn) + a_mu
+    enddo
+    cset => cset%next
+  enddo
+
+end subroutine StokesComputeViscousDiag
 
 ! ************************************************************************** !
 
@@ -307,7 +372,10 @@ end subroutine StokesMapBCAuxVarsToGlobal
 
 subroutine StokesUpdateSolution(realization)
   !
-  ! Updates data in module after a successful time step
+  ! Updates data in module after a successful time step.
+  !
+  ! Currently a no-op: transport velocities are updated via
+  ! PMStokesUpdateAuxVars -> StokesUpdateTransportVelocities.
   !
   ! Author: Satish Karra
   ! Date: 01/24/26
@@ -325,7 +393,8 @@ end subroutine StokesUpdateSolution
 
 subroutine StokesMaxChange(realization,du_max)
   !
-  ! Computes maximum change in solution
+  ! Computes maximum change in solution between current (flow_xx) and
+  ! previous (flow_yy) time step:  du_max = ||flow_yy - flow_xx||_inf
   !
   ! Author: Satish Karra
   ! Date: 01/24/26
@@ -343,7 +412,10 @@ subroutine StokesMaxChange(realization,du_max)
 
   field => realization%field
   du_max = 0.d0
-  call VecNorm(field%flow_xx,NORM_INFINITY,du_max,ierr);CHKERRQ(ierr)
+  ! flow_dxx = -1 * flow_xx + flow_yy  (i.e. flow_yy - flow_xx)
+  call VecWAXPY(field%flow_dxx,-1.d0,field%flow_xx,field%flow_yy, &
+                ierr);CHKERRQ(ierr)
+  call VecNorm(field%flow_dxx,NORM_INFINITY,du_max,ierr);CHKERRQ(ierr)
 
 end subroutine StokesMaxChange
 
@@ -358,10 +430,17 @@ subroutine StokesDestroy(realization)
   !
 
   use Realization_Subsurface_class
+  use Patch_module
 
   implicit none
 
   class(realization_subsurface_type) :: realization
+  type(patch_type), pointer :: patch
+
+  patch => realization%patch
+  if (associated(patch%aux%Stokes)) then
+    call StokesAuxDestroy(patch%aux%Stokes)
+  endif
 
 end subroutine StokesDestroy
 
@@ -390,6 +469,7 @@ subroutine StokesResidual(snes,xx,r,realization,rho,mu,add_convection,debug,ierr
   PetscErrorCode :: ierr
 
   call StokesResidualPreliminaries(xx,r,realization,ierr)
+  call StokesComputeViscousDiag(realization,mu)
   call StokesResidualInternalConn(r,realization,rho,mu, &
                                             add_convection,ierr)
   call StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
@@ -692,7 +772,7 @@ subroutine StokesResidualInternalConn(r,realization,rho,mu,add_convection,ierr)
   PetscReal :: Tvisc(3), Tpress(3), mconv(3)
   PetscReal :: flux_div
   PetscReal :: gamma_pstab
-  PetscReal, allocatable :: aP(:)
+  PetscReal, pointer :: aP(:)
   PetscReal :: a_f, rc
 
   patch  => realization%patch
@@ -706,25 +786,8 @@ subroutine StokesResidualInternalConn(r,realization,rho,mu,add_convection,ierr)
 
   call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
 
-  ! Build viscous diagonal aP for Rhie-Chow (internal connections only)
-  allocate(aP(grid%ngmax))
-  aP = 0.d0
-  conn_list => grid%internal_connection_set_list
-  cset      => conn_list%first
-  do
-    if (.not.associated(cset)) exit
-    do iconn = 1, cset%num_connections
-      gid_up = cset%id_up(iconn)
-      gid_dn = cset%id_dn(iconn)
-      if (patch%imat(gid_up) <= 0 .or. patch%imat(gid_dn) <= 0) cycle
-      area = cset%area(iconn)
-      dx   = cset%dist(0,iconn)
-      a_mu = mu * area / dx
-      aP(gid_up) = aP(gid_up) + a_mu
-      aP(gid_dn) = aP(gid_dn) + a_mu
-    enddo
-    cset => cset%next
-  enddo
+  ! Use pre-computed viscous diagonal aP for Rhie-Chow
+  aP => stokes_aux%aP
 
   conn_list => grid%internal_connection_set_list
   cset      => conn_list%first
@@ -763,7 +826,8 @@ subroutine StokesResidualInternalConn(r,realization,rho,mu,add_convection,ierr)
       if (u_up(1) /= u_up(1) .or. u_up(2) /= u_up(2) .or. u_up(3) /= u_up(3) .or. &
           p_up /= p_up .or. u_dn(1) /= u_dn(1) .or. u_dn(2) /= u_dn(2) .or. &
           u_dn(3) /= u_dn(3) .or. p_dn /= p_dn) then
-        print *, "StokesResidualInternalConn: NaN in auxvars", gid_up, gid_dn
+        write(option%io_buffer,'("StokesResidualInternalConn: NaN in auxvars ",2i8)') gid_up, gid_dn
+        call PrintErrMsg(option)
       endif
 
       ! Face velocity (central)
@@ -830,7 +894,6 @@ subroutine StokesResidualInternalConn(r,realization,rho,mu,add_convection,ierr)
   enddo
 
   call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
-  deallocate(aP)
 
 end subroutine StokesResidualInternalConn
 
@@ -1065,7 +1128,7 @@ subroutine StokesIFunctionAccumulation(r,realization,rho,ierr)
   type(field_type),  pointer :: field
   type(stokes_auxvar_type), pointer :: stokes_auxvars(:)
 
-  PetscReal, pointer :: r_p(:), xxdot_p(:)
+  PetscReal, pointer :: r_p(:)
   PetscInt :: lid, gid, istart, iend
   PetscReal :: vol
 
@@ -1231,6 +1294,7 @@ subroutine StokesJacobian(snes,xx,A,B,realization,rho,mu,add_convection,debug,ie
   endif
 
   call MatZeroEntries(J,ierr);CHKERRQ(ierr)
+  call StokesComputeViscousDiag(realization,mu)
   call StokesJacobianInternalConn(J,realization,mu,rho, &
                                             add_convection, &
                                             ierr)
@@ -1308,7 +1372,7 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
 
   PetscReal :: J_KK(4,4), J_KL(4,4), J_LK(4,4), J_LL(4,4)
   PetscReal :: a_mu, gamma_pstab
-  PetscReal, allocatable :: aP(:)
+  PetscReal, pointer :: aP(:)
   PetscReal :: a_f, rc
 
   ! convection Jacobian
@@ -1332,25 +1396,8 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
   if (.not.associated(patch%aux%Stokes)) return
   stokes_aux => patch%aux%Stokes
 
-  ! Build viscous diagonal aP for Rhie-Chow (internal connections only)
-  allocate(aP(grid%ngmax))
-  aP = 0.d0
-  conn_list => grid%internal_connection_set_list
-  cset      => conn_list%first
-  do
-    if (.not.associated(cset)) exit
-    do iconn = 1, cset%num_connections
-      gid_up = cset%id_up(iconn)
-      gid_dn = cset%id_dn(iconn)
-      if (patch%imat(gid_up) <= 0 .or. patch%imat(gid_dn) <= 0) cycle
-      area = cset%area(iconn)
-      dx   = cset%dist(0,iconn)
-      a_mu = mu * area / dx
-      aP(gid_up) = aP(gid_up) + a_mu
-      aP(gid_dn) = aP(gid_dn) + a_mu
-    enddo
-    cset => cset%next
-  enddo
+  ! Use pre-computed viscous diagonal aP for Rhie-Chow
+  aP => stokes_aux%aP
 
   conn_list => grid%internal_connection_set_list
   cset      => conn_list%first
@@ -1387,7 +1434,8 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
       uL(3) = stokes_aux%auxvars(gid_dn)%w
       if (uK(1) /= uK(1) .or. uK(2) /= uK(2) .or. uK(3) /= uK(3) .or. &
           uL(1) /= uL(1) .or. uL(2) /= uL(2) .or. uL(3) /= uL(3)) then
-        print *, "StokesJacobianInternalConn: NaN in auxvars", gid_up, gid_dn
+        write(option%io_buffer,'("StokesJacobianInternalConn: NaN in auxvars ",2i8)') gid_up, gid_dn
+        call PrintErrMsg(option)
       endif
 
       u_face(1)=0.5d0*(uK(1)+uL(1))
@@ -1526,8 +1574,6 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
 
     cset => cset%next
   enddo
-
-  deallocate(aP)
 
   end subroutine StokesJacobianInternalConn
 
@@ -1773,7 +1819,10 @@ end subroutine StokesIJacobianAccumulation
 
 subroutine StokesJacobianSourceSink(A,realization,rho,ierr)
   !
-  ! Source/sink Jacobian for Stokes problem
+  ! Source/sink Jacobian for Stokes problem.
+  !
+  ! Currently a no-op: only constant body forces (gravity) are supported
+  ! as source terms, so the Jacobian contribution is zero.
   !
   ! Author: Satish Karra
   ! Date: 01/24/26
@@ -1880,11 +1929,10 @@ subroutine StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
   type(option_type), pointer :: option
   type(coupler_type), pointer :: boundary_condition
   type(connection_set_type), pointer :: cset
-  type(connection_set_list_type), pointer :: conn_list
 
   PetscReal, pointer :: r_p(:)
   PetscReal, pointer :: u_loc(:)
-  PetscReal, allocatable :: aP(:)
+  PetscReal, pointer :: aP(:)
 
   PetscInt :: iconn, local_id, ghosted_id, gid, istart, istart_ghost, ndof
   PetscReal :: Ucell(4), Res(4)
@@ -1897,23 +1945,8 @@ subroutine StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
   call VecGetArray(r,r_p,ierr);CHKERRQ(ierr)
   call VecGetArrayRead(realization%field%flow_xx_loc,u_loc,ierr);CHKERRQ(ierr)
 
-  ! Build viscous diagonal aP for Rhie-Chow (internal connections only)
-  allocate(aP(grid%ngmax))
-  aP = 0.d0
-  conn_list => grid%internal_connection_set_list
-  cset      => conn_list%first
-  do
-    if (.not.associated(cset)) exit
-    do iconn = 1, cset%num_connections
-      gid = cset%id_up(iconn)
-      local_id = cset%id_dn(iconn)
-      if (gid <= 0 .or. local_id <= 0) cycle
-      if (patch%imat(gid) <= 0 .or. patch%imat(local_id) <= 0) cycle
-      aP(gid) = aP(gid) + mu * cset%area(iconn) / cset%dist(0,iconn)
-      aP(local_id) = aP(local_id) + mu * cset%area(iconn) / cset%dist(0,iconn)
-    enddo
-    cset => cset%next
-  enddo
+  ! Use pre-computed viscous diagonal aP for Rhie-Chow
+  aP => patch%aux%Stokes%aP
 
   boundary_condition => patch%boundary_condition_list%first
   do
@@ -1965,7 +1998,6 @@ subroutine StokesResidualBoundaryConn(r,realization,rho,mu,ierr)
 
   call VecRestoreArrayRead(realization%field%flow_xx_loc,u_loc,ierr);CHKERRQ(ierr)
   call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
-  deallocate(aP)
 
 end subroutine StokesResidualBoundaryConn
 
@@ -1997,7 +2029,7 @@ subroutine StokesBCFluxConn(boundary_condition,iconn,area,dist,rho,mu,option,Uce
   PetscReal, intent(in) :: area
   PetscReal, intent(in) :: dist(-1:3)
   PetscReal, intent(in) :: rho, mu
-  type(option_type), intent(in) :: option
+  type(option_type), intent(inout) :: option
   PetscReal, intent(in) :: Ucell(4)
   PetscReal, intent(in) :: aP
   PetscReal, intent(out) :: Res(4)
@@ -2019,8 +2051,8 @@ subroutine StokesBCFluxConn(boundary_condition,iconn,area,dist,rho,mu,option,Uce
   d_b = dist(0)
 
   if (d_b <= 0.d0) then
-    print *, 'BAD boundary distance: dist(-1:0)=',dist(-1),dist(0)
-    stop
+    write(option%io_buffer,'("StokesBCFluxConn: bad boundary distance: dist(-1:0) =",2es12.4)') dist(-1),dist(0)
+    call PrintErrMsg(option)
   endif
 
   uK(1)=Ucell(1); uK(2)=Ucell(2); uK(3)=Ucell(3)
@@ -2184,12 +2216,11 @@ subroutine StokesJacobianBoundaryFacesConn(A,realization,mu,ierr)
   type(patch_type), pointer :: patch
   type(option_type), pointer :: option
   type(coupler_type), pointer :: boundary_condition
-  type(connection_set_list_type), pointer :: conn_list
   type(connection_set_type), pointer :: cset
 
   PetscInt :: iconn, local_id, ghosted_id, gid, rowstart, ndof
   PetscReal :: area, dist(-1:3), d_b, a_b
-  PetscReal, allocatable :: aP(:)
+  PetscReal, pointer :: aP(:)
   PetscReal :: rc
   PetscBool :: has_u_dir, has_p_bc
   PetscReal :: S(3)
@@ -2199,23 +2230,8 @@ subroutine StokesJacobianBoundaryFacesConn(A,realization,mu,ierr)
   option => realization%option
   ndof = option%nflowdof
 
-  ! Build viscous diagonal aP for Rhie-Chow (internal connections only)
-  allocate(aP(grid%ngmax))
-  aP = 0.d0
-  conn_list => grid%internal_connection_set_list
-  cset      => conn_list%first
-  do
-    if (.not.associated(cset)) exit
-    do iconn = 1, cset%num_connections
-      local_id = cset%id_up(iconn)
-      ghosted_id = cset%id_dn(iconn)
-      if (local_id <= 0 .or. ghosted_id <= 0) cycle
-      if (patch%imat(local_id) <= 0 .or. patch%imat(ghosted_id) <= 0) cycle
-      aP(local_id) = aP(local_id) + mu * cset%area(iconn) / cset%dist(0,iconn)
-      aP(ghosted_id) = aP(ghosted_id) + mu * cset%area(iconn) / cset%dist(0,iconn)
-    enddo
-    cset => cset%next
-  enddo
+  ! Use pre-computed viscous diagonal aP for Rhie-Chow
+  aP => patch%aux%Stokes%aP
 
   boundary_condition => patch%boundary_condition_list%first
   do
@@ -2292,8 +2308,6 @@ subroutine StokesJacobianBoundaryFacesConn(A,realization,mu,ierr)
 
     boundary_condition => boundary_condition%next
   enddo
-
-  deallocate(aP)
 
   end subroutine StokesJacobianBoundaryFacesConn
 

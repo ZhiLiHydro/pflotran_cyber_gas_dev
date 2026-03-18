@@ -55,6 +55,7 @@ function PMStokesTSCreate()
   stokes_ts_pm%rho = 998.32d0
   stokes_ts_pm%mu  = 1.002d-3
   stokes_ts_pm%add_convection = PETSC_FALSE
+  stokes_ts_pm%check_post_convergence = PETSC_TRUE
 
   PMStokesTSCreate => stokes_ts_pm
 
@@ -87,6 +88,7 @@ subroutine PMStokesTSUpdateAuxVarsPatch(realization)
   use Grid_module
   use Patch_module
   use Option_module
+  use Discretization_module
 
   implicit none
 
@@ -111,6 +113,15 @@ subroutine PMStokesTSUpdateAuxVarsPatch(realization)
   global_auxvars => patch%aux%Global%auxvars
   material_auxvars => patch%aux%Material%auxvars
 
+  ! 0. Scatter global flow_xx -> flow_xx_loc so that StokesUpdateAuxVars
+  !    and StokesUpdateTransportVelocities read the current solution.
+  !    (This is necessary when called after TSSolve has updated flow_xx
+  !    but flow_xx_loc may be stale from the last TS internal step.)
+  call DiscretizationGlobalToLocal(realization%discretization, &
+                                   field%flow_xx, &
+                                   field%flow_xx_loc, &
+                                   option%nflowdof)
+
   ! 1. Update auxvars based on new values of pressure
   call StokesUpdateAuxVars(realization)
 
@@ -131,6 +142,10 @@ subroutine PMStokesTSUpdateAuxVarsPatch(realization)
   call VecRestoreArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayRead(field%flow_xxdot_loc,xxdot_loc_p, &
                               ierr);CHKERRQ(ierr)
+
+  ! 3. Update transport velocities from freshly-computed Stokes auxvars
+  !    so that the transport PM sees the correct flow field.
+  call StokesUpdateTransportVelocities(realization)
 
 end subroutine PMStokesTSUpdateAuxVarsPatch
 
@@ -177,6 +192,7 @@ subroutine PMStokesTSIFunction(this,ts,time,U,Udot,F,ierr)
   call PMStokesTSUpdateAuxVarsPatch(realization)
   call StokesUpdateTransportVelocities(realization)
 
+  call StokesComputeViscousDiag(realization,this%mu)
   call StokesResidualInternalConn(F,realization,this%rho,this%mu, &
                                   this%add_convection,ierr)
   call StokesResidualBoundaryConn(F,realization,this%rho,this%mu,ierr)
@@ -276,6 +292,7 @@ subroutine PMStokesTSIJacobian(this,ts,time,U,Udot,shift,A,B,ierr)
   call PMStokesTSUpdateAuxVarsPatch(realization)
   call StokesUpdateTransportVelocities(realization)
 
+  call StokesComputeViscousDiag(realization,this%mu)
   call StokesJacobianInternalConn(J,realization,this%mu,this%rho,&
                                      this%add_convection,ierr)
   call StokesJacobianBoundaryFacesConn(J,realization,this%mu,ierr)
@@ -320,6 +337,10 @@ subroutine PMStokesTSInitializeTimestep(this)
     ! TS nonlinear solve can legitimately converge at iter 0.
     this%solver%newton_min_iterations = 0
   endif
+  ! Initialize all convergence flags to TRUE so that unregistered
+  ! linesearch post-check flags (ABS_UPDATE, REL_UPDATE) do not
+  ! block convergence. Residual flags will be set in CheckConvergence.
+  this%converged_flag(:) = PETSC_TRUE
   call StokesApplyPrescribedConditions(this%realization)
   call PMSubsurfaceFlowInitializeTimestepB(this)
 

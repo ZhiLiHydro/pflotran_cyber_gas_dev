@@ -481,7 +481,7 @@ subroutine DatasetGriddedHDF5ReadData(this,option)
     call h5sget_simple_extent_npoints_f(file_space_id,num_data_values,hdf5_err)
 
     temp_int = this%dims(1)
-    do i = 2, num_spatial_dims
+    do i = 2, this%rank
       temp_int = temp_int * this%dims(i)
     enddo
     if (num_data_values/num_times /= temp_int) then

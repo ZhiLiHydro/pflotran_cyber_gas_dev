@@ -36,12 +36,6 @@ module Stokes_Aux_module
     PetscReal :: v
     PetscReal :: w
     PetscReal :: du_dt(3)
-    ! Magnitude of vorticity |curl u| (placeholder, computed if needed)
-    PetscReal :: vorticity_mag
-    ! Shear rate (placeholder; e.g., effective strain rate)
-    PetscReal :: shear_rate
-    ! Reference or filtered pressure
-    PetscReal :: pressure_ref
   end type stokes_auxvar_type
 
   !--------------------------------------------------------------------
@@ -62,6 +56,10 @@ module Stokes_Aux_module
     type(stokes_auxvar_type),    pointer :: auxvars_bc(:)
     type(stokes_auxvar_type),    pointer :: auxvars_ss(:)
     type(matrix_zeroing_type),   pointer :: matrix_zeroing
+    ! Cached viscous diagonal for Rhie-Chow pressure stabilization.
+    ! Allocated to grid%ngmax in StokesSetup; recomputed each
+    ! residual/Jacobian evaluation via StokesComputeViscousDiag.
+    PetscReal, pointer :: aP(:)
   end type stokes_type
 
   !--------------------------------------------------------------------
@@ -110,6 +108,7 @@ function StokesAuxCreate(option)
   nullify(aux%auxvars_bc)
   nullify(aux%auxvars_ss)
   nullify(aux%matrix_zeroing)
+  nullify(aux%aP)
 
   allocate(aux%param)
   aux%param%dummy_flag = PETSC_FALSE
@@ -140,9 +139,6 @@ subroutine StokesAuxVarInit(auxvar,option)
   auxvar%v = 0.d0
   auxvar%w = 0.d0
   auxvar%du_dt = 0.d0
-  auxvar%vorticity_mag = 0.d0
-  auxvar%shear_rate    = 0.d0
-  auxvar%pressure_ref  = 0.d0
 
 end subroutine StokesAuxVarInit
 
@@ -168,9 +164,6 @@ subroutine StokesAuxVarCopy(auxvar_src,auxvar_dst,option)
   auxvar_dst%v = auxvar_src%v
   auxvar_dst%w = auxvar_src%w
   auxvar_dst%du_dt = auxvar_src%du_dt
-  auxvar_dst%vorticity_mag = auxvar_src%vorticity_mag
-  auxvar_dst%shear_rate    = auxvar_src%shear_rate
-  auxvar_dst%pressure_ref  = auxvar_src%pressure_ref
 
 end subroutine StokesAuxVarCopy
 
@@ -204,8 +197,6 @@ subroutine StokesAuxVarCompute(x,auxvar,global_auxvar, &
   auxvar%u = x(STOKES_U_DOF)
   auxvar%v = x(STOKES_V_DOF)
   auxvar%w = x(STOKES_W_DOF)
-
-  ! Vorticity magnitude and shear rate: left as zero by default.
 
   global_auxvar%temp = option%flow%reference_temperature
   global_auxvar%den_kg(option%liquid_phase) = &
@@ -333,6 +324,11 @@ subroutine StokesAuxDestroy(aux)
   call StokesAuxVarDestroy(aux%auxvars_bc)
   call StokesAuxVarDestroy(aux%auxvars_ss)
   call MatrixZeroingDestroy(aux%matrix_zeroing)
+
+  if (associated(aux%aP)) then
+    deallocate(aux%aP)
+  endif
+  nullify(aux%aP)
 
   if (associated(aux%param)) then
     ! nothing special to free inside param

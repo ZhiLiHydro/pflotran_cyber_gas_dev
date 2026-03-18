@@ -684,6 +684,7 @@ subroutine PMRTInitializeTimestep(this)
                                         RTUpdateActivityCoefficients
   use Stokes_module, only : StokesUpdateAuxVars, &
                             StokesUpdateTransportVelocities
+  use Discretization_module, only : DiscretizationGlobalToLocal
   use Reaction_Aux_module, only : ACT_COEF_FREQUENCY_TIMESTEP
   use Global_module
   use Material_module
@@ -702,6 +703,15 @@ subroutine PMRTInitializeTimestep(this)
   ! Ensure Stokes-derived transport velocities are up-to-date
   if (this%option%iflowmode == STOKES_MODE .or. &
       this%option%iflowmode == STOKES_TS_MODE) then
+    ! For STOKES_TS: after TSSolve, flow_xx_loc may be stale (last TS
+    ! internal step). Scatter flow_xx -> flow_xx_loc so that
+    ! StokesUpdateAuxVars reads the final converged TS solution.
+    if (this%option%iflowmode == STOKES_TS_MODE) then
+      call DiscretizationGlobalToLocal(this%realization%discretization, &
+                                       this%realization%field%flow_xx, &
+                                       this%realization%field%flow_xx_loc, &
+                                       this%option%nflowdof)
+    endif
     call StokesUpdateAuxVars(this%realization)
     call StokesUpdateTransportVelocities(this%realization)
   endif

@@ -4788,12 +4788,18 @@ subroutine PatchUpdateCouplerAuxVarsStokes(patch,coupler,option)
           coupler%flow_aux_real_var(STOKES_W_DOF,1:num_connections) = dataset%rarray(3)
         endif
       class is(dataset_gridded_hdf5_type)
-        call PatchUpdateCouplerGridDataset(coupler,option,patch%grid, &
-             dataset,STOKES_U_DOF)
-        call PatchUpdateCouplerGridDataset(coupler,option,patch%grid, &
-             dataset,STOKES_V_DOF)
-        call PatchUpdateCouplerGridDataset(coupler,option,patch%grid, &
-             dataset,STOKES_W_DOF)
+        if (dataset%data_dim == DIM_XYZ .and. size(dataset%dims) >= 3 .and. &
+            dataset%dims(3) >= 3) then
+          call PatchUpdateCouplerGridDatasetStokesRate(coupler,option,patch%grid, &
+               dataset)
+        else
+          call PatchUpdateCouplerGridDataset(coupler,option,patch%grid, &
+               dataset,STOKES_U_DOF)
+          call PatchUpdateCouplerGridDataset(coupler,option,patch%grid, &
+               dataset,STOKES_V_DOF)
+          call PatchUpdateCouplerGridDataset(coupler,option,patch%grid, &
+               dataset,STOKES_W_DOF)
+        endif
       class is(dataset_common_hdf5_type)
         ! Skip cell-indexed datasets used in initial conditions
       class default
@@ -5811,6 +5817,62 @@ subroutine PatchUpdateCouplerGridDataset(coupler,option,grid,dataset,dof)
   enddo
 
 end subroutine PatchUpdateCouplerGridDataset
+
+! ************************************************************************** !
+
+subroutine PatchUpdateCouplerGridDatasetStokesRate(coupler,option,grid,dataset)
+  !
+  ! Updates auxiliary variables for Stokes rate using a gridded dataset
+  ! with component index stored in the z dimension (k=1..3).
+  !
+  use Option_module
+  use Grid_module
+  use Coupler_module
+  use Dataset_Gridded_HDF5_class
+  use Stokes_Aux_module
+
+  implicit none
+
+  type(coupler_type) :: coupler
+  type(option_type) :: option
+  type(grid_type) :: grid
+  class(dataset_gridded_hdf5_type) :: dataset
+
+  PetscReal :: temp_real
+  PetscInt :: iconn
+  PetscInt :: local_id
+  PetscInt :: ghosted_id
+  PetscReal :: x
+  PetscReal :: y
+  PetscReal :: z
+  PetscReal :: zcomp(3)
+  PetscReal :: dist(-1:3)
+
+  zcomp(1) = dataset%origin(3) + 0.5d0 * dataset%discretization(3)
+  zcomp(2) = dataset%origin(3) + 1.5d0 * dataset%discretization(3)
+  zcomp(3) = dataset%origin(3) + 2.5d0 * dataset%discretization(3)
+
+  do iconn = 1, coupler%connection_set%num_connections
+    local_id = coupler%connection_set%id_dn(iconn)
+    ghosted_id = grid%nL2G(local_id)
+    x = grid%x(ghosted_id)
+    y = grid%y(ghosted_id)
+    z = grid%z(ghosted_id)
+    if (associated(coupler%connection_set%dist)) then
+      dist = coupler%connection_set%dist(:,iconn)
+      x = x-dist(0)*dist(1)
+      y = y-dist(0)*dist(2)
+      z = z-dist(0)*dist(3)
+    endif
+    call DatasetGriddedHDF5InterpolateReal(dataset,x,y,zcomp(1),temp_real,option)
+    coupler%flow_aux_real_var(STOKES_U_DOF,iconn) = temp_real
+    call DatasetGriddedHDF5InterpolateReal(dataset,x,y,zcomp(2),temp_real,option)
+    coupler%flow_aux_real_var(STOKES_V_DOF,iconn) = temp_real
+    call DatasetGriddedHDF5InterpolateReal(dataset,x,y,zcomp(3),temp_real,option)
+    coupler%flow_aux_real_var(STOKES_W_DOF,iconn) = temp_real
+  enddo
+
+end subroutine PatchUpdateCouplerGridDatasetStokesRate
 
 ! ************************************************************************** !
 

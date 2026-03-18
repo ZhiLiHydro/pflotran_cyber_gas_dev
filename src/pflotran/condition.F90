@@ -123,6 +123,8 @@ module Condition_module
     PetscReal :: aux_real(2)
     class(dataset_base_type), pointer :: gradient
     class(dataset_base_type), pointer :: dataset
+    class(dataset_base_type), pointer :: dataset_y
+    class(dataset_base_type), pointer :: dataset_z
   end type flow_sub_condition_type
 
   type, public :: sub_condition_ptr_type
@@ -2350,12 +2352,7 @@ subroutine FlowConditionGeneralRead(condition,input,option)
                   '" scaled_volumetric_rate type'
                 call PrintErrMsg(option)
               endif
-            case('HETEROGENEOUS_VOLUMETRIC_RATE')
-              sub_condition_ptr%itype = HET_VOL_RATE_SS
-              rate_string = 'm^3/sec'
-            case('HETEROGENEOUS_MASS_RATE')
-              sub_condition_ptr%itype = HET_MASS_RATE_SS
-              rate_string = 'kg/sec'
+            ! duplicate cases removed
             case('HETEROGENEOUS_DIRICHLET')
               sub_condition_ptr%itype = HET_DIRICHLET_BC
             case('HETEROGENEOUS_SURFACE_SEEPAGE')
@@ -3437,6 +3434,12 @@ subroutine FlowConditionStokesRead(condition,input,option)
                   trim(condition%name) // '" scaled_volumetric_rate type'
                 call PrintErrMsg(option)
               endif
+            case('HETEROGENEOUS_VOLUMETRIC_RATE')
+              sub_condition_ptr%itype = HET_VOL_RATE_SS
+              rate_string = 'm^3/sec'
+            case('HETEROGENEOUS_MASS_RATE')
+              sub_condition_ptr%itype = HET_MASS_RATE_SS
+              rate_string = 'kg/sec'
             case default
               call InputKeywordUnrecognized(input,word, &
                                             'flow condition,type',option)

@@ -246,8 +246,9 @@ subroutine TimestepperTSStepDT(this,process_model,stop_flag)
   this%cumulative_linear_iterations = this%cumulative_linear_iterations + this%num_linear_iterations
 
   if (ts_reason%v<0) then
-     write(*,*)'TS failed to converge. Stopping execution!'
-     stop
+    write(option%io_buffer,'("TS failed to converge. ts_reason = ",i4)') &
+      ts_reason%v
+    call PrintErrMsg(option)
   endif
 
   call TSGetRHSFunction(solver%ts,residual_vec,PETSC_NULL_FUNCTION, &

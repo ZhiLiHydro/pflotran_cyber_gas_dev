@@ -694,7 +694,13 @@ subroutine PMStokesCheckConvergence(this,snes,it,xnorm,unorm,fnorm,reason,ierr)
                        MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm, &
                        ierr);CHKERRQ(ierr)
 
-    option%convergence = CONVERGENCE_CONVERGED
+    ! Only declare convergence after at least one Newton iteration.
+    ! At it=0 (initial residual evaluation before any solve), the residuals
+    ! may be trivially zero due to prescribed BCs / zero IC, leading to
+    ! spurious convergence before the system is actually solved.
+    if (it > 0) then
+      option%convergence = CONVERGENCE_CONVERGED
+    endif
 
     do itol = 1, MAX_INDEX
       if (.not.this%converged_flag(itol)) then
