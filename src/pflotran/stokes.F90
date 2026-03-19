@@ -18,6 +18,7 @@ module Stokes_module
   private
 
   public :: StokesSetup, &
+            StokesCreateZeroArray, &
             StokesInitializeTimestep, &
             StokesUpdateAuxVars, &
             StokesMapBCAuxVarsToGlobal, &
@@ -77,7 +78,6 @@ subroutine StokesSetup(realization,rho,mu)
   type(option_type),        pointer :: option
 
   PetscInt :: gid
-  PetscBool, allocatable :: dof_is_active(:)
   PetscInt :: iconn, sum_connection
   type(coupler_type), pointer :: coupler
 
@@ -120,11 +120,7 @@ subroutine StokesSetup(realization,rho,mu)
   endif
   stokes_aux%num_aux_ss = sum_connection
 
-  allocate(dof_is_active(option%nflowdof))
-  dof_is_active = PETSC_TRUE
-  call PatchCreateZeroArray(patch,dof_is_active, &
-                            patch%aux%Stokes%matrix_zeroing,option)
-  deallocate(dof_is_active)
+  call StokesCreateZeroArray(patch,patch%aux%Stokes%matrix_zeroing,option)
 
   ! ensure that prescribed_conditions are solely DIRICHLET type
   coupler => patch%prescribed_condition_list%first
@@ -164,6 +160,119 @@ subroutine StokesSetup(realization,rho,mu)
   endif
 
 end subroutine StokesSetup
+
+! ************************************************************************** !
+
+subroutine StokesCreateZeroArray(patch,matrix_zeroing,option)
+  !
+  ! Builds the matrix_zeroing object for Stokes with DOF-selective zeroing:
+  !   - Inactive cells (imat <= 0): zero all ndof DOFs
+  !   - Prescribed-condition cells: zero only the prescribed DOFs
+  !       velocity DIRICHLET -> DOFs 1,2,3 (u,v,w)
+  !       pressure DIRICHLET -> DOF  4     (p)
+  !
+  ! This is a Stokes-specific replacement for PatchCreateZeroArray, which
+  ! incorrectly zeroes all DOFs for every prescribed-condition cell regardless
+  ! of which DOFs are actually prescribed.
+  !
+  ! Author: Satish Karra
+  ! Date: 03/18/26
+  !
+
+  use Patch_module
+  use Grid_module
+  use Coupler_module
+  use Connection_module
+  use Option_module
+
+  implicit none
+
+  type(patch_type), pointer :: patch
+  type(matrix_zeroing_type), pointer :: matrix_zeroing
+  type(option_type) :: option
+
+  type(grid_type), pointer :: grid
+  type(coupler_type), pointer :: cur_coupler
+  type(connection_set_type), pointer :: cur_connection_set
+  ! per-local-cell bitmask: bit i set means DOF i is to be zeroed
+  PetscBool, allocatable :: zero_dof(:,:)
+  PetscInt :: local_id, ghosted_id, iconn, idof, ndof, ncount, n_zero_rows
+
+  grid => patch%grid
+  ndof = option%nflowdof
+
+  allocate(zero_dof(ndof, grid%nlmax))
+  zero_dof = PETSC_FALSE
+
+  ! Inactive cells: zero all DOFs
+  do local_id = 1, grid%nlmax
+    ghosted_id = grid%nL2G(local_id)
+    if (patch%imat(ghosted_id) <= 0) then
+      zero_dof(:, local_id) = PETSC_TRUE
+    endif
+  enddo
+
+  ! Prescribed-condition cells: zero only the prescribed DOFs
+  cur_coupler => patch%prescribed_condition_list%first
+  do
+    if (.not.associated(cur_coupler)) exit
+    if (.not.associated(cur_coupler%flow_condition)) then
+      cur_coupler => cur_coupler%next
+      cycle
+    endif
+    cur_connection_set => cur_coupler%connection_set
+    do iconn = 1, cur_connection_set%num_connections
+      local_id = cur_connection_set%id_dn(iconn)
+      if (local_id <= 0 .or. local_id > grid%nlmax) cycle
+      ghosted_id = grid%nL2G(local_id)
+      if (patch%imat(ghosted_id) <= 0) cycle  ! already handled above
+
+      ! Velocity DIRICHLET -> zero u, v, w (DOFs 1,2,3)
+      if (associated(cur_coupler%flow_condition%stokes%velocity)) then
+        if (cur_coupler%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
+          zero_dof(1, local_id) = PETSC_TRUE
+          zero_dof(2, local_id) = PETSC_TRUE
+          zero_dof(3, local_id) = PETSC_TRUE
+        endif
+      endif
+
+      ! Pressure DIRICHLET -> zero p (DOF 4)
+      if (associated(cur_coupler%flow_condition%stokes%pressure)) then
+        if (cur_coupler%flow_condition%stokes%pressure%itype == DIRICHLET_BC) then
+          zero_dof(4, local_id) = PETSC_TRUE
+        endif
+      endif
+    enddo
+    cur_coupler => cur_coupler%next
+  enddo
+
+  ! Count total zero rows
+  n_zero_rows = 0
+  do local_id = 1, grid%nlmax
+    do idof = 1, ndof
+      if (zero_dof(idof, local_id)) n_zero_rows = n_zero_rows + 1
+    enddo
+  enddo
+
+  call MatrixZeroingAllocateArray(matrix_zeroing, n_zero_rows, option)
+
+  ncount = 0
+  do local_id = 1, grid%nlmax
+    ghosted_id = grid%nL2G(local_id)
+    do idof = 1, ndof
+      if (.not.zero_dof(idof, local_id)) cycle
+      ncount = ncount + 1
+      ! 1-based indexing
+      matrix_zeroing%zero_rows_local(ncount) = (local_id-1)*ndof + idof
+      ! 0-based indexing
+      matrix_zeroing%zero_rows_local_ghosted(ncount) = &
+        (ghosted_id-1)*ndof + idof - 1
+    enddo
+  enddo
+
+  deallocate(zero_dof)
+
+end subroutine StokesCreateZeroArray
 
 ! ************************************************************************** !
 
