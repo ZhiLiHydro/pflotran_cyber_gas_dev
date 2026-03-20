@@ -2216,9 +2216,12 @@ subroutine StokesBCFluxConn(boundary_condition,iconn,area,dist,rho,mu,option,Uce
   endif
 
   ! ---- Pressure traction ----
-  Res(1) = Res(1) + p_b*S(1)
-  Res(2) = Res(2) + p_b*S(2)
-  Res(3) = Res(3) + p_b*S(3)
+  ! Sign: interior cell is id_dn. The outward normal n points from ghost (id_up)
+  ! toward interior (id_dn). In the interior loop, id_dn gets -Tpress = -p_face*S.
+  ! The same convention applies here: boundary interior cell gets -p_b*S.
+  Res(1) = Res(1) - p_b*S(1)
+  Res(2) = Res(2) - p_b*S(2)
+  Res(3) = Res(3) - p_b*S(3)
 
 end subroutine StokesBCFluxConn
 
@@ -2238,6 +2241,8 @@ subroutine StokesResidualBoundaryFinal(r,xx,realization,ierr)
   use Option_module
   use Connection_module
   use Field_module
+  use Grid_module
+  use Grid_Structured_module
 
   implicit none
 
@@ -2251,6 +2256,8 @@ subroutine StokesResidualBoundaryFinal(r,xx,realization,ierr)
   PetscInt :: local_id, iconn, offset, ghosted_id
   PetscReal, pointer :: r_ptr(:), xx_ptr(:)
   PetscInt :: nflowdof, istart, iend
+  PetscReal :: p_bc, face_area, face_nx, face_ny, face_nz
+  PetscReal :: cell_dx, cell_dy, cell_dz
 
   patch => realization%patch
   option => realization%option
@@ -2284,9 +2291,53 @@ subroutine StokesResidualBoundaryFinal(r,xx,realization,ierr)
       endif
 
       ! Set prescribed pressure residual to (p - p_prescribed)
+      ! Also add the missing boundary-face pressure traction -p_bc*S to the
+      ! momentum residuals.  Interior cell is id_dn; the inward face normal S
+      ! points from the ghost (id_up) into the domain, so the traction on the
+      ! interior cell is -p_bc*S (same sign as id_dn in the interior loop).
+      !
+      ! PRESCRIBED_CONDITION connection sets use GENERIC_CONNECTION_TYPE, so
+      ! dist/area are not populated by GridPopulateConnection.  Compute the
+      ! face normal and area directly from the grid dimensions and coupler iface.
+      !
+      ! NOTE: If a velocity PRESCRIBED_CONDITION is also applied to this cell
+      ! (corner cell), the velocity block above will have already set
+      ! r(u) = u - u_bc, overwriting these momentum values.  Velocity couplers
+      ! must therefore be listed AFTER pressure couplers in the input file.
       if (associated(prescribed_condition%flow_condition%stokes%pressure)) then
         if (prescribed_condition%flow_condition%stokes%pressure%itype == DIRICHLET_BC) then
           r_ptr(istart+3) = xx_ptr(istart+3) - prescribed_condition%flow_aux_real_var(4,iconn)
+          p_bc = prescribed_condition%flow_aux_real_var(4,iconn)
+          ! Compute face area and inward normal from structured grid dimensions
+          cell_dx = patch%grid%structured_grid%dx(ghosted_id)
+          cell_dy = patch%grid%structured_grid%dy(ghosted_id)
+          cell_dz = patch%grid%structured_grid%dz(ghosted_id)
+          face_nx = 0.d0; face_ny = 0.d0; face_nz = 0.d0
+          select case(prescribed_condition%region%iface)
+            case(WEST_FACE)
+              face_nx  = 1.d0   ! inward normal: +x
+              face_area = cell_dy * cell_dz
+            case(EAST_FACE)
+              face_nx  = -1.d0  ! inward normal: -x
+              face_area = cell_dy * cell_dz
+            case(SOUTH_FACE)
+              face_ny  = 1.d0   ! inward normal: +y
+              face_area = cell_dx * cell_dz
+            case(NORTH_FACE)
+              face_ny  = -1.d0  ! inward normal: -y
+              face_area = cell_dx * cell_dz
+            case(BOTTOM_FACE)
+              face_nz  = 1.d0   ! inward normal: +z
+              face_area = cell_dx * cell_dy
+            case(TOP_FACE)
+              face_nz  = -1.d0  ! inward normal: -z
+              face_area = cell_dx * cell_dy
+            case default
+              face_area = 0.d0
+          end select
+          r_ptr(istart  ) = r_ptr(istart  ) - p_bc * face_nx * face_area
+          r_ptr(istart+1) = r_ptr(istart+1) - p_bc * face_ny * face_area
+          r_ptr(istart+2) = r_ptr(istart+2) - p_bc * face_nz * face_area
         endif
       endif
 
