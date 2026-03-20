@@ -1,0 +1,2150 @@
+!==============================================================================
+! Pore-scale Stokes flow + GIRT tracer transport (pressure-gradient driven).
+! Randomly packed circular grains, RSA seed=7, 24 grains.
+! Grid: 80x40x1, domain 2.0x1.0x0.1 m, dx=dy=0.025 m
+! Inlet (west): p = 4.0 Pa;  Outlet (east): p = 0 Pa
+!==============================================================================
+
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE STOKES
+      OPTIONS
+        DENSITY   1.d0
+        VISCOSITY 1.d0
+        ADD_CONVECTION
+      /
+    /
+    SUBSURFACE_TRANSPORT transport
+      MODE GIRT
+      OPTIONS
+        REFERENCE_TEMPERATURE 25.d0
+      /
+    /
+  /
+END
+
+SUBSURFACE
+
+!------------------------------------------------------------------------------
+! Numerical methods
+!------------------------------------------------------------------------------
+
+NUMERICAL_METHODS FLOW
+  NEWTON_SOLVER
+    RESIDUAL_SCALED_INF_TOL 1.d-2
+    ITOL        1.d-8
+    ITOL_UPDATE 1.d-2
+    RTOL        1.d-8
+  /
+/
+
+NUMERICAL_METHODS TRANSPORT
+  NEWTON_SOLVER
+    ITOL        1.d-8
+    ITOL_UPDATE 1.d-2
+    RTOL        1.d-8
+  /
+/
+
+!------------------------------------------------------------------------------
+! Grid: 80 x 40 x 1, dx = dy = 0.0250 m
+!------------------------------------------------------------------------------
+
+GRID
+  TYPE structured
+  ORIGIN 0.d0 0.d0 0.d0
+  BOUNDS
+    0.d0 0.d0 0.d0
+    2.0d0 1.0d0 0.1d0
+  /
+  NXYZ 80 40 1
+END
+
+!------------------------------------------------------------------------------
+! Material
+!------------------------------------------------------------------------------
+
+MATERIAL_PROPERTY pore_fluid
+  ID 1
+  POROSITY 1.0
+  TORTUOSITY 1.0
+  PERMEABILITY
+    PERM_ISO 1.d0
+  /
+END
+
+!------------------------------------------------------------------------------
+! Fluid / chemistry
+!------------------------------------------------------------------------------
+
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 5.d-3
+END
+
+CHEMISTRY
+  PRIMARY_SPECIES
+    Tracer
+  END
+  OUTPUT
+    TOTAL
+    Tracer
+  /
+END
+
+!------------------------------------------------------------------------------
+! Regions
+!------------------------------------------------------------------------------
+
+REGION all
+  COORDINATES
+    0.d0 0.d0 0.d0
+    2.0d0 1.0d0 0.1d0
+  /
+END
+
+! ---- Solid grain row-strip regions ----
+REGION grain_r00_s000
+  COORDINATES
+    0.5750d0 0.0000d0 0.d0
+    0.6250d0 0.0250d0 0.1d0
+  /
+END
+
+REGION grain_r01_s000
+  COORDINATES
+    0.5250d0 0.0250d0 0.d0
+    0.6500d0 0.0500d0 0.1d0
+  /
+END
+
+REGION grain_r01_s001
+  COORDINATES
+    0.7500d0 0.0250d0 0.d0
+    0.8250d0 0.0500d0 0.1d0
+  /
+END
+
+REGION grain_r02_s000
+  COORDINATES
+    0.5000d0 0.0500d0 0.d0
+    0.6750d0 0.0750d0 0.1d0
+  /
+END
+
+REGION grain_r02_s001
+  COORDINATES
+    0.7250d0 0.0500d0 0.d0
+    0.8500d0 0.0750d0 0.1d0
+  /
+END
+
+REGION grain_r02_s002
+  COORDINATES
+    1.1250d0 0.0500d0 0.d0
+    1.2500d0 0.0750d0 0.1d0
+  /
+END
+
+REGION grain_r02_s003
+  COORDINATES
+    1.4750d0 0.0500d0 0.d0
+    1.6250d0 0.0750d0 0.1d0
+  /
+END
+
+REGION grain_r03_s000
+  COORDINATES
+    0.5000d0 0.0750d0 0.d0
+    0.6750d0 0.1000d0 0.1d0
+  /
+END
+
+REGION grain_r03_s001
+  COORDINATES
+    0.7250d0 0.0750d0 0.d0
+    0.8500d0 0.1000d0 0.1d0
+  /
+END
+
+REGION grain_r03_s002
+  COORDINATES
+    1.0000d0 0.0750d0 0.d0
+    1.0500d0 0.1000d0 0.1d0
+  /
+END
+
+REGION grain_r03_s003
+  COORDINATES
+    1.1250d0 0.0750d0 0.d0
+    1.2500d0 0.1000d0 0.1d0
+  /
+END
+
+REGION grain_r03_s004
+  COORDINATES
+    1.4500d0 0.0750d0 0.d0
+    1.6500d0 0.1000d0 0.1d0
+  /
+END
+
+REGION grain_r04_s000
+  COORDINATES
+    0.3500d0 0.1000d0 0.d0
+    0.4500d0 0.1250d0 0.1d0
+  /
+END
+
+REGION grain_r04_s001
+  COORDINATES
+    0.5000d0 0.1000d0 0.d0
+    0.7000d0 0.1250d0 0.1d0
+  /
+END
+
+REGION grain_r04_s002
+  COORDINATES
+    0.7250d0 0.1000d0 0.d0
+    0.8500d0 0.1250d0 0.1d0
+  /
+END
+
+REGION grain_r04_s003
+  COORDINATES
+    0.9750d0 0.1000d0 0.d0
+    1.0750d0 0.1250d0 0.1d0
+  /
+END
+
+REGION grain_r04_s004
+  COORDINATES
+    1.1250d0 0.1000d0 0.d0
+    1.2500d0 0.1250d0 0.1d0
+  /
+END
+
+REGION grain_r04_s005
+  COORDINATES
+    1.4250d0 0.1000d0 0.d0
+    1.6750d0 0.1250d0 0.1d0
+  /
+END
+
+REGION grain_r05_s000
+  COORDINATES
+    0.3250d0 0.1250d0 0.d0
+    0.4750d0 0.1500d0 0.1d0
+  /
+END
+
+REGION grain_r05_s001
+  COORDINATES
+    0.5000d0 0.1250d0 0.d0
+    0.6750d0 0.1500d0 0.1d0
+  /
+END
+
+REGION grain_r05_s002
+  COORDINATES
+    0.7500d0 0.1250d0 0.d0
+    0.8250d0 0.1500d0 0.1d0
+  /
+END
+
+REGION grain_r05_s003
+  COORDINATES
+    0.9500d0 0.1250d0 0.d0
+    1.1000d0 0.1500d0 0.1d0
+  /
+END
+
+REGION grain_r05_s004
+  COORDINATES
+    1.1250d0 0.1250d0 0.d0
+    1.2500d0 0.1500d0 0.1d0
+  /
+END
+
+REGION grain_r05_s005
+  COORDINATES
+    1.4250d0 0.1250d0 0.d0
+    1.6750d0 0.1500d0 0.1d0
+  /
+END
+
+REGION grain_r06_s000
+  COORDINATES
+    0.3250d0 0.1500d0 0.d0
+    0.4750d0 0.1750d0 0.1d0
+  /
+END
+
+REGION grain_r06_s001
+  COORDINATES
+    0.5250d0 0.1500d0 0.d0
+    0.6750d0 0.1750d0 0.1d0
+  /
+END
+
+REGION grain_r06_s002
+  COORDINATES
+    0.9500d0 0.1500d0 0.d0
+    1.1000d0 0.1750d0 0.1d0
+  /
+END
+
+REGION grain_r06_s003
+  COORDINATES
+    1.1500d0 0.1500d0 0.d0
+    1.2250d0 0.1750d0 0.1d0
+  /
+END
+
+REGION grain_r06_s004
+  COORDINATES
+    1.4250d0 0.1500d0 0.d0
+    1.6750d0 0.1750d0 0.1d0
+  /
+END
+
+REGION grain_r07_s000
+  COORDINATES
+    0.3250d0 0.1750d0 0.d0
+    0.4750d0 0.2000d0 0.1d0
+  /
+END
+
+REGION grain_r07_s001
+  COORDINATES
+    0.5500d0 0.1750d0 0.d0
+    0.6500d0 0.2000d0 0.1d0
+  /
+END
+
+REGION grain_r07_s002
+  COORDINATES
+    0.9750d0 0.1750d0 0.d0
+    1.0750d0 0.2000d0 0.1d0
+  /
+END
+
+REGION grain_r07_s003
+  COORDINATES
+    1.2750d0 0.1750d0 0.d0
+    1.3750d0 0.2000d0 0.1d0
+  /
+END
+
+REGION grain_r07_s004
+  COORDINATES
+    1.4250d0 0.1750d0 0.d0
+    1.6750d0 0.2000d0 0.1d0
+  /
+END
+
+REGION grain_r07_s005
+  COORDINATES
+    1.7250d0 0.1750d0 0.d0
+    1.8250d0 0.2000d0 0.1d0
+  /
+END
+
+REGION grain_r08_s000
+  COORDINATES
+    0.3500d0 0.2000d0 0.d0
+    0.4500d0 0.2250d0 0.1d0
+  /
+END
+
+REGION grain_r08_s001
+  COORDINATES
+    0.8750d0 0.2000d0 0.d0
+    0.9250d0 0.2250d0 0.1d0
+  /
+END
+
+REGION grain_r08_s002
+  COORDINATES
+    1.0000d0 0.2000d0 0.d0
+    1.0500d0 0.2250d0 0.1d0
+  /
+END
+
+REGION grain_r08_s003
+  COORDINATES
+    1.2500d0 0.2000d0 0.d0
+    1.3750d0 0.2250d0 0.1d0
+  /
+END
+
+REGION grain_r08_s004
+  COORDINATES
+    1.4250d0 0.2000d0 0.d0
+    1.6750d0 0.2250d0 0.1d0
+  /
+END
+
+REGION grain_r08_s005
+  COORDINATES
+    1.7000d0 0.2000d0 0.d0
+    1.8500d0 0.2250d0 0.1d0
+  /
+END
+
+REGION grain_r09_s000
+  COORDINATES
+    0.1500d0 0.2250d0 0.d0
+    0.2500d0 0.2500d0 0.1d0
+  /
+END
+
+REGION grain_r09_s001
+  COORDINATES
+    0.3750d0 0.2250d0 0.d0
+    0.4250d0 0.2500d0 0.1d0
+  /
+END
+
+REGION grain_r09_s002
+  COORDINATES
+    0.6500d0 0.2250d0 0.d0
+    0.7250d0 0.2500d0 0.1d0
+  /
+END
+
+REGION grain_r09_s003
+  COORDINATES
+    0.8500d0 0.2250d0 0.d0
+    0.9500d0 0.2500d0 0.1d0
+  /
+END
+
+REGION grain_r09_s004
+  COORDINATES
+    1.2500d0 0.2250d0 0.d0
+    1.4000d0 0.2500d0 0.1d0
+  /
+END
+
+REGION grain_r09_s005
+  COORDINATES
+    1.4500d0 0.2250d0 0.d0
+    1.6500d0 0.2500d0 0.1d0
+  /
+END
+
+REGION grain_r09_s006
+  COORDINATES
+    1.6750d0 0.2250d0 0.d0
+    1.8750d0 0.2500d0 0.1d0
+  /
+END
+
+REGION grain_r10_s000
+  COORDINATES
+    0.1500d0 0.2500d0 0.d0
+    0.2500d0 0.2750d0 0.1d0
+  /
+END
+
+REGION grain_r10_s001
+  COORDINATES
+    0.6000d0 0.2500d0 0.d0
+    0.7500d0 0.2750d0 0.1d0
+  /
+END
+
+REGION grain_r10_s002
+  COORDINATES
+    0.8250d0 0.2500d0 0.d0
+    0.9750d0 0.2750d0 0.1d0
+  /
+END
+
+REGION grain_r10_s003
+  COORDINATES
+    1.2500d0 0.2500d0 0.d0
+    1.4000d0 0.2750d0 0.1d0
+  /
+END
+
+REGION grain_r10_s004
+  COORDINATES
+    1.4750d0 0.2500d0 0.d0
+    1.6250d0 0.2750d0 0.1d0
+  /
+END
+
+REGION grain_r10_s005
+  COORDINATES
+    1.6750d0 0.2500d0 0.d0
+    1.8750d0 0.2750d0 0.1d0
+  /
+END
+
+REGION grain_r11_s000
+  COORDINATES
+    0.1250d0 0.2750d0 0.d0
+    0.2500d0 0.3000d0 0.1d0
+  /
+END
+
+REGION grain_r11_s001
+  COORDINATES
+    0.6000d0 0.2750d0 0.d0
+    0.7750d0 0.3000d0 0.1d0
+  /
+END
+
+REGION grain_r11_s002
+  COORDINATES
+    0.8250d0 0.2750d0 0.d0
+    0.9750d0 0.3000d0 0.1d0
+  /
+END
+
+REGION grain_r11_s003
+  COORDINATES
+    1.2500d0 0.2750d0 0.d0
+    1.3750d0 0.3000d0 0.1d0
+  /
+END
+
+REGION grain_r11_s004
+  COORDINATES
+    1.5250d0 0.2750d0 0.d0
+    1.5750d0 0.3000d0 0.1d0
+  /
+END
+
+REGION grain_r11_s005
+  COORDINATES
+    1.6750d0 0.2750d0 0.d0
+    1.8750d0 0.3000d0 0.1d0
+  /
+END
+
+REGION grain_r12_s000
+  COORDINATES
+    0.1500d0 0.3000d0 0.d0
+    0.2500d0 0.3250d0 0.1d0
+  /
+END
+
+REGION grain_r12_s001
+  COORDINATES
+    0.6000d0 0.3000d0 0.d0
+    0.7750d0 0.3250d0 0.1d0
+  /
+END
+
+REGION grain_r12_s002
+  COORDINATES
+    0.8500d0 0.3000d0 0.d0
+    0.9500d0 0.3250d0 0.1d0
+  /
+END
+
+REGION grain_r12_s003
+  COORDINATES
+    1.3000d0 0.3000d0 0.d0
+    1.3500d0 0.3250d0 0.1d0
+  /
+END
+
+REGION grain_r12_s004
+  COORDINATES
+    1.6750d0 0.3000d0 0.d0
+    1.8750d0 0.3250d0 0.1d0
+  /
+END
+
+REGION grain_r13_s000
+  COORDINATES
+    0.1750d0 0.3250d0 0.d0
+    0.2250d0 0.3500d0 0.1d0
+  /
+END
+
+REGION grain_r13_s001
+  COORDINATES
+    0.6000d0 0.3250d0 0.d0
+    0.7750d0 0.3500d0 0.1d0
+  /
+END
+
+REGION grain_r13_s002
+  COORDINATES
+    0.8750d0 0.3250d0 0.d0
+    0.9250d0 0.3500d0 0.1d0
+  /
+END
+
+REGION grain_r13_s003
+  COORDINATES
+    1.7000d0 0.3250d0 0.d0
+    1.8500d0 0.3500d0 0.1d0
+  /
+END
+
+REGION grain_r14_s000
+  COORDINATES
+    0.6000d0 0.3500d0 0.d0
+    0.7750d0 0.3750d0 0.1d0
+  /
+END
+
+REGION grain_r14_s001
+  COORDINATES
+    1.7250d0 0.3500d0 0.d0
+    1.8250d0 0.3750d0 0.1d0
+  /
+END
+
+REGION grain_r15_s000
+  COORDINATES
+    0.6250d0 0.3750d0 0.d0
+    0.7500d0 0.4000d0 0.1d0
+  /
+END
+
+REGION grain_r15_s001
+  COORDINATES
+    1.1750d0 0.3750d0 0.d0
+    1.2250d0 0.4000d0 0.1d0
+  /
+END
+
+REGION grain_r16_s000
+  COORDINATES
+    1.1250d0 0.4000d0 0.d0
+    1.2750d0 0.4250d0 0.1d0
+  /
+END
+
+REGION grain_r16_s001
+  COORDINATES
+    1.6000d0 0.4000d0 0.d0
+    1.6500d0 0.4250d0 0.1d0
+  /
+END
+
+REGION grain_r17_s000
+  COORDINATES
+    0.3000d0 0.4250d0 0.d0
+    0.4250d0 0.4500d0 0.1d0
+  /
+END
+
+REGION grain_r17_s001
+  COORDINATES
+    0.8750d0 0.4250d0 0.d0
+    0.9500d0 0.4500d0 0.1d0
+  /
+END
+
+REGION grain_r17_s002
+  COORDINATES
+    1.1000d0 0.4250d0 0.d0
+    1.3000d0 0.4500d0 0.1d0
+  /
+END
+
+REGION grain_r17_s003
+  COORDINATES
+    1.5750d0 0.4250d0 0.d0
+    1.6750d0 0.4500d0 0.1d0
+  /
+END
+
+REGION grain_r18_s000
+  COORDINATES
+    0.2750d0 0.4500d0 0.d0
+    0.4500d0 0.4750d0 0.1d0
+  /
+END
+
+REGION grain_r18_s001
+  COORDINATES
+    0.5750d0 0.4500d0 0.d0
+    0.6500d0 0.4750d0 0.1d0
+  /
+END
+
+REGION grain_r18_s002
+  COORDINATES
+    0.8500d0 0.4500d0 0.d0
+    0.9750d0 0.4750d0 0.1d0
+  /
+END
+
+REGION grain_r18_s003
+  COORDINATES
+    1.0750d0 0.4500d0 0.d0
+    1.3250d0 0.4750d0 0.1d0
+  /
+END
+
+REGION grain_r18_s004
+  COORDINATES
+    1.5750d0 0.4500d0 0.d0
+    1.7000d0 0.4750d0 0.1d0
+  /
+END
+
+REGION grain_r19_s000
+  COORDINATES
+    0.2500d0 0.4750d0 0.d0
+    0.4500d0 0.5000d0 0.1d0
+  /
+END
+
+REGION grain_r19_s001
+  COORDINATES
+    0.5500d0 0.4750d0 0.d0
+    0.6750d0 0.5000d0 0.1d0
+  /
+END
+
+REGION grain_r19_s002
+  COORDINATES
+    0.8250d0 0.4750d0 0.d0
+    0.9750d0 0.5000d0 0.1d0
+  /
+END
+
+REGION grain_r19_s003
+  COORDINATES
+    1.0750d0 0.4750d0 0.d0
+    1.3250d0 0.5000d0 0.1d0
+  /
+END
+
+REGION grain_r19_s004
+  COORDINATES
+    1.5750d0 0.4750d0 0.d0
+    1.7000d0 0.5000d0 0.1d0
+  /
+END
+
+REGION grain_r20_s000
+  COORDINATES
+    0.2500d0 0.5000d0 0.d0
+    0.4750d0 0.5250d0 0.1d0
+  /
+END
+
+REGION grain_r20_s001
+  COORDINATES
+    0.5500d0 0.5000d0 0.d0
+    0.6750d0 0.5250d0 0.1d0
+  /
+END
+
+REGION grain_r20_s002
+  COORDINATES
+    0.8250d0 0.5000d0 0.d0
+    0.9750d0 0.5250d0 0.1d0
+  /
+END
+
+REGION grain_r20_s003
+  COORDINATES
+    1.0750d0 0.5000d0 0.d0
+    1.3250d0 0.5250d0 0.1d0
+  /
+END
+
+REGION grain_r20_s004
+  COORDINATES
+    1.5750d0 0.5000d0 0.d0
+    1.6750d0 0.5250d0 0.1d0
+  /
+END
+
+REGION grain_r21_s000
+  COORDINATES
+    0.2500d0 0.5250d0 0.d0
+    0.4750d0 0.5500d0 0.1d0
+  /
+END
+
+REGION grain_r21_s001
+  COORDINATES
+    0.5500d0 0.5250d0 0.d0
+    0.6750d0 0.5500d0 0.1d0
+  /
+END
+
+REGION grain_r21_s002
+  COORDINATES
+    0.8500d0 0.5250d0 0.d0
+    0.9750d0 0.5500d0 0.1d0
+  /
+END
+
+REGION grain_r21_s003
+  COORDINATES
+    1.0750d0 0.5250d0 0.d0
+    1.3250d0 0.5500d0 0.1d0
+  /
+END
+
+REGION grain_r22_s000
+  COORDINATES
+    0.2500d0 0.5500d0 0.d0
+    0.4750d0 0.5750d0 0.1d0
+  /
+END
+
+REGION grain_r22_s001
+  COORDINATES
+    0.5500d0 0.5500d0 0.d0
+    0.6750d0 0.5750d0 0.1d0
+  /
+END
+
+REGION grain_r22_s002
+  COORDINATES
+    0.8500d0 0.5500d0 0.d0
+    0.9500d0 0.5750d0 0.1d0
+  /
+END
+
+REGION grain_r22_s003
+  COORDINATES
+    1.1000d0 0.5500d0 0.d0
+    1.3250d0 0.5750d0 0.1d0
+  /
+END
+
+REGION grain_r23_s000
+  COORDINATES
+    0.2500d0 0.5750d0 0.d0
+    0.4500d0 0.6000d0 0.1d0
+  /
+END
+
+REGION grain_r23_s001
+  COORDINATES
+    0.5750d0 0.5750d0 0.d0
+    0.6500d0 0.6000d0 0.1d0
+  /
+END
+
+REGION grain_r23_s002
+  COORDINATES
+    1.1000d0 0.5750d0 0.d0
+    1.3000d0 0.6000d0 0.1d0
+  /
+END
+
+REGION grain_r24_s000
+  COORDINATES
+    0.2750d0 0.6000d0 0.d0
+    0.4250d0 0.6250d0 0.1d0
+  /
+END
+
+REGION grain_r24_s001
+  COORDINATES
+    1.1250d0 0.6000d0 0.d0
+    1.2750d0 0.6250d0 0.1d0
+  /
+END
+
+REGION grain_r25_s000
+  COORDINATES
+    0.3250d0 0.6250d0 0.d0
+    0.4000d0 0.6500d0 0.1d0
+  /
+END
+
+REGION grain_r25_s001
+  COORDINATES
+    1.5750d0 0.6250d0 0.d0
+    1.7000d0 0.6500d0 0.1d0
+  /
+END
+
+REGION grain_r26_s000
+  COORDINATES
+    1.5500d0 0.6500d0 0.d0
+    1.7250d0 0.6750d0 0.1d0
+  /
+END
+
+REGION grain_r27_s000
+  COORDINATES
+    0.4000d0 0.6750d0 0.d0
+    0.4500d0 0.7000d0 0.1d0
+  /
+END
+
+REGION grain_r27_s001
+  COORDINATES
+    0.8000d0 0.6750d0 0.d0
+    0.9000d0 0.7000d0 0.1d0
+  /
+END
+
+REGION grain_r27_s002
+  COORDINATES
+    1.5250d0 0.6750d0 0.d0
+    1.7250d0 0.7000d0 0.1d0
+  /
+END
+
+REGION grain_r28_s000
+  COORDINATES
+    0.1250d0 0.7000d0 0.d0
+    0.2500d0 0.7250d0 0.1d0
+  /
+END
+
+REGION grain_r28_s001
+  COORDINATES
+    0.3750d0 0.7000d0 0.d0
+    0.5000d0 0.7250d0 0.1d0
+  /
+END
+
+REGION grain_r28_s002
+  COORDINATES
+    0.8000d0 0.7000d0 0.d0
+    0.9250d0 0.7250d0 0.1d0
+  /
+END
+
+REGION grain_r28_s003
+  COORDINATES
+    1.1750d0 0.7000d0 0.d0
+    1.2500d0 0.7250d0 0.1d0
+  /
+END
+
+REGION grain_r28_s004
+  COORDINATES
+    1.5250d0 0.7000d0 0.d0
+    1.7250d0 0.7250d0 0.1d0
+  /
+END
+
+REGION grain_r29_s000
+  COORDINATES
+    0.1250d0 0.7250d0 0.d0
+    0.2750d0 0.7500d0 0.1d0
+  /
+END
+
+REGION grain_r29_s001
+  COORDINATES
+    0.3500d0 0.7250d0 0.d0
+    0.5000d0 0.7500d0 0.1d0
+  /
+END
+
+REGION grain_r29_s002
+  COORDINATES
+    0.8000d0 0.7250d0 0.d0
+    0.9250d0 0.7500d0 0.1d0
+  /
+END
+
+REGION grain_r29_s003
+  COORDINATES
+    0.9750d0 0.7250d0 0.d0
+    1.1000d0 0.7500d0 0.1d0
+  /
+END
+
+REGION grain_r29_s004
+  COORDINATES
+    1.1500d0 0.7250d0 0.d0
+    1.2750d0 0.7500d0 0.1d0
+  /
+END
+
+REGION grain_r29_s005
+  COORDINATES
+    1.3750d0 0.7250d0 0.d0
+    1.4750d0 0.7500d0 0.1d0
+  /
+END
+
+REGION grain_r29_s006
+  COORDINATES
+    1.5250d0 0.7250d0 0.d0
+    1.7250d0 0.7500d0 0.1d0
+  /
+END
+
+REGION grain_r30_s000
+  COORDINATES
+    0.1000d0 0.7500d0 0.d0
+    0.2750d0 0.7750d0 0.1d0
+  /
+END
+
+REGION grain_r30_s001
+  COORDINATES
+    0.3500d0 0.7500d0 0.d0
+    0.5000d0 0.7750d0 0.1d0
+  /
+END
+
+REGION grain_r30_s002
+  COORDINATES
+    0.6250d0 0.7500d0 0.d0
+    0.7250d0 0.7750d0 0.1d0
+  /
+END
+
+REGION grain_r30_s003
+  COORDINATES
+    0.8000d0 0.7500d0 0.d0
+    0.9000d0 0.7750d0 0.1d0
+  /
+END
+
+REGION grain_r30_s004
+  COORDINATES
+    0.9500d0 0.7500d0 0.d0
+    1.1250d0 0.7750d0 0.1d0
+  /
+END
+
+REGION grain_r30_s005
+  COORDINATES
+    1.1500d0 0.7500d0 0.d0
+    1.2750d0 0.7750d0 0.1d0
+  /
+END
+
+REGION grain_r30_s006
+  COORDINATES
+    1.3750d0 0.7500d0 0.d0
+    1.4750d0 0.7750d0 0.1d0
+  /
+END
+
+REGION grain_r30_s007
+  COORDINATES
+    1.5500d0 0.7500d0 0.d0
+    1.7250d0 0.7750d0 0.1d0
+  /
+END
+
+REGION grain_r31_s000
+  COORDINATES
+    0.1000d0 0.7750d0 0.d0
+    0.2750d0 0.8000d0 0.1d0
+  /
+END
+
+REGION grain_r31_s001
+  COORDINATES
+    0.3500d0 0.7750d0 0.d0
+    0.5000d0 0.8000d0 0.1d0
+  /
+END
+
+REGION grain_r31_s002
+  COORDINATES
+    0.6000d0 0.7750d0 0.d0
+    0.7500d0 0.8000d0 0.1d0
+  /
+END
+
+REGION grain_r31_s003
+  COORDINATES
+    0.8250d0 0.7750d0 0.d0
+    0.8750d0 0.8000d0 0.1d0
+  /
+END
+
+REGION grain_r31_s004
+  COORDINATES
+    0.9500d0 0.7750d0 0.d0
+    1.1250d0 0.8000d0 0.1d0
+  /
+END
+
+REGION grain_r31_s005
+  COORDINATES
+    1.1750d0 0.7750d0 0.d0
+    1.2750d0 0.8000d0 0.1d0
+  /
+END
+
+REGION grain_r31_s006
+  COORDINATES
+    1.3750d0 0.7750d0 0.d0
+    1.4750d0 0.8000d0 0.1d0
+  /
+END
+
+REGION grain_r31_s007
+  COORDINATES
+    1.5500d0 0.7750d0 0.d0
+    1.7000d0 0.8000d0 0.1d0
+  /
+END
+
+REGION grain_r32_s000
+  COORDINATES
+    0.1250d0 0.8000d0 0.d0
+    0.2750d0 0.8250d0 0.1d0
+  /
+END
+
+REGION grain_r32_s001
+  COORDINATES
+    0.3500d0 0.8000d0 0.d0
+    0.5000d0 0.8250d0 0.1d0
+  /
+END
+
+REGION grain_r32_s002
+  COORDINATES
+    0.6000d0 0.8000d0 0.d0
+    0.7500d0 0.8250d0 0.1d0
+  /
+END
+
+REGION grain_r32_s003
+  COORDINATES
+    0.9500d0 0.8000d0 0.d0
+    1.1250d0 0.8250d0 0.1d0
+  /
+END
+
+REGION grain_r32_s004
+  COORDINATES
+    1.2000d0 0.8000d0 0.d0
+    1.2500d0 0.8250d0 0.1d0
+  /
+END
+
+REGION grain_r32_s005
+  COORDINATES
+    1.3750d0 0.8000d0 0.d0
+    1.4750d0 0.8250d0 0.1d0
+  /
+END
+
+REGION grain_r32_s006
+  COORDINATES
+    1.6000d0 0.8000d0 0.d0
+    1.6750d0 0.8250d0 0.1d0
+  /
+END
+
+REGION grain_r33_s000
+  COORDINATES
+    0.1250d0 0.8250d0 0.d0
+    0.2500d0 0.8500d0 0.1d0
+  /
+END
+
+REGION grain_r33_s001
+  COORDINATES
+    0.4000d0 0.8250d0 0.d0
+    0.4750d0 0.8500d0 0.1d0
+  /
+END
+
+REGION grain_r33_s002
+  COORDINATES
+    0.6000d0 0.8250d0 0.d0
+    0.7500d0 0.8500d0 0.1d0
+  /
+END
+
+REGION grain_r33_s003
+  COORDINATES
+    0.9500d0 0.8250d0 0.d0
+    1.1250d0 0.8500d0 0.1d0
+  /
+END
+
+REGION grain_r34_s000
+  COORDINATES
+    0.6000d0 0.8500d0 0.d0
+    0.7250d0 0.8750d0 0.1d0
+  /
+END
+
+REGION grain_r34_s001
+  COORDINATES
+    0.9750d0 0.8500d0 0.d0
+    1.1000d0 0.8750d0 0.1d0
+  /
+END
+
+REGION grain_r35_s000
+  COORDINATES
+    0.6500d0 0.8750d0 0.d0
+    0.7000d0 0.9000d0 0.1d0
+  /
+END
+
+REGION grain_r35_s001
+  COORDINATES
+    1.0000d0 0.8750d0 0.d0
+    1.0750d0 0.9000d0 0.1d0
+  /
+END
+
+! ---- Boundary face regions ----
+REGION inlet_top
+  FACE WEST
+  COORDINATES
+    0.d0 0.8d0 0.d0
+    0.d0 1.0d0 0.1d0
+  /
+END
+
+REGION inlet_bottom
+  FACE WEST
+  COORDINATES
+    0.d0 0.0d0 0.d0
+    0.d0 0.8d0 0.1d0
+  /
+END
+
+REGION right
+  FACE EAST
+  COORDINATES
+    2.0d0 0.d0 0.d0
+    2.0d0 1.0d0 0.1d0
+  /
+END
+
+REGION bottom
+  FACE SOUTH
+  COORDINATES
+    0.d0 0.d0 0.d0
+    2.0d0 0.d0 0.1d0
+  /
+END
+
+REGION top
+  FACE NORTH
+  COORDINATES
+    0.d0 1.0d0 0.d0
+    2.0d0 1.0d0 0.1d0
+  /
+END
+
+!------------------------------------------------------------------------------
+! Flow conditions
+!------------------------------------------------------------------------------
+
+FLOW_CONDITION inflow
+  TYPE
+    LIQUID_PRESSURE DIRICHLET
+  /
+  LIQUID_PRESSURE 4.0d0
+END
+
+FLOW_CONDITION outflow
+  TYPE
+    LIQUID_PRESSURE DIRICHLET
+  /
+  LIQUID_PRESSURE 0.d0
+END
+
+FLOW_CONDITION no_slip
+  TYPE
+    VELOCITY DIRICHLET
+  /
+  VELOCITY 0.d0 0.d0 0.d0
+END
+
+!------------------------------------------------------------------------------
+! Transport conditions
+!------------------------------------------------------------------------------
+
+TRANSPORT_CONDITION tracer_inlet
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT tracer_inlet
+    CONCENTRATIONS
+      Tracer 1.d0 F
+    /
+  /
+END
+
+TRANSPORT_CONDITION background
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT background
+    CONCENTRATIONS
+      Tracer 1.d-10 F
+    /
+  /
+END
+
+!------------------------------------------------------------------------------
+! Initial and boundary / prescribed conditions
+!------------------------------------------------------------------------------
+
+INITIAL_CONDITION initial
+  FLOW_CONDITION      inflow
+  TRANSPORT_CONDITION background
+  REGION all
+END
+
+! West: pressure inlet -- top strip injects tracer
+PRESCRIBED_CONDITION inlet_top
+  FLOW_CONDITION      inflow
+  TRANSPORT_CONDITION tracer_inlet
+  REGION inlet_top
+END
+
+PRESCRIBED_CONDITION inlet_bottom
+  FLOW_CONDITION      inflow
+  TRANSPORT_CONDITION background
+  REGION inlet_bottom
+END
+
+! East: pressure outlet
+PRESCRIBED_CONDITION outlet
+  FLOW_CONDITION      outflow
+  TRANSPORT_CONDITION background
+  REGION right
+END
+
+! No-slip walls
+PRESCRIBED_CONDITION bottom_wall
+  FLOW_CONDITION      no_slip
+  TRANSPORT_CONDITION background
+  REGION bottom
+END
+
+PRESCRIBED_CONDITION top_wall
+  FLOW_CONDITION      no_slip
+  TRANSPORT_CONDITION background
+  REGION top
+END
+
+!------------------------------------------------------------------------------
+! Material assignment + grain inactivation
+!------------------------------------------------------------------------------
+
+STRATA
+  REGION all
+  MATERIAL pore_fluid
+END
+
+STRATA
+  REGION grain_r00_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r01_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r01_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r02_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r02_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r02_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r02_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r03_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r03_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r03_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r03_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r03_s004
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r04_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r04_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r04_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r04_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r04_s004
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r04_s005
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r05_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r05_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r05_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r05_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r05_s004
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r05_s005
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r06_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r06_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r06_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r06_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r06_s004
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r07_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r07_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r07_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r07_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r07_s004
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r07_s005
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r08_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r08_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r08_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r08_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r08_s004
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r08_s005
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r09_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r09_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r09_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r09_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r09_s004
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r09_s005
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r09_s006
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r10_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r10_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r10_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r10_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r10_s004
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r10_s005
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r11_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r11_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r11_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r11_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r11_s004
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r11_s005
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r12_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r12_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r12_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r12_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r12_s004
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r13_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r13_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r13_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r13_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r14_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r14_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r15_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r15_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r16_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r16_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r17_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r17_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r17_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r17_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r18_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r18_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r18_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r18_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r18_s004
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r19_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r19_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r19_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r19_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r19_s004
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r20_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r20_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r20_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r20_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r20_s004
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r21_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r21_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r21_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r21_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r22_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r22_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r22_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r22_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r23_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r23_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r23_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r24_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r24_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r25_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r25_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r26_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r27_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r27_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r27_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r28_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r28_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r28_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r28_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r28_s004
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r29_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r29_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r29_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r29_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r29_s004
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r29_s005
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r29_s006
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r30_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r30_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r30_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r30_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r30_s004
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r30_s005
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r30_s006
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r30_s007
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r31_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r31_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r31_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r31_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r31_s004
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r31_s005
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r31_s006
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r31_s007
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r32_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r32_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r32_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r32_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r32_s004
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r32_s005
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r32_s006
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r33_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r33_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r33_s002
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r33_s003
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r34_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r34_s001
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r35_s000
+  INACTIVE
+END
+
+STRATA
+  REGION grain_r35_s001
+  INACTIVE
+END
+
+!------------------------------------------------------------------------------
+! Time stepping
+!   Pressure gradient 4.0 Pa over 2.0 m => mean u ≈ 0.17 m/s (open channel)
+!   Pore-network resistance ~2x open channel; u_pore ≈ 0.1 m/s
+!   Run to t = 20 s so tracer front fully traverses the domain.
+!   Output every 0.2 s => 100 VTK snapshots.
+!------------------------------------------------------------------------------
+
+TIME
+  FINAL_TIME            20.d0 s
+  INITIAL_TIMESTEP_SIZE 1.d-3 s
+  MAXIMUM_TIMESTEP_SIZE 2.d-1 s
+END
+
+!------------------------------------------------------------------------------
+! Output
+!------------------------------------------------------------------------------
+
+OUTPUT
+  FORMAT VTK
+  VARIABLES
+    LIQUID_PRESSURE
+    STOKES_VELOCITY_X
+    STOKES_VELOCITY_Y
+    STOKES_VELOCITY_Z
+    MATERIAL_ID
+  /
+  PERIODIC TIME 2.d-1 s
+/
+
+END_SUBSURFACE

@@ -1,0 +1,4 @@
+# PFLOTRAN output files — too large for git
+realistic_pore-*.vtk
+realistic_pore.out
+anim_frames/
