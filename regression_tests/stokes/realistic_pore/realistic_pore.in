@@ -1198,19 +1198,11 @@ REGION grain_r35_s001
 END
 
 ! ---- Boundary face regions ----
-REGION inlet_top
-  FACE WEST
-  COORDINATES
-    0.d0 0.8d0 0.d0
-    0.d0 1.0d0 0.1d0
-  /
-END
-
-REGION inlet_bottom
+REGION inlet
   FACE WEST
   COORDINATES
     0.d0 0.0d0 0.d0
-    0.d0 0.8d0 0.1d0
+    0.d0 1.0d0 0.1d0
   /
 END
 
@@ -1267,21 +1259,34 @@ END
 ! Transport conditions
 !------------------------------------------------------------------------------
 
-TRANSPORT_CONDITION tracer_inlet
-  TYPE DIRICHLET_ZERO_GRADIENT
-  CONSTRAINT tracer_inlet
-    CONCENTRATIONS
-      Tracer 1.d0 F
-    /
-  /
-END
-
 TRANSPORT_CONDITION background
   TYPE DIRICHLET_ZERO_GRADIENT
   CONSTRAINT background
     CONCENTRATIONS
       Tracer 1.d-10 F
     /
+  /
+END
+
+! Standalone constraints for the inlet pulse (t < 2 s: tracer on; t >= 2 s: off)
+CONSTRAINT tracer_on
+  CONCENTRATIONS
+    Tracer 1.d0 F
+  /
+/
+
+CONSTRAINT tracer_off
+  CONCENTRATIONS
+    Tracer 1.d-10 F
+  /
+/
+
+! 2-second tracer pulse on the full west inlet face
+TRANSPORT_CONDITION tracer_pulse
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0  tracer_on
+    2.d0  tracer_off
   /
 END
 
@@ -1295,17 +1300,11 @@ INITIAL_CONDITION initial
   REGION all
 END
 
-! West: pressure inlet -- top strip injects tracer
-PRESCRIBED_CONDITION inlet_top
+! West: pressure inlet -- tracer pulse (0-2 s) on entire west face
+PRESCRIBED_CONDITION inlet
   FLOW_CONDITION      inflow
-  TRANSPORT_CONDITION tracer_inlet
-  REGION inlet_top
-END
-
-PRESCRIBED_CONDITION inlet_bottom
-  FLOW_CONDITION      inflow
-  TRANSPORT_CONDITION background
-  REGION inlet_bottom
+  TRANSPORT_CONDITION tracer_pulse
+  REGION inlet
 END
 
 ! East: pressure outlet

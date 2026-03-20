@@ -96,6 +96,7 @@ def read_vtk_scalars(fname):
 
     return data
 
+TRACER_PULSE_END = 2.0   # seconds — tracer injected for t in [0, TRACER_PULSE_END)
 
 # ---------------------------------------------------------------------------
 # Drawing helpers
@@ -108,13 +109,15 @@ def finish_ax(ax, title, t):
     ax.set_xlabel("x  [m]", fontsize=10)
     ax.set_ylabel("y  [m]", fontsize=10)
     ax.set_title(f"{title}     t = {t:.1f} s", fontsize=11, pad=6)
-    ax.text(0.01, 0.97, "← inlet (p=4 Pa, tracer=1)", transform=ax.transAxes,
+    pulse_active = t < TRACER_PULSE_END
+    inlet_label = "← inlet (p=4 Pa, tracer pulse ON)" if pulse_active else "← inlet (p=4 Pa, tracer OFF)"
+    inlet_color = "crimson" if pulse_active else "steelblue"
+    ax.text(0.01, 0.97, inlet_label, transform=ax.transAxes,
             fontsize=7.5, va="top", color="white",
-            bbox=dict(boxstyle="round,pad=0.2", fc="steelblue", alpha=0.7))
+            bbox=dict(boxstyle="round,pad=0.2", fc=inlet_color, alpha=0.85))
     ax.text(0.99, 0.97, "outlet →", transform=ax.transAxes,
             fontsize=7.5, va="top", ha="right", color="white",
             bbox=dict(boxstyle="round,pad=0.2", fc="steelblue", alpha=0.7))
-
 
 # ---------------------------------------------------------------------------
 # Particle tracking helpers
