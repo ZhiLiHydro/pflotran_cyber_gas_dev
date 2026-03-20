@@ -722,6 +722,7 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
     auxvar%sat = 1.d0
     auxvar%kr = 1.d0
     pw = max(auxvar%pres,pw)
+    auxvar%pres = pw
     dpw_dp = 1.d0
   endif
 

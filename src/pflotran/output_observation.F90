@@ -1163,7 +1163,8 @@ subroutine WriteObservationDataForCell(fid,realization_base,local_id)
   field => realization_base%field
   output_option => realization_base%output_option
 
-110 format(es14.6)
+!110 format(es14.6)
+110 format(es18.8)
 111 format(i2)
 
   ghosted_id = grid%nL2G(local_id)
@@ -1242,7 +1243,8 @@ subroutine WriteObservationDataForCoord(fid,realization_base,region)
   field => realization_base%field
   output_option => realization_base%output_option
 
-110 format(es14.6)
+!110 format(es14.6)
+110 format(es18.9)
 111 format(i2)
 
   count = 0
