@@ -718,8 +718,10 @@ subroutine PMFracSetup(this)
     cur_fracture%strike%z = 0.d0
 
     ! Then for dip, we have : ||nfrac||||nxy||cos(theta) = nfrac dot nxy, where theta is the dip angle
-    ! since ||nfrac|| = ||nxy|| = 1, and nxy = <0,0,1> we have
-    cur_fracture%dip = acos(cur_fracture%normal%z)
+    ! since ||nfrac|| = ||nxy|| = 1, and nxy = <0,0,1> OR nxy = <0,0,-1> we have
+    ! note: i take the min bw the angle produced by using an nxy pointing up or down, 
+    ! bc i want to bound the dip angle between 0 and pi
+    cur_fracture%dip = min(acos(cur_fracture%normal%z), acos(-1.d0*cur_fracture%normal%z))
 
 
     cur_fracture => cur_fracture%next
@@ -3095,6 +3097,7 @@ subroutine PMFracGeomPrintStats(this)
   character(len=MAXWORDLENGTH) :: filename_frac_info ! EJB
   type(fracture_type), pointer :: cur_fracture
   PetscInt :: fid_frac_info, frac_count
+  PetscReal:: min_dip, mean_dip, max_dip
 
   ! filename_frac_info needs to be consistent w/ filename_frac_info located at end of PMFracSetup()
   ! EJB: filename for printing out fracture geometry information: 
@@ -3104,10 +3107,22 @@ subroutine PMFracGeomPrintStats(this)
   OPEN(UNIT=fid_frac_info,FILE=filename_frac_info,STATUS='OLD',POSITION='APPEND',ACTION='WRITE')
 
   ! Loop over each fracture in the domain and print its properties
-  frac_count = 1
+  frac_count = 0
   cur_fracture => this%fracture_list
+
+  ! initialize the min and max dip: 
+  ! since dip is bounded by [0, pi]
+  ! safe to initialize as below (so they'll get replaced)
+  min_dip = 3.14d0
+  max_dip = -3.14d0
+  mean_dip = 0.d0
   do 
     if (.not.associated(cur_fracture)) exit
+
+    ! get min and max dip
+    min_dip = min(min_dip, cur_fracture%dip)
+    max_dip = max(max_dip, cur_fracture%dip)
+    mean_dip = cur_fracture%dip + mean_dip
 
     ! data to write is: 
     ! fracture_id, cx, cy, cz, nx, ny, nz, rx, ry, rz, aperture
@@ -3152,14 +3167,21 @@ subroutine PMFracGeomPrintStats(this)
 
     ! dip
     write(fid_frac_info, 110, advance="yes") cur_fracture%dip
-    
-    this%option%io_buffer = 'Frac count: ' // StringWrite(frac_count)
-    call PrintMsg(this%option)
 
     frac_count = frac_count + 1
     cur_fracture => cur_fracture%next
 
   enddo
+  ! Finish calculating the mean dip: 
+  mean_dip = mean_dip/frac_count
+
+  ! Now write metrics on min, mean, max dip: 
+  WRITE(fid_frac_info,'(a)',advance="no") "min_dip: "
+  WRITE(fid_frac_info, 110, advance="yes") min_dip
+  WRITE(fid_frac_info,'(a)',advance="no") "mean_dip: "
+  WRITE(fid_frac_info, 110, advance="yes") mean_dip
+  WRITE(fid_frac_info,'(a)',advance="no") "max_dip: "
+  WRITE(fid_frac_info, 110, advance="yes") max_dip
 
   CLOSE(fid_frac_info)
 end subroutine PMFracGeomPrintStats
