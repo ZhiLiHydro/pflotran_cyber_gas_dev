@@ -429,7 +429,7 @@ subroutine PMFracSetup(this)
   type(point3d_type) :: v1,v2,v3,v4,v5,v6,v7,v8 ! grid cell vertices
   PetscBool :: within_x,within_y,within_z
   PetscBool :: frac_is_within_grid_cell_volume
-  PetscBool :: added
+  PetscBool :: added,found
   PetscBool, pointer :: connected(:)
   PetscErrorCode :: ierr
 
@@ -966,27 +966,33 @@ subroutine PMFracSetup(this)
 
     tcfc = COUNT(connected,1) ! count the total number of TRUE (whole domain)
     allocate(this%unique_connected_cell_ids_glb(tcfc))
-    ! how do I check if a glb id is owned by my process and what the corresponding
-    ! local id is?
     j = 0
     do k = 1,res_grid%nlmax
+      found = PETSC_FALSE
       glb_id = res_grid%nG2A(res_grid%nL2G(k))
       ! count how many of the local ids I own have a gbl id that is connected
       do i=1,size(this%allfrac_unique_cell_ids_glb)
-        if (this%allfrac_unique_cell_ids_glb(i) == glb_id) exit
+        if (this%allfrac_unique_cell_ids_glb(i) == glb_id) then
+          found = PETSC_TRUE
+          exit
+        endif
       enddo
-      if (connected(i)) j = j+1
+      if (found .and. connected(i)) j = j+1
     enddo
     allocate(this%unique_connected_cell_ids(j)) ! ok if j=0
     if (size(this%unique_connected_cell_ids) > 0) then
       j = 0
       do k = 1,res_grid%nlmax
+        found = PETSC_FALSE
         glb_id = res_grid%nG2A(res_grid%nL2G(k))
         ! load the local ids I own which have a gbl id that is connected
         do i=1,size(this%allfrac_unique_cell_ids_glb)
-          if (this%allfrac_unique_cell_ids_glb(i) == glb_id) exit
+          if (this%allfrac_unique_cell_ids_glb(i) == glb_id) then
+            found = PETSC_TRUE
+            exit
+          endif
         enddo
-        if (connected(i)) then
+        if (found .and. connected(i)) then
           j = j+1
           this%unique_connected_cell_ids(j) = k ! k is the local id
         endif
@@ -3061,13 +3067,15 @@ subroutine PMFracPrintStats(this)
   close(fid)
 
   deallocate(fracture_volume_glb)
-  deallocate(lcl_cells); deallocate(cell_positions)
   deallocate(frac_perm_z_glb); deallocate(frac_perm_y_glb)
   deallocate(frac_perm_x_glb)
   deallocate(frac_perm_z_lcl); deallocate(frac_perm_y_lcl)
   deallocate(frac_perm_x_lcl)
   deallocate(frac_aperture_glb)
   deallocate(frac_aperture_lcl)
+  if (nglb_cells > 0) then
+    deallocate(lcl_cells); deallocate(cell_positions)
+  endif
 
 end subroutine PMFracPrintStats
 ! ************************************************************************** !
