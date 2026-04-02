@@ -1169,12 +1169,12 @@ subroutine PMFracSetup(this)
   if (status/=0) WRITE(fid_frac_info,'(a)',advance="yes") "INPUT DECK PATH: unknown"
   WRITE(fid_frac_info,'(a)',advance="yes") "TIMESTAMP OF FILE CREATION: "//FDATE()
   WRITE(fid_frac_info,'(a)',advance="no") "fracture_id,"
-  WRITE(fid_frac_info,'(a)',advance="no") "center_x,center_y,center_z,"
+  WRITE(fid_frac_info,'(a)',advance="no") "center_x[m],center_y[m],center_z[m],"
   WRITE(fid_frac_info,'(a)',advance="no") "normal_x,normal_y,normal_z,"
-  WRITE(fid_frac_info,'(a)',advance="no") "radius_x,radius_y,radius_z,"
-  WRITE(fid_frac_info,'(a)',advance="no") "aperture_initial,"
+  WRITE(fid_frac_info,'(a)',advance="no") "radius_x[m],radius_y[m],radius_z[m],"
+  WRITE(fid_frac_info,'(a)',advance="no") "aperture_initial[m],"
   WRITE(fid_frac_info,'(a)',advance="no") "strike_x,strike_y,strike_z,"
-  WRITE(fid_frac_info,'(a)',advance="yes") "dip"
+  WRITE(fid_frac_info,'(a)',advance="yes") "dip[radians]"
   ! WRITE(fid_frac_info,'(a)',advance="yes") ""
   CLOSE(fid_frac_info)
 
@@ -3176,11 +3176,11 @@ subroutine PMFracGeomPrintStats(this)
   mean_dip = mean_dip/frac_count
 
   ! Now write metrics on min, mean, max dip: 
-  WRITE(fid_frac_info,'(a)',advance="no") "min_dip: "
+  WRITE(fid_frac_info,'(a)',advance="no") "min_dip[radians]: "
   WRITE(fid_frac_info, 110, advance="yes") min_dip
-  WRITE(fid_frac_info,'(a)',advance="no") "mean_dip: "
+  WRITE(fid_frac_info,'(a)',advance="no") "mean_dip[radians]: "
   WRITE(fid_frac_info, 110, advance="yes") mean_dip
-  WRITE(fid_frac_info,'(a)',advance="no") "max_dip: "
+  WRITE(fid_frac_info,'(a)',advance="no") "max_dip[radians]: "
   WRITE(fid_frac_info, 110, advance="yes") max_dip
 
   CLOSE(fid_frac_info)
