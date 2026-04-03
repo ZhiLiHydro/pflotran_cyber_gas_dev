@@ -742,7 +742,7 @@ function PMWellUShapeCreate()
   pm_well%use_nusselt_entrance_factor = PETSC_FALSE
   pm_well%setup_complete = PETSC_FALSE
   pm_well%inlet_temperature = UNINITIALIZED_DOUBLE
-  pm_well%nusselt_laminar = 4.36d0
+  pm_well%nusselt_laminar = 4.364d0
   pm_well%nusselt_z_ref = 1.d0
   pm_well%pipe_inner_diameter = UNINITIALIZED_DOUBLE
   pm_well%pipe_wall_thickness = UNINITIALIZED_DOUBLE
