@@ -1,0 +1,3 @@
+# Expected tolerances for MMS steady 2D cell-centered velocity check
+rel_tol_u: 1.0e-2
+rel_tol_v: 1.0e-2

@@ -1,0 +1,3 @@
+# Expected tolerances for transient march toward steady manufactured field
+rel_tol_u: 5.0e-2
+rel_tol_v: 5.0e-2
