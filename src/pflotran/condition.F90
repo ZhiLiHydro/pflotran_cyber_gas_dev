@@ -1213,7 +1213,15 @@ subroutine FlowConditionRead(condition,input,option)
   pressure => FlowSubConditionCreate(option%nphase)
   pressure%name = 'pressure'
   flux => pressure
-  rate => FlowSubConditionCreate(option%nflowspec)
+  ! For Stokes SOURCE_SINK, the RATE holds 3 body-force components (fx, fy, fz).
+  ! option%nflowspec is 1 for Stokes, so we override the array_width here so
+  ! that ConditionReadValues reads all three components from the input line.
+  if (option%iflowmode == STOKES_MODE .or. &
+      option%iflowmode == STOKES_TS_MODE) then
+    rate => FlowSubConditionCreate(3)
+  else
+    rate => FlowSubConditionCreate(option%nflowspec)
+  endif
   rate%name = 'rate'
   energy_rate => FlowSubConditionCreate(ONE_INTEGER)
   energy_rate%name = 'energy_rate'
