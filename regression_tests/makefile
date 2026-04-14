@@ -117,6 +117,7 @@ STANDARD_CFG = \
 	geomech/coupling_order/coupling_order.cfg \
 	geomech/thin_plate/thin_plate.cfg \
 	geomech/traction_bc/traction_bc.cfg \
+	geomech/restart/restart.cfg \
 	geophys/ert/ert.cfg \
 	geothermal_hpt/1D_Calcite/calcite_hpt.cfg\
 	inversion/inversion.cfg \
@@ -187,6 +188,7 @@ GEOMECHANICS_CFG = \
 	geomech/coupling_order/coupling_order.cfg \
 	geomech/thin_plate/thin_plate.cfg \
 	geomech/traction_bc/traction_bc.cfg \
+	geomech/restart/restart.cfg \
 	multiphysics/hm/hm.cfg \
 	multiphysics/thm/thm.cfg
 
