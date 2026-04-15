@@ -1103,16 +1103,23 @@ subroutine PMRichardsMaxChange(this)
   ! Date: 03/14/13
   !
 
-  use Richards_module, only : RichardsMaxChange
+  use Richards_module, only : RichardsMaxChange, RichardsMinMaxPressure
   use Option_module
 
   implicit none
 
   class(pm_richards_type) :: this
 
+  PetscReal :: pmin, pmax
+
   call RichardsMaxChange(this%realization,this%max_pressure_change)
   write(this%option%io_buffer,'("  --> max change: dpmx= ",1pe12.4)') &
         this%max_pressure_change
+  call PrintMsg(this%option)
+  call RichardsMinMaxPressure(this%realization, pmin, pmax)
+  write(this%option%io_buffer, &
+       '("  --> abs pressure range: min/max= ",1pe12.4, 1pe12.4)') &
+        pmin, pmax
   call PrintMsg(this%option)
 
 end subroutine PMRichardsMaxChange
