@@ -38,6 +38,7 @@ module Richards_module
          RichardsInitializeTimestep, &
          RichardsUpdateAuxVars, &
          RichardsMaxChange, &
+         RichardsMinMaxPressure, &
          RichardsUpdateSolution, &
          RichardsComputeMassBalance, &
          RichardsDestroy, &
@@ -3280,6 +3281,33 @@ subroutine RichardsMaxChange(realization,dpmax)
                      ierr);CHKERRQ(ierr)
 
 end subroutine RichardsMaxChange
+
+! ************************************************************************** !
+
+subroutine RichardsMinMaxPressure(realization, pmin, pmax)
+
+  use Realization_Base_class
+  use Option_module
+  use Field_module
+
+  implicit none
+
+  class(realization_base_type) :: realization
+
+  type(option_type), pointer :: option
+  type(field_type), pointer :: field
+  PetscReal :: pmin, pmax
+  PetscErrorCode :: ierr
+
+  option => realization%option
+  field => realization%field
+
+  pmin = 0.d0
+  pmax = 0.d0
+  call VecMin(field%flow_xx,PETSC_NULL_INTEGER,pmin,ierr);CHKERRQ(ierr)
+  call VecMax(field%flow_xx,PETSC_NULL_INTEGER,pmax,ierr);CHKERRQ(ierr)
+
+end subroutine RichardsMinMaxPressure
 
 ! ************************************************************************** !
 
