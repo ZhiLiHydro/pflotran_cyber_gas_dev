@@ -1118,7 +1118,7 @@ subroutine PMRichardsMaxChange(this)
   call PrintMsg(this%option)
   call RichardsMinMaxPressure(this%realization, pmin, pmax)
   write(this%option%io_buffer, &
-       '("  --> abs pressure range: min/max= ",1pe12.4, 1pe12.4)') &
+       '("  --> abs pressure range: min/max= ",1pe18.10, 1pe18.10)') &
         pmin, pmax
   call PrintMsg(this%option)
 
