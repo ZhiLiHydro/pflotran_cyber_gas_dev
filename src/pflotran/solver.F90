@@ -1069,7 +1069,11 @@ subroutine SolverReadNewtonSelectCase(solver,input,keyword,found, &
         case('TRUST_REGION')
           solver%snes_type = SNESNEWTONTRDC
         case('NTRDC','NEWTONTRDC')
-          option%flow%using_newtontrdc = PETSC_TRUE
+          if (solver%itype == TRANSPORT_CLASS) then
+            option%transport%using_newtontrdc = PETSC_TRUE
+          else
+            option%flow%using_newtontrdc = PETSC_TRUE
+          endif
           solver%snes_type = SNESNEWTONTRDC
           string = trim(prefix) // 'snes_trdc_use_cauchy'
           call PetscOptionsSetValue(PETSC_NULL_OPTIONS, &
@@ -1080,7 +1084,11 @@ subroutine SolverReadNewtonSelectCase(solver,input,keyword,found, &
 !                                    trim(string),trim('dogleg'), &
 !                                    ierr);CHKERRQ(ierr)
         case('NTR','NEWTONTR')
-          option%flow%using_newtontrdc = PETSC_TRUE
+          if (solver%itype == TRANSPORT_CLASS) then
+            option%transport%using_newtontrdc = PETSC_TRUE
+          else
+            option%flow%using_newtontrdc = PETSC_TRUE
+          endif
           solver%snes_type = SNESNEWTONTRDC
           string = trim(prefix) // 'snes_trdc_use_cauchy'
           call PetscOptionsSetValue(PETSC_NULL_OPTIONS, &
