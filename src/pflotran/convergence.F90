@@ -145,7 +145,6 @@ subroutine ConvergenceTest(snes_,i_iteration,xnorm,unorm,fnorm,reason, &
   ! NTRDC flags (Heeho)
   PetscBool :: rho_flag
   PetscBool :: already_converged
-  character(len=MAXSTRINGLENGTH) :: snes_type_str
 
 ! From PETSC_DIR/include/petscsnes.h
 !typedef enum {/* converged */
@@ -196,8 +195,7 @@ subroutine ConvergenceTest(snes_,i_iteration,xnorm,unorm,fnorm,reason, &
   rho_flag = PETSC_TRUE
   if (option%flow%using_newtontrdc .or. &
       option%transport%using_newtontrdc) then
-    call SNESGetType(snes_,snes_type_str,ierr);CHKERRQ(ierr)
-    if (trim(snes_type_str) == SNESNEWTONTRDC) then
+    if (solver%snes_type == SNESNEWTONTRDC) then
       if (i_iteration == 0) then
         ntrdc_prev_iter_num = -1
         ntrdc_sub_iter_count = 0
