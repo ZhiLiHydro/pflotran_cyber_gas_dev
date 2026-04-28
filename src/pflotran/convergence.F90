@@ -317,7 +317,7 @@ subroutine ConvergenceTest(snes_,i_iteration,xnorm,unorm,fnorm,reason, &
         reason%v = 0
     endif
 
-    ! NTRDC safety net - cut timestep if stuck retrying the sub-iteration 
+    ! NTRDC safety net - cut timestep if stuck retrying the sub-iteration
     ! under the same iteration
     if ((option%flow%using_newtontrdc .or. &
          option%transport%using_newtontrdc) .and. &
