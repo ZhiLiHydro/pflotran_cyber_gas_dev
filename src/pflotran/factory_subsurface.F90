@@ -771,6 +771,7 @@ subroutine FactorySubsurfaceInsertWellCells(simulation)
   use PM_Base_class
   use PM_Well_class
   use PM_SCO2_class
+  use PM_TH_class
   use PM_Hydrate_class
   use Option_module
   use Field_module
@@ -874,6 +875,20 @@ subroutine FactorySubsurfaceInsertWellCells(simulation)
             cur_pmc2 => cur_pmc2%peer
           enddo
         class is (pm_hydrate_type)
+          if (.not. associated(cur_pmc%child)) exit
+          cur_pmc2 => cur_pmc%child
+          do
+            cur_pm2 => cur_pmc2%pm_list
+            if (.not. associated(cur_pmc2)) exit
+            if (.not. associated(cur_pm2)) exit
+            select type (pm2 => cur_pm2)
+              class is (pm_well_type)
+                pm_well => pm2
+                exit
+            end select
+            cur_pmc2 => cur_pmc2%peer
+          enddo
+        class is (pm_th_type)
           if (.not. associated(cur_pmc%child)) exit
           cur_pmc2 => cur_pmc%child
           do
