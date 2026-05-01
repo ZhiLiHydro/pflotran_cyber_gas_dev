@@ -93,6 +93,7 @@ subroutine THWellSetup(pm_well_base,realization)
   PetscInt :: global_well_cell_up, global_well_cell_dn, global_well_cell
   PetscInt :: local_id_bc_in, local_id_bc_out
   PetscInt :: num_bc_connections
+  PetscInt :: iup, idn
 
   if (.not.associated(pm_well_base)) return
 
@@ -157,7 +158,7 @@ subroutine THWellSetup(pm_well_base,realization)
   do i = 1, size(pm_well%well_grid%h_local_id)
     local_id = pm_well%well_grid%h_local_id(i)
     if (local_id > 0) then
-      vec_ptr(local_id) = dble(grid%nL2G(local_id))
+      vec_ptr(local_id) = dble(grid%nG2A(grid%nL2G(local_id)))
     endif
   enddo
 
@@ -300,6 +301,7 @@ subroutine THWellSetup(pm_well_base,realization)
     auxvars(ghosted_id)%iwellaux = i
     call THWellAuxVarInit(auxvars_well(i),option, &
                           th_numerical_derivatives)
+    auxvars_well(i)%z = grid%z(ghosted_id)
     auxvars_well(i)%ghosted_id = ghosted_id
     segment_length = sqrt(len_(1,ghosted_id)**2 + &
                           len_(2,ghosted_id)**2 + &
@@ -390,6 +392,19 @@ subroutine THWellSetup(pm_well_base,realization)
     pm_well%matrix_zeroing%zero_rows_local_ghosted(i) = idof-1 ! zero-based
   enddo
   deallocate(inactive_cells)
+
+  auxvars_well => patch%aux%TH%auxvars_well
+  do iconn_well = 1, num_connections
+    iup = connection_set%id_up(iconn_well)
+    idn = connection_set%id_dn(iconn_well)
+    print *, StringWrite(option%myrank) // ' : ' // &
+      StringWrite(iup) // '(' // &
+        StringWrite(auxvars_well(iup)%z) // &
+      ') -> ' // &
+      StringWrite(idn) // '(' // &
+        StringWrite(auxvars_well(idn)%z) // ') : ' // &
+      StringWrite(connection_set%dist(0,iconn_well)*connection_set%dist(3,iconn_well))
+  enddo
 
 end subroutine THWellSetup
 

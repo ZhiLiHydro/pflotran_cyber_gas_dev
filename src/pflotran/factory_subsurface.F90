@@ -794,6 +794,7 @@ subroutine FactorySubsurfaceInsertWellCells(simulation)
   PetscInt, pointer :: well_cells(:)
   PetscInt, pointer :: h_all_global_id(:)
   PetscInt :: num_well_cells
+  PetscBool :: extend_ghost_cells
   PetscErrorCode :: ierr
 
   realization => simulation%realization
@@ -919,12 +920,21 @@ subroutine FactorySubsurfaceInsertWellCells(simulation)
                          pm_well%well_grid%nsegments, &
                          MPI_INTEGER,MPI_MAX,option%mycomm,ierr);CHKERRQ(ierr)
       pm_well%well_grid%h_global_id = h_all_global_id
+      ! for close loop, we do not extend the ghosting
+      extend_ghost_cells = PETSC_TRUE
+      select type(pm => pm_well)
+        class is(pm_well_closed_loop_type)
+          extend_ghost_cells = PETSC_FALSE
+      end select
+
       num_well_cells = pm_well%well_grid%nsegments
       allocate(well_cells(num_well_cells))
       well_cells(:) = pm_well%well_grid%h_global_id(:)
 
-      call UGridAddWellCells(realization%discretization%grid% &
-                              unstructured_grid,well_cells,realization%option)
+      if (extend_ghost_cells) then
+        call UGridAddWellCells(realization%discretization%grid% &
+                               unstructured_grid,well_cells,realization%option)
+      endif
 
       ! Destroy first-pass well grid
       call DeallocateArray(pm_well%well_grid%dh)
@@ -944,8 +954,10 @@ subroutine FactorySubsurfaceInsertWellCells(simulation)
 
     enddo
 
-    call GridExpandGhostCells(realization%discretization%grid, &
+    if (extend_ghost_cells) then
+      call GridExpandGhostCells(realization%discretization%grid, &
                                 realization%option)
+    endif
   endif
 
   ! Destroy the dummy DM's

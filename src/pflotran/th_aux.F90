@@ -129,6 +129,7 @@ module TH_Aux_module
 
   type, public :: th_well_auxvar_type
     PetscInt :: ghosted_id
+    PetscReal :: z
     PetscReal :: temp
     PetscReal :: u
     PetscReal :: h
@@ -1356,6 +1357,7 @@ recursive subroutine THWellAuxVarInit(auxvar,option,allocate_perturbation)
   PetscInt :: i
 
   auxvar%ghosted_id = 0
+  auxvar%z = 0.d0
   auxvar%temp = 0.d0
   auxvar%u = 0.d0
   auxvar%h = 0.d0
@@ -1406,6 +1408,7 @@ recursive subroutine THWellAuxVarCopyParamsToPert(auxvar)
 
   do i = 1, size(auxvar%auxvar_pert)
     auxvar%auxvar_pert(i)%ghosted_id = auxvar%ghosted_id
+    auxvar%auxvar_pert(i)%z = auxvar%z
     auxvar%auxvar_pert(i)%volume = auxvar%volume
     auxvar%auxvar_pert(i)%segment_length = auxvar%segment_length
     auxvar%auxvar_pert(i)%heat_transfer_coef = auxvar%heat_transfer_coef
