@@ -496,7 +496,8 @@ module PM_Well_class
     PetscInt :: iscenario
     PetscBool :: use_well_index
     PetscBool :: setup_complete
-    PetscInt, pointer :: well_cells(:)
+    PetscInt, pointer :: well_cells_ghosted(:)
+    PetscInt, pointer :: well_cells_bc_type(:)
     PetscReal :: inlet_temperature
     PetscReal :: pipe_inner_diameter
     PetscReal :: pipe_wall_thickness
@@ -738,7 +739,8 @@ function PMWellUShapeCreate()
   pm_well%insulator_thermal_conductivity = UNINITIALIZED_DOUBLE
   pm_well%flow_velocity = UNINITIALIZED_DOUBLE
   pm_well%heat_flux = 0.d0
-  nullify(pm_well%well_cells)
+  nullify(pm_well%well_cells_ghosted)
+  nullify(pm_well%well_cells_bc_type)
   nullify(pm_well%connection_set)
   nullify(pm_well%bc_connection_set)
   nullify(pm_well%matrix_zeroing)
@@ -11231,7 +11233,8 @@ subroutine PMWellDestroyUShape(this)
   class(pm_well_u_shape_type) :: this
 
   call PMWellDestroyBase(this)
-  call DeallocateArray(this%well_cells)
+  call DeallocateArray(this%well_cells_ghosted)
+  call DeallocateArray(this%well_cells_bc_type)
   call MatrixZeroingDestroy(this%matrix_zeroing)
   call ConnectionDestroy(this%connection_set)
   call ConnectionDestroy(this%bc_connection_set)

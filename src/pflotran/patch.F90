@@ -6526,12 +6526,14 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
             enddo
           case(WELL_TEMPERATURE)
             do tempint=1,patch%aux%TH%num_well_aux
-              local_id = patch%aux%TH%auxvars_well(tempint)%local_id
+              ghosted_id = patch%aux%TH%auxvars_well(tempint)%ghosted_id
+              local_id = grid%nG2L(ghosted_id)
               vec_ptr(local_id) = patch%aux%TH%auxvars_well(tempint)%temp
             enddo
           case(WELL_CELLS)
             do tempint=1,patch%aux%TH%num_well_aux
-              local_id = patch%aux%TH%auxvars_well(tempint)%local_id
+              ghosted_id = patch%aux%TH%auxvars_well(tempint)%ghosted_id
+              local_id = grid%nG2L(ghosted_id)
               vec_ptr(local_id) = 1
             enddo
           case(LIQUID_PRESSURE,MAXIMUM_PRESSURE)
