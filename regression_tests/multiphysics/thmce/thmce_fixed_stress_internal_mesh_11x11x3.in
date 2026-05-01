@@ -1,0 +1,555 @@
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE TH
+    /
+    SUBSURFACE_TRANSPORT transport
+      MODE GIRT
+    /
+    SUBSURFACE_GEOPHYSICS geophysics
+      MODE ERT
+      OPTIONS
+        NO_ANALYTICAL_POTENTIAL
+        CALC_MAX_TRACER_CONCENTRATION
+        SURVEY_TIMES s 0.5d0 1.d0 2.d0
+        OUTPUT_ALL_SURVEYS
+        ARCHIE_CEMENTATION_EXPONENT 1.9d0
+        ARCHIE_SATURATION_EXPONENT 2.d0
+        ARCHIE_TORTUOSITY_CONSTANT 1.d0
+        SURFACE_ELECTRICAL_CONDUCTIVITY 0.002d0
+      /
+    /
+    SUBSURFACE_GEOMECHANICS geomech
+      OPTIONS
+        FLOW_COUPLING TWO_WAY_COUPLED
+        SPLIT_SCHEME FIXED_STRESS
+      /
+    /
+  /
+END
+
+SUBSURFACE
+
+REGRESSION
+  CELLS_PER_PROCESS 5
+  VARIABLES
+    LIQUID_PRESSURE
+    POROSITY
+  /
+END
+
+#=========================== discretization ===================================
+GRID
+  TYPE STRUCTURED
+  NXYZ 11 11 3
+  BOUNDS
+    0.d0 0.d0 300.
+    11. 11. 303.
+  /
+  GRAVITY 0.0 0.0 0.0
+END
+
+#=========================== numerical methods ================================
+NUMERICAL_METHODS FLOW
+  TIMESTEPPER
+    PRESSURE_CHANGE_GOVERNOR 5.d6
+  /
+  NEWTON_SOLVER
+    ITOL_UPDATE 1.d0
+    MAXIMUM_NUMBER_OF_ITERATIONS 15
+  /
+END
+
+#=========================== material properties ==============================
+MATERIAL_PROPERTY rock
+  ID 1
+  POROSITY 0.1d0
+  TORTUOSITY 1.d0
+  CHARACTERISTIC_CURVES cc1
+  ROCK_DENSITY 2650.d0
+  HEAT_CAPACITY 1.d3
+  THERMAL_CONDUCTIVITY_WET 100. W/m-C
+  THERMAL_CONDUCTIVITY_DRY 100. W/m-C
+  PERMEABILITY
+    PERM_ISO 1.d-18
+  /
+  GEOMECHANICS_SUBSURFACE_PROPS
+    COMPRESSIBILITY_FUNCTION LINEAR_MODEL
+  /
+END
+
+MATERIAL_PROPERTY fracture
+  ID 2
+  POROSITY 0.1d0
+  TORTUOSITY 1.d0
+  CHARACTERISTIC_CURVES cc1
+  ROCK_DENSITY 2650.d0
+  HEAT_CAPACITY 1.d3
+  THERMAL_CONDUCTIVITY_WET 3.8 W/m-C
+  THERMAL_CONDUCTIVITY_DRY 3.8 W/m-C
+  PERMEABILITY
+    PERM_ISO 1.d-12
+  /
+  GEOMECHANICS_SUBSURFACE_PROPS
+    COMPRESSIBILITY_FUNCTION LINEAR_MODEL
+  /
+END
+MATERIAL_PROPERTY borehole
+  ID 3
+  POROSITY 0.1d0
+  TORTUOSITY 1.d0
+  CHARACTERISTIC_CURVES cc1
+  ROCK_DENSITY 2650.d0
+  HEAT_CAPACITY 1.d3
+  THERMAL_CONDUCTIVITY_WET 100. W/m-C
+  THERMAL_CONDUCTIVITY_DRY 100. W/m-C
+  PERMEABILITY
+    PERM_ISO 1.d-12
+  /
+  GEOMECHANICS_SUBSURFACE_PROPS
+    COMPRESSIBILITY_FUNCTION LINEAR_MODEL
+  /
+END
+
+#=========================== characteristic curves ============================
+CHARACTERISTIC_CURVES cc1
+  SATURATION_FUNCTION VAN_GENUCHTEN
+    ALPHA  1.d-4
+    M 0.5d0
+    LIQUID_RESIDUAL_SATURATION 0.1d0
+  /
+  PERMEABILITY_FUNCTION MUALEM_VG_LIQ
+    M 0.5d0
+    LIQUID_RESIDUAL_SATURATION 0.1d0
+  /
+END
+
+#=========================== times ============================================
+TIME
+  FINAL_TIME 2.d0 s
+  INITIAL_TIMESTEP_SIZE 1.d-1 s
+  MAXIMUM_TIMESTEP_SIZE 0.5d0 s
+END
+
+#=========================== regions ==========================================
+REGION all
+  COORDINATES
+    -1.d20 -1.d20 -1.d20
+    1.d20 1.d20 1.d20
+  /
+END
+
+REGION west
+  FACE WEST
+  COORDINATES
+    0. -1.d20 -1.d20
+    0.  1.d20  1.d20
+  /
+END
+
+REGION east
+  FACE EAST
+  COORDINATES
+    11. -1.d20 -1.d20
+    11.  1.d20  1.d20
+  /
+END
+
+REGION south
+  FACE SOUTH
+  COORDINATES
+    -1.d20 0. -1.d20
+     1.d20 0.  1.d20
+  /
+END
+
+REGION north
+  FACE NORTH
+  COORDINATES
+    -1.d20 11. -1.d20
+     1.d20 11.  1.d20
+  /
+END
+
+REGION bottom
+  FACE BOTTOM
+  COORDINATES
+    -1.d20 -1.d20 300.
+     1.d20  1.d20 300.
+  /
+END
+REGION top
+  FACE TOP
+  COORDINATES
+    -1.d20 -1.d20 303.
+     1.d20  1.d20 303.
+  /
+END
+
+REGION injection_borehole
+  COORDINATES
+    5.  5. 301.
+    6. 6. 302.
+  /
+END
+
+REGION fracture
+  COORDINATES
+     0  5. 300.
+     11. 6. 303.
+  /
+END
+
+#=========================== stratigraphy couplers ============================
+STRATA
+  REGION all
+  MATERIAL rock
+END
+
+STRATA
+  REGION fracture
+  MATERIAL fracture
+END
+
+STRATA
+  REGION injection_borehole
+  MATERIAL borehole
+END
+
+#=========================== chemistry ========================================
+CHEMISTRY
+  PRIMARY_SPECIES
+    Tracer
+  END
+  OUTPUT
+    ALL
+    FREE_ION
+  /
+END
+
+#========================== transport conditions ==============================
+TRANSPORT_CONDITION background
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT background
+    CONCENTRATIONS
+      Tracer 1.d-6 F
+    /
+  /
+END
+
+TRANSPORT_CONDITION source
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT source
+    CONCENTRATIONS
+      Tracer 1.d0 F
+    /
+  /
+END
+
+#=========================== numerical methods ================================
+NUMERICAL_METHODS GEOPHYSICS
+  LINEAR_SOLVER
+    SOLVER BCGS
+    PC_TYPE BLOCK_JACOBI
+    ATOL 1.d-12
+  /
+END
+
+#=========================== Geophysics survey  ================================
+SURVEY
+  FILE_NAME ert_2_11x11x3.srv
+  FORMAT E4D_SRV
+END
+
+#=========================== flow conditions ==================================
+FLOW_CONDITION initial
+  TYPE
+    LIQUID_PRESSURE DIRICHLET
+    TEMPERATURE DIRICHLET
+  /
+  ! 100 [psi] * 6893 [Pa/psi] = ~7.d5
+  LIQUID_PRESSURE 7.d5
+  TEMPERATURE 27.d0 ! based on Fig 6 in Kneafsey et al, 2023
+END
+
+FLOW_CONDITION injection_well
+  TYPE
+    RATE SCALED_VOLUMETRIC_RATE neighbor_perm
+    TEMPERATURE DIRICHLET
+  /
+  RATE 100.0 cm^3/s
+  TEMPERATURE 20.d0
+/
+
+FLOW_CONDITION out_flow_east
+  TYPE
+    LIQUID_PRESSURE DIRICHLET
+    TEMPERATURE DIRICHLET
+  /
+  LIQUID_PRESSURE 7.d5
+  TEMPERATURE 27.d0
+/
+
+#=========================== geophyscs conditions =============================
+GEOPHYSICS_CONDITION boundary_potential
+  TYPE DIRICHLET
+END
+
+GEOPHYSICS_CONDITION zero_flux
+  TYPE ZERO_GRADIENT
+END
+
+#=========================== condition couplers ===============================
+INITIAL_CONDITION
+  FLOW_CONDITION initial
+  TRANSPORT_CONDITION background
+  REGION all
+END
+
+SOURCE_SINK injection_well
+  FLOW_CONDITION injection_well
+  TRANSPORT_CONDITION source
+  GEOPHYSICS_CONDITION zero_flux
+  REGION injection_borehole
+END
+
+BOUNDARY_CONDITION out_flow_east
+  FLOW_CONDITION out_flow_east
+  TRANSPORT_CONDITION background
+  GEOPHYSICS_CONDITION boundary_potential
+  REGION east
+END
+
+BOUNDARY_CONDITION west_bc
+  FLOW_CONDITION initial
+  TRANSPORT_CONDITION background
+  GEOPHYSICS_CONDITION boundary_potential
+  REGION west
+END
+
+BOUNDARY_CONDITION north_bc
+  FLOW_CONDITION initial
+  TRANSPORT_CONDITION background
+  GEOPHYSICS_CONDITION boundary_potential
+  REGION north
+END
+
+BOUNDARY_CONDITION south_bc
+  FLOW_CONDITION initial
+  TRANSPORT_CONDITION background
+  GEOPHYSICS_CONDITION boundary_potential
+  REGION south
+END
+
+BOUNDARY_CONDITION bottom_bc
+  FLOW_CONDITION initial
+  TRANSPORT_CONDITION background
+  GEOPHYSICS_CONDITION boundary_potential
+  REGION bottom
+END
+
+OUTPUT
+  PERIODIC TIMESTEP 1
+  FORMAT HDF5
+  VARIABLES
+    POROSITY
+    LIQUID_PRESSURE
+    LIQUID_SATURATION
+    LIQUID_DENSITY
+    PERMEABILITY
+    TEMPERATURE
+    ELECTRICAL_CONDUCTIVITY
+  /
+END
+
+END_SUBSURFACE
+
+GEOMECHANICS
+
+GEOMECHANICS_GRID
+  TYPE STRUCTURED_INTERNAL
+  GRAVITY 0.0 0.0 0.0
+END
+
+GEOMECHANICS_MATERIAL_PROPERTY rock
+  ID 1
+  ROCK_DENSITY 2650.d0
+  YOUNGS_MODULUS 1.d10
+  POISSONS_RATIO 0.1
+  BIOT_COEFFICIENT 1.0
+  THERMAL_EXPANSION_COEFFICIENT 0.0
+END
+
+GEOMECHANICS_MATERIAL_PROPERTY fracture
+  ID 2
+  ROCK_DENSITY 2650.d0
+  YOUNGS_MODULUS 1.d10
+  POISSONS_RATIO 0.1
+  BIOT_COEFFICIENT 1.0
+  THERMAL_EXPANSION_COEFFICIENT 0.0
+END
+
+GEOMECHANICS_MATERIAL_PROPERTY borehole
+  ID 3
+  ROCK_DENSITY 2650.d0
+  YOUNGS_MODULUS 1.d10
+  POISSONS_RATIO 0.1
+  BIOT_COEFFICIENT 1.0
+  THERMAL_EXPANSION_COEFFICIENT 0.0
+END
+
+GEOMECHANICS_REGION all_geomech
+  COORDINATES
+    -1.d20 -1.d20 -1.d20
+    1.d20 1.d20 1.d20
+  /
+END
+
+GEOMECHANICS_REGION fracture
+  COORDINATES
+     0  5. 300.
+     11. 6. 303.
+  /
+END
+
+GEOMECHANICS_REGION borehole
+  COORDINATES
+    5.  5. 301.
+    6. 6. 302.
+  /
+END
+
+GEOMECHANICS_REGION north_geomech
+  COORDINATES
+    -1.d20 11. -1.d20
+     1.d20 11.  1.d20
+  /
+END
+
+GEOMECHANICS_REGION south_geomech
+  COORDINATES
+    -1.d20 0. -1.d20
+     1.d20 0.  1.d20
+  /
+END
+
+GEOMECHANICS_REGION east_geomech
+  COORDINATES
+    11. -1.d20 -1.d20
+    11.  1.d20  1.d20
+  /
+END
+GEOMECHANICS_REGION west_geomech
+  COORDINATES
+    0. -1.d20 -1.d20
+    0.  1.d20  1.d20
+  /
+END
+
+GEOMECHANICS_REGION top_geomech
+  COORDINATES
+    -1.d20 -1.d20 303.
+     1.d20  1.d20 303.
+  /
+END
+
+GEOMECHANICS_REGION bottom_geomech
+  COORDINATES
+    -1.d20 -1.d20 300.
+     1.d20  1.d20 300.
+  /
+END
+
+GEOMECHANICS_CONDITION west_geomech
+  TYPE
+    DISPLACEMENT_X DIRICHLET
+  END
+    DISPLACEMENT_X 0.0
+END
+
+GEOMECHANICS_CONDITION top_geomech
+  TYPE
+    DISPLACEMENT_Z DIRICHLET
+  END
+    DISPLACEMENT_Z 0.0
+END
+
+GEOMECHANICS_CONDITION north_geomech
+  TYPE
+    DISPLACEMENT_Y DIRICHLET
+  END
+    DISPLACEMENT_Y 0.0
+END
+
+GEOMECHANICS_CONDITION bottom_geomech
+  TYPE
+    DISPLACEMENT_Z DIRICHLET
+  END
+    DISPLACEMENT_Z 0.0
+END
+
+GEOMECHANICS_CONDITION south_geomech
+  TYPE
+    DISPLACEMENT_Y DIRICHLET
+  END
+    DISPLACEMENT_Y 0.0
+END
+
+GEOMECHANICS_BOUNDARY_CONDITION bottom_geomech
+  GEOMECHANICS_CONDITION bottom_geomech
+  GEOMECHANICS_REGION bottom_geomech
+END
+
+GEOMECHANICS_BOUNDARY_CONDITION top_geomech
+  GEOMECHANICS_CONDITION top_geomech
+  GEOMECHANICS_REGION top_geomech
+END
+
+GEOMECHANICS_BOUNDARY_CONDITION west_geomech
+  GEOMECHANICS_CONDITION west_geomech
+  GEOMECHANICS_REGION west_geomech
+END
+
+GEOMECHANICS_BOUNDARY_CONDITION north_geomech
+  GEOMECHANICS_CONDITION north_geomech
+  GEOMECHANICS_REGION north_geomech
+END
+
+GEOMECHANICS_BOUNDARY_CONDITION south_geomech
+  GEOMECHANICS_CONDITION south_geomech
+  GEOMECHANICS_REGION south_geomech
+END
+
+GEOMECHANICS_STRATA
+  GEOMECHANICS_REGION all_geomech
+  GEOMECHANICS_MATERIAL rock
+END
+
+GEOMECHANICS_STRATA
+  GEOMECHANICS_REGION fracture
+  GEOMECHANICS_MATERIAL fracture
+END
+
+GEOMECHANICS_STRATA
+  GEOMECHANICS_REGION borehole
+  GEOMECHANICS_MATERIAL borehole
+END
+
+GEOMECHANICS_OUTPUT
+  FORMAT HDF5
+END
+
+GEOMECHANICS_REGRESSION
+  VERTICES_PER_PROCESS 4
+  VERTICES
+    121
+  /
+  VARIABLES
+    DISPLACEMENT_Y
+    STRAIN_ZZ
+    STRESS_XX
+  /
+END
+
+END_GEOMECHANICS
