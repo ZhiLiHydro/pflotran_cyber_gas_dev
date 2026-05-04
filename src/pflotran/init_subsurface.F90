@@ -120,7 +120,7 @@ end subroutine SubsurfAllocMatPropDataStructs
 
 ! ************************************************************************** !
 
-subroutine InitSubsurfAssignMatIDsToRegns(realization)
+subroutine InitSubsurfAssignMatIDsToRegns(realization,mat_id_changed)
   !
   ! Assigns material properties to associated regions in the model
   !
@@ -143,9 +143,11 @@ subroutine InitSubsurfAssignMatIDsToRegns(realization)
   implicit none
 
   class(realization_subsurface_type) :: realization
+  PetscBool, optional :: mat_id_changed(:)
 
   PetscInt :: icell, local_id, ghosted_id
   PetscInt :: istart, iend
+  PetscInt, allocatable :: old_imat(:)
 
   type(option_type), pointer :: option
   type(grid_type), pointer :: grid
@@ -164,6 +166,17 @@ subroutine InitSubsurfAssignMatIDsToRegns(realization)
   option => realization%option
   patch => realization%patch
   grid => patch%grid
+
+  allocate(old_imat(grid%ngmax))
+  if (associated(patch%imat)) then
+    old_imat(:) = patch%imat(:)
+  else
+    old_imat(:) = UNINITIALIZED_INTEGER
+  endif
+
+  if (present(mat_id_changed)) then
+    mat_id_changed(:) = PETSC_FALSE
+  endif
 
   ! set material ids to uninitialized
   material_auxvars => patch%aux%Material%auxvars
@@ -262,6 +275,14 @@ subroutine InitSubsurfAssignMatIDsToRegns(realization)
   ! ensure that ghosted values for material ids are up to date
   call RealLocalToLocalWithArray(realization,MATERIAL_ID_ARRAY)
 
+  if (present(mat_id_changed)) then
+    do ghosted_id = 1, grid%ngmax
+      if (patch%imat(ghosted_id) /= old_imat(ghosted_id)) then
+        mat_id_changed(ghosted_id) = PETSC_TRUE
+      endif
+    enddo
+  endif
+
   ! set material ids in material auxvar.  this must come after the update of
   ! ghost values.
   ! set material ids to uninitialized
@@ -269,6 +290,8 @@ subroutine InitSubsurfAssignMatIDsToRegns(realization)
   do ghosted_id = 1, grid%ngmax
     material_auxvars(ghosted_id)%id = patch%imat(ghosted_id)
   enddo
+
+  deallocate(old_imat)
 
 end subroutine InitSubsurfAssignMatIDsToRegns
 
@@ -325,7 +348,7 @@ end subroutine InitSubsurfInactiveSmallCells
 
 ! ************************************************************************** !
 
-subroutine InitSubsurfAssignMatProperties(realization)
+subroutine InitSubsurfAssignMatProperties(realization,mat_id_changed)
   !
   ! Assigns material properties based on material ids
   !
@@ -366,6 +389,7 @@ subroutine InitSubsurfAssignMatProperties(realization)
   implicit none
 
   class(realization_subsurface_type) :: realization
+  PetscBool, optional :: mat_id_changed(:)
 
   PetscReal, pointer :: por0_p(:)
   PetscReal, pointer :: tor0_p(:)
@@ -393,6 +417,8 @@ subroutine InitSubsurfAssignMatProperties(realization)
   PetscInt :: local_id, ghosted_id, material_id, i
   PetscInt :: natural_id, rprnc
   PetscReal :: poro, permx, permy, permz
+  PetscBool :: use_mask
+  PetscBool :: cell_changed
   PetscInt, pointer :: inatsend(:)
   Vec :: tort_yy
   Vec :: tort_zz
@@ -407,6 +433,9 @@ subroutine InitSubsurfAssignMatProperties(realization)
   field => realization%field
   patch => realization%patch
   grid => patch%grid
+
+  use_mask = PETSC_FALSE
+  if (present(mat_id_changed)) use_mask = PETSC_TRUE
 
   PetscObjectNullify(tort_yy)
   PetscObjectNullify(tort_zz)
@@ -448,6 +477,9 @@ subroutine InitSubsurfAssignMatProperties(realization)
                                       option)
 
   do ghosted_id = 1, grid%ngmax
+    cell_changed = PETSC_TRUE
+    if (use_mask) cell_changed = mat_id_changed(ghosted_id)
+    if (.not.cell_changed) cycle
     material_id = patch%imat(ghosted_id)
     if (material_id > 0) then
       material_property => &
@@ -480,6 +512,9 @@ subroutine InitSubsurfAssignMatProperties(realization)
 
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
+    cell_changed = PETSC_TRUE
+    if (use_mask) cell_changed = mat_id_changed(ghosted_id)
+    if (.not.cell_changed) cycle
     material_id = patch%imat(ghosted_id)
     if (material_id == 0) then
       material_property => null_material_property
@@ -746,16 +781,38 @@ subroutine InitSubsurfAssignMatProperties(realization)
 
   call DiscretizationGlobalToLocal(discretization,field%porosity0, &
                                    field%work_loc,ONEDOF)
-  call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                               POROSITY,POROSITY_INITIAL)
-  call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                               POROSITY,POROSITY_BASE)
-  call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                               POROSITY,POROSITY_CURRENT)
+  if (.not.use_mask) then
+    call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
+                                 POROSITY,POROSITY_INITIAL)
+    call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
+                                 POROSITY,POROSITY_BASE)
+    call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
+                                 POROSITY,POROSITY_CURRENT)
+  else
+    call VecGetArray(field%work_loc,vec_p,ierr);CHKERRQ(ierr)
+    do ghosted_id = 1, patch%grid%ngmax
+      if (mat_id_changed(ghosted_id)) then
+        material_auxvars(ghosted_id)%porosity_0 = vec_p(ghosted_id)
+        material_auxvars(ghosted_id)%porosity_base = vec_p(ghosted_id)
+        material_auxvars(ghosted_id)%porosity = vec_p(ghosted_id)
+      endif
+    enddo
+    call VecRestoreArray(field%work_loc,vec_p,ierr);CHKERRQ(ierr)
+  endif
   call DiscretizationGlobalToLocal(discretization,field%tortuosity0, &
                                     field%work_loc,ONEDOF)
-  call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                               TORTUOSITY,ZERO_INTEGER)
+  if (.not.use_mask) then
+    call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
+                                 TORTUOSITY,ZERO_INTEGER)
+  else
+    call VecGetArray(field%work_loc,vec_p,ierr);CHKERRQ(ierr)
+    do ghosted_id = 1, patch%grid%ngmax
+      if (mat_id_changed(ghosted_id)) then
+        material_auxvars(ghosted_id)%tortuosity = vec_p(ghosted_id)
+      endif
+    enddo
+    call VecRestoreArray(field%work_loc,vec_p,ierr);CHKERRQ(ierr)
+  endif
   if (option%transport%anisotropic_tortuosity) then
     call DiscretizationGlobalToLocal(discretization,tort_yy, &
                                      field%work_loc,ONEDOF)

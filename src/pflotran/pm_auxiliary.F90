@@ -387,6 +387,7 @@ subroutine PMAuxiliaryEvolvingStrata(this,time,ierr)
 
   type(strata_type), pointer :: cur_strata
   PetscBool :: evolve
+  PetscBool, allocatable :: mat_id_changed(:)
 
   ierr = 0
   evolve = PETSC_FALSE
@@ -403,8 +404,10 @@ subroutine PMAuxiliaryEvolvingStrata(this,time,ierr)
   enddo
   if (evolve) then
     call PrintMsg(this%option,'  Strata updated.')
-    call InitSubsurfAssignMatIDsToRegns(this%realization)
-    call InitSubsurfAssignMatProperties(this%realization)
+    allocate(mat_id_changed(this%realization%patch%grid%ngmax))
+    call InitSubsurfAssignMatIDsToRegns(this%realization,mat_id_changed)
+    call InitSubsurfAssignMatProperties(this%realization,mat_id_changed)
+    deallocate(mat_id_changed)
   else
     call PrintMsg(this%option,'  No strata update requested at this time.')
   endif
