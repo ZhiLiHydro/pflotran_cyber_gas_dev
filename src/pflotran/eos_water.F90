@@ -4483,20 +4483,20 @@ subroutine EOSWaterSteamDensityEnthalpyIF97(T_Celsius, Pv, &
 
   T_Kelvin = T_Celsius + T273K
   pi = Pv/p_ref
-  tao = T_ref/T_Kelvin
 
   if (T_Kelvin <= 1073.15d0) then
     ! region 2, tables 13 & 14 (up to 800 C, up to 100 MPa)
+    tao = 540.d0/T_Kelvin
     gamma_0_pi = 1.d0/pi
     gamma_r_pi = sum(n_i*I_i*(pi**(I_i-1))*(tao-0.5)**J_i)
     gamma_0_tao = sum(n_i0*J_i0*tao**(J_i0-1))
     gamma_r_tao = sum(n_i*pi**(I_i)*J_i*(tao-0.5)**(J_i-1))
     dg = R*T_Kelvin/Pv * pi * (gamma_0_pi + gamma_r_pi) *1.d3
-    hg = R*T_Kelvin * tao * (gamma_0_tao + gamma_r_tao)
+    hg = R*T_Kelvin * tao * (gamma_0_tao + gamma_r_tao) ! 
 
     dg = 1/dg
     dgmol = dg/FMWH2O
-
+    hg = hg * FMWH2O / 1.d3 !MJ/kmol
     if (calculate_derivatives) then
       dgt = R/p_ref*((gamma_0_pi+gamma_r_pi)-T_ref/(T_Kelvin)* &
            sum(n_i*I_i*pi**(I_i-1)*J_i*(tao-0.5d0)**(J_i-1)))
@@ -4516,8 +4516,8 @@ subroutine EOSWaterSteamDensityEnthalpyIF97(T_Celsius, Pv, &
       hgt = UNINITIALIZED_DOUBLE
       hgp = UNINITIALIZED_DOUBLE
     endif
-    hg = hg*FMWH2O * 1.d3
   else if (T_Kelvin <= 2273.15d0) then
+    tao = 1000.d0/T_Kelvin
     ! region 5: table 40 (800 C up to 2000 C, up to 50 MPa)
     gamma_0_pi = 1.d0/pi
     gamma_0_tao = sum(n5_i0*J5_i0*tao**(J5_i0-1))
@@ -4529,6 +4529,7 @@ subroutine EOSWaterSteamDensityEnthalpyIF97(T_Celsius, Pv, &
 
     dg = 1/dg
     dgmol = dg/FMWH2O
+    hg = hg * FMWH2O / 1.d3 !MJ/kmol
     if (calculate_derivatives) then
     stop 'IF97 region 5 steam density/enthalpy derivative not implemented yet'
     else
