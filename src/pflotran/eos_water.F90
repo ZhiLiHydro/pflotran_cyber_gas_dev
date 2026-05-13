@@ -4492,7 +4492,7 @@ subroutine EOSWaterSteamDensityEnthalpyIF97(T_Celsius, Pv, &
     gamma_0_tao = sum(n_i0*J_i0*tao**(J_i0-1))
     gamma_r_tao = sum(n_i*pi**(I_i)*J_i*(tao-0.5)**(J_i-1))
     dg = R*T_Kelvin/Pv * pi * (gamma_0_pi + gamma_r_pi) *1.d3
-    hg = R*T_Kelvin * tao * (gamma_0_tao + gamma_r_tao) ! 
+    hg = R*T_Kelvin * tao * (gamma_0_tao + gamma_r_tao)
 
     dg = 1/dg
     dgmol = dg/FMWH2O
