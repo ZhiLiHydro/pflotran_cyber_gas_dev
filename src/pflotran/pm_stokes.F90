@@ -28,6 +28,7 @@ module PM_Stokes_class
     PetscReal :: rho
     PetscReal :: mu
     PetscBool :: add_convection
+    PetscBool :: flux_correction
   contains
     procedure, public :: ReadSimulationOptionsBlock => PMStokesReadSimOptionsBlock
     procedure, public :: ReadNewtonBlock            => PMStokesReadNewtonSelectCase
@@ -79,6 +80,7 @@ function PMStokesCreate()
   this%rho = 998.32d0 ! at 20 deg C
   this%mu  = 1.002d-3 ! at 20 deg C
   this%add_convection = PETSC_FALSE
+  this%flux_correction = PETSC_FALSE
 
   PMStokesCreate => this
 
@@ -150,6 +152,8 @@ subroutine PMStokesReadSimOptionsBlock(this,input)
         call InputReadDouble(input,option,tempreal); this%mu  = tempreal
       case('ADD_CONVECTION')
         this%add_convection = PETSC_TRUE
+      case('FLUX_CORRECTION')
+        this%flux_correction = PETSC_TRUE
       case default
         call InputKeywordUnrecognized(input,keyword,error_string,option)
     end select
@@ -314,6 +318,10 @@ subroutine PMStokesPostSolve(this)
   implicit none
 
   class(pm_stokes_type) :: this
+  PetscErrorCode :: ierr
+
+  if (.not.this%flux_correction) return
+  call StokesFluxCorrection(this%realization,this%rho,this%mu,ierr)
 
 end subroutine PMStokesPostSolve
 
@@ -767,14 +775,31 @@ subroutine PMStokesUpdateSolution(this)
   ! Date: 01/24/26
   !
 
-  use Stokes_module, only : StokesUpdateSolution
+  use Stokes_module, only : StokesUpdateSolution, &
+                            StokesUpdateAuxVars, &
+                            StokesUpdateTransportVelocities, &
+                            StokesFluxCorrection
 
   implicit none
 
   class(pm_stokes_type) :: this
+  PetscErrorCode :: ierr
+  PetscInt :: isweep
 
   call PMSubsurfaceFlowUpdateSolution(this)
   call StokesUpdateSolution(this%realization)
+  if (this%flux_correction) then
+    ! SIMPLE-style flux-correction projection (post-processing only).
+    ! The discrete Laplacian and the per-axis face-gradient reconstruction
+    ! are not exact adjoints on this co-located TPFA grid, so each pass
+    ! leaves a small residual divergence. A handful of sweeps converges
+    ! the cell-level flux spread well below its un-corrected value.
+    call StokesUpdateAuxVars(this%realization)
+    do isweep = 1, 5
+      call StokesFluxCorrection(this%realization,this%rho,this%mu,ierr)
+    enddo
+    call StokesUpdateTransportVelocities(this%realization)
+  endif
 
 end subroutine PMStokesUpdateSolution
 
@@ -789,13 +814,18 @@ subroutine PMStokesUpdateAuxVars(this)
   !
 
   use Stokes_module, only : StokesUpdateAuxVars, &
-                            StokesUpdateTransportVelocities
+                            StokesUpdateTransportVelocities, &
+                            StokesFluxCorrection
 
   implicit none
 
   class(pm_stokes_type) :: this
+  PetscErrorCode :: ierr
 
   call StokesUpdateAuxVars(this%realization)
+  if (this%flux_correction) then
+    call StokesFluxCorrection(this%realization,this%rho,this%mu,ierr)
+  endif
   call StokesUpdateTransportVelocities(this%realization)
 
 end subroutine PMStokesUpdateAuxVars

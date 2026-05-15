@@ -55,6 +55,7 @@ function PMStokesTSCreate()
   stokes_ts_pm%rho = 998.32d0
   stokes_ts_pm%mu  = 1.002d-3
   stokes_ts_pm%add_convection = PETSC_FALSE
+  stokes_ts_pm%flux_correction = PETSC_FALSE
   stokes_ts_pm%check_post_convergence = PETSC_TRUE
 
   PMStokesTSCreate => stokes_ts_pm
