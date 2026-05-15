@@ -45,7 +45,8 @@ module Stokes_module
             StokesIJacobianAccumulation, &
             StokesJacobianSourceSink, &
             StokesApplyBoundaryConditions, &
-            StokesApplyPrescribedConditions
+            StokesApplyPrescribedConditions, &
+            StokesFluxCorrection
 
 contains
 
@@ -227,9 +228,10 @@ subroutine StokesCreateZeroArray(patch,matrix_zeroing,option)
       ghosted_id = grid%nL2G(local_id)
       if (patch%imat(ghosted_id) <= 0) cycle  ! already handled above
 
-      ! Velocity DIRICHLET -> zero u, v, w (DOFs 1,2,3)
+      ! Velocity DIRICHLET/NO_SLIP -> zero u, v, w (DOFs 1,2,3)
       if (associated(cur_coupler%flow_condition%stokes%velocity)) then
-        if (cur_coupler%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
+        if (cur_coupler%flow_condition%stokes%velocity%itype == DIRICHLET_BC .or. &
+            cur_coupler%flow_condition%stokes%velocity%itype == NO_SLIP_BC) then
           zero_dof(1, local_id) = PETSC_TRUE
           zero_dof(2, local_id) = PETSC_TRUE
           zero_dof(3, local_id) = PETSC_TRUE
@@ -293,6 +295,7 @@ subroutine StokesComputeViscousDiag(realization,mu)
   use Grid_module
   use Patch_module
   use Connection_module
+  use Coupler_module
 
   implicit none
 
@@ -304,9 +307,11 @@ subroutine StokesComputeViscousDiag(realization,mu)
   type(stokes_type), pointer :: stokes_aux
   type(connection_set_list_type), pointer :: conn_list
   type(connection_set_type),      pointer :: cset
+  type(coupler_type), pointer :: boundary_condition
 
-  PetscInt  :: iconn, gid_up, gid_dn
+  PetscInt  :: iconn, gid_up, gid_dn, local_id
   PetscReal :: area, dx, a_mu
+  PetscBool :: has_u_dir
 
   patch => realization%patch
   grid  => patch%grid
@@ -322,14 +327,71 @@ subroutine StokesComputeViscousDiag(realization,mu)
     do iconn = 1, cset%num_connections
       gid_up = cset%id_up(iconn)
       gid_dn = cset%id_dn(iconn)
-      if (patch%imat(gid_up) <= 0 .or. patch%imat(gid_dn) <= 0) cycle
+      ! Both solid -> skip entirely
+      if (patch%imat(gid_up) <= 0 .and. patch%imat(gid_dn) <= 0) cycle
       area = cset%area(iconn)
       dx   = cset%dist(0,iconn)
-      a_mu = mu * area / dx
-      stokes_aux%aP(gid_up) = stokes_aux%aP(gid_up) + a_mu
-      stokes_aux%aP(gid_dn) = stokes_aux%aP(gid_dn) + a_mu
+      if (patch%imat(gid_up) > 0 .and. patch%imat(gid_dn) > 0) then
+        ! Active-active face: standard viscous diagonal
+        a_mu = mu * area / dx
+        stokes_aux%aP(gid_up) = stokes_aux%aP(gid_up) + a_mu
+        stokes_aux%aP(gid_dn) = stokes_aux%aP(gid_dn) + a_mu
+      else
+        ! Fluid-solid wall face: mirror-ghost no-slip contribution
+        ! u_solid = -u_fluid -> viscous coeff = 2*mu*A/dx added to fluid cell aP
+        a_mu = 2.d0 * mu * area / dx
+        if (patch%imat(gid_up) > 0) then
+          stokes_aux%aP(gid_up) = stokes_aux%aP(gid_up) + a_mu
+        else
+          stokes_aux%aP(gid_dn) = stokes_aux%aP(gid_dn) + a_mu
+        endif
+      endif
     enddo
     cset => cset%next
+  enddo
+
+  ! Boundary velocity Dirichlet faces also contribute to the momentum diagonal.
+  ! Include them so Rhie-Chow scaling near physical walls uses the same viscous
+  ! operator as the boundary residual/Jacobian.
+  boundary_condition => patch%boundary_condition_list%first
+  do
+    if (.not.associated(boundary_condition)) exit
+    if (.not.associated(boundary_condition%flow_condition)) then
+      boundary_condition => boundary_condition%next
+      cycle
+    endif
+    cset => boundary_condition%connection_set
+    if (.not.associated(cset)) then
+      boundary_condition => boundary_condition%next
+      cycle
+    endif
+
+    has_u_dir = PETSC_FALSE
+    if (associated(boundary_condition%flow_condition%stokes%velocity)) then
+      if (boundary_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC .or. &
+          boundary_condition%flow_condition%stokes%velocity%itype == NO_SLIP_BC) then
+        has_u_dir = PETSC_TRUE
+      endif
+    endif
+    if (.not.has_u_dir) then
+      boundary_condition => boundary_condition%next
+      cycle
+    endif
+
+    do iconn = 1, cset%num_connections
+      local_id = cset%id_dn(iconn)
+      if (local_id <= 0 .or. local_id > grid%nlmax) cycle
+      gid_dn = grid%nL2G(local_id)
+      if (gid_dn <= 0 .or. gid_dn > grid%ngmax) cycle
+      if (patch%imat(gid_dn) <= 0) cycle
+      area = cset%area(iconn)
+      dx   = cset%dist(0,iconn)
+      if (dx <= 0.d0) cycle
+      a_mu = mu * area / dx
+      stokes_aux%aP(gid_dn) = stokes_aux%aP(gid_dn) + a_mu
+    enddo
+
+    boundary_condition => boundary_condition%next
   enddo
 
 end subroutine StokesComputeViscousDiag
@@ -663,7 +725,8 @@ subroutine StokesApplyPrescribedConditions(realization)
 
       ! Apply prescribed velocity (all 3 components)
       if (associated(prescribed_condition%flow_condition%stokes%velocity)) then
-        if (prescribed_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
+        if (prescribed_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC .or. &
+            prescribed_condition%flow_condition%stokes%velocity%itype == NO_SLIP_BC) then
           vec_ptr(offset+1) = prescribed_condition%flow_aux_real_var(1,iconn)
           vec_ptr(offset+2) = prescribed_condition%flow_aux_real_var(2,iconn)
           vec_ptr(offset+3) = prescribed_condition%flow_aux_real_var(3,iconn)
@@ -774,7 +837,8 @@ subroutine StokesUpdateTransportVelocities(realization)
       sum_connection = sum_connection + 1
 
       if (associated(boundary_condition%flow_condition%stokes%velocity)) then
-        if (boundary_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
+        if (boundary_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC .or. &
+            boundary_condition%flow_condition%stokes%velocity%itype == NO_SLIP_BC) then
           u_face(1) = boundary_condition%flow_aux_real_var(1,iconn)
           u_face(2) = boundary_condition%flow_aux_real_var(2,iconn)
           u_face(3) = boundary_condition%flow_aux_real_var(3,iconn)
@@ -883,6 +947,9 @@ subroutine StokesResidualInternalConn(r,realization,rho,mu,add_convection,ierr)
   PetscReal :: gamma_pstab
   PetscReal, pointer :: aP(:)
   PetscReal :: a_f, rc
+  PetscReal :: wall_coeff ! wall viscous coefficient for no-slip
+  PetscReal :: wall_sign
+  PetscInt :: gid_fluid, lid_fluid, ibeg_fluid_loc ! wall face locals
 
   patch  => realization%patch
   grid   => patch%grid
@@ -907,10 +974,44 @@ subroutine StokesResidualInternalConn(r,realization,rho,mu,add_convection,ierr)
 
       gid_up = cset%id_up(iconn)
       gid_dn = cset%id_dn(iconn)
-      if (patch%imat(gid_up) <= 0 .or. patch%imat(gid_dn) <= 0) cycle
-
       lid_up = grid%nG2L(gid_up)
       lid_dn = grid%nG2L(gid_dn)
+      if (patch%imat(gid_up) <= 0 .and. patch%imat(gid_dn) <= 0) cycle
+      ! --- Wall face: exactly one side is solid ---
+      if (patch%imat(gid_up) <= 0 .or. patch%imat(gid_dn) <= 0) then
+        ! Identify the fluid cell
+        if (patch%imat(gid_up) > 0) then
+          gid_fluid = gid_up
+          lid_fluid = lid_up
+          wall_sign = 1.d0
+        else
+          gid_fluid = gid_dn
+          lid_fluid = lid_dn
+          wall_sign = -1.d0
+        endif
+        if (lid_fluid <= 0 .or. lid_fluid > grid%nlmax) cycle
+        ibeg_fluid_loc = (lid_fluid-1)*option%nflowdof + 1
+        area = cset%area(iconn)
+        dx   = cset%dist(0,iconn)
+        n    = 0.d0
+        n(1:3) = cset%dist(1:3,iconn)
+        S(1) = n(1)*area
+        S(2) = n(2)*area
+        S(3) = n(3)*area
+        wall_coeff = 2.d0 * mu * area / dx
+        ! Mirror-ghost no-slip: u_solid = -u_fluid
+        ! Residual: R_u = wall_coeff * u_fluid plus zero-gradient wall
+        ! pressure traction p_b = p_fluid, matching explicit boundary walls.
+        r_p(ibeg_fluid_loc  ) = r_p(ibeg_fluid_loc  ) + wall_coeff * stokes_aux%auxvars(gid_fluid)%u + &
+                                wall_sign * stokes_aux%auxvars(gid_fluid)%pressure * S(1)
+        r_p(ibeg_fluid_loc+1) = r_p(ibeg_fluid_loc+1) + wall_coeff * stokes_aux%auxvars(gid_fluid)%v + &
+                                wall_sign * stokes_aux%auxvars(gid_fluid)%pressure * S(2)
+        r_p(ibeg_fluid_loc+2) = r_p(ibeg_fluid_loc+2) + wall_coeff * stokes_aux%auxvars(gid_fluid)%w + &
+                                wall_sign * stokes_aux%auxvars(gid_fluid)%pressure * S(3)
+        ! No continuity contribution at wall (u·n = 0)
+        ! No Rhie-Chow pressure correction at wall because p_b = p_fluid.
+        cycle
+      endif
       if ((lid_up <= 0 .or. lid_up > grid%nlmax) .and. &
           (lid_dn <= 0 .or. lid_dn > grid%nlmax)) cycle
 
@@ -1483,6 +1584,10 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
   PetscReal :: a_mu, gamma_pstab
   PetscReal, pointer :: aP(:)
   PetscReal :: a_f, rc
+  PetscReal :: wall_coeff ! wall viscous coefficient for no-slip
+  PetscReal :: wall_sign
+  PetscInt :: gid_fluid, lid_fluid ! wall face locals
+  PetscInt :: rowstart_fluid ! row start for fluid cell at wall
 
   ! convection Jacobian
   PetscReal :: uK(3), uL(3), u_face(3), phi
@@ -1517,11 +1622,41 @@ subroutine StokesJacobianInternalConn(A,realization,mu,rho,add_convection,ierr)
 
       gid_up = cset%id_up(iconn)
       gid_dn = cset%id_dn(iconn)
-      if (patch%imat(gid_up) <= 0 .or. patch%imat(gid_dn) <= 0) cycle
-
       lid_up = grid%nG2L(gid_up)
       lid_dn = grid%nG2L(gid_dn)
-
+      if (patch%imat(gid_up) <= 0 .and. patch%imat(gid_dn) <= 0) cycle
+      ! --- Wall face: exactly one side is solid ---
+      if (patch%imat(gid_up) <= 0 .or. patch%imat(gid_dn) <= 0) then
+        if (patch%imat(gid_up) > 0) then
+          gid_fluid = gid_up
+          lid_fluid = lid_up
+          wall_sign = 1.d0
+        else
+          gid_fluid = gid_dn
+          lid_fluid = lid_dn
+          wall_sign = -1.d0
+        endif
+        if (lid_fluid <= 0 .or. lid_fluid > grid%nlmax) cycle
+        rowstart_fluid = (gid_fluid-1)*option%nflowdof
+        area = cset%area(iconn)
+        dx   = cset%dist(0,iconn)
+        n    = 0.d0
+        n(1:3) = cset%dist(1:3,iconn)
+        S(1)=n(1)*area
+        S(2)=n(2)*area
+        S(3)=n(3)*area
+        wall_coeff = 2.d0 * mu * area / dx
+        ! Diagonal Jacobian on velocity rows plus zero-gradient wall pressure
+        ! traction p_b = p_fluid, matching explicit boundary walls.
+        call PUMSetValuesLocal(A,1,rowstart_fluid+0,1,rowstart_fluid+0,wall_coeff,ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesLocal(A,1,rowstart_fluid+1,1,rowstart_fluid+1,wall_coeff,ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesLocal(A,1,rowstart_fluid+2,1,rowstart_fluid+2,wall_coeff,ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesLocal(A,1,rowstart_fluid+0,1,rowstart_fluid+3,wall_sign*S(1),ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesLocal(A,1,rowstart_fluid+1,1,rowstart_fluid+3,wall_sign*S(2),ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesLocal(A,1,rowstart_fluid+2,1,rowstart_fluid+3,wall_sign*S(3),ADD_VALUES,ierr);CHKERRQ(ierr)
+        ! No pressure-row or continuity-row wall contribution.
+        cycle
+      endif
       area = cset%area(iconn)
       dx   = cset%dist(0,iconn)
       n    = 0.d0
@@ -1763,7 +1898,8 @@ subroutine StokesJacobianBoundaryConn(A,realization,rho,mu,ierr)
 
       ! Mark which components have BCs
       if (associated(bc%flow_condition%stokes%velocity)) then
-        if (bc%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
+        if (bc%flow_condition%stokes%velocity%itype == DIRICHLET_BC .or. &
+            bc%flow_condition%stokes%velocity%itype == NO_SLIP_BC) then
           bc_applied(1, local_id) = PETSC_TRUE
           bc_applied(2, local_id) = PETSC_TRUE
           bc_applied(3, local_id) = PETSC_TRUE
@@ -2120,8 +2256,8 @@ subroutine StokesBCFluxConn(boundary_condition,iconn,area,dist,rho,mu,option,Uce
   !   momentum:  +a_b (uK - u_b),  a_b = mu*A/d_b
   !   continuity: + (u_b · S)
   !
-  ! Pressure traction (Option B):
-  !   momentum:  + p_b * S
+  ! Pressure traction. With the boundary connection convention used here,
+  ! the interior cell receives momentum contribution -p_b*S.
   !
   ! No pressure Dirichlet equation is imposed here.
   ! Author: Satish Karra
@@ -2172,7 +2308,8 @@ subroutine StokesBCFluxConn(boundary_condition,iconn,area,dist,rho,mu,option,Uce
 
   ! Velocity Dirichlet present?
   if (associated(boundary_condition%flow_condition%stokes%velocity)) then
-    if (boundary_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
+    if (boundary_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC .or. &
+        boundary_condition%flow_condition%stokes%velocity%itype == NO_SLIP_BC) then
       has_u_dir = PETSC_TRUE
       u_b(1) = boundary_condition%flow_aux_real_var(1,iconn)
       u_b(2) = boundary_condition%flow_aux_real_var(2,iconn)
@@ -2283,7 +2420,8 @@ subroutine StokesResidualBoundaryFinal(r,xx,realization,ierr)
 
       ! Set prescribed velocity residual to (u - u_prescribed)
       if (associated(prescribed_condition%flow_condition%stokes%velocity)) then
-        if (prescribed_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
+        if (prescribed_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC .or. &
+            prescribed_condition%flow_condition%stokes%velocity%itype == NO_SLIP_BC) then
           r_ptr(istart) = xx_ptr(istart) - prescribed_condition%flow_aux_real_var(1,iconn)
           r_ptr(istart+1) = xx_ptr(istart+1) - prescribed_condition%flow_aux_real_var(2,iconn)
           r_ptr(istart+2) = xx_ptr(istart+2) - prescribed_condition%flow_aux_real_var(3,iconn)
@@ -2434,7 +2572,8 @@ subroutine StokesJacobianBoundaryFacesConn(A,realization,mu,ierr)
       has_u_dir = PETSC_FALSE
       has_p_bc = PETSC_FALSE
       if (associated(boundary_condition%flow_condition%stokes%velocity)) then
-        if (boundary_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC) then
+        if (boundary_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC .or. &
+            boundary_condition%flow_condition%stokes%velocity%itype == NO_SLIP_BC) then
           has_u_dir = PETSC_TRUE
         endif
       endif
@@ -2459,7 +2598,18 @@ subroutine StokesJacobianBoundaryFacesConn(A,realization,mu,ierr)
         call PUMSetValuesLocal(A,1,rowstart+3,1,rowstart+2,S(3),ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
 
-      if (aP(ghosted_id) > 0.d0) then
+      ! Pressure traction in the residual is -p_b*S. If no pressure BC is
+      ! supplied, StokesBCFluxConn sets p_b = pK, so add dR_momentum/dpK = -S.
+      if (.not.has_p_bc) then
+        call PUMSetValuesLocal(A,1,rowstart+0,1,rowstart+3,-S(1),ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesLocal(A,1,rowstart+1,1,rowstart+3,-S(2),ADD_VALUES,ierr);CHKERRQ(ierr)
+        call PUMSetValuesLocal(A,1,rowstart+2,1,rowstart+3,-S(3),ADD_VALUES,ierr);CHKERRQ(ierr)
+      endif
+
+      ! Boundary Rhie-Chow residual depends on pressure only when p_b is a
+      ! prescribed boundary value. If p_b = pK, the correction is identically
+      ! zero and must not contribute to the Jacobian.
+      if (has_p_bc .and. aP(ghosted_id) > 0.d0) then
         rc = (area*area/aP(ghosted_id)) / d_b
         call PUMSetValuesLocal(A,1,rowstart+3,1,rowstart+3,rc,ADD_VALUES,ierr);CHKERRQ(ierr)
       endif
@@ -2604,6 +2754,565 @@ subroutine StokesJacobianPinPressure(A,realization,ierr)
   endif
 
 end subroutine StokesJacobianPinPressure
+
+! ************************************************************************** !
+
+subroutine StokesFluxCorrection(realization,rho,mu,ierr)
+  !
+  ! SIMPLE-style post-processing flux-correction projection.
+  ! Assembles a scalar Poisson system for a pressure correction p' such that
+  !   div(grad p') = div(u*)
+  ! with homogeneous Neumann at walls/inactive faces and homogeneous Dirichlet
+  ! at pressure Dirichlet faces, solves it with KSP, then subtracts grad p'
+  ! from the cell-center velocity field (auxvars only; NOT from flow_xx).
+  !
+  ! Notes:
+  !   - This is a single-cycle projection with an operator-consistent Laplacian
+  !     on the interior + dx-based boundary contribution at pressure-Dirichlet
+  !     faces. It is O(h^2) residual (not zero) but substantially reduces
+  !     spurious divergence growth.
+  !   - Primary (u,p) Newton solve is not modified. Only auxvars%u,v,w are
+  !     updated, which feed VTK output and transport velocities.
+  !
+#include "petsc/finclude/petscksp.h"
+  use petscksp
+  use Realization_Subsurface_class
+  use Grid_module
+  use Patch_module
+  use Option_module
+  use Coupler_module
+  use Connection_module
+  implicit none
+
+  class(realization_subsurface_type) :: realization
+  PetscReal :: rho, mu
+  PetscErrorCode :: ierr
+
+  type(patch_type),  pointer :: patch
+  type(grid_type),   pointer :: grid
+  type(option_type), pointer :: option
+  type(connection_set_list_type), pointer :: conn_list
+  type(connection_set_type),      pointer :: cset
+  type(coupler_type), pointer :: boundary_condition
+  type(coupler_type), pointer :: prescribed_condition
+  type(stokes_type), pointer :: stokes_aux
+
+  Mat  :: Ap
+  Vec  :: rhs, pprime
+  KSP  :: ksp_proj
+  PC   :: pc_proj
+
+  PetscInt :: iconn
+  PetscInt :: gid_up, gid_dn, lid_up, lid_dn
+  PetscInt :: local_id, ghosted_id
+  PetscInt :: nlmax, prealloc_nnz
+  PetscInt :: row_g, col_g(4), n_cols
+  PetscReal :: area, dx, d_b
+  PetscReal :: n_vec(3), S(3)
+  PetscReal :: coef, coef_b
+  PetscReal :: u_K(3), u_L(3), u_b(3)
+  PetscReal :: phi_face, phi_b
+  PetscReal :: vals(4)
+  PetscReal :: row_diag
+  PetscBool :: has_pressure_dirichlet_anywhere
+  PetscBool :: local_has_p_dir
+  PetscInt  :: mpi_cnt
+
+  PetscInt :: pin_gid_local, pin_gid_global
+  PetscInt :: pin_row(1)
+  PetscBool :: pin_here
+  PetscInt :: n_prescribed_rows
+  PetscInt, allocatable :: prescribed_rows(:)
+
+  PetscInt :: its
+  PetscReal :: rnorm
+  character(len=MAXSTRINGLENGTH) :: str
+
+  PetscReal, pointer :: pprime_p(:)
+  PetscReal, pointer :: rhs_p(:)
+  PetscReal, pointer :: xx_p(:)
+
+  PetscInt :: nx, ny, nz
+  PetscInt :: dxi, dyi, dzi
+  PetscReal :: dxc, dyc, dzc
+  PetscReal :: grad_pp(3)
+  PetscInt :: east_lid, west_lid, north_lid, south_lid, top_lid, bot_lid
+  PetscInt :: east_gid, west_gid, north_gid, south_gid, top_gid, bot_gid
+  PetscReal :: pp_E, pp_W, pp_N, pp_S, pp_T, pp_B, pp_C
+  PetscBool :: have_E, have_W, have_N, have_S, have_T, have_Bi
+  PetscReal, allocatable :: pp_cell(:)
+  PetscReal, allocatable :: grad_cell(:,:)
+  PetscReal, allocatable :: vol_cell(:)
+  PetscInt,  allocatable :: face_count(:,:)
+  PetscInt :: axis
+
+  patch  => realization%patch
+  grid   => patch%grid
+  option => realization%option
+  if (.not.associated(patch%aux%Stokes)) return
+  stokes_aux => patch%aux%Stokes
+
+  nlmax = grid%nlmax
+
+  ! --- Preallocation: 5 nz/row for 2D (nz=1), 7 for 3D ---
+  prealloc_nnz = 7
+  if (option%mycomm /= MPI_COMM_NULL) then
+    ! heuristic is fine; exact structured-grid bound
+    prealloc_nnz = 7
+  endif
+
+  ! --- Create Ap : nlmax x nlmax (1 scalar dof per cell) ---
+  call MatCreateAIJ(option%mycomm,nlmax,nlmax,PETSC_DETERMINE, &
+                    PETSC_DETERMINE, &
+                    prealloc_nnz,PETSC_NULL_INTEGER_ARRAY, &
+                    prealloc_nnz,PETSC_NULL_INTEGER_ARRAY, &
+                    Ap,ierr);CHKERRQ(ierr)
+  call MatSetOption(Ap,MAT_IGNORE_ZERO_ENTRIES,PETSC_TRUE, &
+                    ierr);CHKERRQ(ierr)
+
+  ! --- Create RHS and solution vectors ---
+  call VecCreateMPI(option%mycomm,nlmax,PETSC_DETERMINE, &
+                    rhs,ierr);CHKERRQ(ierr)
+  call VecDuplicate(rhs,pprime,ierr);CHKERRQ(ierr)
+  call VecZeroEntries(rhs,ierr);CHKERRQ(ierr)
+
+  ! --- Detect whether any pressure Dirichlet BC exists (globally) ---
+  local_has_p_dir = PETSC_FALSE
+  boundary_condition => patch%boundary_condition_list%first
+  do
+    if (.not.associated(boundary_condition)) exit
+    if (associated(boundary_condition%flow_condition)) then
+      if (associated(boundary_condition%flow_condition%stokes%pressure)) then
+        if (boundary_condition%flow_condition%stokes%pressure%itype == DIRICHLET_BC) then
+          local_has_p_dir = PETSC_TRUE
+          exit
+        endif
+      endif
+    endif
+    boundary_condition => boundary_condition%next
+  enddo
+  if (.not.local_has_p_dir) then
+    prescribed_condition => patch%prescribed_condition_list%first
+    do
+      if (.not.associated(prescribed_condition)) exit
+      if (associated(prescribed_condition%flow_condition)) then
+        if (associated(prescribed_condition%flow_condition%stokes%pressure)) then
+          if (prescribed_condition%flow_condition%stokes%pressure%itype == DIRICHLET_BC) then
+            local_has_p_dir = PETSC_TRUE
+            exit
+          endif
+        endif
+      endif
+      prescribed_condition => prescribed_condition%next
+    enddo
+  endif
+  mpi_cnt = 1
+  call MPI_Allreduce(local_has_p_dir,has_pressure_dirichlet_anywhere, &
+                     mpi_cnt,MPI_C_BOOL,MPI_LOR,option%mycomm, &
+                     ierr);CHKERRQ(ierr)
+
+  ! --- Assemble Ap + RHS from internal connections ---
+  call VecGetArray(rhs,rhs_p,ierr);CHKERRQ(ierr)
+  conn_list => grid%internal_connection_set_list
+  cset => conn_list%first
+  do
+    if (.not.associated(cset)) exit
+    do iconn = 1, cset%num_connections
+      gid_up = cset%id_up(iconn)
+      gid_dn = cset%id_dn(iconn)
+      lid_up = grid%nG2L(gid_up)
+      lid_dn = grid%nG2L(gid_dn)
+      ! Skip fully-inactive faces
+      if (patch%imat(gid_up) <= 0 .and. patch%imat(gid_dn) <= 0) cycle
+      ! Wall face (active-inactive): Neumann, skip entirely
+      if (patch%imat(gid_up) <= 0 .or. patch%imat(gid_dn) <= 0) cycle
+      ! Both active interior: contribute to Ap and to divergence RHS.
+      area  = cset%area(iconn)
+      dx    = cset%dist(0,iconn)
+      n_vec(1:3) = cset%dist(1:3,iconn)
+      S(1:3) = n_vec(1:3)*area
+      coef = area/dx
+
+      ! Cell-center velocities (ghosted aux valid because scatter occurred
+      ! during the last residual evaluation).
+      u_K(1) = stokes_aux%auxvars(gid_up)%u
+      u_K(2) = stokes_aux%auxvars(gid_up)%v
+      u_K(3) = stokes_aux%auxvars(gid_up)%w
+      u_L(1) = stokes_aux%auxvars(gid_dn)%u
+      u_L(2) = stokes_aux%auxvars(gid_dn)%v
+      u_L(3) = stokes_aux%auxvars(gid_dn)%w
+
+      ! phi_face uses central average u_face = 0.5(uK+uL). The "divergence"
+      ! we want to eliminate is the spurious divergence of the cell-center
+      ! velocity field as viewed through the same Laplacian stencil. A
+      ! consistent choice is phi = u_K.S_out on the K-side and -u_L.S_out
+      ! on the L-side (Green-Gauss div at each cell, cell-own velocity).
+      ! This makes the RHS independent of u_face averaging and captures
+      ! the real divergence of u_cell.
+      phi_face = 0.5d0*((u_K(1)+u_L(1))*S(1) + &
+                        (u_K(2)+u_L(2))*S(2) + &
+                        (u_K(3)+u_L(3))*S(3))
+
+      ! Matrix contributions: Laplacian (+coef on diag, -coef off-diag).
+      ! Use natural-ordering global indices (0-based). For structured grids
+      ! PFLOTRAN's PETSc layout matches natural ordering.
+      if (lid_up > 0 .and. lid_up <= nlmax) then
+        row_g = grid%nG2A(gid_up) - 1
+        call MatSetValue(Ap,row_g,row_g,coef, &
+                         ADD_VALUES,ierr);CHKERRQ(ierr)
+        col_g(1) = grid%nG2A(gid_dn) - 1
+        call MatSetValue(Ap,row_g,col_g(1),-coef, &
+                         ADD_VALUES,ierr);CHKERRQ(ierr)
+        rhs_p(lid_up) = rhs_p(lid_up) + phi_face
+      endif
+      if (lid_dn > 0 .and. lid_dn <= nlmax) then
+        row_g = grid%nG2A(gid_dn) - 1
+        call MatSetValue(Ap,row_g,row_g,coef, &
+                         ADD_VALUES,ierr);CHKERRQ(ierr)
+        col_g(1) = grid%nG2A(gid_up) - 1
+        call MatSetValue(Ap,row_g,col_g(1),-coef, &
+                         ADD_VALUES,ierr);CHKERRQ(ierr)
+        rhs_p(lid_dn) = rhs_p(lid_dn) - phi_face
+      endif
+    enddo
+    cset => cset%next
+  enddo
+
+  ! --- Assemble Ap + RHS from boundary connections ---
+  boundary_condition => patch%boundary_condition_list%first
+  do
+    if (.not.associated(boundary_condition)) exit
+    if (.not.associated(boundary_condition%flow_condition)) then
+      boundary_condition => boundary_condition%next
+      cycle
+    endif
+    cset => boundary_condition%connection_set
+    if (.not.associated(cset)) then
+      boundary_condition => boundary_condition%next
+      cycle
+    endif
+
+    do iconn = 1, cset%num_connections
+      local_id = cset%id_dn(iconn)
+      if (local_id <= 0 .or. local_id > nlmax) cycle
+      ghosted_id = grid%nL2G(local_id)
+      if (patch%imat(ghosted_id) <= 0) cycle
+
+      area  = cset%area(iconn)
+      d_b   = cset%dist(0,iconn)
+      n_vec(1:3) = cset%dist(1:3,iconn)
+      ! Boundary: cset%dist points from ghost(up) into interior(dn).
+      ! The outward normal for the interior cell is -dist. We use the
+      ! outward convention for divergence in the Poisson RHS (consistent
+      ! with the interior-face assembly), which requires flipping sign.
+      S(1:3) = -n_vec(1:3)*area
+
+      u_K(1) = stokes_aux%auxvars(ghosted_id)%u
+      u_K(2) = stokes_aux%auxvars(ghosted_id)%v
+      u_K(3) = stokes_aux%auxvars(ghosted_id)%w
+
+      ! Pressure Dirichlet: p' = 0, stiff ghost contributes to diagonal
+      if (associated(boundary_condition%flow_condition%stokes%pressure)) then
+        if (boundary_condition%flow_condition%stokes%pressure%itype == DIRICHLET_BC) then
+          coef_b = area/d_b
+          row_g  = grid%nG2A(ghosted_id) - 1
+          call MatSetValue(Ap,row_g,row_g,coef_b, &
+                           ADD_VALUES,ierr);CHKERRQ(ierr)
+          ! Outward flux of u* at this boundary face
+          phi_b = u_K(1)*S(1) + u_K(2)*S(2) + u_K(3)*S(3)
+          rhs_p(local_id) = rhs_p(local_id) + phi_b
+          cycle
+        endif
+      endif
+
+      ! Velocity Dirichlet (incl. NO_SLIP): Neumann for p'; use u_b in RHS
+      if (associated(boundary_condition%flow_condition%stokes%velocity)) then
+        if (boundary_condition%flow_condition%stokes%velocity%itype == DIRICHLET_BC .or. &
+            boundary_condition%flow_condition%stokes%velocity%itype == NO_SLIP_BC) then
+          u_b(1) = boundary_condition%flow_aux_real_var(1,iconn)
+          u_b(2) = boundary_condition%flow_aux_real_var(2,iconn)
+          u_b(3) = boundary_condition%flow_aux_real_var(3,iconn)
+          phi_b = u_b(1)*S(1) + u_b(2)*S(2) + u_b(3)*S(3)
+          rhs_p(local_id) = rhs_p(local_id) + phi_b
+        endif
+      endif
+    enddo
+    boundary_condition => boundary_condition%next
+  enddo
+
+  ! --- Also account for PRESCRIBED_CONDITION rows (Dirichlet volumes).
+  !     In PFLOTRAN Stokes, pressure-Dirichlet is usually assigned via
+  !     PRESCRIBED_CONDITION on a cell region (faces). Treat the faces the
+  !     same as pressure BC: p'=0 Dirichlet. We collect rows here and apply
+  !     MatZeroRows in bulk after final assembly.
+  n_prescribed_rows = 0
+  prescribed_condition => patch%prescribed_condition_list%first
+  do
+    if (.not.associated(prescribed_condition)) exit
+    if (.not.associated(prescribed_condition%flow_condition)) then
+      prescribed_condition => prescribed_condition%next
+      cycle
+    endif
+    cset => prescribed_condition%connection_set
+    if (.not.associated(cset)) then
+      prescribed_condition => prescribed_condition%next
+      cycle
+    endif
+
+    if (associated(prescribed_condition%flow_condition%stokes%pressure)) then
+      if (prescribed_condition%flow_condition%stokes%pressure%itype == DIRICHLET_BC) then
+        n_prescribed_rows = n_prescribed_rows + cset%num_connections
+      endif
+    endif
+    prescribed_condition => prescribed_condition%next
+  enddo
+
+  allocate(prescribed_rows(max(1,n_prescribed_rows)))
+  n_prescribed_rows = 0
+  prescribed_condition => patch%prescribed_condition_list%first
+  do
+    if (.not.associated(prescribed_condition)) exit
+    if (.not.associated(prescribed_condition%flow_condition)) then
+      prescribed_condition => prescribed_condition%next; cycle
+    endif
+    cset => prescribed_condition%connection_set
+    if (.not.associated(cset)) then
+      prescribed_condition => prescribed_condition%next; cycle
+    endif
+
+    if (associated(prescribed_condition%flow_condition%stokes%pressure)) then
+      if (prescribed_condition%flow_condition%stokes%pressure%itype == DIRICHLET_BC) then
+        do iconn = 1, cset%num_connections
+          local_id = cset%id_dn(iconn)
+          if (local_id <= 0 .or. local_id > nlmax) cycle
+          ghosted_id = grid%nL2G(local_id)
+          if (patch%imat(ghosted_id) <= 0) cycle
+          n_prescribed_rows = n_prescribed_rows + 1
+          prescribed_rows(n_prescribed_rows) = grid%nG2A(ghosted_id) - 1
+          rhs_p(local_id) = 0.d0
+        enddo
+      endif
+    endif
+    prescribed_condition => prescribed_condition%next
+  enddo
+
+  call VecRestoreArray(rhs,rhs_p,ierr);CHKERRQ(ierr)
+
+  call MatAssemblyBegin(Ap,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+  call MatAssemblyEnd(Ap,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
+
+  if (n_prescribed_rows > 0) then
+    call MatZeroRows(Ap,n_prescribed_rows,prescribed_rows,1.d0, &
+                     PETSC_NULL_VEC,PETSC_NULL_VEC,ierr);CHKERRQ(ierr)
+  else
+    call MatZeroRows(Ap,0,prescribed_rows,1.d0, &
+                     PETSC_NULL_VEC,PETSC_NULL_VEC,ierr);CHKERRQ(ierr)
+  endif
+  deallocate(prescribed_rows)
+
+  ! --- If the problem is all-Neumann, pin p'=0 at first active cell ---
+  if (.not.has_pressure_dirichlet_anywhere) then
+    ! Find smallest natural id across all ranks among active local cells.
+    pin_gid_local = HUGE(1)
+    do local_id = 1, nlmax
+      ghosted_id = grid%nL2G(local_id)
+      if (ghosted_id <= 0) cycle
+      if (patch%imat(ghosted_id) <= 0) cycle
+      if (grid%nG2A(ghosted_id) < pin_gid_local) then
+        pin_gid_local = grid%nG2A(ghosted_id)
+      endif
+    enddo
+    call MPI_Allreduce(pin_gid_local,pin_gid_global,ONE_INTEGER_MPI, &
+                       MPIU_INTEGER,MPI_MIN,option%mycomm,ierr);CHKERRQ(ierr)
+    pin_here = PETSC_FALSE
+    pin_row(1) = -1
+    if (pin_gid_global > 0 .and. pin_gid_global < HUGE(1)) then
+      ! Is this cell owned locally?
+      do local_id = 1, nlmax
+        ghosted_id = grid%nL2G(local_id)
+        if (ghosted_id <= 0) cycle
+        if (grid%nG2A(ghosted_id) == pin_gid_global) then
+          pin_row(1) = pin_gid_global - 1
+          pin_here = PETSC_TRUE
+          call VecGetArray(rhs,rhs_p,ierr);CHKERRQ(ierr)
+          rhs_p(local_id) = 0.d0
+          call VecRestoreArray(rhs,rhs_p,ierr);CHKERRQ(ierr)
+          exit
+        endif
+      enddo
+    endif
+    if (pin_here) then
+      call MatZeroRows(Ap,1,pin_row,1.d0,PETSC_NULL_VEC,PETSC_NULL_VEC, &
+                       ierr);CHKERRQ(ierr)
+    else
+      call MatZeroRows(Ap,0,pin_row,1.d0,PETSC_NULL_VEC,PETSC_NULL_VEC, &
+                       ierr);CHKERRQ(ierr)
+    endif
+  endif
+
+  ! --- Solve via KSP(CG) + Jacobi ---
+  call KSPCreate(option%mycomm,ksp_proj,ierr);CHKERRQ(ierr)
+  call KSPSetOperators(ksp_proj,Ap,Ap,ierr);CHKERRQ(ierr)
+  call KSPSetType(ksp_proj,KSPCG,ierr);CHKERRQ(ierr)
+  call KSPGetPC(ksp_proj,pc_proj,ierr);CHKERRQ(ierr)
+  call PCSetType(pc_proj,PCJACOBI,ierr);CHKERRQ(ierr)
+  call KSPSetTolerances(ksp_proj,1.d-8,1.d-10,PETSC_DEFAULT_REAL, &
+                        500,ierr);CHKERRQ(ierr)
+  call KSPSetInitialGuessNonzero(ksp_proj,PETSC_FALSE,ierr);CHKERRQ(ierr)
+  call VecZeroEntries(pprime,ierr);CHKERRQ(ierr)
+
+  call KSPSolve(ksp_proj,rhs,pprime,ierr);CHKERRQ(ierr)
+  call KSPGetIterationNumber(ksp_proj,its,ierr);CHKERRQ(ierr)
+  call KSPGetResidualNorm(ksp_proj,rnorm,ierr);CHKERRQ(ierr)
+  if (its > 0) then
+    write(str,'("  FLUX_CORRECTION: KSP converged in ",i0, &
+               &" iters, ||r||=",es10.3)') its, rnorm
+    call PrintMsg(option,str)
+  endif
+
+  ! --- Apply correction: u <- u - grad(p').
+  !     Consistent face-gradient approach: for each active cell K, walk its
+  !     interior faces and accumulate grad(p')_K from the axis-aligned face
+  !     gradients (pL-pK)/dx * n_axis. Average of the two opposite-face
+  !     contributions along each axis gives central difference; a single-
+  !     face (boundary-adjacent) contribution gives one-sided first order.
+  !     This is the natural "dual" of the TPFA Laplacian used for assembly
+  !     so that u_new = u* - grad(p') is consistent with the Poisson solve.
+  call VecGetArrayRead(pprime,pprime_p,ierr);CHKERRQ(ierr)
+
+  allocate(pp_cell(grid%ngmax))
+  pp_cell = 0.d0
+  do local_id = 1, nlmax
+    ghosted_id = grid%nL2G(local_id)
+    if (ghosted_id <= 0 .or. ghosted_id > grid%ngmax) cycle
+    pp_cell(ghosted_id) = pprime_p(local_id)
+  enddo
+  call VecRestoreArrayRead(pprime,pprime_p,ierr);CHKERRQ(ierr)
+
+  allocate(grad_cell(3,grid%ngmax))
+  allocate(vol_cell(grid%ngmax))
+  grad_cell = 0.d0
+  vol_cell = 0.d0
+
+  ! Per-axis face counts so we can average (1 or 2 contributions per axis).
+  ! vol_cell is reused here to mean "face count per cell" in packed (x,y,z).
+  ! Use a separate array of size (3,ngmax) to store counts.
+  allocate(face_count(3,grid%ngmax))
+  face_count = 0
+
+  cset => grid%internal_connection_set_list%first
+  do
+    if (.not.associated(cset)) exit
+    do iconn = 1, cset%num_connections
+      gid_up = cset%id_up(iconn)
+      gid_dn = cset%id_dn(iconn)
+      if (patch%imat(gid_up) <= 0 .and. patch%imat(gid_dn) <= 0) cycle
+      n_vec(1:3) = cset%dist(1:3,iconn)
+      dx = cset%dist(0,iconn)*2.d0  ! center-to-center
+
+      ! Axis aligned (dominant direction)
+      if (abs(n_vec(1)) > 0.5d0) then
+        axis = 1
+      else if (abs(n_vec(2)) > 0.5d0) then
+        axis = 2
+      else
+        axis = 3
+      endif
+
+      ! Wall face (active-inactive): Neumann, p'_L = p'_K, gradient = 0
+      if (patch%imat(gid_up) <= 0 .or. patch%imat(gid_dn) <= 0) cycle
+
+      ! (pL - pK)/dx * n_axis contributes to grad at K;
+      ! (pK - pL)/dx * n_axis contributes to grad at L (same component).
+      ! Sign convention: n points up->dn, so +n_axis at up -> +n_axis at up
+      ! means grad_K component += (pL-pK)/dx * n_axis_component.
+      grad_cell(axis,gid_up) = grad_cell(axis,gid_up) + &
+        (pp_cell(gid_dn) - pp_cell(gid_up))/dx * n_vec(axis)
+      face_count(axis,gid_up) = face_count(axis,gid_up) + 1
+      grad_cell(axis,gid_dn) = grad_cell(axis,gid_dn) + &
+        (pp_cell(gid_dn) - pp_cell(gid_up))/dx * n_vec(axis)
+      face_count(axis,gid_dn) = face_count(axis,gid_dn) + 1
+    enddo
+    cset => cset%next
+  enddo
+
+  ! Boundary-face gradient contributions.
+  ! Pressure Dirichlet: p'_face = 0, so (0 - pK)/d_b * n_axis where
+  !   n at boundary points ghost->interior (inward). Outward axis is -n.
+  !   (p'_ghost - p'_K)/d_b along outward direction = (0 - pK)/d_b * (-n_axis)
+  !   = pK * n_axis / d_b. Let's express as gradient along outward.
+  ! For the cell-centered gradient we want: grad_K ~ (p'_face - p'_K)/(d_b) * n_out
+  !   = (0 - pK)/d_b * (-n_axis) = pK*n_axis/d_b.
+  ! Summing this in grad_cell(axis,K) matches one-sided difference.
+  boundary_condition => patch%boundary_condition_list%first
+  do
+    if (.not.associated(boundary_condition)) exit
+    if (.not.associated(boundary_condition%flow_condition)) then
+      boundary_condition => boundary_condition%next; cycle
+    endif
+    cset => boundary_condition%connection_set
+    if (.not.associated(cset)) then
+      boundary_condition => boundary_condition%next; cycle
+    endif
+    do iconn = 1, cset%num_connections
+      local_id = cset%id_dn(iconn)
+      if (local_id <= 0 .or. local_id > nlmax) cycle
+      ghosted_id = grid%nL2G(local_id)
+      if (patch%imat(ghosted_id) <= 0) cycle
+      n_vec(1:3) = cset%dist(1:3,iconn)
+      d_b = cset%dist(0,iconn)
+      if (abs(n_vec(1)) > 0.5d0) then
+        axis = 1
+      else if (abs(n_vec(2)) > 0.5d0) then
+        axis = 2
+      else
+        axis = 3
+      endif
+      if (associated(boundary_condition%flow_condition%stokes%pressure)) then
+        if (boundary_condition%flow_condition%stokes%pressure%itype == DIRICHLET_BC) then
+          ! p'_face = 0; one-sided: (0 - pK)/d_b * (-n_axis) = pK*n_axis/d_b
+          grad_cell(axis,ghosted_id) = grad_cell(axis,ghosted_id) + &
+            pp_cell(ghosted_id)*n_vec(axis)/d_b
+          face_count(axis,ghosted_id) = face_count(axis,ghosted_id) + 1
+          cycle
+        endif
+      endif
+      ! Velocity Dirichlet or unspecified: Neumann on p', face grad = 0.
+      ! Count this face to keep averaging denominator consistent with
+      ! number of axis faces of this cell.
+      face_count(axis,ghosted_id) = face_count(axis,ghosted_id) + 1
+    enddo
+    boundary_condition => boundary_condition%next
+  enddo
+
+  ! Apply correction with per-axis averaging.
+  do local_id = 1, nlmax
+    ghosted_id = grid%nL2G(local_id)
+    if (ghosted_id <= 0) cycle
+    if (patch%imat(ghosted_id) <= 0) cycle
+    grad_pp = 0.d0
+    do axis = 1, 3
+      if (face_count(axis,ghosted_id) > 0) then
+        grad_pp(axis) = grad_cell(axis,ghosted_id)/face_count(axis,ghosted_id)
+      endif
+    enddo
+    stokes_aux%auxvars(ghosted_id)%u = stokes_aux%auxvars(ghosted_id)%u + grad_pp(1)
+    stokes_aux%auxvars(ghosted_id)%v = stokes_aux%auxvars(ghosted_id)%v + grad_pp(2)
+    stokes_aux%auxvars(ghosted_id)%w = stokes_aux%auxvars(ghosted_id)%w + grad_pp(3)
+  enddo
+
+  deallocate(pp_cell)
+  deallocate(grad_cell)
+  deallocate(vol_cell)
+  deallocate(face_count)
+
+  ! --- Cleanup ---
+  call KSPDestroy(ksp_proj,ierr);CHKERRQ(ierr)
+  call VecDestroy(rhs,ierr);CHKERRQ(ierr)
+  call VecDestroy(pprime,ierr);CHKERRQ(ierr)
+  call MatDestroy(Ap,ierr);CHKERRQ(ierr)
+
+end subroutine StokesFluxCorrection
 
 
 end module Stokes_module
