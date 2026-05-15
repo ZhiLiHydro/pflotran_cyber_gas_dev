@@ -4704,8 +4704,12 @@ subroutine PatchUpdateCouplerAuxVarsStokes(patch,coupler,option)
                  'PatchUpdateCouplerAuxVarsStokes')
         end select
 
+      case(ZERO_GRADIENT_BC)
+        ! Stokes boundary-face assembly interprets ZERO_GRADIENT pressure as
+        ! p_b = p_cell, so no boundary pressure value is stored here.
+
       case(HYDROSTATIC_BC,HYDROSTATIC_SEEPAGE_BC,HYDROSTATIC_CONDUCTANCE_BC, &
-           NEUMANN_BC,ZERO_GRADIENT_BC)
+           NEUMANN_BC)
         option%io_buffer = 'HYDROSTATIC and NEUMANN BCs not currently supported in STOKES flow'
         call PrintErrMsg(option)
 

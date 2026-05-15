@@ -1045,6 +1045,8 @@ subroutine FlowSubConditionVerify(option, condition, sub_condition_name, &
     call PrintErrMsg(option)
   endif
 
+  if (sub_condition%itype == ZERO_GRADIENT_BC) return
+
   header = 'SUBSURFACE/FLOW_CONDITION/' // &
            trim(condition%name) // '/' // &
            trim(sub_condition_name) // '/Value(s)'
@@ -1700,7 +1702,8 @@ subroutine FlowConditionRead(condition,input,option)
         endif
       case(STOKES_MODE,STOKES_TS_MODE)
         if (.not.(pressure%itype == DIRICHLET_BC .or. &
-                  pressure%itype == NEUMANN_BC)) then
+                  pressure%itype == NEUMANN_BC .or. &
+                  pressure%itype == ZERO_GRADIENT_BC)) then
           option%io_buffer = 'Pressure FLOW_CONDITION type ' // &
             trim(StringWrite(pressure%itype)) // ' not supported by STOKES mode.'
           call PrintErrMsg(option)
@@ -3408,11 +3411,15 @@ subroutine FlowConditionStokesRead(condition,input,option)
           call InputErrorMsg(input,option,'TYPE','CONDITION')
           call StringToUpper(word)
           sub_condition_ptr%ctype = word
-          select case(word)
-            case('DIRICHLET')
-              sub_condition_ptr%itype = DIRICHLET_BC
-            case('PERIODIC')
-              sub_condition_ptr%itype = PERIODIC_BC
+      select case(word)
+      case('DIRICHLET')
+        sub_condition_ptr%itype = DIRICHLET_BC
+      case('ZERO_GRADIENT')
+        sub_condition_ptr%itype = ZERO_GRADIENT_BC
+      case('NO_SLIP')
+        sub_condition_ptr%itype = NO_SLIP_BC
+      case('PERIODIC')
+        sub_condition_ptr%itype = PERIODIC_BC
             case('VOLUMETRIC_RATE')
               sub_condition_ptr%itype = VOLUMETRIC_RATE_SS
               rate_string = 'm^3/sec'
@@ -4790,9 +4797,11 @@ function FlowSubConditionGetType(subcon_itype)
   character(len=MAXSTRINGLENGTH) :: FlowSubConditionGetType
 
   select case(subcon_itype)
-    case(DIRICHLET_BC)
-      string = 'dirichlet'
-    case(NEUMANN_BC)
+  case(DIRICHLET_BC)
+    string = 'dirichlet'
+  case(NO_SLIP_BC)
+    string = 'no_slip'
+  case(NEUMANN_BC)
       string = 'neumann'
     case(DIRICHLET_ZERO_GRADIENT_BC)
       string = 'dirichlet-zero gradient'
