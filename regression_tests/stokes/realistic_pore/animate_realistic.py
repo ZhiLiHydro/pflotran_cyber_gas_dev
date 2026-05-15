@@ -133,8 +133,12 @@ BG_SIZE    = 10    # background particle marker size (points²)
 PATH_SIZE  = 45    # path-tracer marker size
 EXIT_SIZE  = 130   # exit-flash star size
 
-def make_vel_interp(ux_field, uy_field):
+def make_vel_interp(ux_field, uy_field, solid_mask=None):
     """Build linear interpolators for ux and uy on the cell-centre grid."""
+    if solid_mask is not None:
+        ux_field = np.where(solid_mask, 0.0, ux_field)
+        uy_field = np.where(solid_mask, 0.0, uy_field)
+    
     return (
         RegularGridInterpolator(
             (y_c, x_c), ux_field, method='linear',
@@ -252,7 +256,7 @@ solid_mask[:, :BC_EXCL] = True
 
 # Injection x for particles and streamline seeds — first uncontaminated column
 path_inject_x = x_c[BC_EXCL]
-seed_y   = np.linspace(DY / 2, LY - DY / 2, 60)
+seed_y   = np.linspace(DY / 2, LY - DY / 2, 200)
 seed_pts = np.column_stack([np.full_like(seed_y, path_inject_x), seed_y])
 
 build_grain_interp(solid_mask)     # build once from first snapshot
@@ -278,7 +282,7 @@ grain_overlay = np.where(solid_mask, 0.5, np.nan)   # 0.5 → mid-gray
 print("  pre-seeding background particles …", flush=True)
 bg_px, bg_py, bg_pc = np.array([]), np.array([]), np.array([])
 ux0, uy0 = snap_vel(snapshots[0])
-i_ux0, i_uy0 = make_vel_interp(ux0, uy0)
+i_ux0, i_uy0 = make_vel_interp(ux0, uy0, solid_mask)
 for _ in range(30):
     bg_px, bg_py, bg_pc = advance_bg(bg_px, bg_py, bg_pc, i_ux0, i_uy0)
 
@@ -289,7 +293,7 @@ all_bg_pc = [bg_pc.copy()]
 print(f"  advancing background particles …", flush=True)
 for idx in range(1, len(snapshots)):
     ux_s, uy_s = snap_vel(snapshots[idx])
-    i_ux, i_uy = make_vel_interp(ux_s, uy_s)
+    i_ux, i_uy = make_vel_interp(ux_s, uy_s, solid_mask)
     bg_px, bg_py, bg_pc = advance_bg(bg_px, bg_py, bg_pc, i_ux, i_uy)
     all_bg_px.append(bg_px.copy())
     all_bg_py.append(bg_py.copy())
@@ -313,7 +317,7 @@ all_exit_y  = [[]]          # exited y-positions per frame
 
 for idx in range(1, len(snapshots)):
     ux_s, uy_s = snap_vel(snapshots[idx])
-    i_ux, i_uy = make_vel_interp(ux_s, uy_s)
+    i_ux, i_uy = make_vel_interp(ux_s, uy_s, solid_mask)
 
     if idx % PATH_INJECT_FRAMES == 0:
         pt_px = np.append(pt_px, np.full(N_PATH, path_inject_x))

@@ -1,3 +1,4 @@
-# Expected tolerances for transient march toward steady manufactured field
+# Expected tolerances for transient relaxation toward the steady manufactured field
 rel_tol_u: 5.0e-2
 rel_tol_v: 5.0e-2
+min_relaxation_improvement: 2.5e-1

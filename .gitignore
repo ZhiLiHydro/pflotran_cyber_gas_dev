@@ -72,3 +72,18 @@ src/clm-pflotran/*.F90
 
 build/
 bin/
+
+# Private — not for public repo
+paper/
+docs/
+comparison_cases/
+*.gif
+*.testlog
+makefile.inc
+src/pflotran/libpflotran.a
+flow_cut_to_failure.vtk
+stokes_equations.tex
+stokes_equations.fdb_latexmk
+stokes_equations.fls
+BER_Science_Agents_Roadmap_output.png
+.playwright-mcp/

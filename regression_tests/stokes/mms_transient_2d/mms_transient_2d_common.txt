@@ -29,7 +29,8 @@ FLOW_CONDITION analytic_bc
   TYPE
     VELOCITY DIRICHLET
   /
-  # Manufactured time-dependent velocity imposed on boundaries; checker compares final state
+  # Zero initial/boundary velocity; external BC strips below impose the manufactured
+  # steady boundary field while STOKES_TS relaxes from rest toward that solution.
   VELOCITY 0.d0 0.d0 0.d0
 END
 

@@ -7,7 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
-VTK_FILE = Path(__file__).with_name("mms_transient_2d-001.vtk")
+INITIAL_VTK_FILE = Path(__file__).with_name("mms_transient_2d-000.vtk")
+FINAL_VTK_FILE = Path(__file__).with_name("mms_transient_2d-001.vtk")
 GOLD_FILE = Path(__file__).with_name("mms_transient_2d.regression.gold")
 
 
@@ -51,14 +52,14 @@ def rel_l2(numerical: np.ndarray, analytical: np.ndarray) -> float:
 
 
 def main() -> int:
-    if not VTK_FILE.exists():
-        print(f"VTK not found: {VTK_FILE}")
+    if not FINAL_VTK_FILE.exists():
+        print(f"VTK not found: {FINAL_VTK_FILE}")
         return 2
 
-    scalars = read_vtk_scalars(VTK_FILE)
-    ux = scalars.get("Stokes_Velocity_X")
-    uy = scalars.get("Stokes_Velocity_Y")
-    pres = scalars.get("Liquid_Pressure")
+    final_scalars = read_vtk_scalars(FINAL_VTK_FILE)
+    ux = final_scalars.get("Stokes_Velocity_X")
+    uy = final_scalars.get("Stokes_Velocity_Y")
+    pres = final_scalars.get("Liquid_Pressure")
     if ux is None or uy is None or pres is None:
         print("Missing required fields in VTK (Stokes_Velocity_X/Y, Liquid_Pressure)")
         return 2
@@ -86,10 +87,23 @@ def main() -> int:
     rel_v = rel_l2(uy, uy_exact)
     rel_p = rel_l2(pres, p_exact)
 
+    initial_rel_u = None
+    initial_rel_v = None
+    if INITIAL_VTK_FILE.exists():
+        initial_scalars = read_vtk_scalars(INITIAL_VTK_FILE)
+        ux0 = initial_scalars.get("Stokes_Velocity_X")
+        uy0 = initial_scalars.get("Stokes_Velocity_Y")
+        if ux0 is not None and uy0 is not None and ux0.size == ncell and uy0.size == ncell:
+            ux0 = ux0.reshape(nxy, nxy)
+            uy0 = uy0.reshape(nxy, nxy)
+            initial_rel_u = rel_l2(ux0, ux_exact)
+            initial_rel_v = rel_l2(uy0, uy_exact)
+
     gold = read_gold(GOLD_FILE)
     tol_u = gold.get("rel_tol_u", 1e-6)
     tol_v = gold.get("rel_tol_v", tol_u)
     tol_p = gold.get("rel_tol_p")
+    min_improvement = gold.get("min_relaxation_improvement", 0.25)
 
     ok = True
     if rel_u > tol_u:
@@ -101,8 +115,28 @@ def main() -> int:
     if tol_p is not None and rel_p > tol_p:
         print(f"rel_p {rel_p} > tol {tol_p}")
         ok = False
+    if initial_rel_u is not None:
+        if not (rel_u < min_improvement * initial_rel_u):
+            print(
+                f"final rel_u {rel_u} did not improve enough from initial {initial_rel_u}; "
+                f"expected factor < {min_improvement}"
+            )
+            ok = False
+    if initial_rel_v is not None:
+        if not (rel_v < min_improvement * initial_rel_v):
+            print(
+                f"final rel_v {rel_v} did not improve enough from initial {initial_rel_v}; "
+                f"expected factor < {min_improvement}"
+            )
+            ok = False
 
-    print(f"rel_u: {rel_u:.6e} rel_v: {rel_v:.6e} rel_p: {rel_p:.6e}")
+    if initial_rel_u is not None and initial_rel_v is not None:
+        print(
+            f"initial_rel_u: {initial_rel_u:.6e} initial_rel_v: {initial_rel_v:.6e} "
+            f"final_rel_u: {rel_u:.6e} final_rel_v: {rel_v:.6e} rel_p: {rel_p:.6e}"
+        )
+    else:
+        print(f"final_rel_u: {rel_u:.6e} final_rel_v: {rel_v:.6e} rel_p: {rel_p:.6e}")
     return 0 if ok else 3
 
 
