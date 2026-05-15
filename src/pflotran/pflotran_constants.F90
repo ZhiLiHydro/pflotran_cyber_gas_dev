@@ -227,9 +227,10 @@ module PFLOTRAN_Constants_module
   PetscInt, parameter, public :: AT_SOLUBILITY_BC = 33
   PetscInt, parameter, public :: PRES_REG_MASS_RATE_SS = 34
   PetscInt, parameter, public :: PONDED_WATER_BC = 35
-  PetscInt, parameter, public :: PERIODIC_BC = 36  ! TODO: no handling implemented yet
+PetscInt, parameter, public :: PERIODIC_BC = 36 ! TODO: no handling implemented yet
+PetscInt, parameter, public :: NO_SLIP_BC = 37
 
-  PetscInt, parameter, public :: WELL_SS = 100
+PetscInt, parameter, public :: WELL_SS = 100
 
   ! phase ids
   PetscInt, parameter, public :: LIQUID_PHASE = 1
