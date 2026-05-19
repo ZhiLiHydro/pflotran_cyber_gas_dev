@@ -14,8 +14,9 @@ module PM_Parameter_class
 
   private
 
-  PetscInt, parameter, public :: UPDATE_AFTER_LAST_PM = 0
-  PetscInt, parameter, public :: UPDATE_AFTER_FLOW = 1
+  PetscInt, parameter, public :: UPDATE_NEVER = 0
+  PetscInt, parameter, public :: UPDATE_AFTER_LAST_PM = 1
+  PetscInt, parameter, public :: UPDATE_AFTER_FLOW = 2
 
   PetscInt, parameter :: PARAMETER_BY_CELL = 1
   PetscInt, parameter :: PARAMETER_BY_MATERIAL = 2
@@ -24,6 +25,7 @@ module PM_Parameter_class
     class(realization_subsurface_type), pointer :: realization
     class(communicator_type), pointer :: comm1
     type(parameter_type), pointer :: parameter
+    PetscInt :: itype ! scalar, variable, or dataset
     PetscInt :: when_to_update
     procedure(PMParameterUpdate), pointer :: Update => null()
   contains
@@ -87,7 +89,7 @@ subroutine PMParameterInit(this)
   class(pm_parameter_type) :: this
 
   call PMBaseInit(this)
-  this%when_to_update = UNINITIALIZED_INTEGER
+  this%when_to_update = UPDATE_NEVER
   nullify(this%parameter)
   nullify(this%realization)
   nullify(this%comm1)
@@ -111,6 +113,9 @@ subroutine PMParameterSetup(this)
 
   type(parameter_type), pointer :: cur_parameter
   character(len=MAXWORDLENGTH) :: parameter_name
+  ! for linking to realization variables
+  character(len=MAXWORDLENGTH) :: name, units
+  PetscInt :: category, ivar, isubvar
 
   call this%SetRealization()
   parameter_name = this%parameter%name
@@ -137,6 +142,25 @@ subroutine PMParameterSetup(this)
       '" not found among available parameters.'
     call PrintErrMsg(this%option)
   endif
+  
+  cur_parameter => this%parameter
+  select case(cur_parameter%itype)
+    case(PARAMETER_SCALAR)
+      this%Update => PMParameterUpdateFromScalar
+    case(PARAMETER_DATASET)
+      this%Update => PMParameterUpdateFromDataset
+    case(PARAMETER_VARIABLE)
+      this%Update => PMParameterUpdateFromVariable
+      call OutputVariableToID(cur_parameter%linkage_name,units,category, &
+                              ivar,isubvar,ZERO_INTEGER,this%option)
+      cur_parameter%ivar = ivar
+      cur_parameter%isubvar = isubvar
+    case default
+      this%option%io_buffer = &
+        'Unrecognized parameter type for parameter "' // &
+        trim(parameter_name) // '".'
+      call PrintErrMsg(this%option)
+  end select
 
   this%header = 'PARAMETER (' // trim(this%name) // '->' // &
                 trim(parameter_name) // ')'
@@ -215,6 +239,8 @@ subroutine PMParameterRead(input,option,this)
         call InputErrorMsg(input,option,keyword,error_str)
         call StringToUpper(word)
         select case(trim(word))
+          case('INITIAL')
+            this%when_to_update = UPDATE_NEVER
           case('AFTER_LAST_PM')
             this%when_to_update = UPDATE_AFTER_LAST_PM
           case('AFTER_FLOW')
@@ -364,7 +390,7 @@ end subroutine PMParameterUpdateDoNothing
 
 ! ************************************************************************** !
 
-subroutine PMParameterUpdateReadDataset(this,time,ierr)
+subroutine PMParameterUpdateFromDataset(this,time,ierr)
   !
   ! Updates the parameter
   !
@@ -377,7 +403,31 @@ subroutine PMParameterUpdateReadDataset(this,time,ierr)
 
   ierr = 0
 
-end subroutine PMParameterUpdateReadDataset
+end subroutine PMParameterUpdateFromDataset
+
+! ************************************************************************** !
+
+subroutine PMParameterUpdateFromVariable(this,time,ierr)
+  !
+  ! Updates the parameter
+  !
+  ! Author: Glenn Hammond
+  ! Date: 01/18/24
+
+  class(pm_parameter_type) :: this
+  PetscReal :: time
+  PetscErrorCode :: ierr
+
+  call RealizationGetVariable(this%realization, &
+                              this%realization%field%work, &
+                              this%ivar,this%isubvar)
+  call this%comm1%GlobalToLocal(this%realization%field%work, &
+                                this%realization%field%work_loc)
+  call GlobalSetParameterVecLoc(this%realization, &
+                                this%realization%field%work_loc,
+                                this%parameter%id)
+
+end subroutine PMParameterUpdateFromVariable
 
 ! ************************************************************************** !
 

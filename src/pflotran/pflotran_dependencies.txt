@@ -917,8 +917,10 @@ geomechanics_force.o : \
   geomechanics_realization.o \
   geomechanics_region.o \
   grid.o \
+  grid_structured.o \
   grid_unstructured_cell.o \
   option.o \
+  option_geomechanics.o \
   output_aux.o \
   parameter.o \
   petsc_utility.o \
@@ -988,6 +990,7 @@ geomechanics_realization.o : \
   grid.o \
   input_aux.o \
   option.o \
+  option_geomechanics.o \
   output_aux.o \
   petsc_utility.o \
   pflotran_constants.o \
@@ -1379,12 +1382,16 @@ init_subsurface_geomechanics.o : \
   geomechanics_region.o \
   geomechanics_regression.o \
   geomechanics_strata.o \
+  grid.o \
+  grid_structured.o \
   grid_unstructured.o \
   grid_unstructured_aux.o \
+  grid_unstructured_cell.o \
   init_common.o \
   input_aux.o \
   logging.o \
   option.o \
+  option_geomechanics.o \
   output.o \
   output_aux.o \
   output_geomechanics.o \
@@ -1872,6 +1879,7 @@ output_geomechanics.o : \
   geomech_grid_aux.o \
   geomechanics_discretization.o \
   geomechanics_field.o \
+  geomechanics_global_aux.o \
   geomechanics_patch.o \
   geomechanics_realization.o \
   grid_unstructured_cell.o \
@@ -2176,11 +2184,14 @@ pm_ert.o : \
   waypoint.o \
   zflow_aux.o
 pm_fracture.o : \
+  condition.o \
+  coupler.o \
   field.o \
   general_aux.o \
   geometry.o \
   grid.o \
   input_aux.o \
+  integral_flux.o \
   material_aux.o \
   option.o \
   pflotran_constants.o \
@@ -2216,17 +2227,18 @@ pm_general.o : \
   utility.o \
   variables.o
 pm_geomechanics_force.o : \
-  checkpoint.o \
   communicator_base.o \
   communicator_structured.o \
   communicator_unstructured.o \
   geomechanics_condition.o \
   geomechanics_discretization.o \
+  geomechanics_field.o \
   geomechanics_force.o \
   geomechanics_realization.o \
   global.o \
   global_aux.o \
   grid.o \
+  hdf5.o \
   input_aux.o \
   option.o \
   parameter.o \
@@ -2877,6 +2889,7 @@ pmc_general.o : \
   pmc_base.o \
   timestepper_base.o
 pmc_geomechanics.o : \
+  checkpoint.o \
   discretization.o \
   geomechanics_discretization.o \
   geomechanics_force.o \
@@ -2884,9 +2897,12 @@ pmc_geomechanics.o : \
   geomechanics_subsurface_properties.o \
   global_aux.o \
   grid.o \
+  hdf5_aux.o \
+  logging.o \
   option.o \
   output_geomechanics.o \
   parameter.o \
+  petsc_utility.o \
   pflotran_constants.o \
   pm_base.o \
   pm_base_pointer.o \
@@ -2894,7 +2910,8 @@ pmc_geomechanics.o : \
   realization_subsurface.o \
   solver.o \
   timestepper_KSP.o \
-  timestepper_base.o
+  timestepper_base.o \
+  waypoint.o
 pmc_geophysics.o : \
   hdf5_aux.o \
   option.o \
@@ -3242,6 +3259,7 @@ reaction_sandbox.o : \
   output_aux.o \
   pflotran_constants.o \
   reaction_aux.o \
+  reaction_sandbox_amendment.o \
   reaction_sandbox_base.o \
   reaction_sandbox_bioTH.o \
   reaction_sandbox_biohill.o \
@@ -3259,6 +3277,19 @@ reaction_sandbox.o : \
   reaction_sandbox_ufd_wp.o \
   reactive_transport_aux.o \
   string.o \
+  utility.o
+reaction_sandbox_amendment.o : \
+  global_aux.o \
+  input_aux.o \
+  material_aux.o \
+  option.o \
+  pflotran_constants.o \
+  reaction_aux.o \
+  reaction_immobile_aux.o \
+  reaction_sandbox_base.o \
+  reactive_transport_aux.o \
+  string.o \
+  units.o \
   utility.o
 reaction_sandbox_base.o : \
   global_aux.o \
@@ -3806,6 +3837,7 @@ simulation_base.o : \
   timer.o \
   waypoint.o
 simulation_geomechanics.o : \
+  checkpoint.o \
   driver.o \
   geomechanics_attributes.o \
   geomechanics_realization.o \
@@ -4078,6 +4110,7 @@ th_aux.o : \
 th_well.o : \
   connection.o \
   grid.o \
+  grid_unstructured_aux.o \
   matrix_zeroing.o \
   option.o \
   patch.o \
