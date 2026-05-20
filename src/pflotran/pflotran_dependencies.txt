@@ -1590,6 +1590,12 @@ matrix_zeroing.o : \
   option.o \
   pflotran_constants.o \
   utility.o
+ml_surrogate_aux.o : \
+  hdf5_aux.o \
+  option.o \
+  pflotran_constants.o
+validate_ml_surrogate.o : \
+  ml_surrogate_aux.o
 mphase.o : \
   co2_span_wagner.o \
   co2_span_wagner_spline.o \

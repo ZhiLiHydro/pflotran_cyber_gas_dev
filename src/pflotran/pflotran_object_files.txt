@@ -236,6 +236,7 @@ srcsink_obj = \
 io_obj = \
 	${common_src}hdf5.o \
 	${common_src}hdf5_aux.o \
+	${common_src}ml_surrogate_aux.o \
 	${common_src}output.o \
 	${common_src}output_common.o \
 	${common_src}output_conservation.o \

@@ -299,6 +299,10 @@ pflotran_rxn : libpflotranchem.a $(pflotran_rxn_obj)
 pflotran_derivative : $(pflotran_base_obj) pflotran_derivative.o
 	${FLINKER} -o pflotran_derivative $(pflotran_base_obj) pflotran_derivative.o ${PETSC_LIB} ${LIBS}
 
+# Standalone validator for the NUMO fracture-clogging ML surrogate forward pass
+validate_ml_surrogate : $(pflotran_base_obj) validate_ml_surrogate.o
+	${FLINKER} -o validate_ml_surrogate $(pflotran_base_obj) validate_ml_surrogate.o ${PETSC_LIB} ${LIBS}
+
 $(SRC_DIR)/pflotran_provenance.F90 : FORCE
 ifeq ($(UPDATE_PROVENANCE),1)
 	@-rm pflotran_provenance.o pflotran_provenance_module.mod $(SRC_DIR)/pflotran_provenance.F90; \
