@@ -1590,6 +1590,16 @@ matrix_zeroing.o : \
   option.o \
   pflotran_constants.o \
   utility.o
+ml_fracture_surrogate.o : \
+  grid.o \
+  input_aux.o \
+  material_aux.o \
+  ml_surrogate_aux.o \
+  option.o \
+  patch.o \
+  pflotran_constants.o \
+  realization_subsurface.o \
+  string.o
 ml_surrogate_aux.o : \
   hdf5_aux.o \
   option.o \
@@ -2430,6 +2440,7 @@ pm_rt.o : \
   integral_flux.o \
   material.o \
   material_aux.o \
+  ml_fracture_surrogate.o \
   option.o \
   output_ekg.o \
   patch.o \

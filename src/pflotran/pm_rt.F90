@@ -10,6 +10,7 @@ module PM_RT_class
   use Realization_Subsurface_class
   use Communicator_Base_class
   use Option_module
+  use ML_Fracture_Surrogate_module
 
   use PFLOTRAN_Constants_module
 
@@ -52,6 +53,7 @@ module PM_RT_class
     PetscReal :: debug_derivatives_rtol
     PetscReal :: debug_derivatives_row_rtol
     PetscBool :: millington_quirk_tortuosity
+    type(ml_fracture_surrogate_type) :: ml_surrogate
     PetscInt :: transport_temperature_dependence
     PetscInt :: reaction_temperature_dependence
     PetscReal :: reference_temperature
@@ -168,6 +170,7 @@ subroutine PMRTInit(pm_rt)
   pm_rt%volfrac_change_governor = 1.d0
   pm_rt%cfl_governor = UNINITIALIZED_DOUBLE
   pm_rt%millington_quirk_tortuosity = PETSC_FALSE
+  call MLFractureSurrogateInit(pm_rt%ml_surrogate)
   pm_rt%transport_temperature_dependence = RT_TEMPERATURE_ISOTHERMAL
   pm_rt%reaction_temperature_dependence = RT_TEMPERATURE_FOLLOW_FLOW
   pm_rt%reference_temperature = UNINITIALIZED_DOUBLE
@@ -260,6 +263,8 @@ subroutine PMRTReadSimOptionsBlock(this,input)
                                     & ANISOTHERMAL',option)
       case('USE_MILLINGTON_QUIRK_TORTUOSITY')
         this%millington_quirk_tortuosity = PETSC_TRUE
+      case('FRACTURE_ML_SURROGATE')
+        call MLFractureSurrogateReadInput(this%ml_surrogate,input,option)
       case('PRINT_EKG')
         option%print_ekg = PETSC_TRUE
         this%print_ekg = PETSC_TRUE
@@ -519,6 +524,10 @@ subroutine PMRTSetup(this)
         &1 in MATERIAL_PROPERTY when using USE_MILLINGTON_QUIRK_TORTUOSITY.'
       call PrintErrMsg(this%option)
     endif
+  endif
+
+  if (this%ml_surrogate%active) then
+    call MLFractureSurrogateSetup(this%ml_surrogate,this%option)
   endif
 
   ! only set these flags if transport only
@@ -849,6 +858,10 @@ subroutine PMRTFinalizeTimestep(this)
                                   this%realization%field%porosity_tpdt)
   else if (this%realization%reaction%mineral%update_surface_area) then
     call RealizationUpdatePropertiesTS(this%realization)
+  endif
+
+  if (this%ml_surrogate%active) then
+    call MLFractureSurrogateUpdate(this%realization,this%ml_surrogate)
   endif
 
   ! this update of rates is only for the max_volfrac_change below.
@@ -2763,6 +2776,8 @@ subroutine PMRTStrip(this)
 
   call DeallocateArray(this%max_concentration_change)
   call DeallocateArray(this%max_volfrac_change)
+
+  call MLFractureSurrogateDestroy(this%ml_surrogate)
 
   call PMBaseDestroy(this)
   call RTDestroy(this%realization)
