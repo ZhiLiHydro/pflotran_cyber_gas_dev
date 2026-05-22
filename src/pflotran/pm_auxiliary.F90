@@ -374,10 +374,15 @@ subroutine PMAuxiliaryEvolvingStrata(this,time,ierr)
   ! Author: Glenn Hammond
   ! Date: 02/10/16
 
+  use Field_module
   use Init_Subsurface_module
+  use Material_Aux_module
+  use Material_module
+  use Patch_module
   use Option_module
   use Strata_module
   use Utility_module
+  use Variables_module, only : POROSITY
 
   implicit none
 
@@ -386,7 +391,22 @@ subroutine PMAuxiliaryEvolvingStrata(this,time,ierr)
   PetscErrorCode :: ierr
 
   type(strata_type), pointer :: cur_strata
+  type(patch_type), pointer :: patch
+  type(field_type), pointer :: field
+  type(material_auxvar_type), pointer :: material_auxvars(:)
   PetscBool :: evolve
+  Vec :: por0_loc
+  Vec :: por_base_loc
+  Vec :: por_current_loc
+  PetscReal, pointer :: por0_vec_ptr(:)
+  PetscReal, pointer :: por_base_vec_ptr(:)
+  PetscReal, pointer :: por_current_vec_ptr(:)
+  PetscInt, allocatable :: material_ids(:)
+  PetscInt :: ghosted_id
+
+  patch => this%realization%patch
+  field => this%realization%field
+  material_auxvars => patch%aux%Material%auxvars
 
   ierr = 0
   evolve = PETSC_FALSE
@@ -403,8 +423,49 @@ subroutine PMAuxiliaryEvolvingStrata(this,time,ierr)
   enddo
   if (evolve) then
     call PrintMsg(this%option,'  Strata updated.')
+
+    ! save porosities
+    call VecDuplicate(field%work_loc,por0_loc,ierr);CHKERRQ(ierr)
+    call VecDuplicate(field%work_loc,por_base_loc,ierr);CHKERRQ(ierr)
+    call VecDuplicate(field%work_loc,por_current_loc,ierr);CHKERRQ(ierr)
+    call MaterialGetAuxVarVecLoc(patch%aux%Material,por0_loc, &
+                                 POROSITY,POROSITY_INITIAL)
+    call MaterialGetAuxVarVecLoc(patch%aux%Material,por_base_loc, &
+                                 POROSITY,POROSITY_BASE)
+    call MaterialGetAuxVarVecLoc(patch%aux%Material,por_current_loc, &
+                                 POROSITY,POROSITY_CURRENT)
+    allocate(material_ids(patch%grid%ngmax))
+    material_ids(:) = patch%imat(:)
+
     call InitSubsurfAssignMatIDsToRegns(this%realization)
     call InitSubsurfAssignMatProperties(this%realization)
+
+    ! set values of unchanged porosities back to original
+    call VecGetArray(por0_loc,por0_vec_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(por_base_loc,por_base_vec_ptr,ierr);CHKERRQ(ierr)
+    call VecGetArray(por_current_loc,por_current_vec_ptr,ierr);CHKERRQ(ierr)
+    do ghosted_id = 1, patch%grid%ngmax
+      if (material_ids(ghosted_id) == patch%imat(ghosted_id)) then
+        call MaterialAuxVarSetValue(material_auxvars(ghosted_id), &
+                                    POROSITY_INITIAL, &
+                                    por0_vec_ptr(ghosted_id))
+        call MaterialAuxVarSetValue(material_auxvars(ghosted_id), &
+                                    POROSITY_BASE, &
+                                    por_base_vec_ptr(ghosted_id))
+        call MaterialAuxVarSetValue(material_auxvars(ghosted_id), &
+                                    POROSITY_CURRENT, &
+                                    por_current_vec_ptr(ghosted_id))
+      endif
+    enddo
+    call VecRestoreArray(por0_loc,por0_vec_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(por_base_loc,por_base_vec_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(por_current_loc,por_current_vec_ptr, &
+                         ierr);CHKERRQ(ierr)
+    call VecDestroy(por0_loc,ierr);CHKERRQ(ierr)
+    call VecDestroy(por_base_loc,ierr);CHKERRQ(ierr)
+    call VecDestroy(por_current_loc,ierr);CHKERRQ(ierr)
+    deallocate(material_ids)
+
   else
     call PrintMsg(this%option,'  No strata update requested at this time.')
   endif
