@@ -255,6 +255,13 @@ CLEANFILES       = pflotran pflotran_rxn libpflotranchem.a make.log $(SRC_DIR)/p
 # makefiles (e.g. clm-pflotran/makefile).
 include $(SRC_DIR)/pflotran_object_files.txt
 
+ifdef use_mpi_stub
+  communicator_aux.o : mpi.o mpi_stubs.o
+  mpi_stub_obj = mpi.o mpi_stubs.o
+else
+  mpi_stub_obj =
+endif
+
 # End object file block
 
 ###############################################################################
@@ -318,6 +325,9 @@ endif
 ###############################################################################
 ifndef fast
   include $(SRC_DIR)/pflotran_dependencies.txt
+  ifdef use_mpi_stub
+    communicator_aux.o : mpi.o mpi_stubs.o
+  endif
 endif
 ###############################################################################
 # End Dependencies
