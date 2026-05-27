@@ -264,22 +264,40 @@ subroutine WaypointInsertInList(new_waypoint,waypoint_list,option)
     else
       ! find its location in the list
       do
+        ! Check for equal (or nearly equal), and merge if so
         if (Equal(new_waypoint%time,waypoint%time)) then
           call WaypointMerge(waypoint,new_waypoint)
           return ! do not increment num_waypoints at bottom
-        else if (dabs((new_waypoint%time-waypoint%time)/ &
-                      waypoint%time) < 1.d-14) then
-          ! relative difference is very small, merge the two
-          write(word,*) waypoint%time
-          option%io_buffer = 'Merging waypoints with rounding error (' // &
-            trim(adjustl(word))
-          write(word,*) new_waypoint%time
-          option%io_buffer = trim(option%io_buffer) // ' <-- ' // &
-            trim(adjustl(word)) // ').'
-          call PrintMsg(option)
-          call WaypointMerge(waypoint,new_waypoint)
-          return
-        else if (associated(waypoint%next)) then
+        else if (waypoint%time < 1.d-20) then
+          if(new_waypoint%time < 1.d-20) then
+            ! both times are effectively 0, merge the two
+            write(word,*) waypoint%time
+            option%io_buffer = 'Merging waypoints with rounding error (' // &
+              trim(adjustl(word))
+            write(word,*) new_waypoint%time
+            option%io_buffer = trim(option%io_buffer) // ' <-- ' // &
+              trim(adjustl(word)) // ').'
+            call PrintMsg(option)
+            call WaypointMerge(waypoint,new_waypoint)
+            return ! do not increment num_waypoints at bottom
+          endif
+        else
+          if (dabs((new_waypoint%time-waypoint%time)/waypoint%time) < 1.d-14) then
+            ! relative difference is very small, merge the two
+            write(word,*) waypoint%time
+            option%io_buffer = 'Merging waypoints with rounding error (' // &
+              trim(adjustl(word))
+            write(word,*) new_waypoint%time
+            option%io_buffer = trim(option%io_buffer) // ' <-- ' // &
+              trim(adjustl(word)) // ').'
+            call PrintMsg(option)
+            call WaypointMerge(waypoint,new_waypoint)
+            return ! do not increment num_waypoints at bottom
+          endif
+        endif
+
+        ! Not nearly equal, so insert in proper location
+        if (associated(waypoint%next)) then
           if (new_waypoint%time-waypoint%time > 1.d-10 .and. & ! within list
               new_waypoint%time-waypoint%next%time < -1.d-10) then
             new_waypoint%next => waypoint%next
@@ -291,7 +309,7 @@ subroutine WaypointInsertInList(new_waypoint,waypoint_list,option)
             waypoint => waypoint%next
           endif
         else if (new_waypoint%time > waypoint%time .and. &
-                 associated(waypoint,waypoint_list%last)) then ! at end of list
+                associated(waypoint,waypoint_list%last)) then ! at end of list
           waypoint%next => new_waypoint
           new_waypoint%prev => waypoint
           waypoint_list%last => new_waypoint
