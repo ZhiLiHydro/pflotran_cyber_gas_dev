@@ -1964,6 +1964,10 @@ subroutine RichardsResidualSourceSink(r,realization,pm_well,ierr)
   sum_connection = 0
   do
     if (.not.associated(source_sink)) exit
+    if (.not.associated(source_sink%flow_condition%itype)) then
+      source_sink => source_sink%next
+      cycle
+    endif
     if (associated(source_sink%flow_condition%well) .and. &
         source_sink%flow_condition%itype(1) /= WELL_SS) then
       source_sink => source_sink%next
@@ -3020,6 +3024,10 @@ subroutine RichardsJacobianSourceSink(A,realization,pm_well,debug,ierr)
   source_sink => patch%source_sink_list%first
   do
     if (.not.associated(source_sink)) exit
+    if (.not.associated(source_sink%flow_condition%itype)) then
+      source_sink => source_sink%next
+      cycle
+    endif
     if (associated(source_sink%flow_condition%well) .and. &
         source_sink%flow_condition%itype(1) /= WELL_SS) then
       source_sink => source_sink%next
