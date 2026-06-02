@@ -1,0 +1,16 @@
+-- GENERIC: Temperature --
+        1:   8.9712817192921E+02
+-- GENERIC: Gas Density --
+        1:   1.2315367203744E+02
+-- GENERIC: Gas Energy --
+        1:   2.1352264332802E+01
+-- DISCRETE: Material ID --
+        1:         5
+-- SOLUTION: Flow --
+   Time (seconds):   2.0183000000998E-02
+   Time Steps:           38
+   Newton Iterations:           41
+   Linear Solver Iterations:           41
+   Time Step Cuts:            0
+   Solution 2-Norm:   5.7926218730608E+07
+   Residual 2-Norm:   2.3199349636233E-08
