@@ -3,6 +3,7 @@ module Auxiliary_module
 #include "petsc/finclude/petscsys.h"
   use petscsys
   use Global_Aux_module
+  use Brine_Aux_module
   use TH_Aux_module
   use Richards_Aux_module
   use Reactive_Transport_Aux_module
@@ -30,6 +31,7 @@ module Auxiliary_module
 
   type, public :: auxiliary_type
     type(global_type), pointer :: Global
+    type(brine_type), pointer :: Brine
     type(reactive_transport_type), pointer :: RT
     type(nw_transport_type), pointer :: NWT
     type(th_type), pointer :: TH
@@ -71,6 +73,7 @@ subroutine AuxInit(aux)
   type(auxiliary_type) :: aux
 
   nullify(aux%Global)
+  nullify(aux%Brine)
   nullify(aux%RT)
   nullify(aux%NWT)
   nullify(aux%TH)
@@ -108,6 +111,7 @@ subroutine AuxDestroy(aux)
   type(auxiliary_type) :: aux
 
   call GlobalAuxDestroy(aux%Global)
+  call BrineAuxDestroy(aux%Brine)
   call RTAuxDestroy(aux%RT)
   call NWTAuxDestroy(aux%NWT)
   call THAuxDestroy(aux%TH)
