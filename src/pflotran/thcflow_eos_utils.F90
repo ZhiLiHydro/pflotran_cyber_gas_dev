@@ -1,0 +1,331 @@
+module THCFlow_EOS_Utils_module
+
+! ----------------------------------------------------------------------------
+! THCFLOW EOS utility routines.
+!
+! Thin wrappers around the existing EOS_Water_module Batzle & Wang routines,
+! plus the Somerton effective-thermal-conductivity mixing model, providing the
+! exact property + derivative set THCFLOW needs for its 3x3 (P,T,C) Jacobian.
+!
+!   * Density  -> EOSWaterDensityBatzleAndWangExt   (Batzle & Wang Eq 27b)
+!   * Viscosity-> EOSWaterViscosityBatzleAndWangExt (Batzle & Wang Eq 32)
+!     Both are called DIRECTLY rather than through the generic *Ext interfaces,
+!     because the default extended viscosity pointer is Kestin, which hard-stops
+!     when derivatives are requested.
+!   * The EOS returns MOLAR-density derivative (dwp/dwt are d(rho_kmol)/dP,/dT);
+!     they are converted here to MASS-density derivatives via FMWH2O so the
+!     outputs match the documented auxvar units kg/(m^3 . X)
+!   * d(rho)/dC and d(mu)/dC are NOT exposed by the EOS.
+!     They are formed locally by the chain rule  d/dC = d/ds . ds/dC, where the
+!     salinity derivative d/ds is obtained by a one-sided finite difference.
+!   * No porous-medium thermal-conductivity mixing exists in the EOS
+!     Somerton (1974) mixing is implemented here.
+!
+! Author: Piyoosh Jaysaval
+! Date:   06/09/26
+! ----------------------------------------------------------------------------
+
+#include "petsc/finclude/petscsys.h"
+  use petscsys
+  use PFLOTRAN_Constants_module, only : FMWH2O
+  use EOS_Water_module, only : EOSWaterDensityBatzleAndWangExt, &
+                               EOSWaterViscosityBatzleAndWangExt, &
+                               EOSWaterSaturationPressure
+
+  implicit none
+
+  private
+
+  ! --- module parameters --------------------------------------------------
+  ! Effective molar mass of the dissolved solids [kg/mol] (NaCl-equivalent;
+  ! FMWNACL = 58.44277 kg/kmol).
+  PetscReal, parameter, public :: thcflow_molar_mass_solute = 0.05844d0
+  ! Reference liquid density [kg/m^3] used to convert C [mol/L] to the salinity
+  ! mass fraction the Ext EOS routines require. The dependence is weak for the
+  ! dilute-to-moderate TDS range; callers needing tight consistency may iterate
+  ! using the current-iteration density.
+  PetscReal, parameter, public :: thcflow_density_reference = 1000.d0
+  ! Constituent thermal conductivities for the Somerton mixing model [W/(m.K)].
+  PetscReal, parameter, public :: thcflow_kappa_liquid = 0.6d0
+  PetscReal, parameter, public :: thcflow_kappa_air    = 0.025d0
+
+  ! Finite-difference step in salinity mass fraction for the d/dC chain rule.
+  PetscReal, parameter :: thcflow_salinity_perturbation = 1.d-6
+  ! Floor on saturation to keep the Somerton derivative finite at S_l -> 0.
+  PetscReal, parameter :: thcflow_sat_floor = 1.d-6
+
+  public :: THCFlowConcToMassFraction, &
+            THCFlowDensityAndDerivs, &
+            THCFlowViscosityAndDerivs, &
+            THCFlowThermalConductivityEff
+
+contains
+
+! ****************************************************************************
+subroutine THCFlowConcToMassFraction(C, den_kg, M_s, s, ds_dC)
+  !
+  ! Convert solute concentration C [mol/L] to a salinity mass fraction
+  ! s [kg/kg] (the aux(1) input required by the extended EOS routines) and
+  ! return ds/dC for the chain rule.
+  !
+  !   mass_solute_per_m3 = C * M_s * 1000   ! mol/L -> mol/m^3 -> kg/m^3
+  !   s     = mass_solute_per_m3 / den_kg   ! [kg/kg]
+  !   ds_dC = M_s * 1000 / den_kg           ! [kg/kg / (mol/L)]
+  !
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date:   06/09/26
+  !
+  implicit none
+
+  PetscReal, intent(in)  :: C       ! concentration [mol/L]
+  PetscReal, intent(in)  :: den_kg  ! liquid density [kg/m^3]
+  PetscReal, intent(in)  :: M_s     ! solute molar mass [kg/mol]
+  PetscReal, intent(out) :: s       ! salinity mass fraction [kg/kg]
+  PetscReal, intent(out) :: ds_dC   ! d(s)/d(C) [kg/kg / (mol/L)]
+
+  ds_dC = M_s * 1.d3 / den_kg
+  s     = C * ds_dC
+
+end subroutine THCFlowConcToMassFraction
+
+! ****************************************************************************
+subroutine THCFlowDensityAndDerivs(T, P, C, den_kg, den_kmol, &
+                                   dden_dp, dden_dT, dden_dC, ierr)
+  !
+  ! Liquid density rho_l(P,T,C) and all derivatives needed for the THCFLOW
+  ! Jacobian, via Batzle & Wang Eq 27b (EOSWaterDensityBatzleAndWangExt).
+  !
+  ! The EOS returns dwp/dwt = d(rho_kmol)/dP,/dT; these are
+  ! converted to MASS-density derivatives via rho_kg = rho_kmol * FMWH2O.
+  ! d(rho)/dC is formed locally (the EOS exposes no salinity derivative,
+  ! d(rho)/dC = d(rho)/ds . ds/dC, with d(rho)/ds from a
+  ! one-sided finite difference on the salinity mass fraction.
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date:   06/09/26
+  !
+  implicit none
+
+  PetscReal,      intent(in)    :: T         ! temperature [C]
+  PetscReal,      intent(in)    :: P         ! pressure [Pa]
+  PetscReal,      intent(in)    :: C         ! concentration [mol/L]
+  PetscReal,      intent(out)   :: den_kg    ! rho_l [kg/m^3]
+  PetscReal,      intent(out)   :: den_kmol  ! rho_l [kmol/m^3]
+  PetscReal,      intent(out)   :: dden_dp   ! d(rho_kg)/dP [kg/(m^3.Pa)]
+  PetscReal,      intent(out)   :: dden_dT   ! d(rho_kg)/dT [kg/(m^3.C)]
+  PetscReal,      intent(out)   :: dden_dC   ! d(rho_kg)/dC [kg/(m^3.(mol/L))]
+  PetscErrorCode, intent(inout) :: ierr
+
+  PetscReal :: aux1(1)
+  PetscReal :: dw, dwmol, dwp, dwt
+  PetscReal :: dw_pert, dwmol_pert, dwp_pert, dwt_pert
+  PetscReal :: s, ds_dC, dden_ds
+
+  ! C [mol/L] -> salinity mass fraction s [kg/kg] (reference-density basis).
+  call THCFlowConcToMassFraction(C, thcflow_density_reference, &
+                                 thcflow_molar_mass_solute, s, ds_dC)
+  aux1(1) = s
+
+  ! Density with analytic P,T derivatives (molar-density basis).
+  call EOSWaterDensityBatzleAndWangExt(T, P, aux1, PETSC_TRUE, &
+                                       dw, dwmol, dwp, dwt, ierr)
+  den_kg   = dw
+  den_kmol = dwmol
+
+  ! Convert molar-density derivatives to mass-density derivatives.
+  dden_dp = dwp * FMWH2O
+  dden_dT = dwt * FMWH2O
+
+  ! d(rho)/dC by chain rule, d(rho)/ds via one-sided finite difference.
+  aux1(1) = s + thcflow_salinity_perturbation
+  call EOSWaterDensityBatzleAndWangExt(T, P, aux1, PETSC_FALSE, &
+                                       dw_pert, dwmol_pert, dwp_pert, dwt_pert,&
+                                       ierr)
+  dden_ds = (dw_pert - dw) / thcflow_salinity_perturbation
+  dden_dC = dden_ds * ds_dC
+
+end subroutine THCFlowDensityAndDerivs
+
+! ****************************************************************************
+subroutine THCFlowViscosityAndDerivs(T, P, C, vis, dvis_dT, dvis_dC, ierr)
+  !
+  ! Liquid dynamic viscosity mu_l(T,C) and the derivatives needed for the
+  ! THCFLOW Jacobian, via Batzle & Wang Eq32 (EOSWaterViscosityBatzleAndWangExt)
+  !
+  ! NOTE: the default extended viscosity pointer
+  ! EOSWaterViscosityExtPtr is Kestin, which hard-stops when derivatives are
+  ! requested. We therefore call the Batzle & Wang Ext routine DIRECTLY so the
+  ! T derivative is guaranteed. Equivalently, THCFLOW setup may repoint
+  !   EOSWaterViscosityExtPtr => EOSWaterViscosityBatzleAndWangExt
+  ! (e.g. EOS,WATER,VISCOSITY BATZLE_AND_WANG) and go through the generic
+  ! interface; calling directly avoids depending on that global pointer state.
+  !
+  ! The viscosity interface requires saturation pressure inputs (PS, dPS_dT).
+  ! Batzle & Wang Eq 32 does not actually use them, but they
+  ! are computed here for correctness / pointer-agnosticism.
+  !
+  ! Pressure dependence is omitted by design (dVW_dP == 0), so no dvis_dP is
+  ! returned. d(mu)/dC is formed locally:
+  !   d(mu)/dC = d(mu)/ds . ds/dC, d(mu)/ds via one-sided finite difference.
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date:   06/09/26
+  !
+  implicit none
+
+  PetscReal,      intent(in)    :: T        ! temperature [C]
+  PetscReal,      intent(in)    :: P        ! pressure [Pa]
+  PetscReal,      intent(in)    :: C        ! concentration [mol/L]
+  PetscReal,      intent(out)   :: vis      ! mu_l [Pa.s]
+  PetscReal,      intent(out)   :: dvis_dT  ! d(mu_l)/dT [Pa.s/C]
+  PetscReal,      intent(out)   :: dvis_dC  ! d(mu_l)/dC [Pa.s/(mol/L)]
+  PetscErrorCode, intent(inout) :: ierr
+
+  PetscReal :: aux1(1)
+  PetscReal :: PS, dPS_dT
+  PetscReal :: VW, dVW_dT, dVW_dP
+  PetscReal :: VW_pert, dVW_dT_pert, dVW_dP_pert
+  PetscReal :: s, ds_dC, dvis_ds
+
+  ! C [mol/L] -> salinity mass fraction s [kg/kg] (reference-density basis).
+  call THCFlowConcToMassFraction(C, thcflow_density_reference, &
+                                 thcflow_molar_mass_solute, s, ds_dC)
+  aux1(1) = s
+
+  ! Saturation pressure (interface input; unused by Batzle & Wang Eq 32).
+  call EOSWaterSaturationPressure(T, PS, dPS_dT, ierr)
+
+  ! Viscosity with analytic T derivative (dVW_dP is hard-set to 0 by the EOS).
+  call EOSWaterViscosityBatzleAndWangExt(T, P, PS, dPS_dT, aux1, PETSC_TRUE, &
+                                         VW, dVW_dT, dVW_dP, ierr)
+  vis     = VW
+  dvis_dT = dVW_dT
+
+  ! d(mu)/dC by chain rule, d(mu)/ds via one-sided finite difference.
+  aux1(1) = s + thcflow_salinity_perturbation
+  call EOSWaterViscosityBatzleAndWangExt(T, P, PS, dPS_dT, aux1, PETSC_FALSE, &
+                                         VW_pert, dVW_dT_pert, dVW_dP_pert, ierr)
+  dvis_ds = (VW_pert - VW) / thcflow_salinity_perturbation
+  dvis_dC = dvis_ds * ds_dC
+
+end subroutine THCFlowViscosityAndDerivs
+
+! ****************************************************************************
+subroutine THCFlowThermalConductivityEff(S_l, phi, kappa_s, &
+                                         kappa_eff, dkappa_dsat)
+  !
+  ! Effective porous-medium thermal conductivity via the Somerton et al. (1974)
+  ! mixing model. No equivalent exists in the EOS
+  ! so it is implemented here entirely from local inputs.
+  !
+  !   kappa_sat = kappa_s^(1-phi) . kappa_l^phi      [geometric mean, saturated]
+  !   kappa_dry = kappa_s^(1-phi) . kappa_air^phi    [geometric mean, dry]
+  !   kappa_eff = kappa_dry + sqrt(S_l) . (kappa_sat - kappa_dry)
+  !   dkappa/dS_l = (kappa_sat - kappa_dry) / (2 . sqrt(S_l))
+  !
+  ! kappa_l = 0.6 W/(m.K) (constant), kappa_air = 0.025 W/(m.K).
+  ! The saturation is floored at thcflow_sat_floor so the derivative stays
+  ! finite as S_l -> 0 (physically S_l >= S_lr > 0).
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date:   06/09/26
+  !
+  implicit none
+
+  PetscReal, intent(in)  :: S_l          ! liquid saturation [-]
+  PetscReal, intent(in)  :: phi          ! porosity [-]
+  PetscReal, intent(in)  :: kappa_s      ! solid thermal conductivity [W/(m.K)]
+  PetscReal, intent(out) :: kappa_eff    ! effective conductivity [W/(m.K)]
+  PetscReal, intent(out) :: dkappa_dsat  ! d(kappa_eff)/d(S_l) [W/(m.K)]
+
+  PetscReal :: kappa_sat, kappa_dry, sqrt_sat, sat
+
+  sat = max(S_l, thcflow_sat_floor)
+
+  kappa_sat = kappa_s**(1.d0 - phi) * thcflow_kappa_liquid**phi
+  kappa_dry = kappa_s**(1.d0 - phi) * thcflow_kappa_air**phi
+
+  sqrt_sat    = sqrt(sat)
+  kappa_eff   = kappa_dry + sqrt_sat * (kappa_sat - kappa_dry)
+  dkappa_dsat = (kappa_sat - kappa_dry) / (2.d0 * sqrt_sat)
+
+end subroutine THCFlowThermalConductivityEff
+
+end module THCFlow_EOS_Utils_module
+
+! ============================================================================
+! UNIT TEST STUBS (commented out)
+!
+! Verifies each utility against known reference values from
+! Section 3. To enable, uncomment and build into the pFUnit harness (or a small
+! driver program). Tolerances are loose because the underlying EOS is
+! Batzle & Wang, not the illustrative polynomial/VFT correlations of Section 3.
+!
+! subroutine THCFlowEOSUtilsTest()
+!   use THCFlow_EOS_Utils_module
+!   implicit none
+!   PetscReal      :: s, ds_dC
+!   PetscReal      :: den_kg, den_kmol, dden_dp, dden_dT, dden_dC
+!   PetscReal      :: vis, dvis_dT, dvis_dC
+!   PetscReal      :: kappa_eff, dkappa_dsat
+!   PetscErrorCode :: ierr
+!
+!   ierr = 0
+!
+!   ! --- Test 1: THCFlowConcToMassFraction ---------------------------------
+!   ! C = 1 mol/L, den = 1000 kg/m^3, M_s = 0.05844 kg/mol (NaCl).
+!   !   s     = 1 * 0.05844 * 1000 / 1000 = 0.05844 kg/kg
+!   !   ds_dC = 0.05844 * 1000 / 1000     = 0.05844 (kg/kg)/(mol/L)
+!   call THCFlowConcToMassFraction(1.0d0, 1000.0d0, 0.05844d0, s, ds_dC)
+!   ! EXPECT: s ~= 0.05844 ; ds_dC ~= 0.05844
+!
+!   ! --- Test 2: THCFlowDensityAndDerivs -----------------------------------
+!   ! Pure water at T = 20 C, P = 101325 Pa, C = 0:
+!   !   den_kg ~= 998 kg/m^3      ( ~998 at 20 C)
+!   !   dden_dp ~= +4.5e-7 kg/(m^3.Pa)   (isothermal compressibility, Sec 3.1)
+!   !   dden_dT ~= -0.2 kg/(m^3.K)       (thermal expansion above 4 C, Sec 3.1)
+!   call THCFlowDensityAndDerivs(20.0d0, 101325.0d0, 0.0d0, den_kg, den_kmol, &
+!                                dden_dp, dden_dT, dden_dC, ierr)
+!   ! EXPECT: den_kg ~ 998 (+/- a few) ; dden_dp > 0 ; dden_dT < 0
+!   !
+!   ! Brine at C = 1 mol/L (other conditions equal):
+!   !   density increase ~+40 kg/m^3 per mol/L
+!   !   dden_dC ~= +40 kg/m^3 / (mol/L)
+!   call THCFlowDensityAndDerivs(20.0d0, 101325.0d0, 1.0d0, den_kg, den_kmol, &
+!                                dden_dp, dden_dT, dden_dC, ierr)
+!   ! EXPECT: den_kg ~ 1038 (~ +40 vs pure) ; dden_dC ~ +40
+!
+!   ! --- Test 3: THCFlowViscosityAndDerivs ---------------------------------
+!   ! Pure water:
+!   !   T =   0 C -> vis ~ 1.79e-3 Pa.s
+!   !   T =  20 C -> vis ~ 1.00e-3 Pa.s
+!   !   T = 100 C -> vis ~ 2.82e-4 Pa.s
+!   !   dvis_dT < 0 (viscosity decreases with temperature)
+!   call THCFlowViscosityAndDerivs(20.0d0, 101325.0d0, 0.0d0, vis, dvis_dT, &
+!                                  dvis_dC, ierr)
+!   ! EXPECT: vis ~ 1.0e-3 ; dvis_dT < 0
+!   !
+!   ! Brine at C = 1 mol/L: ~15% increase, dvis_dC > 0 (~1.5e-4 at 20 C, Sec 3.2)
+!   call THCFlowViscosityAndDerivs(20.0d0, 101325.0d0, 1.0d0, vis, dvis_dT, &
+!                                  dvis_dC, ierr)
+!   ! EXPECT: vis ~ 1.15e-3 ; dvis_dC > 0 (~1.5e-4)
+!
+!   ! --- Test 4: THCFlowThermalConductivityEff -----------------------------
+!   ! phi = 0.3, kappa_s = 3.0, kappa_l = 0.6, kappa_air = 0.025:
+!   !   kappa_sat = 3^0.7 * 0.6^0.3   ~= 1.85 W/(m.K)
+!   !   kappa_dry = 3^0.7 * 0.025^0.3 ~= 0.71 W/(m.K)
+!   ! Fully saturated (S_l = 1):
+!   !   kappa_eff   ~= kappa_sat ~= 1.85
+!   !   dkappa_dsat ~= (kappa_sat - kappa_dry)/2 ~= 0.57
+!   call THCFlowThermalConductivityEff(1.0d0, 0.3d0, 3.0d0, kappa_eff, &
+!                                      dkappa_dsat)
+!   ! EXPECT: kappa_eff ~ 1.85 ; dkappa_dsat ~ 0.57
+!   !
+!   ! Fully dry (S_l -> 0): kappa_eff ~= kappa_dry ~= 0.71
+!   call THCFlowThermalConductivityEff(0.0d0, 0.3d0, 3.0d0, kappa_eff, &
+!                                      dkappa_dsat)
+!   ! EXPECT: kappa_eff ~ 0.71
+!
+! end subroutine THCFlowEOSUtilsTest
+! ============================================================================
