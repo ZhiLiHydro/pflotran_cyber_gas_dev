@@ -375,7 +375,8 @@ subroutine CheckpointFlowProcessModelBinary(viewer,realization)
     ! that indicates what phases are present, as well as the 'var' vector
     ! that holds variables derived from the primary ones via the translator.
     select case(option%iflowmode)
-      case(RICHARDS_MODE,RICHARDS_TS_MODE,ZFLOW_MODE,IMMISCIBLE_MODE)
+      case(RICHARDS_MODE,RICHARDS_TS_MODE,ZFLOW_MODE,COMPFLOW_MODE, &
+           IMMISCIBLE_MODE)
       case(PNF_MODE)
         option%io_buffer = 'Checkpointing must be implemented for PNF mode'
         call PrintErrMsg(option)
@@ -477,7 +478,8 @@ subroutine RestartFlowProcessModelBinary(viewer,realization)
     call VecCopy(field%flow_xx,field%flow_yy,ierr);CHKERRQ(ierr)
 
     select case(option%iflowmode)
-      case(RICHARDS_MODE,RICHARDS_TS_MODE,ZFLOW_MODE,IMMISCIBLE_MODE)
+      case(RICHARDS_MODE,RICHARDS_TS_MODE,ZFLOW_MODE, &
+           COMPFLOW_MODE,IMMISCIBLE_MODE)
       case default
         call VecLoad(global_vec,viewer,ierr);CHKERRQ(ierr)
         call DiscretizationGlobalToLocal(discretization,global_vec, &
@@ -1088,7 +1090,8 @@ subroutine CheckpointFlowProcessModelHDF5(pm_grp_id, realization)
     ! that indicates what phases are present, as well as the 'var' vector
     ! that holds variables derived from the primary ones via the translator.
     select case(option%iflowmode)
-      case(RICHARDS_MODE,RICHARDS_TS_MODE,WF_MODE,ZFLOW_MODE,IMMISCIBLE_MODE)
+      case(RICHARDS_MODE,RICHARDS_TS_MODE,WF_MODE, &
+           ZFLOW_MODE,COMPFLOW_MODE,IMMISCIBLE_MODE)
       case default
         call GlobalGetAuxVarVecLoc(realization,field%work_loc,STATE)
         call DiscretizationLocalToGlobal(discretization,field%work_loc, &
@@ -1235,7 +1238,8 @@ subroutine RestartFlowProcessModelHDF5(pm_grp_id, realization)
     ! that holds variables derived from the primary ones via the translator.
     dataset_name = "State" // CHAR(0)
     select case(option%iflowmode)
-      case(RICHARDS_MODE,RICHARDS_TS_MODE,WF_MODE,ZFLOW_MODE,IMMISCIBLE_MODE)
+      case(RICHARDS_MODE,RICHARDS_TS_MODE,WF_MODE, &
+           ZFLOW_MODE,COMPFLOW_MODE,IMMISCIBLE_MODE)
       case default
         call HDF5ReadDataSetInVec(dataset_name, option, natural_vec, &
              pm_grp_id, H5T_NATIVE_DOUBLE)

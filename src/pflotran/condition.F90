@@ -1072,6 +1072,7 @@ subroutine FlowConditionRead(condition,input,option)
   use Logging_module
   use Time_Storage_module
   use ZFlow_Aux_module
+  use Compositional_Flow_Aux_module
   use Dataset_module
   use Utility_module
 
@@ -1582,7 +1583,7 @@ subroutine FlowConditionRead(condition,input,option)
   !     DIRICHLET_CONDUCTANCE_BC are only used in TH and RICHARDS
   if (associated(pressure)) then
     select case(option%iflowmode)
-      case(RICHARDS_MODE,TH_MODE,ZFLOW_MODE)
+      case(RICHARDS_MODE,TH_MODE,ZFLOW_MODE,COMPFLOW_MODE)
       case(PNF_MODE)
         if (.not.(pressure%itype == DIRICHLET_BC .or. &
                   pressure%itype == NEUMANN_BC)) then
@@ -1985,6 +1986,83 @@ subroutine FlowConditionRead(condition,input,option)
       endif
 
       if (zflow_sol_tran_eq > 0) then
+        idof = idof + 1
+        if (associated(concentration)) then
+          condition%concentration => concentration
+          condition%sub_condition_ptr(idof)%ptr => concentration
+        endif
+      endif
+
+      allocate(condition%itype(idof))
+      do idof = 1, size(condition%itype)
+        condition%itype(idof) = condition%sub_condition_ptr(idof)%ptr%itype
+      enddo
+
+    case(COMPFLOW_MODE)
+
+      condition%num_sub_conditions = 0
+      call DeallocateArray(condition%itype)
+
+      if (compflow_liq_flow_eq > 0) then
+        condition%num_sub_conditions = condition%num_sub_conditions + 1
+        if (.not.associated(pressure) .and. .not.associated(rate)) then
+          option%io_buffer = 'Pressure or rate null in flow condition "' // &
+            trim(condition%name) // '". Please add a TYPE and value for &
+            &LIQUID_PRESSURE/LIQUID_RATE within the FLOW_CONDITION.'
+          call PrintErrMsg(option)
+        endif
+      endif
+
+      if (compflow_heat_tran_eq > 0) then
+        condition%num_sub_conditions = condition%num_sub_conditions + 1
+        if (.not.associated(temperature) .and. .not.associated(enthalpy)) then
+          option%io_buffer = 'Temperature and enthalpy null in flow &
+            &condition "' // trim(condition%name) // '". Please add a TYPE &
+            &for TEMPERATURE and values for TEMPERATURE and ENTHALPY within &
+            &the FLOW_CONDITION.'
+          call PrintErrMsg(option)
+        endif
+      endif
+
+      if (compflow_sol_tran_eq > 0) then
+        condition%num_sub_conditions = condition%num_sub_conditions + 1
+        if (.not.associated(concentration)) then
+          option%io_buffer = 'Concentration null in flow condition "' // &
+            trim(condition%name) // '". Please add a TYPE and value for &
+            &CONCENTRATION within the FLOW_CONDITION.'
+          call PrintErrMsg(option)
+        endif
+      endif
+
+      allocate(condition%sub_condition_ptr(condition%num_sub_conditions))
+      do idof = 1, condition%num_sub_conditions
+        nullify(condition%sub_condition_ptr(idof)%ptr)
+      enddo
+
+      idof = 0
+      if (compflow_liq_flow_eq > 0) then
+        idof = idof + 1
+        if (associated(pressure)) then
+          condition%pressure => pressure
+          condition%sub_condition_ptr(idof)%ptr => pressure
+        elseif (associated(rate)) then
+          condition%rate => rate
+          condition%sub_condition_ptr(idof)%ptr => rate
+        endif
+      endif
+
+      if (compflow_heat_tran_eq > 0) then
+        idof = idof + 1
+        if (associated(temperature)) then
+          condition%temperature => temperature
+          condition%sub_condition_ptr(idof)%ptr => temperature
+        elseif (associated(enthalpy)) then
+          condition%enthalpy => enthalpy
+          condition%sub_condition_ptr(idof)%ptr => enthalpy
+        endif
+      endif
+
+      if (compflow_sol_tran_eq > 0) then
         idof = idof + 1
         if (associated(concentration)) then
           condition%concentration => concentration

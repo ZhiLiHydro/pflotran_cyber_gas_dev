@@ -157,6 +157,7 @@ subroutine OutputConservation(realization_base)
   use Hydrate_module, only : HydrateComputeMassBalance
   use WIPP_Flow_module, only : WIPPFloComputeMassBalance
   use ZFlow_module, only : ZFlowComputeMassBalance
+  use Compositional_Flow_module, only : CompFlowComputeMassBalance
   use SCO2_module, only : SCO2ComputeMassBalance, &
                           SCO2ComputeComponentMassBalance
 
@@ -290,6 +291,8 @@ subroutine OutputConservation(realization_base)
             call RichardsComputeMassBalance(realization_base,sum_eq(1))
           case(ZFLOW_MODE)
 !            call ZFlowComputeMassBalance(realization_base,sum_kg(1,:))
+          case(COMPFLOW_MODE)
+!            call CompFlowComputeMassBalance(realization_base,sum_kg(1,:))
           case(TH_MODE,TH_TS_MODE)
             call THComputeMassBalance(realization_base,sum_eq(1),sum_eq(2))
           case(MPH_MODE)

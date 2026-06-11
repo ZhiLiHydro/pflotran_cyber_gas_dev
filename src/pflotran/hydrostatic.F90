@@ -44,6 +44,7 @@ subroutine HydrostaticUpdateCoupler(coupler,option,grid)
   use Hydrate_Aux_module
   use WIPP_Flow_Aux_module
   use ZFlow_Aux_module
+  use Compositional_Flow_Aux_module
   use SCO2_Aux_module
 
   implicit none
@@ -568,6 +569,11 @@ subroutine HydrostaticUpdateCoupler(coupler,option,grid)
       conductance_index = coupler%flow_aux_mapping(ZFLOW_COND_WATER_AUX_INDEX)
       energy_index = coupler%flow_aux_mapping(ZFLOW_COND_ENERGY_INDEX)
       solute_index = coupler%flow_aux_mapping(ZFLOW_COND_SOLUTE_INDEX)
+    case(COMPFLOW_MODE)
+      water_index = coupler%flow_aux_mapping(COMPFLOW_COND_WATER_INDEX)
+      conductance_index = coupler%flow_aux_mapping(COMPFLOW_COND_WATER_AUX_INDEX)
+      energy_index = coupler%flow_aux_mapping(COMPFLOW_COND_ENERGY_INDEX)
+      solute_index = coupler%flow_aux_mapping(COMPFLOW_COND_SOLUTE_INDEX)
   end select
 
   do iconn=1, num_faces !geh: this should really be num_faces!
@@ -644,7 +650,7 @@ subroutine HydrostaticUpdateCoupler(coupler,option,grid)
             &a different type of FLOW_CONDITION.'
           call PrintErrMsgByRank(option)
         endif
-      case(ZFLOW_MODE)
+      case(ZFLOW_MODE,COMPFLOW_MODE)
       case default
         if (condition%pressure%itype == HYDROSTATIC_SEEPAGE_BC) then
           coupler%flow_aux_real_var(1,iconn) = &
@@ -684,6 +690,13 @@ subroutine HydrostaticUpdateCoupler(coupler,option,grid)
     ! assign other dofs
     select case(option%iflowmode)
       case(ZFLOW_MODE)
+        if (energy_index > 0) then
+          coupler%flow_aux_real_var(energy_index,iconn) = temperature
+        endif
+        if (solute_index > 0) then
+          coupler%flow_aux_real_var(solute_index,iconn) = concentration_at_datum
+        endif
+      case(COMPFLOW_MODE)
         if (energy_index > 0) then
           coupler%flow_aux_real_var(energy_index,iconn) = temperature
         endif

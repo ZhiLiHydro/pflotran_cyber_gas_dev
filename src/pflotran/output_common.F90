@@ -2050,6 +2050,7 @@ subroutine OutputCommonGlobalMassHeader(realization_base,fid,icol, &
   ! Author: Glenn Hammond
   ! Date: 12/04/25
   !
+  use Compositional_Flow_Aux_module, only : compflow_sol_tran_eq
   use Option_module
   use NW_Transport_Aux_module
   use Reaction_Aux_module
@@ -2101,6 +2102,14 @@ subroutine OutputCommonGlobalMassHeader(realization_base,fid,icol, &
       call OutputWriteToHeader(fid,'Global Water Mass','kg','',icol)
     case(ZFLOW_MODE)
       call OutputWriteToHeader(fid,'Global Water Volume','m^3','',icol)
+    case(COMPFLOW_MODE)
+      call OutputWriteToHeader(fid,'Global Water Mass','kg','',icol)
+      if (include_energy) then
+        call OutputWriteToHeader(fid,'Global Energy','MJ','',icol)
+      endif
+      if (Initialized(compflow_sol_tran_eq)) then
+        call OutputWriteToHeader(fid,'Global Solute Mass','kg','',icol)
+      endif
     case(TH_MODE,TH_TS_MODE)
       call OutputWriteToHeader(fid,'Global Water Mass in Liquid Phase', &
                                'kg','',icol)
@@ -2255,6 +2264,7 @@ subroutine OutputCommonFluxHeader(realization_base,name,fid,icol, &
   ! Author: Glenn Hammond
   ! Date: 12/04/25
   !
+  use Compositional_Flow_Aux_module, only : compflow_sol_tran_eq
   use Coupler_module
   use Option_module
   use NW_Transport_Aux_module
@@ -2305,6 +2315,25 @@ subroutine OutputCommonFluxHeader(realization_base,name,fid,icol, &
       units = 'm^3/' // trim(output_option%tunit) // ''
       string = trim(name) // ' Water Volume'
       call OutputWriteToHeader(fid,string,units,'',icol)
+    case(COMPFLOW_MODE)
+      string = trim(name) // ' Water Mass'
+      call OutputWriteToHeader(fid,string,'kg','',icol)
+      units = 'kg/' // trim(output_option%tunit) // ''
+      string = trim(name) // ' Water Mass'
+      call OutputWriteToHeader(fid,string,units,'',icol)
+      if (include_energy) then
+        string = trim(name) // ' Energy'
+        call OutputWriteToHeader(fid,string,'MJ','',icol)
+        units = 'MJ/' // trim(output_option%tunit) // ''
+        call OutputWriteToHeader(fid,string,units,'',icol)
+      endif
+      if (Initialized(compflow_sol_tran_eq)) then
+        string = trim(name) // ' Solute Mass'
+        call OutputWriteToHeader(fid,string,'kg','',icol)
+        units = 'kg/' // trim(output_option%tunit) // ''
+        string = trim(name) // ' Solute Mass'
+        call OutputWriteToHeader(fid,string,units,'',icol)
+      endif
     case(TH_MODE,TH_TS_MODE)
       string = trim(name) // ' Water Mass'
       call OutputWriteToHeader(fid,string,'kg','',icol)

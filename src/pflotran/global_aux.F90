@@ -162,6 +162,15 @@ subroutine GlobalAuxVarInit(auxvar,option)
       call DeallocateArray(auxvar%den)
       ! no need for storage as density is constant
       call DeallocateArray(auxvar%den_kg_store)
+    case(COMPFLOW_MODE)
+      ! den_kg is only needed for transport
+      call DeallocateArray(auxvar%den)
+      allocate(auxvar%pres_store(nphase,TWO_INTEGER))
+      auxvar%pres_store = 0.d0
+      if (.not.option%flow%isothermal) then
+        allocate(auxvar%temp_store(TWO_INTEGER))
+        auxvar%temp_store = 0.d0
+      endif
     case(RICHARDS_MODE,RICHARDS_TS_MODE)
     case(MPH_MODE)
       allocate(auxvar%xmass(nphase))

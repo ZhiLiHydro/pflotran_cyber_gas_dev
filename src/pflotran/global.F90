@@ -646,7 +646,7 @@ subroutine GlobalWeightAuxVars(realization,weight)
   ! Author: Glenn Hammond
   ! Date: 11/03/08
   !
-
+  use Compositional_Flow_Aux_module, only : compflow_heat_tran_eq
   use Realization_Subsurface_class
   use Option_module
 
@@ -681,6 +681,19 @@ subroutine GlobalWeightAuxVars(realization,weight)
   end select
 
   select case(option%iflowmode)
+    case(COMPFLOW_MODE)
+      do ghosted_id = 1, realization%patch%aux%Global%num_aux
+        auxvars(ghosted_id)%pres(:) = &
+          (weight*auxvars(ghosted_id)%pres_store(:,TIME_TpDT)+ &
+           (1.d0-weight)*auxvars(ghosted_id)%pres_store(:,TIME_T))
+      enddo
+      if (Initialized(compflow_heat_tran_eq)) then
+        do ghosted_id = 1, realization%patch%aux%Global%num_aux
+          auxvars(ghosted_id)%temp = &
+            (weight*auxvars(ghosted_id)%temp_store(TIME_TpDT)+ &
+            (1.d0-weight)*auxvars(ghosted_id)%temp_store(TIME_T))
+        enddo         
+      endif 
     case(TH_MODE,G_MODE,H_MODE,SCO2_MODE)
       do ghosted_id = 1, realization%patch%aux%Global%num_aux
         auxvars(ghosted_id)%pres(:) = &
@@ -766,6 +779,7 @@ subroutine GlobalSetAuxVarsAtTimeLevel(realization,time_level,time)
                                TEMPERATURE, SC_FUGA_COEFF, GAS_DENSITY_MOL, &
                                DARCY_VELOCITY
   use ZFlow_Aux_module, only : zflow_density_kg
+  use Compositional_Flow_Aux_module, only : compflow_density_kg
 
   use Discretization_module
   use Output_Common_module
@@ -811,7 +825,7 @@ subroutine GlobalSetAuxVarsAtTimeLevel(realization,time_level,time)
   ! gas saturation
   flag = PETSC_FALSE
   select case(option%iflowmode)
-    case(RICHARDS_MODE,TH_MODE,TH_TS_MODE,ZFLOW_MODE)
+    case(RICHARDS_MODE,TH_MODE,TH_TS_MODE,ZFLOW_MODE,COMPFLOW_MODE)
       if (option%transport%nphase > 1) flag = PETSC_TRUE
     case default
       flag = PETSC_TRUE

@@ -342,7 +342,7 @@ subroutine OutputTecplotBlock(realization_base)
         tempint(0) =  2
         tempint(1) = LIQUID_PHASE
         tempint(2) = GAS_PHASE
-      case(RICHARDS_MODE,TH_MODE,ZFLOW_MODE,PNF_MODE)
+      case(RICHARDS_MODE,TH_MODE,ZFLOW_MODE,COMPFLOW_MODE,PNF_MODE)
         tempint(0) =  1
         tempint(1) = LIQUID_PHASE
       case(NULL_MODE)
@@ -381,7 +381,7 @@ subroutine OutputTecplotBlock(realization_base)
         tempint(1) = LIQUID_PHASE
         tempint(2) = GAS_PHASE
         tempint(3) = THREE_INTEGER
-      case(RICHARDS_MODE,ZFLOW_MODE,PNF_MODE)
+      case(RICHARDS_MODE,ZFLOW_MODE,COMPFLOW_MODE,PNF_MODE)
         tempint(0) =  1
         tempint(1) = LIQUID_PHASE
       case(IMMISCIBLE_MODE)
