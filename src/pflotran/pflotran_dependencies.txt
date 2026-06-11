@@ -1,4 +1,5 @@
 auxiliary.o : \
+  compositional_flow_aux.o \
   ert_aux.o \
   general_aux.o \
   global_aux.o \
@@ -176,7 +177,49 @@ communicator_unstructured.o : \
   grid_unstructured_aux.o \
   grid_unstructured_explicit.o \
   pflotran_constants.o
+compositional_flow.o : \
+  characteristic_curves.o \
+  compositional_flow_aux.o \
+  compositional_flow_common.o \
+  connection.o \
+  coupler.o \
+  debug.o \
+  discretization.o \
+  field.o \
+  fluid.o \
+  global_aux.o \
+  grid.o \
+  material.o \
+  material_aux.o \
+  matrix_zeroing.o \
+  option.o \
+  output_aux.o \
+  patch.o \
+  petsc_utility.o \
+  pflotran_constants.o \
+  realization_subsurface.o \
+  upwind_direction.o \
+  variables.o
+compositional_flow_aux.o : \
+  characteristic_curves.o \
+  global_aux.o \
+  material_aux.o \
+  matrix_zeroing.o \
+  option.o \
+  pflotran_constants.o \
+  utility.o
+compositional_flow_common.o : \
+  compositional_flow_aux.o \
+  connection.o \
+  eos_gas.o \
+  eos_water.o \
+  global_aux.o \
+  material_aux.o \
+  option.o \
+  pflotran_constants.o \
+  string.o
 condition.o : \
+  compositional_flow_aux.o \
   dataset.o \
   dataset_ascii.o \
   dataset_base.o \
@@ -529,6 +572,7 @@ factory_pflotran.o : \
 factory_subsurface.o : \
   checkpoint.o \
   co2_span_wagner.o \
+  compositional_flow_aux.o \
   dataset.o \
   debug.o \
   discretization.o \
@@ -557,6 +601,7 @@ factory_subsurface.o : \
   pm_auxiliary.o \
   pm_base.o \
   pm_base_pointer.o \
+  pm_compositional_flow.o \
   pm_ert.o \
   pm_fracture.o \
   pm_general.o \
@@ -692,6 +737,7 @@ factory_subsurface_read.o : \
   patch.o \
   pflotran_constants.o \
   pm_base.o \
+  pm_compositional_flow.o \
   pm_ert.o \
   pm_fracture.o \
   pm_general.o \
@@ -1042,6 +1088,7 @@ geometry.o : \
   pflotran_constants.o
 global.o : \
   communicator_base.o \
+  compositional_flow_aux.o \
   connection.o \
   coupler.o \
   dataset_base.o \
@@ -1238,6 +1285,7 @@ hydrate_common.o : \
   utility.o \
   wipp.o
 hydrostatic.o : \
+  compositional_flow_aux.o \
   condition.o \
   connection.o \
   coupler.o \
@@ -1774,6 +1822,7 @@ option_parameter.o : \
 option_transport.o : \
   pflotran_constants.o
 output.o : \
+  compositional_flow_aux.o \
   connection.o \
   coupler.o \
   debug.o \
@@ -1817,6 +1866,7 @@ output_aux.o : \
   string.o \
   variables.o
 output_common.o : \
+  compositional_flow_aux.o \
   connection.o \
   coupler.o \
   discretization.o \
@@ -1843,6 +1893,7 @@ output_common.o : \
   variables.o \
   wipp_flow_aux.o
 output_conservation.o : \
+  compositional_flow.o \
   coupler.o \
   general.o \
   global_aux.o \
@@ -1932,6 +1983,8 @@ output_obs_h5.o : \
   realization_base.o \
   region.o
 output_observation.o : \
+  compositional_flow.o \
+  compositional_flow_aux.o \
   connection.o \
   coupler.o \
   discretization.o \
@@ -2024,6 +2077,7 @@ patch.o : \
   auxiliary.o \
   characteristic_curves.o \
   characteristic_curves_thermal.o \
+  compositional_flow_aux.o \
   condition.o \
   connection.o \
   coupler.o \
@@ -2146,6 +2200,29 @@ pm_base.o : \
 pm_base_pointer.o : \
   pflotran_constants.o \
   pm_base.o
+pm_compositional_flow.o : \
+  checkpoint.o \
+  compositional_flow.o \
+  compositional_flow_aux.o \
+  convergence.o \
+  debug.o \
+  eos_water.o \
+  field.o \
+  global.o \
+  grid.o \
+  input_aux.o \
+  material_aux.o \
+  option.o \
+  patch.o \
+  pflotran_constants.o \
+  pm_base.o \
+  pm_subsurface_flow.o \
+  realization_base.o \
+  realization_subsurface.o \
+  string.o \
+  upwind_direction.o \
+  utility.o \
+  variables.o
 pm_ert.o : \
   communicator_base.o \
   connection.o \
@@ -2936,6 +3013,7 @@ pmc_linear.o : \
   realization_subsurface.o \
   solver.o
 pmc_subsurface.o : \
+  compositional_flow_aux.o \
   convergence.o \
   discretization.o \
   field.o \
@@ -2949,6 +3027,7 @@ pmc_subsurface.o : \
   pflotran_constants.o \
   pm_base.o \
   pm_base_pointer.o \
+  pm_compositional_flow.o \
   pm_general.o \
   pm_hydrate.o \
   pm_immiscible.o \
