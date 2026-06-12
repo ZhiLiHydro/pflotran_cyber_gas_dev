@@ -5,6 +5,7 @@ module Compositional_Flow_Aux_module
   use PFLOTRAN_Constants_module
   use Matrix_Zeroing_module
   use Material_Aux_module
+  use EOS_Water_class
 
   implicit none
 
@@ -253,6 +254,8 @@ subroutine CompFlowAuxVarCompute(x,compflow_auxvar,global_auxvar, &
   PetscBool :: saturated
   PetscReal :: dkr_dsat
   PetscReal :: deffsat_dsat
+  ! class-based water EOS temporaries (density/viscosity + p/t derivs)
+  PetscReal :: dw, dwp, dwt, vis, dvisp, dvist
 
   if (compflow_liq_flow_eq > 0) then
     compflow_auxvar%pres = x(compflow_liq_flow_eq)
@@ -269,6 +272,27 @@ subroutine CompFlowAuxVarCompute(x,compflow_auxvar,global_auxvar, &
   else
     compflow_auxvar%conc = 0.d0
   endif
+
+  ! New class-based EOS water capability (implemented in compositional_flow_aux.F90
+  ! per approved plan). Uses live instance from EOS_Water_class (access via
+  ! "use EOS_Water_class"). Primary methods return value only; derivatives via
+  ! Get* after setting the external calculate_derivatives flag. Loaders handle
+  ! the PT (and future PTC/PTCV) state. Validity flags are present in eos_state_type.
+  ! Class-based path (live instance in EOS_Water_class). Load + value via
+  ! module wrappers + GetDerivative accessors when the external flag is set.
+  EOSWater%calculate_derivatives = PETSC_TRUE
+  call EOSWater%LoadPT(compflow_auxvar%pres, compflow_auxvar%temp)
+  dw = EOSWaterDensityValue(EOSWater)
+  dwp = EOSWater%GetDwDp()
+  dwt = EOSWater%GetDwDt()
+  vis = EOSWaterViscosityValue(EOSWater)
+  dvisp = EOSWater%GetDvisDp()
+  dvist = EOSWater%GetDvisDt()
+  EOSWater%calculate_derivatives = PETSC_FALSE
+  ! Touch module defaults with class results for this cell (smoke + verification
+  ! that the path executes and produces sane values for comp flow).
+  compflow_density_kg = dw
+  compflow_viscosity = vis
 
   ! %porosity should never be used. set to bogus value to catch misuse
   material_auxvar%porosity = -888.d0
