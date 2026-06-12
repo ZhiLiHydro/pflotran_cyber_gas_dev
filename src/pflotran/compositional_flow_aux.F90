@@ -28,7 +28,6 @@ module Compositional_Flow_Aux_module
 
   PetscBool, public :: compflow_numerical_derivatives = PETSC_FALSE
   PetscBool, public :: compflow_simult_function_evals = PETSC_TRUE
-  PetscBool, public :: compflow_tensorial_rel_perm = PETSC_FALSE
   PetscBool, public :: compflow_acknowledge_no_compress = PETSC_FALSE
 
   ! debugging
@@ -57,11 +56,6 @@ module Compositional_Flow_Aux_module
   PetscInt, parameter, public :: COMPFLOW_LIQ_SAT_WRT_LIQ_PRES = 1
   PetscInt, parameter, public :: COMPFLOW_LIQ_PRES_WRT_POROS = 2
 
-  PetscInt, parameter, public :: COMPFLOW_ADJOINT_PERMEABILITY = 1
-  PetscInt, parameter, public :: COMPFLOW_ADJOINT_POROSITY = 2
-  PetscBool, public :: compflow_calc_adjoint = PETSC_FALSE
-  PetscInt, public :: compflow_adjoint_parameter = COMPFLOW_ADJOINT_PERMEABILITY
-
   type, public :: compflow_auxvar_type
     PetscReal :: pres ! liquid pressure
     PetscReal :: sat  ! liquid saturation
@@ -81,7 +75,6 @@ module Compositional_Flow_Aux_module
 
   type, public :: compflow_parameter_type
     PetscBool :: check_post_converged
-    PetscReal, pointer :: tensorial_rel_perm_exponent(:,:)
     PetscReal :: diffusion_coef
   end type compflow_parameter_type
 
@@ -116,8 +109,7 @@ module Compositional_Flow_Aux_module
             CompFlowAuxVarPerturb, &
             CompFlowAuxMapConditionIndices, &
             CompFlowPrintAuxVars, &
-            CompFlowOutputAuxVars, &
-            CompFlowAuxTensorialRelPerm
+            CompFlowOutputAuxVars
 
 contains
 
@@ -156,7 +148,6 @@ function CompFlowAuxCreate(option)
 
   allocate(aux%compflow_parameter)
   aux%compflow_parameter%check_post_converged = PETSC_FALSE
-  nullify(aux%compflow_parameter%tensorial_rel_perm_exponent)
   aux%compflow_parameter%diffusion_coef = 0.d0
 
   CompFlowAuxCreate => aux
@@ -317,13 +308,6 @@ subroutine CompFlowAuxVarCompute(x,compflow_auxvar,global_auxvar, &
                                             compflow_auxvar%kr, &
                                             dkr_dsat,option)
       compflow_auxvar%dkr_dp = compflow_auxvar%dsat_dp * dkr_dsat
-      if (compflow_tensorial_rel_perm) then
-        call characteristic_curves%liq_rel_perm_function% &
-          EffectiveSaturation(compflow_auxvar%sat, &
-                              compflow_auxvar%effective_saturation, &
-                              deffsat_dsat,option)
-        compflow_auxvar%deffsat_dp = deffsat_dsat * compflow_auxvar%dsat_dp
-      endif
     endif
   else
     saturated = PETSC_TRUE
@@ -397,69 +381,7 @@ subroutine CompFlowAuxVarPerturb(x,compflow_auxvar,global_auxvar, &
                             PETSC_TRUE,option)
   enddo
 
-  if (compflow_calc_adjoint) then
-    idof = 1
-    call MaterialAuxVarCopy(material_auxvar,material_auxvar_pert(idof),option)
-    if (compflow_adjoint_parameter == COMPFLOW_ADJOINT_POROSITY) then
-      pert = material_auxvar%porosity_base*compflow_rel_pert
-      material_auxvar_pert(idof)%porosity_base = &
-        material_auxvar_pert(idof)%porosity_base + pert
-    else if (compflow_adjoint_parameter == COMPFLOW_ADJOINT_PERMEABILITY) then
-      pert = material_auxvar%permeability(1)*compflow_rel_pert
-      do i = 1, size(material_auxvar%permeability)
-        material_auxvar_pert(idof)%permeability(i) = &
-          material_auxvar_pert(idof)%permeability(i) + pert
-      enddo
-    endif
-    call CompFlowAuxVarCompute(x,compflow_auxvar(option%nflowdof+1), &
-                            global_auxvar, &
-                            material_auxvar_pert(idof), &
-                            characteristic_curves,natural_id, &
-                            PETSC_TRUE,option)
-    compflow_auxvar(ZERO_INTEGER)%mat_pert(idof) = pert
-  endif
-
 end subroutine CompFlowAuxVarPerturb
-
-! ************************************************************************** !
-
-subroutine CompFlowAuxTensorialRelPerm(auxvar,tensorial_rel_perm_exponent, &
-                                    dist,rel_perm,drel_perm_dp,option)
-  !
-  ! Copies an auxiliary variable
-  !
-  ! Author: Glenn Hammond
-  ! Date: 06/04/26
-  !
-
-  use Option_module
-  use Utility_module
-
-  implicit none
-
-  type(compflow_auxvar_type) :: auxvar
-  PetscReal :: tensorial_rel_perm_exponent(3)
-  PetscReal :: dist(-1:3)
-  PetscReal :: rel_perm
-  PetscReal :: drel_perm_dp
-  type(option_type) :: option
-
-  PetscReal :: exponent_
-  PetscReal :: tensorial_scale
-
-  exponent_ = UtilityTensorToScalar(dist,tensorial_rel_perm_exponent)
-
-  ! remember that the default 0.5 was subtracted from the tensorial value
-  ! in CompFlowSetup. If 0.5 is specified for the tensorial exponent in the
-  ! input file, this value will be 0.
-  tensorial_scale = auxvar%effective_saturation**exponent_
-  rel_perm = auxvar%kr * tensorial_scale
-  drel_perm_dp = auxvar%dkr_dp * tensorial_scale + &
-                 exponent_ * rel_perm / &
-                 auxvar%effective_saturation * &
-                 auxvar%deffsat_dp
-
-end subroutine CompFlowAuxTensorialRelPerm
 
 ! ************************************************************************** !
 
@@ -748,7 +670,6 @@ subroutine CompFlowAuxDestroy(aux)
   call MatrixZeroingDestroy(aux%matrix_zeroing)
 
   if (associated(aux%compflow_parameter)) then
-    call DeallocateArray(aux%compflow_parameter%tensorial_rel_perm_exponent)
     deallocate(aux%compflow_parameter)
   endif
   nullify(aux%compflow_parameter)

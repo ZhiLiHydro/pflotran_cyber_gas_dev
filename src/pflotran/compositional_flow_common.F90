@@ -29,7 +29,6 @@ module Compositional_Flow_Common_module
                          area, dist, &
                          compflow_parameter, &
                          option,v_darcy,Res,Jup,Jdn, &
-                         dResdparamup,dResdparamdn, &
                          calculate_derivatives, &
                          debug_connection)
       use petscsys
@@ -49,8 +48,6 @@ module Compositional_Flow_Common_module
       PetscReal :: Res(COMPFLOW_MAX_DOF)
       PetscReal :: Jup(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
       PetscReal :: Jdn(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-      PetscReal :: dResdparamup(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-      PetscReal :: dResdparamdn(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
       PetscBool :: calculate_derivatives
       PetscBool :: debug_connection
     end subroutine FluxDummy
@@ -61,7 +58,6 @@ module Compositional_Flow_Common_module
                            area,dist, &
                            compflow_parameter, &
                            option,v_darcy,Res,Jdn, &
-                           dResdparamdn, &
                            calculate_derivatives, &
                            debug_connection)
       use petscsys
@@ -83,7 +79,6 @@ module Compositional_Flow_Common_module
       PetscReal :: v_darcy
       PetscReal :: Res(COMPFLOW_MAX_DOF)
       PetscReal :: Jdn(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-      PetscReal :: dResdparamdn(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
       PetscBool :: calculate_derivatives
       PetscBool :: debug_connection
     end subroutine BCFluxDummy
@@ -105,7 +100,7 @@ contains
 ! ************************************************************************** !
 
 subroutine CompFlowAccumulation(compflow_auxvar,global_auxvar,material_auxvar, &
-                             option,Res,Jac,dResdparam,calculate_derivatives)
+                             option,Res,Jac,calculate_derivatives)
   !
   ! Computes the non-fixed portion of the accumulation
   ! term for the residual
@@ -125,7 +120,6 @@ subroutine CompFlowAccumulation(compflow_auxvar,global_auxvar,material_auxvar, &
   type(option_type) :: option
   PetscReal :: Res(COMPFLOW_MAX_DOF)
   PetscReal :: Jac(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-  PetscReal :: dResdparam(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
   PetscBool :: calculate_derivatives
 
   PetscReal :: porosity
@@ -137,7 +131,6 @@ subroutine CompFlowAccumulation(compflow_auxvar,global_auxvar,material_auxvar, &
 
   Res = 0.d0
   Jac = 0.d0
-  dResdparam = 0.d0
 
     ! v_over_t[m^3 bulk/sec] = vol[m^3 bulk] / dt[sec]
   volume_over_dt = material_auxvar%volume / option%flow_dt
@@ -158,13 +151,6 @@ subroutine CompFlowAccumulation(compflow_auxvar,global_auxvar,material_auxvar, &
       Jac(compflow_liq_flow_eq,compflow_liq_flow_eq) = &
         tempreal * (compflow_auxvar%dsat_dp * porosity + &
                     saturation * compflow_auxvar%dpor_dp)
-      if (compflow_calc_adjoint) then
-        select case(compflow_adjoint_parameter)
-          case(COMPFLOW_ADJOINT_POROSITY)
-            dResdparam(compflow_liq_flow_eq,1) = &
-              tempreal * compflow_auxvar%sat
-        end select
-      endif
     endif
   endif
 
@@ -185,13 +171,6 @@ subroutine CompFlowAccumulation(compflow_auxvar,global_auxvar,material_auxvar, &
           (compflow_auxvar%dsat_dp * porosity + &
           saturation * compflow_auxvar%dpor_dp)
       endif
-      if (compflow_calc_adjoint) then
-        select case (compflow_adjoint_parameter)
-          case(COMPFLOW_ADJOINT_POROSITY)
-            dResdparam(compflow_sol_tran_eq,1) = &
-              compflow_auxvar%conc * tempreal * compflow_auxvar%sat
-        end select
-      endif
     endif
   endif
 #else
@@ -211,7 +190,6 @@ subroutine CompFlowFluxHarmonicPermOnly(compflow_auxvar_up,global_auxvar_up, &
                                      compflow_parameter, &
                                      option,v_darcy,Res, &
                                      Jup,Jdn, &
-                                     dResdparamup,dResdparamdn, &
                                      calculate_derivatives, &
                                      debug_connection)
   !
@@ -238,8 +216,6 @@ subroutine CompFlowFluxHarmonicPermOnly(compflow_auxvar_up,global_auxvar_up, &
   PetscReal :: Res(COMPFLOW_MAX_DOF)
   PetscReal :: Jup(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
   PetscReal :: Jdn(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-  PetscReal :: dResdparamup(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-  PetscReal :: dResdparamdn(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
   PetscBool :: calculate_derivatives
   PetscBool :: debug_connection
 
@@ -279,8 +255,6 @@ subroutine CompFlowFluxHarmonicPermOnly(compflow_auxvar_up,global_auxvar_up, &
   dq_dpdn = 0.d0
   dq_dKup = 0.d0
   dq_dKdn = 0.d0
-  dResdparamup = 0.d0
-  dResdparamdn = 0.d0
   delta_pressure = 0.d0
   delta_conc = 0.d0
 
@@ -304,26 +278,12 @@ subroutine CompFlowFluxHarmonicPermOnly(compflow_auxvar_up,global_auxvar_up, &
                        gravity_term
       dkr_dpup = 0.d0
       dkr_dpdn = 0.d0
-      if (compflow_tensorial_rel_perm) then
-        if (delta_pressure >= 0.d0) then
-          call CompFlowAuxTensorialRelPerm(compflow_auxvar_up, &
-                  compflow_parameter% &
-                    tensorial_rel_perm_exponent(:,material_auxvar_up%id), &
-                  dist,kr,dkr_dpup,option)
-        else
-          call CompFlowAuxTensorialRelPerm(compflow_auxvar_dn, &
-                  compflow_parameter% &
-                    tensorial_rel_perm_exponent(:,material_auxvar_dn%id), &
-                  dist,kr,dkr_dpdn,option)
-        endif
+      if (delta_pressure >= 0.d0) then
+        kr = compflow_auxvar_up%kr
+        dkr_dpup = compflow_auxvar_up%dkr_dp
       else
-        if (delta_pressure >= 0.d0) then
-          kr = compflow_auxvar_up%kr
-          dkr_dpup = compflow_auxvar_up%dkr_dp
-        else
-          kr = compflow_auxvar_dn%kr
-          dkr_dpdn = compflow_auxvar_dn%dkr_dp
-        endif
+        kr = compflow_auxvar_dn%kr
+        dkr_dpdn = compflow_auxvar_dn%dkr_dp
       endif
 
       if (kr > floweps) then
@@ -344,21 +304,6 @@ subroutine CompFlowFluxHarmonicPermOnly(compflow_auxvar_up,global_auxvar_up, &
                                               dq_dpup * compflow_density_kmol
           Jdn(compflow_liq_flow_eq,compflow_liq_flow_eq) = &
                                               dq_dpdn * compflow_density_kmol
-          if (compflow_calc_adjoint) then
-            select case(compflow_adjoint_parameter)
-              case(COMPFLOW_ADJOINT_PERMEABILITY)
-                tempreal = denominator * denominator * compflow_viscosity
-                dperm_ave_dKup = perm_dn * perm_dn * dist_up / tempreal
-                dperm_ave_dKdn = perm_up * perm_up * dist_dn / tempreal
-                tempreal = kr * delta_pressure * area
-                dq_dKup = tempreal * dperm_ave_dKup
-                dq_dKdn = tempreal * dperm_ave_dKdn
-                dResdparamup(compflow_liq_flow_eq,1) = dq_dKup *compflow_density_kmol
-                dResdparamdn(compflow_liq_flow_eq,1) = dq_dKdn *compflow_density_kmol
-              case(COMPFLOW_ADJOINT_POROSITY)
-                ! not applicable
-            end select
-          endif
         endif
       endif
     endif
@@ -441,49 +386,6 @@ subroutine CompFlowFluxHarmonicPermOnly(compflow_auxvar_up,global_auxvar_up, &
            area * dDeff_over_dist_dpdn * delta_conc) * &
           L_per_m3
       endif
-      if (compflow_calc_adjoint) then
-        select case(compflow_adjoint_parameter)
-          case(COMPFLOW_ADJOINT_PERMEABILITY)
-            dDeff_over_dist_dKup = 0.d0 ! for effect of dispersivity on Deff
-            dDeff_over_dist_dKdn = 0.d0
-            dResdparamup(compflow_sol_tran_eq,1) = &
-              (dq_dKup * conc_upwind + &
-              area * dDeff_over_dist_dKup * delta_conc) * &
-              L_per_m3
-            dResdparamdn(compflow_sol_tran_eq,1) = &
-              (dq_dKdn * conc_upwind + &
-              area * dDeff_over_dist_dKdn * delta_conc) * &
-              L_per_m3
-          case(COMPFLOW_ADJOINT_POROSITY)
-            tempreal = D_mech_up + &
-                       compflow_auxvar_up%sat * material_auxvar_up%tortuosity * &
-                       D_molecular
-            numerator = tempreal * D_hyd_dn
-            denominator = dist_up*D_hyd_dn + dist_dn*tempreal
-            if (denominator == 0.d0) then
-              ! turn off diffusion
-              numerator = 0.d0
-              denominator = 1.d0
-            endif
-            Deff_over_dist = numerator / denominator
-            dResdparamup(compflow_sol_tran_eq,1) = area * Deff_over_dist * &
-                                                delta_conc * L_per_m3
-
-            tempreal = D_mech_dn + &
-                       compflow_auxvar_dn%sat * material_auxvar_dn%tortuosity * &
-                       D_molecular
-            numerator = D_hyd_up * tempreal
-            denominator = dist_up*tempreal + dist_dn*D_hyd_up
-            if (denominator == 0.d0) then
-              ! turn off diffusion
-              numerator = 0.d0
-              denominator = 1.d0
-            endif
-            Deff_over_dist = numerator / denominator
-            dResdparamdn(compflow_sol_tran_eq,1) = area * Deff_over_dist * &
-                                                delta_conc * L_per_m3
-        end select
-      endif
     endif
     if (debug_connection) then
       write(*,'(9x,"IFS(res,q,dc): ",8es12.4)') Res(compflow_sol_tran_eq), q, &
@@ -503,7 +405,6 @@ subroutine CompFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
                                        area,dist, &
                                        compflow_parameter, &
                                        option,v_darcy,Res,Jdn, &
-                                       dResdparamdn, &
                                        calculate_derivatives, &
                                        debug_connection)
   !
@@ -531,7 +432,6 @@ subroutine CompFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
   PetscReal :: v_darcy
   PetscReal :: Res(COMPFLOW_MAX_DOF)
   PetscReal :: Jdn(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-  PetscReal :: dResdparamdn(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
   PetscBool :: calculate_derivatives
   PetscBool :: debug_connection
 
@@ -571,7 +471,6 @@ subroutine CompFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
   dq_dpdn = 0.d0
   dq_dKdn = 0.d0
   dperm_dK = 0.d0
-  dResdparamdn = 0.d0
   delta_pressure = 0.d0
   delta_conc = 0.d0
 
@@ -619,28 +518,12 @@ subroutine CompFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
                 ddelta_pressure_dpdn = 0.d0
               endif
           end select
-          if (compflow_tensorial_rel_perm) then
-            if (delta_pressure >= 0.d0) then
-              call CompFlowAuxTensorialRelPerm(compflow_auxvar_up, &
-                      compflow_parameter% &
-                        tensorial_rel_perm_exponent(:,material_auxvar_dn%id), &
-                      dist,kr,dkr_dp,option)
-              ! override as the upwind pressure is fixed
-              dkr_dp = 0.d0
-            else
-              call CompFlowAuxTensorialRelPerm(compflow_auxvar_dn, &
-                      compflow_parameter% &
-                        tensorial_rel_perm_exponent(:,material_auxvar_dn%id), &
-                      dist,kr,dkr_dp,option)
-            endif
+          if (delta_pressure >= 0.d0) then
+            kr = compflow_auxvar_up%kr
+            dkr_dp = 0.d0
           else
-            if (delta_pressure >= 0.d0) then
-              kr = compflow_auxvar_up%kr
-              dkr_dp = 0.d0
-            else
-              kr = compflow_auxvar_dn%kr
-              dkr_dp = compflow_auxvar_dn%dkr_dp
-            endif
+            kr = compflow_auxvar_dn%kr
+            dkr_dp = compflow_auxvar_dn%dkr_dp
           endif
 
           ! v_darcy[m/sec] = perm[m^2] / dist[m] * kr[-] / mu[Pa-sec]
@@ -681,15 +564,6 @@ subroutine CompFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
         dq_dpdn = area * perm_ave_over_dist_visc * &
                   (dkr_dp * delta_pressure + ddelta_pressure_dpdn * kr)
         Jdn(compflow_liq_flow_eq,compflow_liq_flow_eq) = dq_dpdn * compflow_density_kmol
-        if (compflow_calc_adjoint) then
-          select case(compflow_adjoint_parameter)
-            case(COMPFLOW_ADJOINT_PERMEABILITY)
-              dq_dKdn = area * kr * delta_pressure * dperm_dK
-              dResdparamdn(compflow_liq_flow_eq,1) = dq_dKdn * compflow_density_kmol
-            case(COMPFLOW_ADJOINT_POROSITY)
-              ! not applicable
-          end select
-        endif
       endif
     endif
     if (debug_connection) then
@@ -738,23 +612,6 @@ subroutine CompFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
            area * dDeff_over_dist_dpdn * (-1.d0)) * &
           L_per_m3
       endif
-      if (compflow_calc_adjoint) then
-        select case (compflow_adjoint_parameter)
-          case(COMPFLOW_ADJOINT_PERMEABILITY)
-            dDeff_over_dist_dKdn = 0.d0
-            dResdparamdn(compflow_sol_tran_eq,1) = &
-              (dq_dKdn * conc_upwind + &
-              area * dDeff_over_dist_dKdn * delta_conc) * &
-              L_per_m3
-          case(COMPFLOW_ADJOINT_POROSITY)
-            tempreal = D_mech_dn + &
-                       compflow_auxvar_dn%sat * &
-                       material_auxvar_dn%tortuosity * D_molecular
-            Deff_over_dist = dispersion_scale * tempreal / dist(0)
-            dResdparamdn(compflow_sol_tran_eq,1) = &
-              area * Deff_over_dist * delta_conc * L_per_m3
-        end select
-      endif
     endif
     if (debug_connection) then
       write(*,'(9x,"BFS(res,q,dc): ",8es12.4)') Res(compflow_sol_tran_eq), q, &
@@ -770,7 +627,7 @@ end subroutine CompFlowBCFluxHarmonicPermOnly
 subroutine CompFlowSrcSink(option,flow_aux_real_var,flow_src_sink_mapping, &
                         flow_src_sink_type, &
                         compflow_auxvar,global_auxvar,material_auxvar, &
-                        ss_flow_vol_flux,Res,Jdn,dResdparamdn, &
+                        ss_flow_vol_flux,Res,Jdn, &
                         calculate_derivatives)
   !
   ! Computes the source/sink terms for the residual
@@ -795,7 +652,6 @@ subroutine CompFlowSrcSink(option,flow_aux_real_var,flow_src_sink_mapping, &
   PetscReal :: ss_flow_vol_flux
   PetscReal :: Res(COMPFLOW_MAX_DOF)
   PetscReal :: Jdn(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-  PetscReal :: dResdparamdn(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
   PetscBool :: calculate_derivatives
 
   PetscReal :: tempreal
@@ -853,7 +709,7 @@ end subroutine CompFlowSrcSink
 subroutine CompFlowAccumDerivative(compflow_auxvar,global_auxvar, &
                                 material_auxvar, &
                                 material_auxvar_pert, &
-                                option,Res,Jac,dResdparam)
+                                option,Res,Jac)
   !
   ! Computes derivatives of the accumulation
   ! term for the Jacobian
@@ -874,7 +730,6 @@ subroutine CompFlowAccumDerivative(compflow_auxvar,global_auxvar, &
   type(option_type) :: option
   PetscReal :: Res(COMPFLOW_MAX_DOF)
   PetscReal :: Jac(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-  PetscReal :: dResdparam(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
 
   PetscReal :: res_pert(COMPFLOW_MAX_DOF)
   PetscReal :: Jdum(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
@@ -884,7 +739,7 @@ subroutine CompFlowAccumDerivative(compflow_auxvar,global_auxvar, &
   call CompFlowAccumulation(compflow_auxvar(ZERO_INTEGER), &
                          global_auxvar, &
                          material_auxvar, &
-                         option,Res,Jac,dResdparam, &
+                         option,Res,Jac, &
                          .not.compflow_numerical_derivatives)
 
   if (compflow_numerical_derivatives) then
@@ -892,24 +747,12 @@ subroutine CompFlowAccumDerivative(compflow_auxvar,global_auxvar, &
       call CompFlowAccumulation(compflow_auxvar(idof), &
                              global_auxvar, &
                              material_auxvar, &
-                             option,res_pert,Jdum,dJdum, &
+                             option,res_pert,Jdum, &
                              PETSC_FALSE)
       do ieq = 1, option%nflowdof
         Jac(ieq,idof) = (res_pert(ieq)-Res(ieq))/compflow_auxvar(idof)%pert
       enddo
     enddo
-    if (compflow_calc_adjoint) then
-      call CompFlowAccumulation(compflow_auxvar(option%nflowdof+1), &
-                             global_auxvar, &
-                             material_auxvar_pert(ONE_INTEGER), &
-                             option,res_pert,Jdum,dJdum, &
-                             PETSC_FALSE)
-      idof = 1
-      do ieq = 1, option%nflowdof
-        dResdparam(ieq,idof) = (res_pert(ieq)-Res(ieq))/ &
-                               compflow_auxvar(ZERO_INTEGER)%mat_pert(idof)
-      enddo
-    endif
   endif
 
 end subroutine CompFlowAccumDerivative
@@ -923,7 +766,7 @@ subroutine XXFluxDerivative(compflow_auxvar_up,global_auxvar_up, &
                             material_auxvar_dn, &
                             material_auxvar_pert_dn, &
                             area, dist,compflow_parameter,option,v_darcy, &
-                            Res,Jup,Jdn,dResdparamup,dResdparamdn, &
+                            Res,Jup,Jdn, &
                             debug_connection)
   !
   ! Computes the derivatives of the internal flux terms
@@ -950,8 +793,6 @@ subroutine XXFluxDerivative(compflow_auxvar_up,global_auxvar_up, &
   PetscReal :: Res(COMPFLOW_MAX_DOF)
   PetscReal :: Jup(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
   PetscReal :: Jdn(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-  PetscReal :: dResdparamup(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-  PetscReal :: dResdparamdn(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
   PetscBool :: debug_connection
 
   PetscReal :: res_pert(COMPFLOW_MAX_DOF)
@@ -968,7 +809,7 @@ subroutine XXFluxDerivative(compflow_auxvar_up,global_auxvar_up, &
               compflow_auxvar_dn(ZERO_INTEGER),global_auxvar_dn, &
               material_auxvar_dn, &
               area,dist,compflow_parameter,option,v_darcy, &
-              Res,Jup,Jdn,dResdparamup,dResdparamdn, &
+              Res,Jup,Jdn, &
               .not.compflow_numerical_derivatives, &
               debug_connection)
 
@@ -980,7 +821,7 @@ subroutine XXFluxDerivative(compflow_auxvar_up,global_auxvar_up, &
                   compflow_auxvar_dn(ZERO_INTEGER),global_auxvar_dn, &
                   material_auxvar_dn, &
                   area,dist,compflow_parameter,option,v_darcy_dum, &
-                  res_pert,Jdum,Jdum,dJdum,dJdum,PETSC_FALSE,PETSC_FALSE)
+                  res_pert,Jdum,Jdum,PETSC_FALSE,debug_connection)
       do ieq = 1, option%nflowdof
         Jup(ieq,idof) = (res_pert(ieq)-Res(ieq)) / &
                         compflow_auxvar_up(idof)%pert
@@ -993,37 +834,12 @@ subroutine XXFluxDerivative(compflow_auxvar_up,global_auxvar_up, &
                   compflow_auxvar_dn(idof),global_auxvar_dn, &
                   material_auxvar_dn, &
                   area,dist,compflow_parameter,option,v_darcy_dum, &
-                  res_pert,Jdum,Jdum,dJdum,dJdum,PETSC_FALSE,PETSC_FALSE)
+                  res_pert,Jdum,Jdum,PETSC_FALSE,debug_connection)
       do ieq = 1, option%nflowdof
         Jdn(ieq,idof) = (res_pert(ieq)-Res(ieq)) / &
                         compflow_auxvar_dn(idof)%pert
       enddo
     enddo
-    if (compflow_calc_adjoint) then
-      idof = 1
-      call XXFlux(compflow_auxvar_up(option%nflowdof+1),global_auxvar_up, &
-                  material_auxvar_pert_up(ONE_INTEGER), &
-                  compflow_auxvar_dn(ZERO_INTEGER),global_auxvar_dn, &
-                  material_auxvar_dn, &
-                  area,dist,compflow_parameter,option,v_darcy_dum, &
-                  res_pert,Jdum,Jdum,dJdum,dJdum,PETSC_FALSE,PETSC_FALSE)
-      do ieq = 1, option%nflowdof
-        dResdparamup(ieq,idof) = &
-          (res_pert(ieq)-Res(ieq))/ &
-          compflow_auxvar_up(ZERO_INTEGER)%mat_pert(idof)
-      enddo
-      call XXFlux(compflow_auxvar_up(ZERO_INTEGER),global_auxvar_up, &
-                  material_auxvar_up, &
-                  compflow_auxvar_dn(option%nflowdof+1),global_auxvar_dn, &
-                  material_auxvar_pert_dn(ONE_INTEGER), &
-                  area,dist,compflow_parameter,option,v_darcy_dum, &
-                  res_pert,Jdum,Jdum,dJdum,dJdum,PETSC_FALSE,PETSC_FALSE)
-      do ieq = 1, option%nflowdof
-        dResdparamdn(ieq,idof) = &
-          (res_pert(ieq)-Res(ieq))/ &
-          compflow_auxvar_dn(ZERO_INTEGER)%mat_pert(idof)
-      enddo
-    endif
   endif
 
 end subroutine XXFluxDerivative
@@ -1037,7 +853,7 @@ subroutine XXBCFluxDerivative(ibndtype,auxvar_mapping,auxvars, &
                               material_auxvar_dn, &
                               material_auxvar_pert_dn, &
                               area,dist,compflow_parameter,option,v_darcy, &
-                              Res,Jdn,dResdparamdn,debug_connection)
+                              Res,Jdn,debug_connection)
   !
   ! Computes the derivatives of the boundary flux terms
   ! for the Jacobian
@@ -1065,7 +881,6 @@ subroutine XXBCFluxDerivative(ibndtype,auxvar_mapping,auxvars, &
   PetscReal :: v_darcy
   PetscReal :: Res(COMPFLOW_MAX_DOF)
   PetscReal :: Jdn(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-  PetscReal :: dResdparamdn(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
   PetscBool :: debug_connection
 
   PetscReal :: res_pert(COMPFLOW_MAX_DOF)
@@ -1081,7 +896,7 @@ subroutine XXBCFluxDerivative(ibndtype,auxvar_mapping,auxvars, &
                 compflow_auxvar_dn(ZERO_INTEGER),global_auxvar_dn, &
                 material_auxvar_dn, &
                 area,dist,compflow_parameter,option,v_darcy, &
-                Res,Jdn,dResdparamdn,.not.compflow_numerical_derivatives, &
+                Res,Jdn,.not.compflow_numerical_derivatives, &
                 debug_connection)
 
   if (compflow_numerical_derivatives) then
@@ -1092,26 +907,12 @@ subroutine XXBCFluxDerivative(ibndtype,auxvar_mapping,auxvars, &
                     compflow_auxvar_dn(idof),global_auxvar_dn, &
                     material_auxvar_dn, &
                     area,dist,compflow_parameter,option,v_darcy_dum, &
-                    res_pert,Jdum,dJdum,PETSC_FALSE,PETSC_FALSE)
+                    res_pert,Jdum,PETSC_FALSE,debug_connection)
       do ieq = 1, option%nflowdof
         Jdn(ieq,idof) = (res_pert(ieq)-Res(ieq)) / &
                         compflow_auxvar_dn(idof)%pert
       enddo
     enddo
-    if (compflow_calc_adjoint) then
-      idof = 1
-      call XXBCFlux(ibndtype,auxvar_mapping,auxvars, &
-                    compflow_auxvar_up,global_auxvar_up, &
-                    compflow_auxvar_dn(option%nflowdof+1),global_auxvar_dn, &
-                    material_auxvar_pert_dn(ONE_INTEGER), &
-                    area,dist,compflow_parameter,option,v_darcy_dum, &
-                    res_pert,Jdum,dJdum,PETSC_FALSE,PETSC_FALSE)
-      do ieq = 1, option%nflowdof
-        dResdparamdn(ieq,idof) = &
-          (res_pert(ieq)-Res(ieq))/ &
-          compflow_auxvar_dn(ZERO_INTEGER)%mat_pert(idof)
-      enddo
-    endif
   endif
 
 end subroutine XXBCFluxDerivative
@@ -1125,7 +926,7 @@ subroutine CompFlowSrcSinkDerivative(option,flow_aux_real_var, &
                                   material_auxvar, &
                                   material_auxvar_pert, &
                                   ss_flow_vol_flux, &
-                                  Res,Jac,dResdparam)
+                                  Res,Jac)
   !
   ! Computes the source/sink terms for the residual
   !
@@ -1148,7 +949,6 @@ subroutine CompFlowSrcSinkDerivative(option,flow_aux_real_var, &
   PetscReal :: ss_flow_vol_flux
   PetscReal :: Res(COMPFLOW_MAX_DOF)
   PetscReal :: Jac(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-  PetscReal :: dResdparam(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
 
   PetscReal :: res_pert(COMPFLOW_MAX_DOF)
   PetscReal :: dummy_real
@@ -1162,7 +962,7 @@ subroutine CompFlowSrcSinkDerivative(option,flow_aux_real_var, &
                     compflow_auxvar(ZERO_INTEGER),global_auxvar, &
                     material_auxvar, &
                     ss_flow_vol_flux, &
-                    Res,Jac,dResdparam,.not.compflow_numerical_derivatives)
+                    Res,Jac,.not.compflow_numerical_derivatives)
 
   if (compflow_numerical_derivatives) then
     ! perturbed compflow_auxvars values
@@ -1172,26 +972,12 @@ subroutine CompFlowSrcSinkDerivative(option,flow_aux_real_var, &
                         compflow_auxvar(idof),global_auxvar, &
                         material_auxvar, &
                         dummy_real, &
-                        res_pert,Jdum,Jdum,PETSC_FALSE)
+                        res_pert,Jdum,PETSC_FALSE)
       do ieq = 1, option%nflowdof
       Jac(ieq,idof) = (res_pert(ieq)-Res(ieq)) / &
                       compflow_auxvar(idof)%pert
       enddo
     enddo
-    if (compflow_calc_adjoint) then
-      idof = 1
-      call CompFlowSrcSink(option,flow_aux_real_var,flow_src_sink_mapping, &
-                        flow_src_sink_type, &
-                        compflow_auxvar(option%nflowdof+1),global_auxvar, &
-                        material_auxvar_pert(ONE_INTEGER), &
-                        dummy_real, &
-                        res_pert,Jdum,Jdum,PETSC_FALSE)
-      do ieq = 1, option%nflowdof
-        dResdparam(ieq,idof) = &
-          (res_pert(ieq)-Res(ieq))/ &
-          compflow_auxvar(ZERO_INTEGER)%mat_pert(idof)
-      enddo
-    endif
   endif
 
 end subroutine CompFlowSrcSinkDerivative
