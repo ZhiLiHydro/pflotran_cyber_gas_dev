@@ -79,42 +79,6 @@ subroutine CompFlowSetup(realization)
   patch%aux%CompFlow => CompFlowAuxCreate(option)
   compflow_parameter => patch%aux%CompFlow%compflow_parameter
 
-  temp_int = size(patch%material_property_array)
-  if (compflow_tensorial_rel_perm) then
-    allocate(compflow_parameter%tensorial_rel_perm_exponent(3,temp_int))
-    compflow_parameter%tensorial_rel_perm_exponent = UNINITIALIZED_DOUBLE
-    do imat = 1, temp_int
-      if (Initialized(minval(patch%material_property_array(imat)%ptr% &
-                                      tensorial_rel_perm_exponent))) then
-        compflow_parameter%tensorial_rel_perm_exponent(:,imat) = &
-          patch%material_property_array(imat)%ptr% &
-            ! the tortuosity parameter in hardwired to 0.5 in characteristic
-            ! curves. we subtract the default to allow the tensorial value
-            ! to override the hardwired default
-            tensorial_rel_perm_exponent - 0.5d0
-      else
-        option%io_buffer = 'A tensorial relative permeability exponent &
-          &is not define for material "' // &
-          trim(patch%material_property_array(imat)%ptr%name) // '".'
-        call PrintErrMsg(option)
-      endif
-    enddo
-  else
-    ! check to ensure that user has not parameterized tensorial perm without
-    ! adding TENSORIAL_RELATIVE_PERMEABILITY to the simulation OPTIONS block
-    do imat = 1, temp_int
-      if (Initialized(maxval(patch%material_property_array(imat)%ptr% &
-                                      tensorial_rel_perm_exponent))) then
-        option%io_buffer = 'A tensorial relative permeability exponent &
-          &is define for material "' // &
-          trim(patch%material_property_array(imat)%ptr%name) // '" without &
-          &TENSORIAL_RELATIVE_PERMEABILITY being defined in the ZFLOW &
-          &simulation OPTIONS block.'
-        call PrintErrMsg(option)
-      endif
-    enddo
-  endif
-
   temp_int = 0
   if (Initialized(compflow_liq_flow_eq)) then
     temp_int = temp_int + 1
@@ -146,12 +110,6 @@ subroutine CompFlowSetup(realization)
     enddo
   else
     allocate(patch%aux%CompFlow%material_auxvars_pert(ZERO_INTEGER,grid%ngmax))
-  endif
-
-  ! ensure mapping of local cell ids to neighboring ghosted ids exits
-  if (associated(option%inversion)) then
-    compflow_calc_adjoint = .not. option%inversion%use_perturbation
-    call GridSetupCellNeighbors(grid,option)
   endif
 
   ! ensure that material properties specific to this module are properly
@@ -208,9 +166,6 @@ subroutine CompFlowSetup(realization)
   temp_int = 0
   if (compflow_numerical_derivatives) then
     temp_int = option%nflowdof
-    if (compflow_calc_adjoint) then
-      temp_int = temp_int + 1
-    endif
   endif
   allocate(compflow_auxvars(0:temp_int,grid%ngmax))
   do ghosted_id = 1, grid%ngmax
@@ -702,7 +657,6 @@ subroutine CompFlowUpdateFixedAccum(realization)
   PetscReal, pointer :: accum_t_p(:)
   PetscReal :: Res(COMPFLOW_MAX_DOF)
   PetscReal :: Jdum(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-  PetscReal :: dResdparam(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
   PetscInt :: ndof
 
   PetscErrorCode :: ierr
@@ -746,13 +700,8 @@ subroutine CompFlowUpdateFixedAccum(realization)
                            global_auxvars(ghosted_id), &
                            material_auxvars(ghosted_id), &
                            option,Res, &
-                           Jdum,dResdparam,compflow_calc_adjoint)
+                           Jdum, PETSC_FALSE)
     call PetUtilVecSVBL(accum_t_p,local_id,Res,ndof,PETSC_TRUE)
-    if (compflow_calc_adjoint) then
-      ! negative because the value is subtracted in residual
-      patch%aux%inversion_aux%last_forward_ts_aux%dRes_du_k(:,:,local_id) = &
-        -Jdum(1:ndof,1:ndof)
-    endif
   enddo
 
   call VecRestoreArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
@@ -829,22 +778,12 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
   PetscReal :: Res(COMPFLOW_MAX_DOF)
   PetscReal :: Jup(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
   PetscReal :: Jdn(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-  PetscReal :: dResdparamup(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-  PetscReal :: dResdparamdn(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-  PetscReal :: dResdparam(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-  Mat :: MatdResdparam
-  PetscBool :: store_adjoint
   PetscReal :: v_darcy
 
   PetscInt :: ndof
   PetscInt :: istart, iend
 
   ndof = realization%option%nflowdof
-
-  PetscObjectNullify(MatdResdparam)
-  dResdparamup = UNINITIALIZED_DOUBLE  ! to catch bugs
-  dResdparamdn = UNINITIALIZED_DOUBLE
-  dResdparam = UNINITIALIZED_DOUBLE
 
   discretization => realization%discretization
   option => realization%option
@@ -861,18 +800,7 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
   material_auxvars => patch%aux%Material%auxvars
   material_auxvars_pert => patch%aux%CompFlow%material_auxvars_pert
 
-  store_adjoint = PETSC_FALSE
-  PetscObjectNullify(MatdResdparam)
   call MatZeroEntries(A,ierr);CHKERRQ(ierr)
-  if (associated(patch%aux%inversion_aux)) then
-    if (patch%aux%inversion_aux%store_adjoint) then
-      MatdResdparam = patch%aux%inversion_aux%last_forward_ts_aux%dResdparam
-      if (.not.PetscObjectIsNull(MatdResdparam)) then
-        store_adjoint = PETSC_TRUE
-        call MatZeroEntries(MatdResdparam,ierr);CHKERRQ(ierr)
-      endif
-    endif
-  endif
 
   ! Communication -----------------------------------------
   ! must be called before CompFlowUpdateAuxVars()
@@ -928,14 +856,10 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
                                 global_auxvars(ghosted_id), &
                                 material_auxvars(ghosted_id), &
                                 material_auxvars_pert(:,ghosted_id), &
-                                option,Res,Jup,dResdparam)
+                                option,Res,Jup)
       call PetUtilVecSVBL(r_p,local_id,Res,ndof,PETSC_FALSE)
       call PetUtilVecSVBL(accum_t_p2,local_id,Res,ndof,PETSC_TRUE)
       call PetUtilMatSVBL(A,ghosted_id,ghosted_id,Jup,ndof)
-      if (store_adjoint) then
-        call PetUtilMatSVBL(MatdResdparam,ghosted_id,ghosted_id, &
-                            dResdparam,ndof)
-      endif
     enddo
     call VecRestoreArray(field%flow_accum_tpdt,accum_t_p2,ierr);CHKERRQ(ierr)
   else
@@ -976,7 +900,7 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
                               cur_connection_set%area(iconn), &
                               cur_connection_set%dist(:,iconn), &
                               compflow_parameter,option,v_darcy, &
-                              Res,Jup,Jdn,dResdparamup,dResdparamdn, &
+                              Res,Jup,Jdn, &
                               PUCast(local_id_up == compflow_debug_cell_id .or. &
                                      local_id_dn == compflow_debug_cell_id))
         patch%internal_velocities(:,sum_connection) = v_darcy
@@ -988,12 +912,6 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
           call PetUtilVecSVBL(r_p,local_id_up,Res,ndof,PETSC_FALSE)
           call PetUtilMatSVBL(A,ghosted_id_up,ghosted_id_up,Jup,ndof)
           call PetUtilMatSVBL(A,ghosted_id_up,ghosted_id_dn,Jdn,ndof)
-          if (store_adjoint) then
-            call PetUtilMatSVBL(MatdResdparam,ghosted_id_up,ghosted_id_up, &
-                                dResdparamup,ndof)
-            call PetUtilMatSVBL(MatdResdparam,ghosted_id_up,ghosted_id_dn, &
-                                dResdparamdn,ndof)
-          endif
         endif
 
         if (local_id_dn > 0) then
@@ -1003,14 +921,6 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
           Jdn = -Jdn
           call PetUtilMatSVBL(A,ghosted_id_dn,ghosted_id_dn,Jdn,ndof)
           call PetUtilMatSVBL(A,ghosted_id_dn,ghosted_id_up,Jup,ndof)
-          if (store_adjoint) then
-            dResdparamup = -dResdparamup
-            dResdparamdn = -dResdparamdn
-            call PetUtilMatSVBL(MatdResdparam,ghosted_id_dn,ghosted_id_dn, &
-                                dResdparamdn,ndof)
-            call PetUtilMatSVBL(MatdResdparam,ghosted_id_dn,ghosted_id_up, &
-                                dResdparamup,ndof)
-          endif
         endif
       enddo
 
@@ -1051,7 +961,7 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
                                 cur_connection_set%area(iconn), &
                                 cur_connection_set%dist(:,iconn), &
                                 compflow_parameter,option, &
-                                v_darcy,Res,Jdn,dResdparamdn, &
+                                v_darcy,Res,Jdn, &
                                 PUCast(local_id == compflow_debug_cell_id))
         patch%boundary_velocities(:,sum_connection) = v_darcy
         if (associated(patch%boundary_flow_fluxes)) then
@@ -1067,11 +977,6 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
         call PetUtilVecSVBL(r_p,local_id,Res,ndof,PETSC_FALSE)
         Jdn = -Jdn
         call PetUtilMatSVBL(A,ghosted_id,ghosted_id,Jdn,ndof)
-        if (store_adjoint) then
-          dResdparamdn = -dResdparamdn
-          call PetUtilMatSVBL(MatdResdparam,ghosted_id,ghosted_id, &
-                              dResdparamdn,ndof)
-        endif
       enddo
       boundary_condition => boundary_condition%next
     enddo
@@ -1099,8 +1004,7 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
                                   global_auxvars(ghosted_id), &
                                   material_auxvars(ghosted_id), &
                                   material_auxvars_pert(:,ghosted_id), &
-                                  ss_flow_vol_flux,Res,Jdn, &
-                                  dResdparamdn)
+                                  ss_flow_vol_flux,Res,Jdn)
       if (associated(patch%ss_flow_vol_fluxes)) then
         patch%ss_flow_vol_fluxes(:,sum_connection) = ss_flow_vol_flux
       endif
@@ -1129,13 +1033,6 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
     call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
     call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
       ! zero out inactive cells
-
-    if (store_adjoint) then
-      call MatAssemblyBegin(MatdResdparam,MAT_FINAL_ASSEMBLY, &
-                            ierr);CHKERRQ(ierr)
-      call MatAssemblyEnd(MatdResdparam,MAT_FINAL_ASSEMBLY, &
-                          ierr);CHKERRQ(ierr)
-    endif
 
     call MatrixZeroingZeroMatEntries(patch%aux%CompFlow%matrix_zeroing,A)
 

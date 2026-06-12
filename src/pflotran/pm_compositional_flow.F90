@@ -206,8 +206,6 @@ subroutine PMCompFlowReadSimOptionsBlock(this,input)
         compflow_calc_flux = PETSC_FALSE
       case('NO_BCFLUX')
         compflow_calc_bcflux = PETSC_FALSE
-      case('TENSORIAL_RELATIVE_PERMEABILITY')
-        compflow_tensorial_rel_perm = PETSC_TRUE
       case('LIQUID_DENSITY')
         call InputReadDouble(input,option,compflow_density_kg)
         call InputErrorMsg(input,option,keyword,error_string)
