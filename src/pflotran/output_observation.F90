@@ -2200,7 +2200,7 @@ subroutine OutputIntegralFlux(realization_base)
           units = 'kg/' // trim(output_option%tunit) // ''
           string = trim(integral_flux%name) // ' Solute'
           call OutputWriteToHeader(fid,string,units,'',icol)
-        endif        
+        endif
 
         ! Reactive Transport Primary Species Mass
         if (option%ntrandof > 0) then

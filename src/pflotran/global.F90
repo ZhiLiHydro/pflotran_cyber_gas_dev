@@ -692,8 +692,8 @@ subroutine GlobalWeightAuxVars(realization,weight)
           auxvars(ghosted_id)%temp = &
             (weight*auxvars(ghosted_id)%temp_store(TIME_TpDT)+ &
             (1.d0-weight)*auxvars(ghosted_id)%temp_store(TIME_T))
-        enddo         
-      endif 
+        enddo
+      endif
     case(TH_MODE,G_MODE,H_MODE,SCO2_MODE)
       do ghosted_id = 1, realization%patch%aux%Global%num_aux
         auxvars(ghosted_id)%pres(:) = &
