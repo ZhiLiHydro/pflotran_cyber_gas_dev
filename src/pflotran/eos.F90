@@ -7,6 +7,7 @@ module EOS_module
   use EOS_Gas_module
   use co2_span_wagner_module
   use EOS_Database_module
+  use EOS_Water_class, only : EOSWaterClassInit, EOSWaterClassSetDensity
 
   implicit none
 
@@ -29,6 +30,7 @@ subroutine EOSInit()
   implicit none
 
   call EOSWaterInit()
+  call EOSWaterClassInit()
   call EOSGasInit()
   call EOSTableInitList()
 
@@ -176,6 +178,9 @@ subroutine EOSRead(input,option)
                 call InputKeywordUnrecognized(input,word,'EOS,WATER,DENSITY',option)
             end select
             call EOSWaterSetDensity(word,temparray)
+            ! Configure the class-based live instance (EOS_Water_class) for the
+            ! same model. The instance lives inside EOS_Water_class per plan.
+            call EOSWaterClassSetDensity(word,temparray)
           case('ENTHALPY')
             call InputReadCard(input,option,word)
             call InputErrorMsg(input,option,'ENTHALPY','EOS,WATER')
