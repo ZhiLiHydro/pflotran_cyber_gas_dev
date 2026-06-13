@@ -11,10 +11,6 @@ module Compositional_Flow_Aux_module
 
   private
 
-  PetscReal, public :: compflow_density_kg = 1000.d0
-  PetscReal, public :: compflow_density_kmol = UNINITIALIZED_DOUBLE
-  PetscReal, public :: compflow_viscosity = 1.d-3
-
   PetscReal, public :: compflow_rel_pert = 1.d-8
   PetscReal, public :: compflow_pres_min_pert = 1.d-2
   PetscReal, public :: compflow_temp_min_pert = 1.d-6 ! not based on anything
@@ -66,10 +62,14 @@ module Compositional_Flow_Aux_module
     PetscReal :: dpor_dp
     PetscReal :: dsat_dp ! derivative of saturation wrt pressure
     PetscReal :: dkr_dp  ! derivative of rel. perm. wrt pressure
-    PetscReal :: effective_saturation
-    PetscReal :: deffsat_dp
     PetscReal :: temp ! temperature
     PetscReal :: conc ! concentration
+    PetscReal :: den
+    PetscReal :: vis
+    PetscReal :: dden_dp
+    PetscReal :: dden_dt
+    PetscReal :: dvis_dp
+    PetscReal :: dvis_dt
     PetscReal :: pert
     PetscReal :: mat_pert(1)
   end type compflow_auxvar_type
@@ -88,6 +88,7 @@ module Compositional_Flow_Aux_module
     type(compflow_auxvar_type), pointer :: auxvars_ss(:)
     type(material_auxvar_type), pointer :: material_auxvars_pert(:,:)
     type(matrix_zeroing_type), pointer :: matrix_zeroing
+    type(eos_water_type), pointer :: eos_water
   end type compflow_type
 
   interface CompFlowAuxVarDestroy
@@ -146,6 +147,9 @@ function CompFlowAuxCreate(option)
   nullify(aux%auxvars_ss)
   nullify(aux%material_auxvars_pert)
   nullify(aux%matrix_zeroing)
+  nullify(aux%eos_water)
+
+  aux%eos_water => EOSWaterCreate()
 
   allocate(aux%compflow_parameter)
   aux%compflow_parameter%check_post_converged = PETSC_FALSE
@@ -180,10 +184,14 @@ subroutine CompFlowAuxVarInit(auxvar,option)
   auxvar%dpor_dp = 0.d0
   auxvar%dsat_dp = 0.d0
   auxvar%dkr_dp = 0.d0
-  auxvar%effective_saturation = UNINITIALIZED_DOUBLE
-  auxvar%deffsat_dp = UNINITIALIZED_DOUBLE
   auxvar%temp = 0.d0
   auxvar%conc = 0.d0
+  auxvar%den = UNINITIALIZED_DOUBLE
+  auxvar%vis = UNINITIALIZED_DOUBLE
+  auxvar%dden_dp = UNINITIALIZED_DOUBLE
+  auxvar%dden_dt = UNINITIALIZED_DOUBLE
+  auxvar%dvis_dp = UNINITIALIZED_DOUBLE
+  auxvar%dvis_dt = UNINITIALIZED_DOUBLE
 
   auxvar%pert = 0.d0
   auxvar%mat_pert = 0.d0
@@ -215,10 +223,14 @@ subroutine CompFlowAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%dpor_dp = auxvar%dpor_dp
   auxvar2%dsat_dp = auxvar%dsat_dp
   auxvar2%dkr_dp = auxvar%dkr_dp
-  auxvar2%effective_saturation = auxvar%effective_saturation
-  auxvar2%deffsat_dp = auxvar%deffsat_dp
   auxvar2%temp = auxvar%temp
   auxvar2%conc = auxvar%conc
+  auxvar2%den = auxvar%den
+  auxvar2%vis = auxvar%vis
+  auxvar2%dden_dp = auxvar%dden_dp
+  auxvar2%dden_dt = auxvar%dden_dt
+  auxvar2%dvis_dp = auxvar%dvis_dp
+  auxvar2%dvis_dt = auxvar%dvis_dt
   auxvar2%pert = auxvar%pert
 
 end subroutine CompFlowAuxVarCopy
@@ -227,7 +239,7 @@ end subroutine CompFlowAuxVarCopy
 
 subroutine CompFlowAuxVarCompute(x,compflow_auxvar,global_auxvar, &
                               material_auxvar,characteristic_curves, &
-                              natural_id,update_porosity,option)
+                              eos_water,natural_id,update_porosity,option)
   !
   ! Computes auxiliary variables for each grid cell
   !
@@ -251,11 +263,11 @@ subroutine CompFlowAuxVarCompute(x,compflow_auxvar,global_auxvar, &
   PetscBool :: update_porosity
   PetscInt :: natural_id
 
+  class(eos_water_type), intent(inout) :: eos_water
+
   PetscBool :: saturated
   PetscReal :: dkr_dsat
-  PetscReal :: deffsat_dsat
-  ! class-based water EOS temporaries (density/viscosity + p/t derivs)
-  PetscReal :: dw, dwp, dwt, vis, dvisp, dvist
+  PetscReal :: pw
 
   if (compflow_liq_flow_eq > 0) then
     compflow_auxvar%pres = x(compflow_liq_flow_eq)
@@ -272,27 +284,6 @@ subroutine CompFlowAuxVarCompute(x,compflow_auxvar,global_auxvar, &
   else
     compflow_auxvar%conc = 0.d0
   endif
-
-  ! New class-based EOS water capability (implemented in compositional_flow_aux.F90
-  ! per approved plan). Uses live instance from EOS_Water_class (access via
-  ! "use EOS_Water_class"). Primary methods return value only; derivatives via
-  ! Get* after setting the external calculate_derivatives flag. Loaders handle
-  ! the PT (and future PTC/PTCV) state. Validity flags are present in eos_state_type.
-  ! Class-based path (live instance in EOS_Water_class). Load + value via
-  ! module wrappers + GetDerivative accessors when the external flag is set.
-  EOSWater%calculate_derivatives = PETSC_TRUE
-  call EOSWater%LoadPT(compflow_auxvar%pres, compflow_auxvar%temp)
-  dw = EOSWaterDensityValue(EOSWater)
-  dwp = EOSWater%GetDwDp()
-  dwt = EOSWater%GetDwDt()
-  vis = EOSWaterViscosityValue(EOSWater)
-  dvisp = EOSWater%GetDvisDp()
-  dvist = EOSWater%GetDvisDt()
-  EOSWater%calculate_derivatives = PETSC_FALSE
-  ! Touch module defaults with class results for this cell (smoke + verification
-  ! that the path executes and produces sane values for comp flow).
-  compflow_density_kg = dw
-  compflow_viscosity = vis
 
   ! %porosity should never be used. set to bogus value to catch misuse
   material_auxvar%porosity = -888.d0
@@ -347,8 +338,26 @@ subroutine CompFlowAuxVarCompute(x,compflow_auxvar,global_auxvar, &
     compflow_auxvar%kr = 1.d0
     compflow_auxvar%dsat_dp = 0.d0
     compflow_auxvar%dkr_dp = 0.d0
-    compflow_auxvar%effective_saturation = 1.d0
-    compflow_auxvar%deffsat_dp = 0.d0
+  endif
+
+  pw = option%flow%reference_pressure
+  if (saturated) then
+    pw = max(compflow_auxvar%pres, pw)
+  endif
+
+  eos_water%calculate_derivatives = PETSC_TRUE
+  call eos_water%LoadPTC(pw, compflow_auxvar%temp, compflow_auxvar%conc)
+  compflow_auxvar%den = eos_water%Density()
+  compflow_auxvar%dden_dp = eos_water%GetDwDp()
+  compflow_auxvar%dden_dt = eos_water%GetDwDt()
+  compflow_auxvar%vis = eos_water%Viscosity()
+  compflow_auxvar%dvis_dp = eos_water%GetDvisDp()
+  compflow_auxvar%dvis_dt = eos_water%GetDvisDt()
+  eos_water%calculate_derivatives = PETSC_FALSE
+
+  if (.not.saturated) then
+    compflow_auxvar%dden_dp = 0.d0
+    compflow_auxvar%dvis_dp = 0.d0
   endif
 
   if (option%iflag /= COMPFLOW_UPDATE_FOR_DERIVATIVE) then
@@ -366,7 +375,7 @@ subroutine CompFlowAuxVarPerturb(x,compflow_auxvar,global_auxvar, &
                               material_auxvar, &
                               material_auxvar_pert, &
                               characteristic_curves, &
-                              natural_id, &
+                              eos_water,natural_id, &
                               option)
   ! Calculates auxiliary variables for perturbed system
   !
@@ -388,6 +397,7 @@ subroutine CompFlowAuxVarPerturb(x,compflow_auxvar,global_auxvar, &
   type(material_auxvar_type) :: material_auxvar
   type(material_auxvar_type) :: material_auxvar_pert(:)
   class(characteristic_curves_type) :: characteristic_curves
+  class(eos_water_type), intent(inout) :: eos_water
 
   PetscInt :: idof, i
   PetscReal :: x_pert(COMPFLOW_MAX_DOF), pert
@@ -401,8 +411,8 @@ subroutine CompFlowAuxVarPerturb(x,compflow_auxvar,global_auxvar, &
     x_pert(idof) = x(idof) + pert
     call CompFlowAuxVarCompute(x_pert,compflow_auxvar(idof),global_auxvar, &
                             material_auxvar, &
-                            characteristic_curves,natural_id, &
-                            PETSC_TRUE,option)
+                            characteristic_curves,eos_water, &
+                            natural_id,PETSC_TRUE,option)
   enddo
 
 end subroutine CompFlowAuxVarPerturb
@@ -697,6 +707,11 @@ subroutine CompFlowAuxDestroy(aux)
     deallocate(aux%compflow_parameter)
   endif
   nullify(aux%compflow_parameter)
+
+  if (associated(aux%eos_water)) then
+    deallocate(aux%eos_water)
+  endif
+  nullify(aux%eos_water)
 
   deallocate(aux)
   nullify(aux)

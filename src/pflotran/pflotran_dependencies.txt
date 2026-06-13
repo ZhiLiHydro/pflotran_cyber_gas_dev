@@ -203,6 +203,7 @@ compositional_flow.o : \
   variables.o
 compositional_flow_aux.o : \
   characteristic_curves.o \
+  eos_water_class.o \
   global_aux.o \
   material_aux.o \
   matrix_zeroing.o \
@@ -440,10 +441,14 @@ eos.o : \
   eos_database.o \
   eos_gas.o \
   eos_water.o \
+  eos_water_class.o \
   input_aux.o \
   option.o \
   pflotran_constants.o \
   string.o
+eos_base_class.o : \
+  option.o \
+  pflotran_constants.o
 eos_database.o : \
   input_aux.o \
   lookup_table.o \
@@ -468,6 +473,10 @@ eos_water.o : \
   option.o \
   pflotran_constants.o \
   utility.o
+eos_water_class.o : \
+  eos_base_class.o \
+  eos_water.o \
+  pflotran_constants.o
 ert.o : \
   connection.o \
   coupler.o \
@@ -2206,7 +2215,7 @@ pm_compositional_flow.o : \
   compositional_flow_aux.o \
   convergence.o \
   debug.o \
-  eos_water.o \
+  eos_water_class.o \
   field.o \
   global.o \
   grid.o \

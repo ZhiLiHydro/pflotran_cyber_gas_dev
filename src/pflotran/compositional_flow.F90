@@ -515,8 +515,8 @@ subroutine CompFlowUpdateAuxVars(realization)
                             material_auxvars(ghosted_id), &
                             patch%characteristic_curves_array( &
                               patch%cc_id(ghosted_id))%ptr, &
-                            natural_id, &
-                            PETSC_TRUE,option)
+                            patch%aux%CompFlow%eos_water, &
+                            natural_id,PETSC_TRUE,option)
   enddo
 
   boundary_condition => patch%boundary_condition_list%first
@@ -550,7 +550,7 @@ subroutine CompFlowUpdateAuxVars(realization)
               max(boundary_condition%flow_aux_real_var(water_index,iconn)* &
                   dot_product(option%gravity, &
                               cur_connection_set%dist(1:3,iconn))* &
-                  compflow_density_kg,0.d0)
+                  compflow_auxvars(ZERO_INTEGER,ghosted_id)%den,0.d0)
           case default
             option%io_buffer = 'flow boundary itype not set up in &
               &CompFlowUpdateAuxVars'
@@ -583,8 +583,8 @@ subroutine CompFlowUpdateAuxVars(realization)
                               material_auxvars(ghosted_id), &
                               patch%characteristic_curves_array( &
                                 patch%cc_id(ghosted_id))%ptr, &
-                              natural_id, &
-                              PETSC_FALSE,option)
+                              patch%aux%CompFlow%eos_water, &
+                              natural_id,PETSC_FALSE,option)
     enddo
     boundary_condition => boundary_condition%next
   enddo
@@ -694,8 +694,8 @@ subroutine CompFlowUpdateFixedAccum(realization)
                             material_auxvars(ghosted_id), &
                             patch%characteristic_curves_array( &
                               patch%cc_id(ghosted_id))%ptr, &
-                            natural_id, &
-                            PETSC_TRUE,option)
+                            patch%aux%CompFlow%eos_water, &
+                            natural_id,PETSC_TRUE,option)
     call CompFlowAccumulation(compflow_auxvars(ZERO_INTEGER,ghosted_id), &
                            global_auxvars(ghosted_id), &
                            material_auxvars(ghosted_id), &
@@ -824,6 +824,7 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
                               material_auxvars_pert(:,ghosted_id), &
                               patch%characteristic_curves_array( &
                                 patch%cc_id(ghosted_id))%ptr, &
+                              patch%aux%CompFlow%eos_water, &
                               grid%nG2A(ghosted_id),option)
     enddo
     call VecRestoreArrayRead(field%flow_xx_loc,xx_loc_p, &
