@@ -875,7 +875,6 @@ subroutine GlobalSetAuxVarsAtTimeLevel(realization,time_level,time)
                                TEMPERATURE, SC_FUGA_COEFF, GAS_DENSITY_MOL, &
                                DARCY_VELOCITY
   use ZFlow_Aux_module, only : zflow_density_kg
-  use Compositional_Flow_Aux_module, only : compflow_density_kg
 
   use Discretization_module
   use Output_Common_module

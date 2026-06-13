@@ -102,8 +102,8 @@ subroutine PMCompFlowInitObject(this)
   class(pm_compflow_type) :: this
 
   call PMSubsurfaceFlowInit(this)
-  this%name = 'Z Flow'
-  this%header = 'Z FLOW'
+  this%name = 'Compositional Flow'
+  this%header = 'COMPOSITIONAL FLOW'
 
   nullify(this%max_change_ivar)
 
@@ -132,7 +132,7 @@ end subroutine PMCompFlowInitObject
 
 subroutine PMCompFlowReadSimOptionsBlock(this,input)
   !
-  ! Read ZFLOW options input block
+  ! Read COMPFLOW options input block
   !
   ! Author: Glenn Hammond
   ! Date: 06/04/26
@@ -143,7 +143,8 @@ subroutine PMCompFlowReadSimOptionsBlock(this,input)
   use String_module
   use Option_module
   use Utility_module
-  use EOS_Water_module
+  use EOS_Water_class, only : EOSWaterClassSetDensity, &
+                              EOSWaterClassSetViscosity
 
   implicit none
 
@@ -155,9 +156,14 @@ subroutine PMCompFlowReadSimOptionsBlock(this,input)
   character(len=MAXSTRINGLENGTH) :: error_string
   character(len=MAXSTRINGLENGTH) :: local_error_string
   PetscBool :: found
-  PetscReal :: array(1)
+  PetscReal :: array(10)
+  PetscReal :: liquid_density
+  PetscReal :: liquid_viscosity
+  PetscBool :: liquid_viscosity_read
 
   option => this%option
+  liquid_density = 1000.d0
+  liquid_viscosity_read = PETSC_FALSE
 
   error_string = 'CompFlow Options'
 
@@ -207,15 +213,16 @@ subroutine PMCompFlowReadSimOptionsBlock(this,input)
       case('NO_BCFLUX')
         compflow_calc_bcflux = PETSC_FALSE
       case('LIQUID_DENSITY')
-        call InputReadDouble(input,option,compflow_density_kg)
+        call InputReadDouble(input,option,liquid_density)
         call InputErrorMsg(input,option,keyword,error_string)
-        call InputReadAndConvertUnits(input,compflow_density_kg,'kg/m^3', &
+        call InputReadAndConvertUnits(input,liquid_density,'kg/m^3', &
                                       trim(error_string)//','//keyword,option)
       case('LIQUID_VISCOSITY')
-        call InputReadDouble(input,option,compflow_viscosity)
+        call InputReadDouble(input,option,liquid_viscosity)
         call InputErrorMsg(input,option,keyword,error_string)
-        call InputReadAndConvertUnits(input,compflow_viscosity,'Pa-s', &
+        call InputReadAndConvertUnits(input,liquid_viscosity,'Pa-s', &
                                       trim(error_string)//','//keyword,option)
+        liquid_viscosity_read = PETSC_TRUE
       case('DEBUG_CELL_ID')
         call InputReadInt(input,option,compflow_debug_cell_id)
         call InputErrorMsg(input,option,keyword,error_string)
@@ -225,9 +232,14 @@ subroutine PMCompFlowReadSimOptionsBlock(this,input)
   enddo
   call InputPopBlock(input,option)
 
-  compflow_density_kmol = compflow_density_kg / FMWH2O
-  array(1) = compflow_density_kg ! dist is the aux array
-  call EOSWaterSetDensity('CONSTANT',array)
+  array = 0.d0
+  array(1) = liquid_density
+  call EOSWaterClassSetDensity('CONSTANT',array)
+  if (liquid_viscosity_read) then
+    array = 0.d0
+    array(1) = liquid_viscosity
+    call EOSWaterClassSetViscosity('CONSTANT',array)
+  endif
 
 end subroutine PMCompFlowReadSimOptionsBlock
 
@@ -236,7 +248,7 @@ end subroutine PMCompFlowReadSimOptionsBlock
 subroutine PMCompFlowReadTSSelectCase(this,input,keyword,found, &
                                    error_string,option)
   !
-  ! Read timestepper settings specific to the ZFLOW process model
+  ! Read timestepper settings specific to the COMPFLOW process model
   !
   ! Author: Glenn Hammond
   ! Date: 06/04/26
@@ -281,7 +293,7 @@ end subroutine PMCompFlowReadTSSelectCase
 subroutine PMCompFlowReadNewtonSelectCase(this,input,keyword,found, &
                                        error_string,option)
   !
-  ! Reads input file parameters associated with the ZFLOW process model
+  ! Reads input file parameters associated with the COMPFLOW process model
   ! Newton solver convergence
   !
   ! Author: Glenn Hammond
@@ -302,11 +314,11 @@ subroutine PMCompFlowReadNewtonSelectCase(this,input,keyword,found, &
   character(len=MAXSTRINGLENGTH) :: error_string
   type(option_type), pointer :: option
 
-  error_string = 'ZFLOW Newton Solver'
+  error_string = 'COMPFLOW Newton Solver'
 
   select case(trim(keyword))
     case('ITOL_UPDATE')
-      option%io_buffer = 'ITOL_UPDATE not supported with ZFLOW. Please &
+      option%io_buffer = 'ITOL_UPDATE not supported with COMPFLOW. Please &
         &use MAX_ALLOW_LIQ_PRES_CHANGE_NI.'
       call PrintErrMsg(option)
   end select
@@ -371,7 +383,7 @@ end subroutine PMCompFlowSetup
 
 recursive subroutine PMCompFlowInitializeRun(this)
   !
-  ! Initializes the ZFLOW mode run.
+  ! Initializes the COMPFLOW mode run.
   !
   ! Author: Glenn Hammond
   ! Date: 06/04/26
@@ -435,7 +447,7 @@ recursive subroutine PMCompFlowInitializeRun(this)
 
   if (Initialized(this%temperature_change_governor)) then
     option%io_buffer = 'TEMPERATURE_CHANGE_GOVERNOR &
-      &may not be used with ZFLOW.'
+      &may not be used with COMPFLOW.'
     call PrintErrMsg(option)
   endif
 

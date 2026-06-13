@@ -141,16 +141,18 @@ subroutine CompFlowAccumulation(compflow_auxvar,global_auxvar,material_auxvar, &
   por_sat = saturation * porosity
 
   if (compflow_liq_flow_eq > 0) then
-    ! accumulation term units = m^3 liquid/s
-    ! Res[m^3 liquid/sec] = sat[m^3 liquid/m^3 void] * por[m^3 void/m^3 bulk] *
-    !                       vol[m^3 bulk] / dt[sec]
-    tempreal = volume_over_dt * compflow_density_kmol
+    ! accumulation term units = kg/s
+    ! Res[kg/sec] = den[kg/m^3] * sat[m^3 liquid/m^3 void] *
+    !               por[m^3 void/m^3 bulk] * vol[m^3 bulk] / dt[sec]
+    tempreal = volume_over_dt * compflow_auxvar%den
     Res(compflow_liq_flow_eq) = por_sat * tempreal
 
     if (calculate_derivatives) then
       Jac(compflow_liq_flow_eq,compflow_liq_flow_eq) = &
-        tempreal * (compflow_auxvar%dsat_dp * porosity + &
-                    saturation * compflow_auxvar%dpor_dp)
+        volume_over_dt * (compflow_auxvar%den * &
+          (compflow_auxvar%dsat_dp * porosity + &
+           saturation * compflow_auxvar%dpor_dp) + &
+          por_sat * compflow_auxvar%dden_dp)
     endif
   endif
 
@@ -223,18 +225,26 @@ subroutine CompFlowFluxHarmonicPermOnly(compflow_auxvar_up,global_auxvar_up, &
   PetscReal :: dist_up, dist_dn
   PetscReal :: upweight
 
-  PetscReal :: perm_ave_over_dist_visc
+  PetscReal :: perm_ave_over_dist
   PetscReal :: perm_up, perm_dn
   PetscReal :: delta_pressure
   PetscReal :: gravity_term
   PetscReal :: kr, q
   PetscReal :: dkr_dpup, dkr_dpdn
+  PetscReal :: dvis_dpup, dvis_dpdn
+  PetscReal :: dvis_dtup, dvis_dtdn
+  PetscReal :: vis_upwind
+  PetscReal :: dkr_over_vis_dpup, dkr_over_vis_dpdn
   PetscReal :: tempreal
   PetscReal :: numerator, denominator
   PetscReal :: dperm_ave_dKup, dperm_ave_dKdn
   PetscReal :: delta_conc
   PetscReal :: dq_dpup, dq_dpdn
   PetscReal :: dq_dKup, dq_dKdn
+  PetscReal :: density_ave
+  PetscReal :: dden_ave_dpup, dden_ave_dpdn
+  PetscReal :: dphi_dpup, dphi_dpdn
+  PetscReal :: dgravity_dden_up, dgravity_dden_dn
   PetscReal, parameter :: L_per_m3 = 1.d3
   PetscReal :: conc_upwind, dconc_upwind_dup, dconc_upwind_ddn
   PetscReal :: D_hyd_up, D_hyd_dn
@@ -268,42 +278,90 @@ subroutine CompFlowFluxHarmonicPermOnly(compflow_auxvar_up,global_auxvar_up, &
 
     numerator = perm_up * perm_dn
     denominator = dist_up*perm_dn + dist_dn*perm_up
-    perm_ave_over_dist_visc = numerator / (denominator * compflow_viscosity)
+    perm_ave_over_dist = numerator / denominator
 
     if (compflow_auxvar_up%kr + compflow_auxvar_dn%kr > floweps) then
 
-      gravity_term = compflow_density_kg * dist_gravity
+      density_ave = upweight*compflow_auxvar_up%den + &
+                    (1.d0-upweight)*compflow_auxvar_dn%den
+      dden_ave_dpup = upweight*compflow_auxvar_up%dden_dp
+      dden_ave_dpdn = (1.d0-upweight)*compflow_auxvar_dn%dden_dp
+      dgravity_dden_up = upweight*dist_gravity
+      dgravity_dden_dn = (1.d0-upweight)*dist_gravity
+
+      gravity_term = density_ave * dist_gravity
       delta_pressure = compflow_auxvar_up%pres - &
                        compflow_auxvar_dn%pres + &
                        gravity_term
+      dphi_dpup = 1.d0 + dgravity_dden_up*compflow_auxvar_up%dden_dp
+      dphi_dpdn = -1.d0 + dgravity_dden_dn*compflow_auxvar_dn%dden_dp
+
       dkr_dpup = 0.d0
       dkr_dpdn = 0.d0
+      dvis_dpup = 0.d0
+      dvis_dpdn = 0.d0
+      dvis_dtup = 0.d0
+      dvis_dtdn = 0.d0
+      dkr_over_vis_dpup = 0.d0
+      dkr_over_vis_dpdn = 0.d0
       if (delta_pressure >= 0.d0) then
         kr = compflow_auxvar_up%kr
+        vis_upwind = compflow_auxvar_up%vis
         dkr_dpup = compflow_auxvar_up%dkr_dp
+        dvis_dpup = compflow_auxvar_up%dvis_dp
+        dvis_dtup = compflow_auxvar_up%dvis_dt
+        dkr_over_vis_dpup = dkr_dpup/vis_upwind - &
+          kr/(vis_upwind*vis_upwind)*dvis_dpup
       else
         kr = compflow_auxvar_dn%kr
+        vis_upwind = compflow_auxvar_dn%vis
         dkr_dpdn = compflow_auxvar_dn%dkr_dp
+        dvis_dpdn = compflow_auxvar_dn%dvis_dp
+        dvis_dtdn = compflow_auxvar_dn%dvis_dt
+        dkr_over_vis_dpdn = dkr_dpdn/vis_upwind - &
+          kr/(vis_upwind*vis_upwind)*dvis_dpdn
       endif
 
       if (kr > floweps) then
-        ! v_darcy[m/sec] = perm[m^2] / dist[m] * kr[-] / mu[Pa-sec]
-        !                    dP[Pa]]
-        v_darcy = perm_ave_over_dist_visc * kr * delta_pressure
+        ! v_darcy[m/sec] = perm[m^2]/dist[m] * kr[-]/mu[Pa-s] * dP[Pa]
+        v_darcy = perm_ave_over_dist * kr / vis_upwind * delta_pressure
         ! q[m^3 liquid/sec] = v_darcy[m/sec] * area[m^2]
         q = v_darcy * area
-        ! Res[m^3 liquid/sec]
-        Res(compflow_liq_flow_eq) = Res(compflow_liq_flow_eq) + &
-                                                 q * compflow_density_kmol
+        ! Res[kg/sec]
+        Res(compflow_liq_flow_eq) = Res(compflow_liq_flow_eq) + q * density_ave
 
         if (calculate_derivatives) then
-          tempreal = perm_ave_over_dist_visc * area
-          dq_dpup = tempreal * (delta_pressure * dkr_dpup + kr)
-          dq_dpdn = tempreal * (delta_pressure * dkr_dpdn - kr)
+          tempreal = perm_ave_over_dist * area
+          if (delta_pressure >= 0.d0) then
+            dq_dpup = tempreal * (dkr_over_vis_dpup*delta_pressure + &
+              kr/vis_upwind*dphi_dpup)
+            dq_dpdn = tempreal * kr/vis_upwind*dphi_dpdn
+          else
+            dq_dpup = tempreal * kr/vis_upwind*dphi_dpup
+            dq_dpdn = tempreal * (dkr_over_vis_dpdn*delta_pressure + &
+              kr/vis_upwind*dphi_dpdn)
+          endif
           Jup(compflow_liq_flow_eq,compflow_liq_flow_eq) = &
-                                              dq_dpup * compflow_density_kmol
+            dq_dpup * density_ave + q * dden_ave_dpup
           Jdn(compflow_liq_flow_eq,compflow_liq_flow_eq) = &
-                                              dq_dpdn * compflow_density_kmol
+            dq_dpdn * density_ave + q * dden_ave_dpdn
+          if (compflow_heat_tran_eq > 0) then
+            if (delta_pressure >= 0.d0) then
+              tempreal = perm_ave_over_dist * area * &
+                (-kr/(vis_upwind*vis_upwind)*dvis_dtup*delta_pressure + &
+                 kr/vis_upwind*dgravity_dden_up*compflow_auxvar_up%dden_dt)
+              Jup(compflow_liq_flow_eq,compflow_heat_tran_eq) = &
+                tempreal * density_ave + q * upweight * &
+                compflow_auxvar_up%dden_dt
+            else
+              tempreal = perm_ave_over_dist * area * &
+                (-kr/(vis_upwind*vis_upwind)*dvis_dtdn*delta_pressure + &
+                 kr/vis_upwind*dgravity_dden_dn*compflow_auxvar_dn%dden_dt)
+              Jdn(compflow_liq_flow_eq,compflow_heat_tran_eq) = &
+                tempreal * density_ave + q * (1.d0-upweight) * &
+                compflow_auxvar_dn%dden_dt
+            endif
+          endif
         endif
       endif
     endif
@@ -437,13 +495,17 @@ subroutine CompFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
 
   PetscInt :: bc_type
   PetscInt :: idof
-  PetscReal :: perm_ave_over_dist_visc
+  PetscReal :: perm_ave_over_dist
   PetscReal :: dist_gravity
   PetscReal :: delta_pressure
   PetscReal :: gravity_term
   PetscReal :: kr, q
-  PetscReal :: dkr_dp
+  PetscReal :: dkr_dp, dvis_dp
+  PetscReal :: vis_upwind
+  PetscReal :: dkr_over_vis_dp
   PetscReal :: perm_dn
+  PetscReal :: density_ave
+  PetscReal :: dden_ave_dpdn
   PetscReal :: boundary_pressure
   PetscReal :: ddelta_pressure_dpdn
   PetscBool :: derivative_toggle
@@ -478,6 +540,8 @@ subroutine CompFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
     call PermeabilityTensorToScalar(material_auxvar_dn,dist,perm_dn)
 
     kr = 0.d0
+    density_ave = compflow_auxvar_dn%den
+    dden_ave_dpdn = compflow_auxvar_dn%dden_dp
     bc_type = ibndtype(auxvar_mapping(COMPFLOW_COND_WATER_INDEX))
     derivative_toggle = PETSC_TRUE
     select case(bc_type)
@@ -491,17 +555,8 @@ subroutine CompFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
           ! dist(1:3) = vector(3) - unit vector
           dist_gravity = dist(0) * dot_product(option%gravity,dist(1:3))
 
-          if (bc_type == DIRICHLET_CONDUCTANCE_BC .or. &
-              bc_type == HYDROSTATIC_CONDUCTANCE_BC) then
-            idof = auxvar_mapping(COMPFLOW_COND_WATER_AUX_INDEX)
-            perm_ave_over_dist_visc = auxvars(idof) / compflow_viscosity
-          else
-            perm_ave_over_dist_visc = perm_dn / (dist(0) * compflow_viscosity)
-            dperm_dK = 1.d0 / (dist(0) * compflow_viscosity)
-          endif
-
           boundary_pressure = compflow_auxvar_up%pres
-          gravity_term = compflow_density_kg * dist_gravity
+          gravity_term = compflow_auxvar_dn%den * dist_gravity
           delta_pressure = boundary_pressure - &
                           compflow_auxvar_dn%pres + &
                           gravity_term
@@ -518,17 +573,37 @@ subroutine CompFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
                 ddelta_pressure_dpdn = 0.d0
               endif
           end select
+          dkr_over_vis_dp = 0.d0
           if (delta_pressure >= 0.d0) then
             kr = compflow_auxvar_up%kr
+            vis_upwind = compflow_auxvar_up%vis
             dkr_dp = 0.d0
+            dvis_dp = compflow_auxvar_up%dvis_dp
+            dkr_over_vis_dp = -kr/(vis_upwind*vis_upwind)*dvis_dp
+            density_ave = compflow_auxvar_up%den
+            dden_ave_dpdn = 0.d0
           else
             kr = compflow_auxvar_dn%kr
+            vis_upwind = compflow_auxvar_dn%vis
             dkr_dp = compflow_auxvar_dn%dkr_dp
+            dvis_dp = compflow_auxvar_dn%dvis_dp
+            dkr_over_vis_dp = dkr_dp/vis_upwind - &
+              kr/(vis_upwind*vis_upwind)*dvis_dp
+            density_ave = compflow_auxvar_dn%den
+            dden_ave_dpdn = compflow_auxvar_dn%dden_dp
           endif
 
-          ! v_darcy[m/sec] = perm[m^2] / dist[m] * kr[-] / mu[Pa-sec]
-          !                    dP[Pa]]
-          v_darcy = perm_ave_over_dist_visc * kr * delta_pressure
+          if (bc_type == DIRICHLET_CONDUCTANCE_BC .or. &
+              bc_type == HYDROSTATIC_CONDUCTANCE_BC) then
+            idof = auxvar_mapping(COMPFLOW_COND_WATER_AUX_INDEX)
+            perm_ave_over_dist = auxvars(idof) / vis_upwind
+          else
+            perm_ave_over_dist = perm_dn / (dist(0) * vis_upwind)
+            dperm_dK = 1.d0 / (dist(0) * vis_upwind)
+          endif
+
+          ! v_darcy[m/sec] = perm[m^2]/dist[m] * kr[-]/mu[Pa-s] * dP[Pa]
+          v_darcy = perm_ave_over_dist * kr / vis_upwind * delta_pressure
 
           if (bc_type == PONDED_WATER_BC) then
             idof = auxvar_mapping(COMPFLOW_COND_WATER_INDEX)
@@ -538,6 +613,7 @@ subroutine CompFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
               v_darcy = tempreal
               ddelta_pressure_dpdn = 0.d0
               dkr_dp = 0.d0
+              dkr_over_vis_dp = 0.d0
             endif
           endif
         endif
@@ -557,13 +633,15 @@ subroutine CompFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
     if (dabs(v_darcy) > 0.d0 .or. kr > 0.d0) then
       ! q[m^3 liquid/sec] = v_darcy[m/sec] * area[m^2]
       q = v_darcy * area
-      ! Res[m^3 liquid/sec]
-      Res(compflow_liq_flow_eq) = Res(compflow_liq_flow_eq) + q * compflow_density_kmol
+      ! Res[kg/sec]
+      Res(compflow_liq_flow_eq) = Res(compflow_liq_flow_eq) + q * density_ave
       if (calculate_derivatives .and. derivative_toggle) then
         ! derivative toggle takes care of the NEUMANN side
-        dq_dpdn = area * perm_ave_over_dist_visc * &
-                  (dkr_dp * delta_pressure + ddelta_pressure_dpdn * kr)
-        Jdn(compflow_liq_flow_eq,compflow_liq_flow_eq) = dq_dpdn * compflow_density_kmol
+        dq_dpdn = area * perm_ave_over_dist * &
+                  (dkr_over_vis_dp*delta_pressure + &
+                   kr/vis_upwind*ddelta_pressure_dpdn)
+        Jdn(compflow_liq_flow_eq,compflow_liq_flow_eq) = &
+          dq_dpdn * density_ave + q * dden_ave_dpdn
       endif
     endif
     if (debug_connection) then
@@ -677,8 +755,8 @@ subroutine CompFlowSrcSink(option,flow_aux_real_var,flow_src_sink_mapping, &
         call PrintErrMsg(option)
     end select
     ss_flow_vol_flux = qsrc_m3
-    ! Res[m^3 liquid/sec]
-    Res(compflow_liq_flow_eq) = qsrc_m3 * compflow_density_kmol
+    ! Res[kg/sec]
+    Res(compflow_liq_flow_eq) = qsrc_m3 * compflow_auxvar%den
 
     if (calculate_derivatives) then
     endif
