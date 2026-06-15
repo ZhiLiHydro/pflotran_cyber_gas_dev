@@ -651,7 +651,7 @@ subroutine THCFlowBCFlux(ibndtype,auxvar_mapping,auxvars, &
   implicit none
 
   type(option_type) :: option
-  PetscInt :: ibndtype(1)
+  PetscInt :: ibndtype(:)
   PetscInt :: auxvar_mapping(THCFLOW_MAX_INDEX)
   PetscReal :: auxvars(:) ! from aux_real_var array
   type(thcflow_auxvar_type) :: thcflow_auxvar_up, thcflow_auxvar_dn
