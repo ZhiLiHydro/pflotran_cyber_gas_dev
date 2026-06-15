@@ -4748,7 +4748,8 @@ subroutine PatchUpdateCouplerAuxVarsTHCFlow(patch,coupler,option)
     coupler%flow_bc_type(energy_index) = flow_condition%temperature%itype
     select case(flow_condition%temperature%itype)
       case(DIRICHLET_BC,NEUMANN_BC,ZERO_GRADIENT_BC)
-        if (.not.hydrostatic_update_called) then
+        if (flow_condition%temperature%itype == DIRICHLET_BC .or. &
+            .not.hydrostatic_update_called) then
           select type(dataset => &
                       flow_condition%temperature%dataset)
             class is(dataset_ascii_type)
@@ -4773,7 +4774,8 @@ subroutine PatchUpdateCouplerAuxVarsTHCFlow(patch,coupler,option)
     coupler%flow_bc_type(solute_index) = flow_condition%concentration%itype
     select case(flow_condition%concentration%itype)
       case(DIRICHLET_BC,ZERO_GRADIENT_BC)
-        if (.not.hydrostatic_update_called) then
+        if (flow_condition%concentration%itype == DIRICHLET_BC .or. &
+            .not.hydrostatic_update_called) then
           coupler%flow_aux_real_var(solute_index,1:num_connections) = &
             flow_condition%concentration%dataset%rarray(1)
         endif
