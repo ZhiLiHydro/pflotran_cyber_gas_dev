@@ -2496,6 +2496,7 @@ subroutine OutputMassBalance(realization_base)
       endif
 
       select case(option%iflowmode)
+        case(NULL_MODE)
         case(RICHARDS_MODE,RICHARDS_TS_MODE,TH_MODE,TH_TS_MODE, &
              PNF_MODE,COMPFLOW_MODE)
           call OutputWriteToHeader(fid,'Global Water Mass','kg','',icol)
@@ -2914,6 +2915,10 @@ subroutine OutputMassBalance(realization_base)
                  endif
               case(RICHARDS_MODE,RICHARDS_TS_MODE,TH_MODE,TH_TS_MODE,PNF_MODE)
                 call OutputWriteToHeader(fid,string,'kg','',icol)
+              case default
+                option%io_buffer = &
+                  'Mass balance region output not setup for flow mode.'
+                call PrintErrMsg(option)
             end select
           endif
           if (option%ntrandof > 0) then
@@ -3037,6 +3042,7 @@ subroutine OutputMassBalance(realization_base)
     select type(realization_base)
       class is(realization_subsurface_type)
         select case(option%iflowmode)
+          case(NULL_MODE)
           case(RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE)
             call RichardsComputeMassBalance(realization_base,sum_kg(1,:))
           case(ZFLOW_MODE)
@@ -3082,6 +3088,7 @@ subroutine OutputMassBalance(realization_base)
 
     if (OptionIsIORank(option)) then
       select case(option%iflowmode)
+        case(NULL_MODE)
         case(RICHARDS_MODE,RICHARDS_TS_MODE,H_MODE,TH_MODE, &
              TH_TS_MODE,ZFLOW_MODE,COMPFLOW_MODE,PNF_MODE)
           do iphase = 1, option%nphase
@@ -3318,6 +3325,7 @@ subroutine OutputMassBalance(realization_base)
 #endif
 
       select case(option%iflowmode)
+        case(NULL_MODE)
         case(RICHARDS_MODE,RICHARDS_TS_MODE,ZFLOW_MODE,COMPFLOW_MODE,PNF_MODE)
           ! print out cumulative H2O flux
           sum_kg = 0.d0
