@@ -239,11 +239,9 @@ subroutine CompFlowFluxHarmonicPermOnly(compflow_auxvar_up,global_auxvar_up, &
   PetscReal :: dkr_over_vis_dcup, dkr_over_vis_dcdn
   PetscReal :: tempreal
   PetscReal :: numerator, denominator
-  PetscReal :: dperm_ave_dKup, dperm_ave_dKdn
   PetscReal :: delta_conc
   PetscReal :: dq_dpup, dq_dpdn
   PetscReal :: dq_dcup, dq_dcdn
-  PetscReal :: dq_dKup, dq_dKdn
   PetscReal :: density_ave
   PetscReal :: dden_ave_dpup, dden_ave_dpdn
   PetscReal :: dphi_dpup, dphi_dpdn
@@ -257,7 +255,6 @@ subroutine CompFlowFluxHarmonicPermOnly(compflow_auxvar_up,global_auxvar_up, &
   PetscReal :: dD_mech_up_dpup, dD_mech_dn_dpdn
   PetscReal :: dDeff_over_dist_dpup, dDeff_over_dist_dpdn
   PetscReal :: dD_hyd_up_dpup, dD_hyd_dn_dpdn
-  PetscReal :: dDeff_over_dist_dKup, dDeff_over_dist_dKdn
 
   Res = 0.d0
   Jup = 0.d0
@@ -268,8 +265,6 @@ subroutine CompFlowFluxHarmonicPermOnly(compflow_auxvar_up,global_auxvar_up, &
   dq_dpdn = 0.d0
   dq_dcup = 0.d0
   dq_dcdn = 0.d0
-  dq_dKup = 0.d0
-  dq_dKdn = 0.d0
   delta_pressure = 0.d0
   delta_conc = 0.d0
 
@@ -537,10 +532,8 @@ subroutine CompFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
   PetscReal :: boundary_pressure
   PetscReal :: ddelta_pressure_dpdn
   PetscBool :: derivative_toggle
-  PetscReal :: dperm_dK
   PetscReal :: delta_conc
   PetscReal :: dq_dpdn, dq_dcdn
-  PetscReal :: dq_dKdn
   PetscReal, parameter :: L_per_m3 = 1.d3
   PetscReal :: conc_upwind, dconc_upwind_ddn
   PetscReal :: D_hyd_dn
@@ -550,7 +543,6 @@ subroutine CompFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
   PetscReal :: dispersion_scale
   PetscReal :: dD_mech_dn_dpdn
   PetscReal :: dDeff_over_dist_dpdn
-  PetscReal :: dDeff_over_dist_dKdn
   PetscReal :: dD_hyd_dn_dpdn
   PetscReal :: tempreal
 
@@ -560,8 +552,6 @@ subroutine CompFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
   q = 0.d0
   dq_dpdn = 0.d0
   dq_dcdn = 0.d0
-  dq_dKdn = 0.d0
-  dperm_dK = 0.d0
   delta_pressure = 0.d0
   delta_conc = 0.d0
 
@@ -633,7 +623,6 @@ subroutine CompFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
             perm_ave_over_dist = auxvars(idof) / vis_upwind
           else
             perm_ave_over_dist = perm_dn / (dist(0) * vis_upwind)
-            dperm_dK = 1.d0 / (dist(0) * vis_upwind)
           endif
 
           ! v_darcy[m/sec] = perm[m^2]/dist[m] * kr[-]/mu[Pa-s] * dP[Pa]
@@ -856,7 +845,6 @@ subroutine CompFlowAccumDerivative(compflow_auxvar,global_auxvar, &
 
   PetscReal :: res_pert(COMPFLOW_MAX_DOF)
   PetscReal :: Jdum(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-  PetscReal :: dJdum(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
   PetscInt :: idof, ieq
 
   call CompFlowAccumulation(compflow_auxvar(ZERO_INTEGER), &
@@ -921,7 +909,6 @@ subroutine XXFluxDerivative(compflow_auxvar_up,global_auxvar_up, &
   PetscReal :: res_pert(COMPFLOW_MAX_DOF)
   PetscReal :: v_darcy_dum
   PetscReal :: Jdum(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-  PetscReal :: dJdum(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
   PetscInt :: idof, ieq
 
   Jup = 0.d0
@@ -1009,7 +996,6 @@ subroutine XXBCFluxDerivative(ibndtype,auxvar_mapping,auxvars, &
   PetscReal :: res_pert(COMPFLOW_MAX_DOF)
   PetscReal :: v_darcy_dum
   PetscReal :: Jdum(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
-  PetscReal :: dJdum(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
   PetscInt :: idof, ieq
 
   Jdn = 0.d0

@@ -63,7 +63,7 @@ subroutine CompFlowSetup(realization)
   PetscInt :: ghosted_id, iconn, sum_connection, local_id
   PetscBool :: error_found
   PetscInt :: flag(10)
-  PetscInt :: temp_int, idof, imat
+  PetscInt :: temp_int, idof
   PetscBool, allocatable :: dof_is_active(:)
   PetscErrorCode :: ierr
                                                 ! extra index for derivatives
