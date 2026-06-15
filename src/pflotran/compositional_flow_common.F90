@@ -11,9 +11,6 @@ module Compositional_Flow_Common_module
 
   private
 
-
-#define SOLUTE_TRANSPORT
-
 ! Cutoff parameters
   PetscReal, parameter :: eps       = 1.d-8
   PetscReal, parameter :: floweps   = 0.d0
@@ -156,7 +153,6 @@ subroutine CompFlowAccumulation(compflow_auxvar,global_auxvar,material_auxvar, &
     endif
   endif
 
-#if defined(SOLUTE_TRANSPORT)
   if (compflow_sol_tran_eq > 0) then
     ! accumulation term units = mol/s
     ! Res[mole/sec] = c [mol/L] * 1000 [L/m^3 liquid]
@@ -175,10 +171,6 @@ subroutine CompFlowAccumulation(compflow_auxvar,global_auxvar,material_auxvar, &
       endif
     endif
   endif
-#else
-  Res(compflow_sol_tran_eq) = 0.d0
-  Jac(compflow_sol_tran_eq,compflow_sol_tran_eq) = 1.d0
-#endif
 
 end subroutine CompFlowAccumulation
 
@@ -392,7 +384,6 @@ subroutine CompFlowFluxHarmonicPermOnly(compflow_auxvar_up,global_auxvar_up, &
     endif
   endif
 
-#if defined(SOLUTE_TRANSPORT)
   if (compflow_sol_tran_eq > 0) then
     if (q >= 0) then
       conc_upwind = compflow_auxvar_up%conc
@@ -473,7 +464,6 @@ subroutine CompFlowFluxHarmonicPermOnly(compflow_auxvar_up,global_auxvar_up, &
                                                 delta_conc
     endif
   endif
-#endif
 
 end subroutine CompFlowFluxHarmonicPermOnly
 
@@ -683,7 +673,6 @@ subroutine CompFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
     endif
   endif
 
-#if defined(SOLUTE_TRANSPORT)
   if (compflow_sol_tran_eq > 0) then
     if (q >= 0) then
       conc_upwind = compflow_auxvar_up%conc
@@ -730,7 +719,6 @@ subroutine CompFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
                                                 delta_conc
     endif
   endif
-#endif
 
 end subroutine CompFlowBCFluxHarmonicPermOnly
 
