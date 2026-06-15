@@ -376,7 +376,7 @@ subroutine CompFlowViscosity(auxvar,global_auxvar,option)
   PetscReal, parameter :: mu_min = 1.d-3
   PetscReal, parameter :: mu_max = 1.d0
   PetscReal, parameter :: velocity_max = 1.d0
-  
+
   PetscReal :: K = 1.d0
   PetscReal :: n = 1.d0
   PetscReal :: velocity
