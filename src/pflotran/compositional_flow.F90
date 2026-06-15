@@ -515,7 +515,6 @@ subroutine CompFlowUpdateAuxVars(realization)
                             material_auxvars(ghosted_id), &
                             patch%characteristic_curves_array( &
                               patch%cc_id(ghosted_id))%ptr, &
-                            patch%aux%CompFlow%eos_water, &
                             natural_id,PETSC_TRUE,option)
   enddo
 
@@ -583,7 +582,6 @@ subroutine CompFlowUpdateAuxVars(realization)
                               material_auxvars(ghosted_id), &
                               patch%characteristic_curves_array( &
                                 patch%cc_id(ghosted_id))%ptr, &
-                              patch%aux%CompFlow%eos_water, &
                               natural_id,PETSC_FALSE,option)
     enddo
     boundary_condition => boundary_condition%next
@@ -694,7 +692,6 @@ subroutine CompFlowUpdateFixedAccum(realization)
                             material_auxvars(ghosted_id), &
                             patch%characteristic_curves_array( &
                               patch%cc_id(ghosted_id))%ptr, &
-                            patch%aux%CompFlow%eos_water, &
                             natural_id,PETSC_TRUE,option)
     call CompFlowAccumulation(compflow_auxvars(ZERO_INTEGER,ghosted_id), &
                            global_auxvars(ghosted_id), &
@@ -824,7 +821,6 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
                               material_auxvars_pert(:,ghosted_id), &
                               patch%characteristic_curves_array( &
                                 patch%cc_id(ghosted_id))%ptr, &
-                              patch%aux%CompFlow%eos_water, &
                               grid%nG2A(ghosted_id),option)
     enddo
     call VecRestoreArrayRead(field%flow_xx_loc,xx_loc_p, &
