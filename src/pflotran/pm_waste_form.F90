@@ -3179,44 +3179,62 @@ subroutine PMWFSetup(this)
     select type(cur_mechanism)
       ! set up indexing of solute concentrations for fmdm model:
       type is(wf_mechanism_fmdm_type)
-        species_name = 'O2(aq)'
-        cur_mechanism%mapping_fmdm_to_pflotran(cur_mechanism%iO2) = &
-          ReactionAuxGetPriSpecIDFromName(species_name,reaction,option)
-        species_name = 'CO3--'
-        cur_mechanism%mapping_fmdm_to_pflotran(cur_mechanism%iCO3_2n) = &
-          ReactionAuxGetPriSpecIDFromName(species_name,reaction,option)
-        species_name = 'H2(aq)'
-        cur_mechanism%mapping_fmdm_to_pflotran(cur_mechanism%iH2) = &
-          ReactionAuxGetPriSpecIDFromName(species_name,reaction,option)
-        species_name = 'Fe++'
-        cur_mechanism%mapping_fmdm_to_pflotran(cur_mechanism%iFe_2p) = &
-          ReactionAuxGetPriSpecIDFromName(species_name,reaction,option)
+        if (associated(reaction)) then
+          species_name = 'O2(aq)'
+          cur_mechanism%mapping_fmdm_to_pflotran(cur_mechanism%iO2) = &
+            ReactionAuxGetPriSpecIDFromName(species_name,reaction,option)
+          species_name = 'CO3--'
+          cur_mechanism%mapping_fmdm_to_pflotran(cur_mechanism%iCO3_2n) = &
+            ReactionAuxGetPriSpecIDFromName(species_name,reaction,option)
+          species_name = 'H2(aq)'
+          cur_mechanism%mapping_fmdm_to_pflotran(cur_mechanism%iH2) = &
+            ReactionAuxGetPriSpecIDFromName(species_name,reaction,option)
+          species_name = 'Fe++'
+          cur_mechanism%mapping_fmdm_to_pflotran(cur_mechanism%iFe_2p) = &
+            ReactionAuxGetPriSpecIDFromName(species_name,reaction,option)
+        else
+          option%io_buffer = 'FMDM waste form mechanism requires reactive &
+                             &transport (pm_rt).'
+          call PrintErrMsg(option)
+        endif
       type is(wf_mechanism_fmdm_surrogate_type)
-        species_name = 'O2(aq)'
-        cur_mechanism%mapping_surrfmdm_to_pflotran(cur_mechanism%iO2) = &
-          ReactionAuxGetPriSpecIDFromName(species_name,reaction,option)
-        species_name = 'CO3--'
-        cur_mechanism%mapping_surrfmdm_to_pflotran(cur_mechanism%iCO3_2n) = &
-          ReactionAuxGetPriSpecIDFromName(species_name,reaction,option)
-        species_name = 'H2(aq)'
-        cur_mechanism%mapping_surrfmdm_to_pflotran(cur_mechanism%iH2) = &
-          ReactionAuxGetPriSpecIDFromName(species_name,reaction,option)
-        species_name = 'Fe++'
-        cur_mechanism%mapping_surrfmdm_to_pflotran(cur_mechanism%iFe_2p) = &
-          ReactionAuxGetPriSpecIDFromName(species_name,reaction,option)
+        if (associated(reaction)) then
+          species_name = 'O2(aq)'
+          cur_mechanism%mapping_surrfmdm_to_pflotran(cur_mechanism%iO2) = &
+            ReactionAuxGetPriSpecIDFromName(species_name,reaction,option)
+          species_name = 'CO3--'
+          cur_mechanism%mapping_surrfmdm_to_pflotran(cur_mechanism%iCO3_2n) = &
+            ReactionAuxGetPriSpecIDFromName(species_name,reaction,option)
+          species_name = 'H2(aq)'
+          cur_mechanism%mapping_surrfmdm_to_pflotran(cur_mechanism%iH2) = &
+            ReactionAuxGetPriSpecIDFromName(species_name,reaction,option)
+          species_name = 'Fe++'
+          cur_mechanism%mapping_surrfmdm_to_pflotran(cur_mechanism%iFe_2p) = &
+            ReactionAuxGetPriSpecIDFromName(species_name,reaction,option)
+        else
+          option%io_buffer = 'FMDM SURROGATE waste form mechanism requires &
+                             &reactive transport (pm_rt).'
+          call PrintErrMsg(option)
+        endif
       type is(wf_mechanism_glass_type)
         if (cur_mechanism%use_pH) then
-          if ((associated(this%realization%reaction%species_idx) .and. &
-              (this%realization%reaction%species_idx%h_ion_id == 0)) .or. &
-              (.not.associated(this%realization%reaction%species_idx))) then
-            option%io_buffer = 'pH may not be calculated when H+ is not &
-                               &defined as a species and/or the card&
-                               &USE_FULL_GEOCHEMISTRY is not specified in the &
-                               &CHEMISTRY block - (MECHANISM GLASS).'
-            call PrintErrMsg(option)
+          if (associated(reaction)) then
+            if ((associated(this%realization%reaction%species_idx) .and. &
+                (this%realization%reaction%species_idx%h_ion_id == 0)) .or. &
+                (.not.associated(this%realization%reaction%species_idx))) then
+              option%io_buffer = 'pH may not be calculated when H+ is not &
+                                 &defined as a species and/or the card&
+                                 &USE_FULL_GEOCHEMISTRY is not specified in the &
+                                 &CHEMISTRY block - (MECHANISM GLASS).'
+              call PrintErrMsg(option)
+            else
+              cur_mechanism%h_ion_id = &
+                      this%realization%reaction%species_idx%h_ion_id
+            endif
           else
-            cur_mechanism%h_ion_id = &
-                    this%realization%reaction%species_idx%h_ion_id
+            option%io_buffer = 'GLASS waste form mechanism with use_pH &
+                               &requires reactive transport (pm_rt).'
+            call PrintErrMsg(option)
           endif
         endif
         if (cur_mechanism%use_Q) then
@@ -4414,6 +4432,16 @@ subroutine PMWFSolve(this,time,ierr)
                          ((local_id - 1) * this%option%ntrandof)
                    xx_p(idof) = xx_p(idof) + &                     ! mol-rad/kg-water
                         (inst_diss_molality*cur_waste_form%scaling_factor(k))
+                case(NWT_MODE)
+                  inst_diss_bulk_conc = &                         ! mol-rad/m^3-bulk
+                    cur_waste_form%instantaneous_mass_rate(j) * & ! mol-rad/sec
+                    this%realization%option%tran_dt / &           ! sec
+                    ! [m^3-bulk]
+                    material_auxvars(ghosted_id)%volume           ! [m^3-bulk]
+                  idof = cwfm%rad_species_list(j)%ispecies + &
+                         ((local_id - 1) * this%option%ntrandof)
+                  xx_p(idof) = xx_p(idof) + &                     ! mol-rad/kg-water
+                               (inst_diss_bulk_conc*cur_waste_form%scaling_factor(k))
                 case default
                   option%io_buffer = 'Waste form not implemented with current transport mode.'
                   call PrintErrMsg(option)
