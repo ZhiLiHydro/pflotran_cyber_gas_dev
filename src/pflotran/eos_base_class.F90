@@ -46,30 +46,9 @@ module EOS_Base_class
     procedure, public :: ClearDerivatives => EOSBaseClearDerivatives
   end type eos_base_type
 
-  public :: EOSBaseCreate, &
-            EOSStateCreate
+  public :: EOSBaseInit
 
 contains
-
-! ************************************************************************** !
-
-function EOSStateCreate() result(state)
-  implicit none
-
-  type(eos_state_type) :: state
-
-end function EOSStateCreate
-
-! ************************************************************************** !
-
-function EOSBaseCreate() result(base)
-  implicit none
-
-  class(eos_base_type), pointer :: base
-
-  nullify(base)
-
-end function EOSBaseCreate
 
 ! ************************************************************************** !
 

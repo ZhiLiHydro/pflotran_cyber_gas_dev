@@ -74,6 +74,7 @@ module EOS_Water_class
     procedure(EOSWaterClassSatPresKernel), pointer, nopass :: &
       SatPresEval => null()
   contains
+    procedure, public :: Init            => EOSWaterClassInit
     procedure, public :: Density        => EOSWaterClassDensity
     procedure, public :: Viscosity      => EOSWaterClassViscosity
     procedure, public :: SetDensityModel => EOSWaterSetDensityModel
@@ -81,6 +82,7 @@ module EOS_Water_class
   end type eos_water_type
 
   public :: EOSWaterCreate, &
+            EOSWaterClassInit, &
             EOSWaterClassSetDensity, &
             EOSWaterClassSetViscosity, &
             EOSWaterApplyPendingConfig, &
@@ -91,9 +93,36 @@ contains
 
 ! ************************************************************************** !
 
+subroutine EOSWaterClassInit(this)
+  !
+  ! Initializes a water EOS object
+  !
+  ! Author: Glenn Hammond
+  ! Date: 06/15/26
+  !
+  use EOS_Base_class, only : EOSBaseInit
+
+  implicit none
+
+  class(eos_water_type) :: this
+
+  call EOSBaseInit(this)
+
+  this%density_model = EOS_WATER_DENSITY_IFC67
+  this%viscosity_model = EOS_WATER_VISCOSITY_DEFAULT
+  this%constant_density = 1000.d0
+  this%constant_viscosity = 1.d-3
+  this%DensityEval => EOSWaterDensityIFC67
+  this%ViscosityEval => EOSWaterViscosity1
+  this%SatPresEval => EOSWaterSaturationPressureIFC67
+
+end subroutine EOSWaterClassInit
+
+! ************************************************************************** !
+
 function EOSWaterCreate() result(water)
   !
-  ! Creates and initializes a water EOS object
+  ! Creates a water EOS object
   !
   ! Author: Glenn Hammond
   ! Date: 06/12/26
@@ -104,13 +133,6 @@ function EOSWaterCreate() result(water)
 
   allocate(water)
   call water%Init()
-  water%density_model = EOS_WATER_DENSITY_IFC67
-  water%viscosity_model = EOS_WATER_VISCOSITY_DEFAULT
-  water%constant_density = 1000.d0
-  water%constant_viscosity = 1.d-3
-  water%DensityEval => EOSWaterDensityIFC67
-  water%ViscosityEval => EOSWaterViscosity1
-  water%SatPresEval => EOSWaterSaturationPressureIFC67
   call EOSWaterApplyPendingConfig(water)
 
 end function EOSWaterCreate
