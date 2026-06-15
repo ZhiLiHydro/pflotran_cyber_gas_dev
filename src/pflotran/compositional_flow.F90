@@ -79,8 +79,6 @@ subroutine CompFlowSetup(realization)
   patch%aux%CompFlow => CompFlowAuxCreate(option)
   compflow_parameter => patch%aux%CompFlow%compflow_parameter
 
-  option%flow%store_darcy_vel = PETSC_TRUE
-
   temp_int = 0
   if (Initialized(compflow_liq_flow_eq)) then
     temp_int = temp_int + 1
