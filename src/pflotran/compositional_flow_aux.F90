@@ -228,6 +228,7 @@ subroutine CompFlowAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%dden_dt = auxvar%dden_dt
   auxvar2%dvis_dp = auxvar%dvis_dp
   auxvar2%dvis_dt = auxvar%dvis_dt
+  auxvar2%dvis_dc = auxvar%dvis_dc
   auxvar2%pert = auxvar%pert
 
 end subroutine CompFlowAuxVarCopy
