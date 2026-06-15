@@ -7141,21 +7141,6 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
               vec_ptr(local_id) = &
                 patch%aux%CompFlow%auxvars(ZERO_INTEGER,grid%nL2G(local_id))%pc
             enddo
-          case(LIQUID_HEAD)
-            do local_id=1,grid%nlmax
-              vec_ptr(local_id) = &
-                patch%aux%CompFlow%auxvars(ZERO_INTEGER, &
-                                        grid%nL2G(local_id))%pres/ &
-                EARTH_GRAVITY/ &
-                zflow_density_kg
-            enddo
-          case(TOTAL_LIQUID_HEAD)
-            do local_id=1,grid%nlmax
-              ghosted_id = grid%nL2G(local_id)
-              vec_ptr(local_id) = &
-                patch%aux%CompFlow%auxvars(ZERO_INTEGER,ghosted_id)%pres / &
-                EARTH_GRAVITY / zflow_density_kg + grid%z(ghosted_id)
-            enddo
           case(LIQUID_SATURATION)
             do local_id=1,grid%nlmax
               vec_ptr(local_id) = &
@@ -7165,6 +7150,11 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
             do local_id=1,grid%nlmax
               vec_ptr(local_id) = &
                 patch%aux%CompFlow%auxvars(ZERO_INTEGER,grid%nL2G(local_id))%conc
+            enddo
+          case(LIQUID_VISCOSITY)
+            do local_id=1,grid%nlmax
+              vec_ptr(local_id) = &
+                patch%aux%CompFlow%auxvars(ZERO_INTEGER,grid%nL2G(local_id))%vis
             enddo
           case(DERIVATIVE)
             select case(isubvar)
@@ -9260,16 +9250,12 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
             value = patch%aux%CompFlow%auxvars(ZERO_INTEGER,ghosted_id)%pres
           case(CAPILLARY_PRESSURE)
             value = patch%aux%CompFlow%auxvars(ZERO_INTEGER,ghosted_id)%pc
-          case(LIQUID_HEAD)
-            value = patch%aux%CompFlow%auxvars(ZERO_INTEGER,ghosted_id)%pres/ &
-                    EARTH_GRAVITY/zflow_density_kg
-          case(TOTAL_LIQUID_HEAD)
-            value = patch%aux%CompFlow%auxvars(ZERO_INTEGER,ghosted_id)%pres/ &
-                    EARTH_GRAVITY/zflow_density_kg + grid%z(ghosted_id)
           case(LIQUID_SATURATION)
             value = patch%aux%CompFlow%auxvars(ZERO_INTEGER,ghosted_id)%sat
           case(SOLUTE_CONCENTRATION)
             value = patch%aux%CompFlow%auxvars(ZERO_INTEGER,ghosted_id)%conc
+          case(LIQUID_VISCOSITY)
+            value = patch%aux%CompFlow%auxvars(ZERO_INTEGER,ghosted_id)%vis
           case(DERIVATIVE)
             select case(isubvar)
               case(COMPFLOW_LIQ_SAT_WRT_LIQ_PRES)
