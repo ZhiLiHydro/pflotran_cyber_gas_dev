@@ -248,6 +248,7 @@ subroutine CompFlowAuxVarCompute(x,compflow_auxvar,global_auxvar, &
   use Global_Aux_module
   use Characteristic_Curves_module
   use Material_Aux_module
+  use EOS_Water_class
 
   implicit none
 
@@ -339,6 +340,7 @@ subroutine CompFlowAuxVarCompute(x,compflow_auxvar,global_auxvar, &
 
   compflow_auxvar%den = 1.d3
   compflow_auxvar%vis = 1.d-3
+  call CompFlowViscosity(compflow_auxvar,global_auxvar,option)
   compflow_auxvar%dden_dp = 0.d0
   compflow_auxvar%dden_dt = 0.d0
   compflow_auxvar%dvis_dp = 0.d0
@@ -375,9 +377,9 @@ subroutine CompFlowViscosity(auxvar,global_auxvar,option)
   PetscReal, parameter :: c_max = 1.d-3
   PetscReal, parameter :: mu_min = 1.d-3
   PetscReal, parameter :: mu_max = 1.d0
-  PetscReal, parameter :: velocity_max = 1.d0
+  PetscReal, parameter :: velocity_max = 4.63d-5 ! 4 m/d
 
-  PetscReal :: K = 1.d0
+  PetscReal :: K = 0.5d0
   PetscReal :: n = 1.d0
   PetscReal :: velocity
   PetscReal :: scale

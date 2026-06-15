@@ -454,7 +454,8 @@ subroutine GlobalSetAuxVarVecLoc(realization,vec_loc,ivar,time_level)
       enddo
     case(DARCY_VELOCITY)
       do ghosted_id=1, grid%ngmax
-        patch%aux%Global%auxvars(ghosted_id)%darcy_vel(option%liquid_phase) = vec_loc_p(ghosted_id)
+        patch%aux%Global%auxvars(ghosted_id)%darcy_vel(option%liquid_phase) = &
+          vec_loc_p(ghosted_id)
       enddo
       !end select
     case default
