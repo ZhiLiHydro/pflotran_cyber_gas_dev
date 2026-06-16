@@ -1,8 +1,7 @@
 module PM_Parameter_class
 
-#include "petsc/finclude/petscvec.h"
+#include "petsc/finclude/petscsys.h"
   use petscsys
-  use petscvec
   use PM_Base_class
   use Realization_Subsurface_class
   use Communicator_Base_class
@@ -16,9 +15,6 @@ module PM_Parameter_class
 
   PetscInt, parameter, public :: UPDATE_AFTER_LAST_PM = 0
   PetscInt, parameter, public :: UPDATE_AFTER_FLOW = 1
-
-  PetscInt, parameter :: PARAMETER_BY_CELL = 1
-  PetscInt, parameter :: PARAMETER_BY_MATERIAL = 2
 
   type, public, extends(pm_base_type) :: pm_parameter_type
     class(realization_subsurface_type), pointer :: realization
@@ -370,14 +366,88 @@ subroutine PMParameterUpdateReadDataset(this,time,ierr)
   !
   ! Author: Glenn Hammond
   ! Date: 01/18/24
+  use DatasetGriddedHDF5_class
+  use DatasetCommonHDF5_class
+  use Discretization_module
+  use Global_module
+  use Grid_module
 
   class(pm_parameter_type) :: this
   PetscReal :: time
   PetscErrorCode :: ierr
 
+  type(grid_type), pointer :: grid
+  type(dataset_type), pointer :: dataset
+  character(len=:), allocatable :: err_string
+  character(len=:), allocatable :: string, string2
+  PetscReal :: tempreal
+  PetscInt :: ghosted_id
+
+  if (len_trim(this%parameter%dataset_name) > 0) then
+    grid => realization%patch%grid
+    err_string = 'PARAMETER "' // trim(this%parameter%name) // '"'
+    dataset => &
+      DatasetBaseGetPointer(this%realization%datasets, &
+                            this%parameter%dataset_name, &
+                            err_string,this%option)
+    select type(dataset)
+      class is(dataset_gridded_hdf5_type)
+        call DatasetGriddedHDF5Load(dataset,this%option)
+        do ghosted_id = 1, grid%ngmax
+          call DatasetGriddedHDF5InterpolateReal(dataset, &
+                                                 grid%x(ghosted_id), &
+                                                 grid%y(ghosted_id), &
+                                                 grid%z(ghosted_id), &
+                                                 tempreal,this%option)
+          auxvars(ghosted_id)%parameters(this%parameter%id) = tempreal
+        enddo
+      class is(dataset_common_hdf5_type)
+        string = ''
+        string2 = dataset%hdf5_dataset_name
+        call HDF5ReadCellIndexedRealArray(this%realization, &
+                                          this%realization%field%work, &
+                                          dataset%filename, &
+                                          string,string2, &
+                                          dataset%realization_dependent)
+        call DiscretizationGlobalToLocal(this%realization%discretization, &
+                                         this%realization%field%work, &
+                                         this%realization%field%work_loc, &
+                                         ONEDOF)
+        call GlobalSetParameterVecLoc(this%realization, &
+                                      this%realization%field%work_loc, &
+                                      this%parameter%id)
+      class default
+        this%option%io_buffer = 'Unrecognized dataset type in &
+          &PMParameterUpdateReadDataset() for ' // trim(err_string)
+        call PrintErrMsg(this%option)
+    end select
+  endif
+
   ierr = 0
 
 end subroutine PMParameterUpdateReadDataset
+
+! ************************************************************************** !
+
+subroutine PMParameterUpdateFromVariable(this,time,ierr)
+  !
+  ! Updates the parameter
+  !
+  ! Author: Glenn Hammond
+  ! Date: 06/15/26
+
+  use Option_module
+
+  class(pm_parameter_type) :: this
+  PetscReal :: time
+  PetscErrorCode :: ierr
+
+  this%option%io_buffer = 'Doing nothing for PARAMETER "' // &
+    trim(this%name) // '".'
+  call PrintMsg(this%option)
+  ierr = 0
+
+end subroutine PMParameterUpdateFromVariable
 
 ! ************************************************************************** !
 

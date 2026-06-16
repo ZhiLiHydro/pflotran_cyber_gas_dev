@@ -13,6 +13,9 @@ module Parameter_module
     PetscInt :: id
     PetscReal :: value
     character(len=MAXWORDLENGTH) :: dataset_name
+    character(len=MAXWORDLENGTH) :: variable_name
+    PetscInt :: ivar
+    PetscInt :: isubvar
     type(parameter_type), pointer :: next
   end type parameter_type
 
@@ -41,6 +44,9 @@ function ParameterCreate()
   parameter%id = UNINITIALIZED_INTEGER
   parameter%value = UNINITIALIZED_DOUBLE
   parameter%dataset_name = ''
+  parameter%variable_name = ''
+  parameter%ivar = UNINITIALIZED_INTEGER
+  parameter%isubvar = UNINITIALIZED_INTEGER
   nullify(parameter%next)
   ParameterCreate => parameter
 
@@ -91,6 +97,9 @@ subroutine ParameterRead(parameter,input,option)
         call InputErrorMsg(input,option,keyword,error_str)
       case('DATASET')
         call InputReadWord(input,option,parameter%dataset_name,PETSC_TRUE)
+        call InputErrorMsg(input,option,keyword,error_str)
+      case('VARIABLE')
+        call InputReadWord(input,option,parameter%variable_name,PETSC_TRUE)
         call InputErrorMsg(input,option,keyword,error_str)
       case default
         call InputKeywordUnrecognized(input,keyword,error_str,option)
