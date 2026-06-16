@@ -785,9 +785,9 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
   PetscInt :: category, id, subvar, subsubvar
   type(option_type), pointer :: option
 
-  id = UNINITIALIZED_DOUBLE
-  subvar = UNINITIALIZED_DOUBLE
-  subsubvar = UNINITIALIZED_DOUBLE
+  id = UNINITIALIZED_INTEGER
+  subvar = UNINITIALIZED_INTEGER
+  subsubvar = UNINITIALIZED_INTEGER
 
   ! output variables supported when transport only
   if (option%iflowmode == NULL_MODE) then
@@ -1051,6 +1051,11 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       name = 'Mineral Porosity'
       category = OUTPUT_GENERIC
       id = BASE_POROSITY
+    case ('INITIAL_POROSITY')
+      units = ''
+      name = 'Initial Porosity'
+      category = OUTPUT_GENERIC
+      id = INITIAL_POROSITY
     case ('EFFECTIVE_POROSITY')
       call PrintErrMsg(option,'EFFECTIVE_POROSITY no longer supported for &
           &OUTPUT.  Please use POROSITY; it should be the same value.')
