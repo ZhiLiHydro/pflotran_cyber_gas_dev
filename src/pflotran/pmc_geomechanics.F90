@@ -679,13 +679,13 @@ subroutine PMCGeomechanicsSetAuxData(this)
                   por0_p(local_id),local_stress,local_strain,local_pressure, &
                   por_new,option)
             por_p(local_id) = por_new
-            ! Update permeability based on stress/strain
-            call GeomechanicsSubsurfacePropsPermEvaluate( &
-                  grid, &
-                  pmc%subsurf_realization%patch%aux%Material%auxvars(ghosted_id), &
-                  perm0_p(local_id),local_stress,local_strain,local_pressure, &
-                  perm_new,option)
-            perm_p(local_id) = perm_new
+            !! Update permeability based on stress/strain
+            !call GeomechanicsSubsurfacePropsPermEvaluate( &
+            !      grid, &
+            !      pmc%subsurf_realization%patch%aux%Material%auxvars(ghosted_id), &
+            !      perm0_p(local_id),local_stress,local_strain,local_pressure, &    
+            !      perm_new,option)
+            !perm_p(local_id) = perm_new
 
             select case(option%geomechanics%split_scheme)
             case(GEOMECH_FIXED_STRESS_SPLIT)
@@ -732,6 +732,20 @@ subroutine PMCGeomechanicsSetAuxData(this)
               global_auxvar%parameters(id_pressure_mech) = &
                 local_pressure
             end select
+            ! jaa testing
+            call GeomechanicsSubsurfacePropsPermEvaluate( &
+                  grid, &
+                  pmc%subsurf_realization%patch%aux%Material%auxvars(ghosted_id), &
+                  perm0_p(local_id),local_stress,local_strain,local_pressure, &
+                  global_auxvar%parameters(id_porosity_mech), &
+                  perm_new,option)
+            pmc%subsurf_realization%patch%aux%Material% &
+              auxvars(ghosted_id)%permeability(1) = perm_new
+            pmc%subsurf_realization%patch%aux%Material% &
+              auxvars(ghosted_id)%permeability(2) = perm_new
+            pmc%subsurf_realization%patch%aux%Material% &
+              auxvars(ghosted_id)%permeability(3) = perm_new
+            perm_p(local_id) = perm_new
           enddo
 
           call VecRestoreArray(pmc%sim_aux%subsurf_por0,por0_p, &

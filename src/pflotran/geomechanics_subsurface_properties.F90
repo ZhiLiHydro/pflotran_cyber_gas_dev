@@ -20,6 +20,7 @@ module Geomechanics_Subsurface_Properties_module
   PetscInt, parameter, public :: BANDIS_MODEL = 8
   PetscInt, parameter, public :: TURNER_MODEL = 9
   PetscInt, parameter, public :: LINEAR_MODEL = 10
+  PetscInt, parameter, public :: KOZENY_CARMAN_MODEL = 11
 
   type, public :: geomechanics_subsurface_properties_type
     character(len=MAXWORDLENGTH) :: geomechanical_compressibility_function
@@ -156,6 +157,9 @@ subroutine GeomechanicsSubsurfacePropsPropertytoAux(auxvar,this)
     case ('TURNER')
       auxvar%geomechanics_subsurface_prop(model_index) = &
         TURNER_MODEL
+    case ('KOZENY_CARMAN','KOZENY-CARMAN')
+      auxvar%geomechanics_subsurface_prop(model_index) = &
+        KOZENY_CARMAN_MODEL
     case default
       auxvar%geomechanics_subsurface_prop(model_index) = &
         LINEAR_MODEL
@@ -292,6 +296,13 @@ subroutine GeomechanicsSubsurfacePropsPoroEvaluate(grid, &
     case(TURNER_MODEL)
       call GeomechanicsSubsurfaceTurnerPoroEvaluate(porosity_before, &
         local_stress,local_strain,local_pressure,porosity_after)
+   case(KOZENY_CARMAN_MODEL) ! jaa testing
+      ! do nothing for now since porosity update is done in the flow
+!     Kozeny-Carman is currently used only for permeability update.
+!     Porosity remains controlled by existing models (e.g., LINEAR, TURNER,
+!     BANDIS) until dedicated KC porosity behavior is requested.
+!     call GeomechanicsSubsurfaceLinearPoroEvaluate(porosity_before, &
+!       local_stress,local_strain,local_pressure,porosity_after)
     case default
       write(string,*) model_id
       option%io_buffer = 'geomechanical compressibility model "' // &
@@ -399,6 +410,7 @@ subroutine GeomechanicsSubsurfacePropsPermEvaluate(grid, &
                                                    local_stress, &
                                                    local_strain, &
                                                    local_pressure, &
+                                                   porosity, &
                                                    permeability_after, &
                                                    option)
   !
@@ -420,7 +432,7 @@ subroutine GeomechanicsSubsurfacePropsPermEvaluate(grid, &
 
   type(material_auxvar_type), intent(inout) :: auxvar
   type(grid_type), pointer, intent(inout) :: grid
-  PetscReal, intent(in) :: permeability_before
+  PetscReal, intent(in) :: permeability_before, porosity
   PetscReal, intent(in) :: local_stress(6), local_strain(6), local_pressure
   PetscReal, intent(out) :: permeability_after
   character(len=MAXSTRINGLENGTH) :: string
@@ -450,6 +462,9 @@ subroutine GeomechanicsSubsurfacePropsPermEvaluate(grid, &
     case(LINEAR_MODEL)
       call GeomechanicsSubsurfaceLinearPermEvaluate(permeability_before, &
         local_stress,local_strain,local_pressure,permeability_after)
+    case(KOZENY_CARMAN_MODEL)
+      call GeomechanicsSubsurfaceKozenyCarmanPermEvaluate(permeability_before, &
+        local_stress,local_strain,local_pressure,porosity,permeability_after)
     case default
       write(string,*) model_id
       option%io_buffer = 'geomechanical perm model "' // &
@@ -523,6 +538,45 @@ subroutine GeomechanicsSubsurfaceLinearPermEvaluate(permeability_before, &
 
 
 end subroutine GeomechanicsSubsurfaceLinearPermEvaluate
+
+! ************************************************************************** !
+
+subroutine GeomechanicsSubsurfaceKozenyCarmanPermEvaluate(permeability_before, &
+                                            local_stress,local_strain, &
+                                            local_pressure,porosity,permeability_after)
+  !
+  ! Calculates permeability using a classical Kozeny-Carman relationship:
+  !   k = phi^3 / (C * Sv^2 * (1-phi)^2)
+  ! with preliminary hard-coded C and Sv values.
+  !
+
+  implicit none
+
+  PetscReal, intent(in) :: permeability_before, porosity
+  PetscReal, intent(in) :: local_stress(6), local_strain(6), local_pressure
+  PetscReal, intent(out) :: permeability_after
+
+  PetscReal :: volumetric_strain
+  PetscReal :: porosity_ref, porosity_after, porosity_min, porosity_max
+  PetscReal :: kc_c, kc_sv
+
+  ! Preliminary hard-coded constants (to be replaced by input keywords).
+  kc_c = 5.d0
+  kc_sv = 6000.d0
+  !porosity_ref = 0.20d0
+  !porosity_min = 1.d-6
+  !porosity_max = 0.95d0
+
+  volumetric_strain = local_strain(1) + local_strain(2) + local_strain(3)
+  !porosity_after = porosity_ref + volumetric_strain
+  !porosity_after = min(max(porosity_after,porosity_min),porosity_max)
+
+  permeability_after = porosity**3 / &
+      (kc_c * kc_sv**2 * (1.d0-porosity)**2)
+
+  print *, 'KC perm: ', permeability_after
+
+end subroutine GeomechanicsSubsurfaceKozenyCarmanPermEvaluate
 
 ! ************************************************************************** !
 
