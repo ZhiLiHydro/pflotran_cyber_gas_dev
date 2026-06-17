@@ -382,7 +382,7 @@ subroutine PMAuxiliaryEvolvingStrata(this,time,ierr)
   use Option_module
   use Strata_module
   use Utility_module
-  use Variables_module, only : POROSITY
+  use Variables_module, only : POROSITY, BASE_POROSITY, INITIAL_POROSITY
 
   implicit none
 
@@ -428,12 +428,9 @@ subroutine PMAuxiliaryEvolvingStrata(this,time,ierr)
     call VecDuplicate(field%work_loc,por0_loc,ierr);CHKERRQ(ierr)
     call VecDuplicate(field%work_loc,por_base_loc,ierr);CHKERRQ(ierr)
     call VecDuplicate(field%work_loc,por_current_loc,ierr);CHKERRQ(ierr)
-    call MaterialGetAuxVarVecLoc(patch%aux%Material,por0_loc, &
-                                 POROSITY,POROSITY_INITIAL)
-    call MaterialGetAuxVarVecLoc(patch%aux%Material,por_base_loc, &
-                                 POROSITY,POROSITY_BASE)
-    call MaterialGetAuxVarVecLoc(patch%aux%Material,por_current_loc, &
-                                 POROSITY,POROSITY_CURRENT)
+    call MaterialGetAuxVarVecLoc(patch%aux%Material,por0_loc,INITIAL_POROSITY)
+    call MaterialGetAuxVarVecLoc(patch%aux%Material,por_base_loc,BASE_POROSITY)
+    call MaterialGetAuxVarVecLoc(patch%aux%Material,por_current_loc,POROSITY)
     allocate(material_ids(patch%grid%ngmax))
     material_ids(:) = patch%imat(:)
 
@@ -447,13 +444,13 @@ subroutine PMAuxiliaryEvolvingStrata(this,time,ierr)
     do ghosted_id = 1, patch%grid%ngmax
       if (material_ids(ghosted_id) == patch%imat(ghosted_id)) then
         call MaterialAuxVarSetValue(material_auxvars(ghosted_id), &
-                                    POROSITY_INITIAL, &
+                                    INITIAL_POROSITY, &
                                     por0_vec_ptr(ghosted_id))
         call MaterialAuxVarSetValue(material_auxvars(ghosted_id), &
-                                    POROSITY_BASE, &
+                                    BASE_POROSITY, &
                                     por_base_vec_ptr(ghosted_id))
         call MaterialAuxVarSetValue(material_auxvars(ghosted_id), &
-                                    POROSITY_CURRENT, &
+                                    POROSITY, &
                                     por_current_vec_ptr(ghosted_id))
       endif
     enddo
