@@ -129,7 +129,6 @@ checkpoint.o : \
   hdf5_aux.o \
   input_aux.o \
   material.o \
-  material_aux.o \
   option.o \
   option_checkpoint.o \
   petsc_utility.o \
@@ -1510,7 +1509,6 @@ inversion_measurement_aux.o : \
 inversion_parameter.o : \
   driver.o \
   input_aux.o \
-  material_aux.o \
   option.o \
   pflotran_constants.o \
   string.o \
@@ -2374,7 +2372,6 @@ pm_nwt.o : \
   input_aux.o \
   integral_flux.o \
   material.o \
-  material_aux.o \
   nw_transport.o \
   nw_transport_aux.o \
   option.o \
@@ -2510,7 +2507,6 @@ pm_rt.o : \
   input_aux.o \
   integral_flux.o \
   material.o \
-  material_aux.o \
   option.o \
   output_ekg.o \
   patch.o \
@@ -3283,6 +3279,7 @@ reaction_sandbox_amendment.o : \
   input_aux.o \
   material_aux.o \
   option.o \
+  parameter.o \
   pflotran_constants.o \
   reaction_aux.o \
   reaction_immobile_aux.o \

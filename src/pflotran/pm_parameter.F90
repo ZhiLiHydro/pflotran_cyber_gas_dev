@@ -142,7 +142,7 @@ subroutine PMParameterSetup(this)
       '" not found among available parameters.'
     call PrintErrMsg(this%option)
   endif
-  
+
   cur_parameter => this%parameter
   select case(cur_parameter%itype)
     case(PARAMETER_SCALAR)

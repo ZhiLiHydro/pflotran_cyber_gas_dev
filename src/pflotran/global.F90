@@ -570,7 +570,7 @@ subroutine GlobalUpdateParameter(realization,parameter)
                                     realization%field%work_loc)
       call GlobalSetParameterVecLoc(realization, &
                                     realization%field%work_loc, &
-                                    parameter%id)    
+                                    parameter%id)
     case(PARAMETER_DATASET)
       err_string = 'PARAMETER "' // trim(parameter%name) // '"'
       dataset => &

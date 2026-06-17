@@ -341,7 +341,7 @@ subroutine AmendmentRead(this,input,option)
         call InputReadKeyword(input,option,keyword,PETSC_TRUE)
         call InputErrorMsg(input,option,'RATE_ATTACHMENT', &
                error_string)
-        error_string2 = trim(error_string) // ',RATE_ATTACHMENT'               
+        error_string2 = trim(error_string) // ',RATE_ATTACHMENT'
         call StringToUpper(keyword)
 
         select case(keyword)
