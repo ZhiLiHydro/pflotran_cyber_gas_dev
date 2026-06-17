@@ -125,6 +125,7 @@ function AmendmentCreate()
 end function AmendmentCreate
 
 ! ************************************************************************** !
+
 subroutine AmendmentRead(this,input,option)
   !
   ! Reads input deck for reaction sandbox parameters
@@ -506,6 +507,7 @@ subroutine AmendmentRead(this,input,option)
 end subroutine AmendmentRead
 
 ! ************************************************************************** !
+
 subroutine AmendmentSetup(this,reaction,option)
   !
   ! Sets up the kinetic attachment/dettachment reactions
@@ -531,11 +533,12 @@ subroutine AmendmentSetup(this,reaction,option)
   this%species_Vim_id = &
     ReactionImGetSpeciesIDFromName(this%name_immobile,reaction%immobile,option)
 
-  this%viscosity_id = ParameterGetIDFromName('Viscosity',option)
+  this%viscosity_id = ParameterGetIDFromName('viscosity',option)
 
 end subroutine AmendmentSetup
 
 ! ************************************************************************** !
+
 subroutine AmendmentReact(this,Residual,Jacobian,compute_derivative, &
                         rt_auxvar,global_auxvar,material_auxvar, &
                         reaction, option)
@@ -609,7 +612,8 @@ subroutine AmendmentReact(this,Residual,Jacobian,compute_derivative, &
   L_water = porosity*liquid_saturation*volume*1.d3
   ! 1.d3 converts m^3 water -> L water
 
-  viscosity = 0.0008891
+!  viscosity = 0.0008891
+  viscosity = global_auxvar%parameters(this%viscosity_id)
   ! Ns/m2 (This should be a field but not found in global_auxvar)
 
   temperature = global_auxvar%temp
@@ -863,6 +867,7 @@ subroutine AmendmentReact(this,Residual,Jacobian,compute_derivative, &
 end subroutine AmendmentReact
 
 ! ************************************************************************** !
+
 subroutine AmendmentDestroy(this)
   !
   ! Destroys allocatable or pointer objects created in this

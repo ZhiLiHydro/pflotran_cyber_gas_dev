@@ -377,7 +377,7 @@ subroutine PMParameterUpdate(this,time,ierr)
   PetscErrorCode :: ierr
 
   ierr = 0
-  call GlobalUpdateParameter(this%realization,this%parameter)
+  call GlobalUpdateParameter(this%realization,this%parameter,PETSC_FALSE)
 
 end subroutine PMParameterUpdate
 

@@ -69,7 +69,7 @@ subroutine GlobalSetup(realization)
   patch%aux%Global%auxvars => auxvars
   patch%aux%Global%num_aux = grid%ngmax
 
-  call GlobalUpdateParameterArray(realization)
+  call GlobalUpdateParameterArray(realization,PETSC_TRUE)
 
   ! count the number of boundary connections and allocate
   ! auxvar data structures for them
@@ -519,7 +519,7 @@ end subroutine GlobalGetAuxVarVecLoc
 
 ! ************************************************************************** !
 
-subroutine GlobalUpdateParameter(realization,parameter)
+subroutine GlobalUpdateParameter(realization,parameter,skip_variables)
   !
   ! Updates values in the parameter array
   !
@@ -539,6 +539,7 @@ subroutine GlobalUpdateParameter(realization,parameter)
 
   class(realization_subsurface_type) :: realization
   type(parameter_type) :: parameter
+  PetscBool :: skip_variables
 
   class(dataset_base_type), pointer :: dataset
   type(grid_type), pointer :: grid
@@ -562,14 +563,20 @@ subroutine GlobalUpdateParameter(realization,parameter)
           parameter%value
       enddo
     case(PARAMETER_VARIABLE)
-      call RealizationGetVariable(realization, &
-                                  realization%field%work, &
-                                  parameter%ivar,parameter%isubvar)
-      call realization%comm1%GlobalToLocal(realization%field%work, &
-                                    realization%field%work_loc)
-      call GlobalSetParameterVecLoc(realization, &
-                                    realization%field%work_loc, &
-                                    parameter%id)
+      if (skip_variables) then
+        do ghosted_id = 1, grid%ngmax
+          auxvars(ghosted_id)%parameters(parameter%id) = UNINITIALIZED_DOUBLE
+        enddo
+      else
+        call RealizationGetVariable(realization, &
+                                    realization%field%work, &
+                                    parameter%ivar,parameter%isubvar)
+        call realization%comm1%GlobalToLocal(realization%field%work, &
+                                      realization%field%work_loc)
+        call GlobalSetParameterVecLoc(realization, &
+                                      realization%field%work_loc, &
+                                      parameter%id)
+      endif
     case(PARAMETER_DATASET)
       err_string = 'PARAMETER "' // trim(parameter%name) // '"'
       dataset => &
@@ -611,7 +618,7 @@ end subroutine GlobalUpdateParameter
 
 ! ************************************************************************** !
 
-subroutine GlobalUpdateParameterArray(realization)
+subroutine GlobalUpdateParameterArray(realization,skip_variables)
   !
   ! Updates values in the parameter array
   !
@@ -622,13 +629,14 @@ subroutine GlobalUpdateParameterArray(realization)
   use Realization_Subsurface_class
 
   class(realization_subsurface_type), pointer :: realization
+  PetscBool :: skip_variables
 
   type(parameter_type), pointer :: cur_parameter
 
   cur_parameter => realization%parameter_list
   do
     if (.not.associated(cur_parameter)) exit
-    call GlobalUpdateParameter(realization,cur_parameter)
+    call GlobalUpdateParameter(realization,cur_parameter,skip_variables)
     cur_parameter => cur_parameter%next
   enddo
 
