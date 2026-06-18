@@ -228,6 +228,7 @@ subroutine PMCompFlowReadSimOptionsBlock(this,input)
         call InputErrorMsg(input,option,keyword,error_string)
       case('SHEAR_THINNING_FLUID')
         option%flow%store_darcy_vel = PETSC_TRUE
+        compflow_shear_thinning = PETSC_TRUE
       case default
         call InputKeywordUnrecognized(input,keyword,'CompFlow Mode',option)
     end select

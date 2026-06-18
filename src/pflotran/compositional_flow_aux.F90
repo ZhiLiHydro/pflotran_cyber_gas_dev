@@ -388,16 +388,35 @@ subroutine CompFlowViscosity(auxvar,global_auxvar,material_auxvar,option)
   PetscReal, parameter :: alpha_shear = 1.d-6
   PetscReal, parameter :: mu_inf = 1.d-3
   PetscReal :: K
+  PetscReal :: K_gamma
+  PetscReal :: K_gamma_n
   PetscReal :: gamma
   PetscReal :: mu_0
+  PetscReal :: one_over_one_plus_K_gamma_n
+  PetscReal :: dmu_0_dc
+  PetscReal :: df_dc
 
   mu_0 = a * auxvar%conc ** b
   K = alpha * auxvar%conc ** beta
   gamma = alpha_shear * global_auxvar%darcy_vel(1) / &
           material_auxvar%soil_properties(mean_soil_grain_size_index)
 
-  auxvar%vis = mu_inf + (mu_0 - mu_inf) / (1 + (K * gamma)**n)
-  auxvar%dvis_dc = UNINITIALIZED_DOUBLE
+  K_gamma = K * gamma
+  K_gamma_n = K_gamma**n
+  one_over_one_plus_K_gamma_n = 1.d0 / (1.d0 + K_gamma_n)
+  auxvar%vis = mu_inf + (mu_0 - mu_inf) * one_over_one_plus_K_gamma_n
+
+  if (compflow_numerical_derivatives) then
+    auxvar%dvis_dc = UNINITIALIZED_DOUBLE
+  else
+    ! vis = mu_inf + (mu_0 - mu_inf) / (1 + (K*gamma)**n)
+    ! dmu_0/dc = b*mu_0/c;  dK/dc = beta*K/c;  gamma held fixed here
+    dmu_0_dc = b * mu_0 / auxvar%conc
+    df_dc = -n * beta * K_gamma_n / auxvar%conc * &
+            one_over_one_plus_K_gamma_n**2
+    auxvar%dvis_dc = (mu_0 - mu_inf) * df_dc + &
+                    one_over_one_plus_K_gamma_n * dmu_0_dc
+  endif
 
 #if 0
   velocity = global_auxvar%darcy_vel(1)

@@ -37,8 +37,8 @@ deriv_obj = \
 eos_obj = \
 	${common_src}co2_sw.o \
 	${common_src}co2_span_wagner_spline.o \
-	${common_src}eos_base_class.o \
-	${common_src}eos_water_class.o \
+	${common_src}eos_base.o \
+	${common_src}eos_water_v2.o \
 	${common_src}eos.o \
 	${common_src}eos_gas.o \
 	${common_src}gas_eos_mod.o
