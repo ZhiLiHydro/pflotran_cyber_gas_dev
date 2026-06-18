@@ -62,6 +62,7 @@ subroutine CompFlowSetup(realization)
 
   PetscInt :: ghosted_id, iconn, sum_connection, local_id
   PetscBool :: error_found
+  PetscBool :: lflag
   PetscInt :: flag(10)
   PetscInt :: temp_int, idof
   PetscBool, allocatable :: dof_is_active(:)
@@ -140,6 +141,22 @@ subroutine CompFlowSetup(realization)
       option%io_buffer = 'ERROR: Non-initialized permeability.'
       call PrintMsgByRank(option)
       flag(5) = 1
+    endif
+    if (compflow_shear_thinning .and. flag(6) == 0) then
+      lflag = PETSC_FALSE
+      if (mean_soil_grain_size_index > 0) then
+        if (material_auxvars(ghosted_id)% &
+          soil_properties(mean_soil_grain_size_index) < 0.d0) then
+          lflag = PETSC_TRUE
+        endif
+      else
+        lflag = PETSC_TRUE
+      endif
+      if (lflag) then
+        flag(6) = 1
+        option%io_buffer = 'ERROR: Non-initialized mean soil grain size.'
+        call PrintMsgByRank(option)
+      endif
     endif
   enddo
 

@@ -25,6 +25,7 @@ module Compositional_Flow_Aux_module
   PetscBool, public :: compflow_numerical_derivatives = PETSC_FALSE
   PetscBool, public :: compflow_simult_function_evals = PETSC_TRUE
   PetscBool, public :: compflow_acknowledge_no_compress = PETSC_FALSE
+  PetscBool, public :: compflow_shear_thinning = PETSC_FALSE
 
   ! debugging
   PetscInt, public :: compflow_ni_count
@@ -341,12 +342,15 @@ subroutine CompFlowAuxVarCompute(x,compflow_auxvar,global_auxvar, &
 
   compflow_auxvar%den = 1.d3
   compflow_auxvar%vis = 1.d-3
-  call CompFlowViscosity(compflow_auxvar,global_auxvar,option)
   compflow_auxvar%dden_dp = 0.d0
   compflow_auxvar%dden_dt = 0.d0
   compflow_auxvar%dvis_dp = 0.d0
   compflow_auxvar%dvis_dt = 0.d0
   compflow_auxvar%dvis_dc = 0.d0
+  if (compflow_shear_thinning) then
+    call CompFlowViscosity(compflow_auxvar,global_auxvar, &
+                           material_auxvar,option)
+  endif
 
   if (option%iflag /= COMPFLOW_UPDATE_FOR_DERIVATIVE) then
     global_auxvar%sat(1) = compflow_auxvar%sat
@@ -359,7 +363,7 @@ end subroutine CompFlowAuxVarCompute
 
 ! ************************************************************************** !
 
-subroutine CompFlowViscosity(auxvar,global_auxvar,option)
+subroutine CompFlowViscosity(auxvar,global_auxvar,material_auxvar,option)
   !
   ! Initialize auxiliary object
   !
@@ -373,23 +377,29 @@ subroutine CompFlowViscosity(auxvar,global_auxvar,option)
 
   type(compflow_auxvar_type) :: auxvar
   type(global_auxvar_type) :: global_auxvar
+  type(material_auxvar_type) :: material_auxvar
   type(option_type) :: option
 
-  PetscReal, parameter :: c_max = 1.d-3
-  PetscReal, parameter :: mu_min = 1.d-3
-  PetscReal, parameter :: mu_max = 1.d0
-  PetscReal, parameter :: velocity_max = 4.63d-5 ! 4 m/d
-
-  PetscReal :: K = 0.5d0
-  PetscReal :: n = 1.d0
-  PetscReal :: velocity
-  PetscReal :: scale
-  PetscReal :: inf_shear_rate_viscosity
-  PetscReal :: zero_shear_rate_viscosity
-  PetscReal :: tempreal
-  PetscReal :: viscosity
+  PetscReal, parameter :: a = 1.2d-9
+  PetscReal, parameter :: b = 2.763d0
+  PetscReal, parameter :: alpha = 7.9d-9
+  PetscReal, parameter :: beta = 2.73d0
+  PetscReal, parameter :: n = 0.5d0
+  PetscReal, parameter :: alpha_shear = 1.d-6
+  PetscReal, parameter :: mu_inf = 1.d-3
+  PetscReal :: K
   PetscReal :: gamma
+  PetscReal :: mu_0
 
+  mu_0 = a * auxvar%conc ** b
+  K = alpha * auxvar%conc ** beta
+  gamma = alpha_shear * global_auxvar%darcy_vel(1) / &
+          material_auxvar%soil_properties(mean_soil_grain_size_index)
+
+  auxvar%vis = mu_inf + (mu_0 - mu_inf) / (1 + (K * gamma)**n)
+  auxvar%dvis_dc = UNINITIALIZED_DOUBLE
+
+#if 0
   velocity = global_auxvar%darcy_vel(1)
   scale = 1.d0 - (c_max - auxvar%conc) / c_max
   gamma = 1.d0 - (velocity_max - velocity) / velocity_max
@@ -403,6 +413,7 @@ subroutine CompFlowViscosity(auxvar,global_auxvar,option)
               inf_shear_rate_viscosity
   auxvar%vis = viscosity
   auxvar%dvis_dc = tempreal * (mu_max - mu_min) / c_max
+#endif
 
 end subroutine CompFlowViscosity
 
