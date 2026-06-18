@@ -393,10 +393,9 @@ subroutine CompFlowViscosity(auxvar,global_auxvar,material_auxvar,option)
   PetscReal :: gamma
   PetscReal :: mu_0
   PetscReal :: one_over_one_plus_K_gamma_n
-  PetscReal :: dmu_0_dc
-  PetscReal :: df_dc
+  PetscReal :: dmu_0_dc, dK_dc, df_dc
 
-  mu_0 = a * auxvar%conc ** b
+  mu_0 = a * auxvar%conc ** b + mu_inf
   K = alpha * auxvar%conc ** beta
   gamma = alpha_shear * global_auxvar%darcy_vel(1) / &
           material_auxvar%soil_properties(mean_soil_grain_size_index)
@@ -404,35 +403,25 @@ subroutine CompFlowViscosity(auxvar,global_auxvar,material_auxvar,option)
   K_gamma = K * gamma
   K_gamma_n = K_gamma**n
   one_over_one_plus_K_gamma_n = 1.d0 / (1.d0 + K_gamma_n)
-  auxvar%vis = mu_inf + (mu_0 - mu_inf) * one_over_one_plus_K_gamma_n
+  auxvar%vis = mu_0 * one_over_one_plus_K_gamma_n
 
   if (compflow_numerical_derivatives) then
     auxvar%dvis_dc = UNINITIALIZED_DOUBLE
   else
-    ! vis = mu_inf + (mu_0 - mu_inf) / (1 + (K*gamma)**n)
-    ! dmu_0/dc = b*mu_0/c;  dK/dc = beta*K/c;  gamma held fixed here
-    dmu_0_dc = b * mu_0 / auxvar%conc
-    df_dc = -n * beta * K_gamma_n / auxvar%conc * &
-            one_over_one_plus_K_gamma_n**2
-    auxvar%dvis_dc = (mu_0 - mu_inf) * df_dc + &
-                    one_over_one_plus_K_gamma_n * dmu_0_dc
+    ! vis = mu_0 / (1 + (K*gamma)**n);  mu_0 = a*c^b + mu_inf
+    ! dmu_0/dc = b*a*c^(b-1);  dK/dc = beta*alpha*c^(beta-1)
+    ! gamma held fixed here
+    dmu_0_dc = b * a * auxvar%conc**(b - 1.d0)
+    if (K_gamma > 0.d0) then
+      dK_dc = beta * alpha * auxvar%conc**(beta - 1.d0)
+      df_dc = -n * one_over_one_plus_K_gamma_n**2 * &
+              K_gamma**(n - 1.d0) * gamma * dK_dc
+    else
+      df_dc = 0.d0
+    endif
+    auxvar%dvis_dc = mu_0 * df_dc + &
+                     one_over_one_plus_K_gamma_n * dmu_0_dc
   endif
-
-#if 0
-  velocity = global_auxvar%darcy_vel(1)
-  scale = 1.d0 - (c_max - auxvar%conc) / c_max
-  gamma = 1.d0 - (velocity_max - velocity) / velocity_max
-
-  inf_shear_rate_viscosity = mu_min
-  zero_shear_rate_viscosity = mu_min + (mu_max - mu_min) * scale
-
-  tempreal = 1.d0 / (1 + (K * gamma)**n)
-  viscosity = tempreal * &
-              (zero_shear_rate_viscosity - inf_shear_rate_viscosity) + &
-              inf_shear_rate_viscosity
-  auxvar%vis = viscosity
-  auxvar%dvis_dc = tempreal * (mu_max - mu_min) / c_max
-#endif
 
 end subroutine CompFlowViscosity
 
