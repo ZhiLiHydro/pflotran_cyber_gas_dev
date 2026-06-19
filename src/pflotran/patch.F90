@@ -1066,7 +1066,8 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
                                                    num_connections))
                 coupler%flow_bc_type = 0
                 coupler%flow_aux_real_var = 0.d0
-                coupler%flow_aux_mapping => CompFlowAuxMapConditionIndices(iflag)
+                coupler%flow_aux_mapping => &
+                  CompFlowAuxMapConditionIndices(iflag)
 
               case(PNF_MODE)
                 allocate(coupler%flow_bc_type(1))
@@ -7146,15 +7147,20 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
               vec_ptr(local_id) = &
                 patch%aux%CompFlow%auxvars(ZERO_INTEGER,grid%nL2G(local_id))%sat
             enddo
-          case(SOLUTE_CONCENTRATION)
+          case(LIQUID_DENSITY)
             do local_id=1,grid%nlmax
               vec_ptr(local_id) = &
-                patch%aux%CompFlow%auxvars(ZERO_INTEGER,grid%nL2G(local_id))%conc
+                patch%aux%CompFlow%auxvars(ZERO_INTEGER,grid%nL2G(local_id))%den
             enddo
           case(LIQUID_VISCOSITY)
             do local_id=1,grid%nlmax
               vec_ptr(local_id) = &
                 patch%aux%CompFlow%auxvars(ZERO_INTEGER,grid%nL2G(local_id))%vis
+            enddo
+          case(SOLUTE_CONCENTRATION)
+            do local_id=1,grid%nlmax
+              vec_ptr(local_id) = &
+                patch%aux%CompFlow%auxvars(ZERO_INTEGER,grid%nL2G(local_id))%conc
             enddo
           case(DERIVATIVE)
             select case(isubvar)
@@ -9252,10 +9258,12 @@ function PatchGetVariableValueAtCell(patch,field,reaction_base,option, &
             value = patch%aux%CompFlow%auxvars(ZERO_INTEGER,ghosted_id)%pc
           case(LIQUID_SATURATION)
             value = patch%aux%CompFlow%auxvars(ZERO_INTEGER,ghosted_id)%sat
-          case(SOLUTE_CONCENTRATION)
-            value = patch%aux%CompFlow%auxvars(ZERO_INTEGER,ghosted_id)%conc
+          case(LIQUID_DENSITY)
+            value = patch%aux%CompFlow%auxvars(ZERO_INTEGER,ghosted_id)%den
           case(LIQUID_VISCOSITY)
             value = patch%aux%CompFlow%auxvars(ZERO_INTEGER,ghosted_id)%vis
+          case(SOLUTE_CONCENTRATION)
+            value = patch%aux%CompFlow%auxvars(ZERO_INTEGER,ghosted_id)%conc
           case(DERIVATIVE)
             select case(isubvar)
               case(COMPFLOW_LIQ_SAT_WRT_LIQ_PRES)
