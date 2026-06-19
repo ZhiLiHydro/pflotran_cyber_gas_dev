@@ -1182,8 +1182,12 @@ subroutine CompFlowMapBCAuxVarsToGlobal(realization)
     cur_connection_set => boundary_condition%connection_set
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
+      global_auxvars_bc(sum_connection)%den_kg = &
+        compflow_auxvars_bc(sum_connection)%den
       global_auxvars_bc(sum_connection)%sat = &
         compflow_auxvars_bc(sum_connection)%sat
+      global_auxvars_bc(sum_connection)%temp = &
+        compflow_auxvars_bc(sum_connection)%temp
     enddo
     boundary_condition => boundary_condition%next
   enddo

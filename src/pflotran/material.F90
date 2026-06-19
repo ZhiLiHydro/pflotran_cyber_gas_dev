@@ -1029,8 +1029,6 @@ subroutine MaterialPropertyRead(material_property,input,option)
                       material_property%waxman_smits_clay_cond_dataset, &
                       keyword,error_str,option)
       case('MEAN_SOIL_GRAIN_SIZE')
-        call InputCheckSupported(input,option,keyword,error_str, &
-                                 [GEOPHYSICS_CLASS,FLOW_CLASS])
         call DatasetReadDoubleOrDataset(input, &
                       material_property%mean_soil_grain_size, &
                       material_property%mean_soil_grain_size_dataset, &

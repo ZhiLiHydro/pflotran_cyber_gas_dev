@@ -1442,7 +1442,7 @@ function OptionListClassesString(pm_classes,option)
 
   character(len=:), allocatable :: OptionListClassesString
 
-  character(len=MAXWORDLENGTH) :: strings(4)
+  character(len=MAXWORDLENGTH) :: strings(8)
   PetscInt :: i
 
   strings(:) = ''
@@ -1464,7 +1464,7 @@ function OptionListClassesString(pm_classes,option)
         call PrintErrMsg(option)
     end select
   enddo
-  OptionListClassesString = StringsMerge(strings,',')
+  OptionListClassesString = StringsMerge(strings(1:size(pm_classes)),',')
 
 end function OptionListClassesString
 
@@ -1507,7 +1507,7 @@ function OptionGetEmployedClassesString(option)
     i = i + 1
     strings(i) = 'GEOMECHANICS'
   endif
-  OptionGetEmployedClassesString = StringsMerge(strings,',')
+  OptionGetEmployedClassesString = StringsMerge(strings(1:i),',')
 
 end function OptionGetEmployedClassesString
 
