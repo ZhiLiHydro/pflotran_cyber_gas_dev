@@ -395,6 +395,12 @@ subroutine CompFlowViscosity(auxvar,global_auxvar,material_auxvar,option)
   PetscReal :: one_over_one_plus_K_gamma_n
   PetscReal :: dmu_0_dc, dK_dc, df_dc
 
+  if (auxvar%conc <= 0.d0) then
+    auxvar%vis = mu_inf
+    auxvar%dvis_dc = 0.d0
+    return
+  endif
+
   mu_0 = a * auxvar%conc ** b + mu_inf
   K = alpha * auxvar%conc ** beta
   gamma = alpha_shear * global_auxvar%darcy_vel(1) / &
