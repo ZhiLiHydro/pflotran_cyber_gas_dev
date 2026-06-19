@@ -506,6 +506,7 @@ subroutine AmendmentRead(this,input,option)
 end subroutine AmendmentRead
 
 ! ************************************************************************** !
+
 subroutine AmendmentSetup(this,reaction,option)
   !
   ! Sets up the kinetic attachment/dettachment reactions
@@ -617,9 +618,7 @@ subroutine AmendmentReact(this,Residual,Jacobian,compute_derivative, &
   liquid_saturation = global_auxvar%sat(iphase)
   L_water = porosity*liquid_saturation*volume*1.d3
   ! 1.d3 converts m^3 water -> L water
-print *, mean_soil_grain_size_index
-print *, this%diam_collector
-stop
+
   viscosity = 0.0008891
   ! Ns/m2 (This should be a field but not found in global_auxvar)
 

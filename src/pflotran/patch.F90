@@ -1175,8 +1175,7 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
 
           if (associated(coupler%flow_condition%rate)) then
 
-            if (option%iflowmode == ZFLOW_MODE .or. &
-                option%iflowmode == COMPFLOW_MODE) then
+            if (option%iflowmode == ZFLOW_MODE) then
               ndof = option%nflowdof
               iflag = PETSC_FALSE
               temp_int = 0
