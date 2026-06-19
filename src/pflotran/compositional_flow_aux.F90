@@ -385,7 +385,7 @@ subroutine CompFlowViscosity(auxvar,global_auxvar,material_auxvar,option)
   PetscReal, parameter :: alpha = 7.9d-9
   PetscReal, parameter :: beta = 2.73d0
   PetscReal, parameter :: n = 0.5d0
-  PetscReal, parameter :: alpha_shear = 1.d-6
+  PetscReal, parameter :: alpha_shear = 6.d0
   PetscReal, parameter :: mu_inf = 1.d-3
   PetscReal :: K
   PetscReal :: K_gamma
@@ -394,7 +394,6 @@ subroutine CompFlowViscosity(auxvar,global_auxvar,material_auxvar,option)
   PetscReal :: mu_0
   PetscReal :: one_over_one_plus_K_gamma_n
   PetscReal :: dmu_0_dc, dK_dc, df_dc
-  PetscReal :: pore_velocity
 
   if (auxvar%conc <= 0.d0) then
     auxvar%vis = mu_inf
@@ -404,9 +403,13 @@ subroutine CompFlowViscosity(auxvar,global_auxvar,material_auxvar,option)
 
   mu_0 = a * auxvar%conc ** b + mu_inf
   K = alpha * auxvar%conc ** beta
-  pore_velocity = global_auxvar%darcy_vel(1) / auxvar%effective_porosity
-  gamma = alpha_shear * pore_velocity / &
+#if 0
+  gamma = alpha_shear * global_auxvar%darcy_vel(1) / &  ! use Darcy velocity
           material_auxvar%soil_properties(mean_soil_grain_size_index)
+#else
+  gamma = alpha_shear * global_auxvar%darcy_vel(1) / &
+          sqrt(material_auxvar%permeability(1)*material_auxvar%porosity)
+#endif
 
   K_gamma = K * gamma
   K_gamma_n = K_gamma**n

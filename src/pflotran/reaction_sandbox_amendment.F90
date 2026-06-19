@@ -107,7 +107,7 @@ function AmendmentCreate()
   AmendmentCreate%decay_adsorbed = -1.d0
 
   !Filtration Model
-  AmendmentCreate%diam_collector = 0.d0
+  AmendmentCreate%diam_collector = UNINITIALIZED_DOUBLE
   AmendmentCreate%diam_particle = 0.d0
   AmendmentCreate%hamaker_constant = 0.d0
   AmendmentCreate%density_particle = 0.d0
@@ -518,6 +518,7 @@ subroutine AmendmentSetup(this,reaction,option)
   use Reaction_Immobile_Aux_module
   use Option_module
   use Parameter_module
+  use Material_Aux_module, only : mean_soil_grain_size_index
 
   implicit none
 
@@ -532,6 +533,13 @@ subroutine AmendmentSetup(this,reaction,option)
     ReactionImGetSpeciesIDFromName(this%name_immobile,reaction%immobile,option)
 
   this%viscosity_id = ParameterGetIDFromName('Viscosity',option)
+
+  if (mean_soil_grain_size_index > 0 .and. &
+      Initialized(this%diam_collector)) then
+    option%io_buffer = 'Both MEAN_SOIL_GRAIN_SIZE and DIAM_COLLECTOR cannot &
+      &be specified for Reaction Sandbox AMENDMENT.'
+    call PrintErrMsg(option)
+  endif
 
 end subroutine AmendmentSetup
 
@@ -551,7 +559,8 @@ subroutine AmendmentReact(this,Residual,Jacobian,compute_derivative, &
   use String_module
   use Reaction_Aux_module, only : reaction_rt_type
   use Reaction_Immobile_Aux_module
-  use Material_Aux_module, only : material_auxvar_type
+  use Material_Aux_module, only : material_auxvar_type, &
+                                  mean_soil_grain_size_index
 
   implicit none
 
@@ -608,7 +617,9 @@ subroutine AmendmentReact(this,Residual,Jacobian,compute_derivative, &
   liquid_saturation = global_auxvar%sat(iphase)
   L_water = porosity*liquid_saturation*volume*1.d3
   ! 1.d3 converts m^3 water -> L water
-
+print *, mean_soil_grain_size_index
+print *, this%diam_collector
+stop
   viscosity = 0.0008891
   ! Ns/m2 (This should be a field but not found in global_auxvar)
 
@@ -694,7 +705,11 @@ subroutine AmendmentReact(this,Residual,Jacobian,compute_derivative, &
 
   IF (this%rate_attachment < 0.d0) THEN
     kB = this%BOLTZMANN_CONSTANT
-    dc = this%diam_collector
+    if (mean_soil_grain_size_index > 0) then
+      dc = material_auxvar%soil_properties(mean_soil_grain_size_index)
+    else
+      dc = this%diam_collector
+    endif
     dp = this%diam_particle
     rho_p = this%density_particle
     alpha = this%alpha_efficiency
