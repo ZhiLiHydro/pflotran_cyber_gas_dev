@@ -698,6 +698,7 @@ subroutine GlobalParameterQualityCheck(realization)
   type(option_type), pointer :: option
   type(global_auxvar_type), pointer :: auxvars(:)
   PetscBool :: error_found
+  PetscInt :: local_id
   PetscInt :: ghosted_id
   PetscInt:: iparameter
   PetscErrorCode :: ierr
@@ -711,7 +712,8 @@ subroutine GlobalParameterQualityCheck(realization)
   do
     if (.not.associated(cur_parameter)) exit
     iparameter = cur_parameter%id
-    do ghosted_id = 1, grid%ngmax
+    do local_id = 1, grid%nlmax
+      ghosted_id = grid%nL2G(local_id)
       if (Uninitialized(auxvars(ghosted_id)%parameters(iparameter))) then
         option%io_buffer = 'Uninitialized PARAMETER "' // &
           trim(cur_parameter%name) // '" at cell ' // &
