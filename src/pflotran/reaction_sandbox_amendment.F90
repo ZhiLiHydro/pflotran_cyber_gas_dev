@@ -725,6 +725,8 @@ subroutine AmendmentReact(this,Residual,Jacobian,compute_derivative, &
   ! Detachment rate
   PetscReal :: kdet
 
+  PetscInt :: idof_vaq, idof_vim
+
   ! Global stuff (Check global_aux.F90)
   volume = material_auxvar%volume
   porosity = material_auxvar%porosity
@@ -947,22 +949,43 @@ subroutine AmendmentReact(this,Residual,Jacobian,compute_derivative, &
 
   ! The actual calculation:
 
-  Residual(this%species_Vaq_id) = &
-    Residual(this%species_Vaq_id) - RateAtt - RateDecayAq
+  idof_vaq = this%species_Vaq_id
+  idof_vim = this%species_Vim_id + reaction%offset_immobile
 
-  Residual(this%species_Vim_id + reaction%offset_immobile) = &
-    Residual(this%species_Vim_id + reaction%offset_immobile) &
-    - RateDet - RateDecayIm
+  Residual(idof_vaq) = Residual(idof_vaq) - RateAtt - RateDecayAq
+  Residual(idof_vim) = Residual(idof_vim) - RateDet - RateDecayIm
+
+  if (compute_derivative) then
+
+    ! Residual(idof_vaq) -= RateAtt + RateDecayAq
+    ! RateAtt  = -katt*Vaq*L_water + kdet*Vim*volume
+    ! RateDecayAq = -decayAq*Vaq*L_water
+    ! units = (mol/sec)*(kg water/mol) = kg water/sec
+    Jacobian(idof_vaq,idof_vaq) = Jacobian(idof_vaq,idof_vaq) - &
+      (-katt*L_water - decayAq*L_water) * &
+      rt_auxvar%aqueous%dtotal(this%species_Vaq_id, &
+                               this%species_Vaq_id,iphase)
+
+    ! units = (mol/sec)*(m^3 bulk/mol) = m^3 bulk/sec
+    Jacobian(idof_vaq,idof_vim) = Jacobian(idof_vaq,idof_vim) - &
+      kdet*volume
+
+    ! Residual(idof_vim) -= RateDet + RateDecayIm
+    ! RateDet     =  katt*Vaq*L_water - kdet*Vim*volume
+    ! RateDecayIm = -decayIm*Vim*volume
+    Jacobian(idof_vim,idof_vaq) = Jacobian(idof_vim,idof_vaq) - &
+      katt*L_water * &
+      rt_auxvar%aqueous%dtotal(this%species_Vaq_id, &
+                               this%species_Vaq_id,iphase)
+
+    Jacobian(idof_vim,idof_vim) = Jacobian(idof_vim,idof_vim) - &
+      (-kdet*volume - decayIm*volume)
+
+  endif
 
   ! NOTES
   ! 1. Always subtract contribution from residual
   ! 2. Units of residual are moles/second
-  ! Residual(this%species_Vaq_id) = &
-  !   Residual(this%species_Vaq_id) - RateAtt - RateDecayAq
-
-  ! Residual(this%species_Vim_id + reaction%offset_immobile) = &
-  !   Residual(this%species_Vim_id + reaction%offset_immobile) &
-  !   - RateDet - RateDecayIm
 
 end subroutine AmendmentReact
 
