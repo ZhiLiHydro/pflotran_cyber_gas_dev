@@ -10,10 +10,6 @@ module THCFlow_Common_module
 
   private
 
-  ! Liquid specific heat capacity c_p,l [J/(kg.K)] -- treated as constant over
-  ! the 0-100 C range
-  PetscReal, parameter :: thcflow_heat_capacity_liquid = 4184.d0
-
   ! Cutoff parameters
   PetscReal, parameter :: eps     = 1.d-8
   PetscReal, parameter :: floweps = 0.d0
@@ -94,7 +90,7 @@ subroutine THCFlowAccumulation(thcflow_auxvar,global_auxvar,material_auxvar, &
   temperature = thcflow_auxvar%temp
   den_kg      = thcflow_auxvar%den_kg
   den_kmol    = thcflow_auxvar%den_kmol
-  c_p         = thcflow_heat_capacity_liquid
+  c_p         = thcflow_heat_capacity_fluid       ! c_p,l [J/(kg.K)]
   rho_s_c_s   = thcflow_auxvar%heat_cap_solid     ! rho_s * c_s [J/(m^3.K)]
 
   ! --- Flow (liquid mass) equation : units kmol/s -------------------------
@@ -299,7 +295,7 @@ subroutine THCFlowFlux(thcflow_auxvar_up,global_auxvar_up, &
   dq_dTup = 0.d0; dq_dTdn = 0.d0
   dq_dCup = 0.d0; dq_dCdn = 0.d0
 
-  c_p = thcflow_heat_capacity_liquid
+  c_p = thcflow_heat_capacity_fluid       ! c_p,l [J/(kg.K)]
 
   call ConnectionCalculateDistances(dist,option%gravity,dist_up,dist_dn, &
                                     dist_gravity,upweight)
@@ -723,7 +719,7 @@ subroutine THCFlowBCFlux(ibndtype,auxvar_mapping,auxvars, &
   mobility = 0.d0
   vis_upw = thcflow_auxvar_dn%vis
 
-  c_p = thcflow_heat_capacity_liquid
+  c_p = thcflow_heat_capacity_fluid       ! c_p,l [J/(kg.K)]
 
   ! dist(0) = scalar distance to boundary face; dist(1:3) = unit vector
   dist_gravity = dist(0) * dot_product(option%gravity,dist(1:3))
@@ -1074,7 +1070,7 @@ subroutine THCFlowSrcSink(option,flow_aux_real_var,flow_src_sink_mapping, &
   Jdn = 0.d0
   dResdparamdn = 0.d0
 
-  c_p = thcflow_heat_capacity_liquid
+  c_p = thcflow_heat_capacity_fluid       ! c_p,l [J/(kg.K)]
   den_kg = thcflow_auxvar%den_kg
 
   ! ========================================================================= !
