@@ -25,7 +25,11 @@ module THCFlow_Common_module
   public :: THCFlowAccumulation, &
             THCFlowFlux, &
             THCFlowBCFlux, &
-            THCFlowSrcSink
+            THCFlowSrcSink, &
+            THCFlowAccumDerivative, &
+            THCFlowFluxDerivative, &
+            THCFlowBCFluxDerivative, &
+            THCFlowSrcSinkDerivative
 
 contains
 
@@ -1156,6 +1160,288 @@ subroutine THCFlowSrcSink(option,flow_aux_real_var,flow_src_sink_mapping, &
   endif
 
 end subroutine THCFlowSrcSink
+
+! ************************************************************************** !
+
+subroutine THCFlowAccumDerivative(thcflow_auxvar,global_auxvar, &
+                                  material_auxvar, &
+                                  option,Res,Jac,dResdparam)
+  !
+  ! Computes derivatives of the accumulation term for the Jacobian.
+  !
+  ! When thcflow_numerical_derivatives is .false. (default), the analytical 3x3
+  ! accumulation block computed by THCFlowAccumulation is returned unchanged.
+  ! When .true., the block is formed by first-order forward finite differences
+  ! of the residual w.r.t. each perturbed primary variable (P,T,C):
+  !   Jac(ieq,idof) = [Res(x+pert*e_idof) - Res(x)] / pert .
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date:   06/23/26
+  !
+  use Option_module
+  use Material_Aux_module
+
+  implicit none
+
+  type(thcflow_auxvar_type) :: thcflow_auxvar(0:)
+  type(global_auxvar_type) :: global_auxvar
+  type(material_auxvar_type) :: material_auxvar
+  type(option_type) :: option
+  PetscReal :: Res(THCFLOW_NDOF)
+  PetscReal :: Jac(THCFLOW_NDOF,THCFLOW_NDOF)
+  PetscReal :: dResdparam(THCFLOW_NDOF,THCFLOW_NDOF)
+
+  PetscReal :: res_pert(THCFLOW_NDOF)
+  PetscReal :: Jdum(THCFLOW_NDOF,THCFLOW_NDOF)
+  PetscReal :: dJdum(THCFLOW_NDOF,THCFLOW_NDOF)
+  PetscInt :: idof, ieq
+
+  call THCFlowAccumulation(thcflow_auxvar(ZERO_INTEGER), &
+                           global_auxvar, &
+                           material_auxvar, &
+                           option,Res,Jac,dResdparam, &
+                           .not.thcflow_numerical_derivatives)
+
+  if (thcflow_numerical_derivatives) then
+    do idof = 1, option%nflowdof
+      call THCFlowAccumulation(thcflow_auxvar(idof), &
+                               global_auxvar, &
+                               material_auxvar, &
+                               option,res_pert,Jdum,dJdum, &
+                               PETSC_FALSE)
+      do ieq = 1, option%nflowdof
+        Jac(ieq,idof) = (res_pert(ieq)-Res(ieq))/thcflow_auxvar(idof)%pert
+      enddo
+    enddo
+  endif
+
+end subroutine THCFlowAccumDerivative
+
+! ************************************************************************** !
+
+subroutine THCFlowFluxDerivative(thcflow_auxvar_up,global_auxvar_up, &
+                                 material_auxvar_up, &
+                                 thcflow_auxvar_dn,global_auxvar_dn, &
+                                 material_auxvar_dn, &
+                                 area,dist,thcflow_parameter,option,v_darcy, &
+                                 Res,Jup,Jdn,dResdparamup,dResdparamdn, &
+                                 debug_connection)
+  !
+  ! Computes the derivatives of the internal flux terms for the Jacobian.
+  !
+  ! Analytical path (thcflow_numerical_derivatives = .false.): returns the
+  ! analytical Jup/Jdn from THCFlowFlux.  Numerical path: perturbs upgradient
+  ! DOFs (-> Jup) and then the downgradient DOFs (-> Jdn) one at a time & forms
+  ! forward differences of the residual.
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date:   06/23/26
+  !
+  use Option_module
+  use Material_Aux_module
+
+  implicit none
+
+  type(thcflow_auxvar_type) :: thcflow_auxvar_up(0:), thcflow_auxvar_dn(0:)
+  type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
+  type(material_auxvar_type) :: material_auxvar_up, material_auxvar_dn
+  type(option_type) :: option
+  PetscReal :: area
+  PetscReal :: dist(-1:3)
+  type(thcflow_parameter_type) :: thcflow_parameter
+  PetscReal :: v_darcy
+  PetscReal :: Res(THCFLOW_NDOF)
+  PetscReal :: Jup(THCFLOW_NDOF,THCFLOW_NDOF)
+  PetscReal :: Jdn(THCFLOW_NDOF,THCFLOW_NDOF)
+  PetscReal :: dResdparamup(THCFLOW_NDOF,THCFLOW_NDOF)
+  PetscReal :: dResdparamdn(THCFLOW_NDOF,THCFLOW_NDOF)
+  PetscBool :: debug_connection
+
+  PetscReal :: res_pert(THCFLOW_NDOF)
+  PetscReal :: v_darcy_dum
+  PetscReal :: Jdum(THCFLOW_NDOF,THCFLOW_NDOF)
+  PetscReal :: dJdum(THCFLOW_NDOF,THCFLOW_NDOF)
+  PetscInt :: idof, ieq
+
+  Jup = 0.d0
+  Jdn = 0.d0
+
+  call THCFlowFlux(thcflow_auxvar_up(ZERO_INTEGER),global_auxvar_up, &
+                   material_auxvar_up, &
+                   thcflow_auxvar_dn(ZERO_INTEGER),global_auxvar_dn, &
+                   material_auxvar_dn, &
+                   area,dist,thcflow_parameter,option,v_darcy, &
+                   Res,Jup,Jdn,dResdparamup,dResdparamdn, &
+                   .not.thcflow_numerical_derivatives, &
+                   debug_connection)
+
+  if (thcflow_numerical_derivatives) then
+    ! upgradient derivatives
+    do idof = 1, option%nflowdof
+      call THCFlowFlux(thcflow_auxvar_up(idof),global_auxvar_up, &
+                       material_auxvar_up, &
+                       thcflow_auxvar_dn(ZERO_INTEGER),global_auxvar_dn, &
+                       material_auxvar_dn, &
+                       area,dist,thcflow_parameter,option,v_darcy_dum, &
+                       res_pert,Jdum,Jdum,dJdum,dJdum,PETSC_FALSE,PETSC_FALSE)
+      do ieq = 1, option%nflowdof
+        Jup(ieq,idof) = (res_pert(ieq)-Res(ieq)) / &
+                        thcflow_auxvar_up(idof)%pert
+      enddo
+    enddo
+    ! downgradient derivatives
+    do idof = 1, option%nflowdof
+      call THCFlowFlux(thcflow_auxvar_up(ZERO_INTEGER),global_auxvar_up, &
+                       material_auxvar_up, &
+                       thcflow_auxvar_dn(idof),global_auxvar_dn, &
+                       material_auxvar_dn, &
+                       area,dist,thcflow_parameter,option,v_darcy_dum, &
+                       res_pert,Jdum,Jdum,dJdum,dJdum,PETSC_FALSE,PETSC_FALSE)
+      do ieq = 1, option%nflowdof
+        Jdn(ieq,idof) = (res_pert(ieq)-Res(ieq)) / &
+                        thcflow_auxvar_dn(idof)%pert
+      enddo
+    enddo
+  endif
+
+end subroutine THCFlowFluxDerivative
+
+! ************************************************************************** !
+
+subroutine THCFlowBCFluxDerivative(ibndtype,auxvar_mapping,auxvars, &
+                                   thcflow_auxvar_up, &
+                                   global_auxvar_up, &
+                                   thcflow_auxvar_dn,global_auxvar_dn, &
+                                   material_auxvar_dn, &
+                                   area,dist,thcflow_parameter,option,v_darcy, &
+                                   Res,Jdn,dResdparamdn,debug_connection)
+  !
+  ! Computes the derivatives of the boundary flux terms for the Jacobian.
+  ! Only the interior ("dn") cell DOFs are perturbed; the "up" cell is the fixed
+  ! boundary ghost.
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date:   06/23/26
+  !
+  use Option_module
+  use Material_Aux_module
+
+  implicit none
+
+  type(option_type) :: option
+  PetscInt :: ibndtype(:)
+  PetscInt :: auxvar_mapping(THCFLOW_MAX_INDEX)
+  PetscReal :: auxvars(:) ! from aux_real_var array
+  type(thcflow_auxvar_type) :: thcflow_auxvar_up, thcflow_auxvar_dn(0:)
+  type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
+  type(material_auxvar_type) :: material_auxvar_dn
+  PetscReal :: area
+  PetscReal :: dist(-1:3)
+  type(thcflow_parameter_type) :: thcflow_parameter
+  PetscReal :: v_darcy
+  PetscReal :: Res(THCFLOW_NDOF)
+  PetscReal :: Jdn(THCFLOW_NDOF,THCFLOW_NDOF)
+  PetscReal :: dResdparamdn(THCFLOW_NDOF,THCFLOW_NDOF)
+  PetscBool :: debug_connection
+
+  PetscReal :: res_pert(THCFLOW_NDOF)
+  PetscReal :: v_darcy_dum
+  PetscReal :: Jdum(THCFLOW_NDOF,THCFLOW_NDOF)
+  PetscReal :: dJdum(THCFLOW_NDOF,THCFLOW_NDOF)
+  PetscInt :: idof, ieq
+
+  Jdn = 0.d0
+
+  call THCFlowBCFlux(ibndtype,auxvar_mapping,auxvars, &
+                     thcflow_auxvar_up,global_auxvar_up, &
+                     thcflow_auxvar_dn(ZERO_INTEGER),global_auxvar_dn, &
+                     material_auxvar_dn, &
+                     area,dist,thcflow_parameter,option,v_darcy, &
+                     Res,Jdn,dResdparamdn,.not.thcflow_numerical_derivatives, &
+                     debug_connection)
+
+  if (thcflow_numerical_derivatives) then
+    ! downgradient (interior cell) derivatives
+    do idof = 1, option%nflowdof
+      call THCFlowBCFlux(ibndtype,auxvar_mapping,auxvars, &
+                         thcflow_auxvar_up,global_auxvar_up, &
+                         thcflow_auxvar_dn(idof),global_auxvar_dn, &
+                         material_auxvar_dn, &
+                         area,dist,thcflow_parameter,option,v_darcy_dum, &
+                         res_pert,Jdum,dJdum,PETSC_FALSE,PETSC_FALSE)
+      do ieq = 1, option%nflowdof
+        Jdn(ieq,idof) = (res_pert(ieq)-Res(ieq)) / &
+                        thcflow_auxvar_dn(idof)%pert
+      enddo
+    enddo
+  endif
+
+end subroutine THCFlowBCFluxDerivative
+
+! ************************************************************************** !
+
+subroutine THCFlowSrcSinkDerivative(option,flow_aux_real_var, &
+                                    flow_src_sink_mapping, &
+                                    flow_src_sink_type, &
+                                    thcflow_auxvar,global_auxvar, &
+                                    material_auxvar, &
+                                    ss_flow_vol_flux, &
+                                    Res,Jac,dResdparam)
+  !
+  ! Computes the derivatives of the source/sink terms for the Jacobian.
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date:   06/23/26
+  !
+  use Option_module
+  use Material_Aux_module
+
+  implicit none
+
+  type(option_type) :: option
+  PetscReal :: flow_aux_real_var(:)
+  PetscInt :: flow_src_sink_mapping(:)
+  PetscInt :: flow_src_sink_type(:)
+  type(thcflow_auxvar_type) :: thcflow_auxvar(0:)
+  type(global_auxvar_type) :: global_auxvar
+  type(material_auxvar_type) :: material_auxvar
+  PetscReal :: ss_flow_vol_flux
+  PetscReal :: Res(THCFLOW_NDOF)
+  PetscReal :: Jac(THCFLOW_NDOF,THCFLOW_NDOF)
+  PetscReal :: dResdparam(THCFLOW_NDOF,THCFLOW_NDOF)
+
+  PetscReal :: res_pert(THCFLOW_NDOF)
+  PetscReal :: dummy_real
+  PetscReal :: Jdum(THCFLOW_NDOF,THCFLOW_NDOF)
+  PetscReal :: dJdum(THCFLOW_NDOF,THCFLOW_NDOF)
+  PetscInt :: idof, ieq
+
+  Jac = 0.d0
+  ! unperturbed thcflow_auxvar's value
+  call THCFlowSrcSink(option,flow_aux_real_var,flow_src_sink_mapping, &
+                      flow_src_sink_type, &
+                      thcflow_auxvar(ZERO_INTEGER),global_auxvar, &
+                      material_auxvar, &
+                      ss_flow_vol_flux, &
+                      Res,Jac,dResdparam,.not.thcflow_numerical_derivatives)
+
+  if (thcflow_numerical_derivatives) then
+    ! perturbed thcflow_auxvar's value
+    do idof = 1, option%nflowdof
+      call THCFlowSrcSink(option,flow_aux_real_var,flow_src_sink_mapping, &
+                          flow_src_sink_type, &
+                          thcflow_auxvar(idof),global_auxvar, &
+                          material_auxvar, &
+                          dummy_real, &
+                          res_pert,Jdum,dJdum,PETSC_FALSE)
+      do ieq = 1, option%nflowdof
+        Jac(ieq,idof) = (res_pert(ieq)-Res(ieq)) / &
+                        thcflow_auxvar(idof)%pert
+      enddo
+    enddo
+  endif
+
+end subroutine THCFlowSrcSinkDerivative
 
 ! ************************************************************************** !
 

@@ -185,8 +185,6 @@ subroutine PMTHCFlowReadSimOptionsBlock(this,input)
         thcflow_calc_bcflux = PETSC_FALSE
       case('TENSORIAL_RELATIVE_PERMEABILITY')
         thcflow_tensorial_rel_perm = PETSC_TRUE
-      case('NUMERICAL_DERIVATIVES')
-        thcflow_numerical_derivatives = PETSC_TRUE
       case('SOLID_DENSITY','SOLID_GRAIN_DENSITY')
         call InputReadDouble(input,option,thcflow_density_solid)
         call InputErrorMsg(input,option,keyword,error_string)

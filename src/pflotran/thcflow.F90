@@ -736,7 +736,7 @@ end subroutine THCFlowUpdateFixedAccum
 
 subroutine THCFlowResidual(snes,xx,r,A,realization,debug,ierr)
   !
-  ! Computes the residual equation (and the analytical 3x3 Jacobian blocks via
+  ! Computes the residual equation (and 3x3 Jacobian blocks via
   ! the thcflow_common kernels).
   !
   ! Author: Piyoosh Jaysaval
@@ -781,6 +781,7 @@ subroutine THCFlowResidual(snes,xx,r,A,realization,debug,ierr)
   type(global_auxvar_type), pointer :: global_auxvars_bc(:)
   type(global_auxvar_type), pointer :: global_auxvars_ss(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
+  type(material_auxvar_type), pointer :: material_auxvars_pert(:,:)
   type(connection_set_list_type), pointer :: connection_set_list
   type(connection_set_type), pointer :: cur_connection_set
 
@@ -794,6 +795,7 @@ subroutine THCFlowResidual(snes,xx,r,A,realization,debug,ierr)
   PetscReal, pointer :: r_p(:)
   PetscReal, pointer :: accum_t_p(:), accum_t_p2(:)
   PetscReal, pointer :: vec_p(:)
+  PetscReal, pointer :: xx_loc_p(:)
 
   PetscInt :: icc_up, icc_dn
   PetscReal :: Res(THCFLOW_NDOF)
@@ -805,6 +807,7 @@ subroutine THCFlowResidual(snes,xx,r,A,realization,debug,ierr)
   PetscReal :: v_darcy
 
   PetscInt :: ndof
+  PetscInt :: istart, iend
 
   ndof = realization%option%nflowdof
 
@@ -825,6 +828,7 @@ subroutine THCFlowResidual(snes,xx,r,A,realization,debug,ierr)
   global_auxvars_bc => patch%aux%Global%auxvars_bc
   global_auxvars_ss => patch%aux%Global%auxvars_ss
   material_auxvars => patch%aux%Material%auxvars
+  material_auxvars_pert => patch%aux%THCFlow%material_auxvars_pert
 
   call MatZeroEntries(A,ierr);CHKERRQ(ierr)
 
@@ -835,6 +839,26 @@ subroutine THCFlowResidual(snes,xx,r,A,realization,debug,ierr)
 
   ! override flags since they will soon be out of date
   patch%aux%THCFlow%auxvars_up_to_date = PETSC_FALSE
+
+  if (thcflow_numerical_derivatives) then
+    ! Perturb aux vars (fills thcflow_auxvars(1:ndof,:) consumed by the
+    ! *Derivative wrappers below).
+    call VecGetArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+    do ghosted_id = 1, grid%ngmax  ! For each local node do...
+      if (patch%imat(ghosted_id) <= 0) cycle
+      iend = ghosted_id*ndof
+      istart = iend-ndof+1
+      call THCFlowAuxVarPerturb(xx_loc_p(istart:iend), &
+                                thcflow_auxvars(:,ghosted_id), &
+                                global_auxvars(ghosted_id), &
+                                material_auxvars(ghosted_id), &
+                                material_auxvars_pert(:,ghosted_id), &
+                                patch%characteristic_curves_array( &
+                                  patch%cc_id(ghosted_id))%ptr, &
+                                grid%nG2A(ghosted_id),option)
+    enddo
+    call VecRestoreArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+  endif
 
   if (option%compute_mass_balance_new) then
     call THCFlowZeroMassBalanceDelta(realization)
@@ -858,10 +882,10 @@ subroutine THCFlowResidual(snes,xx,r,A,realization,debug,ierr)
       !geh - Ignore inactive cells with inactive materials
       imat = patch%imat(ghosted_id)
       if (imat <= 0) cycle
-      call THCFlowAccumulation(thcflow_auxvars(ZERO_INTEGER,ghosted_id), &
-                               global_auxvars(ghosted_id), &
-                               material_auxvars(ghosted_id), &
-                               option,Res,Jup,dResdparam,PETSC_TRUE)
+      call THCFlowAccumDerivative(thcflow_auxvars(:,ghosted_id), &
+                                  global_auxvars(ghosted_id), &
+                                  material_auxvars(ghosted_id), &
+                                  option,Res,Jup,dResdparam)
       call PetUtilVecSVBL(r_p,local_id,Res,ndof,PETSC_FALSE)
       call PetUtilVecSVBL(accum_t_p2,local_id,Res,ndof,PETSC_TRUE)
       call PetUtilMatSVBL(A,ghosted_id,ghosted_id,Jup,ndof)
@@ -894,17 +918,16 @@ subroutine THCFlowResidual(snes,xx,r,A,realization,debug,ierr)
         icc_up = patch%cc_id(ghosted_id_up)
         icc_dn = patch%cc_id(ghosted_id_dn)
 
-        call THCFlowFlux(thcflow_auxvars(ZERO_INTEGER,ghosted_id_up), &
+        call THCFlowFluxDerivative(thcflow_auxvars(:,ghosted_id_up), &
                          global_auxvars(ghosted_id_up), &
                          material_auxvars(ghosted_id_up), &
-                         thcflow_auxvars(ZERO_INTEGER,ghosted_id_dn), &
+                         thcflow_auxvars(:,ghosted_id_dn), &
                          global_auxvars(ghosted_id_dn), &
                          material_auxvars(ghosted_id_dn), &
                          cur_connection_set%area(iconn), &
                          cur_connection_set%dist(:,iconn), &
                          thcflow_parameter,option,v_darcy, &
                          Res,Jup,Jdn,dResdparamup,dResdparamdn, &
-                         PETSC_TRUE, &
                          PUCast(local_id_up == thcflow_debug_cell_id .or. &
                                 local_id_dn == thcflow_debug_cell_id))
         ! store velocity for output / post-processing
@@ -954,19 +977,18 @@ subroutine THCFlowResidual(snes,xx,r,A,realization,debug,ierr)
 
         icc_dn = patch%cc_id(ghosted_id)
 
-        call THCFlowBCFlux(boundary_condition%flow_bc_type, &
+        call THCFlowBCFluxDerivative(boundary_condition%flow_bc_type, &
                            boundary_condition%flow_aux_mapping, &
                            boundary_condition%flow_aux_real_var(:,iconn), &
                            thcflow_auxvars_bc(sum_connection), &
                            global_auxvars_bc(sum_connection), &
-                           thcflow_auxvars(ZERO_INTEGER,ghosted_id), &
+                           thcflow_auxvars(:,ghosted_id), &
                            global_auxvars(ghosted_id), &
                            material_auxvars(ghosted_id), &
                            cur_connection_set%area(iconn), &
                            cur_connection_set%dist(:,iconn), &
                            thcflow_parameter,option, &
                            v_darcy,Res,Jdn,dResdparamdn, &
-                           PETSC_TRUE, &
                            PUCast(local_id == thcflow_debug_cell_id))
         patch%boundary_velocities(:,sum_connection) = v_darcy
         if (associated(patch%boundary_flow_fluxes)) then
@@ -1002,15 +1024,15 @@ subroutine THCFlowResidual(snes,xx,r,A,realization,debug,ierr)
       ghosted_id = grid%nL2G(local_id)
       if (patch%imat(ghosted_id) <= 0) cycle
 
-      call THCFlowSrcSink(option, &
+      call THCFlowSrcSinkDerivative(option, &
                           source_sink%flow_aux_real_var(:,iconn), &
                           source_sink%flow_aux_mapping, &
                           source_sink%flow_bc_type, &
-                          thcflow_auxvars(ZERO_INTEGER,ghosted_id), &
+                          thcflow_auxvars(:,ghosted_id), &
                           global_auxvars(ghosted_id), &
                           material_auxvars(ghosted_id), &
                           ss_flow_vol_flux,Res,Jdn, &
-                          dResdparamdn,PETSC_TRUE)
+                          dResdparamdn)
       if (associated(patch%ss_flow_vol_fluxes)) then
         patch%ss_flow_vol_fluxes(:,sum_connection) = ss_flow_vol_flux
       endif
