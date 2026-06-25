@@ -115,7 +115,7 @@ END
 #=========================== output options ===================================
 OUTPUT
   TIMES y 0.01 0.1 1.0
-  FORMAT HDF5
+  #FORMAT HDF5
   VARIABLES
     LIQUID_PRESSURE
     LIQUID_SATURATION

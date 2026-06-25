@@ -18,6 +18,17 @@ module THCFlow_Aux_module
   PetscReal, public :: thcflow_density_solid       = 2650.d0  ! rho_s [kg/m^3]
   PetscReal, public :: thcflow_kappa_solid         = 3.d0     ! kappa_s [W/(m.K)]
 
+  ! Energy formulation switch (selectable via ENERGY_FORMULATION input card).
+  !   THCFLOW_ENERGY_RHO_CP_T (default): fluid energy = rho*c_p*T
+  !   THCFLOW_ENERGY_FULL_EOS (TH-equivalent)  : fluid energy uses EOS u(P,T)
+  !                                              in accumulation and h(P,T) in
+  !                                              advection (single-phase liquid)
+  ! Mass-specific (J/kg, J/m^3) units throughout -- no option%scale applied,
+  ! unlike TH which carries molar MJ. The rock term stays rho_s*c_s*T in both.
+  PetscInt, parameter, public :: THCFLOW_ENERGY_RHO_CP_T = 1
+  PetscInt, parameter, public :: THCFLOW_ENERGY_FULL_EOS = 2
+  PetscInt, public :: thcflow_energy_mode = THCFLOW_ENERGY_RHO_CP_T
+
   ! perturbation controls (mirror zflow_aux.F90)
   PetscReal, public :: thcflow_rel_pert = 1.d-8
   PetscReal, public :: thcflow_pres_min_pert = 1.d-2
@@ -92,6 +103,16 @@ module THCFlow_Aux_module
     PetscReal :: dtherm_cond_dsat ! d(kappa_eff)/dS_l [W/(m.K)]
     PetscReal :: heat_cap_fluid   ! rho_l * c_p,l [J/(m^3.K)]
     PetscReal :: heat_cap_solid   ! rho_s * c_s   [J/(m^3.K)]
+    ! Full-EOS energy fields (used only when thcflow_energy_mode==FULL_EOS).
+    ! Mass-specific (per kg) -- converted from molar EOS values via FMWH2O.
+    PetscReal :: u                ! specific internal energy u(P,T) [J/kg]
+    PetscReal :: h                ! specific enthalpy h(P,T)        [J/kg]
+    PetscReal :: du_dP            ! d(u)/dP at const T,C [J/(kg.Pa)]
+    PetscReal :: du_dT            ! d(u)/dT at const P,C [J/(kg.K)]
+    PetscReal :: du_dC            ! d(u)/dC at const P,T [J.L/(kg.mol)]
+    PetscReal :: dh_dP            ! d(h)/dP at const T,C [J/(kg.Pa)]
+    PetscReal :: dh_dT            ! d(h)/dT at const P,C [J/(kg.K)]
+    PetscReal :: dh_dC            ! d(h)/dC at const P,T [J.L/(kg.mol)]
   end type thcflow_auxvar_type
 
   type, public :: thcflow_parameter_type
@@ -225,6 +246,14 @@ subroutine THCFlowAuxVarInit(auxvar,option)
   auxvar%dtherm_cond_dsat = 0.d0
   auxvar%heat_cap_fluid = 0.d0
   auxvar%heat_cap_solid = 0.d0
+  auxvar%u = 0.d0
+  auxvar%h = 0.d0
+  auxvar%du_dP = 0.d0
+  auxvar%du_dT = 0.d0
+  auxvar%du_dC = 0.d0
+  auxvar%dh_dP = 0.d0
+  auxvar%dh_dT = 0.d0
+  auxvar%dh_dC = 0.d0
 
 end subroutine THCFlowAuxVarInit
 
@@ -274,6 +303,14 @@ subroutine THCFlowAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%dtherm_cond_dsat = auxvar%dtherm_cond_dsat
   auxvar2%heat_cap_fluid = auxvar%heat_cap_fluid
   auxvar2%heat_cap_solid = auxvar%heat_cap_solid
+  auxvar2%u = auxvar%u
+  auxvar2%h = auxvar%h
+  auxvar2%du_dP = auxvar%du_dP
+  auxvar2%du_dT = auxvar%du_dT
+  auxvar2%du_dC = auxvar%du_dC
+  auxvar2%dh_dP = auxvar%dh_dP
+  auxvar2%dh_dT = auxvar%dh_dT
+  auxvar2%dh_dC = auxvar%dh_dC
 
 end subroutine THCFlowAuxVarCopy
 
@@ -444,6 +481,24 @@ subroutine THCFlowAuxVarCompute(x,thcflow_auxvar,global_auxvar, &
   thcflow_auxvar%heat_cap_solid = thcflow_density_solid * &
                                   thcflow_heat_capacity_solid
 
+  ! --------------------------------------------------------------------------
+  ! Step 8b: full-EOS specific enthalpy / internal energy (FULL_EOS mode only)
+  ! --------------------------------------------------------------------------
+  ! Mirrors TH (th_aux.F90) but stays in mass-specific J/kg (no option%scale).
+  ! Fluid enthalpy h(P,T) from EOS water; internal energy u = h - P/rho.
+  if (thcflow_energy_mode == THCFLOW_ENERGY_FULL_EOS) then
+    call THCFlowEnergyEOS(thcflow_auxvar,option)
+  else
+    thcflow_auxvar%u = 0.d0
+    thcflow_auxvar%h = 0.d0
+    thcflow_auxvar%du_dP = 0.d0
+    thcflow_auxvar%du_dT = 0.d0
+    thcflow_auxvar%du_dC = 0.d0
+    thcflow_auxvar%dh_dP = 0.d0
+    thcflow_auxvar%dh_dT = 0.d0
+    thcflow_auxvar%dh_dC = 0.d0
+  endif
+
   ! derived mobility derivatives. These are recomputed
   ! by the flux kernel from the stored primitives (kr, dkr_dp, vis, dvis_dT,
   ! dvis_dC); evaluated here to document the chain rule.
@@ -461,6 +516,67 @@ subroutine THCFlowAuxVarCompute(x,thcflow_auxvar,global_auxvar, &
                  thcflow_auxvar%dvis_dC
 
 end subroutine THCFlowAuxVarCompute
+
+! ************************************************************************** !
+
+subroutine THCFlowEnergyEOS(thcflow_auxvar,option)
+  !
+  ! Computes mass-specific fluid enthalpy h(P,T) and internal energy u(P,T)
+  ! and their derivatives from the water EOS, for the FULL_EOS energy
+  ! formulation (single-phase liquid, no ice/vapor).
+  !
+  ! TH (th_aux.F90) carries molar enthalpy scaled by option%scale (MJ/kmol).
+  ! Here we keep mass-specific SI units: h[J/kg] = h_molar[J/kmol]/FMWH2O,
+  ! and u = h - P/rho_kg (the P*v work term), consistent with TH's
+  !   u_molar = h_molar - P/rho_molar  divided through by FMWH2O.
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date: 06/25/26
+
+  use Option_module
+
+  implicit none
+
+  type(thcflow_auxvar_type) :: thcflow_auxvar
+  type(option_type) :: option
+
+  PetscReal :: hw, hw_dp, hw_dT       ! molar enthalpy [J/kmol] and derivs
+  PetscReal :: den_kg, P, inv_den, inv_den2
+  PetscErrorCode :: ierr
+
+  ierr = 0
+  P = thcflow_auxvar%pres
+  den_kg = thcflow_auxvar%den_kg
+
+  ! EOS water enthalpy: hw [J/kmol], hw_dp [J/(kmol.Pa)], hw_dT [J/(kmol.K)]
+  call EOSWaterEnthalpy(thcflow_auxvar%temp,P,hw,hw_dp,hw_dT,ierr)
+  if (ierr /= 0) then
+    option%io_buffer = 'Error computing THCFLOW liquid enthalpy in &
+      &THCFlowEnergyEOS (FULL_EOS energy formulation).'
+    call PrintErrMsg(option)
+  endif
+
+  ! Convert molar -> mass-specific [J/kg]
+  thcflow_auxvar%h    = hw    / FMWH2O
+  thcflow_auxvar%dh_dP = hw_dp / FMWH2O
+  thcflow_auxvar%dh_dT = hw_dT / FMWH2O
+  thcflow_auxvar%dh_dC = 0.d0   ! no solute enthalpy correction yet
+
+  ! Internal energy u = h - P/rho_kg   [J/kg]
+  !   du/dP = dh/dP - (1/rho - P/rho^2 * drho/dP)
+  !   du/dT = dh/dT + P/rho^2 * drho/dT
+  !   du/dC = dh/dC + P/rho^2 * drho/dC
+  inv_den  = 1.d0 / den_kg
+  inv_den2 = inv_den * inv_den
+  thcflow_auxvar%u = thcflow_auxvar%h - P * inv_den
+  thcflow_auxvar%du_dP = thcflow_auxvar%dh_dP - inv_den + &
+                         P * inv_den2 * thcflow_auxvar%dden_dp
+  thcflow_auxvar%du_dT = thcflow_auxvar%dh_dT + &
+                         P * inv_den2 * thcflow_auxvar%dden_dT
+  thcflow_auxvar%du_dC = thcflow_auxvar%dh_dC + &
+                         P * inv_den2 * thcflow_auxvar%dden_dC
+
+end subroutine THCFlowEnergyEOS
 
 ! ************************************************************************** !
 

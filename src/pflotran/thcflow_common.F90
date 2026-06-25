@@ -105,10 +105,17 @@ subroutine THCFlowAccumulation(thcflow_auxvar,global_auxvar,material_auxvar, &
   Res(thcflow_concentration_dof) = thcflow_auxvar%conc * tempreal * por_sat
 
   ! --- Energy equation : units J/s = W ------------------------------------
-  ! Res[W] = [phi*S_l*rho_kg*c_p*T + (1-phi)*rho_s*c_s*T] * vol / dt
-  !          \____ fluid thermal energy ___/  \__ solid thermal energy __/
-  Res(thcflow_temperature_dof) = volume_over_dt * temperature * &
-    (por_sat * den_kg * c_p + (1.d0 - porosity) * rho_s_c_s)
+  ! RHO_CP_T     : Res = [phi*S_l*rho_kg*c_p*T + (1-phi)*rho_s*c_s*T]*vol/dt
+  ! FULL_EOS     : Res = [phi*S_l*rho_kg*u(P,T) +(1-phi)*rho_s*c_s*T]*vol/dt
+  !                      \_fluid thermal energy_/ \__solid thermal energy__/
+  if (thcflow_energy_mode == THCFLOW_ENERGY_FULL_EOS) then
+    Res(thcflow_temperature_dof) = volume_over_dt * &
+      (por_sat * den_kg * thcflow_auxvar%u + &
+       (1.d0 - porosity) * rho_s_c_s * temperature)
+  else
+    Res(thcflow_temperature_dof) = volume_over_dt * temperature * &
+      (por_sat * den_kg * c_p + (1.d0 - porosity) * rho_s_c_s)
+  endif
 
   if (calculate_derivatives) then
 
@@ -146,23 +153,45 @@ subroutine THCFlowAccumulation(thcflow_auxvar,global_auxvar,material_auxvar, &
     ! Energy equation accumulation Jacobian
     !   A_energy = [phi*S_l*rho_kg*c_p*T + (1-phi)*rho_s*c_s*T] * V/dt
     ! ===================================================================== !
-    ! dA_e/dP = V/dt * T * [ rho_kg*c_p*d(por_sat)/dP
-    !                        + phi*S_l*c_p*d(rho_kg)/dP
-    !                        - rho_s*c_s*dphi/dP ]
-    Jac(thcflow_temperature_dof,thcflow_pressure_dof) = volume_over_dt * &
-      temperature * (den_kg * c_p * dpor_sat_dp + &
-                     por_sat * c_p * thcflow_auxvar%dden_dp - &
-                     rho_s_c_s * thcflow_auxvar%dpor_dp)
-    ! dA_e/dT = V/dt * [ phi*S_l*rho_kg*c_p + (1-phi)*rho_s*c_s
-    !                    + phi*S_l*c_p*T*d(rho_kg)/dT ]
-    !   first two terms = (rho c)_eff (effective volumetric heat capacity);
-    !   third term = temperature-dependent-density correction.
-    Jac(thcflow_temperature_dof,thcflow_temperature_dof) = volume_over_dt * &
-      (por_sat * den_kg * c_p + (1.d0 - porosity) * rho_s_c_s + &
-       por_sat * c_p * temperature * thcflow_auxvar%dden_dT)
-    ! dA_e/dC = V/dt * phi*S_l*c_p*T*d(rho_kg)/dC
-    Jac(thcflow_temperature_dof,thcflow_concentration_dof) = volume_over_dt * &
-      por_sat * c_p * temperature * thcflow_auxvar%dden_dC
+    if (thcflow_energy_mode == THCFLOW_ENERGY_FULL_EOS) then
+      ! FULL_EOS: A_e = [phi*S_l*rho_kg*u + (1-phi)*rho_s*c_s*T] * V/dt
+      ! dA_e/dP = V/dt * [ u*rho_kg*d(por_sat)/dP + u*por_sat*d(rho_kg)/dP
+      !                    + por_sat*rho_kg*du/dP - rho_s*c_s*T*dphi/dP ]
+      Jac(thcflow_temperature_dof,thcflow_pressure_dof) = volume_over_dt * &
+        (thcflow_auxvar%u * den_kg * dpor_sat_dp + &
+         thcflow_auxvar%u * por_sat * thcflow_auxvar%dden_dp + &
+         por_sat * den_kg * thcflow_auxvar%du_dP - &
+         rho_s_c_s * temperature * thcflow_auxvar%dpor_dp)
+      ! dA_e/dT = V/dt * [ u*por_sat*d(rho_kg)/dT + por_sat*rho_kg*du/dT
+      !                    + (1-phi)*rho_s*c_s ]
+      Jac(thcflow_temperature_dof,thcflow_temperature_dof) = volume_over_dt * &
+        (thcflow_auxvar%u * por_sat * thcflow_auxvar%dden_dT + &
+         por_sat * den_kg * thcflow_auxvar%du_dT + &
+         (1.d0 - porosity) * rho_s_c_s)
+      ! dA_e/dC = V/dt * [ u*por_sat*d(rho_kg)/dC + por_sat*rho_kg*du/dC ]
+      Jac(thcflow_temperature_dof,thcflow_concentration_dof) = volume_over_dt *&
+        (thcflow_auxvar%u * por_sat * thcflow_auxvar%dden_dC + &
+         por_sat * den_kg * thcflow_auxvar%du_dC)
+    else
+      ! RHO_CP_T formulation
+      ! dA_e/dP = V/dt * T * [ rho_kg*c_p*d(por_sat)/dP
+      !                        + phi*S_l*c_p*d(rho_kg)/dP
+      !                        - rho_s*c_s*dphi/dP ]
+      Jac(thcflow_temperature_dof,thcflow_pressure_dof) = volume_over_dt * &
+        temperature * (den_kg * c_p * dpor_sat_dp + &
+                       por_sat * c_p * thcflow_auxvar%dden_dp - &
+                       rho_s_c_s * thcflow_auxvar%dpor_dp)
+      ! dA_e/dT = V/dt * [ phi*S_l*rho_kg*c_p + (1-phi)*rho_s*c_s
+      !                    + phi*S_l*c_p*T*d(rho_kg)/dT ]
+      !   first two terms = (rho c)_eff (effective volumetric heat capacity);
+      !   third term = temperature-dependent-density correction.
+      Jac(thcflow_temperature_dof,thcflow_temperature_dof) = volume_over_dt * &
+        (por_sat * den_kg * c_p + (1.d0 - porosity) * rho_s_c_s + &
+         por_sat * c_p * temperature * thcflow_auxvar%dden_dT)
+      ! dA_e/dC = V/dt * phi*S_l*c_p*T*d(rho_kg)/dC
+      Jac(thcflow_temperature_dof,thcflow_concentration_dof) = volume_over_dt *&
+        por_sat * c_p * temperature * thcflow_auxvar%dden_dC
+    endif
 
   endif
 
@@ -251,6 +280,7 @@ subroutine THCFlowFlux(thcflow_auxvar_up,global_auxvar_up, &
 
   ! upwind-selected transported quantities
   PetscReal :: den_kmol_upw, den_kg_upw, temp_upw, conc_upw, h_upw
+  PetscReal :: h_spec_upw        ! upwinded specific enthalpy [J/kg] (FULL_EOS)
   ! molar-density derivative routing (kmol = mass / FMWH2O)
   PetscReal :: ddkmol_dp_up, ddkmol_dp_dn
   PetscReal :: ddkmol_dT_up, ddkmol_dT_dn
@@ -379,7 +409,15 @@ subroutine THCFlowFlux(thcflow_auxvar_up,global_auxvar_up, &
   den_kg_upw   = wup*thcflow_auxvar_up%den_kg   + wdn*thcflow_auxvar_dn%den_kg
   temp_upw     = wup*thcflow_auxvar_up%temp     + wdn*thcflow_auxvar_dn%temp
   conc_upw     = wup*thcflow_auxvar_up%conc     + wdn*thcflow_auxvar_dn%conc
-  h_upw        = den_kg_upw * c_p * temp_upw
+  ! Volumetric enthalpy [J/m^3] carried by the advective flux:
+  !   RHO_CP_T: rho_kg * c_p * T   ;   FULL_EOS: rho_kg * h_spec(P,T)
+  if (thcflow_energy_mode == THCFLOW_ENERGY_FULL_EOS) then
+    h_spec_upw = wup*thcflow_auxvar_up%h + wdn*thcflow_auxvar_dn%h
+    h_upw      = den_kg_upw * h_spec_upw
+  else
+    h_spec_upw = c_p * temp_upw
+    h_upw      = den_kg_upw * h_spec_upw
+  endif
 
   ! --------------------------------------------------------------------------
   ! Solute hydrodynamic dispersion with harmonic-mean D_eff
@@ -529,13 +567,24 @@ subroutine THCFlowFlux(thcflow_auxvar_up,global_auxvar_up, &
                           dkappa_dn_dp
     endif
 
-    ! Enthalpy derivatives  h = rho_kg_upw * c_p * T_upw
-    dh_dp_up = c_p * temp_upw * ddkg_dp_up
-    dh_dp_dn = c_p * temp_upw * ddkg_dp_dn
-    dh_dT_up = c_p * (ddkg_dT_up*temp_upw + den_kg_upw*wup)
-    dh_dT_dn = c_p * (ddkg_dT_dn*temp_upw + den_kg_upw*wdn)
-    dh_dC_up = c_p * temp_upw * ddkg_dC_up
-    dh_dC_dn = c_p * temp_upw * ddkg_dC_dn
+    ! Enthalpy derivatives  (volumetric enthalpy carried by flux)
+    !   RHO_CP_T: h_upw = rho_kg_upw * c_p * T_upw
+    !   FULL_EOS: h_upw = rho_kg_upw * h_spec_upw   (h_spec upwinded specific h)
+    if (thcflow_energy_mode == THCFLOW_ENERGY_FULL_EOS) then
+      dh_dp_up = ddkg_dp_up*h_spec_upw + den_kg_upw*wup*thcflow_auxvar_up%dh_dP
+      dh_dp_dn = ddkg_dp_dn*h_spec_upw + den_kg_upw*wdn*thcflow_auxvar_dn%dh_dP
+      dh_dT_up = ddkg_dT_up*h_spec_upw + den_kg_upw*wup*thcflow_auxvar_up%dh_dT
+      dh_dT_dn = ddkg_dT_dn*h_spec_upw + den_kg_upw*wdn*thcflow_auxvar_dn%dh_dT
+      dh_dC_up = ddkg_dC_up*h_spec_upw + den_kg_upw*wup*thcflow_auxvar_up%dh_dC
+      dh_dC_dn = ddkg_dC_dn*h_spec_upw + den_kg_upw*wdn*thcflow_auxvar_dn%dh_dC
+    else
+      dh_dp_up = c_p * temp_upw * ddkg_dp_up
+      dh_dp_dn = c_p * temp_upw * ddkg_dp_dn
+      dh_dT_up = c_p * (ddkg_dT_up*temp_upw + den_kg_upw*wup)
+      dh_dT_dn = c_p * (ddkg_dT_dn*temp_upw + den_kg_upw*wdn)
+      dh_dC_up = c_p * temp_upw * ddkg_dC_up
+      dh_dC_dn = c_p * temp_upw * ddkg_dC_dn
+    endif
 
     ! ===================================================================== !
     ! Flow equation flux Jacobian  F_flow = rho_kmol_upw * q
@@ -689,6 +738,7 @@ subroutine THCFlowBCFlux(ibndtype,auxvar_mapping,auxvars, &
   ! upwind transported quantities
   PetscReal :: c_p
   PetscReal :: den_kmol_upw, den_kg_upw, temp_upw, conc_upw, h_upw
+  PetscReal :: h_spec_upw        ! upwinded specific enthalpy [J/kg] (FULL_EOS)
   PetscReal :: ddkmol_dp_dn, ddkmol_dT_dn, ddkmol_dC_dn
   PetscReal :: ddkg_dp_dn, ddkg_dT_dn, ddkg_dC_dn
   PetscReal :: dh_dp_dn, dh_dT_dn, dh_dC_dn
@@ -852,7 +902,14 @@ subroutine THCFlowBCFlux(ibndtype,auxvar_mapping,auxvars, &
   den_kg_upw   = wup*thcflow_auxvar_up%den_kg   + wdn*thcflow_auxvar_dn%den_kg
   temp_upw     = wup*thcflow_auxvar_up%temp     + wdn*thcflow_auxvar_dn%temp
   conc_upw     = wup*thcflow_auxvar_up%conc     + wdn*thcflow_auxvar_dn%conc
-  h_upw        = den_kg_upw * c_p * temp_upw
+  ! Volumetric enthalpy [J/m^3]: RHO_CP_T -> rho*c_p*T ; FULL_EOS -> rho*h_spec
+  if (thcflow_energy_mode == THCFLOW_ENERGY_FULL_EOS) then
+    h_spec_upw = wup*thcflow_auxvar_up%h + wdn*thcflow_auxvar_dn%h
+    h_upw      = den_kg_upw * h_spec_upw
+  else
+    h_spec_upw = c_p * temp_upw
+    h_upw      = den_kg_upw * h_spec_upw
+  endif
 
   ! --- advective residual contributions (all three equations) -------------
   ! Flow [kmol/s]
@@ -947,10 +1004,18 @@ subroutine THCFlowBCFlux(ibndtype,auxvar_mapping,auxvars, &
     ddkg_dT_dn   = wdn*thcflow_auxvar_dn%dden_dT
     ddkg_dC_dn   = wdn*thcflow_auxvar_dn%dden_dC
 
-    ! enthalpy derivatives  h = rho_kg_upw * c_p * T_upw
-    dh_dp_dn = c_p * temp_upw * ddkg_dp_dn
-    dh_dT_dn = c_p * (ddkg_dT_dn*temp_upw + den_kg_upw*wdn)
-    dh_dC_dn = c_p * temp_upw * ddkg_dC_dn
+    ! enthalpy derivatives (volumetric); interior (dn) cell only at boundary
+    !   RHO_CP_T: h_upw = rho_kg_upw * c_p * T_upw
+    !   FULL_EOS: h_upw = rho_kg_upw * h_spec_upw
+    if (thcflow_energy_mode == THCFLOW_ENERGY_FULL_EOS) then
+      dh_dp_dn = ddkg_dp_dn*h_spec_upw + den_kg_upw*wdn*thcflow_auxvar_dn%dh_dP
+      dh_dT_dn = ddkg_dT_dn*h_spec_upw + den_kg_upw*wdn*thcflow_auxvar_dn%dh_dT
+      dh_dC_dn = ddkg_dC_dn*h_spec_upw + den_kg_upw*wdn*thcflow_auxvar_dn%dh_dC
+    else
+      dh_dp_dn = c_p * temp_upw * ddkg_dp_dn
+      dh_dT_dn = c_p * (ddkg_dT_dn*temp_upw + den_kg_upw*wdn)
+      dh_dC_dn = c_p * temp_upw * ddkg_dC_dn
+    endif
 
     ! diffusive transmissibility derivatives
     dGamma_D_dpdn = 0.d0; dGamma_D_dTdn = 0.d0; dGamma_D_dCdn = 0.d0
@@ -1044,6 +1109,7 @@ subroutine THCFlowSrcSink(option,flow_aux_real_var,flow_src_sink_mapping, &
   !
   use Option_module
   use Material_Aux_module
+  use EOS_Water_module
 
   implicit none
 
@@ -1064,6 +1130,9 @@ subroutine THCFlowSrcSink(option,flow_aux_real_var,flow_src_sink_mapping, &
   PetscReal :: tempreal
   PetscReal :: qsrc_m3, qsrc_L
   PetscReal :: c_p, den_kg, conc_used, temp_used
+  PetscReal :: h_used, dh_used_dP, dh_used_dT, dh_used_dC
+  PetscReal :: hw, hw_dp, hw_dT
+  PetscErrorCode :: ierr
   PetscInt :: dof_index, index_
 
   Res = 0.d0
@@ -1127,7 +1196,10 @@ subroutine THCFlowSrcSink(option,flow_aux_real_var,flow_src_sink_mapping, &
 
   ! ========================================================================= !
   ! Energy source/sink : units W
-  !   Q_energy = q_vol * rho_kg(P,T,C) * c_p * T_used
+  !   RHO_CP_T: Q_energy = q_vol * rho_kg(P,T,C) * c_p * T_used
+  !   FULL_EOS: Q_energy = q_vol * rho_kg(P,T,C) * h_spec_used
+  !     injection  -> h_spec at prescribed T_inj and cell pressure
+  !     extraction -> h_spec at cell conditions (thcflow_auxvar%h)
   ! ========================================================================= !
   if (qsrc_m3 >= 0.d0) then
     ! injection at prescribed T_inj (fixed)
@@ -1137,21 +1209,56 @@ subroutine THCFlowSrcSink(option,flow_aux_real_var,flow_src_sink_mapping, &
     ! extraction carries interior cell temperature
     temp_used = thcflow_auxvar%temp
   endif
-  Res(thcflow_temperature_dof) = qsrc_m3 * den_kg * c_p * temp_used
-  if (calculate_derivatives) then
-    ! density-coupling terms (present for both injection and extraction)
-    Jdn(thcflow_temperature_dof,thcflow_pressure_dof) = &
-      qsrc_m3 * c_p * temp_used * thcflow_auxvar%dden_dp
-    Jdn(thcflow_temperature_dof,thcflow_concentration_dof) = &
-      qsrc_m3 * c_p * temp_used * thcflow_auxvar%dden_dC
+
+  if (thcflow_energy_mode == THCFLOW_ENERGY_FULL_EOS) then
+    ! specific enthalpy h_used [J/kg] and its derivatives w.r.t. cell DOFs
     if (qsrc_m3 >= 0.d0) then
-      ! injection: T_inj fixed -> only density's T-dependence
-      Jdn(thcflow_temperature_dof,thcflow_temperature_dof) = &
-        qsrc_m3 * c_p * temp_used * thcflow_auxvar%dden_dT
+      ! injection: h(T_inj, P_cell); independent of cell T and C, varies with P
+      ierr = 0
+      call EOSWaterEnthalpy(temp_used,thcflow_auxvar%pres,hw,hw_dp,hw_dT,ierr)
+      if (ierr /= 0) then
+        option%io_buffer = 'Error computing THCFLOW injection enthalpy in &
+          &THCFlowSrcSink (FULL_EOS).'
+        call PrintErrMsg(option)
+      endif
+      h_used     = hw / FMWH2O
+      dh_used_dP = hw_dp / FMWH2O
+      dh_used_dT = 0.d0
+      dh_used_dC = 0.d0
     else
-      ! extraction: T_used = T_cell -> product rule on rho_kg*T_cell
+      ! extraction: cell specific enthalpy and its stored derivatives
+      h_used     = thcflow_auxvar%h
+      dh_used_dP = thcflow_auxvar%dh_dP
+      dh_used_dT = thcflow_auxvar%dh_dT
+      dh_used_dC = thcflow_auxvar%dh_dC
+    endif
+    Res(thcflow_temperature_dof) = qsrc_m3 * den_kg * h_used
+    if (calculate_derivatives) then
+      ! product rule on rho_kg(P,T,C) * h_used(P[,T,C])
+      Jdn(thcflow_temperature_dof,thcflow_pressure_dof) = &
+        qsrc_m3 * (thcflow_auxvar%dden_dp * h_used + den_kg * dh_used_dP)
       Jdn(thcflow_temperature_dof,thcflow_temperature_dof) = &
-        qsrc_m3 * c_p * (den_kg + temp_used * thcflow_auxvar%dden_dT)
+        qsrc_m3 * (thcflow_auxvar%dden_dT * h_used + den_kg * dh_used_dT)
+      Jdn(thcflow_temperature_dof,thcflow_concentration_dof) = &
+        qsrc_m3 * (thcflow_auxvar%dden_dC * h_used + den_kg * dh_used_dC)
+    endif
+  else
+    Res(thcflow_temperature_dof) = qsrc_m3 * den_kg * c_p * temp_used
+    if (calculate_derivatives) then
+      ! density-coupling terms (present for both injection and extraction)
+      Jdn(thcflow_temperature_dof,thcflow_pressure_dof) = &
+        qsrc_m3 * c_p * temp_used * thcflow_auxvar%dden_dp
+      Jdn(thcflow_temperature_dof,thcflow_concentration_dof) = &
+        qsrc_m3 * c_p * temp_used * thcflow_auxvar%dden_dC
+      if (qsrc_m3 >= 0.d0) then
+        ! injection: T_inj fixed -> only density's T-dependence
+        Jdn(thcflow_temperature_dof,thcflow_temperature_dof) = &
+          qsrc_m3 * c_p * temp_used * thcflow_auxvar%dden_dT
+      else
+        ! extraction: T_used = T_cell -> product rule on rho_kg*T_cell
+        Jdn(thcflow_temperature_dof,thcflow_temperature_dof) = &
+          qsrc_m3 * c_p * (den_kg + temp_used * thcflow_auxvar%dden_dT)
+      endif
     endif
   endif
 

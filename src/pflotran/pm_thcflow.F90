@@ -151,6 +151,7 @@ subroutine PMTHCFlowReadSimOptionsBlock(this,input)
   type(input_type), pointer :: input
 
   character(len=MAXWORDLENGTH) :: keyword
+  character(len=MAXWORDLENGTH) :: word
   type(option_type), pointer :: option
   character(len=MAXSTRINGLENGTH) :: error_string
   PetscBool :: found
@@ -207,6 +208,19 @@ subroutine PMTHCFlowReadSimOptionsBlock(this,input)
         call InputErrorMsg(input,option,keyword,error_string)
         call InputReadAndConvertUnits(input,thcflow_kappa_solid,'W/m-C', &
                                       trim(error_string)//','//keyword,option)
+      case('ENERGY_FORMULATION')
+        call InputReadCard(input,option,word)
+        call InputErrorMsg(input,option,keyword,error_string)
+        call StringToUpper(word)
+        select case(trim(word))
+          case('RHO_CP_T','RHOCPT')
+            thcflow_energy_mode = THCFLOW_ENERGY_RHO_CP_T
+          case('FULL_EOS','FULLEOS','EOS')
+            thcflow_energy_mode = THCFLOW_ENERGY_FULL_EOS
+          case default
+            call InputKeywordUnrecognized(input,word, &
+                   'THCFlow Mode,ENERGY_FORMULATION',option)
+        end select
       case('DEBUG_CELL_ID')
         call InputReadInt(input,option,thcflow_debug_cell_id)
         call InputErrorMsg(input,option,keyword,error_string)
