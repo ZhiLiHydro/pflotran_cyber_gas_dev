@@ -380,11 +380,11 @@ subroutine CompFlowViscosity(auxvar,global_auxvar,material_auxvar,option)
   type(material_auxvar_type) :: material_auxvar
   type(option_type) :: option
 
-  PetscReal, parameter :: a = 1.2d-9
-  PetscReal, parameter :: b = 2.763d0
-  PetscReal, parameter :: alpha = 7.9d-9
-  PetscReal, parameter :: beta = 2.73d0
-  PetscReal, parameter :: n = 0.5d0
+  PetscReal, parameter :: a = 1.16d-9
+  PetscReal, parameter :: b = 2.769d0
+  PetscReal, parameter :: alpha = 7.61d-9
+  PetscReal, parameter :: beta = 2.737d0
+  PetscReal, parameter :: n = 0.7d0
   PetscReal, parameter :: alpha_shear = 6.d0
   PetscReal, parameter :: mu_inf = 1.d-3
   PetscReal :: K
