@@ -735,8 +735,10 @@ subroutine AmendmentReact(this,Residual,Jacobian,compute_derivative, &
   ! 1.d3 converts m^3 water -> L water
 
   zero = 0.d0
-  viscosity = 0.0008891
-  ! Ns/m2 (This should be a field but not found in global_auxvar)
+  viscosity = 0.0008891 !Pa-s
+  if (this%viscosity_id > 0) then
+    viscosity = global_auxvar%parameters(this%viscosity_id)
+  endif
 
   temperature = global_auxvar%temp
   rho_f = global_auxvar%den_kg(iphase)
