@@ -26,6 +26,7 @@ module Compositional_Flow_Aux_module
   PetscBool, public :: compflow_simult_function_evals = PETSC_TRUE
   PetscBool, public :: compflow_acknowledge_no_compress = PETSC_FALSE
   PetscBool, public :: compflow_shear_thinning = PETSC_FALSE
+  PetscReal, public :: compflow_decay_rate_constant = 0.d0
 
   ! debugging
   PetscInt, public :: compflow_ni_count
@@ -440,7 +441,6 @@ end subroutine CompFlowViscosity
 
 subroutine CompFlowAuxVarPerturb(x,compflow_auxvar,global_auxvar, &
                               material_auxvar, &
-                              material_auxvar_pert, &
                               characteristic_curves, &
                               natural_id,option)
   ! Calculates auxiliary variables for perturbed system
@@ -461,7 +461,6 @@ subroutine CompFlowAuxVarPerturb(x,compflow_auxvar,global_auxvar, &
   type(compflow_auxvar_type) :: compflow_auxvar(0:)
   type(global_auxvar_type) :: global_auxvar
   type(material_auxvar_type) :: material_auxvar
-  type(material_auxvar_type) :: material_auxvar_pert(:)
   class(characteristic_curves_type) :: characteristic_curves
 
   PetscInt :: idof

@@ -229,6 +229,12 @@ subroutine PMCompFlowReadSimOptionsBlock(this,input)
       case('SHEAR_THINNING_FLUID')
         option%flow%store_darcy_vel = PETSC_TRUE
         compflow_shear_thinning = PETSC_TRUE
+      case('SOLUTE_DECAY_RATE_CONSTANT')
+        call InputReadDouble(input,option,compflow_decay_rate_constant)
+        call InputErrorMsg(input,option,keyword,error_string)
+        call InputReadAndConvertUnits(input,compflow_decay_rate_constant, &
+                                      '1/sec',trim(error_string)//','// &
+                                      keyword,option)
       case default
         call InputKeywordUnrecognized(input,keyword,'CompFlow Mode',option)
     end select

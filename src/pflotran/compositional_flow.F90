@@ -104,13 +104,6 @@ subroutine CompFlowSetup(realization)
       compflow_min_pert(compflow_heat_tran_eq) = compflow_temp_min_pert
     if (compflow_sol_tran_eq > 0) &
       compflow_min_pert(compflow_sol_tran_eq) = compflow_conc_min_pert
-    allocate(patch%aux%CompFlow%material_auxvars_pert(ONE_INTEGER,grid%ngmax))
-    do ghosted_id = 1, grid%ngmax
-      call MaterialAuxVarInit(patch%aux%CompFlow% &
-            material_auxvars_pert(ONE_INTEGER,ghosted_id),option)
-    enddo
-  else
-    allocate(patch%aux%CompFlow%material_auxvars_pert(ZERO_INTEGER,grid%ngmax))
   endif
 
   ! ensure that material properties specific to this module are properly
@@ -772,7 +765,6 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
   type(global_auxvar_type), pointer :: global_auxvars_bc(:)
   type(global_auxvar_type), pointer :: global_auxvars_ss(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
-  type(material_auxvar_type), pointer :: material_auxvars_pert(:,:)
   type(connection_set_list_type), pointer :: connection_set_list
   type(connection_set_type), pointer :: cur_connection_set
 
@@ -812,7 +804,6 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
   global_auxvars_bc => patch%aux%Global%auxvars_bc
   global_auxvars_ss => patch%aux%Global%auxvars_ss
   material_auxvars => patch%aux%Material%auxvars
-  material_auxvars_pert => patch%aux%CompFlow%material_auxvars_pert
 
   call MatZeroEntries(A,ierr);CHKERRQ(ierr)
 
@@ -835,7 +826,6 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
                               compflow_auxvars(:,ghosted_id), &
                               global_auxvars(ghosted_id), &
                               material_auxvars(ghosted_id), &
-                              material_auxvars_pert(:,ghosted_id), &
                               patch%characteristic_curves_array( &
                                 patch%cc_id(ghosted_id))%ptr, &
                               grid%nG2A(ghosted_id),option)
@@ -869,7 +859,6 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
       call CompFlowAccumDerivative(compflow_auxvars(:,ghosted_id), &
                                 global_auxvars(ghosted_id), &
                                 material_auxvars(ghosted_id), &
-                                material_auxvars_pert(:,ghosted_id), &
                                 option,Res,Jup)
       call PetUtilVecSVBL(r_p,local_id,Res,ndof,PETSC_FALSE)
       call PetUtilVecSVBL(accum_t_p2,local_id,Res,ndof,PETSC_TRUE)
@@ -906,11 +895,9 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
         call XXFluxDerivative(compflow_auxvars(:,ghosted_id_up), &
                               global_auxvars(ghosted_id_up), &
                               material_auxvars(ghosted_id_up), &
-                              material_auxvars_pert(:,ghosted_id_up), &
                               compflow_auxvars(:,ghosted_id_dn), &
                               global_auxvars(ghosted_id_dn), &
                               material_auxvars(ghosted_id_dn), &
-                              material_auxvars_pert(:,ghosted_id_dn), &
                               cur_connection_set%area(iconn), &
                               cur_connection_set%dist(:,iconn), &
                               compflow_parameter,option,v_darcy, &
@@ -971,7 +958,6 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
                                 compflow_auxvars(:,ghosted_id), &
                                 global_auxvars(ghosted_id), &
                                 material_auxvars(ghosted_id), &
-                                material_auxvars_pert(:,ghosted_id), &
                                 cur_connection_set%area(iconn), &
                                 cur_connection_set%dist(:,iconn), &
                                 compflow_parameter,option, &
@@ -1017,7 +1003,6 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
                                   compflow_auxvars(:,ghosted_id), &
                                   global_auxvars(ghosted_id), &
                                   material_auxvars(ghosted_id), &
-                                  material_auxvars_pert(:,ghosted_id), &
                                   ss_flow_vol_flux,Res,Jdn)
       if (associated(patch%ss_flow_vol_fluxes)) then
         patch%ss_flow_vol_fluxes(:,sum_connection) = ss_flow_vol_flux
@@ -1037,6 +1022,20 @@ subroutine CompFlowResidual(snes,xx,r,A,realization,debug,ierr)
     enddo
     source_sink => source_sink%next
   enddo
+
+  if (compflow_decay_rate_constant > 0.d0) then
+    do local_id = 1, grid%nlmax  ! For each local node do...
+      ghosted_id = grid%nL2G(local_id)
+      imat = patch%imat(ghosted_id)
+      if (imat <= 0) cycle
+      call CompFlowReactDerivative(compflow_auxvars(:,ghosted_id), &
+                                   global_auxvars(ghosted_id), &
+                                   material_auxvars(ghosted_id), &
+                                   option,Res,Jup)
+      call PetUtilVecSVBL(r_p,local_id,Res,ndof,PETSC_FALSE)
+      call PetUtilMatSVBL(A,ghosted_id,ghosted_id,Jup,ndof)
+    enddo
+  endif
 
   call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 

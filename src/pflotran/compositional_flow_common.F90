@@ -87,7 +87,8 @@ module Compositional_Flow_Common_module
             CompFlowAccumDerivative, &
             XXFluxDerivative, &
             XXBCFluxDerivative, &
-            CompFlowSrcSinkDerivative
+            CompFlowSrcSinkDerivative, &
+            CompFlowReactDerivative
 
   public :: XXFlux, &
             XXBCFlux
@@ -97,7 +98,7 @@ contains
 ! ************************************************************************** !
 
 subroutine CompFlowAccumulation(compflow_auxvar,global_auxvar,material_auxvar, &
-                             option,Res,Jac,calculate_derivatives)
+                                option,Res,Jac,calculate_derivatives)
   !
   ! Computes the non-fixed portion of the accumulation
   ! term for the residual
@@ -806,9 +807,53 @@ end subroutine CompFlowSrcSink
 
 ! ************************************************************************** !
 
+subroutine CompFlowReact(compflow_auxvar,global_auxvar,material_auxvar, &
+                         option,Res,Jac,calculate_derivatives)
+  !
+  ! Computes the non-fixed portion of the accumulation
+  ! term for the residual
+  !
+  ! Author: Glenn Hammond
+  ! Date: 06/04/26
+  !
+
+  use Option_module
+  use Material_Aux_module
+
+  implicit none
+
+  type(compflow_auxvar_type) :: compflow_auxvar
+  type(global_auxvar_type) :: global_auxvar
+  type(material_auxvar_type) :: material_auxvar
+  type(option_type) :: option
+  PetscReal :: Res(COMPFLOW_MAX_DOF)
+  PetscReal :: Jac(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
+  PetscBool :: calculate_derivatives
+
+  PetscReal :: tempreal
+
+  Res = 0.d0
+  Jac = 0.d0
+
+  ! L/sec
+  tempreal = material_auxvar%volume * compflow_auxvar%effective_porosity * &
+             compflow_auxvar%sat * 1.d3 * compflow_decay_rate_constant
+
+  if (compflow_sol_tran_eq > 0) then
+    ! mg/sec
+    Res(compflow_sol_tran_eq) = tempreal * compflow_auxvar%conc
+
+    if (calculate_derivatives) then
+      Jac(compflow_sol_tran_eq,compflow_sol_tran_eq) = tempreal
+    endif
+  endif
+
+end subroutine CompFlowReact
+
+! ************************************************************************** !
+
 subroutine CompFlowAccumDerivative(compflow_auxvar,global_auxvar, &
                                 material_auxvar, &
-                                material_auxvar_pert, &
                                 option,Res,Jac)
   !
   ! Computes derivatives of the accumulation
@@ -826,7 +871,6 @@ subroutine CompFlowAccumDerivative(compflow_auxvar,global_auxvar, &
   type(compflow_auxvar_type) :: compflow_auxvar(0:)
   type(global_auxvar_type) :: global_auxvar
   type(material_auxvar_type) :: material_auxvar
-  type(material_auxvar_type) :: material_auxvar_pert(:)
   type(option_type) :: option
   PetscReal :: Res(COMPFLOW_MAX_DOF)
   PetscReal :: Jac(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
@@ -860,10 +904,8 @@ end subroutine CompFlowAccumDerivative
 
 subroutine XXFluxDerivative(compflow_auxvar_up,global_auxvar_up, &
                             material_auxvar_up, &
-                            material_auxvar_pert_up, &
                             compflow_auxvar_dn,global_auxvar_dn, &
                             material_auxvar_dn, &
-                            material_auxvar_pert_dn, &
                             area, dist,compflow_parameter,option,v_darcy, &
                             Res,Jup,Jdn, &
                             debug_connection)
@@ -882,8 +924,6 @@ subroutine XXFluxDerivative(compflow_auxvar_up,global_auxvar_up, &
   type(compflow_auxvar_type) :: compflow_auxvar_up(0:), compflow_auxvar_dn(0:)
   type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
   type(material_auxvar_type) :: material_auxvar_up, material_auxvar_dn
-  type(material_auxvar_type) :: material_auxvar_pert_up(:)
-  type(material_auxvar_type) :: material_auxvar_pert_dn(:)
   type(option_type) :: option
   PetscReal :: area
   PetscReal :: dist(-1:3)
@@ -949,7 +989,6 @@ subroutine XXBCFluxDerivative(ibndtype,auxvar_mapping,auxvars, &
                               global_auxvar_up, &
                               compflow_auxvar_dn,global_auxvar_dn, &
                               material_auxvar_dn, &
-                              material_auxvar_pert_dn, &
                               area,dist,compflow_parameter,option,v_darcy, &
                               Res,Jdn,debug_connection)
   !
@@ -972,7 +1011,6 @@ subroutine XXBCFluxDerivative(ibndtype,auxvar_mapping,auxvars, &
   type(compflow_auxvar_type) :: compflow_auxvar_up, compflow_auxvar_dn(0:)
   type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
   type(material_auxvar_type) :: material_auxvar_dn
-  type(material_auxvar_type) :: material_auxvar_pert_dn(:)
   PetscReal :: area
   PetscReal :: dist(-1:3)
   type(compflow_parameter_type) :: compflow_parameter
@@ -1021,7 +1059,6 @@ subroutine CompFlowSrcSinkDerivative(option,flow_aux_real_var, &
                                   flow_src_sink_type, &
                                   compflow_auxvar,global_auxvar, &
                                   material_auxvar, &
-                                  material_auxvar_pert, &
                                   ss_flow_vol_flux, &
                                   Res,Jac)
   !
@@ -1042,7 +1079,6 @@ subroutine CompFlowSrcSinkDerivative(option,flow_aux_real_var, &
   type(compflow_auxvar_type) :: compflow_auxvar(0:)
   type(global_auxvar_type) :: global_auxvar
   type(material_auxvar_type) :: material_auxvar
-  type(material_auxvar_type) :: material_auxvar_pert(:)
   PetscReal :: ss_flow_vol_flux
   PetscReal :: Res(COMPFLOW_MAX_DOF)
   PetscReal :: Jac(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
@@ -1078,5 +1114,52 @@ subroutine CompFlowSrcSinkDerivative(option,flow_aux_real_var, &
   endif
 
 end subroutine CompFlowSrcSinkDerivative
+
+! ************************************************************************** !
+
+subroutine CompFlowReactDerivative(compflow_auxvar,global_auxvar, &
+                                   material_auxvar,option,Res,Jac)
+  !
+  ! Computes derivatives of the concentration decay term for the Jacobian
+  !
+  ! Author: Glenn Hammond
+  ! Date: 06/25/26
+  !
+  use Option_module
+  use Material_Aux_module
+
+  implicit none
+
+  type(compflow_auxvar_type) :: compflow_auxvar(0:)
+  type(global_auxvar_type) :: global_auxvar
+  type(material_auxvar_type) :: material_auxvar
+  type(option_type) :: option
+  PetscReal :: Res(COMPFLOW_MAX_DOF)
+  PetscReal :: Jac(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
+
+  PetscReal :: res_pert(COMPFLOW_MAX_DOF)
+  PetscReal :: Jdum(COMPFLOW_MAX_DOF,COMPFLOW_MAX_DOF)
+  PetscInt :: idof, ieq
+
+  call CompFlowReact(compflow_auxvar(ZERO_INTEGER), &
+                         global_auxvar, &
+                         material_auxvar, &
+                         option,Res,Jac, &
+                         .not.compflow_numerical_derivatives)
+
+  if (compflow_numerical_derivatives) then
+    do idof = 1, option%nflowdof
+      call CompFlowReact(compflow_auxvar(idof), &
+                             global_auxvar, &
+                             material_auxvar, &
+                             option,res_pert,Jdum, &
+                             PETSC_FALSE)
+      do ieq = 1, option%nflowdof
+        Jac(ieq,idof) = (res_pert(ieq)-Res(ieq))/compflow_auxvar(idof)%pert
+      enddo
+    enddo
+  endif
+
+end subroutine CompFlowReactDerivative
 
 end module Compositional_Flow_Common_module
