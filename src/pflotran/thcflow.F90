@@ -115,6 +115,54 @@ subroutine THCFlowSetup(realization)
     enddo
   endif
 
+  ! --------------------------------------------------------------------------
+  ! Per-material thermal properties (TH-compatible MATERIAL_PROPERTY card).
+  !   dencpr = ROCK_DENSITY * SPECIFIC_HEAT          [J/(m^3.K)]
+  !   ckdry  = THERMAL_CONDUCTIVITY_DRY              [W/(m.K)]
+  !   ckwet  = THERMAL_CONDUCTIVITY_WET              [W/(m.K)]
+  ! Each falls back to the MODE THCFLOW OPTIONS-block globals when the material
+  ! does not supply it, so existing inputs (OPTIONS-only) are unchanged.  The
+  ! conductivity path used per-cell is selected in THCFlowAuxVarCompute: bulk
+  ! dry/wet interpolation when both ckdry/ckwet are set, otherwise the
+  ! grain-Somerton model from the global thcflow_kappa_solid.
+  ! --------------------------------------------------------------------------
+  allocate(thcflow_parameter%dencpr(temp_int))
+  allocate(thcflow_parameter%ckdry(temp_int))
+  allocate(thcflow_parameter%ckwet(temp_int))
+  do imat = 1, temp_int
+    ! solid volumetric heat capacity rho_s * c_s
+    if (Initialized(patch%material_property_array(imat)%ptr%rock_density) .and. &
+        Initialized(patch%material_property_array(imat)%ptr%specific_heat)) then
+      thcflow_parameter%dencpr(imat) = &
+        patch%material_property_array(imat)%ptr%rock_density * &
+        patch%material_property_array(imat)%ptr%specific_heat
+    else
+      thcflow_parameter%dencpr(imat) = thcflow_density_solid * &
+                                       thcflow_heat_capacity_solid
+    endif
+    ! bulk dry/wet thermal conductivity.  Precedence:
+    !   1. per-material MATERIAL_PROPERTY THERMAL_CONDUCTIVITY_DRY/WET
+    !   2. OPTIONS-block global thcflow_kappa_dry/wet (bulk)
+    !   3. UNINITIALIZED -> grain-Somerton fallback (thcflow_kappa_solid) in
+    !      THCFlowAuxVarCompute
+    if (Initialized(patch%material_property_array(imat)%ptr% &
+                      thermal_conductivity_dry) .and. &
+        Initialized(patch%material_property_array(imat)%ptr% &
+                      thermal_conductivity_wet)) then
+      thcflow_parameter%ckdry(imat) = &
+        patch%material_property_array(imat)%ptr%thermal_conductivity_dry
+      thcflow_parameter%ckwet(imat) = &
+        patch%material_property_array(imat)%ptr%thermal_conductivity_wet
+    else if (Initialized(thcflow_kappa_dry) .and. &
+             Initialized(thcflow_kappa_wet)) then
+      thcflow_parameter%ckdry(imat) = thcflow_kappa_dry
+      thcflow_parameter%ckwet(imat) = thcflow_kappa_wet
+    else
+      thcflow_parameter%ckdry(imat) = UNINITIALIZED_DOUBLE
+      thcflow_parameter%ckwet(imat) = UNINITIALIZED_DOUBLE
+    endif
+  enddo
+
   ! THCFLOW always solves the fixed 3-DOF (P,T,C) system; no runtime DOF-index
   ! assignment is needed (contrast ZFLOW, which renumbers its equation indices
   ! here).  thcflow_pressure_dof / thcflow_temperature_dof /
@@ -526,6 +574,7 @@ subroutine THCFlowUpdateAuxVars(realization)
                               material_auxvars(ghosted_id), &
                               patch%characteristic_curves_array( &
                                 patch%cc_id(ghosted_id))%ptr, &
+                              patch%aux%THCFlow%thcflow_parameter, &
                               natural_id, &
                               PETSC_TRUE,option)
   enddo
@@ -609,6 +658,7 @@ subroutine THCFlowUpdateAuxVars(realization)
                                 material_auxvars(ghosted_id), &
                                 patch%characteristic_curves_array( &
                                   patch%cc_id(ghosted_id))%ptr, &
+                                patch%aux%THCFlow%thcflow_parameter, &
                                 natural_id, &
                                 PETSC_FALSE,option)
     enddo
@@ -717,6 +767,7 @@ subroutine THCFlowUpdateFixedAccum(realization)
                               material_auxvars(ghosted_id), &
                               patch%characteristic_curves_array( &
                                 patch%cc_id(ghosted_id))%ptr, &
+                              patch%aux%THCFlow%thcflow_parameter, &
                               natural_id, &
                               PETSC_TRUE,option)
     call THCFlowAccumulation(thcflow_auxvars(ZERO_INTEGER,ghosted_id), &
@@ -855,6 +906,7 @@ subroutine THCFlowResidual(snes,xx,r,A,realization,debug,ierr)
                                 material_auxvars_pert(:,ghosted_id), &
                                 patch%characteristic_curves_array( &
                                   patch%cc_id(ghosted_id))%ptr, &
+                                patch%aux%THCFlow%thcflow_parameter, &
                                 grid%nG2A(ghosted_id),option)
     enddo
     call VecRestoreArrayRead(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)

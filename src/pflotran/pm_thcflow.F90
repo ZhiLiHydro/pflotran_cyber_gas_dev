@@ -186,18 +186,18 @@ subroutine PMTHCFlowReadSimOptionsBlock(this,input)
         thcflow_calc_bcflux = PETSC_FALSE
       case('TENSORIAL_RELATIVE_PERMEABILITY')
         thcflow_tensorial_rel_perm = PETSC_TRUE
-      case('SOLID_DENSITY','SOLID_GRAIN_DENSITY')
+      case('SOLID_DENSITY','SOLID_GRAIN_DENSITY','ROCK_DENSITY')
         call InputReadDouble(input,option,thcflow_density_solid)
         call InputErrorMsg(input,option,keyword,error_string)
         call InputReadAndConvertUnits(input,thcflow_density_solid,'kg/m^3', &
                                       trim(error_string)//','//keyword,option)
-      case('LIQUID_HEAT_CAPACITY')
+      case('LIQUID_HEAT_CAPACITY','HEAT_CAPACITY_LIQUID','SPECIFIC_HEAT_LIQUID')
         call InputReadDouble(input,option,thcflow_heat_capacity_fluid)
         call InputErrorMsg(input,option,keyword,error_string)
         call InputReadAndConvertUnits(input,thcflow_heat_capacity_fluid, &
                                       'J/kg-C',trim(error_string)//','// &
                                       keyword,option)
-      case('SOLID_HEAT_CAPACITY','HEAT_CAPACITY_SOLID')
+      case('SOLID_HEAT_CAPACITY','HEAT_CAPACITY_SOLID','SPECIFIC_HEAT_SOLID')
         call InputReadDouble(input,option,thcflow_heat_capacity_solid)
         call InputErrorMsg(input,option,keyword,error_string)
         call InputReadAndConvertUnits(input,thcflow_heat_capacity_solid, &
@@ -207,6 +207,16 @@ subroutine PMTHCFlowReadSimOptionsBlock(this,input)
         call InputReadDouble(input,option,thcflow_kappa_solid)
         call InputErrorMsg(input,option,keyword,error_string)
         call InputReadAndConvertUnits(input,thcflow_kappa_solid,'W/m-C', &
+                                      trim(error_string)//','//keyword,option)
+      case('THERMAL_CONDUCTIVITY_DRY')
+        call InputReadDouble(input,option,thcflow_kappa_dry)
+        call InputErrorMsg(input,option,keyword,error_string)
+        call InputReadAndConvertUnits(input,thcflow_kappa_dry,'W/m-C', &
+                                      trim(error_string)//','//keyword,option)
+      case('THERMAL_CONDUCTIVITY_WET')
+        call InputReadDouble(input,option,thcflow_kappa_wet)
+        call InputErrorMsg(input,option,keyword,error_string)
+        call InputReadAndConvertUnits(input,thcflow_kappa_wet,'W/m-C', &
                                       trim(error_string)//','//keyword,option)
       case('ENERGY_FORMULATION')
         call InputReadCard(input,option,word)

@@ -52,7 +52,7 @@ module THCFlow_EOS_Utils_module
   ! Finite-difference step in salinity mass fraction for the d/dC chain rule.
   PetscReal, parameter :: thcflow_salinity_perturbation = 1.d-6
   ! Floor on saturation to keep the Somerton derivative finite at S_l -> 0.
-  PetscReal, parameter :: thcflow_sat_floor = 1.d-6
+  PetscReal, parameter, public :: thcflow_sat_floor = 1.d-6
 
   public :: THCFlowConcToMassFraction, &
             THCFlowDensityAndDerivs, &

@@ -16,7 +16,15 @@ module THCFlow_Aux_module
   PetscReal, public :: thcflow_heat_capacity_fluid = 4184.d0  ! c_p,l [J/(kg.K)]
   PetscReal, public :: thcflow_heat_capacity_solid = 800.d0   ! c_s   [J/(kg.K)]
   PetscReal, public :: thcflow_density_solid       = 2650.d0  ! rho_s [kg/m^3]
+  ! grain (solid) thermal conductivity used by the porosity-dependent
+  ! grain-Somerton fallback (THCFlowThermalConductivityEff)
   PetscReal, public :: thcflow_kappa_solid         = 3.d0     ! kappa_s [W/(m.K)]
+  ! optional OPTIONS-block global BULK dry/wet conductivities; when set they
+  ! feed the TH-style interpolation (kappa_eff = ckdry + sqrt(S)*(ckwet-ckdry))
+  ! and take precedence over thcflow_kappa_solid.  Default UNINITIALIZED so the
+  ! grain-Somerton path remains the fallback when they are not supplied.
+  PetscReal, public :: thcflow_kappa_dry = UNINITIALIZED_DOUBLE  ! [W/(m.K)]
+  PetscReal, public :: thcflow_kappa_wet = UNINITIALIZED_DOUBLE  ! [W/(m.K)]
 
   ! Energy formulation switch (selectable via ENERGY_FORMULATION input card).
   !   THCFLOW_ENERGY_RHO_CP_T (default): fluid energy = rho*c_p*T
@@ -119,6 +127,16 @@ module THCFlow_Aux_module
     PetscBool :: check_post_converged
     PetscReal, pointer :: tensorial_rel_perm_exponent(:,:)
     PetscReal :: diffusion_coef
+    ! Per-material thermal properties (indexed by material id).  Populated in
+    ! THCFlowSetup from the MATERIAL_PROPERTY card (TH-compatible), falling back
+    ! to the MODE THCFLOW OPTIONS-block globals when a material omits them.
+    PetscReal, pointer :: dencpr(:)  ! rho_s * c_s [J/(m^3.K)]
+    PetscReal, pointer :: ckdry(:)   ! bulk dry  thermal conductivity [W/(m.K)]
+    PetscReal, pointer :: ckwet(:)   ! bulk wet  thermal conductivity [W/(m.K)]
+    ! When ckdry(imat)/ckwet(imat) are UNINITIALIZED_DOUBLE the per-cell
+    ! conductivity falls back to the grain-Somerton model using the global
+    ! thcflow_kappa_solid; otherwise the TH-style bulk interpolation
+    ! kappa_eff = ckdry + sqrt(S_l)*(ckwet-ckdry) is used.
   end type thcflow_parameter_type
 
   type, public :: thcflow_type
@@ -194,6 +212,9 @@ function THCFlowAuxCreate(option)
   aux%thcflow_parameter%check_post_converged = PETSC_FALSE
   nullify(aux%thcflow_parameter%tensorial_rel_perm_exponent)
   aux%thcflow_parameter%diffusion_coef = 0.d0
+  nullify(aux%thcflow_parameter%dencpr)
+  nullify(aux%thcflow_parameter%ckdry)
+  nullify(aux%thcflow_parameter%ckwet)
 
   THCFlowAuxCreate => aux
 
@@ -318,6 +339,7 @@ end subroutine THCFlowAuxVarCopy
 
 subroutine THCFlowAuxVarCompute(x,thcflow_auxvar,global_auxvar, &
                                 material_auxvar,characteristic_curves, &
+                                thcflow_parameter, &
                                 natural_id,update_porosity,option)
   !
   ! Computes auxiliary variables for each grid cell.
@@ -339,9 +361,12 @@ subroutine THCFlowAuxVarCompute(x,thcflow_auxvar,global_auxvar, &
   type(thcflow_auxvar_type) :: thcflow_auxvar
   type(global_auxvar_type) :: global_auxvar
   type(material_auxvar_type) :: material_auxvar
+  type(thcflow_parameter_type) :: thcflow_parameter
   PetscBool :: update_porosity
   PetscInt :: natural_id
 
+  PetscInt :: imat
+  PetscReal :: kappa_dry_mat, kappa_wet_mat, sqrt_sat_mat
   PetscBool :: saturated
   PetscReal :: dkr_dsat
   PetscReal :: deffsat_dsat
@@ -464,13 +489,38 @@ subroutine THCFlowAuxVarCompute(x,thcflow_auxvar,global_auxvar, &
   endif
 
   ! --------------------------------------------------------------------------
-  ! Step 7: effective porous-medium thermal conductivity (Somerton)
+  ! Step 7: effective porous-medium thermal conductivity
   ! --------------------------------------------------------------------------
-  call THCFlowThermalConductivityEff(thcflow_auxvar%sat, &
-                                     thcflow_auxvar%effective_porosity, &
-                                     thcflow_kappa_solid, &
-                                     thcflow_auxvar%therm_cond_eff, &
-                                     thcflow_auxvar%dtherm_cond_dsat)
+  ! Per-material thermal properties are indexed by the cell's material id.
+  ! If the material supplies bulk dry/wet conductivities (THERMAL_CONDUCTIVITY_
+  ! DRY/WET, TH-compatible) use the TH-style interpolation
+  !   kappa_eff = ckdry + sqrt(S_l)*(ckwet-ckdry) ;
+  ! otherwise fall back to the grain-Somerton model from the OPTIONS global
+  ! thcflow_kappa_solid.
+  imat = material_auxvar%id
+  if (associated(thcflow_parameter%ckdry)) then
+    kappa_dry_mat = thcflow_parameter%ckdry(imat)
+    kappa_wet_mat = thcflow_parameter%ckwet(imat)
+  else
+    kappa_dry_mat = UNINITIALIZED_DOUBLE
+    kappa_wet_mat = UNINITIALIZED_DOUBLE
+  endif
+
+  if (Initialized(kappa_dry_mat) .and. Initialized(kappa_wet_mat)) then
+    ! TH-style bulk dry/wet interpolation (saturation floored for finite deriv)
+    sqrt_sat_mat = sqrt(max(thcflow_auxvar%sat,thcflow_sat_floor))
+    thcflow_auxvar%therm_cond_eff = kappa_dry_mat + &
+      sqrt_sat_mat * (kappa_wet_mat - kappa_dry_mat)
+    thcflow_auxvar%dtherm_cond_dsat = &
+      (kappa_wet_mat - kappa_dry_mat) / (2.d0 * sqrt_sat_mat)
+  else
+    ! grain-Somerton fallback using the OPTIONS-block global solid conductivity
+    call THCFlowThermalConductivityEff(thcflow_auxvar%sat, &
+                                       thcflow_auxvar%effective_porosity, &
+                                       thcflow_kappa_solid, &
+                                       thcflow_auxvar%therm_cond_eff, &
+                                       thcflow_auxvar%dtherm_cond_dsat)
+  endif
 
   ! --------------------------------------------------------------------------
   ! Step 8: derived quantities
@@ -478,8 +528,13 @@ subroutine THCFlowAuxVarCompute(x,thcflow_auxvar,global_auxvar, &
   ! volumetric heat capacities
   thcflow_auxvar%heat_cap_fluid = thcflow_auxvar%den_kg * &
                                   thcflow_heat_capacity_fluid
-  thcflow_auxvar%heat_cap_solid = thcflow_density_solid * &
-                                  thcflow_heat_capacity_solid
+  ! solid volumetric heat capacity rho_s*c_s [J/(m^3.K)], per-material when set
+  if (associated(thcflow_parameter%dencpr)) then
+    thcflow_auxvar%heat_cap_solid = thcflow_parameter%dencpr(imat)
+  else
+    thcflow_auxvar%heat_cap_solid = thcflow_density_solid * &
+                                    thcflow_heat_capacity_solid
+  endif
 
   ! --------------------------------------------------------------------------
   ! Step 8b: full-EOS specific enthalpy / internal energy (FULL_EOS mode only)
@@ -584,6 +639,7 @@ subroutine THCFlowAuxVarPerturb(x,thcflow_auxvar,global_auxvar, &
                                 material_auxvar, &
                                 material_auxvar_pert, &
                                 characteristic_curves, &
+                                thcflow_parameter, &
                                 natural_id, &
                                 option)
   ! Calculates auxiliary variables for perturbed system
@@ -606,6 +662,7 @@ subroutine THCFlowAuxVarPerturb(x,thcflow_auxvar,global_auxvar, &
   type(material_auxvar_type) :: material_auxvar
   type(material_auxvar_type) :: material_auxvar_pert(:)
   class(characteristic_curves_type) :: characteristic_curves
+  type(thcflow_parameter_type) :: thcflow_parameter
 
   PetscInt :: idof
   PetscReal :: x_pert(THCFLOW_NDOF), pert
@@ -619,7 +676,8 @@ subroutine THCFlowAuxVarPerturb(x,thcflow_auxvar,global_auxvar, &
     x_pert(idof) = x(idof) + pert
     call THCFlowAuxVarCompute(x_pert,thcflow_auxvar(idof),global_auxvar, &
                               material_auxvar, &
-                              characteristic_curves,natural_id, &
+                              characteristic_curves, &
+                              thcflow_parameter,natural_id, &
                               PETSC_TRUE,option)
   enddo
 
@@ -960,6 +1018,9 @@ subroutine THCFlowAuxDestroy(aux)
 
   if (associated(aux%thcflow_parameter)) then
     call DeallocateArray(aux%thcflow_parameter%tensorial_rel_perm_exponent)
+    call DeallocateArray(aux%thcflow_parameter%dencpr)
+    call DeallocateArray(aux%thcflow_parameter%ckdry)
+    call DeallocateArray(aux%thcflow_parameter%ckwet)
     deallocate(aux%thcflow_parameter)
   endif
   nullify(aux%thcflow_parameter)
