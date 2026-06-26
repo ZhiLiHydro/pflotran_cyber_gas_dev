@@ -13,11 +13,11 @@ module THCFlow_Aux_module
   private
 
   ! Solid / fluid thermal properties
-  PetscReal, public :: thcflow_heat_capacity_fluid = 4184.d0  ! c_p,l [J/(kg.K)]
-  PetscReal, public :: thcflow_heat_capacity_solid = 800.d0   ! c_s   [J/(kg.K)]
+  PetscReal, public :: thcflow_specific_heat_liquid = 4184.d0  ! c_p,l [J/(kg.K)]
+  PetscReal, public :: thcflow_specific_heat_solid = 800.d0   ! c_s   [J/(kg.K)]
   PetscReal, public :: thcflow_density_solid       = 2650.d0  ! rho_s [kg/m^3]
   ! grain (solid) thermal conductivity used by the porosity-dependent
-  ! grain-Somerton fallback (THCFlowThermalConductivityEff)
+  ! grain-Somerton (THCFlowThermalConductivityEff)
   PetscReal, public :: thcflow_kappa_solid         = 3.d0     ! kappa_s [W/(m.K)]
   ! optional OPTIONS-block global BULK dry/wet conductivities; when set they
   ! feed the TH-style interpolation (kappa_eff = ckdry + sqrt(S)*(ckwet-ckdry))
@@ -27,8 +27,8 @@ module THCFlow_Aux_module
   PetscReal, public :: thcflow_kappa_wet = UNINITIALIZED_DOUBLE  ! [W/(m.K)]
 
   ! Energy formulation switch (selectable via ENERGY_FORMULATION input card).
-  !   THCFLOW_ENERGY_RHO_CP_T (default): fluid energy = rho*c_p*T
-  !   THCFLOW_ENERGY_FULL_EOS (TH-equivalent)  : fluid energy uses EOS u(P,T)
+  !   THCFLOW_ENERGY_RHO_CP_T (default): liquid energy = rho*c_p*T
+  !   THCFLOW_ENERGY_FULL_EOS (TH-equivalent)  : liquid energy uses EOS u(P,T)
   !                                              in accumulation and h(P,T) in
   !                                              advection (single-phase liquid)
   ! Mass-specific (J/kg, J/m^3) units throughout -- no option%scale applied,
@@ -109,7 +109,7 @@ module THCFlow_Aux_module
     PetscReal :: ddiff_dC         ! d(D_mol)/dC [m^2.L/(s.mol)]
     PetscReal :: therm_cond_eff   ! kappa_eff [W/(m.K)]
     PetscReal :: dtherm_cond_dsat ! d(kappa_eff)/dS_l [W/(m.K)]
-    PetscReal :: heat_cap_fluid   ! rho_l * c_p,l [J/(m^3.K)]
+    PetscReal :: heat_cap_liquid  ! rho_l * c_p,l [J/(m^3.K)]
     PetscReal :: heat_cap_solid   ! rho_s * c_s   [J/(m^3.K)]
     ! Full-EOS energy fields (used only when thcflow_energy_mode==FULL_EOS).
     ! Mass-specific (per kg) -- converted from molar EOS values via FMWH2O.
@@ -265,7 +265,7 @@ subroutine THCFlowAuxVarInit(auxvar,option)
   auxvar%ddiff_dC = 0.d0
   auxvar%therm_cond_eff = 0.d0
   auxvar%dtherm_cond_dsat = 0.d0
-  auxvar%heat_cap_fluid = 0.d0
+  auxvar%heat_cap_liquid = 0.d0
   auxvar%heat_cap_solid = 0.d0
   auxvar%u = 0.d0
   auxvar%h = 0.d0
@@ -322,7 +322,7 @@ subroutine THCFlowAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%ddiff_dC = auxvar%ddiff_dC
   auxvar2%therm_cond_eff = auxvar%therm_cond_eff
   auxvar2%dtherm_cond_dsat = auxvar%dtherm_cond_dsat
-  auxvar2%heat_cap_fluid = auxvar%heat_cap_fluid
+  auxvar2%heat_cap_liquid = auxvar%heat_cap_liquid
   auxvar2%heat_cap_solid = auxvar%heat_cap_solid
   auxvar2%u = auxvar%u
   auxvar2%h = auxvar%h
@@ -526,21 +526,21 @@ subroutine THCFlowAuxVarCompute(x,thcflow_auxvar,global_auxvar, &
   ! Step 8: derived quantities
   ! --------------------------------------------------------------------------
   ! volumetric heat capacities
-  thcflow_auxvar%heat_cap_fluid = thcflow_auxvar%den_kg * &
-                                  thcflow_heat_capacity_fluid
+  thcflow_auxvar%heat_cap_liquid = thcflow_auxvar%den_kg * &
+                                  thcflow_specific_heat_liquid
   ! solid volumetric heat capacity rho_s*c_s [J/(m^3.K)], per-material when set
   if (associated(thcflow_parameter%dencpr)) then
     thcflow_auxvar%heat_cap_solid = thcflow_parameter%dencpr(imat)
   else
     thcflow_auxvar%heat_cap_solid = thcflow_density_solid * &
-                                    thcflow_heat_capacity_solid
+                                    thcflow_specific_heat_solid
   endif
 
   ! --------------------------------------------------------------------------
   ! Step 8b: full-EOS specific enthalpy / internal energy (FULL_EOS mode only)
   ! --------------------------------------------------------------------------
   ! Mirrors TH (th_aux.F90) but stays in mass-specific J/kg (no option%scale).
-  ! Fluid enthalpy h(P,T) from EOS water; internal energy u = h - P/rho.
+  ! Liquid enthalpy h(P,T) from EOS water; internal energy u = h - P/rho.
   if (thcflow_energy_mode == THCFLOW_ENERGY_FULL_EOS) then
     call THCFlowEnergyEOS(thcflow_auxvar,option)
   else
@@ -576,7 +576,7 @@ end subroutine THCFlowAuxVarCompute
 
 subroutine THCFlowEnergyEOS(thcflow_auxvar,option)
   !
-  ! Computes mass-specific fluid enthalpy h(P,T) and internal energy u(P,T)
+  ! Computes mass-specific liquid enthalpy h(P,T) and internal energy u(P,T)
   ! and their derivatives from the water EOS, for the FULL_EOS energy
   ! formulation (single-phase liquid, no ice/vapor).
   !

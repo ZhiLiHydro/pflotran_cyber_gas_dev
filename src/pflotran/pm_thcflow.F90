@@ -191,16 +191,16 @@ subroutine PMTHCFlowReadSimOptionsBlock(this,input)
         call InputErrorMsg(input,option,keyword,error_string)
         call InputReadAndConvertUnits(input,thcflow_density_solid,'kg/m^3', &
                                       trim(error_string)//','//keyword,option)
-      case('LIQUID_HEAT_CAPACITY','HEAT_CAPACITY_LIQUID','SPECIFIC_HEAT_LIQUID')
-        call InputReadDouble(input,option,thcflow_heat_capacity_fluid)
+      case('SPECIFIC_HEAT_LIQUID')
+        call InputReadDouble(input,option,thcflow_specific_heat_liquid)
         call InputErrorMsg(input,option,keyword,error_string)
-        call InputReadAndConvertUnits(input,thcflow_heat_capacity_fluid, &
+        call InputReadAndConvertUnits(input,thcflow_specific_heat_liquid, &
                                       'J/kg-C',trim(error_string)//','// &
                                       keyword,option)
-      case('SOLID_HEAT_CAPACITY','HEAT_CAPACITY_SOLID','SPECIFIC_HEAT_SOLID')
-        call InputReadDouble(input,option,thcflow_heat_capacity_solid)
+      case('SPECIFIC_HEAT_SOLID')
+        call InputReadDouble(input,option,thcflow_specific_heat_solid)
         call InputErrorMsg(input,option,keyword,error_string)
-        call InputReadAndConvertUnits(input,thcflow_heat_capacity_solid, &
+        call InputReadAndConvertUnits(input,thcflow_specific_heat_solid, &
                                       'J/kg-C',trim(error_string)//','// &
                                       keyword,option)
       case('THERMAL_CONDUCTIVITY_SOLID','SOLID_THERMAL_CONDUCTIVITY')

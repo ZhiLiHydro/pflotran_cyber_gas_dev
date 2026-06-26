@@ -138,7 +138,7 @@ subroutine THCFlowSetup(realization)
         patch%material_property_array(imat)%ptr%specific_heat
     else
       thcflow_parameter%dencpr(imat) = thcflow_density_solid * &
-                                       thcflow_heat_capacity_solid
+                                       thcflow_specific_heat_solid
     endif
     ! bulk dry/wet thermal conductivity.  Precedence:
     !   1. per-material MATERIAL_PROPERTY THERMAL_CONDUCTIVITY_DRY/WET
