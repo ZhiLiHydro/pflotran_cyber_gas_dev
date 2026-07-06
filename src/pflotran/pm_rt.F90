@@ -527,7 +527,7 @@ subroutine PMRTSetup(this)
   endif
 
   if (this%ml_surrogate%active) then
-    call MLFractureSurrogateSetup(this%ml_surrogate,this%option)
+    call MLFractureSurrogateSetup(this%ml_surrogate,this%realization,this%option)
   endif
 
   ! only set these flags if transport only

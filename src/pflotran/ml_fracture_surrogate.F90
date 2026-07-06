@@ -25,9 +25,13 @@ module ML_Fracture_Surrogate_module
   type, public :: ml_fracture_surrogate_type
     PetscBool :: active
     character(len=MAXSTRINGLENGTH) :: filename
-    PetscInt :: fracture_material_id
+    PetscInt :: fracture_material_id   ! deck-supplied external ID
+    PetscInt :: fracture_imat          ! internal index resolved at Setup
     PetscReal :: r_offset
     PetscReal :: r_scale
+    PetscReal :: phi_initial           ! snapshot of deck POROSITY at Setup
+    PetscReal :: k_initial             ! snapshot of deck PERM_XX  at Setup
+    PetscReal :: log10_aperture        ! log10(sqrt(12*k_initial)) for MLP input
     type(ml_mlp_type) :: mlp
   end type ml_fracture_surrogate_type
 
@@ -57,8 +61,12 @@ subroutine MLFractureSurrogateInit(cfg)
   cfg%active = PETSC_FALSE
   cfg%filename = ''
   cfg%fracture_material_id = UNINITIALIZED_INTEGER
+  cfg%fracture_imat = UNINITIALIZED_INTEGER
   cfg%r_offset = DEFAULT_R_OFFSET
   cfg%r_scale = DEFAULT_R_SCALE
+  cfg%phi_initial = UNINITIALIZED_DOUBLE
+  cfg%k_initial = UNINITIALIZED_DOUBLE
+  cfg%log10_aperture = UNINITIALIZED_DOUBLE
   call MLPCreate(cfg%mlp)
 
 end subroutine MLFractureSurrogateInit
@@ -131,20 +139,28 @@ end subroutine MLFractureSurrogateReadInput
 
 ! ************************************************************************** !
 
-subroutine MLFractureSurrogateSetup(cfg, option)
+subroutine MLFractureSurrogateSetup(cfg, realization, option)
   !
-  ! Validates the parsed config and loads MLP weights from HDF5.  Called
-  ! once at startup from PMRTSetup when cfg%active.
+  ! Validates the parsed config, resolves the deck-supplied external
+  ! material ID to its internal index in patch%material_property_array
+  ! (which is what patch%imat stores per cell), and loads MLP weights
+  ! from HDF5.  Called once at startup from PMRTSetup when cfg%active.
   !
   ! Author: Heeho Park
-  ! Date: 2026-05-20
+  ! Date: 2026-05-21
   !
+  use Realization_Subsurface_class
+  use Patch_module
   use Option_module
 
   implicit none
 
   type(ml_fracture_surrogate_type) :: cfg
+  class(realization_subsurface_type) :: realization
   type(option_type) :: option
+
+  type(patch_type), pointer :: patch
+  PetscInt :: i
 
   if (len_trim(cfg%filename) == 0) then
     option%io_buffer = 'FRACTURE_ML_SURROGATE requires a FILENAME entry.'
@@ -159,6 +175,33 @@ subroutine MLFractureSurrogateSetup(cfg, option)
     call PrintErrMsg(option)
   endif
 
+  patch => realization%patch
+  cfg%fracture_imat = UNINITIALIZED_INTEGER
+  do i = 1, size(patch%material_property_array)
+    if (patch%material_property_array(i)%ptr%external_id == &
+        cfg%fracture_material_id) then
+      cfg%fracture_imat = i
+      exit
+    endif
+  enddo
+  if (Uninitialized(cfg%fracture_imat)) then
+    write(option%io_buffer,'(a,i0,a)') &
+      'FRACTURE_ML_SURROGATE: no MATERIAL_PROPERTY with ID = ', &
+      cfg%fracture_material_id, ' was found in the deck.'
+    call PrintErrMsg(option)
+  endif
+
+  cfg%phi_initial = &
+    patch%material_property_array(cfg%fracture_imat)%ptr%porosity
+  cfg%k_initial = &
+    patch%material_property_array(cfg%fracture_imat)%ptr%permeability(1,1)
+  if (cfg%phi_initial <= 0.d0 .or. cfg%k_initial <= 0.d0) then
+    option%io_buffer = 'FRACTURE_ML_SURROGATE: fracture MATERIAL_PROPERTY &
+      &requires positive POROSITY and PERMEABILITY.'
+    call PrintErrMsg(option)
+  endif
+  cfg%log10_aperture = log10(sqrt(12.d0 * cfg%k_initial))
+
   call MLPLoad(cfg%mlp, cfg%filename, option)
 
 end subroutine MLFractureSurrogateSetup
@@ -169,16 +212,21 @@ subroutine MLFractureSurrogateUpdate(realization, cfg)
   !
   ! Per-timestep hook: for every local fracture cell, build the 4-input
   ! vector, run the MLP forward pass, and overlay the predicted porosity
-  ! together with the derived permeability (cubic law) and tortuosity
-  ! (phi^2.05).  Other cells are untouched; full RT chemistry still runs
-  ! on every cell -- the surrogate just wins for fracture cells.
+  ! plus the derived permeability (Kozeny-Carman) and tortuosity (phi^2.05)
+  ! onto the material auxvar.  Other cells are untouched; full RT chemistry
+  ! still runs on every cell -- the surrogate just overwrites for fracture
+  ! cells.
+  !
+  ! Aperture is held constant per material (log10_aperture cached at Setup
+  ! from the deck-specified initial permeability) so the MLP input matches
+  ! the training-data convention of a fixed fracture geometry.
   !
   ! Velocity comes from PatchGetCellCenteredVelocities, which is local
   ! only.  Ghost cells are not updated here; they pick up new values via
   ! PFLOTRAN's normal property communication.
   !
   ! Author: Heeho Park
-  ! Date: 2026-05-20
+  ! Date: 2026-05-21
   !
   use Realization_Subsurface_class
   use Patch_module
@@ -195,8 +243,8 @@ subroutine MLFractureSurrogateUpdate(realization, cfg)
   type(material_auxvar_type), pointer :: material_auxvars(:)
   PetscReal, allocatable :: velocities(:,:)
   PetscReal :: x_in(ML_N_IN)
-  PetscReal :: phi_new, k_new, tortuosity_new
-  PetscReal :: v_darcy, aperture, r, r_norm, time_y, k_cell
+  PetscReal :: phi_new, k_new, tortuosity_new, phi_ratio
+  PetscReal :: v_darcy, r, r_norm, time_y
   PetscInt :: local_id, ghosted_id, i, iphase
 
   patch => realization%patch
@@ -211,28 +259,25 @@ subroutine MLFractureSurrogateUpdate(realization, cfg)
 
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
-    if (patch%imat(ghosted_id) /= cfg%fracture_material_id) cycle
+    if (patch%imat(ghosted_id) /= cfg%fracture_imat) cycle
 
     v_darcy = sqrt(velocities(1,local_id)**2 + &
                    velocities(2,local_id)**2 + &
                    velocities(3,local_id)**2)
     v_darcy = max(v_darcy, LOG10_FLOOR)
 
-    k_cell = material_auxvars(ghosted_id)%permeability(perm_xx_index)
-    aperture = sqrt(12.d0 * k_cell)
-    aperture = max(aperture, LOG10_FLOOR)
-
     r = sqrt(grid%x(ghosted_id)**2 + grid%y(ghosted_id)**2)
     r_norm = (r - cfg%r_offset) / cfg%r_scale
 
     x_in(1) = log10(v_darcy)
-    x_in(2) = log10(aperture)
+    x_in(2) = cfg%log10_aperture
     x_in(3) = time_y
     x_in(4) = r_norm
 
     call MLPForward(cfg%mlp, x_in, phi_new)
 
-    k_new = phi_new**2 * aperture / 12.d0
+    phi_ratio = phi_new / cfg%phi_initial
+    k_new = phi_ratio**3 * cfg%k_initial
     tortuosity_new = phi_new**TORTUOSITY_EXPONENT
 
     material_auxvars(ghosted_id)%porosity = phi_new
