@@ -606,7 +606,10 @@ subroutine RichardsAuxPorosity(auxvar,material_auxvar,global_auxvar, &
                 ! Burghardt 2017 paper
                 por = porosity_0 + (biot_coeff * del_vstrain) + &
                       ( C1 * ( press_mech - press_0 )) + &
-                      ( (C2 + C1) * ( global_auxvar%pres(1) - press_mech ))
+                      ( (C2 + C1) * ( &
+                      max(option%flow%reference_pressure, global_auxvar%pres(1)) &
+                                    -press_mech))
+                      !( (C2 + C1) * ( global_auxvar%pres(1) - press_mech ))
                 ! store new (mass conserved) flow porosity for threshold check
                 global_auxvar%parameters(id_porosity_flow) = por
 
@@ -614,6 +617,8 @@ subroutine RichardsAuxPorosity(auxvar,material_auxvar,global_auxvar, &
                 ! Burghardt 2017 paper
                 auxvar%dpor_dp = (biot_coeff**2)/dr_bulk_modulus + &
                     ((biot_coeff-porosity_0)*(1.d0-biot_coeff))/dr_bulk_modulus
+                if (option%flow%reference_pressure > global_auxvar%pres(1)) &
+                  auxvar%dpor_dp = 0.d0
               endif
           end select
       end select
