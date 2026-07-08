@@ -39,6 +39,7 @@ module Richards_module
          RichardsUpdateAuxVars, &
          RichardsMaxChange, &
          RichardsMinMaxPressure, &
+         RichardsMinMaxEffectivePorosity, &
          RichardsUpdateSolution, &
          RichardsComputeMassBalance, &
          RichardsDestroy, &
@@ -3308,6 +3309,52 @@ subroutine RichardsMinMaxPressure(realization, pmin, pmax)
   call VecMax(field%flow_xx,PETSC_NULL_INTEGER,pmax,ierr);CHKERRQ(ierr)
 
 end subroutine RichardsMinMaxPressure
+
+! ************************************************************************** !
+
+subroutine RichardsMinMaxEffectivePorosity(realization, por_min, por_max)
+
+  use Realization_Base_class
+  use Option_module
+  use Patch_module
+  use Grid_module
+
+  implicit none
+
+  class(realization_base_type) :: realization
+
+  type(option_type), pointer :: option
+  type(patch_type), pointer :: patch
+  type(grid_type), pointer :: grid
+  type(richards_auxvar_type), pointer :: rich_auxvars(:)
+  PetscReal :: por_min, por_max
+  PetscReal :: por_min_local, por_max_local
+  PetscInt :: ghosted_id
+  PetscErrorCode :: ierr
+
+  option => realization%option
+  patch => realization%patch
+  grid => patch%grid
+  rich_auxvars => patch%aux%Richards%auxvars
+
+  por_min_local = huge(1.d0)
+  por_max_local = -huge(1.d0)
+
+  do ghosted_id = 1, grid%ngmax
+    if (grid%nG2L(ghosted_id) < 0) cycle
+    if (patch%imat(ghosted_id) <= 0) cycle
+    por_min_local = min(por_min_local, &
+                        rich_auxvars(ghosted_id)%effective_porosity)
+    por_max_local = max(por_max_local, &
+                        rich_auxvars(ghosted_id)%effective_porosity)
+  enddo
+
+  call MPI_Allreduce(por_min_local,por_min,ONE_INTEGER_MPI,MPIU_REAL, &
+                     MPI_MIN,option%mycomm,ierr);CHKERRQ(ierr)
+  call MPI_Allreduce(por_max_local,por_max,ONE_INTEGER_MPI,MPIU_REAL, &
+                     MPI_MAX,option%mycomm,ierr);CHKERRQ(ierr)
+
+end subroutine RichardsMinMaxEffectivePorosity
 
 ! ************************************************************************** !
 

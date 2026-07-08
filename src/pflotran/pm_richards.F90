@@ -1103,7 +1103,8 @@ subroutine PMRichardsMaxChange(this)
   ! Date: 03/14/13
   !
 
-  use Richards_module, only : RichardsMaxChange, RichardsMinMaxPressure
+  use Richards_module, only : RichardsMaxChange, RichardsMinMaxPressure, &
+                              RichardsMinMaxEffectivePorosity
   use Option_module
 
   implicit none
@@ -1111,6 +1112,7 @@ subroutine PMRichardsMaxChange(this)
   class(pm_richards_type) :: this
 
   PetscReal :: pmin, pmax
+  PetscReal :: por_min, por_max
 
   call RichardsMaxChange(this%realization,this%max_pressure_change)
   write(this%option%io_buffer,'("  --> max change: dpmx= ",1pe12.4)') &
@@ -1118,8 +1120,13 @@ subroutine PMRichardsMaxChange(this)
   call PrintMsg(this%option)
   call RichardsMinMaxPressure(this%realization, pmin, pmax)
   write(this%option%io_buffer, &
-       '("  --> abs pressure range: min/max= ",1pe12.4, 1pe12.4)') &
+       '("  --> Pressure range: min/max= ",1pe12.4, 1pe12.4)') &
         pmin, pmax
+  call PrintMsg(this%option)
+  call RichardsMinMaxEffectivePorosity(this%realization, por_min, por_max)
+  write(this%option%io_buffer, &
+       '("  --> Porosity range: min/max= ",1pe12.8, 1pe12.8)') &
+        por_min, por_max
   call PrintMsg(this%option)
 
 end subroutine PMRichardsMaxChange
