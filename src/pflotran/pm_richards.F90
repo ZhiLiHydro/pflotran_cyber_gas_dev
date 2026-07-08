@@ -1104,7 +1104,8 @@ subroutine PMRichardsMaxChange(this)
   !
 
   use Richards_module, only : RichardsMaxChange, RichardsMinMaxPressure, &
-                              RichardsMinMaxEffectivePorosity
+                              RichardsMinMaxEffectivePorosity, &
+                              RichardsCheckEffectivePorosityUpperBound
   use Option_module
 
   implicit none
@@ -1128,6 +1129,7 @@ subroutine PMRichardsMaxChange(this)
       '("  --> Porosity range: min/max= ",1pe14.6, 1pe14.6)') &
         por_min, por_max
   call PrintMsg(this%option)
+  call RichardsCheckEffectivePorosityUpperBound(this%realization)
 
 end subroutine PMRichardsMaxChange
 

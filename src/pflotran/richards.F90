@@ -40,6 +40,7 @@ module Richards_module
          RichardsMaxChange, &
          RichardsMinMaxPressure, &
          RichardsMinMaxEffectivePorosity, &
+         RichardsCheckEffectivePorosityUpperBound, &
          RichardsUpdateSolution, &
          RichardsComputeMassBalance, &
          RichardsDestroy, &
@@ -3355,6 +3356,49 @@ subroutine RichardsMinMaxEffectivePorosity(realization, por_min, por_max)
                      MPI_MAX,option%mycomm,ierr);CHKERRQ(ierr)
 
 end subroutine RichardsMinMaxEffectivePorosity
+
+! ************************************************************************** !
+
+subroutine RichardsCheckEffectivePorosityUpperBound(realization)
+
+  use Realization_Base_class
+  use Option_module
+  use Patch_module
+  use Grid_module
+
+  implicit none
+
+  class(realization_base_type) :: realization
+
+  type(option_type), pointer :: option
+  type(patch_type), pointer :: patch
+  type(grid_type), pointer :: grid
+  type(richards_auxvar_type), pointer :: rich_auxvars(:)
+  type(global_auxvar_type), pointer :: global_auxvars(:)
+  PetscInt :: ghosted_id
+  character(len=MAXWORDLENGTH) :: cell_string
+
+  option => realization%option
+  patch => realization%patch
+  grid => patch%grid
+  rich_auxvars => patch%aux%Richards%auxvars
+  global_auxvars => patch%aux%Global%auxvars
+
+  do ghosted_id = 1, grid%ngmax
+    if (grid%nG2L(ghosted_id) < 0) cycle
+    if (patch%imat(ghosted_id) <= 0) cycle
+    if (rich_auxvars(ghosted_id)%effective_porosity > 1.d0) then
+      write(cell_string,*) grid%nG2A(ghosted_id)
+      write(option%io_buffer,'(a,a,a,1pe14.6,a,1pe14.6)') &
+        'WARNING: effective porosity > 1 at natural cell id ', &
+        trim(adjustl(cell_string)), ', value= ', &
+        rich_auxvars(ghosted_id)%effective_porosity, ', pressure= ', &
+        global_auxvars(ghosted_id)%pres(1)
+      call PrintMsgByRank(option)
+    endif
+  enddo
+
+end subroutine RichardsCheckEffectivePorosityUpperBound
 
 ! ************************************************************************** !
 

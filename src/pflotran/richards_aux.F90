@@ -603,6 +603,14 @@ subroutine RichardsAuxPorosity(auxvar,material_auxvar,global_auxvar, &
               elseif (option%iflag == RICHARDS_UPDATE_FOR_ACCUM) then
                 ! delta vstrain
                 del_vstrain = vstrain - vstrain_0
+                if (option%flow_dt > 0.d0 .and. &
+                    option%time <= option%flow_dt .and. &
+                    del_vstrain > 1.d-9) then
+                  write(option%io_buffer,'(a,1pe14.6,a,1pe14.6,a,1pe14.6)') &
+                    'del_vstrain exceeded threshold at timestep 1: del_vstrain=', &
+                    del_vstrain, ', vstrain=', vstrain, ', vstrain_0=', vstrain_0
+                  call PrintWrnMsg(option)
+                endif
                 ! Burghardt 2017 paper
                 por = porosity_0 + (biot_coeff * del_vstrain) + &
                       ( C1 * ( press_mech - press_0 )) + &
