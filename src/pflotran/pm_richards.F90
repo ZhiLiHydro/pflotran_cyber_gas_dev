@@ -1125,7 +1125,7 @@ subroutine PMRichardsMaxChange(this)
   call PrintMsg(this%option)
   call RichardsMinMaxEffectivePorosity(this%realization, por_min, por_max)
   write(this%option%io_buffer, &
-       '("  --> Porosity range: min/max= ",1pe12.8, 1pe12.8)') &
+      '("  --> Porosity range: min/max= ",1pe14.6, 1pe14.6)') &
         por_min, por_max
   call PrintMsg(this%option)
 
