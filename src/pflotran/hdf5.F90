@@ -163,7 +163,8 @@ end subroutine HDF5ReadIntegerArraySplit
 subroutine HDF5WriteStructuredDataSet(name,array,file_id,data_type,option, &
                                       nx_global,ny_global,nz_global, &
                                       nx_local,ny_local,nz_local, &
-                                      istart_local,jstart_local,kstart_local)
+                                      istart_local,jstart_local,kstart_local, &
+                                      hdf5_compress_level)
   !
   ! Writes data from an array into HDF5 file
   !
@@ -183,6 +184,7 @@ subroutine HDF5WriteStructuredDataSet(name,array,file_id,data_type,option, &
   PetscInt :: nx_local, ny_local, nz_local
   PetscInt :: nx_global, ny_global, nz_global
   PetscInt :: istart_local, jstart_local, kstart_local
+  PetscInt, optional :: hdf5_compress_level
 
   integer(HID_T) :: file_id
   integer(HID_T) :: data_type
@@ -191,6 +193,7 @@ subroutine HDF5WriteStructuredDataSet(name,array,file_id,data_type,option, &
   integer(HID_T) :: data_set_id
   integer(HID_T) :: prop_id
   integer(HSIZE_T) :: dims(3)
+  integer(HSIZE_T) :: chunk_dims(3)
   PetscMPIInt :: rank_mpi
   PetscInt :: i, j, k, count, id
   integer(HSIZE_T) :: start(3), length(3), stride(3)
@@ -201,6 +204,7 @@ subroutine HDF5WriteStructuredDataSet(name,array,file_id,data_type,option, &
 
   integer, pointer :: int_array_i4(:)
   PetscReal, pointer :: double_array(:)
+  PetscInt :: local_compress_level
 
   name = trim(name) // CHAR(0)
 
@@ -224,6 +228,19 @@ subroutine HDF5WriteStructuredDataSet(name,array,file_id,data_type,option, &
   dims(2) = ny_global
   dims(1) = nz_global
   call h5pcreate_f(H5P_DATASET_CREATE_F,prop_id,hdf5_err)
+
+  local_compress_level = 0
+  if (present(hdf5_compress_level)) local_compress_level = hdf5_compress_level
+  if (local_compress_level > 0) then
+    chunk_dims(3) = nx_local
+    if (nx_local == 0) chunk_dims(3) = 1
+    chunk_dims(2) = ny_local
+    if (ny_local == 0) chunk_dims(2) = 1
+    chunk_dims(1) = nz_local
+    if (nz_local == 0) chunk_dims(1) = 1
+    call h5pset_chunk_f(prop_id, rank_mpi, chunk_dims, hdf5_err)
+    call h5pset_deflate_f(prop_id, local_compress_level, hdf5_err)
+  endif
 
   call h5eset_auto_f(OFF,hdf5_err)
   call h5dopen_f(file_id,name,data_set_id,hdf5_err)
@@ -1187,7 +1204,8 @@ end subroutine HDF5ReadCellIndexedRealArray
 
 ! ************************************************************************** !
 
-subroutine HDF5WriteStructDataSetFromVec(name,realization_base,vec,file_id,data_type)
+subroutine HDF5WriteStructDataSetFromVec(name,realization_base,vec,file_id, &
+                                         data_type,hdf5_compress_level)
   !
   ! Writes data from a PetscVec to HDF5 file
   !
@@ -1209,6 +1227,7 @@ subroutine HDF5WriteStructDataSetFromVec(name,realization_base,vec,file_id,data_
   Vec :: vec
   integer(HID_T) :: file_id
   integer(HID_T) :: data_type
+  PetscInt, optional :: hdf5_compress_level
 
   type(grid_type), pointer :: grid
   type(option_type), pointer :: option
@@ -1231,7 +1250,8 @@ subroutine HDF5WriteStructDataSetFromVec(name,realization_base,vec,file_id,data_
                                   grid%structured_grid%nlz, &
                                   grid%structured_grid%lxs, &
                                   grid%structured_grid%lys, &
-                                  grid%structured_grid%lzs)
+                                  grid%structured_grid%lzs, &
+                                  hdf5_compress_level)
 !GEH - Structured Grid Dependence - End
   call VecRestoreArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
@@ -1239,7 +1259,8 @@ end subroutine HDF5WriteStructDataSetFromVec
 
 ! ************************************************************************** !
 
-subroutine HDF5WriteDataSetFromVec(name,option,vec,file_id,data_type)
+subroutine HDF5WriteDataSetFromVec(name,option,vec,file_id,data_type, &
+                                   hdf5_compress_level)
   !
   ! This routine writes data from a PETSc Vec to HDF5 file for unstructured
   ! grids.
@@ -1262,6 +1283,8 @@ subroutine HDF5WriteDataSetFromVec(name,option,vec,file_id,data_type)
   Vec :: vec
   integer(HID_T) :: file_id
   integer(HID_T) :: data_type
+  PetscInt, optional :: hdf5_compress_level
+  PetscInt :: local_compress_level
 
   type(option_type) :: option
   PetscReal, pointer :: vec_ptr(:)
@@ -1274,6 +1297,7 @@ subroutine HDF5WriteDataSetFromVec(name,option,vec,file_id,data_type)
   integer(HID_T) :: file_space_id
   integer(HID_T) :: memory_space_id
   integer(HSIZE_T) :: dims(3)
+  integer(HSIZE_T) :: chunk_dims(3)
   integer(HSIZE_T) :: start(3), length(3), stride(3)
   PetscInt :: istart
   PetscInt :: local_size,global_size,i
@@ -1297,6 +1321,15 @@ subroutine HDF5WriteDataSetFromVec(name,option,vec,file_id,data_type)
   dims = 0
   dims(1) = global_size
   call h5pcreate_f(H5P_DATASET_CREATE_F,prop_id,hdf5_err)
+
+  local_compress_level = 0
+  if (present(hdf5_compress_level)) local_compress_level = hdf5_compress_level
+  if (local_compress_level > 0) then
+    chunk_dims(1) = local_size
+    if (chunk_dims(1) == 0) chunk_dims(1) = 1
+    call h5pset_chunk_f(prop_id, rank_mpi, chunk_dims, hdf5_err)
+    call h5pset_deflate_f(prop_id, local_compress_level, hdf5_err)
+  endif
 
   call h5eset_auto_f(OFF,hdf5_err)
   call h5dopen_f(file_id,name,data_set_id,hdf5_err)

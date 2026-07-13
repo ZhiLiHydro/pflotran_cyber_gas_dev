@@ -178,11 +178,11 @@ subroutine OutputHDF5(realization_base,var_list_type)
         if (cur_variable%iformat == 0) then
           call HDF5WriteStructDataSetFromVec(string,realization_base, &
                                              global_vec,grp_id, &
-                                             H5T_NATIVE_DOUBLE)
+                                             H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
         else
           call HDF5WriteStructDataSetFromVec(string,realization_base, &
                                              global_vec,grp_id, &
-                                             H5T_NATIVE_INTEGER)
+                                             H5T_NATIVE_INTEGER, realization_base%output_option%hdf5_compress_level)
         endif
         cur_variable => cur_variable%next
       enddo
@@ -199,7 +199,7 @@ subroutine OutputHDF5(realization_base,var_list_type)
 
         call HDF5WriteStructDataSetFromVec(string,realization_base, &
                                            field%avg_vars_vec(ivar),grp_id, &
-                                           H5T_NATIVE_DOUBLE)
+                                           H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
 
         cur_variable => cur_variable%next
       enddo
@@ -220,15 +220,15 @@ subroutine OutputHDF5(realization_base,var_list_type)
 
     string = "Liquid X-Velocity [m_per_" // trim(output_option%tunit) // "]"
     call HDF5WriteStructDataSetFromVec(string,realization_base, &
-                                       global_vec_vx,grp_id,H5T_NATIVE_DOUBLE)
+                                       global_vec_vx,grp_id,H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
 
     string = "Liquid Y-Velocity [m_per_" // trim(output_option%tunit) // "]"
     call HDF5WriteStructDataSetFromVec(string,realization_base, &
-                                       global_vec_vy,grp_id,H5T_NATIVE_DOUBLE)
+                                       global_vec_vy,grp_id,H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
 
     string = "Liquid Z-Velocity [m_per_" // trim(output_option%tunit) // "]"
     call HDF5WriteStructDataSetFromVec(string,realization_base, &
-                                       global_vec_vz,grp_id,H5T_NATIVE_DOUBLE)
+                                       global_vec_vz,grp_id,H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
 
     if (include_gas_phase) then
         call OutputGetCellCenteredVelocities(realization_base,global_vec_vx, &
@@ -237,17 +237,17 @@ subroutine OutputHDF5(realization_base,var_list_type)
         string = "Gas X-Velocity"
         call HDF5WriteStructDataSetFromVec(string,realization_base, &
                                            global_vec_vx,grp_id, &
-                                           H5T_NATIVE_DOUBLE)
+                                           H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
 
         string = "Gas Y-Velocity"
         call HDF5WriteStructDataSetFromVec(string,realization_base, &
                                            global_vec_vy,grp_id, &
-                                           H5T_NATIVE_DOUBLE)
+                                           H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
 
         string = "Gas Z-Velocity"
         call HDF5WriteStructDataSetFromVec(string,realization_base, &
                                            global_vec_vz,grp_id, &
-                                           H5T_NATIVE_DOUBLE)
+                                           H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
     endif
   endif
 
@@ -589,10 +589,10 @@ subroutine OutputHDF5UGridXDMF(realization_base,var_list_type)
         endif
         if (cur_variable%iformat == 0) then
           call HDF5WriteDataSetFromVec(string,option,natural_vec,grp_id, &
-                                       H5T_NATIVE_DOUBLE)
+                                       H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
         else
           call HDF5WriteDataSetFromVec(string,option,natural_vec,grp_id, &
-                                       H5T_NATIVE_INTEGER)
+                                       H5T_NATIVE_INTEGER, realization_base%output_option%hdf5_compress_level)
         endif
         att_datasetname = trim(filename_header) // ":/" // trim(group_name) // &
                           "/" // trim(string)
@@ -618,7 +618,7 @@ subroutine OutputHDF5UGridXDMF(realization_base,var_list_type)
                                              field%avg_vars_vec(ivar), &
                                              natural_vec,ONEDOF)
           call HDF5WriteDataSetFromVec(string,option,natural_vec,grp_id, &
-                                       H5T_NATIVE_DOUBLE)
+                                       H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
           att_datasetname = trim(filename_header) // ":/" // trim(group_name) // &
                             "/" // trim(string)
           if (OptionIsIORank(option)) then
@@ -678,7 +678,7 @@ subroutine OutputHDF5UGridXDMF(realization_base,var_list_type)
       call DiscretizationGlobalToNatural(discretization,ivec, &
                                          natural_vec,ONEDOF)
       call HDF5WriteDataSetFromVec(string,option,natural_vec,grp_id, &
-                                   H5T_NATIVE_DOUBLE)
+                                   H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
       att_datasetname = trim(filename_header) // ":/" // &
                         trim(group_name) // "/" // trim(string)
       if (OptionIsIORank(option)) then
@@ -708,7 +708,7 @@ subroutine OutputHDF5UGridXDMF(realization_base,var_list_type)
         call DiscretizationGlobalToNatural(discretization,ivec, &
                                          natural_vec,ONEDOF)
         call HDF5WriteDataSetFromVec(string,option,natural_vec,grp_id, &
-                                     H5T_NATIVE_DOUBLE)
+                                     H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
         att_datasetname = trim(filename_header) // ":/" // &
                           trim(group_name) // "/" // trim(string)
         if (OptionIsIORank(option)) then
@@ -1030,10 +1030,10 @@ subroutine OutputHDF5UGridXDMFExplicit(realization_base,var_list_type)
         endif
         if (cur_variable%iformat == 0) then
           call HDF5WriteDataSetFromVec(string,option,natural_vec, &
-                                       grp_id,H5T_NATIVE_DOUBLE)
+                                       grp_id,H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
         else
           call HDF5WriteDataSetFromVec(string,option,natural_vec, &
-                                       grp_id,H5T_NATIVE_INTEGER)
+                                       grp_id,H5T_NATIVE_INTEGER, realization_base%output_option%hdf5_compress_level)
         endif
         att_datasetname = trim(filename_header) // ":/" // &
                           trim(group_name) // "/" // trim(string)
@@ -1061,7 +1061,7 @@ subroutine OutputHDF5UGridXDMFExplicit(realization_base,var_list_type)
                                              field%avg_vars_vec(ivar), &
                                              natural_vec,ONEDOF)
           call HDF5WriteDataSetFromVec(string,option,natural_vec, &
-                                       grp_id,H5T_NATIVE_DOUBLE)
+                                       grp_id,H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
           att_datasetname = trim(filename_header) // ":/" // &
                             trim(group_name) // "/" // trim(string)
           if (write_xdmf) then
@@ -1093,7 +1093,7 @@ subroutine OutputHDF5UGridXDMFExplicit(realization_base,var_list_type)
      call DiscretizationGlobalToNatural(discretization,global_vec_vx, &
                                         natural_vec,ONEDOF)
      call HDF5WriteDataSetFromVec(string,option,natural_vec,grp_id, &
-                                  H5T_NATIVE_DOUBLE)
+                                  H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
      att_datasetname = trim(filename_header) // ":/" // &
                        trim(group_name) // "/" // trim(string)
      if (write_xdmf) then
@@ -1105,7 +1105,7 @@ subroutine OutputHDF5UGridXDMFExplicit(realization_base,var_list_type)
      call DiscretizationGlobalToNatural(discretization,global_vec_vy, &
                                         natural_vec,ONEDOF)
      call HDF5WriteDataSetFromVec(string,option,natural_vec,grp_id, &
-                                  H5T_NATIVE_DOUBLE)
+                                  H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
      att_datasetname = trim(filename_header) // ":/" // &
                        trim(group_name) // "/" // trim(string)
      if (write_xdmf) then
@@ -1117,7 +1117,7 @@ subroutine OutputHDF5UGridXDMFExplicit(realization_base,var_list_type)
      call DiscretizationGlobalToNatural(discretization,global_vec_vz, &
                                         natural_vec,ONEDOF)
      call HDF5WriteDataSetFromVec(string,option,natural_vec,grp_id, &
-                                  H5T_NATIVE_DOUBLE)
+                                  H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
 
      att_datasetname = trim(filename_header) // ":/" // &
                        trim(group_name) // "/" // trim(string)
@@ -1135,7 +1135,7 @@ subroutine OutputHDF5UGridXDMFExplicit(realization_base,var_list_type)
         call DiscretizationGlobalToNatural(discretization,global_vec_vx, &
                                            natural_vec,ONEDOF)
         call HDF5WriteDataSetFromVec(string,option,natural_vec,grp_id, &
-                                    H5T_NATIVE_DOUBLE)
+                                    H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
         att_datasetname = trim(filename_header) // ":/" // &
                           trim(group_name) // "/" // trim(string)
         if (write_xdmf) then
@@ -1147,7 +1147,7 @@ subroutine OutputHDF5UGridXDMFExplicit(realization_base,var_list_type)
         call DiscretizationGlobalToNatural(discretization,global_vec_vy, &
                                            natural_vec,ONEDOF)
         call HDF5WriteDataSetFromVec(string,option,natural_vec,grp_id, &
-                                     H5T_NATIVE_DOUBLE)
+                                     H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
         att_datasetname = trim(filename_header) // ":/" // &
                           trim(group_name) // "/" // trim(string)
         if (write_xdmf) then
@@ -1159,7 +1159,7 @@ subroutine OutputHDF5UGridXDMFExplicit(realization_base,var_list_type)
         call DiscretizationGlobalToNatural(discretization,global_vec_vz, &
                                            natural_vec,ONEDOF)
         call HDF5WriteDataSetFromVec(string,option,natural_vec,grp_id, &
-                                     H5T_NATIVE_DOUBLE)
+                                     H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
         att_datasetname = trim(filename_header) // ":/" // &
                           trim(group_name) // "/" // trim(string)
         if (write_xdmf) then
@@ -3401,7 +3401,7 @@ subroutine OutputHDF5WriteRegionsStructured(realization_base)
   string = 'MATERIAL_IDS'
   call HDF5WriteStructDataSetFromVec(string,realization_base, &
                                      field%work,grp_id, &
-                                     H5T_NATIVE_DOUBLE)
+                                     H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
 
   cur_region => patch%region_list%first
   do
@@ -3415,7 +3415,7 @@ subroutine OutputHDF5WriteRegionsStructured(realization_base)
     string = 'region_' // trim(cur_region%name)
     call HDF5WriteStructDataSetFromVec(string,realization_base, &
                                        field%work,grp_id, &
-                                       H5T_NATIVE_DOUBLE)
+                                       H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
     cur_region => cur_region%next
   enddo
 
@@ -3538,7 +3538,7 @@ subroutine OutputHDF5WriteRegionsXMF(realization_base)
     call DiscretizationGlobalToNatural(discretization,one_vec, &
                                        natural_vec,ONEDOF)
     call HDF5WriteDataSetFromVec(string,option,natural_vec,grp_id, &
-                                 H5T_NATIVE_DOUBLE)
+                                 H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
     string2 = trim(h5_filename_without_path) // &
                    ":/" // trim(group_name) // "/" // trim(string)
     !TODO(geh): move conditional inside of OutputXMFAttribute
@@ -3554,7 +3554,7 @@ subroutine OutputHDF5WriteRegionsXMF(realization_base)
                                      natural_vec,ONEDOF)
   string = 'All Regions'
   call HDF5WriteDataSetFromVec(string,option,natural_vec,grp_id, &
-                               H5T_NATIVE_DOUBLE)
+                               H5T_NATIVE_DOUBLE, realization_base%output_option%hdf5_compress_level)
   string2 = trim(h5_filename_without_path) // &
                  ":/" // trim(group_name) // "/" // trim(string)
   !TODO(geh): move conditional inside of OutputXMFAttribute

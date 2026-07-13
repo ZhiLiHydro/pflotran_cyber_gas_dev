@@ -533,6 +533,13 @@ subroutine OutputFileRead(input,realization,output_option, &
         call InputReadInt(input,option,option%hdf5_write_group_size)
         call InputErrorMsg(input,option,'group size',string)
 
+!...................................
+      case ('HDF5_COMPRESS_LEVEL')
+        string = 'OUTPUT,' // trim(block_name) // ',HDF5_COMPRESS_LEVEL'
+        output_option%hdf5_compress = PETSC_TRUE
+        call InputReadInt(input,option,output_option%hdf5_compress_level)
+        call InputErrorMsg(input,option,'compress level',string)
+
 !......................
       case('VARIABLES')
         select case(trim(block_name))

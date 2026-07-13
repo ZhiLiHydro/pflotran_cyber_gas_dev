@@ -37,6 +37,8 @@ module Output_Aux_module
     PetscBool :: print_hdf5_vel_face
     PetscBool :: print_single_h5_file
     PetscInt :: times_per_h5_file
+    PetscBool :: hdf5_compress
+    PetscInt :: hdf5_compress_level
     PetscBool :: print_hdf5_mass_flowrate
     PetscBool :: print_hdf5_energy_flowrate
     PetscBool :: print_hdf5_aveg_mass_flowrate
@@ -256,6 +258,8 @@ function OutputOptionCreate()
   output_option%print_hdf5_vel_face = PETSC_FALSE
   output_option%print_single_h5_file = PETSC_TRUE
   output_option%times_per_h5_file = 0
+  output_option%hdf5_compress = PETSC_FALSE
+  output_option%hdf5_compress_level = 0
   output_option%print_hdf5_mass_flowrate = PETSC_FALSE
   output_option%print_hdf5_energy_flowrate = PETSC_FALSE
   output_option%print_hdf5_aveg_mass_flowrate = PETSC_FALSE
@@ -496,6 +500,8 @@ function OutputOptionDuplicate(output_option)
   output_option2%print_hdf5_vel_face = output_option%print_hdf5_vel_face
   output_option2%print_single_h5_file = output_option%print_single_h5_file
   output_option2%times_per_h5_file = output_option%times_per_h5_file
+  output_option2%hdf5_compress = output_option%hdf5_compress
+  output_option2%hdf5_compress_level = output_option%hdf5_compress_level
   output_option2%print_hdf5_mass_flowrate = &
     output_option%print_hdf5_mass_flowrate
   output_option2%print_hdf5_energy_flowrate = &
