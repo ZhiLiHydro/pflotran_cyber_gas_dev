@@ -2949,6 +2949,8 @@ subroutine PMWellSetupHydrostatic(this)
   type(global_auxvar_type), pointer :: auxvars_ss(:), auxvars_ss_temp(:)
   type(reactive_transport_auxvar_type), pointer :: rt_auxvars_ss(:), &
                                                    rt_auxvars_ss_temp(:)
+  type(nw_transport_auxvar_type), pointer :: nwt_auxvars_ss(:), &
+                                             nwt_auxvars_ss_temp(:)
   type(matrix_zeroing_type), pointer :: matrix_zeroing
 
   call PMWellSetupBase(this)
@@ -3122,14 +3124,25 @@ subroutine PMWellSetupHydrostatic(this)
     nullify(auxvars_ss_temp)
     auxvars_ss => realization%patch%aux%Global%auxvars_ss
     if (option%ntrandof > 0) then
-      rt_auxvars_ss => realization%patch%aux%RT%auxvars_ss
-      allocate(rt_auxvars_ss_temp(sum_connection))
-      rt_auxvars_ss_temp(1:global_ss_connections) = rt_auxvars_ss(:)
-      realization%patch%aux%RT%auxvars_ss => rt_auxvars_ss_temp
-      deallocate(rt_auxvars_ss)
-      nullify(rt_auxvars_ss_temp)
-      realization%patch%aux%RT%num_aux_ss = &
-            realization%patch%aux%RT%num_aux_ss + num_new_source_sinks
+      if (option%itranmode == RT_MODE) then
+        rt_auxvars_ss => realization%patch%aux%RT%auxvars_ss
+        allocate(rt_auxvars_ss_temp(sum_connection))
+        rt_auxvars_ss_temp(1:global_ss_connections) = rt_auxvars_ss(:)
+        realization%patch%aux%RT%auxvars_ss => rt_auxvars_ss_temp
+        deallocate(rt_auxvars_ss)
+        nullify(rt_auxvars_ss_temp)
+        realization%patch%aux%RT%num_aux_ss = &
+              realization%patch%aux%RT%num_aux_ss + num_new_source_sinks
+      else if (option%itranmode == NWT_MODE) then
+        nwt_auxvars_ss => realization%patch%aux%NWT%auxvars_ss
+        allocate(nwt_auxvars_ss_temp(sum_connection))
+        nwt_auxvars_ss_temp(1:global_ss_connections) = nwt_auxvars_ss(:)
+        realization%patch%aux%NWT%auxvars_ss => nwt_auxvars_ss_temp
+        deallocate(nwt_auxvars_ss)
+        nullify(nwt_auxvars_ss_temp)
+        realization%patch%aux%NWT%num_aux_ss = &
+              realization%patch%aux%NWT%num_aux_ss + num_new_source_sinks
+      endif
     endif
   else
     sum_connection = num_new_source_sinks
@@ -3137,9 +3150,15 @@ subroutine PMWellSetupHydrostatic(this)
     allocate (auxvars_ss(sum_connection))
     realization%patch%aux%Global%auxvars_ss => auxvars_ss
     if (option%ntrandof > 0) then
-      allocate(realization%patch%aux%RT%auxvars_ss(sum_connection))
-      realization%patch%aux%RT%num_aux_ss = &
-            realization%patch%aux%RT%num_aux_ss + num_new_source_sinks
+      if (option%itranmode == RT_MODE) then
+        allocate(realization%patch%aux%RT%auxvars_ss(sum_connection))
+        realization%patch%aux%RT%num_aux_ss = &
+              realization%patch%aux%RT%num_aux_ss + num_new_source_sinks
+      else if (option%itranmode == NWT_MODE) then
+        allocate(realization%patch%aux%NWT%auxvars_ss(sum_connection))
+        realization%patch%aux%NWT%num_aux_ss = &
+              realization%patch%aux%NWT%num_aux_ss + num_new_source_sinks
+      endif
     endif
   endif
   select case (option%iflowmode)
@@ -3158,8 +3177,13 @@ subroutine PMWellSetupHydrostatic(this)
     do iconn = global_ss_connections + 1, sum_connection
       call GlobalAuxVarInit(auxvars_ss(iconn),option)
       if (option%ntrandof > 0) then
-        call RTAuxVarInit(realization%patch%aux%RT%auxvars_ss(iconn), &
-                          realization%reaction,PETSC_FALSE,option)
+        if (option%itranmode == RT_MODE) then
+          call RTAuxVarInit(realization%patch%aux%RT%auxvars_ss(iconn), &
+                            realization%reaction,PETSC_FALSE,option)
+        else if (option%itranmode == NWT_MODE) then
+          call NWTAuxVarInit(realization%patch%aux%NWT%auxvars_ss(iconn), &
+                             realization%reaction_nw,option)
+        endif
       endif
     enddo
   endif

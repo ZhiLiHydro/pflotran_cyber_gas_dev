@@ -130,6 +130,10 @@ subroutine PMWellSetupWIPP(pm_well)
   character(len=MAXSTRINGLENGTH) :: string
   PetscInt :: k
   PetscInt :: num_new_source_sinks, offset
+  PetscInt :: iconn, sum_connection, global_ss_connections
+  type(global_auxvar_type), pointer :: auxvars_ss(:), auxvars_ss_temp(:)
+  type(nw_transport_auxvar_type), pointer :: nwt_auxvars_ss(:), &
+                                             nwt_auxvars_ss_temp(:)
 
   call PMWellSetupBase(pm_well)
   option => pm_well%option
@@ -216,6 +220,52 @@ subroutine PMWellSetupWIPP(pm_well)
     call CouplerAddToList(source_sink,pm_well%realization%patch%source_sink_list)
     nullify(source_sink)
   enddo
+
+  ! Enable allocation of mass balance array
+  if (associated(realization%patch%aux%Global%auxvars_ss)) then
+    auxvars_ss => realization%patch%aux%Global%auxvars_ss
+    global_ss_connections = realization%patch%aux%Global%num_aux_ss
+    sum_connection = num_new_source_sinks + global_ss_connections
+    allocate(auxvars_ss_temp(sum_connection))
+    auxvars_ss_temp(1:global_ss_connections) = auxvars_ss(:)
+    realization%patch%aux%Global%auxvars_ss => auxvars_ss_temp
+    deallocate(auxvars_ss)
+    nullify(auxvars_ss_temp)
+    auxvars_ss => realization%patch%aux%Global%auxvars_ss
+    if (option%ntrandof > 0) then
+      nwt_auxvars_ss => realization%patch%aux%NWT%auxvars_ss
+      allocate(nwt_auxvars_ss_temp(sum_connection))
+      nwt_auxvars_ss_temp(1:global_ss_connections) = nwt_auxvars_ss(:)
+      realization%patch%aux%NWT%auxvars_ss => nwt_auxvars_ss_temp
+      deallocate(nwt_auxvars_ss)
+      nullify(nwt_auxvars_ss_temp)
+      realization%patch%aux%NWT%num_aux_ss = &
+            realization%patch%aux%NWT%num_aux_ss + num_new_source_sinks
+    endif
+  else
+    sum_connection = num_new_source_sinks
+    global_ss_connections = 0
+    allocate (auxvars_ss(sum_connection))
+    realization%patch%aux%Global%auxvars_ss => auxvars_ss
+    if (option%ntrandof > 0) then
+      allocate(realization%patch%aux%NWT%auxvars_ss(sum_connection))
+      realization%patch%aux%NWT%num_aux_ss = &
+            realization%patch%aux%NWT%num_aux_ss + num_new_source_sinks
+    endif
+  endif
+
+  if (sum_connection > 0) then
+    option%iflag = 1 ! enable allocation of mass_balance array
+    do iconn = global_ss_connections + 1, sum_connection
+      call GlobalAuxVarInit(auxvars_ss(iconn),option)
+      if (option%ntrandof > 0) then
+        call NWTAuxVarInit(realization%patch%aux%NWT%auxvars_ss(iconn), &
+                           realization%reaction_nw,option)
+      endif
+    enddo
+  endif
+  realization%patch%aux%Global%num_aux_ss = sum_connection
+
 
 end subroutine PMWellSetupWIPP
 
