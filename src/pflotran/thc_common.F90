@@ -257,7 +257,7 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
   PetscReal :: dist_gravity      ! distance along gravity vector
   PetscReal :: dist_up, dist_dn
   PetscReal :: upweight
-  PetscReal :: g2                ! 0.5 * dist_gravity (face-average gravity wgt)
+  PetscReal :: geometric_weight_up, geometric_weight_dn
 
   ! permeability / mobility / volumetric flux
   PetscReal :: perm_up, perm_dn
@@ -270,6 +270,7 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
   PetscReal :: Gamma             ! geometric transmissibility = k_harm/d * area
   PetscReal :: q
   PetscReal :: wup, wdn          ! upwind weights (1/0) for transported scalars
+  PetscReal :: advective_weight_up, advective_weight_dn
 
   ! potential derivatives
   PetscReal :: dPi_dpup, dPi_dpdn, dPi_dTup, dPi_dTdn, dPi_dCup, dPi_dCdn
@@ -279,7 +280,7 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
   PetscReal :: dq_dpup, dq_dpdn, dq_dTup, dq_dTdn, dq_dCup, dq_dCdn
 
   ! upwind-selected transported quantities
-  PetscReal :: den_kmol_upw, den_kg_upw, temp_upw, conc_upw, h_upw
+  PetscReal :: den_kmol_adv, den_kg_adv, temp_upw, conc_upw, h_upw
   PetscReal :: h_spec_upw        ! upwinded specific enthalpy [J/kg] (FULL_EOS)
   ! molar-density derivative routing (kmol = mass / FMWH2O)
   PetscReal :: ddkmol_dp_up, ddkmol_dp_dn
@@ -329,7 +330,8 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
 
   call ConnectionCalculateDistances(dist,option%gravity,dist_up,dist_dn, &
                                     dist_gravity,upweight)
-  g2 = 0.5d0 * dist_gravity
+  geometric_weight_up = upweight
+  geometric_weight_dn = 1.d0 - upweight
 
   ! --------------------------------------------------------------------------
   ! Harmonic-mean intrinsic permeability
@@ -344,11 +346,8 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
   perm_ave_over_dist = numerator / denominator
   Gamma = perm_ave_over_dist * area
 
-  ! --------------------------------------------------------------------------
-  ! Total potential difference with face-averaged density gravity
-  ! rho_avg = (rho_up + rho_dn)/2
-  ! --------------------------------------------------------------------------
-  rho_avg = 0.5d0 * (thc_auxvar_up%den_kg + thc_auxvar_dn%den_kg)
+  rho_avg = geometric_weight_up * thc_auxvar_up%den_kg + &
+            geometric_weight_dn * thc_auxvar_dn%den_kg
   gravity_term = rho_avg * dist_gravity
   delta_pressure = thc_auxvar_up%pres - &
                    thc_auxvar_dn%pres + &
@@ -402,21 +401,30 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
   q = Gamma * mobility * delta_pressure
   v_darcy = perm_ave_over_dist * mobility * delta_pressure
 
-  ! --------------------------------------------------------------------------
-  ! Upwind-selected transported quantities
-  ! --------------------------------------------------------------------------
-  den_kmol_upw = wup*thc_auxvar_up%den_kmol + wdn*thc_auxvar_dn%den_kmol
-  den_kg_upw   = wup*thc_auxvar_up%den_kg   + wdn*thc_auxvar_dn%den_kg
+  ! Density may be fully upwinded or geometrically interpolated to
+  ! reproduce TH. Mobility, enthalpy, temperature, and concentration remain
+  ! flow-upwinded in both formulations.
+  advective_weight_up = wup
+  advective_weight_dn = wdn
+  if (thc_advective_density_mode == &
+      THC_ADVECTIVE_DENSITY_TH_COMPATIBLE) then
+    advective_weight_up = geometric_weight_up
+    advective_weight_dn = geometric_weight_dn
+  endif
+  den_kmol_adv = advective_weight_up*thc_auxvar_up%den_kmol + &
+                 advective_weight_dn*thc_auxvar_dn%den_kmol
+  den_kg_adv   = advective_weight_up*thc_auxvar_up%den_kg + &
+                 advective_weight_dn*thc_auxvar_dn%den_kg
   temp_upw     = wup*thc_auxvar_up%temp     + wdn*thc_auxvar_dn%temp
   conc_upw     = wup*thc_auxvar_up%conc     + wdn*thc_auxvar_dn%conc
   ! Volumetric enthalpy [J/m^3] carried by the advective flux:
   !   RHO_CP_T: rho_kg * c_p * T   ;   FULL_EOS: rho_kg * h_spec(P,T)
   if (thc_energy_mode == THC_ENERGY_FULL_EOS) then
     h_spec_upw = wup*thc_auxvar_up%h + wdn*thc_auxvar_dn%h
-    h_upw      = den_kg_upw * h_spec_upw
+    h_upw      = den_kg_adv * h_spec_upw
   else
     h_spec_upw = c_p * temp_upw
-    h_upw      = den_kg_upw * h_spec_upw
+    h_upw      = den_kg_adv * h_spec_upw
   endif
 
   ! --------------------------------------------------------------------------
@@ -463,7 +471,7 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
   ! Residuals (same sign convention as ZFLOW)
   ! --------------------------------------------------------------------------
   ! Flow [kmol/s]
-  Res(thc_pressure_dof) = den_kmol_upw * q
+  Res(thc_pressure_dof) = den_kmol_adv * q
   ! Solute [mol/s] : advection + hydrodynamic dispersion
   Res(thc_concentration_dof) = (conc_upw * q + Gamma_D * delta_conc) * &
                                    L_per_m3
@@ -476,12 +484,14 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
     ! Building blocks
     ! ===================================================================== !
     ! Potential derivatives  dPi = d(P_up - P_dn + rho_avg*g*dz)
-    dPi_dpup =  1.d0 + thc_auxvar_up%dden_dp * g2
-    dPi_dpdn = -1.d0 + thc_auxvar_dn%dden_dp * g2
-    dPi_dTup =         thc_auxvar_up%dden_dT * g2
-    dPi_dTdn =         thc_auxvar_dn%dden_dT * g2
-    dPi_dCup =         thc_auxvar_up%dden_dC * g2
-    dPi_dCdn =         thc_auxvar_dn%dden_dC * g2
+    dPi_dpup =  1.d0 + geometric_weight_up * thc_auxvar_up%dden_dp * &
+                        dist_gravity
+    dPi_dpdn = -1.d0 + geometric_weight_dn * thc_auxvar_dn%dden_dp * &
+                        dist_gravity
+    dPi_dTup = geometric_weight_up * thc_auxvar_up%dden_dT * dist_gravity
+    dPi_dTdn = geometric_weight_dn * thc_auxvar_dn%dden_dT * dist_gravity
+    dPi_dCup = geometric_weight_up * thc_auxvar_up%dden_dC * dist_gravity
+    dPi_dCdn = geometric_weight_dn * thc_auxvar_dn%dden_dC * dist_gravity
 
     ! Mobility derivatives  lambda = kr_upw / vis_upw  (upwind only)
     kr_over_vis2 = kr / (vis_upw*vis_upw)
@@ -500,19 +510,19 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
     dq_dCup = Gamma * (dmob_dCup*delta_pressure + mobility*dPi_dCup)
     dq_dCdn = Gamma * (dmob_dCdn*delta_pressure + mobility*dPi_dCdn)
 
-    ! Upwind density derivative routing (kmol = mass/FMWH2O)
-    ddkmol_dp_up = wup*thc_auxvar_up%dden_dp / FMWH2O
-    ddkmol_dp_dn = wdn*thc_auxvar_dn%dden_dp / FMWH2O
-    ddkmol_dT_up = wup*thc_auxvar_up%dden_dT / FMWH2O
-    ddkmol_dT_dn = wdn*thc_auxvar_dn%dden_dT / FMWH2O
-    ddkmol_dC_up = wup*thc_auxvar_up%dden_dC / FMWH2O
-    ddkmol_dC_dn = wdn*thc_auxvar_dn%dden_dC / FMWH2O
-    ddkg_dp_up   = wup*thc_auxvar_up%dden_dp
-    ddkg_dp_dn   = wdn*thc_auxvar_dn%dden_dp
-    ddkg_dT_up   = wup*thc_auxvar_up%dden_dT
-    ddkg_dT_dn   = wdn*thc_auxvar_dn%dden_dT
-    ddkg_dC_up   = wup*thc_auxvar_up%dden_dC
-    ddkg_dC_dn   = wdn*thc_auxvar_dn%dden_dC
+    ! Advective-density derivative routing (kmol = mass/FMWH2O)
+    ddkmol_dp_up = advective_weight_up*thc_auxvar_up%dden_dp / FMWH2O
+    ddkmol_dp_dn = advective_weight_dn*thc_auxvar_dn%dden_dp / FMWH2O
+    ddkmol_dT_up = advective_weight_up*thc_auxvar_up%dden_dT / FMWH2O
+    ddkmol_dT_dn = advective_weight_dn*thc_auxvar_dn%dden_dT / FMWH2O
+    ddkmol_dC_up = advective_weight_up*thc_auxvar_up%dden_dC / FMWH2O
+    ddkmol_dC_dn = advective_weight_dn*thc_auxvar_dn%dden_dC / FMWH2O
+    ddkg_dp_up   = advective_weight_up*thc_auxvar_up%dden_dp
+    ddkg_dp_dn   = advective_weight_dn*thc_auxvar_dn%dden_dp
+    ddkg_dT_up   = advective_weight_up*thc_auxvar_up%dden_dT
+    ddkg_dT_dn   = advective_weight_dn*thc_auxvar_dn%dden_dT
+    ddkg_dC_up   = advective_weight_up*thc_auxvar_up%dden_dC
+    ddkg_dC_dn   = advective_weight_dn*thc_auxvar_dn%dden_dC
 
     ! Diffusive transmissibility derivatives (harmonic D_eff)
     dGamma_D_dpup = 0.d0; dGamma_D_dpdn = 0.d0
@@ -568,39 +578,39 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
     endif
 
     ! Enthalpy derivatives  (volumetric enthalpy carried by flux)
-    !   RHO_CP_T: h_upw = rho_kg_upw * c_p * T_upw
-    !   FULL_EOS: h_upw = rho_kg_upw * h_spec_upw   (h_spec upwinded specific h)
+    !   RHO_CP_T: h_upw = rho_kg_adv * c_p * T_upw
+    !   FULL_EOS: h_upw = rho_kg_adv * h_spec_upw
     if (thc_energy_mode == THC_ENERGY_FULL_EOS) then
-      dh_dp_up = ddkg_dp_up*h_spec_upw + den_kg_upw*wup*thc_auxvar_up%dh_dP
-      dh_dp_dn = ddkg_dp_dn*h_spec_upw + den_kg_upw*wdn*thc_auxvar_dn%dh_dP
-      dh_dT_up = ddkg_dT_up*h_spec_upw + den_kg_upw*wup*thc_auxvar_up%dh_dT
-      dh_dT_dn = ddkg_dT_dn*h_spec_upw + den_kg_upw*wdn*thc_auxvar_dn%dh_dT
-      dh_dC_up = ddkg_dC_up*h_spec_upw + den_kg_upw*wup*thc_auxvar_up%dh_dC
-      dh_dC_dn = ddkg_dC_dn*h_spec_upw + den_kg_upw*wdn*thc_auxvar_dn%dh_dC
+      dh_dp_up = ddkg_dp_up*h_spec_upw + den_kg_adv*wup*thc_auxvar_up%dh_dP
+      dh_dp_dn = ddkg_dp_dn*h_spec_upw + den_kg_adv*wdn*thc_auxvar_dn%dh_dP
+      dh_dT_up = ddkg_dT_up*h_spec_upw + den_kg_adv*wup*thc_auxvar_up%dh_dT
+      dh_dT_dn = ddkg_dT_dn*h_spec_upw + den_kg_adv*wdn*thc_auxvar_dn%dh_dT
+      dh_dC_up = ddkg_dC_up*h_spec_upw + den_kg_adv*wup*thc_auxvar_up%dh_dC
+      dh_dC_dn = ddkg_dC_dn*h_spec_upw + den_kg_adv*wdn*thc_auxvar_dn%dh_dC
     else
       dh_dp_up = c_p * temp_upw * ddkg_dp_up
       dh_dp_dn = c_p * temp_upw * ddkg_dp_dn
-      dh_dT_up = c_p * (ddkg_dT_up*temp_upw + den_kg_upw*wup)
-      dh_dT_dn = c_p * (ddkg_dT_dn*temp_upw + den_kg_upw*wdn)
+      dh_dT_up = c_p * (ddkg_dT_up*temp_upw + den_kg_adv*wup)
+      dh_dT_dn = c_p * (ddkg_dT_dn*temp_upw + den_kg_adv*wdn)
       dh_dC_up = c_p * temp_upw * ddkg_dC_up
       dh_dC_dn = c_p * temp_upw * ddkg_dC_dn
     endif
 
     ! ===================================================================== !
-    ! Flow equation flux Jacobian  F_flow = rho_kmol_upw * q
+    ! Flow equation flux Jacobian  F_flow = rho_kmol_adv * q
     ! ===================================================================== !
     Jup(thc_pressure_dof,thc_pressure_dof) = &
-      ddkmol_dp_up*q + den_kmol_upw*dq_dpup
+      ddkmol_dp_up*q + den_kmol_adv*dq_dpup
     Jup(thc_pressure_dof,thc_temperature_dof) = &
-      ddkmol_dT_up*q + den_kmol_upw*dq_dTup
+      ddkmol_dT_up*q + den_kmol_adv*dq_dTup
     Jup(thc_pressure_dof,thc_concentration_dof) = &
-      ddkmol_dC_up*q + den_kmol_upw*dq_dCup
+      ddkmol_dC_up*q + den_kmol_adv*dq_dCup
     Jdn(thc_pressure_dof,thc_pressure_dof) = &
-      ddkmol_dp_dn*q + den_kmol_upw*dq_dpdn
+      ddkmol_dp_dn*q + den_kmol_adv*dq_dpdn
     Jdn(thc_pressure_dof,thc_temperature_dof) = &
-      ddkmol_dT_dn*q + den_kmol_upw*dq_dTdn
+      ddkmol_dT_dn*q + den_kmol_adv*dq_dTdn
     Jdn(thc_pressure_dof,thc_concentration_dof) = &
-      ddkmol_dC_dn*q + den_kmol_upw*dq_dCdn
+      ddkmol_dC_dn*q + den_kmol_adv*dq_dCdn
 
     ! ===================================================================== !
     ! Solute equation flux Jacobian
@@ -675,7 +685,8 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
   ! Flow / solute BCs:
   !   DIRICHLET / SEEPAGE / CONDUCTANCE / HYDROSTATIC(+seepage/conductance) /
   !   PONDED_WATER  -- pressure-driven flux with variable-density hydrostatic
-  !                    gravity term rho_avg = (rho_up + rho_dn)/2 ;
+  !                    gravity. UPWIND uses arithmetic boundary density;
+  !                    TH_COMPATIBLE uses the prescribed boundary density ;
   !   NEUMANN       -- prescribed Darcy velocity.
   !
   ! Thermal BCs, keyed on the energy condition slot:
@@ -721,13 +732,15 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
   PetscInt :: bc_type, energy_bc_type
   PetscInt :: idof
   PetscReal :: perm_dn, perm_ave_over_dist
-  PetscReal :: dist_gravity, g2
+  PetscReal :: dist_gravity
+  PetscReal :: gravity_weight_up, gravity_weight_dn
   PetscReal :: rho_avg, gravity_term, delta_pressure, ddelta_pressure_dpdn
   PetscReal :: boundary_pressure
   PetscReal :: kr, dkr_dpdn
   PetscReal :: vis_upw, mobility, kr_over_vis2
   PetscReal :: Gamma_bc, q
   PetscReal :: wup, wdn
+  PetscReal :: advective_weight_up, advective_weight_dn
   PetscBool :: derivative_toggle
 
   ! potential / mobility / flux derivatives (interior-cell only)
@@ -735,9 +748,9 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
   PetscReal :: dmob_dpdn, dmob_dTdn, dmob_dCdn
   PetscReal :: dq_dpdn, dq_dTdn, dq_dCdn
 
-  ! upwind transported quantities
+  ! transported quantities (density follows ADVECTIVE_DENSITY)
   PetscReal :: c_p
-  PetscReal :: den_kmol_upw, den_kg_upw, temp_upw, conc_upw, h_upw
+  PetscReal :: den_kmol_adv, den_kg_adv, temp_upw, conc_upw, h_upw
   PetscReal :: h_spec_upw        ! upwinded specific enthalpy [J/kg] (FULL_EOS)
   PetscReal :: ddkmol_dp_dn, ddkmol_dT_dn, ddkmol_dC_dn
   PetscReal :: ddkg_dp_dn, ddkg_dT_dn, ddkg_dC_dn
@@ -773,7 +786,15 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
 
   ! dist(0) = scalar distance to boundary face; dist(1:3) = unit vector
   dist_gravity = dist(0) * dot_product(option%gravity,dist(1:3))
-  g2 = 0.5d0 * dist_gravity
+  gravity_weight_up = 0.5d0
+  gravity_weight_dn = 0.5d0
+  if (thc_advective_density_mode == &
+      THC_ADVECTIVE_DENSITY_TH_COMPATIBLE) then
+    ! TH uses the prescribed boundary state for density on pressure-driven
+    ! boundary faces. The boundary ghost is fixed in this kernel.
+    gravity_weight_up = 1.d0
+    gravity_weight_dn = 0.d0
+  endif
 
   ! ========================================================================= !
   ! Flow equation -- determine the volumetric flux q
@@ -798,7 +819,8 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
         endif
 
         ! variable-density hydrostatic gravity term
-        rho_avg = 0.5d0 * (thc_auxvar_up%den_kg + thc_auxvar_dn%den_kg)
+        rho_avg = gravity_weight_up*thc_auxvar_up%den_kg + &
+                  gravity_weight_dn*thc_auxvar_dn%den_kg
         gravity_term = rho_avg * dist_gravity
         boundary_pressure = thc_auxvar_up%pres
         delta_pressure = boundary_pressure - thc_auxvar_dn%pres + &
@@ -897,23 +919,34 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
     endif
   endif
 
-  ! Upwind transported quantities
-  den_kmol_upw = wup*thc_auxvar_up%den_kmol + wdn*thc_auxvar_dn%den_kmol
-  den_kg_upw   = wup*thc_auxvar_up%den_kg   + wdn*thc_auxvar_dn%den_kg
+  ! TH pressure-driven boundaries carry boundary-state density independently
+  ! of the enthalpy/concentration upwind direction. Prescribed Neumann flow
+  ! already uses the same inflow/outflow density selection in TH and THC.
+  advective_weight_up = wup
+  advective_weight_dn = wdn
+  if (thc_advective_density_mode == &
+      THC_ADVECTIVE_DENSITY_TH_COMPATIBLE .and. bc_type /= NEUMANN_BC) then
+    advective_weight_up = 1.d0
+    advective_weight_dn = 0.d0
+  endif
+  den_kmol_adv = advective_weight_up*thc_auxvar_up%den_kmol + &
+                 advective_weight_dn*thc_auxvar_dn%den_kmol
+  den_kg_adv   = advective_weight_up*thc_auxvar_up%den_kg + &
+                 advective_weight_dn*thc_auxvar_dn%den_kg
   temp_upw     = wup*thc_auxvar_up%temp     + wdn*thc_auxvar_dn%temp
   conc_upw     = wup*thc_auxvar_up%conc     + wdn*thc_auxvar_dn%conc
   ! Volumetric enthalpy [J/m^3]: RHO_CP_T -> rho*c_p*T ; FULL_EOS -> rho*h_spec
   if (thc_energy_mode == THC_ENERGY_FULL_EOS) then
     h_spec_upw = wup*thc_auxvar_up%h + wdn*thc_auxvar_dn%h
-    h_upw      = den_kg_upw * h_spec_upw
+    h_upw      = den_kg_adv * h_spec_upw
   else
     h_spec_upw = c_p * temp_upw
-    h_upw      = den_kg_upw * h_spec_upw
+    h_upw      = den_kg_adv * h_spec_upw
   endif
 
   ! --- advective residual contributions (all three equations) -------------
   ! Flow [kmol/s]
-  Res(thc_pressure_dof) = den_kmol_upw * q
+  Res(thc_pressure_dof) = den_kmol_adv * q
   ! Solute advection [mol/s] (diffusion added below)
   Res(thc_concentration_dof) = conc_upw * q * L_per_m3
   ! Energy advection [W] (conduction / prescribed flux added below)
@@ -980,9 +1013,10 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
 
     ! --- potential / mobility / flux derivatives (Dirichlet family only) ---
     if (derivative_toggle) then
-      dPi_dpdn = ddelta_pressure_dpdn + thc_auxvar_dn%dden_dp * g2
-      dPi_dTdn = thc_auxvar_dn%dden_dT * g2
-      dPi_dCdn = thc_auxvar_dn%dden_dC * g2
+      dPi_dpdn = ddelta_pressure_dpdn + gravity_weight_dn * &
+                 thc_auxvar_dn%dden_dp * dist_gravity
+      dPi_dTdn = gravity_weight_dn*thc_auxvar_dn%dden_dT*dist_gravity
+      dPi_dCdn = gravity_weight_dn*thc_auxvar_dn%dden_dC*dist_gravity
 
       kr_over_vis2 = kr / (vis_upw*vis_upw)
       dmob_dpdn = dkr_dpdn / vis_upw
@@ -996,24 +1030,25 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
       dq_dpdn = 0.d0; dq_dTdn = 0.d0; dq_dCdn = 0.d0
     endif
 
-    ! interior-cell upwind density derivatives (nonzero only on extraction)
-    ddkmol_dp_dn = wdn*thc_auxvar_dn%dden_dp / FMWH2O
-    ddkmol_dT_dn = wdn*thc_auxvar_dn%dden_dT / FMWH2O
-    ddkmol_dC_dn = wdn*thc_auxvar_dn%dden_dC / FMWH2O
-    ddkg_dp_dn   = wdn*thc_auxvar_dn%dden_dp
-    ddkg_dT_dn   = wdn*thc_auxvar_dn%dden_dT
-    ddkg_dC_dn   = wdn*thc_auxvar_dn%dden_dC
+    ! Interior-cell advective-density derivatives. These are zero for
+    ! TH-compatible pressure-driven boundaries and upwinded for Neumann flow.
+    ddkmol_dp_dn = advective_weight_dn*thc_auxvar_dn%dden_dp / FMWH2O
+    ddkmol_dT_dn = advective_weight_dn*thc_auxvar_dn%dden_dT / FMWH2O
+    ddkmol_dC_dn = advective_weight_dn*thc_auxvar_dn%dden_dC / FMWH2O
+    ddkg_dp_dn   = advective_weight_dn*thc_auxvar_dn%dden_dp
+    ddkg_dT_dn   = advective_weight_dn*thc_auxvar_dn%dden_dT
+    ddkg_dC_dn   = advective_weight_dn*thc_auxvar_dn%dden_dC
 
     ! enthalpy derivatives (volumetric); interior (dn) cell only at boundary
-    !   RHO_CP_T: h_upw = rho_kg_upw * c_p * T_upw
-    !   FULL_EOS: h_upw = rho_kg_upw * h_spec_upw
+    !   RHO_CP_T: h_upw = rho_kg_adv * c_p * T_upw
+    !   FULL_EOS: h_upw = rho_kg_adv * h_spec_upw
     if (thc_energy_mode == THC_ENERGY_FULL_EOS) then
-      dh_dp_dn = ddkg_dp_dn*h_spec_upw + den_kg_upw*wdn*thc_auxvar_dn%dh_dP
-      dh_dT_dn = ddkg_dT_dn*h_spec_upw + den_kg_upw*wdn*thc_auxvar_dn%dh_dT
-      dh_dC_dn = ddkg_dC_dn*h_spec_upw + den_kg_upw*wdn*thc_auxvar_dn%dh_dC
+      dh_dp_dn = ddkg_dp_dn*h_spec_upw + den_kg_adv*wdn*thc_auxvar_dn%dh_dP
+      dh_dT_dn = ddkg_dT_dn*h_spec_upw + den_kg_adv*wdn*thc_auxvar_dn%dh_dT
+      dh_dC_dn = ddkg_dC_dn*h_spec_upw + den_kg_adv*wdn*thc_auxvar_dn%dh_dC
     else
       dh_dp_dn = c_p * temp_upw * ddkg_dp_dn
-      dh_dT_dn = c_p * (ddkg_dT_dn*temp_upw + den_kg_upw*wdn)
+      dh_dT_dn = c_p * (ddkg_dT_dn*temp_upw + den_kg_adv*wdn)
       dh_dC_dn = c_p * temp_upw * ddkg_dC_dn
     endif
 
@@ -1036,14 +1071,14 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
     endif
 
     ! ----------------------------------------------------------------------- !
-    ! Flow equation  F_flow = rho_kmol_upw * q
+    ! Flow equation  F_flow = rho_kmol_adv * q
     ! ----------------------------------------------------------------------- !
     Jdn(thc_pressure_dof,thc_pressure_dof) = &
-      ddkmol_dp_dn*q + den_kmol_upw*dq_dpdn
+      ddkmol_dp_dn*q + den_kmol_adv*dq_dpdn
     Jdn(thc_pressure_dof,thc_temperature_dof) = &
-      ddkmol_dT_dn*q + den_kmol_upw*dq_dTdn
+      ddkmol_dT_dn*q + den_kmol_adv*dq_dTdn
     Jdn(thc_pressure_dof,thc_concentration_dof) = &
-      ddkmol_dC_dn*q + den_kmol_upw*dq_dCdn
+      ddkmol_dC_dn*q + den_kmol_adv*dq_dCdn
 
     ! ----------------------------------------------------------------------- !
     ! Solute equation  F_sol = (C_upw*q + Gamma_D*dC)*1000

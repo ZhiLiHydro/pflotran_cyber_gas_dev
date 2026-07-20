@@ -37,6 +37,11 @@ module THC_Aux_module
   PetscInt, parameter, public :: THC_ENERGY_FULL_EOS = 2
   PetscInt, public :: thc_energy_mode = THC_ENERGY_RHO_CP_T
 
+  PetscInt, parameter, public :: THC_ADVECTIVE_DENSITY_UPWIND = 1
+  PetscInt, parameter, public :: THC_ADVECTIVE_DENSITY_TH_COMPATIBLE = 2
+  PetscInt, public :: thc_advective_density_mode = &
+                        THC_ADVECTIVE_DENSITY_UPWIND
+
   ! perturbation controls (mirror zflow_aux.F90)
   PetscReal, public :: thc_rel_pert = 1.d-8
   PetscReal, public :: thc_pres_min_pert = 1.d-2
