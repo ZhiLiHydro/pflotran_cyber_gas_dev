@@ -2598,6 +2598,11 @@ subroutine OutputMassBalance(realization_base)
           endif
         endif
 
+        if (index(coupler%name, '_well_segment_') > 0) then
+          coupler => coupler%next
+          cycle
+        endif
+
         select case(option%iflowmode)
           case(RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE)
             string = trim(coupler%name) // ' Water Mass'
@@ -3205,6 +3210,11 @@ subroutine OutputMassBalance(realization_base)
           exit
         endif
       endif
+    endif
+
+    if (index(coupler%name, '_well_segment_') > 0) then
+      coupler => coupler%next
+      cycle
     endif
 
     offset = coupler%connection_set%offset

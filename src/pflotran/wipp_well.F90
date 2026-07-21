@@ -161,11 +161,13 @@ subroutine PMWellSetupWIPP(pm_well)
   else
     offset = 0
   endif
+
   do k = 1,well_grid%nsegments
 
     source_sink => CouplerCreate()
     source_sink%itype = SRC_SINK_COUPLER_TYPE
     source_sink%name = trim(pm_well%name) // '_well_segment_' // StringWrite(k)
+    source_sink%well_name = trim(pm_well%name)
 
     ! ----- flow ------------------
     source_sink%flow_condition_name = trim(pm_well%name) // '_well_segment_' // &
@@ -255,6 +257,7 @@ subroutine PMWellSetupWIPP(pm_well)
   endif
 
   if (sum_connection > 0) then
+!    k = option%iflag
     option%iflag = 1 ! enable allocation of mass_balance array
     do iconn = global_ss_connections + 1, sum_connection
       call GlobalAuxVarInit(auxvars_ss(iconn),option)
@@ -263,6 +266,7 @@ subroutine PMWellSetupWIPP(pm_well)
                            realization%reaction_nw,option)
       endif
     enddo
+!    option%iflag = k
   endif
   realization%patch%aux%Global%num_aux_ss = sum_connection
 
