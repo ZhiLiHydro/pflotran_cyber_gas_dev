@@ -16,6 +16,7 @@
 *.old
 *.md
 # Allow intentional top-level Markdown docs (default ignore keeps notes out of the tree)
+!README.md
 !README_MCP.md
 .vscode
 .DS_Store
