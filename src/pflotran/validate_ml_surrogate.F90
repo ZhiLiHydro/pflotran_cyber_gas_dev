@@ -1,18 +1,17 @@
 program validate_ml_surrogate
   !
-  ! Standalone validator for the ML surrogate forward pass.  Reads the
-  ! trained weights directly via the HDF5 Fortran API to keep the driver
-  ! independent of PFLOTRAN init plumbing, populates a ml_mlp_type, then
-  ! calls MLPForward on the three canned inputs from the design doc.
-  ! A companion Python script reproduces the forward pass with h5py +
-  ! numpy; |Delta phi| should be below 1e-10.
+  ! Standalone bit-verification of the C-huber MLP forward pass.  Loads the
+  ! trained weights directly via the HDF5 Fortran API (no PFLOTRAN init
+  ! plumbing), then runs MLPForward on every row of the golden test-vector
+  ! CSV and compares the predicted rate against the expected column.  The
+  ! forward pass must reproduce chuber_reference.py to ~1e-9 relative.
   !
   ! Run:
   !   make validate_ml_surrogate
-  !   ./validate_ml_surrogate <path/to/model_mlp_weights.h5>
+  !   ./validate_ml_surrogate <weights.h5> <chuber_test_vectors.csv>
   !
   ! Author: Heeho Park
-  ! Date: 2026-05-18
+  ! Date: 2026-07-24
   !
 
 #include "petsc/finclude/petscsys.h"
@@ -23,21 +22,23 @@ program validate_ml_surrogate
   implicit none
 
   type(ml_mlp_type) :: mlp
-  character(len=1024) :: filename
-  PetscReal :: x_in(ML_N_IN), phi
+  character(len=1024) :: filename, csvname
+  character(len=4096) :: line, hdr
+  PetscReal :: x_in(ML_N_IN), rate, expected, vals(64), rel, worst
   PetscErrorCode :: ierr
-  integer :: nargs, hdf5_err
+  integer :: nargs, hdf5_err, ios, i, nrows, ncol, erate_col
   integer(HID_T) :: file_id
 
   call PetscInitialize(PETSC_NULL_CHARACTER, ierr); CHKERRA(ierr)
 
   nargs = command_argument_count()
-  if (nargs < 1) then
-    write(*,'(a)') 'Usage: validate_ml_surrogate <path/to/model_mlp_weights.h5>'
+  if (nargs < 2) then
+    write(*,'(a)') 'Usage: validate_ml_surrogate <weights.h5> <test_vectors.csv>'
     call PetscFinalize(ierr); CHKERRA(ierr)
     stop 1
   endif
   call get_command_argument(1, filename)
+  call get_command_argument(2, csvname)
 
   call h5open_f(hdf5_err)
   call h5fopen_f(trim(filename), H5F_ACC_RDONLY_F, file_id, hdf5_err)
@@ -53,22 +54,58 @@ program validate_ml_surrogate
   call h5fclose_f(file_id, hdf5_err)
   call h5close_f(hdf5_err)
 
-  ! Canned inputs from design doc section 8.
-  ! Order: log10(v_darcy), log10(aperture), time_years, r_norm
-  x_in = [-9.0d0, -3.0d0, 500.0d0, 0.3d0]
-  call MLPForward(mlp, x_in, phi)
-  write(*,'(a,4(f12.4,1x),a,es25.17)') 'input ', x_in, '-> phi = ', phi
+  open(unit=10, file=trim(csvname), status='old', action='read', iostat=ios)
+  if (ios /= 0) then
+    write(*,'(a,a,a)') 'Cannot open CSV "', trim(csvname), '".'
+    call PetscFinalize(ierr); CHKERRA(ierr)
+    stop 3
+  endif
 
-  x_in = [-6.0d0, -2.0d0, 100.0d0, 0.1d0]
-  call MLPForward(mlp, x_in, phi)
-  write(*,'(a,4(f12.4,1x),a,es25.17)') 'input ', x_in, '-> phi = ', phi
+  ! Header-driven column layout: features are cols 4..3+ML_N_IN; the target
+  ! column is located by name so C-huber and B-huber CSVs both work.
+  read(10,'(a)',iostat=ios) hdr    ! header (comma-separated)
+  ncol = 1
+  do i = 1, len_trim(hdr)
+    if (hdr(i:i) == ',') ncol = ncol + 1
+  enddo
+  erate_col = 1
+  do i = 1, index(hdr,'expected_rate_per_yr') - 1
+    if (hdr(i:i) == ',') erate_col = erate_col + 1
+  enddo
 
-  x_in = [-12.0d0, -5.0d0, 900.0d0, 0.9d0]
-  call MLPForward(mlp, x_in, phi)
-  write(*,'(a,4(f12.4,1x),a,es25.17)') 'input ', x_in, '-> phi = ', phi
+  worst = 0.d0
+  nrows = 0
+  do
+    read(10,'(a)',iostat=ios) line
+    if (ios /= 0) exit
+    if (len_trim(line) == 0) cycle
+    do i = 1, len_trim(line)
+      if (line(i:i) == ',') line(i:i) = ' '
+    enddo
+    read(line,*,iostat=ios) vals(1:ncol)
+    if (ios /= 0) cycle
+
+    x_in = vals(4:3+ML_N_IN)         ! features, idx order 1..ML_N_IN
+    expected = vals(erate_col)       ! expected_rate_per_yr
+    call MLPForward(mlp, x_in, rate)
+
+    rel = abs(rate - expected) / max(abs(expected), 1.d-30)
+    worst = max(worst, rel)
+    nrows = nrows + 1
+  enddo
+  close(10)
+
+  write(*,'(i0,a,es12.4)') nrows, ' vectors checked; worst relative error = ', worst
+  if (worst < 1.d-9) then
+    write(*,'(a)') 'PASS -- Fortran forward pass matches the golden vectors.'
+  else
+    write(*,'(a)') 'FAIL -- transform chain broken (check log10 mask, clip '// &
+                   'bounds, feature order, TotalH sign, asinh_scale).'
+  endif
 
   call MLPDestroy(mlp)
   call PetscFinalize(ierr); CHKERRA(ierr)
+  if (worst >= 1.d-9) stop 4
 
 contains
 
@@ -76,11 +113,11 @@ contains
 
 subroutine LoadWeights(file_id, mlp)
   !
-  ! Validator-private raw-HDF5 weight loader so we can exercise MLPForward
-  ! without dragging in OptionCreate/Comm/Driver plumbing.
+  ! Validator-private raw-HDF5 loader so MLPForward can be exercised without
+  ! OptionCreate/Comm/Driver plumbing.  Mirrors MLPLoad's dataset contract.
   !
   ! Author: Heeho Park
-  ! Date: 2026-05-18
+  ! Date: 2026-07-24
   !
   implicit none
 
@@ -92,11 +129,15 @@ subroutine LoadWeights(file_id, mlp)
   call ReadScalar(file_id, '/scalers/y_mean',  mlp%y_mean)
   call ReadScalar(file_id, '/scalers/y_scale', mlp%y_scale)
 
+  call ReadVec(file_id, '/transforms/clip_lo',    ML_N_IN, mlp%clip_lo)
+  call ReadVec(file_id, '/transforms/clip_hi',    ML_N_IN, mlp%clip_hi)
+  call ReadVec(file_id, '/transforms/log10_mask', ML_N_IN, mlp%log10_mask)
+  mlp%asinh_scale = ML_ASINH_SCALE
+
   call ReadLayer(file_id, '/layers/layer_00', ML_N_H0, ML_N_IN, mlp%W0, mlp%b0)
   call ReadLayer(file_id, '/layers/layer_01', ML_N_H1, ML_N_H0, mlp%W1, mlp%b1)
   call ReadLayer(file_id, '/layers/layer_02', ML_N_H2, ML_N_H1, mlp%W2, mlp%b2)
-  call ReadLayer(file_id, '/layers/layer_03', ML_N_H3, ML_N_H2, mlp%W3, mlp%b3)
-  call ReadLayer(file_id, '/layers/layer_04', ML_N_OUT, ML_N_H3, mlp%W4, mlp%b4)
+  call ReadLayer(file_id, '/layers/layer_03', ML_N_OUT, ML_N_H2, mlp%W3, mlp%b3)
 
 end subroutine LoadWeights
 
