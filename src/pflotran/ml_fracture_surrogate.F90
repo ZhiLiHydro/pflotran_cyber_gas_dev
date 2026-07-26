@@ -31,6 +31,10 @@ module ML_Fracture_Surrogate_module
     PetscReal :: aperture_m            ! sqrt(12*k_initial) [m], MLP input #2
     PetscInt :: id_h, id_ca, id_si, id_al, id_mg   ! primary species indices
     PetscReal, pointer :: phi_frac(:)  ! surrogate-owned porosity per local cell
+    character(len=MAXSTRINGLENGTH) :: diag_file    ! optional 7-input CSV dump
+    PetscInt :: diag_unit
+    PetscInt :: diag_stride
+    PetscInt :: diag_step
     type(ml_mlp_type) :: mlp
   end type ml_fracture_surrogate_type
 
@@ -69,6 +73,10 @@ subroutine MLFractureSurrogateInit(cfg)
   cfg%id_si = UNINITIALIZED_INTEGER
   cfg%id_al = UNINITIALIZED_INTEGER
   cfg%id_mg = UNINITIALIZED_INTEGER
+  cfg%diag_file = ''
+  cfg%diag_unit = -1
+  cfg%diag_stride = 1
+  cfg%diag_step = 0
   nullify(cfg%phi_frac)
   call MLPCreate(cfg%mlp)
 
@@ -83,6 +91,8 @@ subroutine MLFractureSurrogateReadInput(cfg, input, option)
   !   FRACTURE_ML_SURROGATE
   !     FILENAME             <path>
   !     FRACTURE_MATERIAL_ID <int>
+  !     DIAGNOSTIC_FILE      <path>   ! optional: dump 7 inputs + raw rate
+  !     DIAGNOSTIC_STRIDE    <int>    ! optional: dump every Nth step (def 1)
   !   /
   !
   ! Presence of the block sets cfg%active = PETSC_TRUE.
@@ -124,6 +134,12 @@ subroutine MLFractureSurrogateReadInput(cfg, input, option)
       case('FRACTURE_MATERIAL_ID')
         call InputReadInt(input, option, cfg%fracture_material_id)
         call InputErrorMsg(input, option, keyword, error_string)
+      case('DIAGNOSTIC_FILE')
+        call InputReadFilename(input, option, cfg%diag_file)
+        call InputErrorMsg(input, option, keyword, error_string)
+      case('DIAGNOSTIC_STRIDE')
+        call InputReadInt(input, option, cfg%diag_stride)
+        call InputErrorMsg(input, option, keyword, error_string)
       case default
         call InputKeywordUnrecognized(input, keyword, error_string, option)
     end select
@@ -159,6 +175,7 @@ subroutine MLFractureSurrogateSetup(cfg, realization, option)
   type(patch_type), pointer :: patch
   type(grid_type), pointer :: grid
   character(len=MAXWORDLENGTH) :: name
+  character(len=MAXSTRINGLENGTH) :: diag_name
   PetscInt :: i
 
   if (len_trim(cfg%filename) == 0) then
@@ -215,6 +232,16 @@ subroutine MLFractureSurrogateSetup(cfg, realization, option)
   allocate(cfg%phi_frac(grid%nlmax))
   cfg%phi_frac = cfg%phi_initial
 
+  ! Optional dump for external forward-pass verification: one file per rank,
+  ! holding the raw MLP inputs and the pre-clamp network output.
+  if (len_trim(cfg%diag_file) > 0) then
+    write(diag_name,'(a,a,i0,a)') trim(cfg%diag_file), '.', option%myrank, '.csv'
+    open(newunit=cfg%diag_unit, file=trim(diag_name), action='write', &
+         status='replace')
+    write(cfg%diag_unit,'(a)') &
+      'time_y,cell_id,porosity,aperture,TotalH,Ca,Si,Al,Mg,rate_per_yr'
+  endif
+
   call MLPLoad(cfg%mlp, cfg%filename, option)
 
 end subroutine MLFractureSurrogateSetup
@@ -269,6 +296,7 @@ subroutine MLFractureSurrogateUpdate(realization, cfg)
   time_y = option%time / SECONDS_PER_YEAR
   if (time_y < START_TIME_Y) return ! skip the sub-year equilibration transient
   dt_y = option%tran_dt / SECONDS_PER_YEAR
+  cfg%diag_step = cfg%diag_step + 1
 
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
@@ -287,6 +315,18 @@ subroutine MLFractureSurrogateUpdate(realization, cfg)
       x_in(7)  = rt_auxvars(ghosted_id)%total(cfg%id_mg, iphase)
 
       call MLPForward(cfg%mlp, x_in, rate)
+
+      ! Dump the raw network output: the Python reference is unclamped, so the
+      ! clamps below must not be applied to what gets compared.  (newunit gives
+      ! a negative unit, so gate on diag_file, not diag_unit sign.)
+      if (len_trim(cfg%diag_file) > 0) then
+        if (mod(cfg%diag_step, cfg%diag_stride) == 0) then
+          write(cfg%diag_unit,'(es17.9,a,i0,8(a,es24.16))') &
+            time_y, ',', grid%nG2A(ghosted_id), &
+            ',', x_in(1), ',', x_in(2), ',', x_in(3), ',', x_in(4), &
+            ',', x_in(5), ',', x_in(6), ',', x_in(7), ',', rate
+        endif
+      endif
 
       rate = min(rate, 0.d0)          ! clogging-only branch (this contract)
       rate = max(rate, -RATE_MAX)     ! out-of-domain sinh envelope guard
@@ -319,6 +359,8 @@ subroutine MLFractureSurrogateDestroy(cfg)
 
   type(ml_fracture_surrogate_type) :: cfg
 
+  if (len_trim(cfg%diag_file) > 0) close(cfg%diag_unit)
+  cfg%diag_unit = -1
   if (associated(cfg%phi_frac)) deallocate(cfg%phi_frac)
   nullify(cfg%phi_frac)
   call MLPDestroy(cfg%mlp)
