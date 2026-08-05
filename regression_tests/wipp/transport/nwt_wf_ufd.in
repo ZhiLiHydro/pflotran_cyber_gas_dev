@@ -253,7 +253,9 @@ NUCLEAR_WASTE_CHEMISTRY
     NAME                 Am241
     SOLUBILITY           3.08531847680638d-03    # [mol/m^3-liq]
     PRECIP_MOLAR_DENSITY 38.61d3                 # [mol/m^3-mnrl] (quartz)
-    ELEMENTAL_KD         0.0d0                   # [m^3-water/m^3-bulk]
+    ELEMENTAL_KD
+      REPO               0.0d0                   # [m^3-water/m^3-bulk]
+    /
   /
 
   RADIOACTIVE_DECAY

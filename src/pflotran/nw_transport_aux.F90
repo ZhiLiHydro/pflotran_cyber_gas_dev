@@ -85,6 +85,12 @@ module NW_Transport_Aux_module
     PetscBool :: all_concs
   end type nwt_print_type
 
+  type, public :: species_kd_type
+    character(len=MAXWORDLENGTH) :: mat_name
+    PetscReal :: kd_val
+    type(species_kd_type), pointer :: next
+  end type species_kd_type
+
   type, public :: species_type
     character(len=MAXWORDLENGTH) :: name
     PetscInt :: id
@@ -92,6 +98,7 @@ module NW_Transport_Aux_module
     PetscReal :: mnrl_molar_density  ! [mol/m^3-mnrl]
     PetscReal :: solubility_limit    ! [mol/m^3-liq]
     PetscReal :: ele_kd              ! [m^3-water/m^3-bulk
+    type(species_kd_type), pointer :: species_kd_list
     PetscBool :: radioactive
     PetscBool :: print_me
     type(species_type), pointer :: next
@@ -128,7 +135,7 @@ module NW_Transport_Aux_module
     PetscReal, pointer :: diffusion_activation_energy(:,:) !TODO(jenn): move to nwt_params_type
     character(len=MAXWORDLENGTH), pointer :: species_names(:)
     PetscReal, pointer :: species_solubility(:)
-    PetscReal, pointer :: species_ele_kd(:)
+    PetscReal, pointer :: species_ele_kd(:,:)
     PetscReal, pointer :: species_mnrl_mol_den(:)
     type(species_type), pointer :: species_list
     PetscBool, pointer :: species_print(:)
@@ -153,6 +160,8 @@ module NW_Transport_Aux_module
 
   public :: NWTAuxCreate, &
             NWTSpeciesCreate, &
+            NWTSpeciesKdCreate, &
+            NWTSpeciesKdDestroy, &
             NWTSpeciesConstraintCreate, &
             NWTRadDecayRxnCreate, &
             NWTReactionCreate, &
@@ -379,6 +388,8 @@ subroutine NWTRead(reaction_nw,input,option)
   PetscInt :: num_materials
   PetscInt :: k, j
   type(species_type), pointer :: new_species, prev_species, cur_species
+  type(species_kd_type), pointer :: new_species_kd, prev_species_kd
+  PetscReal :: temp_kd_val
   character(len=MAXWORDLENGTH), pointer :: temp_species_names(:)
   character(len=MAXWORDLENGTH), pointer :: temp_species_parents(:)
   character(len=MAXWORDLENGTH) :: bh_materials(50)
@@ -450,8 +461,45 @@ subroutine NWTRead(reaction_nw,input,option)
                                  error_string)
             case('ELEMENTAL_KD')
               call InputReadDouble(input,option,new_species%ele_kd)
-              call InputErrorMsg(input,option,'species elemental Kd', &
-                                 error_string)
+              if (InputError(input)) then
+                input%ierr = INPUT_ERROR_NONE
+                nullify(prev_species_kd)
+                call InputPushBlock(input,option)
+                do
+                  call InputReadPflotranString(input,option)
+                  if (InputError(input)) exit
+                  if (InputCheckExit(input,option)) exit
+
+                  call InputReadWord(input,option,word,PETSC_TRUE)
+                  call InputErrorMsg(input,option, &
+                       'material property name or DEFAULT in ELEMENTAL_KD', &
+                       error_string)
+                  keyword = word
+                  call StringToUpper(keyword)
+                  if (trim(keyword) == 'DEFAULT') then
+                    call InputReadDouble(input,option,new_species%ele_kd)
+                    call InputErrorMsg(input,option,'default elemental Kd value', &
+                                       error_string)
+                  else
+                    call InputReadDouble(input,option,temp_kd_val)
+                    call InputErrorMsg(input,option,'elemental Kd value', &
+                                       error_string)
+
+                    new_species_kd => NWTSpeciesKdCreate()
+                    new_species_kd%mat_name = trim(word)
+                    new_species_kd%kd_val = temp_kd_val
+
+                    if (associated(prev_species_kd)) then
+                      prev_species_kd%next => new_species_kd
+                    else
+                      new_species%species_kd_list => new_species_kd
+                    endif
+                    prev_species_kd => new_species_kd
+                    nullify(new_species_kd)
+                  endif
+                enddo
+                call InputPopBlock(input,option)
+              endif
             case default
               call InputKeywordUnrecognized(input,keyword,error_string,option)
           end select
@@ -469,7 +517,8 @@ subroutine NWTRead(reaction_nw,input,option)
                              trim(new_species%name) // '.'
           call PrintErrMsg(option)
         endif
-        if (Uninitialized(new_species%ele_kd)) then
+        if (Uninitialized(new_species%ele_kd) .and. &
+            .not.associated(new_species%species_kd_list)) then
           option%io_buffer = 'ELEMENTAL_KD not provided in ' // &
                              trim(error_string) // ' block for SPECIES ' // &
                              trim(new_species%name) // '.'
@@ -657,7 +706,6 @@ subroutine NWTRead(reaction_nw,input,option)
                         temp_species_parents,option)
 
   allocate(reaction_nw%species_solubility(k))   ! [mol/m^3-liq]
-  allocate(reaction_nw%species_ele_kd(k))       ! [m^3-water/m^3-bulk]
   allocate(reaction_nw%species_mnrl_mol_den(k)) ! [mol/m^3-mnrl]
 
   cur_species => reaction_nw%species_list
@@ -665,7 +713,6 @@ subroutine NWTRead(reaction_nw,input,option)
     if (.not.associated(cur_species)) exit
     reaction_nw%species_solubility(cur_species%id) = cur_species%solubility_limit
     reaction_nw%species_mnrl_mol_den(cur_species%id) = cur_species%mnrl_molar_density
-    reaction_nw%species_ele_kd(cur_species%id) = cur_species%ele_kd
     cur_species => cur_species%next
   enddo
 
@@ -765,6 +812,7 @@ subroutine NWTReadPass2(reaction_nw,input,option)
 
   character(len=MAXWORDLENGTH) :: keyword
   character(len=MAXSTRINGLENGTH) :: error_string
+  PetscReal :: temp_kd_val
 
   error_string = 'SUBSURFACE,NUCLEAR_WASTE_CHEMISTRY'
 
@@ -782,11 +830,28 @@ subroutine NWTReadPass2(reaction_nw,input,option)
 
     select case(trim(keyword))
       case('SPECIES')
+        call InputPushBlock(input,option)
         do
           call InputReadPflotranString(input,option)
           if (InputError(input)) exit
           if (InputCheckExit(input,option)) exit
+          call InputReadCard(input,option,keyword)
+          call StringToUpper(keyword)
+          if (trim(keyword) == 'ELEMENTAL_KD') then
+            call InputReadDouble(input,option,temp_kd_val)
+            if (InputError(input)) then
+              input%ierr = INPUT_ERROR_NONE
+              call InputPushBlock(input,option)
+              do
+                call InputReadPflotranString(input,option)
+                if (InputError(input)) exit
+                if (InputCheckExit(input,option)) exit
+              enddo
+              call InputPopBlock(input,option)
+            endif
+          endif
         enddo
+        call InputPopBlock(input,option)
       case('RADIOACTIVE_DECAY')
         do
           call InputReadPflotranString(input,option)
@@ -937,6 +1002,7 @@ function NWTSpeciesCreate()
   species%mnrl_molar_density = 100.d0
   species%solubility_limit = UNINITIALIZED_DOUBLE
   species%ele_kd = UNINITIALIZED_DOUBLE
+  nullify(species%species_kd_list)
   species%radioactive = PETSC_FALSE
   species%print_me = PETSC_FALSE
   nullify(species%next)
@@ -944,6 +1010,48 @@ function NWTSpeciesCreate()
   NWTSpeciesCreate => species
 
 end function NWTSpeciesCreate
+
+! ************************************************************************** !
+
+function NWTSpeciesKdCreate()
+  !
+  ! Allocate and initialize a species Kd object.
+  !
+  implicit none
+
+  type(species_kd_type), pointer :: NWTSpeciesKdCreate
+
+  type(species_kd_type), pointer :: species_kd
+
+  allocate(species_kd)
+  species_kd%mat_name = ''
+  species_kd%kd_val = UNINITIALIZED_DOUBLE
+  nullify(species_kd%next)
+
+  NWTSpeciesKdCreate => species_kd
+
+end function NWTSpeciesKdCreate
+
+! ************************************************************************** !
+
+subroutine NWTSpeciesKdDestroy(species_kd)
+  !
+  ! Deallocates a species Kd list.
+  !
+  implicit none
+
+  type(species_kd_type), pointer :: species_kd
+  type(species_kd_type), pointer :: prev_species_kd
+
+  do
+    if (.not.associated(species_kd)) exit
+    prev_species_kd => species_kd
+    species_kd => species_kd%next
+    deallocate(prev_species_kd)
+  enddo
+  nullify(species_kd)
+
+end subroutine NWTSpeciesKdDestroy
 
 ! ************************************************************************** !
 
@@ -1464,6 +1572,7 @@ subroutine NWTReactionDestroy(reaction_nw,option)
     if (.not.associated(species)) exit
     prev_species => species
     species => species%next
+    call NWTSpeciesKdDestroy(prev_species%species_kd_list)
     nullify(prev_species%next)
     deallocate(prev_species)
     nullify(prev_species)

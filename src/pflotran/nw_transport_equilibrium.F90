@@ -41,7 +41,7 @@ subroutine NWTEquilibrateConstraint(reaction_nw,constraint,nwt_auxvar, &
 
   type(species_type), pointer :: cur_species
   type(nwt_species_constraint_type), pointer :: nwt_species
-  PetscInt :: ispecies
+  PetscInt :: ispecies, imat
   PetscInt :: c_type
   PetscBool :: dry_out
   PetscReal :: solubility(reaction_nw%params%nspecies)  ! [mol/m^3-liq]
@@ -57,13 +57,31 @@ subroutine NWTEquilibrateConstraint(reaction_nw,constraint,nwt_auxvar, &
 
   sat = max(MIN_LIQ_SAT,global_auxvar%sat(LIQUID_PHASE))
   por = material_auxvar%porosity
+  if (associated(reaction_nw%species_ele_kd)) then
+    if (material_auxvar%id > 0 .and. &
+        material_auxvar%id <= size(reaction_nw%species_ele_kd,2)) then
+      imat = material_auxvar%id
+    else
+      imat = 1
+    endif
+  else
+    imat = 1
+  endif
 
   cur_species => reaction_nw%species_list
   do
     if (.not.associated(cur_species)) exit
     solubility(cur_species%id) = cur_species%solubility_limit
     mnrl_molar_density(cur_species%id) = cur_species%mnrl_molar_density
-    ele_kd(cur_species%id) = cur_species%ele_kd
+    if (associated(reaction_nw%species_ele_kd)) then
+      ele_kd(cur_species%id) = reaction_nw%species_ele_kd(cur_species%id, imat)
+    else
+      if (Uninitialized(cur_species%ele_kd)) then
+        ele_kd(cur_species%id) = 0.d0
+      else
+        ele_kd(cur_species%id) = cur_species%ele_kd
+      endif
+    endif
     cur_species => cur_species%next
   enddo
 

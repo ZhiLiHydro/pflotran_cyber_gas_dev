@@ -257,6 +257,8 @@ subroutine NWTSetup(realization)
                   realization%patch%aux%NWT%matrix_zeroing,option)
   deallocate(dof_is_active)
 
+  call NWTSetupEleKd(realization)
+
 end subroutine NWTSetup
 
 ! ************************************************************************** !
@@ -359,7 +361,7 @@ subroutine NWTUpdateAuxVars(realization,update_cells,update_bcs)
   type(coupler_type), pointer :: boundary_condition
   type(connection_set_type), pointer :: cur_connection_set
 
-  PetscInt :: ghosted_id, local_id, sum_connection, iconn
+  PetscInt :: ghosted_id, local_id, sum_connection, iconn, imat
   PetscInt :: istart, iend
   PetscReal, pointer :: xx_loc_p(:)
   PetscInt :: offset
@@ -375,7 +377,7 @@ subroutine NWTUpdateAuxVars(realization,update_cells,update_bcs)
   PetscReal :: aq_mass     ! [mol/m^3-liq]
   PetscReal :: ppt_mass    ! [mol/m^3-bulk]
   PetscReal :: sorb_mass   ! [mol/m^3-bulk]
-  PetscReal :: sat
+  PetscReal :: sat, ele_kd_val
   PetscInt :: ispecies
   PetscBool :: dry_out, equilibrate
 
@@ -507,11 +509,20 @@ subroutine NWTUpdateAuxVars(realization,update_cells,update_bcs)
           else
             dry_out = PETSC_TRUE
           endif
+          imat = material_auxvars(ghosted_id)%id
+          if (.not.associated(reaction_nw%species_ele_kd) .or. &
+              imat <= 0 .or. imat > size(reaction_nw%species_ele_kd,2)) imat = 1
           do ispecies = 1,reaction_nw%params%nspecies
+            if (associated(reaction_nw%species_ele_kd)) then
+              ele_kd_val = reaction_nw%species_ele_kd(ispecies,imat)
+            else
+              ele_kd_val = 0.d0
+            endif
             call NWTEqDissPrecipSorb( &
               reaction_nw%species_solubility(ispecies), &
               material_auxvars(ghosted_id),global_auxvars_bc(sum_connection), &
-              dry_out,reaction_nw%species_ele_kd(ispecies), &
+              dry_out, &
+              ele_kd_val, &
               nwt_auxvars_bc(sum_connection)%total_bulk_conc(ispecies), &
               aq_mass,ppt_mass,sorb_mass)
             nwt_auxvars_bc(sum_connection)%aqueous_eq_conc(ispecies) = aq_mass
@@ -562,8 +573,8 @@ subroutine NWTAuxVarCompute(nwt_auxvar,global_auxvar,material_auxvar, &
   PetscReal :: ppt_mass(reaction_nw%params%nspecies)    ! [mol/m^3-bulk]
   PetscReal :: sorb_mass(reaction_nw%params%nspecies)   ! [mol/m^3-bulk]
   PetscBool :: dry_out
-  PetscInt :: ispecies
-  PetscReal :: sat, por
+  PetscInt :: ispecies, imat
+  PetscReal :: sat, por, ele_kd_val
 
   sat = max(MIN_LIQ_SAT,global_auxvar%sat(LIQUID_PHASE))
   por = material_auxvar%porosity
@@ -574,11 +585,27 @@ subroutine NWTAuxVarCompute(nwt_auxvar,global_auxvar,material_auxvar, &
     dry_out = PETSC_TRUE
   endif
 
+  if (associated(reaction_nw%species_ele_kd)) then
+    if (material_auxvar%id > 0 .and. &
+        material_auxvar%id <= size(reaction_nw%species_ele_kd,2)) then
+      imat = material_auxvar%id
+    else
+      imat = 1
+    endif
+  else
+    imat = 1
+  endif
+
   ! calculate the equilibrium state and partition the total_bulk_conc
   do ispecies = 1,reaction_nw%params%nspecies
+    if (associated(reaction_nw%species_ele_kd)) then
+      ele_kd_val = reaction_nw%species_ele_kd(ispecies,imat)
+    else
+      ele_kd_val = 0.d0
+    endif
     call NWTEqDissPrecipSorb(reaction_nw%species_solubility(ispecies), &
                              material_auxvar,global_auxvar,dry_out, &
-                             reaction_nw%species_ele_kd(ispecies), &
+                             ele_kd_val, &
                              nwt_auxvar%total_bulk_conc(ispecies), &
                              aq_mass(ispecies),ppt_mass(ispecies), &
                              sorb_mass(ispecies))
@@ -2397,6 +2424,95 @@ subroutine NWTDestroy(realization)
   !       realization_subsurface.F90, RealizationStrip().
 
 end subroutine NWTDestroy
+
+! ************************************************************************** !
+
+subroutine NWTSetupEleKd(realization)
+  !
+  ! Sets up material-dependent elemental Kd values for NWT species.
+  !
+  ! Date: 08/04/2026
+  !
+  use Realization_Subsurface_class
+  use Material_module
+  use Material_Aux_module
+  use Option_module
+  use Utility_module, only: DeallocateArray
+
+  implicit none
+
+  class(realization_subsurface_type) :: realization
+
+  class(reaction_nw_type), pointer :: reaction_nw
+  type(option_type), pointer :: option
+  type(material_property_type), pointer :: material_property
+  type(material_property_ptr_type), pointer :: material_property_array(:)
+  type(species_type), pointer :: cur_species
+  type(species_kd_type), pointer :: cur_kd
+  PetscInt :: imat, num_materials, ispecies, nspecies
+
+  reaction_nw => realization%reaction_nw
+  option => realization%option
+
+  if (.not.associated(reaction_nw)) return
+  if (.not.associated(realization%patch)) return
+
+  material_property_array => realization%patch%material_property_array
+  if (.not.associated(material_property_array)) return
+
+  num_materials = size(material_property_array)
+  nspecies = reaction_nw%params%nspecies
+
+  if (associated(reaction_nw%species_ele_kd)) then
+    call DeallocateArray(reaction_nw%species_ele_kd)
+  endif
+
+  allocate(reaction_nw%species_ele_kd(nspecies, num_materials))
+  reaction_nw%species_ele_kd = UNINITIALIZED_DOUBLE
+
+  cur_species => reaction_nw%species_list
+  do
+    if (.not.associated(cur_species)) exit
+    ispecies = cur_species%id
+
+    ! 1. If scalar/default Kd was specified
+    if (Initialized(cur_species%ele_kd)) then
+      reaction_nw%species_ele_kd(ispecies, :) = cur_species%ele_kd
+    endif
+
+    ! 2. If material-specific Kd block was specified
+    if (associated(cur_species%species_kd_list)) then
+      cur_kd => cur_species%species_kd_list
+      do
+        if (.not.associated(cur_kd)) exit
+        material_property => MaterialPropGetPtrFromArray(cur_kd%mat_name, &
+                                                          material_property_array)
+        if (.not.associated(material_property)) then
+          option%io_buffer = 'Material property "' // trim(cur_kd%mat_name) // &
+            '" in ELEMENTAL_KD for SPECIES "' // trim(cur_species%name) // &
+            '" not found in material list.'
+          call PrintErrMsg(option)
+        endif
+        imat = material_property%internal_id
+        reaction_nw%species_ele_kd(ispecies, imat) = cur_kd%kd_val
+        cur_kd => cur_kd%next
+      enddo
+    endif
+
+    ! 3. Check for uninitialized Kd values
+    do imat = 1, num_materials
+      if (Uninitialized(reaction_nw%species_ele_kd(ispecies, imat))) then
+        option%io_buffer = 'Uninitialized ELEMENTAL_KD for SPECIES "' // &
+          trim(cur_species%name) // '" and material "' // &
+          trim(material_property_array(imat)%ptr%name) // '".'
+        call PrintErrMsg(option)
+      endif
+    enddo
+
+    cur_species => cur_species%next
+  enddo
+
+end subroutine NWTSetupEleKd
 
 ! ************************************************************************** !
 
