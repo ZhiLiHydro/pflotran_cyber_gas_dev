@@ -1039,9 +1039,6 @@ subroutine PMERTPreSolve(this)
                                       MATERIAL_ELECTRICAL_CONDUCTIVITY)
     endif
 
-    ! Must be zeroed for every cell: the consumer in ERT_module keys off
-    ! igeommode, not geophysics_coupling, so a geomechanics run without
-    ! GEOPHYSICS_COUPLING would otherwise apply a stale/uninitialized value.
     drho_geomech = 0.d0
     if (option%geomechanics%geophysics_coupling == GEOMECH_ERT_COUPLING) then
       ! Brace's regression equation rho = 21054*pressure (kbar) + 3457.9 is
