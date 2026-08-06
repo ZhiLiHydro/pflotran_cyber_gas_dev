@@ -333,6 +333,13 @@ subroutine GeomechForceSetPlotVariables(list)
   call OutputVariableAddToList(list,name,OUTPUT_STRESS,units, &
                                STRESS_TOTAL_ZX)
 
+  ! NOTE: the Biot effective stress (STRESS_EFF_*) is deliberately NOT added to
+  ! the default plot variable list. Adding entries here changes the snapshot and
+  ! observation output of every geomechanics run, which would invalidate the
+  ! existing gold files. The quantity is still resolvable through
+  ! GeomechPatchGetDataset and GeomechGetVariableAtNode if it is added to a
+  ! variable list.
+
   name = 'relative_displacement_x'
   units = 'm'
   call OutputVariableAddToList(list,name,OUTPUT_DISPLACEMENT,units, &
@@ -2323,6 +2330,7 @@ subroutine GeomechForceStressStrain(geomech_realization)
   PetscReal, allocatable :: local_temp(:)
   PetscReal, allocatable :: local_press(:)
   PetscReal, allocatable :: strain(:,:), stress(:,:), stress_total(:,:)
+  PetscReal, allocatable :: stress_eff(:,:)
   PetscInt :: ielem, ivertex
   PetscInt :: ghosted_id
   PetscInt :: eletype, idof
@@ -2332,9 +2340,11 @@ subroutine GeomechForceStressStrain(geomech_realization)
   PetscReal, pointer :: strain_loc_p(:)
   PetscReal, pointer :: stress_loc_p(:)
   PetscReal, pointer :: stress_total_loc_p(:)
+  PetscReal, pointer :: stress_eff_loc_p(:)
   PetscReal, pointer :: temp_loc_p(:), temp_init_loc_p(:)
   PetscReal, pointer :: press_loc_p(:), press_init_loc_p(:)
   PetscReal, pointer :: strain_p(:), stress_p(:), stress_total_p(:)
+  PetscReal, pointer :: stress_eff_p(:)
   PetscReal, pointer :: no_elems_p(:)
 
   PetscReal, pointer :: temp_youngs_modulus_loc_p(:)
@@ -2355,11 +2365,13 @@ subroutine GeomechForceStressStrain(geomech_realization)
   call VecSet(field%strain,0.d0,ierr);CHKERRQ(ierr)
   call VecSet(field%stress,0.d0,ierr);CHKERRQ(ierr)
   call VecSet(field%stress_total,0.d0,ierr);CHKERRQ(ierr)
+  call VecSet(field%stress_eff,0.d0,ierr);CHKERRQ(ierr)
 
   call VecGetArray(field%imech_loc,imech_loc_p,ierr);CHKERRQ(ierr)
   call VecGetArray(field%strain_loc,strain_loc_p,ierr);CHKERRQ(ierr)
   call VecGetArray(field%stress_loc,stress_loc_p,ierr);CHKERRQ(ierr)
   call VecGetArray(field%stress_total_loc,stress_total_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%stress_eff_loc,stress_eff_loc_p,ierr);CHKERRQ(ierr)
   call VecGetArray(field%temp_loc,temp_loc_p,ierr);CHKERRQ(ierr)
   call VecGetArray(field%temp_init_loc,temp_init_loc_p,ierr);CHKERRQ(ierr)
   call VecGetArray(field%press_loc,press_loc_p,ierr);CHKERRQ(ierr)
@@ -2381,6 +2393,7 @@ subroutine GeomechForceStressStrain(geomech_realization)
   strain_loc_p = 0.d0
   stress_loc_p = 0.d0
   stress_total_loc_p = 0.d0
+  stress_eff_loc_p = 0.d0
 
   max_elem_nodes = maxval(grid%elem_nodes(0,1:grid%nlmax_elem))
   allocate(elenodes(max_elem_nodes))
@@ -2397,6 +2410,7 @@ subroutine GeomechForceStressStrain(geomech_realization)
   allocate(strain(max_elem_nodes,SIX_INTEGER))
   allocate(stress(max_elem_nodes,SIX_INTEGER))
   allocate(stress_total(max_elem_nodes,SIX_INTEGER))
+  allocate(stress_eff(max_elem_nodes,SIX_INTEGER))
 
    ! Loop over elements on a processor
   do ielem = 1, grid%nlmax_elem
@@ -2454,7 +2468,7 @@ subroutine GeomechForceStressStrain(geomech_realization)
        poissons_vec(1:size_elenodes),alpha_vec(1:size_elenodes), &
        beta_vec(1:size_elenodes),eletype,grid%gauss_node(ielem)%dim, &
        strain(1:size_elenodes,:),stress(1:size_elenodes,:), &
-       stress_total(1:size_elenodes,:),option)
+       stress_total(1:size_elenodes,:),stress_eff(1:size_elenodes,:),option)
 
     do ivertex = 1, size_elenodes
       ghosted_id = elenodes(ivertex)
@@ -2468,6 +2482,9 @@ subroutine GeomechForceStressStrain(geomech_realization)
         stress_total_loc_p(idof + (ghosted_id-1)*SIX_INTEGER) = &
           stress_total_loc_p(idof + (ghosted_id-1)*SIX_INTEGER) + &
           stress_total(ivertex,idof)
+        stress_eff_loc_p(idof + (ghosted_id-1)*SIX_INTEGER) = &
+          stress_eff_loc_p(idof + (ghosted_id-1)*SIX_INTEGER) + &
+          stress_eff(ivertex,idof)
       enddo
     enddo
   enddo
@@ -2486,6 +2503,7 @@ subroutine GeomechForceStressStrain(geomech_realization)
   deallocate(strain)
   deallocate(stress)
   deallocate(stress_total)
+  deallocate(stress_eff)
 
   call VecRestoreArray(field%temp_loc,temp_loc_p,ierr);CHKERRQ(ierr)
   call VecRestoreArray(field%temp_init_loc,temp_init_loc_p,ierr);CHKERRQ(ierr)
@@ -2495,6 +2513,7 @@ subroutine GeomechForceStressStrain(geomech_realization)
   call VecRestoreArray(field%strain_loc,strain_loc_p,ierr);CHKERRQ(ierr)
   call VecRestoreArray(field%stress_loc,stress_loc_p,ierr);CHKERRQ(ierr)
   call VecRestoreArray(field%stress_total_loc,stress_total_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%stress_eff_loc,stress_eff_loc_p,ierr);CHKERRQ(ierr)
 
   if (geomech_parameter%youngs_modulus_spatially_varying) then
     call VecRestoreArray(field%youngs_modulus_loc,temp_youngs_modulus_loc_p,ierr);CHKERRQ(ierr)
@@ -2519,6 +2538,10 @@ subroutine GeomechForceStressStrain(geomech_realization)
                                              field%stress_total_loc, &
                                              field%stress_total, &
                                              SIX_INTEGER)
+  call GeomechDiscretizationLocalToGlobalAdd(geomech_discretization, &
+                                             field%stress_eff_loc, &
+                                             field%stress_eff, &
+                                             SIX_INTEGER)
 
 ! Now take the average at each node for elements sharing the node
   call VecGetArray(grid%no_elems_sharing_node,no_elems_p, &
@@ -2526,6 +2549,7 @@ subroutine GeomechForceStressStrain(geomech_realization)
   call VecGetArray(field%strain,strain_p,ierr);CHKERRQ(ierr)
   call VecGetArray(field%stress,stress_p,ierr);CHKERRQ(ierr)
   call VecGetArray(field%stress_total,stress_total_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%stress_eff,stress_eff_p,ierr);CHKERRQ(ierr)
   do local_id = 1, grid%nlmax_node
     do idof = 1, SIX_INTEGER
       strain_p(idof + (local_id-1)*SIX_INTEGER) = &
@@ -2534,11 +2558,14 @@ subroutine GeomechForceStressStrain(geomech_realization)
         stress_p(idof + (local_id-1)*SIX_INTEGER)/nint(no_elems_p(local_id))
       stress_total_p(idof + (local_id-1)*SIX_INTEGER) = &
         stress_total_p(idof + (local_id-1)*SIX_INTEGER)/nint(no_elems_p(local_id))
+      stress_eff_p(idof + (local_id-1)*SIX_INTEGER) = &
+        stress_eff_p(idof + (local_id-1)*SIX_INTEGER)/nint(no_elems_p(local_id))
     enddo
   enddo
   call VecRestoreArray(field%strain,strain_p,ierr);CHKERRQ(ierr)
   call VecRestoreArray(field%stress,stress_p,ierr);CHKERRQ(ierr)
   call VecRestoreArray(field%stress_total,stress_total_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%stress_eff,stress_eff_p,ierr);CHKERRQ(ierr)
   call VecRestoreArray(grid%no_elems_sharing_node,no_elems_p, &
                           ierr);CHKERRQ(ierr)
 
@@ -2553,10 +2580,15 @@ subroutine GeomechForceStressStrain(geomech_realization)
                                           field%stress_total, &
                                           field%stress_total_loc, &
                                           SIX_INTEGER)
+  call GeomechDiscretizationGlobalToLocal(geomech_discretization, &
+                                          field%stress_eff, &
+                                          field%stress_eff_loc, &
+                                          SIX_INTEGER)
 
   call VecGetArray(field%strain_loc,strain_loc_p,ierr);CHKERRQ(ierr)
   call VecGetArray(field%stress_loc,stress_loc_p,ierr);CHKERRQ(ierr)
   call VecGetArray(field%stress_total_loc,stress_total_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%stress_eff_loc,stress_eff_loc_p,ierr);CHKERRQ(ierr)
 ! Copy them to global_aux_vars
   do ghosted_id = 1, grid%ngmax_node
     do idof = 1, SIX_INTEGER
@@ -2566,11 +2598,14 @@ subroutine GeomechForceStressStrain(geomech_realization)
         stress_loc_p(idof + (ghosted_id-1)*SIX_INTEGER)
       geomech_global_aux_vars(ghosted_id)%stress_total(idof) = &
         stress_total_loc_p(idof + (ghosted_id-1)*SIX_INTEGER)
+      geomech_global_aux_vars(ghosted_id)%stress_eff(idof) = &
+        stress_eff_loc_p(idof + (ghosted_id-1)*SIX_INTEGER)
     enddo
   enddo
   call VecRestoreArray(field%strain_loc,strain_loc_p,ierr);CHKERRQ(ierr)
   call VecRestoreArray(field%stress_loc,stress_loc_p,ierr);CHKERRQ(ierr)
   call VecRestoreArray(field%stress_total_loc,stress_total_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%stress_eff_loc,stress_eff_loc_p,ierr);CHKERRQ(ierr)
 
 end subroutine GeomechForceStressStrain
 
@@ -2582,7 +2617,7 @@ subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
                                              local_youngs,local_poissons, &
                                              local_alpha, local_beta, &
                                              eletype,dim,strain,stress, &
-                                             stress_total,option)
+                                             stress_total,stress_eff,option)
   !
   ! Computes the stress-strain for a local
   ! element
@@ -2608,11 +2643,13 @@ subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
   PetscReal, intent(in) :: local_youngs(:), local_poissons(:)
   PetscReal, intent(in) :: local_alpha(:), local_beta(:)
   PetscReal, intent(out) :: strain(:,:), stress(:,:), stress_total(:,:) ! (nen,6)
+  PetscReal, intent(out) :: stress_eff(:,:)                             ! (nen,6)
 
   PetscInt :: a, v
   PetscReal :: J_map(3,3), inv_J_map(3,3), detJ_map
   PetscReal :: dNdx(size_elenodes,3)
   PetscReal :: gradU(3,3), eps(3,3), sig(3,3), sig_total_mat(3,3)
+  PetscReal :: sig_eff_mat(3,3), thermal_term
   PetscReal :: lambda, mu, E, nu, alpha, beta, dT, dP
   PetscReal :: trE
 
@@ -2624,6 +2661,7 @@ subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
   strain = 0.0d0
   stress = 0.0d0
   stress_total = 0.0d0
+  stress_eff = 0.0d0
 
   shapefunction%element_type = eletype
   call ShapeFunctionInitialize(shapefunction,option)
@@ -2674,13 +2712,26 @@ subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
     sig(2,2) = sig(2,2) + lambda*trE
     sig(3,3) = sig(3,3) + lambda*trE
 
-    ! Total stress = effective stress - thermal term - Biot pore-pressure term.
+    ! sig above is C:eps, i.e. the stiffness applied to the TOTAL strain. It is
+    ! not a physical stress on its own: free thermal expansion gives eps /= 0
+    ! with no stress developed. Removing the thermal term yields the Biot
+    ! effective (skeleton) stress; additionally removing the Biot pore-pressure
+    ! term yields the total Cauchy stress.
+    !   sig_eff   = C:eps - eta*K*dT
+    !   sig_total = C:eps - eta*K*dT - beta*dP = sig_eff - beta*dP
     dT = local_temp(v)
     dP = local_press(v)
-    sig_total_mat = sig
-    sig_total_mat(1,1) = sig_total_mat(1,1) - alpha*dT*(3.0d0*lambda + 2.0d0*mu) - beta*dP
-    sig_total_mat(2,2) = sig_total_mat(2,2) - alpha*dT*(3.0d0*lambda + 2.0d0*mu) - beta*dP
-    sig_total_mat(3,3) = sig_total_mat(3,3) - alpha*dT*(3.0d0*lambda + 2.0d0*mu) - beta*dP
+    thermal_term = alpha*dT*(3.0d0*lambda + 2.0d0*mu)
+
+    sig_eff_mat = sig
+    sig_eff_mat(1,1) = sig_eff_mat(1,1) - thermal_term
+    sig_eff_mat(2,2) = sig_eff_mat(2,2) - thermal_term
+    sig_eff_mat(3,3) = sig_eff_mat(3,3) - thermal_term
+
+    sig_total_mat = sig_eff_mat
+    sig_total_mat(1,1) = sig_total_mat(1,1) - beta*dP
+    sig_total_mat(2,2) = sig_total_mat(2,2) - beta*dP
+    sig_total_mat(3,3) = sig_total_mat(3,3) - beta*dP
 
     ! Store in your 6-component convention (same as your old mapping)
     strain(v,1) = eps(1,1)
@@ -2703,6 +2754,13 @@ subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
     stress_total(v,4) = sig_total_mat(1,2)
     stress_total(v,5) = sig_total_mat(2,3)
     stress_total(v,6) = sig_total_mat(3,1)
+
+    stress_eff(v,1) = sig_eff_mat(1,1)
+    stress_eff(v,2) = sig_eff_mat(2,2)
+    stress_eff(v,3) = sig_eff_mat(3,3)
+    stress_eff(v,4) = sig_eff_mat(1,2)
+    stress_eff(v,5) = sig_eff_mat(2,3)
+    stress_eff(v,6) = sig_eff_mat(3,1)
   end do
 
   call ShapeFunctionDestroy(shapefunction)

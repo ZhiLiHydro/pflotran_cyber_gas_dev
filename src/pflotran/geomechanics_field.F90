@@ -28,6 +28,8 @@ module Geomechanics_Field_module
     Vec :: stress_loc
     Vec :: stress_total
     Vec :: stress_total_loc
+    Vec :: stress_eff       ! Biot effective stress, C:eps - eta*K*dT
+    Vec :: stress_eff_loc
     Vec :: strain_subsurf  ! Stores strains after scattering from geomech to subsurf
     Vec :: stress_subsurf  ! Stores stresses after scattering from geomech to subsurf
     Vec :: strain_subsurf_loc
@@ -106,6 +108,8 @@ function GeomechFieldCreate()
   PetscObjectNullify(geomech_field%stress_loc)
   PetscObjectNullify(geomech_field%stress_total)
   PetscObjectNullify(geomech_field%stress_total_loc)
+  PetscObjectNullify(geomech_field%stress_eff)
+  PetscObjectNullify(geomech_field%stress_eff_loc)
 
   PetscObjectNullify(geomech_field%strain_subsurf)
   PetscObjectNullify(geomech_field%stress_subsurf)
@@ -173,6 +177,8 @@ subroutine GeomechFieldDestroy(geomech_field)
   call PUVecDestroy(geomech_field%stress_loc)
   call PUVecDestroy(geomech_field%stress_total)
   call PUVecDestroy(geomech_field%stress_total_loc)
+  call PUVecDestroy(geomech_field%stress_eff)
+  call PUVecDestroy(geomech_field%stress_eff_loc)
   call PUVecDestroy(geomech_field%strain_subsurf)
   call PUVecDestroy(geomech_field%stress_subsurf)
   call PUVecDestroy(geomech_field%strain_subsurf_loc)

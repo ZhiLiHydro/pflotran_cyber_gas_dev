@@ -514,6 +514,10 @@ subroutine GeomechRealizCreateDiscretization(geomech_realization)
                                             geomech_field%strain_loc, &
                                             geomech_field%stress_total_loc)
 
+  call GeomechDiscretizationDuplicateVector(geomech_discretization, &
+                                            geomech_field%strain_loc, &
+                                            geomech_field%stress_eff_loc)
+
   ! 6 dof for strain and stress, global
   call GeomechDiscretizationCreateVector(geomech_discretization,SIX_INTEGER, &
                                          geomech_field%strain, &
@@ -528,6 +532,10 @@ subroutine GeomechRealizCreateDiscretization(geomech_realization)
   call GeomechDiscretizationDuplicateVector(geomech_discretization, &
                                             geomech_field%strain, &
                                             geomech_field%stress_total)
+
+  call GeomechDiscretizationDuplicateVector(geomech_discretization, &
+                                            geomech_field%strain, &
+                                            geomech_field%stress_eff)
 
   grid => geomech_discretization%grid
 

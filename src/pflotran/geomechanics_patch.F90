@@ -732,6 +732,42 @@ subroutine GeomechPatchGetDataset(patch,geomech_field,option,output_option, &
           patch%geomech_aux%Global%aux_vars(&
             grid%nL2G(local_id))%stress_total(6)
       enddo
+    case(STRESS_EFF_XX)
+      do local_id=1,grid%nlmax_node
+        vec_ptr(local_id) = &
+          patch%geomech_aux%Global%aux_vars(&
+            grid%nL2G(local_id))%stress_eff(1)
+      enddo
+    case(STRESS_EFF_YY)
+      do local_id=1,grid%nlmax_node
+        vec_ptr(local_id) = &
+          patch%geomech_aux%Global%aux_vars(&
+            grid%nL2G(local_id))%stress_eff(2)
+      enddo
+    case(STRESS_EFF_ZZ)
+      do local_id=1,grid%nlmax_node
+        vec_ptr(local_id) = &
+          patch%geomech_aux%Global%aux_vars(&
+            grid%nL2G(local_id))%stress_eff(3)
+      enddo
+    case(STRESS_EFF_XY)
+      do local_id=1,grid%nlmax_node
+        vec_ptr(local_id) = &
+          patch%geomech_aux%Global%aux_vars(&
+            grid%nL2G(local_id))%stress_eff(4)
+      enddo
+    case(STRESS_EFF_YZ)
+      do local_id=1,grid%nlmax_node
+        vec_ptr(local_id) = &
+          patch%geomech_aux%Global%aux_vars(&
+            grid%nL2G(local_id))%stress_eff(5)
+      enddo
+    case(STRESS_EFF_ZX)
+      do local_id=1,grid%nlmax_node
+        vec_ptr(local_id) = &
+          patch%geomech_aux%Global%aux_vars(&
+            grid%nL2G(local_id))%stress_eff(6)
+      enddo
     case(GEOMECH_MATERIAL_ID)
       do local_id=1,grid%nlmax_node
         vec_ptr(local_id) = patch%imat(grid%nL2G(local_id))

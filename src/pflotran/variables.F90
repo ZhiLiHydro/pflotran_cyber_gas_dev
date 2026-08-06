@@ -104,6 +104,12 @@ module Variables_module
   PetscInt, parameter, public :: STRESS_TOTAL_XY         = 183
   PetscInt, parameter, public :: STRESS_TOTAL_YZ         = 184
   PetscInt, parameter, public :: STRESS_TOTAL_ZX         = 185
+  PetscInt, parameter, public :: STRESS_EFF_XX           = 191
+  PetscInt, parameter, public :: STRESS_EFF_YY           = 192
+  PetscInt, parameter, public :: STRESS_EFF_ZZ           = 193
+  PetscInt, parameter, public :: STRESS_EFF_XY           = 194
+  PetscInt, parameter, public :: STRESS_EFF_YZ           = 195
+  PetscInt, parameter, public :: STRESS_EFF_ZX           = 196
   PetscInt, parameter, public :: GEOMECH_MATERIAL_ID     = 86
   PetscInt, parameter, public :: GEOMECH_REL_DISP_X      = 87
   PetscInt, parameter, public :: GEOMECH_REL_DISP_Y      = 88

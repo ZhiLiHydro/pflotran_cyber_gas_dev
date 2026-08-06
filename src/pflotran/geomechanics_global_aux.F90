@@ -12,8 +12,9 @@ module Geomechanics_Global_Aux_module
     PetscReal, pointer :: disp_vector(:)       ! [m]
     PetscReal, pointer :: rel_disp_vector(:)   ! [m]
     PetscReal, pointer :: strain(:)            ! dimensionless -- xx, yy, zz, xy, yz, zx
-    PetscReal, pointer :: stress(:)            ! [Pa]
+    PetscReal, pointer :: stress(:)            ! [Pa] C:eps -- NOT the effective stress unless isothermal
     PetscReal, pointer :: stress_total(:)      ! [Pa] stress including thermal and pressure contributions
+    PetscReal, pointer :: stress_eff(:)        ! [Pa] Biot effective stress, C:eps - eta*K*dT
     PetscInt :: count                      ! Number of elements shared by a vertex
     ! The count above will be used for averaging the strains and stresses
     ! over the elements
@@ -84,11 +85,13 @@ subroutine GeomechGlobalAuxVarInit(aux_var,option)
   allocate(aux_var%strain(SIX_INTEGER))
   allocate(aux_var%stress(SIX_INTEGER))
   allocate(aux_var%stress_total(SIX_INTEGER))
+  allocate(aux_var%stress_eff(SIX_INTEGER))
   aux_var%disp_vector = 0.d0
   aux_var%rel_disp_vector = 0.d0
   aux_var%strain = 0.d0
   aux_var%stress = 0.d0
   aux_var%stress_total = 0.d0
+  aux_var%stress_eff = 0.d0
 
 end subroutine GeomechGlobalAuxVarInit
 
@@ -114,6 +117,7 @@ subroutine GeomechGlobalAuxVarCopy(aux_var,aux_var2,option)
   aux_var%strain = aux_var2%strain
   aux_var%stress = aux_var2%stress
   aux_var%stress_total = aux_var2%stress_total
+  aux_var%stress_eff = aux_var2%stress_eff
 
 end subroutine GeomechGlobalAuxVarCopy
 
@@ -187,6 +191,7 @@ subroutine GeomechGlobalAuxVarStrip(aux_var)
   call DeallocateArray(aux_var%strain)
   call DeallocateArray(aux_var%stress)
   call DeallocateArray(aux_var%stress_total)
+  call DeallocateArray(aux_var%stress_eff)
 
 end subroutine GeomechGlobalAuxVarStrip
 

@@ -22,6 +22,7 @@ module Simulation_Aux_module
     Vec :: subsurf_por
     Vec :: subsurf_strain
     Vec :: subsurf_stress
+    Vec :: subsurf_stress_eff  ! Biot effective stress on the subsurface grid
     Vec :: subsurf_perm0
     Vec :: subsurf_perm
 
@@ -66,6 +67,7 @@ function SimAuxCreate()
   PetscObjectNullify(aux%subsurf_perm)
   PetscObjectNullify(aux%subsurf_strain)
   PetscObjectNullify(aux%subsurf_stress)
+  PetscObjectNullify(aux%subsurf_stress_eff)
 
   PetscObjectNullify(aux%subsurf_to_geomechanics)
   PetscObjectNullify(aux%geomechanics_to_subsurf)
@@ -150,6 +152,8 @@ subroutine SimAuxCopySubsurfGeomechVec(aux, subsurf_geomech_vec)
                     ierr);CHKERRQ(ierr)
   call VecDuplicate(subsurf_geomech_vec,aux%subsurf_strain, &
                     ierr);CHKERRQ(ierr)
+  call VecDuplicate(subsurf_geomech_vec,aux%subsurf_stress_eff, &
+                    ierr);CHKERRQ(ierr)
 
 end subroutine SimAuxCopySubsurfGeomechVec
 
@@ -180,6 +184,7 @@ subroutine SimAuxDestroy(aux)
   call PUVecDestroy(aux%subsurf_perm)
   call PUVecDestroy(aux%subsurf_strain)
   call PUVecDestroy(aux%subsurf_stress)
+  call PUVecDestroy(aux%subsurf_stress_eff)
   call PUVecScatterDestroy(aux%subsurf_to_geomechanics)
   call PUVecScatterDestroy(aux%geomechanics_to_subsurf)
 

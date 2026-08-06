@@ -14,6 +14,9 @@ module PMC_Geomechanics_class
   type, public, extends(pmc_base_type) :: pmc_geomechanics_type
     class(realization_subsurface_type), pointer :: subsurf_realization
     class(realization_geomech_type), pointer :: geomech_realization
+    ! One-shot latch for capturing the t=0 mean effective stress used as the
+    ! reference state by the ERT stress-resistivity (Brace) correction.
+    PetscBool :: stress_ref_stored
   contains
     procedure, public :: Init => PMCGeomechanicsInit
     procedure, public :: SetupSolvers => PMCGeomechanicsSetupSolvers
@@ -80,6 +83,7 @@ subroutine PMCGeomechanicsInit(this)
   call PMCBaseInit(this)
   nullify(this%subsurf_realization)
   nullify(this%geomech_realization)
+  this%stress_ref_stored = PETSC_FALSE
 
 end subroutine PMCGeomechanicsInit
 
@@ -429,6 +433,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
   PetscScalar, pointer :: perm_p(:)
   PetscScalar, pointer :: strain_p(:)
   PetscScalar, pointer :: stress_p(:)
+  PetscScalar, pointer :: stress_eff_p(:)
   PetscScalar, pointer :: press_p(:)
   PetscReal, pointer :: vec_ptr(:)
   PetscReal :: local_stress(6), local_strain(6)
@@ -438,6 +443,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
   PetscReal :: perm_new
   PetscInt :: i
   PetscInt :: parameter_index
+  PetscInt :: parameter_ref_index
 
   PetscInt :: strainv_0_id, press_0_id
   PetscInt :: strainv_id
@@ -532,6 +538,20 @@ subroutine PMCGeomechanicsSetAuxData(this)
                            pmc%sim_aux%subsurf_stress,ADD_VALUES, &
                            SCATTER_FORWARD,ierr);CHKERRQ(ierr)
 
+        ! Save Biot effective stress in sim_aux%subsurf_stress_eff. This is the
+        ! quantity that drives pore/crack closure, and is what the ERT
+        ! stress-resistivity correction consumes. It differs from
+        ! subsurf_stress (= C:eps) by the thermal term.
+        call VecSet(pmc%sim_aux%subsurf_stress_eff,0.d0,ierr);CHKERRQ(ierr)
+        call VecScatterBegin(pmc%sim_aux%geomechanics_to_subsurf, &
+                             pmc%geomech_realization%geomech_field%stress_eff, &
+                             pmc%sim_aux%subsurf_stress_eff,ADD_VALUES, &
+                             SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+        call VecScatterEnd(pmc%sim_aux%geomechanics_to_subsurf, &
+                           pmc%geomech_realization%geomech_field%stress_eff, &
+                           pmc%sim_aux%subsurf_stress_eff,ADD_VALUES, &
+                           SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+
 #if GEOMECH_DEBUG
   call PetscViewerASCIIOpen(option%mycomm, &
                             'subsurf_stress_vector_before_averaging.out', &
@@ -557,6 +577,10 @@ subroutine PMCGeomechanicsSetAuxData(this)
                                 pmc%sim_aux%subsurf_stress,subsurf_vec, &
                                 ierr);CHKERRQ(ierr)
 
+        call VecPointwiseDivide(pmc%sim_aux%subsurf_stress_eff, &
+                                pmc%sim_aux%subsurf_stress_eff,subsurf_vec, &
+                                ierr);CHKERRQ(ierr)
+
 #if GEOMECH_DEBUG
   call PetscViewerASCIIOpen(option%mycomm, &
                             'subsurf_stress_vector_after_averaging.out', &
@@ -571,17 +595,23 @@ subroutine PMCGeomechanicsSetAuxData(this)
         ! Stress
         call VecGetArray(pmc%sim_aux%subsurf_stress,stress_p, &
                             ierr);CHKERRQ(ierr)
+        ! Effective stress
+        call VecGetArray(pmc%sim_aux%subsurf_stress_eff,stress_eff_p, &
+                            ierr);CHKERRQ(ierr)
 
         if (option%geomechanics%geophysics_coupling == &
                                 GEOMECH_ERT_COUPLING) then
-          ! stress
+          ! Mean effective stress, 1/3 tr(sigma'), passed to the ERT process
+          ! model. Effective (not total) stress is used because pore/crack
+          ! aperture responds to the stress carried by the solid skeleton;
+          ! pore pressure props crack walls open and must not be included.
           call VecGetArray(pmc%subsurf_realization%field%work, &
                               vec_ptr,ierr);CHKERRQ(ierr)
           do local_id = 1, grid%nlmax
             vec_ptr(local_id) = 0.d0
             do i = 1, 3
               vec_ptr(local_id) = vec_ptr(local_id) + &
-                              stress_p((local_id - 1)*SIX_INTEGER + i)
+                              stress_eff_p((local_id - 1)*SIX_INTEGER + i)
             enddo
             vec_ptr(local_id) = vec_ptr(local_id) / 3.d0
           enddo
@@ -595,11 +625,32 @@ subroutine PMCGeomechanicsSetAuxData(this)
                               vec_ptr,ierr);CHKERRQ(ierr)
           parameter_index = ParameterGetIDFromName('geomechanics_stress', &
                                                    option)
+          parameter_ref_index = &
+            ParameterGetIDFromName('geomechanics_stress_ref',option)
           do ghosted_id = 1, grid%ngmax
             pmc%subsurf_realization%patch%aux% &
               Global%auxvars(ghosted_id)%parameters(parameter_index) = &
                 vec_ptr(ghosted_id)
           enddo
+          ! Latch the initial mean effective stress as the reference state, so
+          ! that the Brace correction is applied to (sigma_m - sigma_m,0) and
+          ! vanishes at t=0 rather than offsetting the baseline resistivity by
+          ! the in-situ (e.g. lithostatic) stress.
+          !
+          ! KNOWN LIMITATION: this reference is not checkpointed (the subsurface
+          ! parameters array never is), so a restarted run re-anchors it to the
+          ! restart time instead of t=0 and the Brace correction restarts from
+          ! zero. Fixing it requires persisting the t=0 effective stress as a
+          ! checkpointed field, which in turn requires two unrelated
+          ! pre-existing checkpoint bugs to be resolved first.
+          if (.not.pmc%stress_ref_stored) then
+            do ghosted_id = 1, grid%ngmax
+              pmc%subsurf_realization%patch%aux% &
+                Global%auxvars(ghosted_id)%parameters(parameter_ref_index) = &
+                  vec_ptr(ghosted_id)
+            enddo
+            pmc%stress_ref_stored = PETSC_TRUE
+          endif
           call VecRestoreArray(pmc%subsurf_realization%field%work_loc, &
                                   vec_ptr,ierr);CHKERRQ(ierr)
           ! strain
@@ -748,6 +799,8 @@ subroutine PMCGeomechanicsSetAuxData(this)
         endif
 
         call VecRestoreArray(pmc%sim_aux%subsurf_stress,stress_p, &
+                                ierr);CHKERRQ(ierr)
+        call VecRestoreArray(pmc%sim_aux%subsurf_stress_eff,stress_eff_p, &
                                 ierr);CHKERRQ(ierr)
         call VecRestoreArray(pmc%sim_aux%subsurf_strain,strain_p, &
                                 ierr);CHKERRQ(ierr)
