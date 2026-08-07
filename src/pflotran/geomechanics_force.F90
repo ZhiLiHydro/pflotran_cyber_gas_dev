@@ -333,13 +333,6 @@ subroutine GeomechForceSetPlotVariables(list)
   call OutputVariableAddToList(list,name,OUTPUT_STRESS,units, &
                                STRESS_TOTAL_ZX)
 
-  ! NOTE: the Biot effective stress (STRESS_EFF_*) is deliberately NOT added to
-  ! the default plot variable list. Adding entries here changes the snapshot and
-  ! observation output of every geomechanics run, which would invalidate the
-  ! existing gold files. The quantity is still resolvable through
-  ! GeomechPatchGetDataset and GeomechGetVariableAtNode if it is added to a
-  ! variable list.
-
   name = 'relative_displacement_x'
   units = 'm'
   call OutputVariableAddToList(list,name,OUTPUT_DISPLACEMENT,units, &
@@ -2712,11 +2705,6 @@ subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
     sig(2,2) = sig(2,2) + lambda*trE
     sig(3,3) = sig(3,3) + lambda*trE
 
-    ! sig above is C:eps, i.e. the stiffness applied to the TOTAL strain. It is
-    ! not a physical stress on its own: free thermal expansion gives eps /= 0
-    ! with no stress developed. Removing the thermal term yields the Biot
-    ! effective (skeleton) stress; additionally removing the Biot pore-pressure
-    ! term yields the total Cauchy stress.
     !   sig_eff   = C:eps - eta*K*dT
     !   sig_total = C:eps - eta*K*dT - beta*dP = sig_eff - beta*dP
     dT = local_temp(v)

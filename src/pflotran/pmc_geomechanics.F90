@@ -14,8 +14,6 @@ module PMC_Geomechanics_class
   type, public, extends(pmc_base_type) :: pmc_geomechanics_type
     class(realization_subsurface_type), pointer :: subsurf_realization
     class(realization_geomech_type), pointer :: geomech_realization
-    ! One-shot latch for capturing the t=0 mean effective stress used as the
-    ! reference state by the ERT stress-resistivity (Brace) correction.
     PetscBool :: stress_ref_stored
   contains
     procedure, public :: Init => PMCGeomechanicsInit

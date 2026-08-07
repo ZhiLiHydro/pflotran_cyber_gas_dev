@@ -393,8 +393,6 @@ subroutine FactorySubsurfaceInitSimulation(simulation)
   select case(option%geomechanics%geophysics_coupling)
     case(GEOMECH_ERT_COUPLING)
       call RealizationRegisterParameter(realization,'geomechanics_stress')
-      ! Initial (t=0) mean effective stress, used as the reference state for
-      ! the ERT stress-resistivity correction.
       call RealizationRegisterParameter(realization,'geomechanics_stress_ref')
       call RealizationRegisterParameter(realization,'geomechanics_strain')
   end select

@@ -1043,9 +1043,7 @@ subroutine PMERTPreSolve(this)
     if (option%geomechanics%geophysics_coupling == GEOMECH_ERT_COUPLING) then
       ! Brace's regression equation rho = 21054*pressure (kbar) + 3457.9 is
       ! expressed in terms of a compression-positive effective pressure, and is
-      ! relative to the initial state. The stored parameter is the mean
-      ! effective stress in PFLOTRAN's tension-positive convention, so negate
-      ! the change relative to the t=0 reference to recover that pressure.
+      ! relative to the initial state.
       dstress = -(patch%aux% &
                     Global%auxvars(ghosted_id)%parameters(parameter_index) - &
                   patch%aux% &
