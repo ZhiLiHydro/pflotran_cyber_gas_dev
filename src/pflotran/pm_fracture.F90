@@ -1062,6 +1062,7 @@ subroutine PMFracSetup(this)
     this%frac_intersection_ids(:) = UNINITIALIZED_INTEGER
     if (k > 0) this%frac_intersection_ids = temp_gbl_cell_ids(1:k)
     deallocate(temp_gbl_cell_ids)
+
   endif ! if (this%clip_unconnected_fracs) then
 
   deallocate(cell_positions)
@@ -3096,8 +3097,9 @@ subroutine PMFracGeomPrintStats(this)
 
   character(len=MAXWORDLENGTH) :: filename_frac_info ! EJB
   type(fracture_type), pointer :: cur_fracture
-  PetscInt :: fid_frac_info, frac_count
+  PetscInt :: fid_frac_info, frac_count, icell,k
   PetscReal:: min_dip, mean_dip, max_dip
+  PetscBool:: do_report_fracture
 
   ! filename_frac_info needs to be consistent w/ filename_frac_info located at end of PMFracSetup()
   ! EJB: filename for printing out fracture geometry information: 
@@ -3118,56 +3120,76 @@ subroutine PMFracGeomPrintStats(this)
   mean_dip = 0.d0
   do 
     if (.not.associated(cur_fracture)) exit
-
-    ! get min and max dip
-    min_dip = min(min_dip, cur_fracture%dip)
-    max_dip = max(max_dip, cur_fracture%dip)
-    mean_dip = cur_fracture%dip + mean_dip
-
-    ! data to write is: 
-    ! fracture_id, cx, cy, cz, nx, ny, nz, rx, ry, rz, aperture
-    write(fid_frac_info,'(I8)',advance="no") cur_fracture%id
-    write(fid_frac_info,'(a)', advance="no") ","
+    do_report_fracture = PETSC_TRUE     ! assume we'll report, unless domain has been clipped and then we will check which ones to report (below)
     
-    ! center_x, center_y, center_z
-    write(fid_frac_info,110,advance="no") cur_fracture%center%x
-    write(fid_frac_info,'(a)', advance="no") ","
-    write(fid_frac_info,110,advance="no") cur_fracture%center%y
-    write(fid_frac_info,'(a)', advance="no") ","
-    write(fid_frac_info,110,advance="no") cur_fracture%center%z
-    write(fid_frac_info,'(a)', advance="no") ","
+    if (this%clip_unconnected_fracs) then
+      do_report_fracture = PETSC_FALSE
+      ! we need to skip cases where the fracture in question ended up being 
+      ! clipped out 
+      !cell_ids = cur_fracture%cell_ids
 
-    ! normal_x, normal_y, normal_z
-    write(fid_frac_info,110,advance="no") cur_fracture%normal%x
-    write(fid_frac_info,'(a)', advance="no") ","
-    write(fid_frac_info,110,advance="no") cur_fracture%normal%y
-    write(fid_frac_info,'(a)', advance="no") ","
-    write(fid_frac_info,110,advance="no") cur_fracture%normal%z
-    write(fid_frac_info,'(a)', advance="no") ","
+      ! this%unique_connected_cell_ids <-- the unique connected cell ids (local)
+      do k = 1, cur_fracture%cell_ids(k)
+        icell = cur_fracture%cell_ids(k) ! get cell idx of given local cell id in fracture
+        ! check if it's in the connected list:
+        if (any(icell == this%unique_connected_cell_ids)) then
+          do_report_fracture = PETSC_TRUE
+        endif
+        if (do_report_fracture) exit ! if even one is in the connectivity set, then keep the fracture to report
+      enddo
+    endif
 
-    ! radius_x, radius_y, radius_z
-    write(fid_frac_info,110,advance="no") cur_fracture%radx
-    write(fid_frac_info,'(a)', advance="no") ","
-    write(fid_frac_info,110,advance="no") cur_fracture%rady
-    write(fid_frac_info,'(a)', advance="no") ","
-    write(fid_frac_info,110,advance="no") cur_fracture%radz
-    write(fid_frac_info,'(a)', advance="no") ","
+    if (do_report_fracture) then
+      ! get min and max dip
+      min_dip = min(min_dip, cur_fracture%dip)
+      max_dip = max(max_dip, cur_fracture%dip)
+      mean_dip = cur_fracture%dip + mean_dip
 
-    ! initial aperture    
-    write(fid_frac_info,110,advance="no") cur_fracture%hap0
-    write(fid_frac_info,'(a)', advance="no") ","
+      ! data to write is: 
+      ! fracture_id, cx, cy, cz, nx, ny, nz, rx, ry, rz, aperture
+      write(fid_frac_info,'(I8)',advance="no") cur_fracture%id
+      write(fid_frac_info,'(a)', advance="no") ","
+      
+      ! center_x, center_y, center_z
+      write(fid_frac_info,110,advance="no") cur_fracture%center%x
+      write(fid_frac_info,'(a)', advance="no") ","
+      write(fid_frac_info,110,advance="no") cur_fracture%center%y
+      write(fid_frac_info,'(a)', advance="no") ","
+      write(fid_frac_info,110,advance="no") cur_fracture%center%z
+      write(fid_frac_info,'(a)', advance="no") ","
 
-    ! strike
-    write(fid_frac_info, 110, advance="no") cur_fracture%strike%x
-    write(fid_frac_info,'(a)', advance="no") ","
-    write(fid_frac_info, 110, advance="no") cur_fracture%strike%y
-    write(fid_frac_info,'(a)', advance="no") ","
-    write(fid_frac_info, 110, advance="no") cur_fracture%strike%z
-    write(fid_frac_info,'(a)', advance="no") ","
+      ! normal_x, normal_y, normal_z
+      write(fid_frac_info,110,advance="no") cur_fracture%normal%x
+      write(fid_frac_info,'(a)', advance="no") ","
+      write(fid_frac_info,110,advance="no") cur_fracture%normal%y
+      write(fid_frac_info,'(a)', advance="no") ","
+      write(fid_frac_info,110,advance="no") cur_fracture%normal%z
+      write(fid_frac_info,'(a)', advance="no") ","
 
-    ! dip
-    write(fid_frac_info, 110, advance="yes") cur_fracture%dip
+      ! radius_x, radius_y, radius_z
+      write(fid_frac_info,110,advance="no") cur_fracture%radx
+      write(fid_frac_info,'(a)', advance="no") ","
+      write(fid_frac_info,110,advance="no") cur_fracture%rady
+      write(fid_frac_info,'(a)', advance="no") ","
+      write(fid_frac_info,110,advance="no") cur_fracture%radz
+      write(fid_frac_info,'(a)', advance="no") ","
 
+      ! initial aperture    
+      write(fid_frac_info,110,advance="no") cur_fracture%hap0
+      write(fid_frac_info,'(a)', advance="no") ","
+
+      ! strike
+      write(fid_frac_info, 110, advance="no") cur_fracture%strike%x
+      write(fid_frac_info,'(a)', advance="no") ","
+      write(fid_frac_info, 110, advance="no") cur_fracture%strike%y
+      write(fid_frac_info,'(a)', advance="no") ","
+      write(fid_frac_info, 110, advance="no") cur_fracture%strike%z
+      write(fid_frac_info,'(a)', advance="no") ","
+
+      ! dip
+      write(fid_frac_info, 110, advance="yes") cur_fracture%dip
+
+    endif ! end if 
     frac_count = frac_count + 1
     cur_fracture => cur_fracture%next
 
