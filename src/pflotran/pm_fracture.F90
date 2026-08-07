@@ -3095,12 +3095,14 @@ subroutine PMFracGeomPrintStats(this)
 
   class(pm_fracture_type) :: this
 
-  character(len=MAXWORDLENGTH) :: filename_frac_info ! EJB
+  character(len=MAXWORDLENGTH) :: word,filename_frac_info ! EJB
   type(fracture_type), pointer :: cur_fracture
   PetscInt :: fid_frac_info, frac_count, icell,k
   PetscReal:: min_dip, mean_dip, max_dip
   PetscBool:: do_report_fracture
 
+  this%option%io_buffer = 'Printing fracture geometry stats ...'
+  call PrintMsg(this%option)
   ! filename_frac_info needs to be consistent w/ filename_frac_info located at end of PMFracSetup()
   ! EJB: filename for printing out fracture geometry information: 
   filename_frac_info = trim(this%option%global_prefix)//'.frac_geom_info'
@@ -3126,10 +3128,7 @@ subroutine PMFracGeomPrintStats(this)
       do_report_fracture = PETSC_FALSE
       ! we need to skip cases where the fracture in question ended up being 
       ! clipped out 
-      !cell_ids = cur_fracture%cell_ids
-
-      ! this%unique_connected_cell_ids <-- the unique connected cell ids (local)
-      do k = 1, cur_fracture%cell_ids(k)
+      do k = 1, cur_fracture%ncells
         icell = cur_fracture%cell_ids(k) ! get cell idx of given local cell id in fracture
         ! check if it's in the connected list:
         if (any(icell == this%unique_connected_cell_ids)) then
@@ -3206,6 +3205,8 @@ subroutine PMFracGeomPrintStats(this)
   WRITE(fid_frac_info, 110, advance="yes") max_dip
 
   CLOSE(fid_frac_info)
+  this%option%io_buffer = 'Done!'
+  call PrintMsg(this%option)
 end subroutine PMFracGeomPrintStats
 
 ! ************************************************************************** !
