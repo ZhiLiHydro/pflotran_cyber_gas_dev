@@ -310,6 +310,7 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
   PetscReal :: kappa_over_dist, Gamma_kappa, delta_temp
   PetscReal :: dkappa_up_dp, dkappa_dn_dp
   PetscReal :: dGamma_kappa_dpup, dGamma_kappa_dpdn
+  PetscReal :: dGamma_kappa_dTup, dGamma_kappa_dTdn
   PetscBool :: conduction_on
 
   PetscReal :: tempreal
@@ -565,6 +566,8 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
     ! Thermal transmissibility derivatives (harmonic kappa; kappa = kappa(S_l))
     dGamma_kappa_dpup = 0.d0
     dGamma_kappa_dpdn = 0.d0
+    dGamma_kappa_dTup = 0.d0
+    dGamma_kappa_dTdn = 0.d0
     if (conduction_on) then
       dkappa_up_dp = thc_auxvar_up%dtherm_cond_dsat * &
                      thc_auxvar_up%dsat_dp
@@ -575,6 +578,11 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
                           dkappa_up_dp
       dGamma_kappa_dpdn = area * kappa_up * kappa_up * dist_dn / tempreal * &
                           dkappa_dn_dp
+      ! kappa(T) only via THERMAL_CHARACTERISTIC_CURVES; zero otherwise
+      dGamma_kappa_dTup = area * kappa_dn * kappa_dn * dist_up / tempreal * &
+                          thc_auxvar_up%dtherm_cond_dT
+      dGamma_kappa_dTdn = area * kappa_up * kappa_up * dist_dn / tempreal * &
+                          thc_auxvar_dn%dtherm_cond_dT
     endif
 
     ! Enthalpy derivatives  (volumetric enthalpy carried by flux)
@@ -633,18 +641,20 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
     ! ===================================================================== !
     ! Energy equation flux Jacobian
     !   F_energy = h_upw*q + Gamma_kappa*dT
-    !   d(dT)/dT_up = +1, d(dT)/dT_dn = -1 ; Gamma_kappa indep of T,C
+    !   d(dT)/dT_up = +1, d(dT)/dT_dn = -1 ; Gamma_kappa indep of C
     ! ===================================================================== !
     Jup(thc_temperature_dof,thc_pressure_dof) = &
       dh_dp_up*q + h_upw*dq_dpup + dGamma_kappa_dpup*delta_temp
     Jup(thc_temperature_dof,thc_temperature_dof) = &
-      dh_dT_up*q + h_upw*dq_dTup + Gamma_kappa
+      dh_dT_up*q + h_upw*dq_dTup + Gamma_kappa + &
+      dGamma_kappa_dTup*delta_temp
     Jup(thc_temperature_dof,thc_concentration_dof) = &
       dh_dC_up*q + h_upw*dq_dCup
     Jdn(thc_temperature_dof,thc_pressure_dof) = &
       dh_dp_dn*q + h_upw*dq_dpdn + dGamma_kappa_dpdn*delta_temp
     Jdn(thc_temperature_dof,thc_temperature_dof) = &
-      dh_dT_dn*q + h_upw*dq_dTdn - Gamma_kappa
+      dh_dT_dn*q + h_upw*dq_dTdn - Gamma_kappa + &
+      dGamma_kappa_dTdn*delta_temp
     Jdn(thc_temperature_dof,thc_concentration_dof) = &
       dh_dC_dn*q + h_upw*dq_dCdn
 
@@ -762,7 +772,7 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
   PetscReal :: dGamma_D_dpdn, dGamma_D_dTdn, dGamma_D_dCdn
 
   ! energy conduction / prescribed-flux / convective
-  PetscReal :: Gamma_kappa, delta_temp, dGamma_kappa_dpdn
+  PetscReal :: Gamma_kappa, delta_temp, dGamma_kappa_dpdn, dGamma_kappa_dTdn
   PetscReal :: heat_flux_bc, h_conv, temp_ext
 
   Res = 0.d0
@@ -968,6 +978,7 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
   energy_bc_type = ibndtype(auxvar_mapping(THC_COND_ENERGY_INDEX))
   Gamma_kappa = 0.d0
   dGamma_kappa_dpdn = 0.d0
+  dGamma_kappa_dTdn = 0.d0
   delta_temp = thc_auxvar_up%temp - thc_auxvar_dn%temp
   select case(energy_bc_type)
     case(DIRICHLET_BC,HYDROSTATIC_BC,DIRICHLET_SEEPAGE_BC, &
@@ -980,6 +991,7 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
                                      Gamma_kappa * delta_temp
       dGamma_kappa_dpdn = thc_auxvar_dn%dtherm_cond_dsat * &
                           thc_auxvar_dn%dsat_dp / dist(0) * area
+      dGamma_kappa_dTdn = thc_auxvar_dn%dtherm_cond_dT / dist(0) * area
     case(NEUMANN_BC)
       ! prescribed heat flux q_T [W/m^2]; +q_T means heat enters the domain
       ! No Jacobian (value independent of solution).
@@ -1087,12 +1099,13 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
 
     ! ----------------------------------------------------------------------- !
     ! Energy equation  F_energy = h_upw*q + Gamma_kappa*dT  (+ Robin)
-    !   d(dT)/dT_dn = -1 ; Gamma_kappa indep of T,C
+    !   d(dT)/dT_dn = -1 ; Gamma_kappa indep of C
     ! ----------------------------------------------------------------------- !
     Jdn(thc_temperature_dof,thc_pressure_dof) = &
       dh_dp_dn*q + h_upw*dq_dpdn + dGamma_kappa_dpdn*delta_temp
     Jdn(thc_temperature_dof,thc_temperature_dof) = &
-      dh_dT_dn*q + h_upw*dq_dTdn - Gamma_kappa
+      dh_dT_dn*q + h_upw*dq_dTdn - Gamma_kappa + &
+      dGamma_kappa_dTdn*delta_temp
     Jdn(thc_temperature_dof,thc_concentration_dof) = &
       dh_dC_dn*q + h_upw*dq_dCdn
     ! convective (Robin) thermal BC: d/dT_cell of h_conv*(T_ext - T_cell)

@@ -7,6 +7,8 @@ module THC_Aux_module
   use Material_Aux_module
   use EOS_Water_module
   use THC_EOS_Utils_module
+  use Characteristic_Curves_Thermal_module
+  use Utility_module, only : Arrhenius
 
   implicit none
 
@@ -25,6 +27,8 @@ module THC_Aux_module
   ! grain-Somerton path remains the fallback when they are not supplied.
   PetscReal, public :: thc_kappa_dry = UNINITIALIZED_DOUBLE  ! [W/(m.K)]
   PetscReal, public :: thc_kappa_wet = UNINITIALIZED_DOUBLE  ! [W/(m.K)]
+  ! reference temperature for the Arrhenius diffusion scaling (matches RT)
+  PetscReal, parameter, public :: thc_diffusion_ref_temp = 25.d0  ! [C]
 
   ! Energy formulation switch (selectable via ENERGY_FORMULATION input card).
   !   THC_ENERGY_RHO_CP_T (default): liquid energy = rho*c_p*T
@@ -114,6 +118,7 @@ module THC_Aux_module
     PetscReal :: ddiff_dC         ! d(D_mol)/dC [m^2.L/(s.mol)]
     PetscReal :: therm_cond_eff   ! kappa_eff [W/(m.K)]
     PetscReal :: dtherm_cond_dsat ! d(kappa_eff)/dS_l [W/(m.K)]
+    PetscReal :: dtherm_cond_dT   ! d(kappa_eff)/dT [W/(m.K.C)]
     PetscReal :: heat_cap_liquid  ! rho_l * c_p,l [J/(m^3.K)]
     PetscReal :: heat_cap_solid   ! rho_s * c_s   [J/(m^3.K)]
     ! Full-EOS energy fields (used only when thc_energy_mode==FULL_EOS).
@@ -132,12 +137,18 @@ module THC_Aux_module
     PetscBool :: check_post_converged
     PetscReal, pointer :: tensorial_rel_perm_exponent(:,:)
     PetscReal :: diffusion_coef
+    ! FLUID_PROPERTY DIFFUSION_ACTIVATION_ENERGY [J/mol]; when Initialized the
+    ! molecular diffusion is scaled by Arrhenius(AE,T,25C), as in RT/NWT
+    PetscReal :: diffusion_activation_energy
     ! Per-material thermal properties (indexed by material id).  Populated in
     ! THCSetup from the MATERIAL_PROPERTY card (TH-compatible), falling back
     ! to the MODE THC OPTIONS-block globals when a material omits them.
     PetscReal, pointer :: dencpr(:)  ! rho_s * c_s [J/(m^3.K)]
     PetscReal, pointer :: ckdry(:)   ! bulk dry  thermal conductivity [W/(m.K)]
     PetscReal, pointer :: ckwet(:)   ! bulk wet  thermal conductivity [W/(m.K)]
+    ! per-material THERMAL_CHARACTERISTIC_CURVES; takes precedence over
+    ! ckdry/ckwet and is the only path supplying d(kappa_eff)/dT
+    type(cc_thermal_ptr_type), pointer :: thermal_cc(:)
     ! When ckdry(imat)/ckwet(imat) are UNINITIALIZED_DOUBLE the per-cell
     ! conductivity falls back to the grain-Somerton model using the global
     ! thc_kappa_solid; otherwise the TH-style bulk interpolation
@@ -217,9 +228,11 @@ function THCAuxCreate(option)
   aux%thc_parameter%check_post_converged = PETSC_FALSE
   nullify(aux%thc_parameter%tensorial_rel_perm_exponent)
   aux%thc_parameter%diffusion_coef = 0.d0
+  aux%thc_parameter%diffusion_activation_energy = UNINITIALIZED_DOUBLE
   nullify(aux%thc_parameter%dencpr)
   nullify(aux%thc_parameter%ckdry)
   nullify(aux%thc_parameter%ckwet)
+  nullify(aux%thc_parameter%thermal_cc)
 
   THCAuxCreate => aux
 
@@ -270,6 +283,7 @@ subroutine THCAuxVarInit(auxvar,option)
   auxvar%ddiff_dC = 0.d0
   auxvar%therm_cond_eff = 0.d0
   auxvar%dtherm_cond_dsat = 0.d0
+  auxvar%dtherm_cond_dT = 0.d0
   auxvar%heat_cap_liquid = 0.d0
   auxvar%heat_cap_solid = 0.d0
   auxvar%u = 0.d0
@@ -327,6 +341,7 @@ subroutine THCAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%ddiff_dC = auxvar%ddiff_dC
   auxvar2%therm_cond_eff = auxvar%therm_cond_eff
   auxvar2%dtherm_cond_dsat = auxvar%dtherm_cond_dsat
+  auxvar2%dtherm_cond_dT = auxvar%dtherm_cond_dT
   auxvar2%heat_cap_liquid = auxvar%heat_cap_liquid
   auxvar2%heat_cap_solid = auxvar%heat_cap_solid
   auxvar2%u = auxvar%u
@@ -372,6 +387,8 @@ subroutine THCAuxVarCompute(x,thc_auxvar,global_auxvar, &
 
   PetscInt :: imat
   PetscReal :: kappa_dry_mat, kappa_wet_mat, sqrt_sat_mat
+  PetscBool :: thermal_cc_set
+  PetscReal :: arrhenius_scale
   PetscBool :: saturated
   PetscReal :: dkr_dsat
   PetscReal :: deffsat_dsat
@@ -497,21 +514,36 @@ subroutine THCAuxVarCompute(x,thc_auxvar,global_auxvar, &
   ! Step 7: effective porous-medium thermal conductivity
   ! --------------------------------------------------------------------------
   ! Per-material thermal properties are indexed by the cell's material id.
-  ! If the material supplies bulk dry/wet conductivities (THERMAL_CONDUCTIVITY_
-  ! DRY/WET, TH-compatible) use the TH-style interpolation
-  !   kappa_eff = ckdry + sqrt(S_l)*(ckwet-ckdry) ;
-  ! otherwise fall back to the grain-Somerton model from the OPTIONS global
-  ! thc_kappa_solid.
+  ! Precedence: THERMAL_CHARACTERISTIC_CURVES (the only path giving kappa(T)),
+  ! then the TH-style bulk interpolation kappa_eff = ckdry+sqrt(S)*(ckwet-ckdry)
+  ! from THERMAL_CONDUCTIVITY_DRY/WET, then the grain-Somerton model from the
+  ! OPTIONS global thc_kappa_solid.
   imat = material_auxvar%id
+  thc_auxvar%dtherm_cond_dT = 0.d0
+
+  thermal_cc_set = PETSC_FALSE
+  if (associated(thc_parameter%thermal_cc)) then
+    thermal_cc_set = associated(thc_parameter%thermal_cc(imat)%ptr)
+  endif
+  kappa_dry_mat = UNINITIALIZED_DOUBLE
+  kappa_wet_mat = UNINITIALIZED_DOUBLE
   if (associated(thc_parameter%ckdry)) then
     kappa_dry_mat = thc_parameter%ckdry(imat)
     kappa_wet_mat = thc_parameter%ckwet(imat)
-  else
-    kappa_dry_mat = UNINITIALIZED_DOUBLE
-    kappa_wet_mat = UNINITIALIZED_DOUBLE
   endif
 
-  if (Initialized(kappa_dry_mat) .and. Initialized(kappa_wet_mat)) then
+  if (thermal_cc_set) then
+    ! the only path that returns d(kappa_eff)/dT; the DEFAULT curve type
+    ! reproduces the bulk dry/wet interpolation below
+    call thc_parameter%thermal_cc(imat)%ptr% &
+           thermal_conductivity_function% &
+           CalculateTCond(max(thc_auxvar%sat,thc_sat_floor), &
+                          thc_auxvar%temp, &
+                          thc_auxvar%effective_porosity, &
+                          thc_auxvar%therm_cond_eff, &
+                          thc_auxvar%dtherm_cond_dsat, &
+                          thc_auxvar%dtherm_cond_dT,option)
+  else if (Initialized(kappa_dry_mat) .and. Initialized(kappa_wet_mat)) then
     ! TH-style bulk dry/wet interpolation (saturation floored for finite deriv)
     sqrt_sat_mat = sqrt(max(thc_auxvar%sat,thc_sat_floor))
     thc_auxvar%therm_cond_eff = kappa_dry_mat + &
@@ -542,10 +574,19 @@ subroutine THCAuxVarCompute(x,thc_auxvar,global_auxvar, &
   endif
 
   ! molecular diffusion [m^2/s] from FLUID_PROPERTY DIFFUSION_COEFFICIENT,
-  ! constant as in ZFLOW.  T/C dependence is not implemented; see THC.md 1.2.
+  ! optionally scaled by Arrhenius(AE,T,25C) when DIFFUSION_ACTIVATION_ENERGY
+  ! is supplied (opt-in, as in RT/NWT).  No concentration dependence.
   thc_auxvar%diff_mol = thc_parameter%diffusion_coef
   thc_auxvar%ddiff_dT = 0.d0
   thc_auxvar%ddiff_dC = 0.d0
+  if (Initialized(thc_parameter%diffusion_activation_energy)) then
+    arrhenius_scale = Arrhenius(thc_parameter%diffusion_activation_energy, &
+                                thc_auxvar%temp,thc_diffusion_ref_temp)
+    thc_auxvar%diff_mol = thc_auxvar%diff_mol * arrhenius_scale
+    thc_auxvar%ddiff_dT = thc_auxvar%diff_mol * &
+      thc_parameter%diffusion_activation_energy / IDEAL_GAS_CONSTANT / &
+      (thc_auxvar%temp + T273K)**2
+  endif
 
   ! --------------------------------------------------------------------------
   ! Step 8b: full-EOS specific enthalpy / internal energy (FULL_EOS mode only)
@@ -1032,6 +1073,10 @@ subroutine THCAuxDestroy(aux)
     call DeallocateArray(aux%thc_parameter%dencpr)
     call DeallocateArray(aux%thc_parameter%ckdry)
     call DeallocateArray(aux%thc_parameter%ckwet)
+    if (associated(aux%thc_parameter%thermal_cc)) then
+      deallocate(aux%thc_parameter%thermal_cc)
+      nullify(aux%thc_parameter%thermal_cc)
+    endif
     deallocate(aux%thc_parameter)
   endif
   nullify(aux%thc_parameter)
