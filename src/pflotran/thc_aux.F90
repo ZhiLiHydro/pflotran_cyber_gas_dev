@@ -187,7 +187,8 @@ module THC_Aux_module
             THCAuxMapConditionIndices, &
             THCPrintAuxVars, &
             THCOutputAuxVars, &
-            THCAuxTensorialRelPerm
+            THCAuxTensorialRelPerm, &
+            THCThermalCondEval
 
 contains
 
@@ -386,9 +387,8 @@ subroutine THCAuxVarCompute(x,thc_auxvar,global_auxvar, &
   PetscInt :: natural_id
 
   PetscInt :: imat
-  PetscReal :: kappa_dry_mat, kappa_wet_mat, sqrt_sat_mat
-  PetscBool :: thermal_cc_set
   PetscReal :: arrhenius_scale
+  PetscReal :: dummy_dist(-1:3)
   PetscBool :: saturated
   PetscReal :: dkr_dsat
   PetscReal :: deffsat_dsat
@@ -518,46 +518,17 @@ subroutine THCAuxVarCompute(x,thc_auxvar,global_auxvar, &
   ! then the TH-style bulk interpolation kappa_eff = ckdry+sqrt(S)*(ckwet-ckdry)
   ! from THERMAL_CONDUCTIVITY_DRY/WET, then the grain-Somerton model from the
   ! OPTIONS global thc_kappa_solid.
+  ! Output only -- the flux kernels re-evaluate per connection via
+  ! THCThermalCondEval with the connection direction.  For an anisotropic curve
+  ! no single scalar is meaningful, and because TCondTensorToScalar overwrites
+  ! kT_dry/wet on the shared curve object this value reflects whichever
+  ! connection was projected last.
   imat = material_auxvar%id
-  thc_auxvar%dtherm_cond_dT = 0.d0
-
-  thermal_cc_set = PETSC_FALSE
-  if (associated(thc_parameter%thermal_cc)) then
-    thermal_cc_set = associated(thc_parameter%thermal_cc(imat)%ptr)
-  endif
-  kappa_dry_mat = UNINITIALIZED_DOUBLE
-  kappa_wet_mat = UNINITIALIZED_DOUBLE
-  if (associated(thc_parameter%ckdry)) then
-    kappa_dry_mat = thc_parameter%ckdry(imat)
-    kappa_wet_mat = thc_parameter%ckwet(imat)
-  endif
-
-  if (thermal_cc_set) then
-    ! the only path that returns d(kappa_eff)/dT; the DEFAULT curve type
-    ! reproduces the bulk dry/wet interpolation below
-    call thc_parameter%thermal_cc(imat)%ptr% &
-           thermal_conductivity_function% &
-           CalculateTCond(max(thc_auxvar%sat,thc_sat_floor), &
-                          thc_auxvar%temp, &
-                          thc_auxvar%effective_porosity, &
-                          thc_auxvar%therm_cond_eff, &
+  dummy_dist = 0.d0
+  call THCThermalCondEval(thc_auxvar,imat,thc_parameter,dummy_dist, &
+                          PETSC_FALSE,thc_auxvar%therm_cond_eff, &
                           thc_auxvar%dtherm_cond_dsat, &
                           thc_auxvar%dtherm_cond_dT,option)
-  else if (Initialized(kappa_dry_mat) .and. Initialized(kappa_wet_mat)) then
-    ! TH-style bulk dry/wet interpolation (saturation floored for finite deriv)
-    sqrt_sat_mat = sqrt(max(thc_auxvar%sat,thc_sat_floor))
-    thc_auxvar%therm_cond_eff = kappa_dry_mat + &
-      sqrt_sat_mat * (kappa_wet_mat - kappa_dry_mat)
-    thc_auxvar%dtherm_cond_dsat = &
-      (kappa_wet_mat - kappa_dry_mat) / (2.d0 * sqrt_sat_mat)
-  else
-    ! grain-Somerton fallback using the OPTIONS-block global solid conductivity
-    call THCThermalConductivityEff(thc_auxvar%sat, &
-                                       thc_auxvar%effective_porosity, &
-                                       thc_kappa_solid, &
-                                       thc_auxvar%therm_cond_eff, &
-                                       thc_auxvar%dtherm_cond_dsat)
-  endif
 
   ! --------------------------------------------------------------------------
   ! Step 8: derived quantities
@@ -623,6 +594,81 @@ subroutine THCAuxVarCompute(x,thc_auxvar,global_auxvar, &
                  thc_auxvar%dvis_dC
 
 end subroutine THCAuxVarCompute
+
+! ************************************************************************** !
+
+subroutine THCThermalCondEval(thc_auxvar,imat,thc_parameter,dist,project, &
+                              kappa_eff,dkappa_dsat,dkappa_dT,option)
+  !
+  ! Effective porous-medium thermal conductivity and its derivatives.
+  !
+  ! Precedence: THERMAL_CHARACTERISTIC_CURVES (the only path giving kappa(T) or
+  ! anisotropy), then the TH-style bulk interpolation
+  ! kappa_eff = ckdry+sqrt(S)*(ckwet-ckdry) from THERMAL_CONDUCTIVITY_DRY/WET,
+  ! then the grain-Somerton model from the OPTIONS global thc_kappa_solid.
+  !
+  ! project = .true. applies TCondTensorToScalar(dist) first, which projects an
+  ! anisotropic tensor onto the connection direction.  It overwrites kT_dry/wet
+  ! on the shared curve object, so it must immediately precede CalculateTCond --
+  ! the same ordering TH, GENERAL and SCO2 use.  Callers without a connection
+  ! direction (per-cell output) pass .false.
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date: 08/14/26
+  !
+  use Option_module
+
+  implicit none
+
+  type(thc_auxvar_type) :: thc_auxvar
+  PetscInt :: imat
+  type(thc_parameter_type) :: thc_parameter
+  PetscReal :: dist(-1:3)
+  PetscBool :: project
+  PetscReal :: kappa_eff, dkappa_dsat, dkappa_dT
+  type(option_type) :: option
+
+  PetscBool :: thermal_cc_set
+  PetscReal :: kappa_dry_mat, kappa_wet_mat, sqrt_sat_mat
+
+  dkappa_dT = 0.d0
+
+  thermal_cc_set = PETSC_FALSE
+  if (associated(thc_parameter%thermal_cc)) then
+    thermal_cc_set = associated(thc_parameter%thermal_cc(imat)%ptr)
+  endif
+  kappa_dry_mat = UNINITIALIZED_DOUBLE
+  kappa_wet_mat = UNINITIALIZED_DOUBLE
+  if (associated(thc_parameter%ckdry)) then
+    kappa_dry_mat = thc_parameter%ckdry(imat)
+    kappa_wet_mat = thc_parameter%ckwet(imat)
+  endif
+
+  if (thermal_cc_set) then
+    if (project) then
+      call thc_parameter%thermal_cc(imat)%ptr% &
+             thermal_conductivity_function%TCondTensorToScalar(dist,option)
+    endif
+    call thc_parameter%thermal_cc(imat)%ptr% &
+           thermal_conductivity_function% &
+           CalculateTCond(max(thc_auxvar%sat,thc_sat_floor), &
+                          thc_auxvar%temp, &
+                          thc_auxvar%effective_porosity, &
+                          kappa_eff,dkappa_dsat,dkappa_dT,option)
+  else if (Initialized(kappa_dry_mat) .and. Initialized(kappa_wet_mat)) then
+    ! TH-style bulk dry/wet interpolation (saturation floored for finite deriv)
+    sqrt_sat_mat = sqrt(max(thc_auxvar%sat,thc_sat_floor))
+    kappa_eff = kappa_dry_mat + sqrt_sat_mat * (kappa_wet_mat - kappa_dry_mat)
+    dkappa_dsat = (kappa_wet_mat - kappa_dry_mat) / (2.d0 * sqrt_sat_mat)
+  else
+    ! grain-Somerton fallback using the OPTIONS-block global solid conductivity
+    call THCThermalConductivityEff(thc_auxvar%sat, &
+                                       thc_auxvar%effective_porosity, &
+                                       thc_kappa_solid, &
+                                       kappa_eff,dkappa_dsat)
+  endif
+
+end subroutine THCThermalCondEval
 
 ! ************************************************************************** !
 

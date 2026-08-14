@@ -1,8 +1,5 @@
 #Description: 1D thermal advection with solid thermal properties from
-#             MATERIAL_PROPERTY.
-#             soil1 uses a DEFAULT thermal characteristic curve, soil2 a POWER
-#             curve -- the only path supplying d(kappa_eff)/dT.  The two input
-#             styles cannot be mixed in one deck (realization_subsurface.F90).
+#             MATERIAL_PROPERTY
 
 SIMULATION
   SIMULATION_TYPE SUBSURFACE
@@ -46,14 +43,6 @@ GRID
   /
 END
 
-#=========================== fluid properties =================================
-# DIFFUSION_ACTIVATION_ENERGY turns on the Arrhenius scaling of the molecular
-# diffusion coefficient; without it the coefficient stays constant.
-FLUID_PROPERTY
-  DIFFUSION_COEFFICIENT 1.d-9
-  DIFFUSION_ACTIVATION_ENERGY 15000.d0
-END
-
 #=========================== material properties ==============================
 # Solid thermal properties live here (TH-style) instead of the mode OPTIONS
 # block.  ROCK_DENSITY * SPECIFIC_HEAT supplies rho_s*c_s; the bulk dry/wet
@@ -61,47 +50,15 @@ END
 MATERIAL_PROPERTY soil1
   ID 1
   POROSITY 0.25d0
-  TORTUOSITY 1.d0
   ROCK_DENSITY 2650.d0
   SPECIFIC_HEAT 800.d0
-  THERMAL_CHARACTERISTIC_CURVES cct_default
+  THERMAL_CONDUCTIVITY_DRY 2.0062209149293d0
+  THERMAL_CONDUCTIVITY_WET 2.0062209149293d0
   PERMEABILITY
     PERM_ISO 1.d-10
   /
   CHARACTERISTIC_CURVES cc1
 END
-
-# identical to soil1 except the conductivity comes from a temperature-dependent
-# THERMAL_CHARACTERISTIC_CURVES rather than bulk dry/wet values
-MATERIAL_PROPERTY soil2
-  ID 2
-  POROSITY 0.25d0
-  TORTUOSITY 1.d0
-  ROCK_DENSITY 2650.d0
-  SPECIFIC_HEAT 800.d0
-  THERMAL_CHARACTERISTIC_CURVES cct_power
-  PERMEABILITY
-    PERM_ISO 1.d-10
-  /
-  CHARACTERISTIC_CURVES cc1
-END
-
-#=========================== thermal characteristic curves ====================
-# DEFAULT reproduces the bulk dry/wet interpolation exactly (d(kappa)/dT = 0)
-THERMAL_CHARACTERISTIC_CURVES cct_default
-  THERMAL_CONDUCTIVITY_FUNCTION DEFAULT
-    THERMAL_CONDUCTIVITY_DRY 2.0062209149293d0 W/m-C
-    THERMAL_CONDUCTIVITY_WET 2.0062209149293d0 W/m-C
-  /
-/
-
-THERMAL_CHARACTERISTIC_CURVES cct_power
-  THERMAL_CONDUCTIVITY_FUNCTION POWER
-    THERMAL_CONDUCTIVITY_DRY 2.0062209149293d0 W/m-C
-    THERMAL_CONDUCTIVITY_WET 2.0062209149293d0 W/m-C
-    EXPONENT -1.18d0
-  /
-/
 
 #=========================== characteristic curves ============================
 CHARACTERISTIC_CURVES cc1
@@ -125,7 +82,6 @@ OUTPUT
     TEMPERATURE
     LIQUID_DENSITY
     LIQUID_VISCOSITY
-    SOLUTE_CONCENTRATION
   /
 END
 
@@ -140,20 +96,6 @@ END
 REGION all
   COORDINATES
     0.d0 0.d0 0.d0
-    10.d0 1.d0 1.d0
-  /
-END
-
-REGION upstream_half
-  COORDINATES
-    0.d0 0.d0 0.d0
-    5.d0 1.d0 1.d0
-  /
-END
-
-REGION downstream_half
-  COORDINATES
-    5.d0 0.d0 0.d0
     10.d0 1.d0 1.d0
   /
 END
@@ -196,7 +138,7 @@ FLOW_CONDITION inlet
   /
   LIQUID_FLUX 1.d0 m/d
   TEMPERATURE 80.d0
-  CONCENTRATION 1.d-3
+  CONCENTRATION 0.d0
 END
 
 # Outlet pressure held; outgoing temperature/concentration advected out
@@ -229,13 +171,8 @@ END
 
 #=========================== stratigraphy couplers ============================
 STRATA
-  REGION upstream_half
+  REGION all
   MATERIAL soil1
-END
-
-STRATA
-  REGION downstream_half
-  MATERIAL soil2
 END
 
 

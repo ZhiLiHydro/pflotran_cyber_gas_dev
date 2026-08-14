@@ -46,6 +46,7 @@ subroutine THCSetup(realization)
   use Material_Aux_module
   use Output_Aux_module
   use Characteristic_Curves_module
+  use Characteristic_Curves_Thermal_module
   use Matrix_Zeroing_module
   use EOS_Water_module, only : EOSWaterSetViscosity
 

@@ -309,6 +309,8 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
   PetscReal :: kappa_up, kappa_dn
   PetscReal :: kappa_over_dist, Gamma_kappa, delta_temp
   PetscReal :: dkappa_up_dp, dkappa_dn_dp
+  PetscReal :: dkappa_up_dsat, dkappa_dn_dsat
+  PetscReal :: dkappa_up_dT, dkappa_dn_dT
   PetscReal :: dGamma_kappa_dpup, dGamma_kappa_dpdn
   PetscReal :: dGamma_kappa_dTup, dGamma_kappa_dTdn
   PetscBool :: conduction_on
@@ -453,8 +455,14 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
   ! Energy conduction with harmonic-mean effective thermal conductivity
   ! kappa_face/d = (k_up*k_dn)/(d_up*k_dn+d_dn*k_up)
   ! --------------------------------------------------------------------------
-  kappa_up = thc_auxvar_up%therm_cond_eff
-  kappa_dn = thc_auxvar_dn%therm_cond_eff
+  ! evaluated per connection so an anisotropic tensor can be projected onto
+  ! this face; the auxvar copy is an unprojected per-cell value for output only
+  call THCThermalCondEval(thc_auxvar_up,material_auxvar_up%id,thc_parameter, &
+                          dist,PETSC_TRUE,kappa_up,dkappa_up_dsat, &
+                          dkappa_up_dT,option)
+  call THCThermalCondEval(thc_auxvar_dn,material_auxvar_dn%id,thc_parameter, &
+                          dist,PETSC_TRUE,kappa_dn,dkappa_dn_dsat, &
+                          dkappa_dn_dT,option)
   numerator = kappa_up * kappa_dn
   denom_kappa = dist_up*kappa_dn + dist_dn*kappa_up
   conduction_on = PETSC_TRUE
@@ -569,10 +577,8 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
     dGamma_kappa_dTup = 0.d0
     dGamma_kappa_dTdn = 0.d0
     if (conduction_on) then
-      dkappa_up_dp = thc_auxvar_up%dtherm_cond_dsat * &
-                     thc_auxvar_up%dsat_dp
-      dkappa_dn_dp = thc_auxvar_dn%dtherm_cond_dsat * &
-                     thc_auxvar_dn%dsat_dp
+      dkappa_up_dp = dkappa_up_dsat * thc_auxvar_up%dsat_dp
+      dkappa_dn_dp = dkappa_dn_dsat * thc_auxvar_dn%dsat_dp
       tempreal = denom_kappa * denom_kappa
       dGamma_kappa_dpup = area * kappa_dn * kappa_dn * dist_up / tempreal * &
                           dkappa_up_dp
@@ -580,9 +586,9 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
                           dkappa_dn_dp
       ! kappa(T) only via THERMAL_CHARACTERISTIC_CURVES; zero otherwise
       dGamma_kappa_dTup = area * kappa_dn * kappa_dn * dist_up / tempreal * &
-                          thc_auxvar_up%dtherm_cond_dT
+                          dkappa_up_dT
       dGamma_kappa_dTdn = area * kappa_up * kappa_up * dist_dn / tempreal * &
-                          thc_auxvar_dn%dtherm_cond_dT
+                          dkappa_dn_dT
     endif
 
     ! Enthalpy derivatives  (volumetric enthalpy carried by flux)
@@ -773,6 +779,7 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
 
   ! energy conduction / prescribed-flux / convective
   PetscReal :: Gamma_kappa, delta_temp, dGamma_kappa_dpdn, dGamma_kappa_dTdn
+  PetscReal :: kappa_bc, dkappa_bc_dsat, dkappa_bc_dT
   PetscReal :: heat_flux_bc, h_conv, temp_ext
 
   Res = 0.d0
@@ -986,12 +993,15 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
          HYDROSTATIC_CONDUCTANCE_BC)
       ! prescribed T at ghost: Fourier conduction over the half-cell distance,
       ! using the interior effective conductivity.
-      Gamma_kappa = thc_auxvar_dn%therm_cond_eff / dist(0) * area
+      call THCThermalCondEval(thc_auxvar_dn,material_auxvar_dn%id, &
+                              thc_parameter,dist,PETSC_TRUE,kappa_bc, &
+                              dkappa_bc_dsat,dkappa_bc_dT,option)
+      Gamma_kappa = kappa_bc / dist(0) * area
       Res(thc_temperature_dof) = Res(thc_temperature_dof) + &
                                      Gamma_kappa * delta_temp
-      dGamma_kappa_dpdn = thc_auxvar_dn%dtherm_cond_dsat * &
+      dGamma_kappa_dpdn = dkappa_bc_dsat * &
                           thc_auxvar_dn%dsat_dp / dist(0) * area
-      dGamma_kappa_dTdn = thc_auxvar_dn%dtherm_cond_dT / dist(0) * area
+      dGamma_kappa_dTdn = dkappa_bc_dT / dist(0) * area
     case(NEUMANN_BC)
       ! prescribed heat flux q_T [W/m^2]; +q_T means heat enters the domain
       ! No Jacobian (value independent of solution).
