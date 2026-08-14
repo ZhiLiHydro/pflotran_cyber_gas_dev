@@ -786,15 +786,9 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
 
   ! dist(0) = scalar distance to boundary face; dist(1:3) = unit vector
   dist_gravity = dist(0) * dot_product(option%gravity,dist(1:3))
-  gravity_weight_up = 0.5d0
-  gravity_weight_dn = 0.5d0
-  if (thc_advective_density_mode == &
-      THC_ADVECTIVE_DENSITY_TH_COMPATIBLE) then
-    ! TH uses the prescribed boundary state for density on pressure-driven
-    ! boundary faces. The boundary ghost is fixed in this kernel.
-    gravity_weight_up = 1.d0
-    gravity_weight_dn = 0.d0
-  endif
+
+  gravity_weight_up = 1.d0
+  gravity_weight_dn = 0.d0
 
   ! ========================================================================= !
   ! Flow equation -- determine the volumetric flux q
