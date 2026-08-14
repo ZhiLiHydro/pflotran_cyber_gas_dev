@@ -541,6 +541,12 @@ subroutine THCAuxVarCompute(x,thc_auxvar,global_auxvar, &
                                     thc_specific_heat_solid
   endif
 
+  ! molecular diffusion [m^2/s] from FLUID_PROPERTY DIFFUSION_COEFFICIENT,
+  ! constant as in ZFLOW.  T/C dependence is not implemented; see THC.md 1.2.
+  thc_auxvar%diff_mol = thc_parameter%diffusion_coef
+  thc_auxvar%ddiff_dT = 0.d0
+  thc_auxvar%ddiff_dC = 0.d0
+
   ! --------------------------------------------------------------------------
   ! Step 8b: full-EOS specific enthalpy / internal energy (FULL_EOS mode only)
   ! --------------------------------------------------------------------------
