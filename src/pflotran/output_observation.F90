@@ -317,6 +317,7 @@ subroutine OutputAggregateToFile(realization_base)
   type(observation_type), pointer :: observation
   type(observation_aggregate_type), pointer :: aggregate
   PetscInt :: icolumn
+  PetscInt :: num_cells_global
   PetscErrorCode :: ierr
 
   call PetscLogEventBegin(logging%event_output_observation_agg, &
@@ -345,6 +346,10 @@ subroutine OutputAggregateToFile(realization_base)
         aggregate => observation%aggregate
       endif
 
+      call MPI_Allreduce(observation%region%num_cells,num_cells_global, &
+                         ONE_INTEGER_MPI,MPIU_INTEGER,MPI_SUM,option%mycomm, &
+                         ierr);CHKERRQ(ierr)
+
       do
         if (.not. associated(aggregate)) exit
 
@@ -369,7 +374,12 @@ subroutine OutputAggregateToFile(realization_base)
               case(OBSERVATION_AGGREGATE_AVG)
                  write(fid,'(a)',advance="no") 'Average '
             end select
-            write(fid,'(a)',advance="yes") trim(aggregate%var_name)
+            if (aggregate%metric == OBSERVATION_AGGREGATE_AVG) then
+              write(fid,'(a)',advance="yes") trim(aggregate%var_name) // &
+                '  Number of Cells: ' // trim(StringWrite(num_cells_global))
+            else
+              write(fid,'(a)',advance="yes") trim(aggregate%var_name)
+            endif
 
             write(fid,'(a)',advance="no") ' "Time [' // &
                   trim(output_option%tunit) // ']"'
@@ -382,10 +392,16 @@ subroutine OutputAggregateToFile(realization_base)
               icolumn = -1
             endif
 
-            call WriteObservationHeaderAgg(fid,realization_base, &
-                                           observation%region,icell, &
-                                           observation%print_velocities, &
-                                           icolumn)
+            if (aggregate%metric == OBSERVATION_AGGREGATE_AVG) then
+              call OutputWriteToHeader(fid,trim(aggregate%var_name), &
+                                       trim(aggregate%output_variable%units), &
+                                       ' ',icolumn)
+            else
+              call WriteObservationHeaderAgg(fid,realization_base, &
+                                             observation%region,icell, &
+                                             observation%print_velocities, &
+                                             icolumn)
+            endif
 
             call WriteNewLine(fid)
             close(fid)
@@ -1096,33 +1112,54 @@ subroutine WriteObservationAggData(aggregate,realization_base,string,&
 
   grid => realization_base%patch%grid
 
-  local_metric(1) = aggregate%metric_value
-  local_metric(2) = option%myrank
-
   select case(aggregate%metric)
     case(OBSERVATION_AGGREGATE_MAX)
+      local_metric(1) = aggregate%metric_value
+      local_metric(2) = option%myrank
       call MPI_Allreduce(local_metric,global_metric,ONE_INTEGER, &
                          MPI_2DOUBLE_PRECISION,MPI_MAXLOC,option%mycomm, &
                          ierr);CHKERRQ(ierr)
+
+      agg_rank = nint(global_metric(2))
+
+      if (option%myrank == agg_rank) then
+
+        local_id = aggregate%local_id
+        ghosted_id = grid%nL2G(local_id)
+
+        open(unit=fid,file=filename,action="write",status="old", &
+             position="append")
+        call WriteRealFixedNoAdv(fid,option%time/output_option%tconv)
+        call WriteRealFixedNoAdv(fid,grid%x(ghosted_id))
+        call WriteRealFixedNoAdv(fid,grid%y(ghosted_id))
+        call WriteRealFixedNoAdv(fid,grid%z(ghosted_id))
+        call WriteObservationDataForCell(fid,realization_base,local_id)
+
+        call WriteNewLine(fid)
+        close(fid)
+      endif
+
+    case(OBSERVATION_AGGREGATE_AVG)
+      local_metric(1) = aggregate%metric_value
+      local_metric(2) = aggregate%metric_weight
+      call MPI_Allreduce(local_metric,global_metric,TWO_INTEGER, &
+                         MPI_DOUBLE_PRECISION,MPI_SUM,option%mycomm, &
+                         ierr);CHKERRQ(ierr)
+      if (global_metric(2) <= 0.d0) then
+        option%io_buffer = 'AVERAGE aggregate metric has zero region &
+          &volume for variable "' // trim(aggregate%var_name) // '".'
+        call PrintErrMsg(option)
+      endif
+      if (OptionIsIORank(option)) then
+        open(unit=fid,file=filename,action="write",status="old", &
+             position="append")
+        call WriteRealFixedNoAdv(fid,option%time/output_option%tconv)
+        call WriteRealNoAdv(fid,global_metric(1)/global_metric(2))
+        call WriteNewLine(fid)
+        close(fid)
+      endif
+
   end select
-
-  agg_rank = nint(global_metric(2))
-
-  if (option%myrank == agg_rank) then
-
-    local_id = aggregate%local_id
-    ghosted_id = grid%nL2G(local_id)
-
-    open(unit=fid,file=filename,action="write",status="old",position="append")
-    call WriteRealFixedNoAdv(fid,option%time/output_option%tconv)
-    call WriteRealFixedNoAdv(fid,grid%x(ghosted_id))
-    call WriteRealFixedNoAdv(fid,grid%y(ghosted_id))
-    call WriteRealFixedNoAdv(fid,grid%z(ghosted_id))
-    call WriteObservationDataForCell(fid,realization_base,local_id)
-
-    call WriteNewLine(fid)
-    close(fid)
-  endif
 
 end subroutine WriteObservationAggData
 
@@ -1940,6 +1977,7 @@ subroutine ObservationAggComputeMetric(realization_base,aggregate,region,option)
   ! Date: 04/17/20
 
   use Realization_Base_class, only : realization_base_type
+  use Material_Aux_module, only : material_auxvar_type
   use Observation_module
   use Option_module
   use Region_module
@@ -1952,11 +1990,13 @@ subroutine ObservationAggComputeMetric(realization_base,aggregate,region,option)
   type(option_type), pointer :: option
 
   type(output_variable_type), pointer :: cur_variable
-  PetscReal :: temp_real, temp_real_comp
+  type(material_auxvar_type), pointer :: material_auxvars(:)
+  PetscReal :: temp_real, temp_real_comp, volume
   PetscInt :: icell, local_id, ghosted_id
 
   cur_variable => aggregate%output_variable
   temp_real = UNINITIALIZED_DOUBLE
+  material_auxvars => realization_base%patch%aux%Material%auxvars
 
   if (region%num_cells == 0) then
     select case(aggregate%metric)
@@ -1966,8 +2006,15 @@ subroutine ObservationAggComputeMetric(realization_base,aggregate,region,option)
       case(OBSERVATION_AGGREGATE_MIN)
         aggregate%metric_value = MAX_DOUBLE
         aggregate%local_id = 0
+      case(OBSERVATION_AGGREGATE_AVG)
+        aggregate%metric_value = 0.d0
+        aggregate%metric_weight = 0.d0
     end select
   else
+    if (aggregate%metric == OBSERVATION_AGGREGATE_AVG) then
+      aggregate%metric_value = 0.d0
+      aggregate%metric_weight = 0.d0
+    endif
     do icell= 1,region%num_cells
       local_id = region%cell_ids(icell)
       ghosted_id = realization_base%patch%grid%nL2G(local_id)
@@ -1988,6 +2035,11 @@ subroutine ObservationAggComputeMetric(realization_base,aggregate,region,option)
             aggregate%local_id = local_id
             temp_real = temp_real_comp
           endif
+        case(OBSERVATION_AGGREGATE_AVG)
+          volume = material_auxvars(ghosted_id)%volume
+          aggregate%metric_value = aggregate%metric_value + &
+                                   temp_real_comp*volume
+          aggregate%metric_weight = aggregate%metric_weight + volume
         case default
           option%io_buffer = 'Aggregate metric not assigned.'
           call PrintErrMsg(option)

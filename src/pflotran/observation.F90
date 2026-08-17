@@ -50,6 +50,7 @@ module Observation_module
     PetscInt :: metric
     PetscInt :: local_id
     PetscReal :: metric_value
+    PetscReal :: metric_weight
     PetscReal :: threshold_value
     type(output_variable_type), pointer :: output_variable
     type(observation_aggregate_type), pointer :: next
@@ -120,6 +121,7 @@ function ObservationAggregateCreate()
   aggregate%metric = ZERO_INTEGER
   aggregate%local_id = -999
   aggregate%metric_value = -999.d0
+  aggregate%metric_weight = 0.d0
   aggregate%threshold_value = -999.d0
 
   nullify(aggregate%output_variable)
@@ -288,18 +290,14 @@ subroutine ObservationRead(observation,input,option)
           call StringToUpper(keyword)
 
           select case(keyword)
-            case('AVERAGE')
-              !Records all average values in region
-              new_aggregate%metric = OBSERVATION_AGGREGATE_AVG
-              call InputReadWord(input,option,new_aggregate%var_name, &
-                                 PETSC_TRUE)
-              call InputErrorMsg(input,option,'AVERAGE','AGGREGATE_METRIC')
-              option%io_buffer = '"AVERAGE" aggregate metric ' //&
-                                  'is still in development.'
-              call PrintErrMsg(option)
-            case('MAX')
-              !Records all state properties associated with max
-              new_aggregate%metric = OBSERVATION_AGGREGATE_MAX
+            case('AVERAGE','MAX')
+              if (trim(keyword) == 'AVERAGE') then
+                ! Volume-weighted average of the named variable over the region
+                new_aggregate%metric = OBSERVATION_AGGREGATE_AVG
+              else
+                ! Records all state properties associated with max
+                new_aggregate%metric = OBSERVATION_AGGREGATE_MAX
+              endif
               call InputReadWord(input,option,word,PETSC_TRUE)
               call StringToUpper(word)
               if (trim(word) == 'TOTAL') then
@@ -318,13 +316,13 @@ subroutine ObservationRead(observation,input,option)
                                      ' not recognized.'
                   call PrintErrMsg(option)
                 elseif (subvar > 0 .or. subsubvar > 0) then
-                  option%io_buffer = 'Aggregate MAX not implemented for ' &
-                                     // word
+                  option%io_buffer = 'Aggregate ' // trim(keyword) // &
+                                     ' not implemented for ' // word
                   call PrintErrMsg(option)
                 endif
                 new_aggregate%var_name = var_name
               endif
-              call InputErrorMsg(input,option,'MAX','AGGREGATE_METRIC')
+              call InputErrorMsg(input,option,keyword,'AGGREGATE_METRIC')
             case('MIN')
               !Records all state variables associated with min
               new_aggregate%metric = OBSERVATION_AGGREGATE_MIN
