@@ -2167,6 +2167,7 @@ subroutine ReactionMnrlUpdateKineticState(rt_auxvar,global_auxvar, &
 
   PetscInt :: imnrl, iaqspec, icomp
   PetscReal :: delta_volfrac
+  PetscReal :: scale, vf_avail, sum_base, sum_pos
   PetscReal :: res(reaction%ncomp) ! has to be sized accurately
   PetscReal :: jac(1,1) ! strictly a dummy array
   PetscBool, parameter :: store_rate = PETSC_TRUE
@@ -2181,6 +2182,34 @@ subroutine ReactionMnrlUpdateKineticState(rt_auxvar,global_auxvar, &
                             compute_analytical_derivative,store_rate, &
                             rt_auxvar,global_auxvar, &
                             material_auxvar,reaction,option)
+
+  ! cap this step's precip at the pore volume above residual porosity
+  ! by scaling positive rates; growth apportioned by rate magnitude
+  if (reaction%porosity_res > 0.d0) then
+    vf_avail = 1.d0 - reaction%porosity_res
+    sum_base = 0.d0
+    sum_pos = 0.d0
+    do imnrl = 1, reaction%mineral%nkinmnrl
+      delta_volfrac = rt_auxvar%mnrl_rate(imnrl)* &
+                      reaction%mineral%kinmnrl_molar_vol(imnrl)* &
+                      option%tran_dt
+      if (delta_volfrac > 0.d0) then
+        sum_pos = sum_pos + delta_volfrac
+        sum_base = sum_base + rt_auxvar%mnrl_volfrac(imnrl)
+      else
+        sum_base = sum_base + max(rt_auxvar%mnrl_volfrac(imnrl) + &
+                                  delta_volfrac,0.d0)
+      endif
+    enddo
+    if (sum_pos > 0.d0 .and. sum_base + sum_pos > vf_avail) then
+      scale = max(vf_avail - sum_base,0.d0)/sum_pos
+      do imnrl = 1, reaction%mineral%nkinmnrl
+        if (rt_auxvar%mnrl_rate(imnrl) > 0.d0) then
+          rt_auxvar%mnrl_rate(imnrl) = scale*rt_auxvar%mnrl_rate(imnrl)
+        endif
+      enddo
+    endif
+  endif
 
   do imnrl = 1, reaction%mineral%nkinmnrl
     ! rate = mol/m^3 bulk/sec
