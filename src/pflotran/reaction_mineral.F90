@@ -1266,6 +1266,13 @@ subroutine ReactionMnrlKineticRateTSTSimple(Res,Jac, &
 
     precipitation = (sign_ < 0.d0)
 
+    ! QPAC-style cutoff: no precip below residual porosity;
+    ! dissolution still allowed to reopen the pore
+    if (precipitation .and. reaction%porosity_res > 0.d0) then
+      if (1.d0 - ReactionMnrlCalcSumVolFrac(rt_auxvar,mineral) <= &
+          reaction%porosity_res) return
+    endif
+
     if (precipitation) then
       rate_constant = mineral%kinmnrl_precip_rate_constant(imnrl)
     else
@@ -1427,6 +1434,13 @@ subroutine ReactionMnrlKineticRateTST(Res,Jac, &
   if (rt_auxvar%mnrl_volfrac(imnrl) > 0 .or. sign_ < 0.d0) then
 
     precipitation = (sign_ < 0.d0)
+
+!     QPAC-style cutoff: no precip below residual porosity;
+!     dissolution still allowed to reopen the pore
+    if (precipitation .and. reaction%porosity_res > 0.d0) then
+      if (1.d0 - ReactionMnrlCalcSumVolFrac(rt_auxvar,mineral) <= &
+          reaction%porosity_res) return
+    endif
 
 !     check for supersaturation threshold for precipitation
 !     if (associated(mineral%kinmnrl_affinity_threshold)) then
@@ -1755,6 +1769,12 @@ subroutine ReactionMnrlNucleationKinetics(Res,Jac, &
   PetscReal :: nucleation_rate, dnucleation_rate_dlnQK
 
   mineral => reaction%mineral
+
+  ! QPAC-style cutoff: no nucleation below residual porosity
+  if (reaction%porosity_res > 0.d0) then
+    if (1.d0 - ReactionMnrlCalcSumVolFrac(rt_auxvar,mineral) <= &
+        reaction%porosity_res) return
+  endif
 
   ln_conc = log(rt_auxvar%pri_molal)
   ln_act = ln_conc+log(rt_auxvar%pri_act_coef)

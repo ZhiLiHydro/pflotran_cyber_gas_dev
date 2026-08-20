@@ -888,6 +888,29 @@ subroutine ReactionReadPass1(reaction,input,option)
       case('MINIMUM_POROSITY')
         call InputReadDouble(input,option,reaction%minimum_porosity)
         call InputErrorMsg(input,option,'minimim porosity','CHEMISTRY')
+      case('LIMIT_MINERAL_VOLUME_FRACTION')
+        error_string = 'CHEMISTRY,LIMIT_MINERAL_VOLUME_FRACTION'
+        call InputPushBlock(input,option)
+        do
+          call InputReadPflotranString(input,option)
+          if (InputError(input)) exit
+          if (InputCheckExit(input,option)) exit
+
+          call InputReadCard(input,option,word)
+          call InputErrorMsg(input,option,'keyword',error_string)
+          call StringToUpper(word)
+
+          select case(trim(word))
+            case('RESIDUAL_POROSITY','POROSITY_RES')
+              ! QPAC method: precip stops when porosity <= value
+              call InputReadDouble(input,option,reaction%porosity_res)
+              call InputErrorMsg(input,option,'residual porosity', &
+                                 error_string)
+            case default
+              call InputKeywordUnrecognized(input,word,error_string,option)
+          end select
+        enddo
+        call InputPopBlock(input,option)
       case('USE_FULL_GEOCHEMISTRY')
         call InputKeywordDeprecated(word,'FORCE_READ_REACTION_DATABASE',option)
       case('FORCE_READ_OF_REACTION_DATABASE')
@@ -1036,7 +1059,8 @@ subroutine ReactionReadPass2(reaction,input,option)
             'IMMOBILE_SPECIES','RADIOACTIVE_DECAY_REACTION', &
             'IMMOBILE_DECAY_REACTION', &
             'ACTIVE_GAS_SPECIES','PASSIVE_GAS_SPECIES', &
-            'AQUEOUS_DIFFUSION_COEFFICIENTS','GAS_DIFFUSION_COEFFICIENTS')
+            'AQUEOUS_DIFFUSION_COEFFICIENTS','GAS_DIFFUSION_COEFFICIENTS', &
+            'LIMIT_MINERAL_VOLUME_FRACTION')
         call InputSkipToEND(input,option,card)
       case('DECOUPLED_EQUILIBRIUM_REACTIONS')
         call ReactionReadDecoupledSpecies(reaction,input,option)
