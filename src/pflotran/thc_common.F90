@@ -12,7 +12,7 @@ module THC_Common_module
 
   ! Cutoff parameters
   PetscReal, parameter :: eps     = 1.d-8
-  PetscReal, parameter :: floweps = 0.d0
+  PetscReal, parameter :: floweps = 1.d-24
 
   ! --- public interface ---------------------------------------------------
   public :: THCAccumulation, &
@@ -337,6 +337,12 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
 
   call ConnectionCalculateDistances(dist,option%gravity,dist_up,dist_dn, &
                                     dist_gravity,upweight)
+  ! dry-cell override: weight the face density fully toward the wet cell
+  if (thc_auxvar_up%sat < eps) then
+    upweight = 0.d0
+  else if (thc_auxvar_dn%sat < eps) then
+    upweight = 1.d0
+  endif
   geometric_weight_up = upweight
   geometric_weight_dn = 1.d0 - upweight
 
@@ -376,7 +382,8 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
   kr = 0.d0
   dkr_dpup = 0.d0
   dkr_dpdn = 0.d0
-  if (thc_auxvar_up%kr + thc_auxvar_dn%kr > floweps) then
+  if (thc_auxvar_up%kr/thc_auxvar_up%vis > eps .or. &
+      thc_auxvar_dn%kr/thc_auxvar_dn%vis > eps) then
     if (thc_tensorial_rel_perm) then
       if (delta_pressure >= 0.d0) then
         call THCAuxTensorialRelPerm(thc_auxvar_up, &
@@ -832,6 +839,11 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
 
   gravity_weight_up = 1.d0
   gravity_weight_dn = 0.d0
+  ! dry-ghost override: fall back to the interior density
+  if (thc_auxvar_up%sat < eps) then
+    gravity_weight_up = 0.d0
+    gravity_weight_dn = 1.d0
+  endif
 
   ! ========================================================================= !
   ! Flow equation -- determine the volumetric flux q
@@ -844,7 +856,8 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
     case(DIRICHLET_BC,DIRICHLET_SEEPAGE_BC,DIRICHLET_CONDUCTANCE_BC, &
          HYDROSTATIC_BC,HYDROSTATIC_SEEPAGE_BC,HYDROSTATIC_CONDUCTANCE_BC, &
          PONDED_WATER_BC)
-      if (thc_auxvar_up%kr + thc_auxvar_dn%kr > floweps) then
+      if (thc_auxvar_up%kr/thc_auxvar_up%vis > eps .or. &
+          thc_auxvar_dn%kr/thc_auxvar_dn%vis > eps) then
 
         if (bc_type == DIRICHLET_CONDUCTANCE_BC .or. &
             bc_type == HYDROSTATIC_CONDUCTANCE_BC) then
@@ -963,8 +976,8 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
   advective_weight_dn = wdn
   if (thc_advective_density_mode == &
       THC_ADVECTIVE_DENSITY_TH_COMPATIBLE .and. bc_type /= NEUMANN_BC) then
-    advective_weight_up = 1.d0
-    advective_weight_dn = 0.d0
+    advective_weight_up = gravity_weight_up
+    advective_weight_dn = gravity_weight_dn
   endif
   den_kmol_adv = advective_weight_up*thc_auxvar_up%den_kmol + &
                  advective_weight_dn*thc_auxvar_dn%den_kmol
