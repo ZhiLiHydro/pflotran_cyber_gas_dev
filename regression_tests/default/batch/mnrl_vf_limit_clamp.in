@@ -1,10 +1,12 @@
 #Description: Tests the pore-volume budget clamp of
-#  LIMIT_MINERAL_VOLUME_FRACTION RESIDUAL_POROSITY. Calcite starts at a
-#  volume fraction of 0.95 (porosity 0.05, above the residual porosity of
-#  0.049999, so the precipitation cutoff is initially inactive). The water is
-#  supersaturated and would precipitate ~3.1e-6 in volume fraction, but only
-#  1.e-6 of pore volume remains above the residual porosity, so the step
-#  growth must be scaled back to land the volume fraction at exactly 0.950001.
+#  LIMIT_MINERAL_VOLUME_FRACTION RESIDUAL_POROSITY with two minerals of
+#  mixed rate sign. Calcite (VF 0.949) and aragonite (VF 0.001) sum to 0.95
+#  (porosity 0.05, just above the residual porosity of 0.049999). Both start
+#  supersaturated, but aragonite is metastable with respect to calcite: as
+#  the solution equilibrates with calcite, aragonite dissolves (the cutoff
+#  must not block dissolution) while calcite growth is capped at the pore
+#  volume above the residual porosity. Calcite must land at exactly 0.950001
+#  and aragonite must dissolve away completely.
 
 SIMULATION
   SIMULATION_TYPE SUBSURFACE
@@ -57,9 +59,15 @@ CHEMISTRY
   /
   MINERALS
     Calcite
+    Aragonite
   /
   MINERAL_KINETICS
     Calcite
+      RATE_CONSTANT 1.d-6
+      SURFACE_AREA_VOL_FRAC_POWER 1.d0
+      SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    /
+    Aragonite
       RATE_CONSTANT 1.d-6
       SURFACE_AREA_VOL_FRAC_POWER 1.d0
       SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
@@ -141,7 +149,8 @@ CONSTRAINT initial
     Ca++   1.d-1      T
   /
   MINERALS
-    Calcite  0.95d0 1.d2 m^2/m^3
+    Calcite    0.949d0 1.d2 m^2/m^3
+    Aragonite  1.d-3   1.d2 m^2/m^3
   /
 END
 

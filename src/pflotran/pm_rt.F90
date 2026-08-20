@@ -618,6 +618,9 @@ recursive subroutine PMRTInitializeRun(this)
   ! check for uninitialized flow variables
   call RealizUnInitializedVarsTran(this%realization)
 
+  ! error out if RESIDUAL_POROSITY starts above any cell's initial porosity
+  call RealizationCheckResidualPorosity(this%realization)
+
   if (this%transient_porosity) then
     call RealizationUpdateMineralPorosity(this%realization)
     call MaterialGetAuxVarVecLoc(this%realization%patch%aux%Material, &

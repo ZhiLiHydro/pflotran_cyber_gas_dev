@@ -84,6 +84,7 @@ module Realization_Subsurface_class
             RealizationUpdatePropertiesTS, &
             RealizationUpdatePropertiesNI, &
             RealizationUpdateMineralPorosity, &
+            RealizationCheckResidualPorosity, &
             RealizationUpdatePermFromPor, &
             RealizationCountCells, &
             RealizationPrintGridStatistics, &
@@ -2312,6 +2313,82 @@ subroutine RealizationUpdateMineralPorosity(realization)
 !                               POROSITY,POROSITY_CURRENT)
 
 end subroutine RealizationUpdateMineralPorosity
+
+! ************************************************************************** !
+
+subroutine RealizationCheckResidualPorosity(realization)
+  !
+  ! Errors out if a cell's initial porosity (1 - sum of mineral volume
+  ! fractions) is already at or below RESIDUAL_POROSITY, which would ban
+  ! precipitation in that cell from the start
+  !
+  ! Author: Heeho Park
+  ! Date: 08/19/26
+  !
+
+  use Grid_module
+  use Reaction_Aux_module
+  use Reaction_Mineral_module
+  use Reactive_Transport_Aux_module
+  use String_module
+
+  implicit none
+
+  class(realization_subsurface_type) :: realization
+
+  type(option_type), pointer :: option
+  type(patch_type), pointer :: patch
+  class(reaction_rt_type), pointer :: reaction
+  type(grid_type), pointer :: grid
+  type(reactive_transport_auxvar_type), pointer :: rt_auxvars(:)
+
+  PetscInt :: local_id, ghosted_id
+  PetscInt :: num_below
+  PetscReal :: porosity, min_porosity
+  PetscReal :: temp_real_in(2), temp_real_out(2)
+  PetscErrorCode :: ierr
+
+  option => realization%option
+  reaction => realization%reaction
+
+  if (.not.associated(reaction)) return
+  if (reaction%porosity_res <= 0.d0) return
+  if (reaction%mineral%nkinmnrl == 0) return
+
+  patch => realization%patch
+  grid => patch%grid
+  rt_auxvars => patch%aux%RT%auxvars
+
+  min_porosity = 1.d0
+  num_below = 0
+  do local_id = 1, grid%nlmax
+    ghosted_id = grid%nL2G(local_id)
+    if (patch%imat(ghosted_id) <= 0) cycle
+    porosity = 1.d0 - &
+      ReactionMnrlCalcSumVolFrac(rt_auxvars(ghosted_id),reaction%mineral)
+    min_porosity = min(min_porosity,porosity)
+    if (porosity <= reaction%porosity_res) num_below = num_below + 1
+  enddo
+
+  temp_real_in(1) = -min_porosity
+  temp_real_in(2) = num_below
+  call MPI_Allreduce(temp_real_in,temp_real_out,TWO_INTEGER_MPI, &
+                     MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm, &
+                     ierr);CHKERRQ(ierr)
+  min_porosity = -temp_real_out(1)
+
+  if (temp_real_out(2) > 0.d0) then
+    option%io_buffer = 'RESIDUAL_POROSITY (' // &
+      trim(StringWrite('(es9.2)',reaction%porosity_res)) // &
+      ') must be below the minimum initial porosity based on the sum of &
+      &mineral volume fractions (' // &
+      trim(StringWrite('(es9.2)',min_porosity)) // &
+      '). Precipitation would be cut off from the start in cells at or &
+      &below the cutoff.'
+    call PrintErrMsg(option)
+  endif
+
+end subroutine RealizationCheckResidualPorosity
 
 ! ************************************************************************** !
 

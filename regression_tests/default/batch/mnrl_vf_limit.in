@@ -1,8 +1,10 @@
-#Description: Tests LIMIT_MINERAL_VOLUME_FRACTION RESIDUAL_POROSITY. The
-#  cell is preloaded with calcite at a volume fraction of 0.995 (porosity
-#  0.005), below the residual porosity of 0.01. The water is supersaturated
-#  with respect to calcite, but precipitation must be cut off so that the
-#  calcite volume fraction remains at 0.995.
+#Description: Tests LIMIT_MINERAL_VOLUME_FRACTION RESIDUAL_POROSITY. Calcite
+#  starts at a volume fraction of 0.95 (porosity 0.05, just above the
+#  residual porosity of 0.049999). The water is supersaturated and would
+#  precipitate ~3.1e-6 in volume fraction, but only 1.e-6 of pore volume
+#  remains above the residual porosity: the step that crosses the cutoff
+#  must be scaled back to land the volume fraction at exactly 0.950001, and
+#  the precipitation cutoff must hold it there for the rest of the run.
 
 SIMULATION
   SIMULATION_TYPE SUBSURFACE
@@ -69,7 +71,7 @@ CHEMISTRY
   UPDATE_POROSITY
   MINIMUM_POROSITY 1.d-3
   LIMIT_MINERAL_VOLUME_FRACTION
-    RESIDUAL_POROSITY 1.d-2
+    RESIDUAL_POROSITY 4.9999d-2
   /
   OUTPUT
     PH
@@ -97,7 +99,7 @@ END
 #=========================== material properties ==============================
 MATERIAL_PROPERTY soil1
   ID 1
-  POROSITY 5.d-3
+  POROSITY 5.d-2
   TORTUOSITY 1.d0
 END
 
@@ -139,7 +141,7 @@ CONSTRAINT initial
     Ca++   1.d-1      T
   /
   MINERALS
-    Calcite  0.995d0 1.d2 m^2/m^3
+    Calcite  0.95d0 1.d2 m^2/m^3
   /
 END
 
