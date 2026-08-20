@@ -146,6 +146,7 @@ module THC_Aux_module
     PetscReal, pointer :: dencpr(:)  ! rho_s * c_s [J/(m^3.K)]
     PetscReal, pointer :: ckdry(:)   ! bulk dry  thermal conductivity [W/(m.K)]
     PetscReal, pointer :: ckwet(:)   ! bulk wet  thermal conductivity [W/(m.K)]
+    PetscReal, pointer :: alpha_l(:) ! longitudinal dispersivity [m]
     ! per-material THERMAL_CHARACTERISTIC_CURVES; takes precedence over
     ! ckdry/ckwet and is the only path supplying d(kappa_eff)/dT
     type(cc_thermal_ptr_type), pointer :: thermal_cc(:)
@@ -233,6 +234,7 @@ function THCAuxCreate(option)
   nullify(aux%thc_parameter%dencpr)
   nullify(aux%thc_parameter%ckdry)
   nullify(aux%thc_parameter%ckwet)
+  nullify(aux%thc_parameter%alpha_l)
   nullify(aux%thc_parameter%thermal_cc)
 
   THCAuxCreate => aux
@@ -1122,6 +1124,7 @@ subroutine THCAuxDestroy(aux)
     call DeallocateArray(aux%thc_parameter%dencpr)
     call DeallocateArray(aux%thc_parameter%ckdry)
     call DeallocateArray(aux%thc_parameter%ckwet)
+    call DeallocateArray(aux%thc_parameter%alpha_l)
     if (associated(aux%thc_parameter%thermal_cc)) then
       deallocate(aux%thc_parameter%thermal_cc)
       nullify(aux%thc_parameter%thermal_cc)

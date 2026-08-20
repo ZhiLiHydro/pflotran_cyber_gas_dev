@@ -306,6 +306,7 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
   PetscReal :: dD_hyd_up_dp, dD_hyd_up_dT, dD_hyd_up_dC
   PetscReal :: dD_hyd_dn_dp, dD_hyd_dn_dT, dD_hyd_dn_dC
   PetscReal :: facD_up, facD_dn
+  PetscReal :: alpha_l_up, alpha_l_dn, disp_dfac
   PetscReal :: dGamma_D_dpup, dGamma_D_dpdn
   PetscReal :: dGamma_D_dTup, dGamma_D_dTdn
   PetscReal :: dGamma_D_dCup, dGamma_D_dCdn
@@ -444,6 +445,11 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
              material_auxvar_up%tortuosity * thc_auxvar_up%diff_mol
   D_hyd_dn = thc_auxvar_dn%effective_porosity * thc_auxvar_dn%sat * &
              material_auxvar_dn%tortuosity * thc_auxvar_dn%diff_mol
+  ! longitudinal mechanical dispersion from the face Darcy velocity (SCO2 form)
+  alpha_l_up = thc_parameter%alpha_l(material_auxvar_up%id)
+  alpha_l_dn = thc_parameter%alpha_l(material_auxvar_dn%id)
+  D_hyd_up = D_hyd_up + alpha_l_up*dabs(v_darcy)
+  D_hyd_dn = D_hyd_dn + alpha_l_dn*dabs(v_darcy)
   numerator = D_hyd_up * D_hyd_dn
   denom_D = dist_up*D_hyd_dn + dist_dn*D_hyd_up
   diffusion_on = PETSC_TRUE
@@ -575,6 +581,15 @@ subroutine THCFlux(thc_auxvar_up,global_auxvar_up, &
       dGamma_D_dTdn = facD_dn * dD_hyd_dn_dT
       dGamma_D_dCup = facD_up * dD_hyd_up_dC
       dGamma_D_dCdn = facD_dn * dD_hyd_dn_dC
+      ! dispersion depends on q through |v_darcy| = |q|/area
+      disp_dfac = (facD_up*alpha_l_up + facD_dn*alpha_l_dn) * &
+                  sign(1.d0,q)/area
+      dGamma_D_dpup = dGamma_D_dpup + disp_dfac*dq_dpup
+      dGamma_D_dpdn = dGamma_D_dpdn + disp_dfac*dq_dpdn
+      dGamma_D_dTup = dGamma_D_dTup + disp_dfac*dq_dTup
+      dGamma_D_dTdn = dGamma_D_dTdn + disp_dfac*dq_dTdn
+      dGamma_D_dCup = dGamma_D_dCup + disp_dfac*dq_dCup
+      dGamma_D_dCdn = dGamma_D_dCdn + disp_dfac*dq_dCdn
     endif
 
     ! Thermal transmissibility derivatives (harmonic kappa; kappa = kappa(S_l))
@@ -789,6 +804,7 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
   PetscReal :: delta_conc, D_hyd_dn, Deff_over_dist, Gamma_D, dispersion_scale
   PetscReal :: dD_hyd_dn_dp, dD_hyd_dn_dT, dD_hyd_dn_dC
   PetscReal :: dGamma_D_dpdn, dGamma_D_dTdn, dGamma_D_dCdn
+  PetscReal :: alpha_l_dn, disp_dfac
 
   ! energy conduction / prescribed-flux / convective
   PetscReal :: Gamma_kappa, delta_temp, dGamma_kappa_dpdn, dGamma_kappa_dTdn
@@ -987,6 +1003,8 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
   endif
   D_hyd_dn = thc_auxvar_dn%effective_porosity * thc_auxvar_dn%sat * &
              material_auxvar_dn%tortuosity * thc_auxvar_dn%diff_mol
+  alpha_l_dn = thc_parameter%alpha_l(material_auxvar_dn%id)
+  D_hyd_dn = D_hyd_dn + alpha_l_dn*dabs(v_darcy)
   Deff_over_dist = dispersion_scale * D_hyd_dn / dist(0)
   Gamma_D = area * Deff_over_dist
   Res(thc_concentration_dof) = Res(thc_concentration_dof) + &
@@ -1097,6 +1115,10 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
       dGamma_D_dpdn = area * dispersion_scale * dD_hyd_dn_dp / dist(0)
       dGamma_D_dTdn = area * dispersion_scale * dD_hyd_dn_dT / dist(0)
       dGamma_D_dCdn = area * dispersion_scale * dD_hyd_dn_dC / dist(0)
+      disp_dfac = dispersion_scale*alpha_l_dn*sign(1.d0,q)/dist(0)
+      dGamma_D_dpdn = dGamma_D_dpdn + disp_dfac*dq_dpdn
+      dGamma_D_dTdn = dGamma_D_dTdn + disp_dfac*dq_dTdn
+      dGamma_D_dCdn = dGamma_D_dCdn + disp_dfac*dq_dCdn
     endif
 
     ! ----------------------------------------------------------------------- !
