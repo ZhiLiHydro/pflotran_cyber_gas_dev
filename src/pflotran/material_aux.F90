@@ -57,6 +57,8 @@ module Material_Aux_module
     PetscReal :: porosity ! porosity used in calculation, which may be a
                           ! function of soil compressibity, etc.
     PetscReal :: dporosity_dp
+    ! per-material precip cutoff porosity; 0 = unset (use CHEMISTRY value)
+    PetscReal :: porosity_res
     PetscReal :: tortuosity
     PetscReal :: soil_particle_density
     PetscReal, pointer :: permeability(:)
@@ -274,6 +276,7 @@ subroutine MaterialAuxVarInit(auxvar,option)
   auxvar%porosity_base = UNINITIALIZED_DOUBLE
   auxvar%porosity = UNINITIALIZED_DOUBLE
   auxvar%dporosity_dp = 0.d0
+  auxvar%porosity_res = 0.d0
   auxvar%tortuosity = UNINITIALIZED_DOUBLE
   auxvar%soil_particle_density = UNINITIALIZED_DOUBLE
   if (option%iflowmode /= NULL_MODE) then
@@ -353,6 +356,7 @@ subroutine MaterialAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%porosity_0 = auxvar%porosity_0
   auxvar2%porosity_base = auxvar%porosity_base
   auxvar2%porosity = auxvar%porosity
+  auxvar2%porosity_res = auxvar%porosity_res
   auxvar2%tortuosity = auxvar%tortuosity
   auxvar2%soil_particle_density = auxvar%soil_particle_density
   if (associated(auxvar%permeability)) then

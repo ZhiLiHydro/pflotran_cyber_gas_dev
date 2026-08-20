@@ -1238,6 +1238,7 @@ subroutine ReactionMnrlKineticRateTSTSimple(Res,Jac, &
   PetscReal :: QK, lnQK, dQK_dmj
   PetscBool :: precipitation
   PetscReal :: rate_constant
+  PetscReal :: porosity_res
   type(mineral_type), pointer :: mineral
 
   mineral => reaction%mineral
@@ -1268,9 +1269,10 @@ subroutine ReactionMnrlKineticRateTSTSimple(Res,Jac, &
 
     ! QPAC-style cutoff: no precip below residual porosity;
     ! dissolution still allowed to reopen the pore
-    if (precipitation .and. reaction%porosity_res > 0.d0) then
+    porosity_res = ReactionMnrlResPorosity(reaction,material_auxvar)
+    if (precipitation .and. porosity_res > 0.d0) then
       if (1.d0 - ReactionMnrlCalcSumVolFrac(rt_auxvar,mineral) <= &
-          reaction%porosity_res) return
+          porosity_res) return
     endif
 
     if (precipitation) then
@@ -1393,6 +1395,7 @@ subroutine ReactionMnrlKineticRateTST(Res,Jac, &
   PetscBool :: precipitation
   PetscReal :: rate_constant
   PetscReal :: arrhenius_factor
+  PetscReal :: porosity_res
   type(mineral_type), pointer :: mineral
 
   mineral => reaction%mineral
@@ -1437,9 +1440,10 @@ subroutine ReactionMnrlKineticRateTST(Res,Jac, &
 
 !     QPAC-style cutoff: no precip below residual porosity;
 !     dissolution still allowed to reopen the pore
-    if (precipitation .and. reaction%porosity_res > 0.d0) then
+    porosity_res = ReactionMnrlResPorosity(reaction,material_auxvar)
+    if (precipitation .and. porosity_res > 0.d0) then
       if (1.d0 - ReactionMnrlCalcSumVolFrac(rt_auxvar,mineral) <= &
-          reaction%porosity_res) return
+          porosity_res) return
     endif
 
 !     check for supersaturation threshold for precipitation
@@ -1767,13 +1771,15 @@ subroutine ReactionMnrlNucleationKinetics(Res,Jac, &
   PetscReal :: QK, lnQK
   PetscReal :: dQK_dmj, dlnQK_dQK
   PetscReal :: nucleation_rate, dnucleation_rate_dlnQK
+  PetscReal :: porosity_res
 
   mineral => reaction%mineral
 
   ! QPAC-style cutoff: no nucleation below residual porosity
-  if (reaction%porosity_res > 0.d0) then
+  porosity_res = ReactionMnrlResPorosity(reaction,material_auxvar)
+  if (porosity_res > 0.d0) then
     if (1.d0 - ReactionMnrlCalcSumVolFrac(rt_auxvar,mineral) <= &
-        reaction%porosity_res) return
+        porosity_res) return
   endif
 
   ln_conc = log(rt_auxvar%pri_molal)
@@ -2168,6 +2174,7 @@ subroutine ReactionMnrlUpdateKineticState(rt_auxvar,global_auxvar, &
   PetscInt :: imnrl, iaqspec, icomp
   PetscReal :: delta_volfrac
   PetscReal :: scale, vf_avail, sum_base, sum_pos
+  PetscReal :: porosity_res
   PetscReal :: res(reaction%ncomp) ! has to be sized accurately
   PetscReal :: jac(1,1) ! strictly a dummy array
   PetscBool, parameter :: store_rate = PETSC_TRUE
@@ -2185,8 +2192,9 @@ subroutine ReactionMnrlUpdateKineticState(rt_auxvar,global_auxvar, &
 
   ! cap this step's precip at the pore volume above residual porosity
   ! by scaling positive rates; growth apportioned by rate magnitude
-  if (reaction%porosity_res > 0.d0) then
-    vf_avail = 1.d0 - reaction%porosity_res
+  porosity_res = ReactionMnrlResPorosity(reaction,material_auxvar)
+  if (porosity_res > 0.d0) then
+    vf_avail = 1.d0 - porosity_res
     sum_base = 0.d0
     sum_pos = 0.d0
     do imnrl = 1, reaction%mineral%nkinmnrl
@@ -2296,6 +2304,32 @@ subroutine ReactionMnrlReportZeroSurfArea(imnrl,surface_area,mineral, &
   endif
 
 end subroutine ReactionMnrlReportZeroSurfArea
+
+! ************************************************************************** !
+
+function ReactionMnrlResPorosity(reaction,material_auxvar)
+  !
+  ! Resolves the precip cutoff porosity for a cell: the per-material
+  ! RESIDUAL_POROSITY overrides the CHEMISTRY-block value
+  !
+  ! Author: Heeho Park
+  ! Date: 08/19/26
+  !
+  use Material_Aux_module
+
+  implicit none
+
+  class(reaction_rt_type) :: reaction
+  type(material_auxvar_type) :: material_auxvar
+
+  PetscReal :: ReactionMnrlResPorosity
+
+  ReactionMnrlResPorosity = reaction%porosity_res
+  if (material_auxvar%porosity_res > 0.d0) then
+    ReactionMnrlResPorosity = material_auxvar%porosity_res
+  endif
+
+end function ReactionMnrlResPorosity
 
 ! ************************************************************************** !
 

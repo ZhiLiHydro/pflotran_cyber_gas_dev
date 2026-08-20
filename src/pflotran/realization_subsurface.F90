@@ -2327,6 +2327,7 @@ subroutine RealizationCheckResidualPorosity(realization)
   !
 
   use Grid_module
+  use Material_Aux_module
   use Reaction_Aux_module
   use Reaction_Mineral_module
   use Reactive_Transport_Aux_module
@@ -2341,10 +2342,11 @@ subroutine RealizationCheckResidualPorosity(realization)
   class(reaction_rt_type), pointer :: reaction
   type(grid_type), pointer :: grid
   type(reactive_transport_auxvar_type), pointer :: rt_auxvars(:)
+  type(material_auxvar_type), pointer :: material_auxvars(:)
 
   PetscInt :: local_id, ghosted_id
-  PetscInt :: num_below
-  PetscReal :: porosity, min_porosity
+  PetscReal :: porosity, porosity_res
+  PetscReal :: min_porosity, max_porosity_res
   PetscReal :: temp_real_in(2), temp_real_out(2)
   PetscErrorCode :: ierr
 
@@ -2352,36 +2354,45 @@ subroutine RealizationCheckResidualPorosity(realization)
   reaction => realization%reaction
 
   if (.not.associated(reaction)) return
-  if (reaction%porosity_res <= 0.d0) return
   if (reaction%mineral%nkinmnrl == 0) return
 
   patch => realization%patch
   grid => patch%grid
   rt_auxvars => patch%aux%RT%auxvars
+  material_auxvars => patch%aux%Material%auxvars
 
-  min_porosity = 1.d0
-  num_below = 0
+  ! track worst offender over cells that start at or below their cutoff
+  min_porosity = 1.d20
+  max_porosity_res = -1.d20
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
     if (patch%imat(ghosted_id) <= 0) cycle
+    porosity_res = reaction%porosity_res
+    if (material_auxvars(ghosted_id)%porosity_res > 0.d0) then
+      porosity_res = material_auxvars(ghosted_id)%porosity_res
+    endif
+    if (porosity_res <= 0.d0) cycle
     porosity = 1.d0 - &
       ReactionMnrlCalcSumVolFrac(rt_auxvars(ghosted_id),reaction%mineral)
-    min_porosity = min(min_porosity,porosity)
-    if (porosity <= reaction%porosity_res) num_below = num_below + 1
+    if (porosity <= porosity_res) then
+      min_porosity = min(min_porosity,porosity)
+      max_porosity_res = max(max_porosity_res,porosity_res)
+    endif
   enddo
 
   temp_real_in(1) = -min_porosity
-  temp_real_in(2) = num_below
+  temp_real_in(2) = max_porosity_res
   call MPI_Allreduce(temp_real_in,temp_real_out,TWO_INTEGER_MPI, &
                      MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm, &
                      ierr);CHKERRQ(ierr)
   min_porosity = -temp_real_out(1)
+  max_porosity_res = temp_real_out(2)
 
-  if (temp_real_out(2) > 0.d0) then
+  if (max_porosity_res > 0.d0) then
     option%io_buffer = 'RESIDUAL_POROSITY (' // &
-      trim(StringWrite('(es9.2)',reaction%porosity_res)) // &
-      ') must be below the minimum initial porosity based on the sum of &
-      &mineral volume fractions (' // &
+      trim(StringWrite('(es9.2)',max_porosity_res)) // &
+      ') must be below the initial porosity based on the sum of mineral &
+      &volume fractions (as low as ' // &
       trim(StringWrite('(es9.2)',min_porosity)) // &
       '). Precipitation would be cut off from the start in cells at or &
       &below the cutoff.'

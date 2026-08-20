@@ -35,6 +35,9 @@ module Material_module
     class(dataset_base_type), pointer :: permeability_dataset_xz
     class(dataset_base_type), pointer :: permeability_dataset_yz
     PetscReal :: porosity
+    ! per-material precip cutoff porosity; overrides the CHEMISTRY
+    ! LIMIT_MINERAL_VOLUME_FRACTION global value; 0 = unset
+    PetscReal :: porosity_res
 !    character(len=MAXWORDLENGTH) :: porosity_dataset_name
     class(dataset_base_type), pointer :: porosity_dataset
     class(dataset_base_type), pointer :: tortuosity_dataset
@@ -203,6 +206,7 @@ function MaterialPropertyCreate(option)
   nullify(material_property%permeability_dataset_yz)
   ! initialize to UNINITIALIZED_DOUBLE to catch bugs
   material_property%porosity = UNINITIALIZED_DOUBLE
+  material_property%porosity_res = 0.d0
 !  material_property%porosity_dataset_name = ''
   nullify(material_property%porosity_dataset)
   nullify(material_property%tortuosity_dataset)
@@ -471,6 +475,9 @@ subroutine MaterialPropertyRead(material_property,input,option)
         call DatasetReadDoubleOrDataset(input,material_property%porosity, &
                                         material_property%porosity_dataset, &
                                         keyword,error_str,option)
+      case('RESIDUAL_POROSITY')
+        call InputReadDouble(input,option,material_property%porosity_res)
+        call InputErrorMsg(input,option,'residual porosity',error_str)
       case('TORTUOSITY')
         tort_iso_read = PETSC_TRUE
         call DatasetReadDoubleOrDataset(input, &
@@ -1940,6 +1947,10 @@ subroutine MaterialAssignPropertyToAux(material_auxvar,material_property, &
   if (Initialized(material_property%rock_density)) then
     material_auxvar%soil_particle_density = &
       material_property%rock_density
+  endif
+
+  if (material_property%porosity_res > 0.d0) then
+    material_auxvar%porosity_res = material_property%porosity_res
   endif
 
   if (associated(material_property%geomechanics_subsurface_properties)) then
