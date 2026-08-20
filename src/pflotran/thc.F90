@@ -657,8 +657,8 @@ subroutine THCUpdateAuxVars(realization)
              HYDROSTATIC_BC,HYDROSTATIC_SEEPAGE_BC,HYDROSTATIC_CONDUCTANCE_BC)
           xxbc(thc_temperature_dof) = &
             boundary_condition%flow_aux_real_var(energy_index,iconn)
-        case(NEUMANN_BC,ZERO_GRADIENT_BC)
-          ! prescribed-heat-flux / zero-gradient: ghost carries the interior T
+        case(NEUMANN_BC,ZERO_GRADIENT_BC,CONVECTIVE_BC)
+          ! prescribed-flux / zero-gradient / Robin: ghost carries interior T
           xxbc(thc_temperature_dof) = &
             xx_loc_p(ghosted_offset+thc_temperature_dof)
         case default

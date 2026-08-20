@@ -14,9 +14,6 @@ module THC_Common_module
   PetscReal, parameter :: eps     = 1.d-8
   PetscReal, parameter :: floweps = 0.d0
 
-  ! The branch below is implemented now so the energy BC Jacobian is complete.
-  PetscInt, parameter :: THC_CONVECTIVE_BC = -2
-
   ! --- public interface ---------------------------------------------------
   public :: THCAccumulation, &
             THCFlux, &
@@ -736,7 +733,7 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
   ! Thermal BCs, keyed on the energy condition slot:
   !   DIRICHLET             -- prescribed T at ghost: advection + conduction ;
   !   NEUMANN               -- prescribed heat flux q_T [W/m^2] (no Jacobian) ;
-  !   THC_CONVECTIVE_BC -- Robin / third-kind: h_conv*(T_ext - T_cell) .
+  !   CONVECTIVE_BC -- Robin / third-kind: h_conv*(T_ext - T_cell) .
   !
   ! Injection vs extraction for T and C is by the sign of the volumetric flux q
   ! inflow carries the boundary (ghost) state,
@@ -1039,10 +1036,9 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
       heat_flux_bc = auxvars(auxvar_mapping(THC_COND_ENERGY_INDEX))
       Res(thc_temperature_dof) = Res(thc_temperature_dof) + &
                                      heat_flux_bc * area
-    case(THC_CONVECTIVE_BC)
+    case(CONVECTIVE_BC)
       ! Robin / third-kind: heat flux INTO domain = h_conv*(T_ext - T_cell)
-      ! h_conv stored in the water-aux slot, T_ext in the
-      ! energy slot (placeholder plumbing -- see module header).
+      ! h_conv in the water-aux slot, T_ext in the energy slot
       temp_ext = auxvars(auxvar_mapping(THC_COND_ENERGY_INDEX))
       h_conv = auxvars(auxvar_mapping(THC_COND_WATER_AUX_INDEX))
       Res(thc_temperature_dof) = Res(thc_temperature_dof) + &
@@ -1154,7 +1150,7 @@ subroutine THCBCFlux(ibndtype,auxvar_mapping,auxvars, &
     Jdn(thc_temperature_dof,thc_concentration_dof) = &
       dh_dC_dn*q + h_upw*dq_dCdn
     ! convective (Robin) thermal BC: d/dT_cell of h_conv*(T_ext - T_cell)
-    if (energy_bc_type == THC_CONVECTIVE_BC) then
+    if (energy_bc_type == CONVECTIVE_BC) then
       h_conv = auxvars(auxvar_mapping(THC_COND_WATER_AUX_INDEX))
       Jdn(thc_temperature_dof,thc_temperature_dof) = &
         Jdn(thc_temperature_dof,thc_temperature_dof) - h_conv * area
