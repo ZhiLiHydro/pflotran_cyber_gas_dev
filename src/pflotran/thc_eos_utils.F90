@@ -134,12 +134,17 @@ subroutine THCDensityAndDerivs(T, P, C, den_kg, den_kmol, &
     return
   endif
 
-  ! C [mol/L] -> salinity mass fraction s [kg/kg] (reference-density basis).
+  ! C [mol/L] -> salinity mass fraction s [kg/kg]; seed with the reference
+  ! density, then one Picard pass so s is consistent with the EOS density
   call THCConcToMassFraction(C, thc_density_reference, &
                                  thc_molar_mass_solute, s, ds_dC)
   aux1(1) = s
+  call EOSWaterDensityExt(T, P, aux1, dw, dwmol, dwp, dwt, ierr)
+  call THCConcToMassFraction(C, dw, thc_molar_mass_solute, s, ds_dC)
+  aux1(1) = s
 
   ! Density with analytic P,T derivatives (molar-density basis).
+  ! ds_dC neglects the implicit d(rho)/dC term (second order in s).
   call EOSWaterDensityExt(T, P, aux1, dw, dwmol, dwp, dwt, ierr)
   den_kg   = dw
   den_kmol = dwmol
@@ -158,7 +163,8 @@ subroutine THCDensityAndDerivs(T, P, C, den_kg, den_kmol, &
 end subroutine THCDensityAndDerivs
 
 ! ****************************************************************************
-subroutine THCViscosityAndDerivs(T, P, C, vis, dvis_dT, dvis_dC, ierr)
+subroutine THCViscosityAndDerivs(T, P, C, den_kg, vis, dvis_dT, dvis_dC, &
+                                     ierr)
   !
   ! Liquid dynamic viscosity mu_l(T,C) and the derivatives needed for the
   ! THC Jacobian, via EOSWaterViscosityExt.
@@ -179,6 +185,7 @@ subroutine THCViscosityAndDerivs(T, P, C, vis, dvis_dT, dvis_dC, ierr)
   PetscReal,      intent(in)    :: T        ! temperature [C]
   PetscReal,      intent(in)    :: P        ! pressure [Pa]
   PetscReal,      intent(in)    :: C        ! concentration [mol/L]
+  PetscReal,      intent(in)    :: den_kg   ! rho_l [kg/m^3]
   PetscReal,      intent(out)   :: vis      ! mu_l [Pa.s]
   PetscReal,      intent(out)   :: dvis_dT  ! d(mu_l)/dT [Pa.s/C]
   PetscReal,      intent(out)   :: dvis_dC  ! d(mu_l)/dC [Pa.s/(mol/L)]
@@ -202,9 +209,8 @@ subroutine THCViscosityAndDerivs(T, P, C, vis, dvis_dT, dvis_dC, ierr)
     return
   endif
 
-  ! C [mol/L] -> salinity mass fraction s [kg/kg] (reference-density basis).
-  call THCConcToMassFraction(C, thc_density_reference, &
-                                 thc_molar_mass_solute, s, ds_dC)
+  ! C [mol/L] -> salinity mass fraction s [kg/kg] using the current density
+  call THCConcToMassFraction(C, den_kg, thc_molar_mass_solute, s, ds_dC)
   aux1(1) = s
 
   ! Viscosity with analytic T derivative (dVW_dP is hard-set to 0 by the EOS).
