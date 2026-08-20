@@ -31,15 +31,15 @@ module THC_Aux_module
   PetscReal, parameter, public :: thc_diffusion_ref_temp = 25.d0  ! [C]
 
   ! Energy formulation switch (selectable via ENERGY_FORMULATION input card).
-  !   THC_ENERGY_RHO_CP_T (default): liquid energy = rho*c_p*T
-  !   THC_ENERGY_FULL_EOS (TH-equivalent)  : liquid energy uses EOS u(P,T)
+  !   THC_ENERGY_RHO_CP_T: liquid energy = rho*c_p*T
+  !   THC_ENERGY_FULL_EOS (default, TH-equivalent): liquid energy uses EOS u(P,T)
   !                                              in accumulation and h(P,T) in
   !                                              advection (single-phase liquid)
   ! Mass-specific (J/kg, J/m^3) units throughout -- no option%scale applied,
   ! unlike TH which carries molar MJ. The rock term stays rho_s*c_s*T in both.
   PetscInt, parameter, public :: THC_ENERGY_RHO_CP_T = 1
   PetscInt, parameter, public :: THC_ENERGY_FULL_EOS = 2
-  PetscInt, public :: thc_energy_mode = THC_ENERGY_RHO_CP_T
+  PetscInt, public :: thc_energy_mode = THC_ENERGY_FULL_EOS
 
   PetscInt, parameter, public :: THC_ADVECTIVE_DENSITY_UPWIND = 1
   PetscInt, parameter, public :: THC_ADVECTIVE_DENSITY_TH_COMPATIBLE = 2
