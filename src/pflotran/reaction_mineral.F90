@@ -1238,7 +1238,7 @@ subroutine ReactionMnrlKineticRateTSTSimple(Res,Jac, &
   PetscReal :: QK, lnQK, dQK_dmj
   PetscBool :: precipitation
   PetscReal :: rate_constant
-  PetscReal :: porosity_res
+  PetscReal :: porosity_res, porosity, ramp_scale
   type(mineral_type), pointer :: mineral
 
   mineral => reaction%mineral
@@ -1268,11 +1268,17 @@ subroutine ReactionMnrlKineticRateTSTSimple(Res,Jac, &
     precipitation = (sign_ < 0.d0)
 
     ! QPAC-style cutoff: no precip below residual porosity;
-    ! dissolution still allowed to reopen the pore
+    ! dissolution still allowed to reopen the pore; RAMP_WIDTH scales
+    ! the rate linearly to zero approaching the cutoff
+    ramp_scale = 1.d0
     porosity_res = ReactionMnrlResPorosity(reaction,material_auxvar)
     if (precipitation .and. porosity_res > 0.d0) then
-      if (1.d0 - ReactionMnrlCalcSumVolFrac(rt_auxvar,mineral) <= &
-          porosity_res) return
+      porosity = 1.d0 - ReactionMnrlCalcSumVolFrac(rt_auxvar,mineral)
+      if (porosity <= porosity_res) return
+      if (reaction%porosity_res_ramp > 0.d0) then
+        ramp_scale = min((porosity - porosity_res)/ &
+                         reaction%porosity_res_ramp,1.d0)
+      endif
     endif
 
     if (precipitation) then
@@ -1286,7 +1292,7 @@ subroutine ReactionMnrlKineticRateTSTSimple(Res,Jac, &
     ! rate: mol/m^2 mnrl/sec
     ! area: m^2 mnrl/m^3 bulk
     ! volume: m^3 bulk
-    Im_const = -rt_auxvar%mnrl_area(imnrl)
+    Im_const = -ramp_scale*rt_auxvar%mnrl_area(imnrl)
 
     ! units: mol/sec/m^3 bulk
     Im = Im_const*sign_*dabs(affinity_factor)*rate_constant
@@ -1395,7 +1401,7 @@ subroutine ReactionMnrlKineticRateTST(Res,Jac, &
   PetscBool :: precipitation
   PetscReal :: rate_constant
   PetscReal :: arrhenius_factor
-  PetscReal :: porosity_res
+  PetscReal :: porosity_res, porosity, ramp_scale
   type(mineral_type), pointer :: mineral
 
   mineral => reaction%mineral
@@ -1439,11 +1445,17 @@ subroutine ReactionMnrlKineticRateTST(Res,Jac, &
     precipitation = (sign_ < 0.d0)
 
 !     QPAC-style cutoff: no precip below residual porosity;
-!     dissolution still allowed to reopen the pore
+!     dissolution still allowed to reopen the pore; RAMP_WIDTH scales
+!     the rate linearly to zero approaching the cutoff
+    ramp_scale = 1.d0
     porosity_res = ReactionMnrlResPorosity(reaction,material_auxvar)
     if (precipitation .and. porosity_res > 0.d0) then
-      if (1.d0 - ReactionMnrlCalcSumVolFrac(rt_auxvar,mineral) <= &
-          porosity_res) return
+      porosity = 1.d0 - ReactionMnrlCalcSumVolFrac(rt_auxvar,mineral)
+      if (porosity <= porosity_res) return
+      if (reaction%porosity_res_ramp > 0.d0) then
+        ramp_scale = min((porosity - porosity_res)/ &
+                         reaction%porosity_res_ramp,1.d0)
+      endif
     endif
 
 !     check for supersaturation threshold for precipitation
@@ -1523,7 +1535,7 @@ subroutine ReactionMnrlKineticRateTST(Res,Jac, &
     ! rate: mol/m^2 mnrl/sec
     ! area: m^2 mnrl/m^3 bulk
     ! volume: m^3 bulk
-    Im_const = -rt_auxvar%mnrl_area(imnrl)
+    Im_const = -ramp_scale*rt_auxvar%mnrl_area(imnrl)
     if (associated(mineral%kinmnrl_mnrl_scale_factor)) then
       Im_const = Im_const/mineral%kinmnrl_mnrl_scale_factor(imnrl)
     endif
@@ -1771,15 +1783,21 @@ subroutine ReactionMnrlNucleationKinetics(Res,Jac, &
   PetscReal :: QK, lnQK
   PetscReal :: dQK_dmj, dlnQK_dQK
   PetscReal :: nucleation_rate, dnucleation_rate_dlnQK
-  PetscReal :: porosity_res
+  PetscReal :: porosity_res, porosity, ramp_scale
 
   mineral => reaction%mineral
 
-  ! QPAC-style cutoff: no nucleation below residual porosity
+  ! QPAC-style cutoff: no nucleation below residual porosity; RAMP_WIDTH
+  ! scales the rate linearly to zero approaching the cutoff
+  ramp_scale = 1.d0
   porosity_res = ReactionMnrlResPorosity(reaction,material_auxvar)
   if (porosity_res > 0.d0) then
-    if (1.d0 - ReactionMnrlCalcSumVolFrac(rt_auxvar,mineral) <= &
-        porosity_res) return
+    porosity = 1.d0 - ReactionMnrlCalcSumVolFrac(rt_auxvar,mineral)
+    if (porosity <= porosity_res) return
+    if (reaction%porosity_res_ramp > 0.d0) then
+      ramp_scale = min((porosity - porosity_res)/ &
+                       reaction%porosity_res_ramp,1.d0)
+    endif
   endif
 
   ln_conc = log(rt_auxvar%pri_molal)
@@ -1811,6 +1829,8 @@ subroutine ReactionMnrlNucleationKinetics(Res,Jac, &
                                 global_auxvar%temp,lnQK, &
                                 nucleation_rate,dnucleation_rate_dlnQK, &
                                 option)
+    nucleation_rate = ramp_scale*nucleation_rate
+    dnucleation_rate_dlnQK = ramp_scale*dnucleation_rate_dlnQK
 !    print *, 'nucleation rate: ', nucleation_rate
 #if 0
 print *, 'analytical derivative: ', dnucleation_rate_dlnQK

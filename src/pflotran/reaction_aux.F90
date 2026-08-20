@@ -311,6 +311,9 @@ module Reaction_Aux_module
     ! QPAC-style precip cutoff porosity (LIMIT_MINERAL_VOLUME_FRACTION);
     ! 0 = off
     PetscReal :: porosity_res
+    ! ramp width above porosity_res over which precip rates scale
+    ! linearly to zero; 0 = hard cutoff
+    PetscReal :: porosity_res_ramp
 
     PetscBool :: update_armor_mineral_surface
     PetscInt :: update_armor_mineral_surface_flag
@@ -552,6 +555,7 @@ function ReactionAuxCreateAux()
   reaction%calculate_initial_porosity = PETSC_FALSE
   reaction%minimum_porosity = 0.d0
   reaction%porosity_res = 0.d0
+  reaction%porosity_res_ramp = 0.d0
 
   reaction%update_armor_mineral_surface = PETSC_FALSE
   reaction%update_armor_mineral_surface_flag = 0

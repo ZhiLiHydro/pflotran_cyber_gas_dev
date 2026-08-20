@@ -906,6 +906,11 @@ subroutine ReactionReadPass1(reaction,input,option)
               call InputReadDouble(input,option,reaction%porosity_res)
               call InputErrorMsg(input,option,'residual porosity', &
                                  error_string)
+            case('RAMP_WIDTH')
+              ! precip rates scale linearly to zero over this porosity
+              ! width above the cutoff
+              call InputReadDouble(input,option,reaction%porosity_res_ramp)
+              call InputErrorMsg(input,option,'ramp width',error_string)
             case default
               call InputKeywordUnrecognized(input,word,error_string,option)
           end select
