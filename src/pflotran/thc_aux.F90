@@ -44,7 +44,7 @@ module THC_Aux_module
   PetscInt, parameter, public :: THC_ADVECTIVE_DENSITY_UPWIND = 1
   PetscInt, parameter, public :: THC_ADVECTIVE_DENSITY_TH_COMPATIBLE = 2
   PetscInt, public :: thc_advective_density_mode = &
-                        THC_ADVECTIVE_DENSITY_UPWIND
+                        THC_ADVECTIVE_DENSITY_TH_COMPATIBLE
 
   ! perturbation controls (mirror zflow_aux.F90)
   PetscReal, public :: thc_rel_pert = 1.d-8
