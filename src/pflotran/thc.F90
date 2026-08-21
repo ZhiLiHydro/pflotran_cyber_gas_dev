@@ -19,6 +19,7 @@ module THC_module
             THCUpdateAuxVars, &
             THCUpdateFixedAccum, &
             THCComputeMassBalance, &
+            THCComputeConservation, &
             THCZeroMassBalanceDelta, &
             THCResidual, &
             THCSetPlotVariables, &
@@ -443,6 +444,69 @@ subroutine THCComputeMassBalance(realization,mass_balance)
   enddo
 
 end subroutine THCComputeMassBalance
+
+! ************************************************************************** !
+
+subroutine THCComputeConservation(realization,water_kg,energy_mj,solute_mol)
+  !
+  ! Global sums for the conservation (-con.dat) output: water [kg],
+  ! energy [MJ], solute [mol]
+  !
+  use Realization_Subsurface_class
+  use Option_module
+  use Grid_module
+  use Patch_module
+  use Material_Aux_module, only : material_auxvar_type
+
+  implicit none
+
+  class(realization_subsurface_type) :: realization
+  PetscReal :: water_kg
+  PetscReal :: energy_mj
+  PetscReal :: solute_mol
+
+  type(option_type), pointer :: option
+  type(patch_type), pointer :: patch
+  type(grid_type), pointer :: grid
+  type(material_auxvar_type), pointer :: material_auxvars(:)
+  type(thc_auxvar_type), pointer :: thc_auxvars(:,:)
+
+  PetscInt :: local_id, ghosted_id
+  PetscReal :: por_sat_vol, liq_energy
+
+  option => realization%option
+  patch => realization%patch
+  grid => patch%grid
+  material_auxvars => patch%aux%Material%auxvars
+  thc_auxvars => patch%aux%THC%auxvars
+
+  water_kg = 0.d0
+  energy_mj = 0.d0
+  solute_mol = 0.d0
+
+  do local_id = 1, grid%nlmax
+    ghosted_id = grid%nL2G(local_id)
+    if (patch%imat(ghosted_id) <= 0) cycle
+    associate (aux => thc_auxvars(ZERO_INTEGER,ghosted_id))
+    por_sat_vol = aux%effective_porosity * aux%sat * &
+                  material_auxvars(ghosted_id)%volume
+    water_kg = water_kg + por_sat_vol * aux%den_kg
+    ! liquid energy per kg: u(P,T) under FULL_EOS, c_p*T otherwise
+    if (thc_energy_mode == THC_ENERGY_FULL_EOS) then
+      liq_energy = aux%u
+    else
+      liq_energy = thc_specific_heat_liquid * aux%temp
+    endif
+    ! [J] -> [MJ] via option%scale
+    energy_mj = energy_mj + option%scale * &
+      (por_sat_vol * aux%den_kg * liq_energy + &
+       (1.d0 - aux%effective_porosity) * &
+       material_auxvars(ghosted_id)%volume * aux%heat_cap_solid * aux%temp)
+    solute_mol = solute_mol + por_sat_vol * aux%conc * 1.d3
+    end associate
+  enddo
+
+end subroutine THCComputeConservation
 
 ! ************************************************************************** !
 
@@ -1018,6 +1082,10 @@ subroutine THCResidual(snes,xx,r,A,realization,debug,ierr)
         if (associated(patch%internal_flow_fluxes)) then
           patch%internal_flow_fluxes(1,sum_connection) = &
             Res(thc_pressure_dof)
+          patch%internal_flow_fluxes(2,sum_connection) = &
+            Res(thc_temperature_dof)
+          patch%internal_flow_fluxes(3,sum_connection) = &
+            Res(thc_concentration_dof)
         endif
 
         if (local_id_up > 0) then
@@ -1077,6 +1145,10 @@ subroutine THCResidual(snes,xx,r,A,realization,debug,ierr)
         if (associated(patch%boundary_flow_fluxes)) then
           patch%boundary_flow_fluxes(1,sum_connection) = &
             Res(thc_pressure_dof)
+          patch%boundary_flow_fluxes(2,sum_connection) = &
+            Res(thc_temperature_dof)
+          patch%boundary_flow_fluxes(3,sum_connection) = &
+            Res(thc_concentration_dof)
         endif
         if (option%compute_mass_balance_new) then
           ! contribution to boundary
