@@ -579,15 +579,22 @@ subroutine THCUpdateMassBalance(realization)
   global_auxvars_bc => patch%aux%Global%auxvars_bc
   global_auxvars_ss => patch%aux%Global%auxvars_ss
 
+  ! water delta is kmol -> kg as in TH; solute delta stays mol
   do iconn = 1, patch%aux%THC%num_aux_bc
     global_auxvars_bc(iconn)%mass_balance(1,1) = &
       global_auxvars_bc(iconn)%mass_balance(1,1) + &
-      global_auxvars_bc(iconn)%mass_balance_delta(1,1)*option%flow_dt
+      global_auxvars_bc(iconn)%mass_balance_delta(1,1)*FMWH2O*option%flow_dt
+    global_auxvars_bc(iconn)%mass_balance(2,1) = &
+      global_auxvars_bc(iconn)%mass_balance(2,1) + &
+      global_auxvars_bc(iconn)%mass_balance_delta(2,1)*option%flow_dt
   enddo
   do iconn = 1, patch%aux%THC%num_aux_ss
     global_auxvars_ss(iconn)%mass_balance(1,1) = &
       global_auxvars_ss(iconn)%mass_balance(1,1) + &
-      global_auxvars_ss(iconn)%mass_balance_delta(1,1)*option%flow_dt
+      global_auxvars_ss(iconn)%mass_balance_delta(1,1)*FMWH2O*option%flow_dt
+    global_auxvars_ss(iconn)%mass_balance(2,1) = &
+      global_auxvars_ss(iconn)%mass_balance(2,1) + &
+      global_auxvars_ss(iconn)%mass_balance_delta(2,1)*option%flow_dt
   enddo
 
 end subroutine THCUpdateMassBalance
@@ -1155,6 +1162,9 @@ subroutine THCResidual(snes,xx,r,A,realization,debug,ierr)
           global_auxvars_bc(sum_connection)%mass_balance_delta(1,1) = &
             global_auxvars_bc(sum_connection)%mass_balance_delta(1,1) - &
             Res(thc_pressure_dof)
+          global_auxvars_bc(sum_connection)%mass_balance_delta(2,1) = &
+            global_auxvars_bc(sum_connection)%mass_balance_delta(2,1) - &
+            Res(thc_concentration_dof)
         endif
         Res = -Res
         call PetUtilVecSVBL(r_p,local_id,Res,ndof,PETSC_FALSE)
@@ -1200,6 +1210,9 @@ subroutine THCResidual(snes,xx,r,A,realization,debug,ierr)
         global_auxvars_ss(sum_connection)%mass_balance_delta(1,1) = &
           global_auxvars_ss(sum_connection)%mass_balance_delta(1,1) - &
           Res(thc_pressure_dof)
+        global_auxvars_ss(sum_connection)%mass_balance_delta(2,1) = &
+          global_auxvars_ss(sum_connection)%mass_balance_delta(2,1) - &
+          Res(thc_concentration_dof)
       endif
       Res = -Res
       call PetUtilVecSVBL(r_p,local_id,Res,ndof,PETSC_FALSE)

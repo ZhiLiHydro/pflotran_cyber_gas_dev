@@ -38,9 +38,9 @@ module THC_EOS_Utils_module
   private
 
   ! --- module parameters --------------------------------------------------
-  ! Effective molar mass of the dissolved solids [kg/mol] (NaCl-equivalent;
-  ! FMWNACL = 58.44277 kg/kmol).
-  PetscReal, parameter, public :: thc_molar_mass_solute = 0.05844d0
+  ! Effective molar mass of the dissolved solids [kg/mol]; NaCl default,
+  ! overridden by the SOLUTE_MOLAR_MASS process-model option.
+  PetscReal, public :: thc_molar_mass_solute = 0.05844d0
   ! Reference liquid density [kg/m^3] used to convert C [mol/L] to the salinity
   ! mass fraction the Ext EOS routines require. The dependence is weak for the
   ! dilute-to-moderate TDS range; callers needing tight consistency may iterate
