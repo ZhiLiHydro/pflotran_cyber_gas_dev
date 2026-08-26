@@ -911,11 +911,29 @@ subroutine ReactionReadPass1(reaction,input,option)
               ! width above the cutoff
               call InputReadDouble(input,option,reaction%porosity_res_ramp)
               call InputErrorMsg(input,option,'ramp width',error_string)
+            case('RESIDUAL_POROSITY_FRACTION')
+              ! per-cell cutoff = fraction * initial porosity (1 - sumVF0)
+              call InputReadDouble(input,option, &
+                                   reaction%porosity_res_fraction)
+              call InputErrorMsg(input,option,'residual porosity fraction', &
+                                 error_string)
             case default
               call InputKeywordUnrecognized(input,word,error_string,option)
           end select
         enddo
         call InputPopBlock(input,option)
+        if (reaction%porosity_res > 0.d0 .and. &
+            reaction%porosity_res_fraction > 0.d0) then
+          option%io_buffer = 'RESIDUAL_POROSITY and RESIDUAL_POROSITY_&
+            &FRACTION may not both be set in LIMIT_MINERAL_VOLUME_FRACTION.'
+          call PrintErrMsg(option)
+        endif
+        if (reaction%porosity_res_fraction < 0.d0 .or. &
+            reaction%porosity_res_fraction >= 1.d0) then
+          option%io_buffer = 'RESIDUAL_POROSITY_FRACTION must be greater &
+            &than 0. and less than 1.'
+          call PrintErrMsg(option)
+        endif
       case('USE_FULL_GEOCHEMISTRY')
         call InputKeywordDeprecated(word,'FORCE_READ_REACTION_DATABASE',option)
       case('FORCE_READ_OF_REACTION_DATABASE')

@@ -314,6 +314,9 @@ module Reaction_Aux_module
     ! ramp width above porosity_res over which precip rates scale
     ! linearly to zero; 0 = hard cutoff
     PetscReal :: porosity_res_ramp
+    ! per-cell cutoff = fraction * initial porosity (1 - sumVF0);
+    ! alternative to absolute porosity_res; 0 = off
+    PetscReal :: porosity_res_fraction
 
     PetscBool :: update_armor_mineral_surface
     PetscInt :: update_armor_mineral_surface_flag
@@ -556,6 +559,7 @@ function ReactionAuxCreateAux()
   reaction%minimum_porosity = 0.d0
   reaction%porosity_res = 0.d0
   reaction%porosity_res_ramp = 0.d0
+  reaction%porosity_res_fraction = 0.d0
 
   reaction%update_armor_mineral_surface = PETSC_FALSE
   reaction%update_armor_mineral_surface_flag = 0

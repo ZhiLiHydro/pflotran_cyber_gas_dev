@@ -2367,10 +2367,8 @@ subroutine RealizationCheckResidualPorosity(realization)
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
     if (patch%imat(ghosted_id) <= 0) cycle
-    porosity_res = reaction%porosity_res
-    if (material_auxvars(ghosted_id)%porosity_res > 0.d0) then
-      porosity_res = material_auxvars(ghosted_id)%porosity_res
-    endif
+    porosity_res = ReactionMnrlResPorosity(reaction,rt_auxvars(ghosted_id), &
+                                           material_auxvars(ghosted_id))
     if (porosity_res <= 0.d0) cycle
     porosity = 1.d0 - &
       ReactionMnrlCalcSumVolFrac(rt_auxvars(ghosted_id),reaction%mineral)

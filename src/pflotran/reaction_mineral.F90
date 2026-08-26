@@ -28,7 +28,8 @@ module Reaction_Mineral_module
             ReactionMnrlUpdateSpecSurfArea, &
             ReactionMnrlUpdateKineticState, &
             ReactionMnrlReportZeroSurfArea, &
-            ReactionMnrlCalcSumVolFrac
+            ReactionMnrlCalcSumVolFrac, &
+            ReactionMnrlResPorosity
 
 contains
 
@@ -1271,7 +1272,7 @@ subroutine ReactionMnrlKineticRateTSTSimple(Res,Jac, &
     ! dissolution still allowed to reopen the pore; RAMP_WIDTH scales
     ! the rate linearly to zero approaching the cutoff
     ramp_scale = 1.d0
-    porosity_res = ReactionMnrlResPorosity(reaction,material_auxvar)
+    porosity_res = ReactionMnrlResPorosity(reaction,rt_auxvar,material_auxvar)
     if (precipitation .and. porosity_res > 0.d0) then
       porosity = 1.d0 - ReactionMnrlCalcSumVolFrac(rt_auxvar,mineral)
       if (porosity <= porosity_res) return
@@ -1448,7 +1449,7 @@ subroutine ReactionMnrlKineticRateTST(Res,Jac, &
 !     dissolution still allowed to reopen the pore; RAMP_WIDTH scales
 !     the rate linearly to zero approaching the cutoff
     ramp_scale = 1.d0
-    porosity_res = ReactionMnrlResPorosity(reaction,material_auxvar)
+    porosity_res = ReactionMnrlResPorosity(reaction,rt_auxvar,material_auxvar)
     if (precipitation .and. porosity_res > 0.d0) then
       porosity = 1.d0 - ReactionMnrlCalcSumVolFrac(rt_auxvar,mineral)
       if (porosity <= porosity_res) return
@@ -1790,7 +1791,7 @@ subroutine ReactionMnrlNucleationKinetics(Res,Jac, &
   ! QPAC-style cutoff: no nucleation below residual porosity; RAMP_WIDTH
   ! scales the rate linearly to zero approaching the cutoff
   ramp_scale = 1.d0
-  porosity_res = ReactionMnrlResPorosity(reaction,material_auxvar)
+  porosity_res = ReactionMnrlResPorosity(reaction,rt_auxvar,material_auxvar)
   if (porosity_res > 0.d0) then
     porosity = 1.d0 - ReactionMnrlCalcSumVolFrac(rt_auxvar,mineral)
     if (porosity <= porosity_res) return
@@ -2212,7 +2213,7 @@ subroutine ReactionMnrlUpdateKineticState(rt_auxvar,global_auxvar, &
 
   ! cap this step's precip at the pore volume above residual porosity
   ! by scaling positive rates; growth apportioned by rate magnitude
-  porosity_res = ReactionMnrlResPorosity(reaction,material_auxvar)
+  porosity_res = ReactionMnrlResPorosity(reaction,rt_auxvar,material_auxvar)
   if (porosity_res > 0.d0) then
     vf_avail = 1.d0 - porosity_res
     sum_base = 0.d0
@@ -2327,10 +2328,12 @@ end subroutine ReactionMnrlReportZeroSurfArea
 
 ! ************************************************************************** !
 
-function ReactionMnrlResPorosity(reaction,material_auxvar)
+function ReactionMnrlResPorosity(reaction,rt_auxvar,material_auxvar)
   !
   ! Resolves the precip cutoff porosity for a cell: the per-material
-  ! RESIDUAL_POROSITY overrides the CHEMISTRY-block value
+  ! RESIDUAL_POROSITY overrides the CHEMISTRY-block value, which is either
+  ! the absolute RESIDUAL_POROSITY or RESIDUAL_POROSITY_FRACTION of the
+  ! cell's initial porosity (1 - sumVF0)
   !
   ! Author: Heeho Park
   ! Date: 08/19/26
@@ -2340,11 +2343,23 @@ function ReactionMnrlResPorosity(reaction,material_auxvar)
   implicit none
 
   class(reaction_rt_type) :: reaction
+  type(reactive_transport_auxvar_type) :: rt_auxvar
   type(material_auxvar_type) :: material_auxvar
 
   PetscReal :: ReactionMnrlResPorosity
 
+  PetscInt :: imnrl
+  PetscReal :: sum0
+
   ReactionMnrlResPorosity = reaction%porosity_res
+  if (reaction%porosity_res_fraction > 0.d0) then
+    sum0 = 0.d0
+    do imnrl = 1, reaction%mineral%nkinmnrl
+      sum0 = sum0 + rt_auxvar%mnrl_volfrac0(imnrl)
+    enddo
+    ReactionMnrlResPorosity = reaction%porosity_res_fraction* &
+                              max(1.d0-sum0,0.d0)
+  endif
   if (material_auxvar%porosity_res > 0.d0) then
     ReactionMnrlResPorosity = material_auxvar%porosity_res
   endif
