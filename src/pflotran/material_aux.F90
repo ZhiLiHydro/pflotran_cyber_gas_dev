@@ -59,6 +59,9 @@ module Material_Aux_module
     PetscReal :: dporosity_dp
     ! per-material precip cutoff porosity; 0 = unset (use CHEMISTRY value)
     PetscReal :: porosity_res
+    ! diffusion shutoff factor near the precip cutoff; recomputed each
+    ! step from lagged VF, 1 = no shutoff
+    PetscReal :: tran_diff_scale
     PetscReal :: tortuosity
     PetscReal :: soil_particle_density
     PetscReal, pointer :: permeability(:)
@@ -277,6 +280,7 @@ subroutine MaterialAuxVarInit(auxvar,option)
   auxvar%porosity = UNINITIALIZED_DOUBLE
   auxvar%dporosity_dp = 0.d0
   auxvar%porosity_res = 0.d0
+  auxvar%tran_diff_scale = 1.d0
   auxvar%tortuosity = UNINITIALIZED_DOUBLE
   auxvar%soil_particle_density = UNINITIALIZED_DOUBLE
   if (option%iflowmode /= NULL_MODE) then
@@ -357,6 +361,7 @@ subroutine MaterialAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%porosity_base = auxvar%porosity_base
   auxvar2%porosity = auxvar%porosity
   auxvar2%porosity_res = auxvar%porosity_res
+  auxvar2%tran_diff_scale = auxvar%tran_diff_scale
   auxvar2%tortuosity = auxvar%tortuosity
   auxvar2%soil_particle_density = auxvar%soil_particle_density
   if (associated(auxvar%permeability)) then
@@ -854,6 +859,8 @@ function MaterialAuxVarGetValue(material_auxvar,ivar)
       MaterialAuxVarGetValue = material_auxvar%porosity_0
     case(BASE_POROSITY)
       MaterialAuxVarGetValue = material_auxvar%porosity_base
+    case(TRAN_DIFFUSION_SCALE)
+      MaterialAuxVarGetValue = material_auxvar%tran_diff_scale
     case(POROSITY)
       MaterialAuxVarGetValue = material_auxvar%porosity
     case(TORTUOSITY)
@@ -919,6 +926,8 @@ subroutine MaterialAuxVarSetValue(material_auxvar,ivar,value)
       material_auxvar%porosity_0 = value
     case(BASE_POROSITY)
       material_auxvar%porosity_base = value
+    case(TRAN_DIFFUSION_SCALE)
+      material_auxvar%tran_diff_scale = value
     case(POROSITY)
       material_auxvar%porosity = value
     case(TORTUOSITY)

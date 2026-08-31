@@ -917,6 +917,20 @@ subroutine ReactionReadPass1(reaction,input,option)
                                    reaction%porosity_res_fraction)
               call InputErrorMsg(input,option,'residual porosity fraction', &
                                  error_string)
+            case('USE_UNFLOORED_POROSITY')
+              ! perm/tortuosity laws read un-floored 1-sumVF
+              reaction%use_unfloored_porosity = PETSC_TRUE
+            case('DIFFUSION_RAMP_WIDTH')
+              ! face diffusion scales linearly to zero over this porosity
+              ! width above the cutoff
+              call InputReadDouble(input,option,reaction%tran_diff_ramp)
+              call InputErrorMsg(input,option,'diffusion ramp width', &
+                                 error_string)
+            case('MINIMUM_DIFFUSION_SCALE')
+              call InputReadDouble(input,option, &
+                                   reaction%tran_diff_min_scale)
+              call InputErrorMsg(input,option,'minimum diffusion scale', &
+                                 error_string)
             case default
               call InputKeywordUnrecognized(input,word,error_string,option)
           end select

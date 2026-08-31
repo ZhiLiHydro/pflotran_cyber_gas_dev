@@ -233,13 +233,17 @@ subroutine TDispersion(global_auxvar_up,material_auxvar_up, &
     endif
     ! hydrodynamic dispersion = mechanical disperson + &
     !   saturation * porosity * tortuosity * molecular diffusion
+    ! tran_diff_scale = diffusion shutoff toward the precip cutoff
+    ! (LIMIT_MINERAL_VOLUME_FRACTION); 1 unless enabled
     hydrodynamic_dispersion_up(:) = &
       max(mechanical_dispersion_up + &
+          material_auxvar_up%tran_diff_scale * &
           epsilon_up * sat_up * material_auxvar_up%porosity * tort_up * &
           molecular_diffusion_up(:), &
           1.d-40)
     hydrodynamic_dispersion_dn(:) = &
       max(mechanical_dispersion_dn + &
+          material_auxvar_dn%tran_diff_scale * &
           epsilon_dn * sat_dn * material_auxvar_dn%porosity * tort_dn * &
           molecular_diffusion_dn(:), &
           1.d-40)
@@ -387,6 +391,7 @@ subroutine TDispersionBC(ibndtype, &
           max(mechanical_dispersion + &
               ! yes, sat_up due to boundary saturation governing, but
               ! perhaps we could use an average in the future
+              material_auxvar_dn%tran_diff_scale * &
               epsilon_dn * sat_up * material_auxvar_dn%porosity * tort_dn * &
               molecular_diffusion(:), &
               1.d-40)

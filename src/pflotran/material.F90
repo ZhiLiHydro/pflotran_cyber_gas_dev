@@ -2147,6 +2147,10 @@ subroutine MaterialSetAuxVarVecLoc(Material,vec_loc,ivar)
       do ghosted_id=1, Material%num_aux
         material_auxvars(ghosted_id)%porosity_base = vec_loc_p(ghosted_id)
       enddo
+    case(TRAN_DIFFUSION_SCALE)
+      do ghosted_id=1, Material%num_aux
+        material_auxvars(ghosted_id)%tran_diff_scale = vec_loc_p(ghosted_id)
+      enddo
     case(INITIAL_POROSITY)
       do ghosted_id=1, Material%num_aux
         material_auxvars(ghosted_id)%porosity_0 = vec_loc_p(ghosted_id)
@@ -2249,6 +2253,10 @@ subroutine MaterialGetAuxVarVecLoc(Material,vec_loc,ivar)
       do ghosted_id=1, Material%num_aux
         vec_loc_p(ghosted_id) = &
           material_auxvars(ghosted_id)%porosity
+      enddo
+    case(TRAN_DIFFUSION_SCALE)
+      do ghosted_id=1, Material%num_aux
+        vec_loc_p(ghosted_id) = material_auxvars(ghosted_id)%tran_diff_scale
       enddo
     case(BASE_POROSITY)
       do ghosted_id=1, Material%num_aux

@@ -113,6 +113,7 @@ module Variables_module
   PetscInt, parameter, public :: ROCK_DENSITY            = 188
   PetscInt, parameter, public :: BIOT_COEFF              = 189
   PetscInt, parameter, public :: THERMAL_EXP_COEFF       = 190
+  PetscInt, parameter, public :: TRAN_DIFFUSION_SCALE    = 191
 
   PetscInt, parameter, public :: VOLUME                  = 90
   PetscInt, parameter, public :: TORTUOSITY              = 91

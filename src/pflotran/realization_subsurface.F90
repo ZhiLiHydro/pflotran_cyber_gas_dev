@@ -2032,7 +2032,16 @@ subroutine RealizationUpdatePropertiesTS(realization)
     call VecGetArrayRead(field%porosity0,porosity0_p,ierr);CHKERRQ(ierr)
     do local_id = 1, grid%nlmax
       ghosted_id = grid%nL2G(local_id)
-      scale = (material_auxvars(ghosted_id)%porosity_base / &
+      porosity_base_ = material_auxvars(ghosted_id)%porosity_base
+      ! transport shutoff: tortuosity law sees un-floored 1-sumVF
+      if (reaction%use_unfloored_porosity) then
+        porosity_base_ = max(1.d0 - &
+          ReactionMnrlCalcSumVolFrac(rt_auxvars(ghosted_id), &
+                                     reaction%mineral), &
+          ReactionMnrlResPorosity(reaction,rt_auxvars(ghosted_id), &
+                                  material_auxvars(ghosted_id)))
+      endif
+      scale = (porosity_base_ / &
                porosity0_p(local_id))** &
         material_property_array(patch%imat(ghosted_id))%ptr%tortuosity_pwr
       material_auxvars(ghosted_id)%tortuosity = &
@@ -2066,6 +2075,14 @@ subroutine RealizationUpdatePropertiesTS(realization)
       critical_porosity = material_property_array(imat)%ptr% &
                             permeability_crit_por
       porosity_base_ = material_auxvars(ghosted_id)%porosity_base
+      ! transport shutoff: perm law sees un-floored 1-sumVF
+      if (reaction%use_unfloored_porosity) then
+        porosity_base_ = max(1.d0 - &
+          ReactionMnrlCalcSumVolFrac(rt_auxvars(ghosted_id), &
+                                     reaction%mineral), &
+          ReactionMnrlResPorosity(reaction,rt_auxvars(ghosted_id), &
+                                  material_auxvars(ghosted_id)))
+      endif
       scale = 0.d0
       if (porosity_base_ > critical_porosity .and. &
           porosity0_p(local_id) > critical_porosity) then
@@ -2134,6 +2151,8 @@ subroutine RealizationUpdatePermFromPor(realization)
   use Field_module
   use Grid_module
   use Material_Aux_module
+  use Reaction_Aux_module
+  use Reaction_Mineral_module
   use Reactive_Transport_Aux_module
 
   implicit none
@@ -2146,6 +2165,8 @@ subroutine RealizationUpdatePermFromPor(realization)
   type(grid_type), pointer :: grid
   type(material_property_ptr_type), pointer :: material_property_array(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
+  class(reaction_rt_type), pointer :: reaction
+  type(reactive_transport_auxvar_type), pointer :: rt_auxvars(:)
 
   PetscInt :: local_id, ghosted_id
   PetscInt :: imat
@@ -2155,6 +2176,7 @@ subroutine RealizationUpdatePermFromPor(realization)
   PetscReal, pointer :: perm0_xy_p(:), perm0_xz_p(:), perm0_yz_p(:)
   PetscReal :: porosity
   PetscReal :: critical_porosity
+  PetscBool :: unfloored
   PetscErrorCode :: ierr
 
   option => realization%option
@@ -2163,6 +2185,11 @@ subroutine RealizationUpdatePermFromPor(realization)
   grid => patch%grid
   material_property_array => patch%material_property_array
   material_auxvars => patch%aux%Material%auxvars
+  reaction => realization%reaction
+
+  unfloored = PETSC_FALSE
+  if (associated(reaction)) unfloored = reaction%use_unfloored_porosity
+  if (unfloored) rt_auxvars => patch%aux%RT%auxvars
 
   if (option%flow%update_flow_perm_from_por) then
     call VecGetArrayRead(field%perm0_xx,perm0_xx_p,ierr);CHKERRQ(ierr)
@@ -2180,6 +2207,14 @@ subroutine RealizationUpdatePermFromPor(realization)
       critical_porosity = material_property_array(imat)%ptr% &
                             permeability_crit_por
       porosity = material_auxvars(ghosted_id)%porosity
+      ! transport shutoff: perm law sees un-floored 1-sumVF
+      if (unfloored) then
+        porosity = max(1.d0 - &
+          ReactionMnrlCalcSumVolFrac(rt_auxvars(ghosted_id), &
+                                     reaction%mineral), &
+          ReactionMnrlResPorosity(reaction,rt_auxvars(ghosted_id), &
+                                  material_auxvars(ghosted_id)))
+      endif
       scale = 0.d0
       if (porosity > critical_porosity .and. &
           porosity0_p(local_id) > critical_porosity) then
@@ -2257,7 +2292,8 @@ subroutine RealizationUpdateMineralPorosity(realization)
   use Reaction_Mineral_module
   use Reactive_Transport_Aux_module
   use Material_Aux_module
-  use Variables_module, only : POROSITY, BASE_POROSITY, INITIAL_POROSITY
+  use Variables_module, only : POROSITY, BASE_POROSITY, INITIAL_POROSITY, &
+                               TRAN_DIFFUSION_SCALE
 
   implicit none
 
@@ -2274,6 +2310,7 @@ subroutine RealizationUpdateMineralPorosity(realization)
 
   PetscInt :: local_id, ghosted_id
   PetscReal :: sum_mnrl_volume_fractions
+  PetscReal :: unfloored_por, porosity_res, tran_scale
 
   option => realization%option
   discretization => realization%discretization
@@ -2309,6 +2346,33 @@ subroutine RealizationUpdateMineralPorosity(realization)
                                   field%work_loc,ONEDOF)
   call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc,BASE_POROSITY)
   call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc,POROSITY)
+
+  ! face diffusion shutoff factor toward the precip cutoff; recomputed
+  ! each step from lagged VF so reopening by dissolution is automatic
+  if (reaction%tran_diff_ramp > 0.d0 .and. &
+      reaction%mineral%nkinmnrl > 0) then
+    do local_id = 1, grid%nlmax
+      ghosted_id = grid%nL2G(local_id)
+      tran_scale = 1.d0
+      porosity_res = ReactionMnrlResPorosity(reaction, &
+                                             rt_auxvars(ghosted_id), &
+                                             material_auxvars(ghosted_id))
+      if (porosity_res > 0.d0) then
+        unfloored_por = 1.d0 - &
+          ReactionMnrlCalcSumVolFrac(rt_auxvars(ghosted_id),reaction%mineral)
+        tran_scale = min(max((unfloored_por-porosity_res)/ &
+                             reaction%tran_diff_ramp, &
+                             reaction%tran_diff_min_scale),1.d0)
+      endif
+      material_auxvars(ghosted_id)%tran_diff_scale = tran_scale
+    enddo
+    call MaterialGetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
+                                 TRAN_DIFFUSION_SCALE)
+    call DiscretizationLocalToLocal(discretization,field%work_loc, &
+                                    field%work_loc,ONEDOF)
+    call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
+                                 TRAN_DIFFUSION_SCALE)
+  endif
 !  call MaterialSetAuxVarScalar(patch%aux%Material,UNINITIALIZED_DOUBLE, &
 !                               POROSITY,POROSITY_CURRENT)
 
@@ -2355,6 +2419,14 @@ subroutine RealizationCheckResidualPorosity(realization)
 
   if (.not.associated(reaction)) return
   if (reaction%mineral%nkinmnrl == 0) return
+
+  if ((reaction%tran_diff_ramp > 0.d0 .or. &
+       reaction%use_unfloored_porosity) .and. &
+      .not.reaction%update_porosity) then
+    option%io_buffer = 'DIFFUSION_RAMP_WIDTH and USE_UNFLOORED_POROSITY in &
+      &LIMIT_MINERAL_VOLUME_FRACTION require UPDATE_POROSITY.'
+    call PrintErrMsg(option)
+  endif
 
   patch => realization%patch
   grid => patch%grid
