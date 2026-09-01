@@ -308,6 +308,8 @@ module Reaction_Aux_module
     PetscBool :: update_porosity
     PetscBool :: calculate_initial_porosity
     PetscReal :: minimum_porosity
+    ! LIMIT_MINERAL_VOLUME_FRACTION block present
+    PetscBool :: limit_mnrl_vf
     ! QPAC-style precip cutoff porosity (LIMIT_MINERAL_VOLUME_FRACTION);
     ! 0 = off
     PetscReal :: porosity_res
@@ -563,6 +565,7 @@ function ReactionAuxCreateAux()
   reaction%update_porosity = PETSC_FALSE
   reaction%calculate_initial_porosity = PETSC_FALSE
   reaction%minimum_porosity = 0.d0
+  reaction%limit_mnrl_vf = PETSC_FALSE
   reaction%porosity_res = 0.d0
   reaction%porosity_res_ramp = 0.d0
   reaction%porosity_res_fraction = 0.d0

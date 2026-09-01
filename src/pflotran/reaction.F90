@@ -890,6 +890,7 @@ subroutine ReactionReadPass1(reaction,input,option)
         call InputErrorMsg(input,option,'minimim porosity','CHEMISTRY')
       case('LIMIT_MINERAL_VOLUME_FRACTION')
         error_string = 'CHEMISTRY,LIMIT_MINERAL_VOLUME_FRACTION'
+        reaction%limit_mnrl_vf = PETSC_TRUE
         call InputPushBlock(input,option)
         do
           call InputReadPflotranString(input,option)

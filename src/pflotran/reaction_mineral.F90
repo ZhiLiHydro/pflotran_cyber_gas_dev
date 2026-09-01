@@ -2193,9 +2193,12 @@ subroutine ReactionMnrlUpdateKineticState(rt_auxvar,global_auxvar, &
   type(option_type) :: option
 
   PetscInt :: imnrl, iaqspec, icomp
+  PetscInt :: i
   PetscReal :: delta_volfrac
   PetscReal :: scale, vf_avail, sum_base, sum_pos
   PetscReal :: porosity_res
+  PetscReal :: water_vol, avail_mol, dvf, dvf_max, stoich_
+  PetscReal :: released(reaction%naqcomp)
   PetscReal :: res(reaction%ncomp) ! has to be sized accurately
   PetscReal :: jac(1,1) ! strictly a dummy array
   PetscBool, parameter :: store_rate = PETSC_TRUE
@@ -2210,6 +2213,53 @@ subroutine ReactionMnrlUpdateKineticState(rt_auxvar,global_auxvar, &
                             compute_analytical_derivative,store_rate, &
                             rt_auxvar,global_auxvar, &
                             material_auxvar,reaction,option)
+
+  ! availability limiter: a mineral's step growth cannot consume more
+  ! than the cell's aqueous inventory of any reactant plus what dissolving
+  ! minerals release this step (defense against spuriously converged rates
+  ! at extreme affinity); caps are per mineral, so minerals competing for
+  ! a species may jointly overdraw by at most the number of competitors;
+  ! transport influx within the step is not credited (conservative)
+  if (reaction%limit_mnrl_vf) then
+    ! L water/m^3 bulk
+    water_vol = 1.d3*material_auxvar%porosity*global_auxvar%sat(1)
+    ! mol/m^3 bulk released by dissolving minerals this step
+    released = 0.d0
+    do imnrl = 1, reaction%mineral%nkinmnrl
+      if (rt_auxvar%mnrl_rate(imnrl) < 0.d0) then
+        do i = 1, reaction%mineral%kinmnrlspecid(0,imnrl)
+          stoich_ = reaction%mineral%kinmnrlstoich(i,imnrl)
+          if (stoich_ > 0.d0) then
+            icomp = reaction%mineral%kinmnrlspecid(i,imnrl)
+            released(icomp) = released(icomp) - &
+              rt_auxvar%mnrl_rate(imnrl)*option%tran_dt*stoich_
+          endif
+        enddo
+      endif
+    enddo
+    do imnrl = 1, reaction%mineral%nkinmnrl
+      if (rt_auxvar%mnrl_rate(imnrl) > 0.d0) then
+        dvf = rt_auxvar%mnrl_rate(imnrl)* &
+              reaction%mineral%kinmnrl_molar_vol(imnrl)*option%tran_dt
+        dvf_max = MAX_DOUBLE
+        do i = 1, reaction%mineral%kinmnrlspecid(0,imnrl)
+          stoich_ = reaction%mineral%kinmnrlstoich(i,imnrl)
+          if (stoich_ > 0.d0) then
+            icomp = reaction%mineral%kinmnrlspecid(i,imnrl)
+            ! mol/m^3 bulk available
+            avail_mol = max(rt_auxvar%total(icomp,1),0.d0)*water_vol + &
+                        released(icomp)
+            dvf_max = min(dvf_max,avail_mol/stoich_* &
+                          reaction%mineral%kinmnrl_molar_vol(imnrl))
+          endif
+        enddo
+        if (dvf > dvf_max) then
+          rt_auxvar%mnrl_rate(imnrl) = rt_auxvar%mnrl_rate(imnrl)* &
+                                       dvf_max/dvf
+        endif
+      endif
+    enddo
+  endif
 
   ! cap this step's precip at the pore volume above residual porosity
   ! by scaling positive rates; growth apportioned by rate magnitude
