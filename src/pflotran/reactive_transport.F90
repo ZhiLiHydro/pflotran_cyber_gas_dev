@@ -4120,68 +4120,50 @@ subroutine RTUpdateAuxVars(realization,update_cells,update_bcs, &
   endif
 #endif
 
+        ! Honor EQUILIBRATE_AT_EACH_CELL; do not force a constraint re-solve
+        ! when couple_co2 is true (that re-solve fails on restart once the
+        ! BC flow state is two-phase).
         equilibrate_constraint = constraint_coupler%equilibrate_at_each_cell
-        if (.not.option%transport%couple_co2) then
-          select case(boundary_condition%tran_condition%itype)
-            case(CONCENTRATION_SS,DIRICHLET_BC,NEUMANN_BC)
-              ! since basis_molarity is in molarity, must convert to molality
-                ! by dividing by density of water (mol/L -> mol/kg)
-              xxbc(istartaq_loc:iendaq_loc) = &
-                basis_molarity_p(1:reaction%naqcomp) * molarity_to_molality
-            case(DIRICHLET_ZERO_GRADIENT_BC,ZERO_GRADIENT_BC,MEMBRANE_BC)
-              if (patch%boundary_velocities(iphase,sum_connection) < 0.d0) then
-                ! with outflow, these boundary concentrations are ignored,
-                ! for zero-gradient, but we still have to set them as other
-                ! PMs such as salinity use the concentrations for calculating
-                ! boundary densities. however, no need to equilibrate
-                equilibrate_constraint = PETSC_FALSE
-              endif
-              ! xxbc concentration will be ignored on outflow. if there is
-              ! any doubt, set xxbc = 1.d-9 for vdarcy < 0 to check
-              xxbc(istartaq_loc:iendaq_loc) = &
-                basis_molarity_p(1:reaction%naqcomp) * molarity_to_molality
-          end select
-          ! no need to update boundary fluid density since it is already set
-          rt_auxvars_bc(sum_connection)%pri_molal = &
-            xxbc(istartaq_loc:iendaq_loc)
-          if (.not.option%transport%isothermal_reaction) then
-            call RUpdateTempDependentCoefs(patch%aux%Global% &
-                                             auxvars_bc(sum_connection), &
-                                           reaction,PETSC_FALSE, &
-                                           option)
-          endif
-          if (update_activity_coefs) then
-            call RActivityCoefficients( &
-                        rt_auxvars_bc(sum_connection), &
-                        global_auxvars_bc(sum_connection), &
-                        reaction,option)
-          endif
-          call RTAuxVarCompute(rt_auxvars_bc(sum_connection), &
-                               global_auxvars_bc(sum_connection), &
-                               patch%aux%Material%auxvars(ghosted_id), &
-                               reaction,grid%nG2A(ghosted_id),option)
-        else
-          equilibrate_constraint = PETSC_TRUE
-        ! Chuan needs to fill this in.
-          select case(boundary_condition%tran_condition%itype)
-            case(CONCENTRATION_SS,DIRICHLET_BC,NEUMANN_BC)
-              rt_auxvars_bc(sum_connection)%pri_molal = &
-                basis_molarity_p(1:reaction%naqcomp) * molarity_to_molality
-            case(DIRICHLET_ZERO_GRADIENT_BC)
-              if (patch%boundary_velocities(iphase,sum_connection) >= 0.d0) then
-                rt_auxvars_bc(sum_connection)%pri_molal = &
-                  basis_molarity_p(1:reaction%naqcomp) * molarity_to_molality
-              else
-                ! same as zero_gradient below
-                equilibrate_constraint = PETSC_FALSE
-                rt_auxvars_bc(sum_connection)%pri_molal = &
-                  xx_loc_p(istartaq:iendaq)
-              endif
-            case(ZERO_GRADIENT_BC,MEMBRANE_BC)
+        select case(boundary_condition%tran_condition%itype)
+          case(CONCENTRATION_SS,DIRICHLET_BC,NEUMANN_BC)
+            ! since basis_molarity is in molarity, must convert to molality
+            ! by dividing by density of water (mol/L -> mol/kg)
+            xxbc(istartaq_loc:iendaq_loc) = &
+              basis_molarity_p(1:reaction%naqcomp) * molarity_to_molality
+          case(DIRICHLET_ZERO_GRADIENT_BC,ZERO_GRADIENT_BC,MEMBRANE_BC)
+            if (patch%boundary_velocities(iphase,sum_connection) < 0.d0) then
+              ! with outflow, these boundary concentrations are ignored,
+              ! for zero-gradient, but we still have to set them as other
+              ! PMs such as salinity use the concentrations for calculating
+              ! boundary densities. however, no need to equilibrate
               equilibrate_constraint = PETSC_FALSE
-              rt_auxvars_bc(sum_connection)%pri_molal = &
-                xx_loc_p(istartaq:iendaq)
-          end select
+            endif
+            ! xxbc concentration will be ignored on outflow. if there is
+            ! any doubt, set xxbc = 1.d-9 for vdarcy < 0 to check
+            xxbc(istartaq_loc:iendaq_loc) = &
+              basis_molarity_p(1:reaction%naqcomp) * molarity_to_molality
+            if (option%transport%couple_co2) then
+              select case(boundary_condition%tran_condition%itype)
+                case(ZERO_GRADIENT_BC,MEMBRANE_BC)
+                  equilibrate_constraint = PETSC_FALSE
+                  xxbc(istartaq_loc:iendaq_loc) = xx_loc_p(istartaq:iendaq)
+                case(DIRICHLET_ZERO_GRADIENT_BC)
+                  if (patch%boundary_velocities(iphase,sum_connection) < &
+                      0.d0) then
+                    xxbc(istartaq_loc:iendaq_loc) = &
+                      xx_loc_p(istartaq:iendaq)
+                  endif
+              end select
+            endif
+        end select
+        ! no need to update boundary fluid density since it is already set
+        rt_auxvars_bc(sum_connection)%pri_molal = &
+          xxbc(istartaq_loc:iendaq_loc)
+        if (.not.option%transport%isothermal_reaction) then
+          call RUpdateTempDependentCoefs(patch%aux%Global% &
+                                           auxvars_bc(sum_connection), &
+                                         reaction,PETSC_FALSE, &
+                                         option)
         endif
         if (equilibrate_constraint) then
           call ReactionEquilibrateConstraint( &
@@ -4190,6 +4172,22 @@ subroutine RTUpdateAuxVars(realization,update_cells,update_bcs, &
                             patch%aux%Material%auxvars(ghosted_id),reaction, &
                             constraint,num_iterations, &
                             PETSC_TRUE,option)
+        else
+          if (update_activity_coefs) then
+            call RActivityCoefficients( &
+                        rt_auxvars_bc(sum_connection), &
+                        global_auxvars_bc(sum_connection), &
+                        reaction,option)
+            if (option%transport%couple_co2) then
+              call RCO2AqActCoeff(rt_auxvars_bc(sum_connection), &
+                                  global_auxvars_bc(sum_connection), &
+                                  reaction,option)
+            endif
+          endif
+          call RTAuxVarCompute(rt_auxvars_bc(sum_connection), &
+                               global_auxvars_bc(sum_connection), &
+                               patch%aux%Material%auxvars(ghosted_id), &
+                               reaction,grid%nG2A(ghosted_id),option)
         endif
       enddo ! iconn
       boundary_condition => boundary_condition%next
