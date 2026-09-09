@@ -624,7 +624,8 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
         dcond_dpor = dcond_dpor - cond_c * Vc * sat**(n-1.d0)
     end select
 
-    if (use_geomech .and. cond > 1d-12) then
+    !if (use_geomech .and. cond > 1d-12) then
+    if (use_geomech) then
       ! Geomechanics coupling
       ! get updated resistivity
       rho_min = 1.d0 / cond_max
