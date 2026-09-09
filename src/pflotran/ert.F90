@@ -529,7 +529,11 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
                                            dcond_dconc,dcond_dpor,option)
   !
   ! Calculates conductivity using petrophysical empirical relations
-  ! using Archie's law or Waxman-Smits equation
+  ! using Archie's law or Waxman-Smits equation. A nonzero Brace
+  ! stress-resistivity slope is applied even when Archie (or material)
+  ! conductivity is zero; cond_min is then the t=0 baseline. After
+  ! Brace, conductivity is only floored at 1.d-12 so compression can
+  ! raise resistivity above 1/cond_min.
   !
   ! Author: Piyoosh Jaysaval
   ! Date: 03/18/21
@@ -573,16 +577,18 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
   PetscReal :: cond_ws
 
   ! local variables
-  PetscReal :: rho, dcond_geomech, cond_min, cond_max, rho_min
+  PetscReal :: cond_min, cond_max, cond_floor
   PetscBool :: use_flow, use_trans, use_geomech
 
   use_flow    = (option%iflowmode   /= NULL_MODE)
   use_trans   = (option%itranmode  /= NULL_MODE)
   use_geomech = (option%igeommode   /= NULL_MODE)
 
-  ! Minimum allowable conductivity/resistivity
+  ! cond_min is the Brace-only t=0 reference when Archie+surface ~ 0
   cond_min = 1.d-5
   cond_max = 1.d2
+  ! after Brace, keep the ERT matrix nonsingular without wiping drho
+  cond_floor = 1.d-12
 
   if (use_flow .or. use_trans) then
 
@@ -624,40 +630,63 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
         dcond_dpor = dcond_dpor - cond_c * Vc * sat**(n-1.d0)
     end select
 
-    !if (use_geomech .and. cond > 1d-12) then
     if (use_geomech) then
-      ! Geomechanics coupling
-      ! get updated resistivity
-      rho_min = 1.d0 / cond_max
-      rho = 1.d0 / cond + drho_geomech
-      if (rho > rho_min) then
-        ! get conductivity from resistivity
-        cond = 1.d0 / rho
-      else
-        ! resistivity is too low/negative, use linearized approx for Brace eq.
-        dcond_geomech = - drho_geomech * cond * cond
-        cond = cond + dcond_geomech
-      endif
+      call ERTApplyBraceResistivity(drho_geomech,cond_min,cond_max,cond)
     endif
 
-  elseif (.not. use_flow .and. .not. use_trans .and. use_geomech .and. &
-          cond_baseline > 1e-12) then
-    ! get updated resistivity
-    rho_min = 1.d0 / cond_max
-    rho = 1.d0 / cond_baseline + drho_geomech
-    if (rho > rho_min) then
-      ! get conductivity from resistivity
-      cond = 1.d0 / rho
-    else
-      ! resistivity is too low/negative, use linearized approx for Brace eq.
-      dcond_geomech = - drho_geomech * cond_baseline * cond_baseline
-      cond = cond_baseline + dcond_geomech
-    endif
+  elseif (.not. use_flow .and. .not. use_trans .and. use_geomech) then
+    cond = cond_baseline
+    call ERTApplyBraceResistivity(drho_geomech,cond_min,cond_max,cond)
   endif
 
-  cond = min(max(cond, cond_min), cond_max)
+  cond = min(max(cond, cond_floor), cond_max)
 
 end subroutine ERTConductivityFromEmpiricalEqs
+
+! ************************************************************************** !
+
+subroutine ERTApplyBraceResistivity(drho_geomech,cond_min,cond_max,cond)
+  !
+  ! Applies Brace stress-resistivity correction:
+  !   rho = 1/cond_ref + drho_geomech
+  ! When Archie (or material) conductivity is at or below cond_min,
+  ! cond_min is the t=0 baseline so a nonzero Brace slope still
+  ! produces a stress-dependent resistivity. The result is allowed
+  ! to fall below cond_min under compression.
+  !
+  ! Author: Jumanah Al Kubaisy
+  ! Date: 09/09/26
+  !
+
+  implicit none
+
+  PetscReal, intent(in) :: drho_geomech
+  PetscReal, intent(in) :: cond_min
+  PetscReal, intent(in) :: cond_max
+  PetscReal, intent(inout) :: cond
+
+  PetscReal :: cond_ref
+  PetscReal :: rho
+  PetscReal :: rho_min
+  PetscReal :: dcond_geomech
+
+  rho_min = 1.d0 / cond_max
+  if (cond > cond_min) then
+    cond_ref = cond
+  else
+    cond_ref = cond_min
+  endif
+
+  rho = 1.d0 / cond_ref + drho_geomech
+  if (rho > rho_min) then
+    cond = 1.d0 / rho
+  else
+    ! resistivity is too low/negative, use linearized approx for Brace eq.
+    dcond_geomech = - drho_geomech * cond_ref * cond_ref
+    cond = cond_ref + dcond_geomech
+  endif
+
+end subroutine ERTApplyBraceResistivity
 
 ! ************************************************************************** !
 
