@@ -7,6 +7,7 @@ module EOS_module
   use EOS_Gas_module
   use co2_span_wagner_module
   use EOS_Database_module
+  use EOS_Water_class, only : EOSWaterClassSetDensity
 
   implicit none
 
@@ -176,6 +177,7 @@ subroutine EOSRead(input,option)
                 call InputKeywordUnrecognized(input,word,'EOS,WATER,DENSITY',option)
             end select
             call EOSWaterSetDensity(word,temparray)
+            call EOSWaterClassSetDensity(word,temparray)
           case('ENTHALPY')
             call InputReadCard(input,option,word)
             call InputErrorMsg(input,option,'ENTHALPY','EOS,WATER')

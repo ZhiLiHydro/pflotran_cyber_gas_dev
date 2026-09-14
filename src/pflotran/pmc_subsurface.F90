@@ -130,6 +130,7 @@ subroutine PMCSubsurfaceSetupSolvers_TimestepperSNES(this)
   use PM_Richards_class
   use PM_TH_class
   use PM_ZFlow_class
+  use PM_Compositional_Flow_class
   use PM_RT_class
   use PM_NWT_class
   use PM_Waste_Form_class
@@ -186,6 +187,8 @@ subroutine PMCSubsurfaceSetupSolvers_TimestepperSNES(this)
           string = " mode = PNF: h"
         case(ZFLOW_MODE)
           string = " mode = ZFlow: p"
+        case(COMPFLOW_MODE)
+          string = " mode = CompFlow: p"
         case(G_MODE)
           string = " mode = General: p, sg/X, T"
         case(H_MODE)
@@ -331,6 +334,8 @@ subroutine PMCSubsurfaceSetupSolvers_TimestepperSNES(this)
         class is(pm_wippflo_type)
           add_pre_check = PETSC_TRUE
         class is(pm_zflow_type)
+          add_pre_check = PETSC_TRUE
+        class is(pm_compflow_type)
           add_pre_check = PETSC_TRUE
         class is(pm_immiscible_type)
           add_pre_check = PETSC_TRUE
@@ -776,6 +781,7 @@ subroutine PMCSubsurfaceSetAuxDataForGeomech(this)
   use TH_Aux_module
   use Mphase_Aux_module
   use Global_Aux_module
+  use Compositional_Flow_Aux_module
 
   implicit none
 
@@ -825,6 +831,14 @@ subroutine PMCSubsurfaceSetAuxDataForGeomech(this)
           &mass conservation in ZFLOW.'
         call PrintErrMsg(this%option)
       endif
+    case(COMPFLOW_MODE)
+      if (compflow_liq_flow_eq > 0) then
+        pres_dof = compflow_liq_flow_eq
+      else
+        this%option%io_buffer = 'Geomechanics cannot be run without water &
+          &mass conservation in COMPOSITIONAL_FLOW.'
+        call PrintErrMsg(this%option)
+      endif
     case default
       this%option%io_buffer = 'PMCSubsurfaceSetAuxDataForGeomech() not ' // &
         'supported for ' // trim(this%option%flowmode)
@@ -863,7 +877,8 @@ subroutine PMCSubsurfaceSetAuxDataForGeomech(this)
                                       pres_dof)
           if (this%option%iflowmode == RICHARDS_MODE .or. &
               this%option%iflowmode == RICHARDS_TS_MODE .or. &
-              this%option%iflowmode == ZFLOW_MODE) then
+              this%option%iflowmode == ZFLOW_MODE .or. &
+              this%option%iflowmode == COMPFLOW_MODE) then
             temp_p(local_id) = this%option%flow%reference_temperature
           else
             temp_p(local_id) = xx_loc_p(option%nflowdof*(ghosted_id - 1) + &

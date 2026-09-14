@@ -456,7 +456,8 @@ subroutine GlobalSetAuxVarVecLoc(realization,vec_loc,ivar,time_level)
       enddo
     case(DARCY_VELOCITY)
       do ghosted_id=1, grid%ngmax
-        patch%aux%Global%auxvars(ghosted_id)%darcy_vel(option%liquid_phase) = vec_loc_p(ghosted_id)
+        patch%aux%Global%auxvars(ghosted_id)%darcy_vel(option%liquid_phase) = &
+          vec_loc_p(ghosted_id)
       enddo
       !end select
     case default
@@ -697,6 +698,7 @@ subroutine GlobalParameterQualityCheck(realization)
   type(option_type), pointer :: option
   type(global_auxvar_type), pointer :: auxvars(:)
   PetscBool :: error_found
+  PetscInt :: local_id
   PetscInt :: ghosted_id
   PetscInt:: iparameter
   PetscErrorCode :: ierr
@@ -710,7 +712,8 @@ subroutine GlobalParameterQualityCheck(realization)
   do
     if (.not.associated(cur_parameter)) exit
     iparameter = cur_parameter%id
-    do ghosted_id = 1, grid%ngmax
+    do local_id = 1, grid%nlmax
+      ghosted_id = grid%nL2G(local_id)
       if (Uninitialized(auxvars(ghosted_id)%parameters(iparameter))) then
         option%io_buffer = 'Uninitialized PARAMETER "' // &
           trim(cur_parameter%name) // '" at cell ' // &
@@ -742,7 +745,7 @@ subroutine GlobalWeightAuxVars(realization,weight)
   ! Author: Glenn Hammond
   ! Date: 11/03/08
   !
-
+  use Compositional_Flow_Aux_module, only : compflow_heat_tran_eq
   use Realization_Subsurface_class
   use Option_module
 
@@ -777,6 +780,19 @@ subroutine GlobalWeightAuxVars(realization,weight)
   end select
 
   select case(option%iflowmode)
+    case(COMPFLOW_MODE)
+      do ghosted_id = 1, realization%patch%aux%Global%num_aux
+        auxvars(ghosted_id)%pres(:) = &
+          (weight*auxvars(ghosted_id)%pres_store(:,TIME_TpDT)+ &
+           (1.d0-weight)*auxvars(ghosted_id)%pres_store(:,TIME_T))
+      enddo
+      if (Initialized(compflow_heat_tran_eq)) then
+        do ghosted_id = 1, realization%patch%aux%Global%num_aux
+          auxvars(ghosted_id)%temp = &
+            (weight*auxvars(ghosted_id)%temp_store(TIME_TpDT)+ &
+            (1.d0-weight)*auxvars(ghosted_id)%temp_store(TIME_T))
+        enddo
+      endif
     case(TH_MODE,G_MODE,H_MODE,SCO2_MODE)
       do ghosted_id = 1, realization%patch%aux%Global%num_aux
         auxvars(ghosted_id)%pres(:) = &
@@ -907,7 +923,7 @@ subroutine GlobalSetAuxVarsAtTimeLevel(realization,time_level,time)
   ! gas saturation
   flag = PETSC_FALSE
   select case(option%iflowmode)
-    case(RICHARDS_MODE,TH_MODE,TH_TS_MODE,ZFLOW_MODE)
+    case(RICHARDS_MODE,TH_MODE,TH_TS_MODE,ZFLOW_MODE,COMPFLOW_MODE)
       if (option%transport%nphase > 1) flag = PETSC_TRUE
     case default
       flag = PETSC_TRUE

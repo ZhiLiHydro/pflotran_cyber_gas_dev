@@ -11,6 +11,16 @@ module EOS_Water_module
 
   private
 
+  ! Export selected kernels + vars so the class-based water EOS can wrap/reuse
+  ! them directly for exact numerical results on CONSTANT/IFC67/IF97 (day 1).
+  public :: EOSWaterDensityConstant, &
+            EOSWaterDensityIFC67, &
+            EOSWaterDensityIF97, &
+            EOSWaterViscosityConstant, &
+            EOSWaterViscosity1, &
+            EOSWaterSaturationPressureIFC67, &
+            constant_density, constant_viscosity
+
   ! module variables
   PetscReal :: constant_density
   PetscReal :: constant_enthalpy

@@ -330,6 +330,8 @@ subroutine SimSubsurfInputRecord(this)
       write(id,'(a)') 'richards'
     case(ZFLOW_MODE)
       write(id,'(a)') 'zflow'
+    case(COMPFLOW_MODE)
+      write(id,'(a)') 'compositional_flow'
     case(PNF_MODE)
       write(id,'(a)') 'pore network flow'
     case(RICHARDS_TS_MODE)

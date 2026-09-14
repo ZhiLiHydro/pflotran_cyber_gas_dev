@@ -173,8 +173,10 @@ subroutine FactorySubsurfaceSetFlowMode(pm_flow,pm_well,option)
   use PM_Richards_TS_class
   use PM_TH_TS_class
   use PM_ZFlow_class
+  use PM_Compositional_Flow_class
   use PM_SCO2_class
   use ZFlow_Aux_module
+  use Compositional_Flow_Aux_module
   use PM_PNF_class
   use PM_Well_class
   use PM_Immiscible_class
@@ -245,6 +247,30 @@ subroutine FactorySubsurfaceSetFlowMode(pm_flow,pm_well,option)
       endif
       if (option%nflowdof == 0) then
         option%io_buffer=  'A process must be specified under ZFLOW,&
+          &OPTIONS,PROCESSES.'
+        call PrintErrMsg(option)
+      endif
+    class is (pm_compflow_type)
+      option%iflowmode = COMPFLOW_MODE
+      option%flowmode = 'compositional flow'
+      option%nphase = 1
+      option%nflowdof = 0
+      option%nflowspec = 0
+      if (Initialized(compflow_liq_flow_eq)) then
+        option%nflowdof = option%nflowdof + 1
+        option%nflowspec = option%nflowspec + 1
+      endif
+      if (Initialized(compflow_heat_tran_eq)) then
+        option%nflowdof = option%nflowdof + 1
+      else
+        option%flow%isothermal = PETSC_TRUE
+      endif
+      if (Initialized(compflow_sol_tran_eq)) then
+        option%nflowdof = option%nflowdof + 1
+        option%nflowspec = 1
+      endif
+      if (option%nflowdof == 0) then
+        option%io_buffer=  'A process must be specified under COMPOSITIONAL_FLOW,&
           &OPTIONS,PROCESSES.'
         call PrintErrMsg(option)
       endif
