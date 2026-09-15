@@ -1064,6 +1064,16 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
                     temp_int = temp_int + 1
                     iflag = PETSC_TRUE
                 end select
+                ! h_conv occupies the water-aux for TEMPERATURE
+                ! CONVECTIVE (cannot combine with water CONDUCTANCE)
+                if (.not.iflag .and. &
+                    associated(coupler%flow_condition%temperature)) then
+                  if (coupler%flow_condition%temperature%itype == &
+                      CONVECTIVE_BC) then
+                    temp_int = temp_int + 1
+                    iflag = PETSC_TRUE
+                  endif
+                endif
                 allocate(coupler%flow_bc_type(ndof+temp_int))
                 allocate(coupler%flow_aux_real_var(ndof+temp_int, &
                                                    num_connections))
@@ -4770,7 +4780,7 @@ subroutine PatchUpdateCouplerAuxVarsTHC(patch,coupler,option)
   if (associated(flow_condition%temperature)) then
     coupler%flow_bc_type(energy_index) = flow_condition%temperature%itype
     select case(flow_condition%temperature%itype)
-      case(DIRICHLET_BC,NEUMANN_BC,ZERO_GRADIENT_BC)
+      case(DIRICHLET_BC,NEUMANN_BC,ZERO_GRADIENT_BC,CONVECTIVE_BC)
         if (flow_condition%temperature%itype == DIRICHLET_BC .or. &
             .not.hydrostatic_update_called) then
           select type(dataset => &
@@ -4788,6 +4798,27 @@ subroutine PatchUpdateCouplerAuxVarsTHC(patch,coupler,option)
               call DatasetUnknownClass(dataset,option, &
                                        'PatchUpdateCouplerAuxVarsTHC')
           end select
+        endif
+        if (flow_condition%temperature%itype == CONVECTIVE_BC) then
+          ! h_conv shares the water-aux slot with the water CONDUCTANCE BCs
+          if (associated(flow_condition%pressure)) then
+            select case(flow_condition%pressure%itype)
+              case(DIRICHLET_CONDUCTANCE_BC,HYDROSTATIC_CONDUCTANCE_BC, &
+                   HET_HYDROSTATIC_CONDUCTANCE_BC)
+                option%io_buffer = 'A water CONDUCTANCE BC cannot be &
+                  &combined with TEMPERATURE CONVECTIVE in flow condition "' &
+                  // trim(flow_condition%name) // '".'
+                call PrintErrMsg(option)
+            end select
+          endif
+          if (Uninitialized(flow_condition%temperature%aux_real(1))) then
+            option%io_buffer = 'TEMPERATURE CONVECTIVE requires a &
+              &HEAT_TRANSFER_COEFFICIENT in flow condition "' // &
+              trim(flow_condition%name) // '".'
+            call PrintErrMsg(option)
+          endif
+          coupler%flow_aux_real_var(water_aux_index,1:num_connections) = &
+            flow_condition%temperature%aux_real(1)
         endif
     end select
   endif

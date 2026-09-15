@@ -7,6 +7,8 @@ module THC_Aux_module
   use Material_Aux_module
   use EOS_Water_module
   use THC_EOS_Utils_module
+  use Characteristic_Curves_Thermal_module
+  use Utility_module, only : Arrhenius
 
   implicit none
 
@@ -16,26 +18,23 @@ module THC_Aux_module
   PetscReal, public :: thc_specific_heat_liquid = 4184.d0  ! c_p,l [J/(kg.K)]
   PetscReal, public :: thc_specific_heat_solid = 800.d0   ! c_s   [J/(kg.K)]
   PetscReal, public :: thc_density_solid       = 2650.d0  ! rho_s [kg/m^3]
-  ! grain (solid) thermal conductivity used by the porosity-dependent
-  ! grain-Somerton (THCThermalConductivityEff)
+  ! grain thermal conductivity for the Somerton model
   PetscReal, public :: thc_kappa_solid         = 3.d0     ! kappa_s [W/(m.K)]
-  ! optional OPTIONS-block global BULK dry/wet conductivities; when set they
-  ! feed the TH-style interpolation (kappa_eff = ckdry + sqrt(S)*(ckwet-ckdry))
-  ! and take precedence over thc_kappa_solid.  Default UNINITIALIZED so the
-  ! grain-Somerton path remains the fallback when they are not supplied.
+  ! optional OPTIONS-block bulk dry/wet conductivities (TH-style)
   PetscReal, public :: thc_kappa_dry = UNINITIALIZED_DOUBLE  ! [W/(m.K)]
   PetscReal, public :: thc_kappa_wet = UNINITIALIZED_DOUBLE  ! [W/(m.K)]
+  ! reference temperature for the Arrhenius diffusion scaling (matches RT)
+  PetscReal, parameter, public :: thc_diffusion_ref_temp = 25.d0  ! [C]
 
-  ! Energy formulation switch (selectable via ENERGY_FORMULATION input card).
-  !   THC_ENERGY_RHO_CP_T (default): liquid energy = rho*c_p*T
-  !   THC_ENERGY_FULL_EOS (TH-equivalent)  : liquid energy uses EOS u(P,T)
-  !                                              in accumulation and h(P,T) in
-  !                                              advection (single-phase liquid)
-  ! Mass-specific (J/kg, J/m^3) units throughout -- no option%scale applied,
-  ! unlike TH which carries molar MJ. The rock term stays rho_s*c_s*T in both.
+  ! energy formulation (ENERGY_FORMULATION card); FULL_EOS is TH-equivalent
   PetscInt, parameter, public :: THC_ENERGY_RHO_CP_T = 1
   PetscInt, parameter, public :: THC_ENERGY_FULL_EOS = 2
-  PetscInt, public :: thc_energy_mode = THC_ENERGY_RHO_CP_T
+  PetscInt, public :: thc_energy_mode = THC_ENERGY_FULL_EOS
+
+  PetscInt, parameter, public :: THC_ADVECTIVE_DENSITY_UPWIND = 1
+  PetscInt, parameter, public :: THC_ADVECTIVE_DENSITY_TH_COMPATIBLE = 2
+  PetscInt, public :: thc_advective_density_mode = &
+                        THC_ADVECTIVE_DENSITY_TH_COMPATIBLE
 
   ! perturbation controls (mirror zflow_aux.F90)
   PetscReal, public :: thc_rel_pert = 1.d-8
@@ -109,10 +108,10 @@ module THC_Aux_module
     PetscReal :: ddiff_dC         ! d(D_mol)/dC [m^2.L/(s.mol)]
     PetscReal :: therm_cond_eff   ! kappa_eff [W/(m.K)]
     PetscReal :: dtherm_cond_dsat ! d(kappa_eff)/dS_l [W/(m.K)]
+    PetscReal :: dtherm_cond_dT   ! d(kappa_eff)/dT [W/(m.K.C)]
     PetscReal :: heat_cap_liquid  ! rho_l * c_p,l [J/(m^3.K)]
     PetscReal :: heat_cap_solid   ! rho_s * c_s   [J/(m^3.K)]
-    ! Full-EOS energy fields (used only when thc_energy_mode==FULL_EOS).
-    ! Mass-specific (per kg) -- converted from molar EOS values via FMWH2O.
+    ! FULL_EOS energy fields, mass-specific
     PetscReal :: u                ! specific internal energy u(P,T) [J/kg]
     PetscReal :: h                ! specific enthalpy h(P,T)        [J/kg]
     PetscReal :: du_dP            ! d(u)/dP at const T,C [J/(kg.Pa)]
@@ -127,16 +126,15 @@ module THC_Aux_module
     PetscBool :: check_post_converged
     PetscReal, pointer :: tensorial_rel_perm_exponent(:,:)
     PetscReal :: diffusion_coef
-    ! Per-material thermal properties (indexed by material id).  Populated in
-    ! THCSetup from the MATERIAL_PROPERTY card (TH-compatible), falling back
-    ! to the MODE THC OPTIONS-block globals when a material omits them.
+    ! DIFFUSION_ACTIVATION_ENERGY [J/mol] for Arrhenius scaling
+    PetscReal :: diffusion_activation_energy
+    ! per-material thermal properties (MATERIAL_PROPERTY, OPTIONS fallback)
     PetscReal, pointer :: dencpr(:)  ! rho_s * c_s [J/(m^3.K)]
     PetscReal, pointer :: ckdry(:)   ! bulk dry  thermal conductivity [W/(m.K)]
     PetscReal, pointer :: ckwet(:)   ! bulk wet  thermal conductivity [W/(m.K)]
-    ! When ckdry(imat)/ckwet(imat) are UNINITIALIZED_DOUBLE the per-cell
-    ! conductivity falls back to the grain-Somerton model using the global
-    ! thc_kappa_solid; otherwise the TH-style bulk interpolation
-    ! kappa_eff = ckdry + sqrt(S_l)*(ckwet-ckdry) is used.
+    PetscReal, pointer :: alpha_l(:) ! longitudinal dispersivity [m]
+    ! per-material THERMAL_CHARACTERISTIC_CURVES; the only path with dkappa/dT
+    type(cc_thermal_ptr_type), pointer :: thermal_cc(:)
   end type thc_parameter_type
 
   type, public :: thc_type
@@ -171,7 +169,8 @@ module THC_Aux_module
             THCAuxMapConditionIndices, &
             THCPrintAuxVars, &
             THCOutputAuxVars, &
-            THCAuxTensorialRelPerm
+            THCAuxTensorialRelPerm, &
+            THCThermalCondEval
 
 contains
 
@@ -212,9 +211,12 @@ function THCAuxCreate(option)
   aux%thc_parameter%check_post_converged = PETSC_FALSE
   nullify(aux%thc_parameter%tensorial_rel_perm_exponent)
   aux%thc_parameter%diffusion_coef = 0.d0
+  aux%thc_parameter%diffusion_activation_energy = UNINITIALIZED_DOUBLE
   nullify(aux%thc_parameter%dencpr)
   nullify(aux%thc_parameter%ckdry)
   nullify(aux%thc_parameter%ckwet)
+  nullify(aux%thc_parameter%alpha_l)
+  nullify(aux%thc_parameter%thermal_cc)
 
   THCAuxCreate => aux
 
@@ -265,6 +267,7 @@ subroutine THCAuxVarInit(auxvar,option)
   auxvar%ddiff_dC = 0.d0
   auxvar%therm_cond_eff = 0.d0
   auxvar%dtherm_cond_dsat = 0.d0
+  auxvar%dtherm_cond_dT = 0.d0
   auxvar%heat_cap_liquid = 0.d0
   auxvar%heat_cap_solid = 0.d0
   auxvar%u = 0.d0
@@ -322,6 +325,7 @@ subroutine THCAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%ddiff_dC = auxvar%ddiff_dC
   auxvar2%therm_cond_eff = auxvar%therm_cond_eff
   auxvar2%dtherm_cond_dsat = auxvar%dtherm_cond_dsat
+  auxvar2%dtherm_cond_dT = auxvar%dtherm_cond_dT
   auxvar2%heat_cap_liquid = auxvar%heat_cap_liquid
   auxvar2%heat_cap_solid = auxvar%heat_cap_solid
   auxvar2%u = auxvar%u
@@ -366,11 +370,12 @@ subroutine THCAuxVarCompute(x,thc_auxvar,global_auxvar, &
   PetscInt :: natural_id
 
   PetscInt :: imat
-  PetscReal :: kappa_dry_mat, kappa_wet_mat, sqrt_sat_mat
+  PetscReal :: arrhenius_scale
+  PetscReal :: pw, dpw_dp
+  PetscReal :: dummy_dist(-1:3)
   PetscBool :: saturated
   PetscReal :: dkr_dsat
   PetscReal :: deffsat_dsat
-  PetscReal :: mobility, dmobility_dp, dmobility_dT, dmobility_dC
   PetscErrorCode :: ierr
 
   ! --------------------------------------------------------------------------
@@ -443,6 +448,9 @@ subroutine THCAuxVarCompute(x,thc_auxvar,global_auxvar, &
   ! above is due to SaturationFunctionCompute switching a cell to
   ! saturated to prevent unstable (potentially infinite) derivatives when
   ! capillary pressure is very small
+  ! EOS pressure: reference when unsaturated, cell pressure when saturated
+  pw = option%flow%reference_pressure
+  dpw_dp = 0.d0
   if (saturated) then
     thc_auxvar%pc = 0.d0
     thc_auxvar%sat = 1.d0
@@ -451,6 +459,8 @@ subroutine THCAuxVarCompute(x,thc_auxvar,global_auxvar, &
     thc_auxvar%dkr_dp = 0.d0
     thc_auxvar%effective_saturation = 1.d0
     thc_auxvar%deffsat_dp = 0.d0
+    pw = max(thc_auxvar%pres,pw)
+    dpw_dp = 1.d0
   endif
 
   if (option%iflag /= THC_UPDATE_FOR_DERIVATIVE) then
@@ -464,7 +474,7 @@ subroutine THCAuxVarCompute(x,thc_auxvar,global_auxvar, &
   ! Step 5: liquid density rho_l(P,T,C) and its derivatives
   ! --------------------------------------------------------------------------
   ierr = 0
-  call THCDensityAndDerivs(thc_auxvar%temp,thc_auxvar%pres, &
+  call THCDensityAndDerivs(thc_auxvar%temp,pw, &
                                thc_auxvar%conc,thc_auxvar%den_kg, &
                                thc_auxvar%den_kmol,thc_auxvar%dden_dp, &
                                thc_auxvar%dden_dT,thc_auxvar%dden_dC, &
@@ -478,8 +488,9 @@ subroutine THCAuxVarCompute(x,thc_auxvar,global_auxvar, &
   ! --------------------------------------------------------------------------
   ! Step 6: liquid viscosity mu_l(T,C) and its derivatives
   ! --------------------------------------------------------------------------
-  call THCViscosityAndDerivs(thc_auxvar%temp,thc_auxvar%pres, &
-                                 thc_auxvar%conc,thc_auxvar%vis, &
+  call THCViscosityAndDerivs(thc_auxvar%temp,pw, &
+                                 thc_auxvar%conc,thc_auxvar%den_kg, &
+                                 thc_auxvar%vis, &
                                  thc_auxvar%dvis_dT,thc_auxvar%dvis_dC, &
                                  ierr)
   if (ierr /= 0) then
@@ -489,38 +500,15 @@ subroutine THCAuxVarCompute(x,thc_auxvar,global_auxvar, &
   endif
 
   ! --------------------------------------------------------------------------
-  ! Step 7: effective porous-medium thermal conductivity
+  ! Step 7: effective thermal conductivity (per-cell value for output; the
+  ! flux kernels re-evaluate per connection via THCThermalCondEval)
   ! --------------------------------------------------------------------------
-  ! Per-material thermal properties are indexed by the cell's material id.
-  ! If the material supplies bulk dry/wet conductivities (THERMAL_CONDUCTIVITY_
-  ! DRY/WET, TH-compatible) use the TH-style interpolation
-  !   kappa_eff = ckdry + sqrt(S_l)*(ckwet-ckdry) ;
-  ! otherwise fall back to the grain-Somerton model from the OPTIONS global
-  ! thc_kappa_solid.
   imat = material_auxvar%id
-  if (associated(thc_parameter%ckdry)) then
-    kappa_dry_mat = thc_parameter%ckdry(imat)
-    kappa_wet_mat = thc_parameter%ckwet(imat)
-  else
-    kappa_dry_mat = UNINITIALIZED_DOUBLE
-    kappa_wet_mat = UNINITIALIZED_DOUBLE
-  endif
-
-  if (Initialized(kappa_dry_mat) .and. Initialized(kappa_wet_mat)) then
-    ! TH-style bulk dry/wet interpolation (saturation floored for finite deriv)
-    sqrt_sat_mat = sqrt(max(thc_auxvar%sat,thc_sat_floor))
-    thc_auxvar%therm_cond_eff = kappa_dry_mat + &
-      sqrt_sat_mat * (kappa_wet_mat - kappa_dry_mat)
-    thc_auxvar%dtherm_cond_dsat = &
-      (kappa_wet_mat - kappa_dry_mat) / (2.d0 * sqrt_sat_mat)
-  else
-    ! grain-Somerton fallback using the OPTIONS-block global solid conductivity
-    call THCThermalConductivityEff(thc_auxvar%sat, &
-                                       thc_auxvar%effective_porosity, &
-                                       thc_kappa_solid, &
-                                       thc_auxvar%therm_cond_eff, &
-                                       thc_auxvar%dtherm_cond_dsat)
-  endif
+  dummy_dist = 0.d0
+  call THCThermalCondEval(thc_auxvar,imat,thc_parameter,dummy_dist, &
+                          PETSC_FALSE,thc_auxvar%therm_cond_eff, &
+                          thc_auxvar%dtherm_cond_dsat, &
+                          thc_auxvar%dtherm_cond_dT,option)
 
   ! --------------------------------------------------------------------------
   ! Step 8: derived quantities
@@ -536,13 +524,28 @@ subroutine THCAuxVarCompute(x,thc_auxvar,global_auxvar, &
                                     thc_specific_heat_solid
   endif
 
+  thc_auxvar%dden_dp = thc_auxvar%dden_dp * dpw_dp
+  thc_auxvar%dh_dP = thc_auxvar%dh_dP * dpw_dp
+  thc_auxvar%du_dP = thc_auxvar%du_dP * dpw_dp
+
+  ! molecular diffusion, optionally Arrhenius-scaled
+  thc_auxvar%diff_mol = thc_parameter%diffusion_coef
+  thc_auxvar%ddiff_dT = 0.d0
+  thc_auxvar%ddiff_dC = 0.d0
+  if (Initialized(thc_parameter%diffusion_activation_energy)) then
+    arrhenius_scale = Arrhenius(thc_parameter%diffusion_activation_energy, &
+                                thc_auxvar%temp,thc_diffusion_ref_temp)
+    thc_auxvar%diff_mol = thc_auxvar%diff_mol * arrhenius_scale
+    thc_auxvar%ddiff_dT = thc_auxvar%diff_mol * &
+      thc_parameter%diffusion_activation_energy / IDEAL_GAS_CONSTANT / &
+      (thc_auxvar%temp + T273K)**2
+  endif
+
   ! --------------------------------------------------------------------------
-  ! Step 8b: full-EOS specific enthalpy / internal energy (FULL_EOS mode only)
+  ! Step 8b: FULL_EOS specific enthalpy and internal energy [J/kg]
   ! --------------------------------------------------------------------------
-  ! Mirrors TH (th_aux.F90) but stays in mass-specific J/kg (no option%scale).
-  ! Liquid enthalpy h(P,T) from EOS water; internal energy u = h - P/rho.
   if (thc_energy_mode == THC_ENERGY_FULL_EOS) then
-    call THCEnergyEOS(thc_auxvar,option)
+    call THCEnergyEOS(thc_auxvar,pw,option)
   else
     thc_auxvar%u = 0.d0
     thc_auxvar%h = 0.d0
@@ -554,36 +557,80 @@ subroutine THCAuxVarCompute(x,thc_auxvar,global_auxvar, &
     thc_auxvar%dh_dC = 0.d0
   endif
 
-  ! derived mobility derivatives. These are recomputed
-  ! by the flux kernel from the stored primitives (kr, dkr_dp, vis, dvis_dT,
-  ! dvis_dC); evaluated here to document the chain rule.
-  ! Assumes: no pressure dependence of viscosity mu_l, and
-  !          no temperature or concentration dependence of kr. Then:
-  !   mobility       = kr / mu_l
-  !   d(mob)/dP_l    = dkr_dp / mu_l                      (through saturation)
-  !   d(mob)/dT      = -kr / mu_l^2 * dmu_l/dT
-  !   d(mob)/dC      = -kr / mu_l^2 * dmu_l/dC
-  mobility     = thc_auxvar%kr / thc_auxvar%vis
-  dmobility_dp = thc_auxvar%dkr_dp / thc_auxvar%vis
-  dmobility_dT = -thc_auxvar%kr / thc_auxvar%vis**2 * &
-                 thc_auxvar%dvis_dT
-  dmobility_dC = -thc_auxvar%kr / thc_auxvar%vis**2 * &
-                 thc_auxvar%dvis_dC
-
 end subroutine THCAuxVarCompute
 
 ! ************************************************************************** !
 
-subroutine THCEnergyEOS(thc_auxvar,option)
+subroutine THCThermalCondEval(thc_auxvar,imat,thc_parameter,dist,project, &
+                              kappa_eff,dkappa_dsat,dkappa_dT,option)
   !
-  ! Computes mass-specific liquid enthalpy h(P,T) and internal energy u(P,T)
-  ! and their derivatives from the water EOS, for the FULL_EOS energy
-  ! formulation (single-phase liquid, no ice/vapor).
+  ! Effective thermal conductivity and its derivatives; precedence: thermal
+  ! characteristic curves, bulk dry/wet interpolation, grain-Somerton.
+  ! project applies TCondTensorToScalar(dist) first for anisotropic curves.
   !
-  ! TH (th_aux.F90) carries molar enthalpy scaled by option%scale (MJ/kmol).
-  ! Here we keep mass-specific SI units: h[J/kg] = h_molar[J/kmol]/FMWH2O,
-  ! and u = h - P/rho_kg (the P*v work term), consistent with TH's
-  !   u_molar = h_molar - P/rho_molar  divided through by FMWH2O.
+  ! Author: Piyoosh Jaysaval
+  ! Date: 08/14/26
+  !
+  use Option_module
+
+  implicit none
+
+  type(thc_auxvar_type) :: thc_auxvar
+  PetscInt :: imat
+  type(thc_parameter_type) :: thc_parameter
+  PetscReal :: dist(-1:3)
+  PetscBool :: project
+  PetscReal :: kappa_eff, dkappa_dsat, dkappa_dT
+  type(option_type) :: option
+
+  PetscBool :: thermal_cc_set
+  PetscReal :: kappa_dry_mat, kappa_wet_mat, sqrt_sat_mat
+
+  dkappa_dT = 0.d0
+
+  thermal_cc_set = PETSC_FALSE
+  if (associated(thc_parameter%thermal_cc)) then
+    thermal_cc_set = associated(thc_parameter%thermal_cc(imat)%ptr)
+  endif
+  kappa_dry_mat = UNINITIALIZED_DOUBLE
+  kappa_wet_mat = UNINITIALIZED_DOUBLE
+  if (associated(thc_parameter%ckdry)) then
+    kappa_dry_mat = thc_parameter%ckdry(imat)
+    kappa_wet_mat = thc_parameter%ckwet(imat)
+  endif
+
+  if (thermal_cc_set) then
+    if (project) then
+      call thc_parameter%thermal_cc(imat)%ptr% &
+             thermal_conductivity_function%TCondTensorToScalar(dist,option)
+    endif
+    call thc_parameter%thermal_cc(imat)%ptr% &
+           thermal_conductivity_function% &
+           CalculateTCond(max(thc_auxvar%sat,thc_sat_floor), &
+                          thc_auxvar%temp, &
+                          thc_auxvar%effective_porosity, &
+                          kappa_eff,dkappa_dsat,dkappa_dT,option)
+  else if (Initialized(kappa_dry_mat) .and. Initialized(kappa_wet_mat)) then
+    ! TH-style bulk dry/wet interpolation (saturation floored for finite deriv)
+    sqrt_sat_mat = sqrt(max(thc_auxvar%sat,thc_sat_floor))
+    kappa_eff = kappa_dry_mat + sqrt_sat_mat * (kappa_wet_mat - kappa_dry_mat)
+    dkappa_dsat = (kappa_wet_mat - kappa_dry_mat) / (2.d0 * sqrt_sat_mat)
+  else
+    ! grain-Somerton fallback using the OPTIONS-block global solid conductivity
+    call THCThermalConductivityEff(thc_auxvar%sat, &
+                                       thc_auxvar%effective_porosity, &
+                                       thc_kappa_solid, &
+                                       kappa_eff,dkappa_dsat)
+  endif
+
+end subroutine THCThermalCondEval
+
+! ************************************************************************** !
+
+subroutine THCEnergyEOS(thc_auxvar,pw,option)
+  !
+  ! Mass-specific liquid enthalpy h(P,T), internal energy u = h - P/rho and
+  ! their derivatives from the water EOS (FULL_EOS formulation).
   !
   ! Author: Piyoosh Jaysaval
   ! Date: 06/25/26
@@ -593,6 +640,7 @@ subroutine THCEnergyEOS(thc_auxvar,option)
   implicit none
 
   type(thc_auxvar_type) :: thc_auxvar
+  PetscReal :: pw
   type(option_type) :: option
 
   PetscReal :: hw, hw_dp, hw_dT       ! molar enthalpy [J/kmol] and derivs
@@ -600,7 +648,7 @@ subroutine THCEnergyEOS(thc_auxvar,option)
   PetscErrorCode :: ierr
 
   ierr = 0
-  P = thc_auxvar%pres
+  P = pw
   den_kg = thc_auxvar%den_kg
 
   ! EOS water enthalpy: hw [J/kmol], hw_dp [J/(kmol.Pa)], hw_dT [J/(kmol.K)]
@@ -617,10 +665,7 @@ subroutine THCEnergyEOS(thc_auxvar,option)
   thc_auxvar%dh_dT = hw_dT / FMWH2O
   thc_auxvar%dh_dC = 0.d0   ! no solute enthalpy correction yet
 
-  ! Internal energy u = h - P/rho_kg   [J/kg]
-  !   du/dP = dh/dP - (1/rho - P/rho^2 * drho/dP)
-  !   du/dT = dh/dT + P/rho^2 * drho/dT
-  !   du/dC = dh/dC + P/rho^2 * drho/dC
+  ! internal energy u = h - P/rho and derivatives
   inv_den  = 1.d0 / den_kg
   inv_den2 = inv_den * inv_den
   thc_auxvar%u = thc_auxvar%h - P * inv_den
@@ -670,7 +715,9 @@ subroutine THCAuxVarPerturb(x,thc_auxvar,global_auxvar, &
   ! THC_UPDATE_FOR_DERIVATIVE indicates call from perturbation
   option%iflag = THC_UPDATE_FOR_DERIVATIVE
   do idof = 1, option%nflowdof
-    pert = x(idof)*thc_rel_pert+thc_min_pert(idof)
+    ! magnitude-based so the terms cannot cancel at negative x
+    pert = dabs(x(idof))*thc_rel_pert+thc_min_pert(idof)
+    if (x(idof) < 0.d0) pert = -pert
     thc_auxvar(idof)%pert = pert
     x_pert(1:option%nflowdof) = x
     x_pert(idof) = x(idof) + pert
@@ -851,8 +898,7 @@ function THCAuxMapConditionIndices(include_water_aux)
   allocate(mapping(THC_MAX_INDEX))
   mapping = UNINITIALIZED_INTEGER
 
-  ! THC always has all three equations active (fixed DOF), so every branch
-  ! is taken unconditionally.
+  ! all three equations are always active
   temp_int = 0
   temp_int = temp_int + 1
   mapping(THC_COND_WATER_INDEX) = temp_int
@@ -1021,6 +1067,11 @@ subroutine THCAuxDestroy(aux)
     call DeallocateArray(aux%thc_parameter%dencpr)
     call DeallocateArray(aux%thc_parameter%ckdry)
     call DeallocateArray(aux%thc_parameter%ckwet)
+    call DeallocateArray(aux%thc_parameter%alpha_l)
+    if (associated(aux%thc_parameter%thermal_cc)) then
+      deallocate(aux%thc_parameter%thermal_cc)
+      nullify(aux%thc_parameter%thermal_cc)
+    endif
     deallocate(aux%thc_parameter)
   endif
   nullify(aux%thc_parameter)
