@@ -1,17 +1,23 @@
 program validate_ml_surrogate
   !
-  ! Standalone bit-verification of the C-huber MLP forward pass.  Loads the
+  ! Standalone bit-verification of the ML surrogate forward pass.  Loads the
   ! trained weights directly via the HDF5 Fortran API (no PFLOTRAN init
-  ! plumbing), then runs MLPForward on every row of the golden test-vector
-  ! CSV and compares the predicted rate against the expected column.  The
-  ! forward pass must reproduce chuber_reference.py to ~1e-9 relative.
+  ! plumbing), then evaluates every row of the golden test-vector CSV and
+  ! compares against the expected columns.  Both output stages are handled,
+  ! selected by the weight file (root attribute output_stage_id):
+  !   stage 0 (sinh rate):  expected_rate_per_yr
+  !   stage 1 (node_min_v1): expected_d_vf_csh, expected_d_s_csh, expected_d_vf_m4ac,
+  !            expected_d_vf_other, expected_dphi, expected_cs_new, expected_sink_{Si,Ca,Mg,Al,HCO3,TotalH}
+  ! Tolerance: relative 1e-9 with an absolute floor of 1e-10 (a cell exactly at
+  ! the residual porosity has a reference rate of 0 while round-off can give
+  ! ~1e-9; see NEURAL_ODE_HANDOFF.md section 6).
   !
   ! Run:
   !   make validate_ml_surrogate
-  !   ./validate_ml_surrogate <weights.h5> <chuber_test_vectors.csv>
+  !   ./validate_ml_surrogate <weights.h5> <test_vectors.csv>
   !
   ! Author: Heeho Park
-  ! Date: 2026-07-24
+  ! Date: 2026-07-24 (both output stages, header-driven columns: 2026-09-14)
   !
 
 #include "petsc/finclude/petscsys.h"
@@ -21,12 +27,21 @@ program validate_ml_surrogate
 
   implicit none
 
+  integer, parameter :: NEXP = 12
+  character(len=24), parameter :: exp_names(NEXP) = [character(len=24) :: &
+    'expected_d_vf_csh', 'expected_d_s_csh', 'expected_d_vf_m4ac', 'expected_d_vf_other', &
+    'expected_dphi', 'expected_cs_new', 'expected_sink_Si', 'expected_sink_Ca', &
+    'expected_sink_Mg', 'expected_sink_Al', 'expected_sink_HCO3', 'expected_sink_TotalH']
+
   type(ml_mlp_type) :: mlp
+  type(ml_node_min_out_type) :: nm
   character(len=1024) :: filename, csvname
-  character(len=4096) :: line, hdr
-  PetscReal :: x_in(ML_N_IN), rate, expected, vals(64), rel, worst
+  character(len=8192) :: line, hdr
+  character(len=512) :: errmsg
+  PetscReal :: rate, expected, vals(64), rel, worst, got(NEXP)
+  PetscReal, allocatable :: x_in(:)
   PetscErrorCode :: ierr
-  integer :: nargs, hdf5_err, ios, i, nrows, ncol, erate_col
+  integer :: nargs, hdf5_err, ios, i, k, nrows, ncol, erate_col, exp_col(NEXP), lerr
   integer(HID_T) :: file_id
 
   call PetscInitialize(PETSC_NULL_CHARACTER, ierr); CHKERRA(ierr)
@@ -49,7 +64,14 @@ program validate_ml_surrogate
   endif
 
   call MLPCreate(mlp)
-  call LoadWeights(file_id, mlp)
+  call MLPLoadFromFileId(mlp, file_id, lerr, errmsg)
+  if (lerr /= 0) then
+    write(*,'(a,a)') 'Weight file rejected: ', trim(errmsg)
+    call PetscFinalize(ierr); CHKERRA(ierr)
+    stop 5
+  endif
+  write(*,'(a,i0,a,i0,a,i0,a,i0,a,i0,a,i0)') 'loaded: n_in=', mlp%n_in, ' hidden=', mlp%n_h0, '/', mlp%n_h1, '/', &
+    mlp%n_h2, ' n_out=', mlp%n_out, ' output_stage=', mlp%stage
 
   call h5fclose_f(file_id, hdf5_err)
   call h5close_f(hdf5_err)
@@ -61,17 +83,26 @@ program validate_ml_surrogate
     stop 3
   endif
 
-  ! Header-driven column layout: features are cols 4..3+ML_N_IN; the target
-  ! column is located by name so C-huber and B-huber CSVs both work.
-  read(10,'(a)',iostat=ios) hdr    ! header (comma-separated)
+  ! Header-driven column layout: features are cols 4..3+n_in (after eval_id,
+  ! cell_x_m, time_y); the expected columns are located by name.
+  read(10,'(a)',iostat=ios) hdr
   ncol = 1
   do i = 1, len_trim(hdr)
     if (hdr(i:i) == ',') ncol = ncol + 1
   enddo
-  erate_col = 1
-  do i = 1, index(hdr,'expected_rate_per_yr') - 1
-    if (hdr(i:i) == ',') erate_col = erate_col + 1
+  erate_col = ColumnOf(hdr, 'expected_rate_per_yr')
+  do k = 1, NEXP
+    exp_col(k) = ColumnOf(hdr, trim(exp_names(k)))
   enddo
+  if (mlp%stage == ML_STAGE_PHI_SINH .and. erate_col == 0) then
+    write(*,'(a)') 'CSV has no expected_rate_per_yr column (stage 0 file).'
+    stop 6
+  endif
+  if (mlp%stage == ML_STAGE_NODE_MIN .and. any(exp_col == 0)) then
+    write(*,'(a)') 'CSV lacks one of the expected_* columns of node_min_v1.'
+    stop 6
+  endif
+  allocate(x_in(mlp%n_in))
 
   worst = 0.d0
   nrows = 0
@@ -85,12 +116,23 @@ program validate_ml_surrogate
     read(line,*,iostat=ios) vals(1:ncol)
     if (ios /= 0) cycle
 
-    x_in = vals(4:3+ML_N_IN)         ! features, idx order 1..ML_N_IN
-    expected = vals(erate_col)       ! expected_rate_per_yr
-    call MLPForward(mlp, x_in, rate)
-
-    rel = abs(rate - expected) / max(abs(expected), 1.d-30)
-    worst = max(worst, rel)
+    x_in = vals(4:3+mlp%n_in)        ! features, idx order 1..n_in
+    select case(mlp%stage)
+      case(ML_STAGE_PHI_SINH)
+        expected = vals(erate_col)
+        call MLPForward(mlp, x_in, rate)
+        rel = abs(rate - expected) / max(abs(expected), 1.d-30)
+        worst = max(worst, rel)
+      case(ML_STAGE_NODE_MIN)
+        call MLPForwardNodeMin(mlp, x_in, nm)
+        got = [nm%d_vf_csh, nm%d_s_csh, nm%d_vf_m4ac, nm%d_vf_other, nm%dphi, nm%cs_new, &
+               nm%sink_Si, nm%sink_Ca, nm%sink_Mg, nm%sink_Al, nm%sink_HCO3, nm%sink_TotalH]
+        do k = 1, NEXP
+          expected = vals(exp_col(k))
+          rel = abs(got(k) - expected) / max(abs(expected), 1.d-10)
+          worst = max(worst, rel)
+        enddo
+    end select
     nrows = nrows + 1
   enddo
   close(10)
@@ -100,7 +142,7 @@ program validate_ml_surrogate
     write(*,'(a)') 'PASS -- Fortran forward pass matches the golden vectors.'
   else
     write(*,'(a)') 'FAIL -- transform chain broken (check log10 mask, clip '// &
-                   'bounds, feature order, TotalH sign, asinh_scale).'
+                   'bounds, feature order, TotalH sign, output-stage attributes).'
   endif
 
   call MLPDestroy(mlp)
@@ -111,104 +153,27 @@ contains
 
 ! ************************************************************************** !
 
-subroutine LoadWeights(file_id, mlp)
+function ColumnOf(hdr, name) result(col)
   !
-  ! Validator-private raw-HDF5 loader so MLPForward can be exercised without
-  ! OptionCreate/Comm/Driver plumbing.  Mirrors MLPLoad's dataset contract.
+  ! 1-based index of the comma-separated header field equal to name; 0 if absent.
   !
-  ! Author: Heeho Park
-  ! Date: 2026-07-24
+  ! Author: Claude Fable 5.1 (for Heeho Park)
+  ! Date: 2026-09-14
   !
   implicit none
+  character(len=*) :: hdr, name
+  integer :: col
+  integer :: i, start, n
 
-  integer(HID_T) :: file_id
-  type(ml_mlp_type) :: mlp
-
-  call ReadVec(file_id, '/scalers/X_mean',  ML_N_IN, mlp%X_mean)
-  call ReadVec(file_id, '/scalers/X_scale', ML_N_IN, mlp%X_scale)
-  call ReadScalar(file_id, '/scalers/y_mean',  mlp%y_mean)
-  call ReadScalar(file_id, '/scalers/y_scale', mlp%y_scale)
-
-  call ReadVec(file_id, '/transforms/clip_lo',    ML_N_IN, mlp%clip_lo)
-  call ReadVec(file_id, '/transforms/clip_hi',    ML_N_IN, mlp%clip_hi)
-  call ReadVec(file_id, '/transforms/log10_mask', ML_N_IN, mlp%log10_mask)
-  mlp%asinh_scale = ML_ASINH_SCALE
-
-  call ReadLayer(file_id, '/layers/layer_00', ML_N_H0, ML_N_IN, mlp%W0, mlp%b0)
-  call ReadLayer(file_id, '/layers/layer_01', ML_N_H1, ML_N_H0, mlp%W1, mlp%b1)
-  call ReadLayer(file_id, '/layers/layer_02', ML_N_H2, ML_N_H1, mlp%W2, mlp%b2)
-  call ReadLayer(file_id, '/layers/layer_03', ML_N_OUT, ML_N_H2, mlp%W3, mlp%b3)
-
-end subroutine LoadWeights
-
-! ************************************************************************** !
-
-subroutine ReadLayer(file_id, group_path, n_out, n_in, W, b)
-  implicit none
-  integer(HID_T) :: file_id
-  character(len=*) :: group_path
-  PetscInt :: n_out, n_in
-  PetscReal, pointer :: W(:,:)
-  PetscReal, pointer :: b(:)
-
-  allocate(W(n_in, n_out))
-  allocate(b(n_out))
-  call ReadMat(file_id, trim(group_path) // '/W', n_out, n_in, W)
-  call ReadVec(file_id, trim(group_path) // '/b', n_out,       b)
-end subroutine ReadLayer
-
-! ************************************************************************** !
-
-subroutine ReadVec(file_id, dataset_path, n, vec)
-  implicit none
-  integer(HID_T) :: file_id
-  character(len=*) :: dataset_path
-  PetscInt :: n
-  PetscReal :: vec(n)
-
-  integer(HID_T) :: dset_id
-  integer(HSIZE_T) :: dims(1)
-  integer :: hdf5_err
-
-  dims(1) = int(n, HSIZE_T)
-  call h5dopen_f(file_id, dataset_path, dset_id, hdf5_err)
-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, vec, dims, hdf5_err)
-  call h5dclose_f(dset_id, hdf5_err)
-end subroutine ReadVec
-
-! ************************************************************************** !
-
-subroutine ReadMat(file_id, dataset_path, n_out, n_in, mat)
-  implicit none
-  integer(HID_T) :: file_id
-  character(len=*) :: dataset_path
-  PetscInt :: n_out, n_in
-  ! On-disk shape is (n_out, n_in) C-order; Fortran (col-major) reads
-  ! those bytes into a (n_in, n_out) array element-for-element.
-  PetscReal :: mat(n_in, n_out)
-
-  integer(HID_T) :: dset_id
-  integer(HSIZE_T) :: dims(2)
-  integer :: hdf5_err
-
-  dims(1) = int(n_in,  HSIZE_T)
-  dims(2) = int(n_out, HSIZE_T)
-  call h5dopen_f(file_id, dataset_path, dset_id, hdf5_err)
-  call h5dread_f(dset_id, H5T_NATIVE_DOUBLE, mat, dims, hdf5_err)
-  call h5dclose_f(dset_id, hdf5_err)
-end subroutine ReadMat
-
-! ************************************************************************** !
-
-subroutine ReadScalar(file_id, dataset_path, scalar)
-  implicit none
-  integer(HID_T) :: file_id
-  character(len=*) :: dataset_path
-  PetscReal :: scalar
-
-  PetscReal :: tmp(1)
-  call ReadVec(file_id, dataset_path, 1, tmp)
-  scalar = tmp(1)
-end subroutine ReadScalar
+  col = 0; n = 1; start = 1
+  do i = 1, len_trim(hdr) + 1
+    if (i > len_trim(hdr) .or. hdr(i:i) == ',') then
+      if (hdr(start:i-1) == name) then
+        col = n; return
+      endif
+      n = n + 1; start = i + 1
+    endif
+  enddo
+end function ColumnOf
 
 end program validate_ml_surrogate
