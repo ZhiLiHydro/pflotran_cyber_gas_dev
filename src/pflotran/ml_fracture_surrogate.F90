@@ -30,8 +30,12 @@ module ML_Fracture_Surrogate_module
     PetscReal :: k_initial             ! snapshot of deck PERM_XX  at Setup
     PetscReal :: aperture_m            ! sqrt(12*k_initial) [m], MLP input #2
     PetscInt :: id_h, id_ca, id_si, id_al, id_mg   ! primary species indices
-    PetscReal, pointer :: phi_frac(:)  ! surrogate-owned porosity per local cell
-    character(len=MAXSTRINGLENGTH) :: diag_file    ! optional 7-input CSV dump
+    PetscReal, pointer :: phi_frac(:)  ! surrogate-owned porosity per local cell (stage 0)
+    ! node_min_v1 (stage 1): surrogate-owned mineral state per local cell,
+    ! (1) vf_CSH_total, (2) S_CSH = vf_CSH_total*CSH_meanCS, (3) vf_M4Ac, (4) vf_other;
+    ! porosity is DERIVED: phi = phi0 - state(1) - state(3) - state(4).
+    PetscReal, pointer :: state(:,:)
+    character(len=MAXSTRINGLENGTH) :: diag_file    ! optional CSV dump of inputs + raw outputs
     PetscInt :: diag_unit
     PetscInt :: diag_stride
     PetscInt :: diag_step
@@ -78,6 +82,7 @@ subroutine MLFractureSurrogateInit(cfg)
   cfg%diag_stride = 1
   cfg%diag_step = 0
   nullify(cfg%phi_frac)
+  nullify(cfg%state)
   call MLPCreate(cfg%mlp)
 
 end subroutine MLFractureSurrogateInit
@@ -228,21 +233,46 @@ subroutine MLFractureSurrogateSetup(cfg, realization, option)
   name = 'Mg++';       cfg%id_mg = ReactionAuxGetPriSpecIDFromName(name, &
                                      realization%reaction, option)
 
-  ! Surrogate-owned porosity: fracture cells evolve from phi_initial.
-  allocate(cfg%phi_frac(grid%nlmax))
-  cfg%phi_frac = cfg%phi_initial
+  call MLPLoad(cfg%mlp, cfg%filename, option)
+
+  select case(cfg%mlp%stage)
+    case(ML_STAGE_PHI_SINH)
+      if (cfg%mlp%n_in /= 7) then
+        option%io_buffer = 'FRACTURE_ML_SURROGATE: a stage-0 weight file must have n_in = 7 &
+          &(porosity, aperture, TotalH, Ca, Si, Al, Mg).'
+        call PrintErrMsg(option)
+      endif
+      ! Surrogate-owned porosity: fracture cells evolve from phi_initial.
+      allocate(cfg%phi_frac(grid%nlmax))
+      cfg%phi_frac = cfg%phi_initial
+    case(ML_STAGE_NODE_MIN)
+      ! Surrogate-owned mineral state, all zero in a fresh fracture (seeds ~1e-8).
+      allocate(cfg%state(4, grid%nlmax))
+      cfg%state = 0.d0
+      if (abs(cfg%mlp%phi0 - cfg%phi_initial) > 1.d-6) then
+        write(option%io_buffer,'(a,es12.4,a,es12.4,a)') &
+          'FRACTURE_ML_SURROGATE: weight-file phi0 (', cfg%mlp%phi0, &
+          ') differs from the fracture MATERIAL_PROPERTY POROSITY (', cfg%phi_initial, &
+          '); the surrogate derives porosity from phi0.'
+        call PrintWrnMsg(option)
+      endif
+  end select
 
   ! Optional dump for external forward-pass verification: one file per rank,
-  ! holding the raw MLP inputs and the pre-clamp network output.
+  ! holding the raw MLP inputs and the pre-clamp network outputs.
   if (len_trim(cfg%diag_file) > 0) then
     write(diag_name,'(a,a,i0,a)') trim(cfg%diag_file), '.', option%myrank, '.csv'
     open(newunit=cfg%diag_unit, file=trim(diag_name), action='write', &
          status='replace')
-    write(cfg%diag_unit,'(a)') &
-      'time_y,cell_id,porosity,aperture,TotalH,Ca,Si,Al,Mg,rate_per_yr'
+    if (cfg%mlp%stage == ML_STAGE_NODE_MIN) then
+      write(cfg%diag_unit,'(a)') &
+        'time_y,cell_id,porosity,aperture,TotalH,Ca,Si,Al,Mg,vf_CSH_total,CSH_meanCS,vf_M4Ac,' // &
+        'd_vf_csh,d_s_csh,d_vf_m4ac,d_vf_other,dphi,cs_new,sink_Si,sink_Ca,sink_Mg,sink_Al,sink_HCO3,sink_TotalH,vf_other'
+    else
+      write(cfg%diag_unit,'(a)') &
+        'time_y,cell_id,porosity,aperture,TotalH,Ca,Si,Al,Mg,rate_per_yr'
+    endif
   endif
-
-  call MLPLoad(cfg%mlp, cfg%filename, option)
 
 end subroutine MLFractureSurrogateSetup
 
@@ -250,7 +280,8 @@ end subroutine MLFractureSurrogateSetup
 
 subroutine MLFractureSurrogateUpdate(realization, cfg)
   !
-  ! Per-timestep hook: for every local fracture cell, assemble the 7 B-huber
+  ! Per-timestep hook.  Stage 0 (sinh-rate files such as B-thuber / NODE-phi):
+  ! for every local fracture cell, assemble the 7 B-huber
   ! features (current porosity, fixed aperture, TotalH, and the Ca/Si/Al/Mg
   ! local total concentrations), run the MLP to get dphi/dt, clamp to the
   ! clogging branch, Euler-step the surrogate porosity, and overlay porosity +
@@ -281,9 +312,11 @@ subroutine MLFractureSurrogateUpdate(realization, cfg)
   type(option_type), pointer :: option
   type(material_auxvar_type), pointer :: material_auxvars(:)
   type(reactive_transport_auxvar_type), pointer :: rt_auxvars(:)
-  PetscReal :: x_in(ML_N_IN)
+  PetscReal :: x_in(10)
+  type(ml_node_min_out_type) :: nm
   PetscReal :: phi_old, phi_new, rate, dt_y, time_y
   PetscReal :: k_new, tortuosity_new, phi_ratio
+  PetscReal :: vf, s_csh, m4, oth, d_csh, d_s, d_m4, d_oth, room, grow, sc
   PetscInt :: local_id, ghosted_id, i, iphase
 
   patch => realization%patch
@@ -302,38 +335,103 @@ subroutine MLFractureSurrogateUpdate(realization, cfg)
     ghosted_id = grid%nL2G(local_id)
     if (patch%imat(ghosted_id) /= cfg%fracture_imat) cycle
 
-    phi_old = cfg%phi_frac(local_id)
-    if (phi_old <= PHI_SEALED) then
-      phi_new = phi_old             ! cell is sealed; skip the network
-    else
-      x_in(1)  = phi_old
-      x_in(2)  = cfg%aperture_m
-      x_in(3)  = rt_auxvars(ghosted_id)%total(cfg%id_h,  iphase)  ! TotalH
-      x_in(4)  = rt_auxvars(ghosted_id)%total(cfg%id_ca, iphase)
-      x_in(5)  = rt_auxvars(ghosted_id)%total(cfg%id_si, iphase)
-      x_in(6)  = rt_auxvars(ghosted_id)%total(cfg%id_al, iphase)
-      x_in(7)  = rt_auxvars(ghosted_id)%total(cfg%id_mg, iphase)
+    if (cfg%mlp%stage == ML_STAGE_PHI_SINH) then
+      ! ---- stage 0: signed rate, host clamps, Euler on phi ----------------
+      phi_old = cfg%phi_frac(local_id)
+      if (phi_old <= PHI_SEALED) then
+        phi_new = phi_old             ! cell is sealed; skip the network
+      else
+        x_in(1)  = phi_old
+        x_in(2)  = cfg%aperture_m
+        x_in(3)  = rt_auxvars(ghosted_id)%total(cfg%id_h,  iphase)  ! TotalH
+        x_in(4)  = rt_auxvars(ghosted_id)%total(cfg%id_ca, iphase)
+        x_in(5)  = rt_auxvars(ghosted_id)%total(cfg%id_si, iphase)
+        x_in(6)  = rt_auxvars(ghosted_id)%total(cfg%id_al, iphase)
+        x_in(7)  = rt_auxvars(ghosted_id)%total(cfg%id_mg, iphase)
 
-      call MLPForward(cfg%mlp, x_in, rate)
+        call MLPForward(cfg%mlp, x_in(1:7), rate)
 
-      ! Dump the raw network output: the Python reference is unclamped, so the
-      ! clamps below must not be applied to what gets compared.  (newunit gives
-      ! a negative unit, so gate on diag_file, not diag_unit sign.)
-      if (len_trim(cfg%diag_file) > 0) then
-        if (mod(cfg%diag_step, cfg%diag_stride) == 0) then
-          write(cfg%diag_unit,'(es17.9,a,i0,8(a,es24.16))') &
-            time_y, ',', grid%nG2A(ghosted_id), &
-            ',', x_in(1), ',', x_in(2), ',', x_in(3), ',', x_in(4), &
-            ',', x_in(5), ',', x_in(6), ',', x_in(7), ',', rate
+        ! Dump the raw network output: the Python reference is unclamped, so the
+        ! clamps below must not be applied to what gets compared.  (newunit gives
+        ! a negative unit, so gate on diag_file, not diag_unit sign.)
+        if (len_trim(cfg%diag_file) > 0) then
+          if (mod(cfg%diag_step, cfg%diag_stride) == 0) then
+            write(cfg%diag_unit,'(es17.9,a,i0,8(a,es24.16))') &
+              time_y, ',', grid%nG2A(ghosted_id), &
+              ',', x_in(1), ',', x_in(2), ',', x_in(3), ',', x_in(4), &
+              ',', x_in(5), ',', x_in(6), ',', x_in(7), ',', rate
+          endif
         endif
+
+        rate = min(rate, 0.d0)          ! clogging-only branch (this contract)
+        rate = max(rate, -RATE_MAX)     ! out-of-domain sinh envelope guard
+        phi_new = max(phi_old + rate * dt_y, PHI_FLOOR)
       endif
+      cfg%phi_frac(local_id) = phi_new
+    else
+      ! ---- stage 1 (node_min_v1): Euler on the four mineral states, porosity
+      ! derived by volume balance; bounds hold by construction (rates >= 0,
+      ! ramp -> 0 at phi_res) plus the pore-volume budget and the S clamp of
+      ! the deployment rule (NEURAL_ODE_HANDOFF.md section 6).
+      vf = cfg%state(1, local_id); s_csh = cfg%state(2, local_id)
+      m4 = cfg%state(3, local_id); oth = cfg%state(4, local_id)
+      phi_old = cfg%mlp%phi0 - vf - m4 - oth
+      if (phi_old <= PHI_SEALED) then
+        phi_new = phi_old             ! at the residual porosity; rates are ~0
+      else
+        x_in(1)  = phi_old
+        x_in(2)  = cfg%aperture_m
+        x_in(3)  = rt_auxvars(ghosted_id)%total(cfg%id_h,  iphase)  ! TotalH
+        x_in(4)  = rt_auxvars(ghosted_id)%total(cfg%id_ca, iphase)
+        x_in(5)  = rt_auxvars(ghosted_id)%total(cfg%id_si, iphase)
+        x_in(6)  = rt_auxvars(ghosted_id)%total(cfg%id_al, iphase)
+        x_in(7)  = rt_auxvars(ghosted_id)%total(cfg%id_mg, iphase)
+        x_in(8)  = vf
+        if (vf > 1.d-6) then
+          x_in(9) = s_csh / vf        ! CSH_meanCS
+        else
+          x_in(9) = 0.d0              ! sentinel, as in training
+        endif
+        x_in(10) = m4
 
-      rate = min(rate, 0.d0)          ! clogging-only branch (this contract)
-      rate = max(rate, -RATE_MAX)     ! out-of-domain sinh envelope guard
-      phi_new = max(phi_old + rate * dt_y, PHI_FLOOR)
+        call MLPForwardNodeMin(cfg%mlp, x_in, nm)
+
+        if (len_trim(cfg%diag_file) > 0) then
+          if (mod(cfg%diag_step, cfg%diag_stride) == 0) then
+            write(cfg%diag_unit,'(es17.9,a,i0,23(a,es24.16))') &
+              time_y, ',', grid%nG2A(ghosted_id), &
+              (',', x_in(i), i = 1, 10), &
+              ',', nm%d_vf_csh, ',', nm%d_s_csh, ',', nm%d_vf_m4ac, ',', nm%d_vf_other, &
+              ',', nm%dphi, ',', nm%cs_new, ',', nm%sink_Si, ',', nm%sink_Ca, ',', nm%sink_Mg, &
+              ',', nm%sink_Al, ',', nm%sink_HCO3, ',', nm%sink_TotalH, ',', oth
+          endif
+        endif
+
+        d_csh = nm%d_vf_csh * dt_y
+        d_s   = nm%d_s_csh * dt_y
+        d_m4  = nm%d_vf_m4ac * dt_y
+        d_oth = nm%d_vf_other * dt_y
+        ! pore-volume budget: growth cannot pass the residual porosity
+        room = max(phi_old - cfg%mlp%phi_res, 0.d0)
+        grow = d_csh + d_m4 + d_oth
+        if (room <= 1.d-9) then
+          sc = 0.d0
+        else if (grow > room) then
+          sc = room / grow
+        else
+          sc = 1.d0
+        endif
+        vf = vf + d_csh * sc
+        s_csh = s_csh + d_s * sc
+        m4 = m4 + d_m4 * sc
+        oth = oth + d_oth * sc
+        ! keep the Ca content of the CSH inside the phase family
+        s_csh = min(max(s_csh, cfg%mlp%cs_min * vf), cfg%mlp%cs_max * vf)
+        phi_new = cfg%mlp%phi0 - vf - m4 - oth
+      endif
+      cfg%state(1, local_id) = vf; cfg%state(2, local_id) = s_csh
+      cfg%state(3, local_id) = m4; cfg%state(4, local_id) = oth
     endif
-
-    cfg%phi_frac(local_id) = phi_new
 
     phi_ratio = phi_new / cfg%phi_initial
     k_new = phi_ratio**3 * cfg%k_initial
@@ -363,6 +461,8 @@ subroutine MLFractureSurrogateDestroy(cfg)
   cfg%diag_unit = -1
   if (associated(cfg%phi_frac)) deallocate(cfg%phi_frac)
   nullify(cfg%phi_frac)
+  if (associated(cfg%state)) deallocate(cfg%state)
+  nullify(cfg%state)
   call MLPDestroy(cfg%mlp)
   cfg%active = PETSC_FALSE
 
