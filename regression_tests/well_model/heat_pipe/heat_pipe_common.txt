@@ -1,0 +1,73 @@
+# Shared physics for heat_pipe_z / heat_pipe_u-np4 (grid/well/time in decks)
+
+#========================= fluid properties ===================================
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.d-9
+END
+
+#========================= material properties ================================
+MATERIAL_PROPERTY soil1
+  ID 1
+  POROSITY 0.01d0
+  TORTUOSITY 1.d0
+  ROCK_DENSITY 2623.
+  ! Low Cp so rock ΔT is significant over one pipe volume
+  SPECIFIC_HEAT 50.
+  THERMAL_CONDUCTIVITY_DRY 3.05
+  THERMAL_CONDUCTIVITY_WET 3.05
+  CHARACTERISTIC_CURVES default
+  PERMEABILITY
+    PERM_ISO 1.d-12
+  /
+END
+
+#========================= saturation functions ===============================
+CHARACTERISTIC_CURVES default
+  DEFAULT
+END
+
+#========================= output options =====================================
+OUTPUT
+  SNAPSHOT_FILE
+    PERIODIC TIME 1. d
+    FORMAT HDF5
+  /
+END
+
+
+#=========================== regions ==========================================
+REGION all
+  INFINITE
+END
+
+#======================= flow conditions ======================================
+FLOW_CONDITION initial
+  TYPE
+    LIQUID_PRESSURE HYDROSTATIC
+    TEMPERATURE DIRICHLET
+  /
+  ! Datum at top of tallest domain (Z test is 9 m)
+  DATUM 0. 0. 9.
+  LIQUID_PRESSURE 1.d6
+  TEMPERATURE 15.
+END
+
+#========================== initial and boundary conditions ===================
+INITIAL_CONDITION
+  FLOW_CONDITION initial
+  REGION all
+END
+
+#===================== stratigraphy couplers ==================================
+STRATA
+  REGION all
+  MATERIAL soil1
+END
+
+#=========================== numerical methods ================================
+NUMERICAL_METHODS FLOW
+
+  NEWTON_SOLVER
+  /
+
+END

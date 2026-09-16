@@ -513,7 +513,7 @@ subroutine PMRTSetup(this)
     ! check to ensure that all tortuosities are the default 1.
     call MaterialGetAuxVarVecLoc(this%realization%patch%aux%Material, &
                                  this%realization%field%work_loc, &
-                                 TORTUOSITY,ZERO_INTEGER)
+                                 TORTUOSITY)
     call this%comm1%LocalToGlobal(this%realization%field%work_loc, &
                                   this%realization%field%work)
     call VecShift(this%realization%field%work,-1.d0,ierr);CHKERRQ(ierr)
@@ -560,7 +560,7 @@ subroutine PMRTSetup(this)
                       ierr);CHKERRQ(ierr)
     call MaterialGetAuxVarVecLoc(this%realization%patch%aux%Material, &
                                  this%realization%field%work_loc, &
-                                 VOLUME,ZERO_INTEGER)
+                                 VOLUME)
     call this%comm1%LocalToGlobal(this%realization%field%work_loc, &
                                   this%realization%field%work)
     call VecReciprocal(this%realization%field%work,ierr);CHKERRQ(ierr)
@@ -613,8 +613,7 @@ recursive subroutine PMRTInitializeRun(this)
   use Condition_Control_module
   use Reactive_Transport_module, only : RTUpdateAuxVars, &
                                         RTClearActivityCoefficients
-  use Variables_module, only : POROSITY
-  use Material_Aux_module, only : POROSITY_BASE
+  use Variables_module, only : BASE_POROSITY
   use Material_module, only : MaterialGetAuxVarVecLoc
   use Global_module, only : GlobalWeightAuxVars
   use String_module, only : StringWrite
@@ -628,11 +627,14 @@ recursive subroutine PMRTInitializeRun(this)
   ! check for uninitialized flow variables
   call RealizUnInitializedVarsTran(this%realization)
 
+  ! error out if RESIDUAL_POROSITY starts above any cell's initial porosity
+  call RealizationCheckResidualPorosity(this%realization)
+
   if (this%transient_porosity) then
     call RealizationUpdateMineralPorosity(this%realization)
     call MaterialGetAuxVarVecLoc(this%realization%patch%aux%Material, &
                                  this%realization%field%work_loc, &
-                                 POROSITY,POROSITY_BASE)
+                                 BASE_POROSITY)
     call this%comm1%LocalToGlobal(this%realization%field%work_loc, &
                                   this%realization%field%porosity0)
     call VecCopy(this%realization%field%porosity0, &
@@ -837,9 +839,8 @@ subroutine PMRTFinalizeTimestep(this)
   !
 
   use Reactive_Transport_module
-  use Variables_module, only : POROSITY
+  use Variables_module, only : BASE_POROSITY
   use Material_module, only : MaterialGetAuxVarVecLoc
-  use Material_Aux_module, only : POROSITY_BASE
   use Global_module
 
   implicit none
@@ -852,8 +853,7 @@ subroutine PMRTFinalizeTimestep(this)
                  this%realization%field%porosity_t,ierr);CHKERRQ(ierr)
     call RealizationUpdatePropertiesTS(this%realization)
     call MaterialGetAuxVarVecLoc(this%realization%patch%aux%Material, &
-                                 this%realization%field%work_loc, &
-                                 POROSITY,POROSITY_BASE)
+                                 this%realization%field%work_loc,BASE_POROSITY)
     call this%comm1%LocalToGlobal(this%realization%field%work_loc, &
                                   this%realization%field%porosity_tpdt)
   else if (this%realization%reaction%mineral%update_surface_area) then

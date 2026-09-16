@@ -128,7 +128,8 @@ module TH_Aux_module
   end type th_ice_type
 
   type, public :: th_well_auxvar_type
-    PetscInt :: local_id
+    PetscInt :: ghosted_id
+    PetscReal :: z
     PetscReal :: temp
     PetscReal :: u
     PetscReal :: h
@@ -508,8 +509,9 @@ subroutine THAuxPorosity(th_auxvar,material_auxvar,global_auxvar, &
         case(GEOMECH_TWO_WAY_COUPLED)
           select case(option%geomechanics%split_scheme)
             case(GEOMECH_FIXED_STRESS_SPLIT)
-              mat_id = material_auxvar%id
-              ! get geomech and flow material properties
+              ! geomechanics mat id corresponding to cell
+              mat_id = material_auxvar%secondary_material_id
+              ! get geomech material properties
               youngs_mod = geomech_param%youngs_modulus(mat_id)
               poissons_ratio = geomech_param%poissons_ratio(mat_id)
               biot_coeff = geomech_param%biot_coeff(mat_id)
@@ -816,6 +818,10 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
   auxvar%dKe_dp = alpha*(auxvar%sat + epsilon)**(alpha - 1.d0)* &
                   auxvar%dsat_dp
   auxvar%dKe_dT = 0.d0
+
+  if (option%iflag /= TH_UPDATE_FOR_PERTURBATION) then
+    global_auxvar%sat(1) = auxvar%sat
+  endif
 
 end subroutine THAuxVarComputeNoFreezing
 
@@ -1355,7 +1361,8 @@ recursive subroutine THWellAuxVarInit(auxvar,option,allocate_perturbation)
 
   PetscInt :: i
 
-  auxvar%local_id = 0
+  auxvar%ghosted_id = 0
+  auxvar%z = 0.d0
   auxvar%temp = 0.d0
   auxvar%u = 0.d0
   auxvar%h = 0.d0
@@ -1405,7 +1412,8 @@ recursive subroutine THWellAuxVarCopyParamsToPert(auxvar)
   PetscInt :: i
 
   do i = 1, size(auxvar%auxvar_pert)
-    auxvar%auxvar_pert(i)%local_id = auxvar%local_id
+    auxvar%auxvar_pert(i)%ghosted_id = auxvar%ghosted_id
+    auxvar%auxvar_pert(i)%z = auxvar%z
     auxvar%auxvar_pert(i)%volume = auxvar%volume
     auxvar%auxvar_pert(i)%segment_length = auxvar%segment_length
     auxvar%auxvar_pert(i)%heat_transfer_coef = auxvar%heat_transfer_coef

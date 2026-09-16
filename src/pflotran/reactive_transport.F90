@@ -187,7 +187,7 @@ subroutine RTSetup(realization)
   rt_parameter%ncomp = reaction%ncomp
   rt_parameter%offset_aqueous = reaction%offset_aqueous
   rt_parameter%nimcomp = reaction%immobile%nimmobile
-  rt_parameter%ngas = reaction%gas%nactive_gas
+  rt_parameter%nactive_gas = reaction%gas%nactive_gas
   rt_parameter%offset_immobile = reaction%offset_immobile
 
   if (reaction%gas%nactive_gas > 0) then
@@ -650,7 +650,7 @@ subroutine RTComputeMassBalance(realization,num_cells,max_size,sum_mol,cell_ids)
                liquid_saturation*porosity*volume*1.d3
 
     ! equilibrium sorption (sum_mol_sb)
-    if (reaction%neqsorb > 0) then
+    if (associated(rt_auxvars(ghosted_id)%total_sorb_eq)) then
       sum_mol_sb(1:naqcomp) = sum_mol_sb(1:naqcomp) + &
           rt_auxvars(ghosted_id)%total_sorb_eq(:) * volume
     endif
@@ -2956,7 +2956,7 @@ subroutine RTResidualNonFlux(snes,xx,r,realization,ierr)
       iendall = offset + reaction%ncomp
       r_p(istartall:iendall) = r_p(istartall:iendall) + Res(1:reaction%ncomp)
       if (associated(patch%ss_tran_fluxes)) then
-        patch%ss_tran_fluxes(:,sum_connection) = Res(:)
+        patch%ss_tran_fluxes(:,sum_connection) = -Res(:)
       endif
       if (option%compute_mass_balance_new) then
         ! contribution to boundary

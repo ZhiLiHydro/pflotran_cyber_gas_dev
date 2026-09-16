@@ -1748,7 +1748,7 @@ def unit_vector(data, axis=None, out=None):
     if out is None:
         data = numpy.array(data, dtype=numpy.float64, copy=True)
         if data.ndim == 1:
-            data /= math.sqrt(numpy.dot(data, data))
+            #data /= math.sqrt(numpy.dot(data, data))
             return data
     else:
         if out is not data:

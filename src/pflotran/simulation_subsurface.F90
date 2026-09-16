@@ -177,13 +177,14 @@ subroutine SimSubsurfInitializeRun(this)
   ! Author: Glenn Hammond
   ! Date: 02/15/21
   !
+  use hdf5
   use Init_Subsurface_module
   use Logging_module
   use Option_module
   use Option_Checkpoint_module
   use Output_module
   use Parameter_module
-  use hdf5
+  use Global_module
 
   implicit none
 
@@ -260,6 +261,7 @@ subroutine SimSubsurfInitializeRun(this)
   ! initialize performs overwrite of restart, if applicable
   call this%process_model_coupler_list%InitializeRun()
   call this%JumpStart()
+  call GlobalParameterQualityCheck(this%realization)
 
   call SimulationBaseInputRecordPrint(this,this%option)
   call PrintMsg(this%option,'')
@@ -338,6 +340,8 @@ subroutine SimSubsurfInputRecord(this)
       write(id,'(a)') 'hydrate'
     case(WF_MODE)
       write(id,'(a)') 'wipp flow'
+    case(IMMISCIBLE_MODE)
+      write(id,'(a)') 'immiscible'
     case(TH_MODE)
       write(id,'(a)') 'thermo-hydro'
     case(TH_TS_MODE)
@@ -491,7 +495,7 @@ subroutine SimSubsurfJumpStart(this)
   endif
 
   ! print initial condition output if not a restarted sim
-  call OutputInit(option,master_timestepper%steps)
+  call OutputInit(option,output_option,master_timestepper%steps)
   if (output_option%plot_number == 0 .and. &
       master_timestepper%max_time_step >= 0) then
     snapshot_plot_flag = output_option%print_initial_snap
@@ -592,7 +596,6 @@ subroutine SimSubsurfOverwriteInvParameters(this)
   class(realization_subsurface_type), pointer :: realization
   type(inversion_aux_type), pointer :: inversion_aux
   type(inversion_perturbation_type), pointer :: perturbation
-  PetscInt :: iqoi(2)
   PetscReal :: rmax, rmin
   PetscErrorCode :: ierr
 
@@ -601,7 +604,6 @@ subroutine SimSubsurfOverwriteInvParameters(this)
   perturbation => inversion_aux%perturbation
 
   if (inversion_aux%qoi_is_full_vector) then
-    iqoi = InversionParameterIntToQOIArray(inversion_aux%parameters(1))
     ! on subsequent iterations, overwrite what was read from input file
     ! with latest inverted values
     call InvAuxScatGlobalToDistParam(inversion_aux, &
@@ -612,8 +614,8 @@ subroutine SimSubsurfOverwriteInvParameters(this)
                                       realization%field%work, &
                                       realization%field%work_loc,ONEDOF)
     call MaterialSetAuxVarVecLoc(realization%patch%aux%Material, &
-                                  realization%field%work_loc, &
-                                  iqoi(1),iqoi(2))
+                                 realization%field%work_loc, &
+                                 inversion_aux%parameters(1)%itype)
   else
 #if 1
     call InvAuxParamVecToMaterial(inversion_aux)
@@ -692,10 +694,9 @@ subroutine SimSubsurfOverwriteInvParameters(this)
         call DiscretizationGlobalToLocal(realization%discretization, &
                                          realization%field%work, &
                                          realization%field%work_loc,ONEDOF)
-        iqoi = InversionParameterIntToQOIArray(inversion_aux%parameters(1))
         call MaterialSetAuxVarVecLoc(realization%patch%aux%Material, &
                                      realization%field%work_loc, &
-                                     iqoi(1),iqoi(2))
+                                     inversion_aux%parameters(1)%itype)
       else
         perturbation%base_value = &
           inversion_aux%parameters(perturbation%idof_pert)%value

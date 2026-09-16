@@ -233,13 +233,17 @@ subroutine TDispersion(global_auxvar_up,material_auxvar_up, &
     endif
     ! hydrodynamic dispersion = mechanical disperson + &
     !   saturation * porosity * tortuosity * molecular diffusion
+    ! tran_diff_scale = diffusion shutoff toward the precip cutoff
+    ! (LIMIT_MINERAL_VOLUME_FRACTION); 1 unless enabled
     hydrodynamic_dispersion_up(:) = &
       max(mechanical_dispersion_up + &
+          material_auxvar_up%tran_diff_scale * &
           epsilon_up * sat_up * material_auxvar_up%porosity * tort_up * &
           molecular_diffusion_up(:), &
           1.d-40)
     hydrodynamic_dispersion_dn(:) = &
       max(mechanical_dispersion_dn + &
+          material_auxvar_dn%tran_diff_scale * &
           epsilon_dn * sat_dn * material_auxvar_dn%porosity * tort_dn * &
           molecular_diffusion_dn(:), &
           1.d-40)
@@ -387,6 +391,7 @@ subroutine TDispersionBC(ibndtype, &
           max(mechanical_dispersion + &
               ! yes, sat_up due to boundary saturation governing, but
               ! perhaps we could use an average in the future
+              material_auxvar_dn%tran_diff_scale * &
               epsilon_dn * sat_up * material_auxvar_dn%porosity * tort_dn * &
               molecular_diffusion(:), &
               1.d-40)
@@ -442,7 +447,7 @@ subroutine TFlux(rt_parameter, &
     coef_dn(1:ndof,iphase)*rt_auxvar_dn%total(1:ndof,iphase)
   Res(1:ndof) = Flux(1:ndof,iphase)
 
-  if (rt_parameter%ngas > 0) then
+  if (rt_parameter%nactive_gas > 0) then
     iphase = 2
     Flux(1:ndof,iphase) = Flux(1:ndof,iphase) + &
                   coef_up(1:ndof,iphase)*rt_auxvar_up%total(1:ndof,iphase) + &
@@ -559,14 +564,16 @@ subroutine TFluxCoef(rt_parameter, &
   T_up(:,:) = 0.d0
   T_dn(:,:) = 0.d0
 
-  ! as long as gas phase chemistry is a function of aqueous, skip both phases
-  if (global_auxvar_dn%sat(LIQUID_PHASE) < rt_min_saturation) then
-    return
-  else if (check_upwind_saturation) then
-    ! for boundary conditions, we can have a zero aqueous saturation upwind
-    ! and it does not matter
-    if (global_auxvar_up%sat(LIQUID_PHASE) < rt_min_saturation) then
+  if (rt_parameter%nactive_gas == 0) then
+    ! as long as gas phase chemistry is a function of aqueous, skip both phases
+    if (global_auxvar_dn%sat(LIQUID_PHASE) < rt_min_saturation) then
       return
+    else if (check_upwind_saturation) then
+      ! for boundary conditions, we can have a zero aqueous saturation upwind
+      ! and it does not matter
+      if (global_auxvar_up%sat(LIQUID_PHASE) < rt_min_saturation) then
+        return
+      endif
     endif
   endif
 
@@ -673,7 +680,8 @@ subroutine TSrcSinkCoef(rt_parameter,global_auxvar,qsrc, &
   T_in = 0.d0
   T_out = 0.d0
 
-  if (global_auxvar%sat(LIQUID_PHASE) < rt_min_saturation) return
+  if (global_auxvar%sat(LIQUID_PHASE) < rt_min_saturation .and. &
+      rt_parameter%nactive_gas == 0) return
 
   select case(tran_src_sink_type)
     case(EQUILIBRIUM_SS)

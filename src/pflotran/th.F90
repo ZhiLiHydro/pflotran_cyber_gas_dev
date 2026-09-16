@@ -3802,25 +3802,25 @@ subroutine THUpdateLocalVecs(xx,realization,ierr)
   call DiscretizationGlobalToLocal(discretization,xx,field%flow_xx_loc,NFLOWDOF)
 
   call MaterialGetAuxVarVecLoc(realization%patch%aux%Material,field%work_loc, &
-                               PERMEABILITY_X,ZERO_INTEGER)
+                               PERMEABILITY_X)
   call DiscretizationLocalToLocal(discretization,field%work_loc, &
                                   field%work_loc,ONEDOF)
   call MaterialSetAuxVarVecLoc(realization%patch%aux%Material,field%work_loc, &
-                               PERMEABILITY_X,ZERO_INTEGER)
+                               PERMEABILITY_X)
 
   call MaterialGetAuxVarVecLoc(realization%patch%aux%Material,field%work_loc, &
-                               PERMEABILITY_Y,ZERO_INTEGER)
+                               PERMEABILITY_Y)
   call DiscretizationLocalToLocal(discretization,field%work_loc, &
                                   field%work_loc,ONEDOF)
   call MaterialSetAuxVarVecLoc(realization%patch%aux%Material,field%work_loc, &
-                               PERMEABILITY_Y,ZERO_INTEGER)
+                               PERMEABILITY_Y)
 
   call MaterialGetAuxVarVecLoc(realization%patch%aux%Material,field%work_loc, &
-                               PERMEABILITY_Z,ZERO_INTEGER)
+                               PERMEABILITY_Z)
   call DiscretizationLocalToLocal(discretization,field%work_loc, &
                                   field%work_loc,ONEDOF)
   call MaterialSetAuxVarVecLoc(realization%patch%aux%Material,field%work_loc, &
-                               PERMEABILITY_Z,ZERO_INTEGER)
+                               PERMEABILITY_Z)
 
 end subroutine THUpdateLocalVecs
 
@@ -5740,11 +5740,11 @@ subroutine THSetPlotVariables(realization,list)
                                 TEMPERATURE)
 
     if (Initialized(th_well_dof)) then
-      name = 'Pipe Temperature'
+      name = 'Well Temperature'
       units = 'C'
       call OutputVariableAddToList(list,name,OUTPUT_GENERIC,units, &
                                    WELL_TEMPERATURE)
-      name = 'Pipe Cells'
+      name = 'Well Cells'
       units = ''
       call OutputVariableAddToList(list,name,OUTPUT_GENERIC,units, &
                                    WELL_CELLS)

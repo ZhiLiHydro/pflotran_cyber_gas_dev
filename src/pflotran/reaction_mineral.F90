@@ -28,7 +28,8 @@ module Reaction_Mineral_module
             ReactionMnrlUpdateSpecSurfArea, &
             ReactionMnrlUpdateKineticState, &
             ReactionMnrlReportZeroSurfArea, &
-            ReactionMnrlCalcSumVolFrac
+            ReactionMnrlCalcSumVolFrac, &
+            ReactionMnrlResPorosity
 
 contains
 
@@ -1238,6 +1239,7 @@ subroutine ReactionMnrlKineticRateTSTSimple(Res,Jac, &
   PetscReal :: QK, lnQK, dQK_dmj
   PetscBool :: precipitation
   PetscReal :: rate_constant
+  PetscReal :: porosity_res, porosity, ramp_scale
   type(mineral_type), pointer :: mineral
 
   mineral => reaction%mineral
@@ -1266,6 +1268,20 @@ subroutine ReactionMnrlKineticRateTSTSimple(Res,Jac, &
 
     precipitation = (sign_ < 0.d0)
 
+    ! QPAC-style cutoff: no precip below residual porosity;
+    ! dissolution still allowed to reopen the pore; RAMP_WIDTH scales
+    ! the rate linearly to zero approaching the cutoff
+    ramp_scale = 1.d0
+    porosity_res = ReactionMnrlResPorosity(reaction,rt_auxvar,material_auxvar)
+    if (precipitation .and. porosity_res > 0.d0) then
+      porosity = 1.d0 - ReactionMnrlCalcSumVolFrac(rt_auxvar,mineral)
+      if (porosity <= porosity_res) return
+      if (reaction%porosity_res_ramp > 0.d0) then
+        ramp_scale = min((porosity - porosity_res)/ &
+                         reaction%porosity_res_ramp,1.d0)
+      endif
+    endif
+
     if (precipitation) then
       rate_constant = mineral%kinmnrl_precip_rate_constant(imnrl)
     else
@@ -1277,7 +1293,7 @@ subroutine ReactionMnrlKineticRateTSTSimple(Res,Jac, &
     ! rate: mol/m^2 mnrl/sec
     ! area: m^2 mnrl/m^3 bulk
     ! volume: m^3 bulk
-    Im_const = -rt_auxvar%mnrl_area(imnrl)
+    Im_const = -ramp_scale*rt_auxvar%mnrl_area(imnrl)
 
     ! units: mol/sec/m^3 bulk
     Im = Im_const*sign_*dabs(affinity_factor)*rate_constant
@@ -1386,6 +1402,7 @@ subroutine ReactionMnrlKineticRateTST(Res,Jac, &
   PetscBool :: precipitation
   PetscReal :: rate_constant
   PetscReal :: arrhenius_factor
+  PetscReal :: porosity_res, porosity, ramp_scale
   type(mineral_type), pointer :: mineral
 
   mineral => reaction%mineral
@@ -1427,6 +1444,20 @@ subroutine ReactionMnrlKineticRateTST(Res,Jac, &
   if (rt_auxvar%mnrl_volfrac(imnrl) > 0 .or. sign_ < 0.d0) then
 
     precipitation = (sign_ < 0.d0)
+
+!     QPAC-style cutoff: no precip below residual porosity;
+!     dissolution still allowed to reopen the pore; RAMP_WIDTH scales
+!     the rate linearly to zero approaching the cutoff
+    ramp_scale = 1.d0
+    porosity_res = ReactionMnrlResPorosity(reaction,rt_auxvar,material_auxvar)
+    if (precipitation .and. porosity_res > 0.d0) then
+      porosity = 1.d0 - ReactionMnrlCalcSumVolFrac(rt_auxvar,mineral)
+      if (porosity <= porosity_res) return
+      if (reaction%porosity_res_ramp > 0.d0) then
+        ramp_scale = min((porosity - porosity_res)/ &
+                         reaction%porosity_res_ramp,1.d0)
+      endif
+    endif
 
 !     check for supersaturation threshold for precipitation
 !     if (associated(mineral%kinmnrl_affinity_threshold)) then
@@ -1505,7 +1536,7 @@ subroutine ReactionMnrlKineticRateTST(Res,Jac, &
     ! rate: mol/m^2 mnrl/sec
     ! area: m^2 mnrl/m^3 bulk
     ! volume: m^3 bulk
-    Im_const = -rt_auxvar%mnrl_area(imnrl)
+    Im_const = -ramp_scale*rt_auxvar%mnrl_area(imnrl)
     if (associated(mineral%kinmnrl_mnrl_scale_factor)) then
       Im_const = Im_const/mineral%kinmnrl_mnrl_scale_factor(imnrl)
     endif
@@ -1753,8 +1784,22 @@ subroutine ReactionMnrlNucleationKinetics(Res,Jac, &
   PetscReal :: QK, lnQK
   PetscReal :: dQK_dmj, dlnQK_dQK
   PetscReal :: nucleation_rate, dnucleation_rate_dlnQK
+  PetscReal :: porosity_res, porosity, ramp_scale
 
   mineral => reaction%mineral
+
+  ! QPAC-style cutoff: no nucleation below residual porosity; RAMP_WIDTH
+  ! scales the rate linearly to zero approaching the cutoff
+  ramp_scale = 1.d0
+  porosity_res = ReactionMnrlResPorosity(reaction,rt_auxvar,material_auxvar)
+  if (porosity_res > 0.d0) then
+    porosity = 1.d0 - ReactionMnrlCalcSumVolFrac(rt_auxvar,mineral)
+    if (porosity <= porosity_res) return
+    if (reaction%porosity_res_ramp > 0.d0) then
+      ramp_scale = min((porosity - porosity_res)/ &
+                       reaction%porosity_res_ramp,1.d0)
+    endif
+  endif
 
   ln_conc = log(rt_auxvar%pri_molal)
   ln_act = ln_conc+log(rt_auxvar%pri_act_coef)
@@ -1785,6 +1830,8 @@ subroutine ReactionMnrlNucleationKinetics(Res,Jac, &
                                 global_auxvar%temp,lnQK, &
                                 nucleation_rate,dnucleation_rate_dlnQK, &
                                 option)
+    nucleation_rate = ramp_scale*nucleation_rate
+    dnucleation_rate_dlnQK = ramp_scale*dnucleation_rate_dlnQK
 !    print *, 'nucleation rate: ', nucleation_rate
 #if 0
 print *, 'analytical derivative: ', dnucleation_rate_dlnQK
@@ -2146,7 +2193,12 @@ subroutine ReactionMnrlUpdateKineticState(rt_auxvar,global_auxvar, &
   type(option_type) :: option
 
   PetscInt :: imnrl, iaqspec, icomp
+  PetscInt :: i
   PetscReal :: delta_volfrac
+  PetscReal :: scale, vf_avail, sum_base, sum_pos
+  PetscReal :: porosity_res
+  PetscReal :: water_vol, avail_mol, dvf, dvf_max, stoich_
+  PetscReal :: released(reaction%naqcomp)
   PetscReal :: res(reaction%ncomp) ! has to be sized accurately
   PetscReal :: jac(1,1) ! strictly a dummy array
   PetscBool, parameter :: store_rate = PETSC_TRUE
@@ -2161,6 +2213,82 @@ subroutine ReactionMnrlUpdateKineticState(rt_auxvar,global_auxvar, &
                             compute_analytical_derivative,store_rate, &
                             rt_auxvar,global_auxvar, &
                             material_auxvar,reaction,option)
+
+  ! availability limiter: a mineral's step growth cannot consume more
+  ! than the cell's aqueous inventory of any reactant plus what dissolving
+  ! minerals release this step (defense against spuriously converged rates
+  ! at extreme affinity); caps are per mineral, so minerals competing for
+  ! a species may jointly overdraw by at most the number of competitors;
+  ! transport influx within the step is not credited (conservative)
+  if (reaction%limit_mnrl_vf) then
+    ! L water/m^3 bulk
+    water_vol = 1.d3*material_auxvar%porosity*global_auxvar%sat(1)
+    ! mol/m^3 bulk released by dissolving minerals this step
+    released = 0.d0
+    do imnrl = 1, reaction%mineral%nkinmnrl
+      if (rt_auxvar%mnrl_rate(imnrl) < 0.d0) then
+        do i = 1, reaction%mineral%kinmnrlspecid(0,imnrl)
+          stoich_ = reaction%mineral%kinmnrlstoich(i,imnrl)
+          if (stoich_ > 0.d0) then
+            icomp = reaction%mineral%kinmnrlspecid(i,imnrl)
+            released(icomp) = released(icomp) - &
+              rt_auxvar%mnrl_rate(imnrl)*option%tran_dt*stoich_
+          endif
+        enddo
+      endif
+    enddo
+    do imnrl = 1, reaction%mineral%nkinmnrl
+      if (rt_auxvar%mnrl_rate(imnrl) > 0.d0) then
+        dvf = rt_auxvar%mnrl_rate(imnrl)* &
+              reaction%mineral%kinmnrl_molar_vol(imnrl)*option%tran_dt
+        dvf_max = MAX_DOUBLE
+        do i = 1, reaction%mineral%kinmnrlspecid(0,imnrl)
+          stoich_ = reaction%mineral%kinmnrlstoich(i,imnrl)
+          if (stoich_ > 0.d0) then
+            icomp = reaction%mineral%kinmnrlspecid(i,imnrl)
+            ! mol/m^3 bulk available
+            avail_mol = max(rt_auxvar%total(icomp,1),0.d0)*water_vol + &
+                        released(icomp)
+            dvf_max = min(dvf_max,avail_mol/stoich_* &
+                          reaction%mineral%kinmnrl_molar_vol(imnrl))
+          endif
+        enddo
+        if (dvf > dvf_max) then
+          rt_auxvar%mnrl_rate(imnrl) = rt_auxvar%mnrl_rate(imnrl)* &
+                                       dvf_max/dvf
+        endif
+      endif
+    enddo
+  endif
+
+  ! cap this step's precip at the pore volume above residual porosity
+  ! by scaling positive rates; growth apportioned by rate magnitude
+  porosity_res = ReactionMnrlResPorosity(reaction,rt_auxvar,material_auxvar)
+  if (porosity_res > 0.d0) then
+    vf_avail = 1.d0 - porosity_res
+    sum_base = 0.d0
+    sum_pos = 0.d0
+    do imnrl = 1, reaction%mineral%nkinmnrl
+      delta_volfrac = rt_auxvar%mnrl_rate(imnrl)* &
+                      reaction%mineral%kinmnrl_molar_vol(imnrl)* &
+                      option%tran_dt
+      if (delta_volfrac > 0.d0) then
+        sum_pos = sum_pos + delta_volfrac
+        sum_base = sum_base + rt_auxvar%mnrl_volfrac(imnrl)
+      else
+        sum_base = sum_base + max(rt_auxvar%mnrl_volfrac(imnrl) + &
+                                  delta_volfrac,0.d0)
+      endif
+    enddo
+    if (sum_pos > 0.d0 .and. sum_base + sum_pos > vf_avail) then
+      scale = max(vf_avail - sum_base,0.d0)/sum_pos
+      do imnrl = 1, reaction%mineral%nkinmnrl
+        if (rt_auxvar%mnrl_rate(imnrl) > 0.d0) then
+          rt_auxvar%mnrl_rate(imnrl) = scale*rt_auxvar%mnrl_rate(imnrl)
+        endif
+      enddo
+    endif
+  endif
 
   do imnrl = 1, reaction%mineral%nkinmnrl
     ! rate = mol/m^3 bulk/sec
@@ -2247,6 +2375,46 @@ subroutine ReactionMnrlReportZeroSurfArea(imnrl,surface_area,mineral, &
   endif
 
 end subroutine ReactionMnrlReportZeroSurfArea
+
+! ************************************************************************** !
+
+function ReactionMnrlResPorosity(reaction,rt_auxvar,material_auxvar)
+  !
+  ! Resolves the precip cutoff porosity for a cell: the per-material
+  ! RESIDUAL_POROSITY overrides the CHEMISTRY-block value, which is either
+  ! the absolute RESIDUAL_POROSITY or RESIDUAL_POROSITY_FRACTION of the
+  ! cell's initial porosity (1 - sumVF0)
+  !
+  ! Author: Heeho Park
+  ! Date: 08/19/26
+  !
+  use Material_Aux_module
+
+  implicit none
+
+  class(reaction_rt_type) :: reaction
+  type(reactive_transport_auxvar_type) :: rt_auxvar
+  type(material_auxvar_type) :: material_auxvar
+
+  PetscReal :: ReactionMnrlResPorosity
+
+  PetscInt :: imnrl
+  PetscReal :: sum0
+
+  ReactionMnrlResPorosity = reaction%porosity_res
+  if (reaction%porosity_res_fraction > 0.d0) then
+    sum0 = 0.d0
+    do imnrl = 1, reaction%mineral%nkinmnrl
+      sum0 = sum0 + rt_auxvar%mnrl_volfrac0(imnrl)
+    enddo
+    ReactionMnrlResPorosity = reaction%porosity_res_fraction* &
+                              max(1.d0-sum0,0.d0)
+  endif
+  if (material_auxvar%porosity_res > 0.d0) then
+    ReactionMnrlResPorosity = material_auxvar%porosity_res
+  endif
+
+end function ReactionMnrlResPorosity
 
 ! ************************************************************************** !
 

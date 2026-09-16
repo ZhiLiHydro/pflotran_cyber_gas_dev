@@ -159,6 +159,9 @@ subroutine OutputConservation(realization_base)
   use ZFlow_module, only : ZFlowComputeMassBalance
   use SCO2_module, only : SCO2ComputeMassBalance, &
                           SCO2ComputeComponentMassBalance
+  use SCO2_Aux_module, only : SCO2_ENERGY_EQUATION_INDEX, &
+                              SCO2_SALT_EQUATION_INDEX, &
+                              sco2_thermal
 
   use Global_Aux_module
   use Reactive_Transport_Aux_module
@@ -181,8 +184,16 @@ subroutine OutputConservation(realization_base)
   character(len=MAXSTRINGLENGTH) :: filename
   PetscInt :: fid = 86
   PetscInt :: i,icol
-  PetscReal :: sum_eq(5)
-  PetscReal :: sum_eq_global(5)
+  PetscReal :: sum_eq(20)
+  PetscReal :: sum_eq_global(20)
+  PetscReal :: sum_kg(realization_base%option%nflowspec, &
+                      realization_base%option%nphase)
+  PetscReal :: sum_kg_global(realization_base%option%nflowspec, &
+                             realization_base%option%nphase)
+  PetscReal :: sum_trapped(realization_base%option%nphase)
+  PetscReal :: sum_trapped_global(realization_base%option%nphase)
+  PetscReal :: energy_balance
+  PetscReal :: energy_balance_global
 
   type(integral_flux_type), pointer :: integral_flux
 
@@ -192,9 +203,13 @@ subroutine OutputConservation(realization_base)
   PetscReal :: flow_dof_scale(10)
   PetscReal :: tempreal
   PetscInt :: istart, iend
-  PetscInt :: icomp
+  PetscInt :: icomp, iphase, ispec
   PetscInt :: max_tran_size
   PetscInt :: j
+  PetscInt :: nflowdof_print
+  PetscInt :: nvalues
+  PetscInt :: offset
+  PetscInt :: cell_ids(realization_base%patch%grid%nlmax)
 
   PetscMPIInt :: int_mpi
   PetscErrorCode :: ierr
@@ -208,10 +223,10 @@ subroutine OutputConservation(realization_base)
 
   select case(option%iflowmode)
     case(NULL_MODE)
-    case(RICHARDS_MODE,TH_MODE)
+    case(RICHARDS_MODE,TH_MODE,SCO2_MODE,G_MODE)
     case default
       option%io_buffer = 'Mass and energy conservation must be set up &
-        &for the "' // trim(option%tranmode) // '" flow mode.'
+        &for the "' // trim(option%flowmode) // '" flow mode.'
       call PrintErrMsg(option)
   end select
   select case(option%itranmode)
@@ -255,34 +270,36 @@ subroutine OutputConservation(realization_base)
         integral_flux => integral_flux%next
       enddo
 
-      write(fid,'(a)') ''
+      call WriteNewLine(fid)
     else
       open(unit=fid,file=filename,action="write",status="old",position="append")
     endif
 
   endif
 
-100 format(100es16.8)
-110 format(100es16.8)
-
   ! write time
   if (OptionIsIORank(option)) then
-    write(fid,100,advance="no") option%time/output_option%tconv
+    call WriteRealFixedNoAdv(fid,option%time/output_option%tconv)
   endif
 
   if (option%nflowdof > 0) then
-    if (OptionIsIORank(option)) &
-      write(fid,100,advance="no") option%flow_dt/output_option%tconv
+    if (OptionIsIORank(option)) then
+      call WriteRealFixedNoAdv(fid,option%flow_dt/output_option%tconv)
+    endif
   endif
   if (option%ntrandof > 0) then
-    if (OptionIsIORank(option)) &
-      write(fid,100,advance="no") option%tran_dt/output_option%tconv
+    if (OptionIsIORank(option)) then
+      call WriteRealFixedNoAdv(fid,option%tran_dt/output_option%tconv)
+    endif
   endif
 
 ! print out global mass and energy balance
 
   if (option%nflowdof > 0) then
     sum_eq = 0.d0
+    sum_kg = 0.d0
+    sum_trapped = 0.d0
+    energy_balance = 0.d0
     select type(realization_base)
       class is(realization_subsurface_type)
         select case(option%iflowmode)
@@ -290,23 +307,26 @@ subroutine OutputConservation(realization_base)
             call RichardsComputeMassBalance(realization_base,sum_eq(1))
           case(ZFLOW_MODE)
 !            call ZFlowComputeMassBalance(realization_base,sum_kg(1,:))
+          case(THC_MODE)
+!            call THCComputeMassBalance(realization_base,sum_kg(1,:))
           case(TH_MODE,TH_TS_MODE)
             call THComputeMassBalance(realization_base,sum_eq(1),sum_eq(2))
           case(MPH_MODE)
 !            call MphaseComputeMassBalance(realization_base,sum_kg(:,:), &
 !                                          sum_trapped(:))
          case(G_MODE)
-!            cell_ids = (/ (i, i=1, realization_base%patch%grid%nlmax) /)
-!            call GeneralComputeMassBalance(realization_base, &
-!                                           cell_ids, &
-!                                           sum_kg(:,:))
+            cell_ids = (/ (i, i=1, realization_base%patch%grid%nlmax) /)
+            call GeneralComputeMassBalance(realization_base, &
+                                           realization_base%patch%grid%nlmax, &
+                                           cell_ids,sum_kg(:,:), &
+                                           energy_balance)
           case(H_MODE)
 !            call HydrateComputeMassBalance(realization_base,sum_kg(:,:))
           case(WF_MODE)
 !            call WIPPFloComputeMassBalance(realization_base,sum_kg(:,1))
           case(SCO2_MODE)
-!            call SCO2ComputeMassBalance(realization_base,sum_kg(:,:), &
-!                                          sum_trapped(:))
+            call SCO2ComputeMassBalance(realization_base,sum_kg(:,:), &
+                                        sum_trapped(:),energy_balance)
         end select
       class default
         option%io_buffer = 'Unrecognized realization class in &
@@ -314,16 +334,78 @@ subroutine OutputConservation(realization_base)
         call PrintErrMsg(option)
     end select
 
-    int_mpi = option%nflowdof
-    call MPI_Reduce(sum_eq,sum_eq_global,int_mpi,MPI_DOUBLE_PRECISION,MPI_SUM, &
-                    option%comm%io_rank,option%mycomm,ierr);CHKERRQ(ierr)
+    select case(option%iflowmode)
+      case(RICHARDS_MODE,RICHARDS_TS_MODE,TH_MODE,TH_TS_MODE)
+        int_mpi = option%nflowdof
+        call MPI_Reduce(sum_eq,sum_eq_global,int_mpi,MPI_DOUBLE_PRECISION, &
+                        MPI_SUM,option%comm%io_rank,option%mycomm, &
+                        ierr);CHKERRQ(ierr)
+      case(G_MODE)
+        ! pack: sum_kg then energy
+        nvalues = option%nflowspec*option%nphase
+        sum_eq(1:nvalues) = reshape(sum_kg,(/nvalues/))
+        nvalues = nvalues + 1
+        sum_eq(nvalues) = energy_balance
+        int_mpi = nvalues
+        call MPI_Reduce(sum_eq,sum_eq_global,int_mpi,MPI_DOUBLE_PRECISION, &
+                        MPI_SUM,option%comm%io_rank,option%mycomm, &
+                        ierr);CHKERRQ(ierr)
+        offset = option%nflowspec*option%nphase
+        sum_kg_global = reshape(sum_eq_global(1:offset), &
+                                (/option%nflowspec,option%nphase/))
+        energy_balance_global = sum_eq_global(nvalues)
+      case(SCO2_MODE)
+        ! pack: sum_kg, sum_trapped, energy
+        nvalues = option%nflowspec*option%nphase
+        sum_eq(1:nvalues) = reshape(sum_kg,(/nvalues/))
+        offset = nvalues
+        nvalues = nvalues + option%nphase
+        sum_eq(offset+1:nvalues) = sum_trapped(1:option%nphase)
+        nvalues = nvalues + 1
+        sum_eq(nvalues) = energy_balance
+        int_mpi = nvalues
+        call MPI_Reduce(sum_eq,sum_eq_global,int_mpi,MPI_DOUBLE_PRECISION, &
+                        MPI_SUM,option%comm%io_rank,option%mycomm, &
+                        ierr);CHKERRQ(ierr)
+        offset = option%nflowspec*option%nphase
+        sum_kg_global = reshape(sum_eq_global(1:offset), &
+                                (/option%nflowspec,option%nphase/))
+        sum_trapped_global(1:option%nphase) = &
+          sum_eq_global(offset+1:offset+option%nphase)
+        energy_balance_global = sum_eq_global(nvalues)
+    end select
 
     if (OptionIsIORank(option)) then
       select case(option%iflowmode)
         case(RICHARDS_MODE,RICHARDS_TS_MODE)
-          write(fid,110,advance="no") sum_eq_global(1:option%nflowdof)
+          call WriteRealNoAdv(fid,sum_eq_global(1:option%nflowdof))
         case(TH_MODE,TH_TS_MODE)
-          write(fid,110,advance="no") sum_eq_global(1:option%nflowdof)
+          call WriteRealNoAdv(fid,sum_eq_global(1:option%nflowdof))
+        case(G_MODE)
+          do iphase = 1, option%nphase
+            do ispec = 1, option%nflowspec
+              if ((iphase == 1) .or. &
+                  (iphase == 2 .and. ispec <= 2) .or. &
+                  (iphase == 3 .and. ispec == 3)) then
+                call WriteRealNoAdv(fid,sum_kg_global(ispec,iphase))
+              endif
+            enddo
+          enddo
+          call WriteRealNoAdv(fid,energy_balance_global)
+        case(SCO2_MODE)
+          do iphase = 1, option%nphase
+            do ispec = 1, option%nflowspec
+              if (iphase == 1) then
+                call WriteRealNoAdv(fid,sum_kg_global(ispec,iphase))
+              elseif (iphase == 2 .and. ispec < 3) then
+                call WriteRealNoAdv(fid,sum_kg_global(ispec,iphase))
+              endif
+            enddo
+          enddo
+          call WriteRealNoAdv(fid,sum_trapped_global(TWO_INTEGER))
+          if (sco2_thermal) then
+            call WriteRealNoAdv(fid,energy_balance_global)
+          endif
         case default
           option%io_buffer = 'Select case statement in OutputConservation &
             &needs to be extended for current flow mode: ' // &
@@ -369,21 +451,19 @@ subroutine OutputConservation(realization_base)
           ! total across all phases
           do icomp = 1, reaction%naqcomp
             if (reaction%primary_species_print(icomp)) then
-              write(fid,110,advance="no") array_global(icomp,1)
+              call WriteRealNoAdv(fid,array_global(icomp,1))
             endif
           enddo
           ! immobile species
           do i = 1, reaction%immobile%nimmobile
             if (reaction%immobile%print_me(i)) then
-              write(fid,110,advance="no") &
-                array_global(i,7)
+              call WriteRealNoAdv(fid,array_global(i,7))
             endif
           enddo
           ! gas species
           do i = 1, reaction%gas%nactive_gas
             if (reaction%gas%active_print_me(i)) then
-              write(fid,110,advance="no") &
-                array_global(i,8)
+              call WriteRealNoAdv(fid,array_global(i,8))
             endif
           enddo
         endif
@@ -392,7 +472,7 @@ subroutine OutputConservation(realization_base)
           if (OptionIsIORank(option)) then
             do i = 1, reaction%mineral%nkinmnrl
               if (reaction%mineral%kinmnrl_print(i)) then
-                write(fid,110,advance="no") array_global(i,6)
+                call WriteRealNoAdv(fid,array_global(i,6))
               endif
             enddo
           endif
@@ -401,9 +481,6 @@ subroutine OutputConservation(realization_base)
       case(NWT_MODE)
     end select
   endif
-
-
-120 format(100es17.8e3)
 
   allocate(array(option%nflowdof + option%ntrandof,2))
   allocate(array_global(option%nflowdof + option%ntrandof,2))
@@ -450,14 +527,20 @@ subroutine OutputConservation(realization_base)
     array_global(:,2) = array_global(:,2) * output_option%tconv
     if (OptionIsIORank(option)) then
       if (option%nflowdof > 0) then
-        do i = 1, option%nflowdof
+        ! for SCO2, skip well DOF (beyond energy); residual order is
+        ! water, CO2, salt, energy, [well]
+        nflowdof_print = option%nflowdof
+        select case(option%iflowmode)
+          case(SCO2_MODE)
+            nflowdof_print = SCO2_SALT_EQUATION_INDEX
+            if (sco2_thermal) then
+              nflowdof_print = SCO2_ENERGY_EQUATION_INDEX
+            endif
+        end select
+        do i = 1, nflowdof_print
           do j = 1, 2  ! 1 = integral, 2 = instantaneous
             tempreal = array_global(i,j)*flow_dof_scale(i)
-            if (dabs(tempreal) > 0.d0 .and. dabs(tempreal) < 1.d-99) then
-              write(fid,120,advance="no") tempreal
-            else
-              write(fid,110,advance="no") tempreal
-            endif
+            call WriteRealNoAdv(fid,tempreal)
           enddo
         enddo
       endif
@@ -469,11 +552,7 @@ subroutine OutputConservation(realization_base)
               do j = 1, 2  ! 1 = integral, 2 = instantaneous
                 if (reaction%primary_species_print(i)) then
                   tempreal = array_global(istart+i,j)
-                  if (dabs(tempreal) > 0.d0 .and. dabs(tempreal) < 1.d-99) then
-                    write(fid,120,advance="no") tempreal
-                  else
-                    write(fid,110,advance="no") tempreal
-                  endif
+                  call WriteRealNoAdv(fid,tempreal)
                 endif
               enddo
             enddo
@@ -482,11 +561,7 @@ subroutine OutputConservation(realization_base)
               do j = 1, 2  ! 1 = integral, 2 = instantaneous
                 if (reaction_nw%species_print(i)) then
                   tempreal = array_global(istart+i,j)
-                  if (dabs(tempreal) > 0.d0 .and. dabs(tempreal) < 1.d-99) then
-                    write(fid,120,advance="no") tempreal
-                  else
-                    write(fid,110,advance="no") tempreal
-                  endif
+                  call WriteRealNoAdv(fid,tempreal)
                 endif
               enddo
             enddo
@@ -500,7 +575,7 @@ subroutine OutputConservation(realization_base)
   deallocate(instantaneous_array)
 
   if (OptionIsIORank(option)) then
-    write(fid,'(a)') ''
+    call WriteNewLine(fid)
     close(fid)
   endif
 

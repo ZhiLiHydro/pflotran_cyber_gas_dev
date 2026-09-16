@@ -113,6 +113,7 @@ module Variables_module
   PetscInt, parameter, public :: ROCK_DENSITY            = 188
   PetscInt, parameter, public :: BIOT_COEFF              = 189
   PetscInt, parameter, public :: THERMAL_EXP_COEFF       = 190
+  PetscInt, parameter, public :: TRAN_DIFFUSION_SCALE    = 191
 
   PetscInt, parameter, public :: VOLUME                  = 90
   PetscInt, parameter, public :: TORTUOSITY              = 91
@@ -231,5 +232,6 @@ module Variables_module
   PetscInt, parameter, public :: SUM_MINERAL_VOLUME_FRACTION = 176
   PetscInt, parameter, public :: IONIC_STRENGTH              = 177
   PetscInt, parameter, public :: AQUEOUS_ELECTRICAL_CONDUCTIVITY = 178
+  PetscInt, parameter, public :: FLUID_ELECTRICAL_CONDUCTIVITY = 179
 
 end module Variables_module

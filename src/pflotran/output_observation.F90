@@ -235,14 +235,14 @@ subroutine OutputObservationTecplotColumnTXT(realization_base)
         end select
         observation => observation%next
       enddo
-      write(fid,'(a)',advance="yes") ""
+      call WriteNewLine(fid)
     else
       open(unit=fid,file=filename,action="write",status="old", &
            position="append")
     endif
 
     observation => patch%observation_list%first
-    write(fid,'(1es14.6)',advance="no") option%time/output_option%tconv
+    call WriteRealFixedNoAdv(fid,option%time/output_option%tconv)
     do
       if (.not.associated(observation)) exit
         select case(observation%itype)
@@ -272,7 +272,7 @@ subroutine OutputObservationTecplotColumnTXT(realization_base)
         end select
       observation => observation%next
     enddo
-    write(fid,'(a)',advance="yes") ""
+    call WriteNewLine(fid)
     close(fid)
 
   endif
@@ -387,7 +387,7 @@ subroutine OutputAggregateToFile(realization_base)
                                            observation%print_velocities, &
                                            icolumn)
 
-            write(fid,'(a)',advance="yes") ""
+            call WriteNewLine(fid)
             close(fid)
           endif
         endif
@@ -722,14 +722,14 @@ subroutine OutputObservationTecplotSecTXT(realization_base)
         end select
         observation => observation%next
       enddo
-      write(fid,'(a)',advance="yes") ""
+      call WriteNewLine(fid)
     else
       open(unit=fid,file=filename,action="write",status="old", &
            position="append")
     endif
 
     observation => patch%observation_list%first
-    write(fid,'(1es14.6)',advance="no") option%time/output_option%tconv
+    call WriteRealFixedNoAdv(fid,option%time/output_option%tconv)
     do
       if (.not.associated(observation)) exit
         select case(observation%itype)
@@ -770,7 +770,7 @@ subroutine OutputObservationTecplotSecTXT(realization_base)
       end select
       observation => observation%next
     enddo
-    write(fid,'(a)',advance="yes") ""
+    call WriteNewLine(fid)
     close(fid)
 
   endif
@@ -1037,6 +1037,9 @@ subroutine WriteObservationHeaderForBC(fid,realization_base,coupler_name)
       string = ',"Fluid flux ' // trim(coupler_name) // &
                 ' [m^3/' // trim(realization_base%output_option%tunit) // ']"'
     case default
+      option%io_buffer = 'WriteObservationHeaderForBC not supported for &
+        &current flow mode: ' // option%flowmode
+      call PrintErrMsg(option)
   end select
   write(fid,'(a)',advance="no") trim(string)
 
@@ -1075,6 +1078,7 @@ subroutine WriteObservationAggData(aggregate,realization_base,string,&
   use Realization_Base_class, only : realization_base_type
   use Option_module
   use Observation_module
+  use Grid_module
 
   implicit none
 
@@ -1082,14 +1086,15 @@ subroutine WriteObservationAggData(aggregate,realization_base,string,&
   class(realization_base_type) :: realization_base
   type(output_option_type), pointer :: output_option
   type(option_type), pointer :: option
+  type(grid_type), pointer :: grid
   character(len=MAXSTRINGLENGTH) :: string, filename
   PetscInt :: fid
 
   PetscErrorCode :: ierr
-  PetscInt :: agg_rank, local_id
+  PetscInt :: agg_rank, local_id, ghosted_id
   PetscReal :: local_metric(2), global_metric(2)
 
-110 format(es14.6)
+  grid => realization_base%patch%grid
 
   local_metric(1) = aggregate%metric_value
   local_metric(2) = option%myrank
@@ -1106,20 +1111,16 @@ subroutine WriteObservationAggData(aggregate,realization_base,string,&
   if (option%myrank == agg_rank) then
 
     local_id = aggregate%local_id
+    ghosted_id = grid%nL2G(local_id)
 
     open(unit=fid,file=filename,action="write",status="old",position="append")
-    write(fid,'(1es14.6)',advance="no") option%time/output_option%tconv
-
-    write(fid,110,advance="no") realization_base%patch%grid%x(realization_base%&
-                                patch%grid%nL2G(local_id))
-    write(fid,110,advance="no") realization_base%patch%grid%y(realization_base%&
-                                patch%grid%nL2G(local_id))
-    write(fid,110,advance="no") realization_base%patch%grid%z(realization_base%&
-                                patch%grid%nL2G(local_id))
-
+    call WriteRealFixedNoAdv(fid,option%time/output_option%tconv)
+    call WriteRealFixedNoAdv(fid,grid%x(ghosted_id))
+    call WriteRealFixedNoAdv(fid,grid%y(ghosted_id))
+    call WriteRealFixedNoAdv(fid,grid%z(ghosted_id))
     call WriteObservationDataForCell(fid,realization_base,local_id)
 
-    write(fid,'(a)',advance="yes") ""
+    call WriteNewLine(fid)
     close(fid)
   endif
 
@@ -1163,7 +1164,6 @@ subroutine WriteObservationDataForCell(fid,realization_base,local_id)
   field => realization_base%field
   output_option => realization_base%output_option
 
-110 format(es14.6)
 111 format(i2)
 
   ghosted_id = grid%nL2G(local_id)
@@ -1186,7 +1186,7 @@ subroutine WriteObservationDataForCell(fid,realization_base,local_id)
     temp_real = OutputGetVariableAtCell(realization_base,ghosted_id, &
                                         cur_variable)
     if (cur_variable%iformat == 0) then ! real
-      write(fid,110,advance="no") temp_real
+      call WriteRealNoAdv(fid,temp_real)
     else ! integer
       write(fid,111,advance="no") nint(temp_real)
     endif
@@ -1242,7 +1242,6 @@ subroutine WriteObservationDataForCoord(fid,realization_base,region)
   field => realization_base%field
   output_option => realization_base%output_option
 
-110 format(es14.6)
 111 format(i2)
 
   count = 0
@@ -1309,7 +1308,7 @@ subroutine WriteObservationDataForCoord(fid,realization_base,region)
                                          region%coordinates(ONE_INTEGER)%z, &
                                          count,ghosted_ids)
     if (cur_variable%iformat == 0) then ! real
-      write(fid,110,advance="no") temp_real
+      call WriteRealNoAdv(fid,temp_real)
     else ! integer
       write(fid,111,advance="no") nint(temp_real)
     endif
@@ -1357,15 +1356,14 @@ subroutine WriteObservationDataForBC(fid,realization_base,patch,connection_set)
   option => realization_base%option
   reaction => ReactionAuxCast(realization_base%reaction_base)
 
-110 format(es14.6)
-
   iphase = 1
 
   ! sum up fluxes across region
   if (associated(connection_set)) then
     offset = connection_set%offset
     select case(option%iflowmode)
-      case(MPH_MODE,TH_MODE,TH_TS_MODE,G_MODE,H_MODE,WF_MODE,SCO2_MODE)
+      case(MPH_MODE,TH_MODE,TH_TS_MODE,G_MODE,H_MODE,WF_MODE,SCO2_MODE, &
+           IMMISCIBLE_MODE)
         option%io_buffer = 'WriteObservationDataForBC() needs to be set up &
           & for multiphase flow modes.'
         call PrintErrMsg(option)
@@ -1385,7 +1383,7 @@ subroutine WriteObservationDataForBC(fid,realization_base,patch,connection_set)
                         ierr);CHKERRQ(ierr)
         if (OptionIsIORank(option)) then
           do i = 1, option%nphase
-            write(fid,110,advance="no") sum_volumetric_flux_global(i)
+            call WriteRealNoAdv(fid,sum_volumetric_flux_global(i))
           enddo
         endif
     end select
@@ -1406,7 +1404,7 @@ subroutine WriteObservationDataForBC(fid,realization_base,patch,connection_set)
       if (OptionIsIORank(option)) then
         !we currently only print the aqueous components
         do i = 1, reaction%naqcomp
-          write(fid,110,advance="no") sum_solute_flux_global(i)
+          call WriteRealNoAdv(fid,sum_solute_flux_global(i))
         enddo
       endif
     endif
@@ -1440,18 +1438,15 @@ subroutine WriteVelocityAtCell(fid,realization_base,local_id)
   PetscReal :: velocity(1:3)
   option => realization_base%option
 
-200 format(3(es14.6))
-
   iphase = 1
   velocity = GetVelocityAtCell(fid,realization_base,local_id,iphase)
-  write(fid,200,advance="no") velocity(1:3)* &
-                              realization_base%output_option%tconv
+  call WriteRealNoAdv(fid,velocity(1:3)*realization_base%output_option%tconv)
 
   if (max(option%nphase,option%transport%nphase) > 1) then
     iphase = 2
     velocity = GetVelocityAtCell(fid,realization_base,local_id,iphase)
-    write(fid,200,advance="no") velocity(1:3)* &
-                                realization_base%output_option%tconv
+    call WriteRealNoAdv(fid,velocity(1:3)* &
+                        realization_base%output_option%tconv)
   endif
 
 end subroutine WriteVelocityAtCell
@@ -1479,16 +1474,13 @@ subroutine WriteVelocityAtCell2(fid,realization_base,local_id,velocities)
   PetscReal :: velocity(3)
   option => realization_base%option
 
-200 format(3(es14.6))
-
   velocity = velocities(:,local_id,1)
-  write(fid,200,advance="no") velocity(1:3)* &
-                              realization_base%output_option%tconv
+  call WriteRealNoAdv(fid,velocity(1:3)*realization_base%output_option%tconv)
 
   if (max(option%nphase,option%transport%nphase) > 1) then
     velocity = velocities(:,local_id,2)
-    write(fid,200,advance="no") velocity(1:3)* &
-                                realization_base%output_option%tconv
+    call WriteRealNoAdv(fid,velocity(1:3)* &
+                        realization_base%output_option%tconv)
   endif
 
 end subroutine WriteVelocityAtCell2
@@ -1626,14 +1618,12 @@ subroutine WriteVelocityAtCoord(fid,realization_base,region)
 
   option => realization_base%option
 
-200 format(3(es14.6))
-
   iphase = 1
   velocity = GetVelocityAtCoord(fid,realization_base,region%cell_ids(1), &
                                 region%coordinates(ONE_INTEGER)%x, &
                                 region%coordinates(ONE_INTEGER)%y, &
                                 region%coordinates(ONE_INTEGER)%z,iphase)
-  write(fid,200,advance="no") velocity(1:3)*realization_base%output_option%tconv
+  call WriteRealNoAdv(fid,velocity(1:3)*realization_base%output_option%tconv)
 
   if (max(option%nphase,option%transport%nphase) > 1) then
     iphase = 2
@@ -1641,7 +1631,8 @@ subroutine WriteVelocityAtCoord(fid,realization_base,region)
                                 region%coordinates(ONE_INTEGER)%x, &
                                 region%coordinates(ONE_INTEGER)%y, &
                                 region%coordinates(ONE_INTEGER)%z,iphase)
-    write(fid,200,advance="no") velocity(1:3)*realization_base%output_option%tconv
+    call WriteRealNoAdv(fid,velocity(1:3)* &
+                             realization_base%output_option%tconv)
   endif
 
 end subroutine WriteVelocityAtCoord
@@ -1827,8 +1818,6 @@ subroutine WriteObservationSecondaryDataAtCell(fid,realization_base,local_id,iva
   field => realization_base%field
   output_option => realization_base%output_option
 
-110 format(es14.6)
-
   ghosted_id = grid%nL2G(local_id)
 
   if (option%nsec_cells > 0) then
@@ -1836,9 +1825,9 @@ subroutine WriteObservationSecondaryDataAtCell(fid,realization_base,local_id,iva
       select case(option%iflowmode)
         case(MPH_MODE,TH_MODE,TH_TS_MODE)
           do i = 1, option%nsec_cells
-            write(fid,110,advance="no") &
+            call WriteRealNoAdv(fid, &
               RealizGetVariableValueAtCell(realization_base,ghosted_id, &
-                                           SECONDARY_TEMPERATURE,i)
+                                           SECONDARY_TEMPERATURE,i))
           enddo
         end select
      endif
@@ -1849,19 +1838,19 @@ subroutine WriteObservationSecondaryDataAtCell(fid,realization_base,local_id,iva
           if (ivar == PRINT_SEC_CONC) then
             do naqcomp = 1, reaction%naqcomp
               do i = 1, option%nsec_cells
-                write(fid,110,advance="no") &
+                call WriteRealNoAdv(fid, &
                   RealizGetVariableValueAtCell(realization_base,ghosted_id, &
                                                SECONDARY_CONCENTRATION, &
-                                               i,naqcomp)
+                                               i,naqcomp))
               enddo
             enddo
             do ngas=1,reaction%gas%nactive_gas
               if (reaction%gas%active_print_me(ngas)) then
                 do i = 1, option%nsec_cells
-                  write(fid,110,advance="no") &
+                  call WriteRealNoAdv(fid, &
                     RealizGetVariableValueAtCell(realization_base,ghosted_id, &
                                                  SECONDARY_CONCENTRATION_GAS, &
-                                                 i,ngas)
+                                                 i,ngas))
                 enddo
               endif
             enddo
@@ -1869,27 +1858,27 @@ subroutine WriteObservationSecondaryDataAtCell(fid,realization_base,local_id,iva
           if (ivar == PRINT_SEC_MIN_VOLFRAC) then
             do nkinmnrl = 1, reaction%mineral%nkinmnrl
               do i = 1, option%nsec_cells
-                write(fid,110,advance="no") &
+                call WriteRealNoAdv(fid, &
                   RealizGetVariableValueAtCell(realization_base,ghosted_id, &
-                                               SEC_MIN_VOLFRAC,i,nkinmnrl)
+                                               SEC_MIN_VOLFRAC,i,nkinmnrl))
               enddo
             enddo
           endif
            if (ivar == PRINT_SEC_MIN_RATE) then
             do nkinmnrl = 1, reaction%mineral%nkinmnrl
               do i = 1, option%nsec_cells
-                write(fid,110,advance="no") &
+                call WriteRealNoAdv(fid, &
                   RealizGetVariableValueAtCell(realization_base,ghosted_id, &
-                                               SEC_MIN_RATE,i,nkinmnrl)
+                                               SEC_MIN_RATE,i,nkinmnrl))
               enddo
             enddo
           endif
           if (ivar == PRINT_SEC_MIN_SI) then
             do nkinmnrl = 1, reaction%mineral%nkinmnrl
               do i = 1, option%nsec_cells
-                write(fid,110,advance="no") &
+                call WriteRealNoAdv(fid, &
                   RealizGetVariableValueAtCell(realization_base,ghosted_id, &
-                                               SEC_MIN_SI,i,nkinmnrl)
+                                               SEC_MIN_SI,i,nkinmnrl))
               enddo
             enddo
           endif
@@ -2028,6 +2017,7 @@ subroutine OutputIntegralFlux(realization_base)
   use NW_Transport_Aux_module
   use Integral_Flux_module
   use Utility_module
+  use Immiscible_Aux_module, only : immis_fmw
   use General_Aux_module, only : general_fmw => fmw_comp
   use WIPP_Flow_Aux_module, only : wipp_flow_fmw => fmw_comp
   use SCO2_Aux_module, only : sco2_fmw => fmw_comp
@@ -2081,6 +2071,9 @@ subroutine OutputIntegralFlux(realization_base)
     case(WF_MODE)
       flow_dof_scale(1) = FMWH2O
       flow_dof_scale(2) = wipp_flow_fmw(2)
+    case(IMMISCIBLE_MODE)
+      flow_dof_scale(1) = immis_fmw(1)
+      flow_dof_scale(2) = immis_fmw(2)
     case(MPH_MODE)
       flow_dof_scale(1) = FMWH2O
       flow_dof_scale(2) = FMWCO2
@@ -2127,7 +2120,8 @@ subroutine OutputIntegralFlux(realization_base)
         if (.not.associated(integral_flux)) exit
         select case(option%iflowmode)
           case(RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE, &
-               TH_MODE,TH_TS_MODE,G_MODE,H_MODE,MPH_MODE,WF_MODE,SCO2_MODE)
+               TH_MODE,TH_TS_MODE,G_MODE,H_MODE,MPH_MODE,WF_MODE, &
+               SCO2_MODE,IMMISCIBLE_MODE)
             string = trim(integral_flux%name) // ' Water'
             call OutputWriteToHeader(fid,string,'kg','',icol)
             units = 'kg/' // trim(output_option%tunit) // ''
@@ -2147,7 +2141,7 @@ subroutine OutputIntegralFlux(realization_base)
             units = 'kg/' // trim(output_option%tunit) // ''
             string = trim(integral_flux%name) // ' Air'
             call OutputWriteToHeader(fid,string,units,'',icol)
-          case(WF_MODE)
+          case(WF_MODE,IMMISCIBLE_MODE)
             string = trim(integral_flux%name) // ' Gas Component'
             call OutputWriteToHeader(fid,string,'kg','',icol)
             units = 'kg/' // trim(output_option%tunit) // ''
@@ -2197,28 +2191,26 @@ subroutine OutputIntegralFlux(realization_base)
         endif
         integral_flux => integral_flux%next
       enddo
-      write(fid,'(a)') ''
+      call WriteNewLine(fid)
     else
       open(unit=fid,file=filename,action="write",status="old",position="append")
     endif
   endif
 
-100 format(100es17.8)
-110 format(100es17.8)
-120 format(100es17.8e3)
-
   ! write time
   if (OptionIsIORank(option)) then
-    write(fid,100,advance="no") option%time/output_option%tconv
+    call WriteRealFixedNoAdv(fid,option%time/output_option%tconv)
   endif
 
   if (option%nflowdof > 0) then
-    if (OptionIsIORank(option)) &
-      write(fid,100,advance="no") option%flow_dt/output_option%tconv
+    if (OptionIsIORank(option)) then
+      call WriteRealFixedNoAdv(fid,option%flow_dt/output_option%tconv)
+    endif
   endif
   if (option%ntrandof > 0) then
-    if (OptionIsIORank(option)) &
-      write(fid,100,advance="no") option%tran_dt/output_option%tconv
+    if (OptionIsIORank(option)) then
+      call WriteRealFixedNoAdv(fid,option%tran_dt/output_option%tconv)
+    endif
   endif
 
   allocate(array(option%nflowdof + option%ntrandof,2))
@@ -2269,11 +2261,7 @@ subroutine OutputIntegralFlux(realization_base)
         do i = 1, option%nflowdof
           do j = 1, 2  ! 1 = integral, 2 = instantaneous
             tempreal = array_global(i,j)*flow_dof_scale(i)
-            if (dabs(tempreal) > 0.d0 .and. dabs(tempreal) < 1.d-99) then
-              write(fid,120,advance="no") tempreal
-            else
-              write(fid,110,advance="no") tempreal
-            endif
+            call WriteRealNoAdv(fid,tempreal)
           enddo
         enddo
       endif
@@ -2285,11 +2273,7 @@ subroutine OutputIntegralFlux(realization_base)
               do j = 1, 2  ! 1 = integral, 2 = instantaneous
                 if (reaction%primary_species_print(i)) then
                   tempreal = array_global(istart+i,j)
-                  if (dabs(tempreal) > 0.d0 .and. dabs(tempreal) < 1.d-99) then
-                    write(fid,120,advance="no") tempreal
-                  else
-                    write(fid,110,advance="no") tempreal
-                  endif
+                  call WriteRealNoAdv(fid,tempreal)
                 endif
               enddo
             enddo
@@ -2298,11 +2282,7 @@ subroutine OutputIntegralFlux(realization_base)
               do j = 1, 2  ! 1 = integral, 2 = instantaneous
                 if (reaction_nw%species_print(i)) then
                   tempreal = array_global(istart+i,j)
-                  if (dabs(tempreal) > 0.d0 .and. dabs(tempreal) < 1.d-99) then
-                    write(fid,120,advance="no") tempreal
-                  else
-                    write(fid,110,advance="no") tempreal
-                  endif
+                  call WriteRealNoAdv(fid,tempreal)
                 endif
               enddo
             enddo
@@ -2316,7 +2296,7 @@ subroutine OutputIntegralFlux(realization_base)
   deallocate(instantaneous_array)
 
   if (OptionIsIORank(option)) then
-    write(fid,'(a)') ''
+    call WriteNewLine(fid)
     close(fid)
   endif
 
@@ -2353,6 +2333,7 @@ subroutine OutputMassBalance(realization_base)
   use Hydrate_module, only : HydrateComputeMassBalance
   use WIPP_Flow_module, only : WIPPFloComputeMassBalance
   use ZFlow_module, only : ZFlowComputeMassBalance
+  use Immiscible_module, only : ImmiscibleComputeMassBalance
   use SCO2_module, only : SCO2ComputeMassBalance, &
                           SCO2ComputeComponentMassBalance
 
@@ -2496,7 +2477,7 @@ subroutine OutputMassBalance(realization_base)
             call OutputWriteToHeader(fid,'Global Air Mass in Gas Phase', &
                                       'kg','',icol)
           endif
-        case(WF_MODE)
+        case(WF_MODE,IMMISCIBLE_MODE)
           call OutputWriteToHeader(fid,'Global Water Mass in Liquid Phase', &
                                     'kg','',icol)
           call OutputWriteToHeader(fid,'Global Gas Component Mass in Gas &
@@ -2667,7 +2648,7 @@ subroutine OutputMassBalance(realization_base)
               string = trim(coupler%name) // ' Air Mass'
               call OutputWriteToHeader(fid,string,units,'',icol)
             endif
-          case(WF_MODE)
+          case(WF_MODE,IMMISCIBLE_MODE)
             string = trim(coupler%name) // ' Water Mass'
             call OutputWriteToHeader(fid,string,'kg','',icol)
             string = trim(coupler%name) // ' Gas Component Mass'
@@ -2968,28 +2949,27 @@ subroutine OutputMassBalance(realization_base)
           cur_mbr => cur_mbr%next
         enddo
       endif
-      write(fid,'(a)') ''
+      call WriteNewLine(fid)
     else
       open(unit=fid,file=filename,action="write",status="old",position="append")
     endif
 
   endif
 
-100 format(100es16.8)
-110 format(100es16.8)
-
   ! write time
   if (OptionIsIORank(option)) then
-    write(fid,100,advance="no") option%time/output_option%tconv
+    call WriteRealFixedNoAdv(fid,option%time/output_option%tconv)
   endif
 
   if (option%nflowdof > 0) then
-    if (OptionIsIORank(option)) &
-      write(fid,100,advance="no") option%flow_dt/output_option%tconv
+    if (OptionIsIORank(option)) then
+      call WriteRealFixedNoAdv(fid,option%flow_dt/output_option%tconv)
+    endif
   endif
   if (option%ntrandof > 0) then
-    if (OptionIsIORank(option)) &
-      write(fid,100,advance="no") option%tran_dt/output_option%tconv
+    if (OptionIsIORank(option)) then
+      call WriteRealFixedNoAdv(fid,option%tran_dt/output_option%tconv)
+    endif
   endif
 
 ! print out global mass balance
@@ -3013,14 +2993,16 @@ subroutine OutputMassBalance(realization_base)
          case(G_MODE)
             cell_ids = (/ (i, i=1, grid%nlmax) /)
             call GeneralComputeMassBalance(realization_base,grid%nlmax, &
-                                           cell_ids,sum_kg(:,:))
+                                           cell_ids,sum_kg(:,:),dummy_energy)
           case(H_MODE)
             call HydrateComputeMassBalance(realization_base,sum_kg(:,:))
           case(WF_MODE)
             call WIPPFloComputeMassBalance(realization_base,sum_kg(:,1))
+          case(IMMISCIBLE_MODE)
+            call ImmiscibleComputeMassBalance(realization_base,sum_kg(:,1))
           case(SCO2_MODE)
             call SCO2ComputeMassBalance(realization_base,sum_kg(:,:), &
-                                          sum_trapped(:))
+                                          sum_trapped(:),dummy_energy)
         end select
       class default
         option%io_buffer = 'Unrecognized realization class in MassBalance().'
@@ -3031,7 +3013,7 @@ subroutine OutputMassBalance(realization_base)
     call MPI_Reduce(sum_kg,sum_kg_global,int_mpi,MPI_DOUBLE_PRECISION,MPI_SUM, &
                     option%comm%io_rank,option%mycomm,ierr);CHKERRQ(ierr)
 
-    if (option%iflowmode == MPH_MODE) then
+    if (option%iflowmode == MPH_MODE .or. option%iflowmode == SCO2_MODE) then
 !     call MPI_Barrier(option%mycomm,ierr)
       int_mpi = option%nphase
       call MPI_Reduce(sum_trapped,sum_trapped_global,int_mpi, &
@@ -3045,7 +3027,7 @@ subroutine OutputMassBalance(realization_base)
              TH_TS_MODE,ZFLOW_MODE,PNF_MODE)
           do iphase = 1, option%nphase
             do ispec = 1, option%nflowspec
-              write(fid,110,advance="no") sum_kg_global(ispec,iphase)
+              call WriteRealNoAdv(fid,sum_kg_global(ispec,iphase))
             enddo
           enddo
         case(G_MODE)
@@ -3054,32 +3036,32 @@ subroutine OutputMassBalance(realization_base)
               if ((iphase == 1) .or. &
                   (iphase == 2 .and. ispec <= 2) .or. &
                   (iphase == 3 .and. ispec ==3)) then
-                write(fid,110,advance="no") sum_kg_global(ispec,iphase)
+                call WriteRealNoAdv(fid,sum_kg_global(ispec,iphase))
               endif
             enddo
           enddo
-        case(WF_MODE)
+        case(WF_MODE,IMMISCIBLE_MODE)
           do iphase = 1, option%nphase
-            write(fid,110,advance="no") sum_kg_global(iphase,1)
+            call WriteRealNoAdv(fid,sum_kg_global(iphase,1))
           enddo
         case(MPH_MODE)
           do iphase = 1, option%nphase
             do ispec = 1, option%nflowspec
-              write(fid,110,advance="no") sum_kg_global(ispec,iphase)
+              call WriteRealNoAdv(fid,sum_kg_global(ispec,iphase))
             enddo
-            write(fid,110,advance="no") sum_trapped_global(iphase)
+            call WriteRealNoAdv(fid,sum_trapped_global(iphase))
           enddo
         case(SCO2_MODE)
           do iphase = 1, option%nphase
             do ispec = 1, option%nflowspec
               if (iphase == 1) then
-                write(fid,110,advance="no") sum_kg_global(ispec,iphase)
+                call WriteRealNoAdv(fid,sum_kg_global(ispec,iphase))
               elseif (iphase == 2 .and. ispec < 3) then
-                write(fid,110,advance="no") sum_kg_global(ispec,iphase)
+                call WriteRealNoAdv(fid,sum_kg_global(ispec,iphase))
               endif
             enddo
           enddo
-          write(fid,110,advance="no") sum_trapped_global(TWO_INTEGER)
+          call WriteRealNoAdv(fid,sum_trapped_global(TWO_INTEGER))
       end select
     endif
   endif
@@ -3120,21 +3102,19 @@ subroutine OutputMassBalance(realization_base)
           ! total across all phases
           do icomp = 1, reaction%naqcomp
             if (reaction%primary_species_print(icomp)) then
-              write(fid,110,advance="no") sum_mol_global(icomp,1)
+              call WriteRealNoAdv(fid,sum_mol_global(icomp,1))
             endif
           enddo
           ! immobile species
           do i = 1, reaction%immobile%nimmobile
             if (reaction%immobile%print_me(i)) then
-              write(fid,110,advance="no") &
-                sum_mol_global(i,7)
+              call WriteRealNoAdv(fid,sum_mol_global(i,7))
             endif
           enddo
           ! gas species
           do i = 1, reaction%gas%nactive_gas
             if (reaction%gas%active_print_me(i)) then
-              write(fid,110,advance="no") &
-                sum_mol_global(i,8)
+              call WriteRealNoAdv(fid,sum_mol_global(i,8))
             endif
           enddo
         endif
@@ -3143,7 +3123,7 @@ subroutine OutputMassBalance(realization_base)
           if (OptionIsIORank(option)) then
             do i = 1, reaction%mineral%nkinmnrl
               if (reaction%mineral%kinmnrl_print(i)) then
-                write(fid,110,advance="no") sum_mol_global(i,6)
+                call WriteRealNoAdv(fid,sum_mol_global(i,6))
               endif
             enddo
           endif
@@ -3172,16 +3152,16 @@ subroutine OutputMassBalance(realization_base)
         if (OptionIsIORank(option)) then
           do icomp = 1, reaction_nw%params%nspecies
             if (reaction_nw%print_what%total_bulk_conc) then
-              write(fid,110,advance="no") sum_mol_global(icomp,1)
+              call WriteRealNoAdv(fid,sum_mol_global(icomp,1))
             endif
             if (reaction_nw%print_what%aqueous_eq_conc) then
-              write(fid,110,advance="no") sum_mol_global(icomp,2)
+              call WriteRealNoAdv(fid,sum_mol_global(icomp,2))
             endif
             if (reaction_nw%print_what%sorb_eq_conc) then
-              write(fid,110,advance="no") sum_mol_global(icomp,3)
+              call WriteRealNoAdv(fid,sum_mol_global(icomp,3))
             endif
             if (reaction_nw%print_what%mnrl_eq_conc) then
-              write(fid,110,advance="no") sum_mol_global(icomp,4)
+              call WriteRealNoAdv(fid,sum_mol_global(icomp,4))
             endif
           enddo
         endif
@@ -3291,7 +3271,7 @@ subroutine OutputMassBalance(realization_base)
 
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
-            write(fid,110,advance="no") -sum_kg_global
+            call WriteRealNoAdv(fid,-sum_kg_global(1,1))
           endif
 
           ! print out H2O flux
@@ -3315,7 +3295,7 @@ subroutine OutputMassBalance(realization_base)
 
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
-            write(fid,110,advance="no") -sum_kg_global*output_option%tconv
+            call WriteRealNoAdv(fid,-sum_kg_global(1,1)*output_option%tconv)
           endif
 
         case(TH_MODE,TH_TS_MODE)
@@ -3332,7 +3312,7 @@ subroutine OutputMassBalance(realization_base)
 
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
-            write(fid,110,advance="no") -sum_kg_global
+            call WriteRealNoAdv(fid,-sum_kg_global(1,1))
           endif
 
           ! print out H2O flux
@@ -3350,7 +3330,7 @@ subroutine OutputMassBalance(realization_base)
 
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
-            write(fid,110,advance="no") -sum_kg_global*output_option%tconv
+            call WriteRealNoAdv(fid,-sum_kg_global(1,1)*output_option%tconv)
           endif
 
         case(MPH_MODE)
@@ -3370,7 +3350,7 @@ subroutine OutputMassBalance(realization_base)
 
             if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
-              write(fid,110,advance="no") -sum_kg_global(icomp,1)
+              call WriteRealNoAdv(fid,-sum_kg_global(icomp,1))
             endif
           enddo
 
@@ -3394,7 +3374,7 @@ subroutine OutputMassBalance(realization_base)
 
             if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
-              write(fid,110,advance="no") -sum_kg_global(icomp,1)*output_option%tconv
+              call WriteRealNoAdv(fid,-sum_kg_global(icomp,1)*output_option%tconv)
             endif
           enddo
         case(SCO2_MODE)
@@ -3413,7 +3393,7 @@ subroutine OutputMassBalance(realization_base)
 
             if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
-              write(fid,110,advance="no") -sum_kg_global(icomp,1)
+              call WriteRealNoAdv(fid,-sum_kg_global(icomp,1))
             endif
           enddo
 
@@ -3432,7 +3412,7 @@ subroutine OutputMassBalance(realization_base)
 
             if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
-              write(fid,110,advance="no") -sum_kg_global(icomp,1)*output_option%tconv
+              call WriteRealNoAdv(fid,-sum_kg_global(icomp,1)*output_option%tconv)
             endif
           enddo
         case(G_MODE,H_MODE)
@@ -3449,7 +3429,7 @@ subroutine OutputMassBalance(realization_base)
 
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
-            write(fid,110,advance="no") -sum_kg_global(:,1)
+            call WriteRealNoAdv(fid,-sum_kg_global(:,1))
           endif
 
           ! print out H2O flux
@@ -3468,9 +3448,9 @@ subroutine OutputMassBalance(realization_base)
 
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
-            write(fid,110,advance="no") -sum_kg_global(:,1)*output_option%tconv
+            call WriteRealNoAdv(fid,-sum_kg_global(:,1)*output_option%tconv)
           endif
-        case(WF_MODE)
+        case(WF_MODE,IMMISCIBLE_MODE)
           ! print out cumulative H2O flux
           sum_kg = 0.d0
           do iconn = 1, coupler%connection_set%num_connections
@@ -3484,7 +3464,7 @@ subroutine OutputMassBalance(realization_base)
 
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
-            write(fid,110,advance="no") -sum_kg_global(:,1)
+            call WriteRealNoAdv(fid,-sum_kg_global(:,1))
           endif
 
           ! print out H2O flux
@@ -3503,7 +3483,7 @@ subroutine OutputMassBalance(realization_base)
 
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
-            write(fid,110,advance="no") -sum_kg_global(:,1)*output_option%tconv
+            call WriteRealNoAdv(fid,-sum_kg_global(:,1)*output_option%tconv)
           endif
       end select
     endif
@@ -3530,7 +3510,7 @@ subroutine OutputMassBalance(realization_base)
             ! change sign for positive in / negative out
             do icomp = 1, reaction%naqcomp
               if (reaction%primary_species_print(icomp)) then
-                write(fid,110,advance="no") -sum_mol_global(icomp,1)
+                call WriteRealNoAdv(fid,-sum_mol_global(icomp,1))
               endif
             enddo
             ! this block prints out the contribution to the total
@@ -3539,7 +3519,7 @@ subroutine OutputMassBalance(realization_base)
             if (reaction%gas%nactive_gas > 0) then
               do icomp = 1, reaction%naqcomp
                 if (reaction%primary_species_print(icomp)) then
-                  write(fid,110,advance="no") -sum_mol_global(icomp,2)
+                  call WriteRealNoAdv(fid,-sum_mol_global(icomp,2))
                 endif
               enddo
             endif
@@ -3561,8 +3541,8 @@ subroutine OutputMassBalance(realization_base)
             ! change sign for positive in / negative out
             do icomp = 1, reaction%naqcomp
               if (reaction%primary_species_print(icomp)) then
-                write(fid,110,advance="no") -sum_mol_global(icomp,1)* &
-                                              output_option%tconv
+                call WriteRealNoAdv(fid,-sum_mol_global(icomp,1)* &
+                                              output_option%tconv)
               endif
             enddo
             ! this block prints out the contribution to the total
@@ -3571,8 +3551,8 @@ subroutine OutputMassBalance(realization_base)
             if (reaction%gas%nactive_gas > 0) then
               do icomp = 1, reaction%naqcomp
                 if (reaction%primary_species_print(icomp)) then
-                  write(fid,110,advance="no") -sum_mol_global(icomp,2)* &
-                                                output_option%tconv
+                  call WriteRealNoAdv(fid,-sum_mol_global(icomp,2)* &
+                                          output_option%tconv)
                 endif
               enddo
             endif
@@ -3597,7 +3577,7 @@ subroutine OutputMassBalance(realization_base)
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
             do icomp = 1, nspecies
-              write(fid,110,advance="no") -sum_mol_global(icomp,1)
+              call WriteRealNoAdv(fid,-sum_mol_global(icomp,1))
             enddo
           endif
 
@@ -3616,8 +3596,8 @@ subroutine OutputMassBalance(realization_base)
           if (OptionIsIORank(option)) then
             ! change sign for positive in / negative out
             do icomp = 1, nspecies
-              write(fid,110,advance="no") -sum_mol_global(icomp,1)* &
-                                           output_option%tconv
+              call WriteRealNoAdv(fid,-sum_mol_global(icomp,1)* &
+                                           output_option%tconv)
             enddo
           endif
       end select
@@ -3691,7 +3671,7 @@ subroutine OutputMassBalance(realization_base)
 
         if (OptionIsIORank(option)) then
         ! change sign for positive in / negative out
-          write(fid,110,advance="no") sum_kg_global(icomp,1)
+          call WriteRealNoAdv(fid,sum_kg_global(icomp,1))
         endif
       enddo
 
@@ -3705,7 +3685,7 @@ subroutine OutputMassBalance(realization_base)
           ! change sign for positive in / negative out
           do icomp = 1, reaction%naqcomp
             if (reaction%primary_species_print(icomp)) then
-              write(fid,110,advance="no") -sum_mol_global(icomp,1)
+              call WriteRealNoAdv(fid,-sum_mol_global(icomp,1))
             endif
           enddo
           ! this block prints out the contribution to the total
@@ -3714,7 +3694,7 @@ subroutine OutputMassBalance(realization_base)
           if (reaction%gas%nactive_gas > 0) then
             do icomp = 1, reaction%naqcomp
               if (reaction%primary_species_print(icomp)) then
-                write(fid,110,advance="no") -sum_mol_global(icomp,2)
+                call WriteRealNoAdv(fid,-sum_mol_global(icomp,2))
               endif
             enddo
           endif
@@ -3730,8 +3710,8 @@ subroutine OutputMassBalance(realization_base)
           ! change sign for positive in / negative out
           do icomp = 1, reaction%naqcomp
             if (reaction%primary_species_print(icomp)) then
-              write(fid,110,advance="no") -sum_mol_global(icomp,1)* &
-                                            output_option%tconv
+              call WriteRealNoAdv(fid,-sum_mol_global(icomp,1)* &
+                                            output_option%tconv)
             endif
           enddo
           ! this block prints out the contribution to the total
@@ -3740,8 +3720,8 @@ subroutine OutputMassBalance(realization_base)
           if (reaction%gas%nactive_gas > 0) then
             do icomp = 1, reaction%naqcomp
               if (reaction%primary_species_print(icomp)) then
-                write(fid,110,advance="no") -sum_mol_global(icomp,2)* &
-                                              output_option%tconv
+                call WriteRealNoAdv(fid,-sum_mol_global(icomp,2)* &
+                                              output_option%tconv)
               endif
             enddo
           endif
@@ -3768,7 +3748,7 @@ subroutine OutputMassBalance(realization_base)
                 call GeneralComputeMassBalance(realization_base, &
                                                cur_mbr%num_cells, &
                                                cur_mbr%region_cell_ids, &
-                                               total_mass(:,:))
+                                               total_mass(:,:),dummy_energy)
 
               case(SCO2_MODE)
                 deallocate(total_mass,global_total_mass)
@@ -3811,7 +3791,7 @@ subroutine OutputMassBalance(realization_base)
             if (OptionIsIORank(option)) then
               do i =1,option%nflowspec
                 global_total_mass_sum = sum(global_total_mass(i,:))
-                write(fid,110,advance="no") global_total_mass_sum
+                call WriteRealNoAdv(fid,global_total_mass_sum)
               enddo
             endif
           case(SCO2_MODE)
@@ -3823,7 +3803,7 @@ subroutine OutputMassBalance(realization_base)
             if (OptionIsIORank(option)) then
               do i =1,option%nflowspec
                 do j = 1,option%trapped_gas_phase
-                  write(fid,110,advance="no") global_total_mass(i,j)
+                  call WriteRealNoAdv(fid,global_total_mass(i,j))
                 enddo
               enddo
             endif
@@ -3860,29 +3840,27 @@ subroutine OutputMassBalance(realization_base)
                                         global_total_mass(i,1)
             enddo
             if (OptionIsIORank(option)) then
-              write(fid,110,advance="no") global_total_mass_sum
+              call WriteRealNoAdv(fid,global_total_mass_sum)
               do icomp = 1, reaction%naqcomp
                 if (reaction%primary_species_print(icomp)) then
-                  write(fid,110,advance="no") global_total_mass(icomp,1)
+                  call WriteRealNoAdv(fid,global_total_mass(icomp,1))
                 endif
               enddo
               ! immobile species
               do i = 1, reaction%immobile%nimmobile
                 if (reaction%immobile%print_me(i)) then
-                  write(fid,110,advance="no") &
-                    global_total_mass(i,7)
+                  call WriteRealNoAdv(fid,global_total_mass(i,7))
                 endif
               enddo
               ! gas species
               do i = 1, reaction%gas%nactive_gas
                 if (reaction%gas%active_print_me(i)) then
-                  write(fid,110,advance="no") &
-                    global_total_mass(i,8)
+                  call WriteRealNoAdv(fid,global_total_mass(i,8))
                 endif
               enddo
               do i = 1, reaction%mineral%nkinmnrl
                 if (reaction%mineral%kinmnrl_print(i)) then
-                  write(fid,110,advance="no") global_total_mass(i,6)
+                  call WriteRealNoAdv(fid,global_total_mass(i,6))
                 endif
               enddo
             endif
@@ -3916,19 +3894,19 @@ subroutine OutputMassBalance(realization_base)
                                       global_total_mass(i,1)
             enddo
             if (OptionIsIORank(option)) then
-              write(fid,110,advance="no") global_total_mass_sum
+              call WriteRealNoAdv(fid,global_total_mass_sum)
               do icomp = 1, reaction_nw%params%nspecies
                 if (reaction_nw%print_what%total_bulk_conc) then
-                  write(fid,110,advance="no") global_total_mass(icomp,1)
+                  call WriteRealNoAdv(fid,global_total_mass(icomp,1))
                 endif
                 if (reaction_nw%print_what%aqueous_eq_conc) then
-                  write(fid,110,advance="no") global_total_mass(icomp,2)
+                  call WriteRealNoAdv(fid,global_total_mass(icomp,2))
                 endif
                 if (reaction_nw%print_what%sorb_eq_conc) then
-                  write(fid,110,advance="no") global_total_mass(icomp,3)
+                  call WriteRealNoAdv(fid,global_total_mass(icomp,3))
                 endif
                 if (reaction_nw%print_what%mnrl_eq_conc) then
-                  write(fid,110,advance="no") global_total_mass(icomp,4)
+                  call WriteRealNoAdv(fid,global_total_mass(icomp,4))
                 endif
 
               enddo
@@ -3941,7 +3919,7 @@ subroutine OutputMassBalance(realization_base)
   endif
 
   if (OptionIsIORank(option)) then
-    write(fid,'(a)') ''
+    call WriteNewLine(fid)
     close(fid)
   endif
 

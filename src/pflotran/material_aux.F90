@@ -16,12 +16,6 @@ module Material_Aux_module
   PetscInt, parameter, public :: perm_yz_index = 5
   PetscInt, parameter, public :: perm_xz_index = 6
 
-  ! do not use 0 as an index as there is a case statement in material.F90
-  ! designed to catch erroneous values outside [1,2].
-  PetscInt, parameter, public :: POROSITY_CURRENT = 1
-  PetscInt, parameter, public :: POROSITY_BASE = 2
-  PetscInt, parameter, public :: POROSITY_INITIAL = 3
-
   ! Tensor to scalar conversion models
   ! default for structured grids = TENSOR_TO_SCALAR_LINEAR
   ! default for unstructured grids = TENSOR_TO_SCALAR_POTENTIAL
@@ -63,6 +57,11 @@ module Material_Aux_module
     PetscReal :: porosity ! porosity used in calculation, which may be a
                           ! function of soil compressibity, etc.
     PetscReal :: dporosity_dp
+    ! per-material precip cutoff porosity; 0 = unset (use CHEMISTRY value)
+    PetscReal :: porosity_res
+    ! diffusion shutoff factor near the precip cutoff; recomputed each
+    ! step from lagged VF, 1 = no shutoff
+    PetscReal :: tran_diff_scale
     PetscReal :: tortuosity
     PetscReal :: soil_particle_density
     PetscReal, pointer :: permeability(:)
@@ -71,7 +70,11 @@ module Material_Aux_module
     type(fracture_auxvar_type), pointer :: fracture
     type(secondary_auxvar_type), pointer :: secondary_prop
     PetscReal, pointer :: geomechanics_subsurface_prop(:)
-    PetscInt :: creep_closure_id
+    ! Dual-purpose secondary material index:
+    !   - creep closure table id (when creep closure is active)
+    !   - geomechanics material id mapped onto this flow cell (fixed-stress)
+    ! Creep closure and geomechanics-subsurface coupling are mutually exclusive.
+    PetscInt :: secondary_material_id
 !    procedure(SaturationFunction), nopass, pointer :: SaturationFunction
 !  contains
 !    procedure, public :: PermeabilityTensorToScalar
@@ -276,6 +279,8 @@ subroutine MaterialAuxVarInit(auxvar,option)
   auxvar%porosity_base = UNINITIALIZED_DOUBLE
   auxvar%porosity = UNINITIALIZED_DOUBLE
   auxvar%dporosity_dp = 0.d0
+  auxvar%porosity_res = 0.d0
+  auxvar%tran_diff_scale = 1.d0
   auxvar%tortuosity = UNINITIALIZED_DOUBLE
   auxvar%soil_particle_density = UNINITIALIZED_DOUBLE
   if (option%iflowmode /= NULL_MODE) then
@@ -298,7 +303,7 @@ subroutine MaterialAuxVarInit(auxvar,option)
   else
     nullify(auxvar%secondary_prop)
   endif
-  auxvar%creep_closure_id = 1
+  auxvar%secondary_material_id = 1
 
   if (max_material_index > 0) then
     allocate(auxvar%soil_properties(max_material_index))
@@ -350,10 +355,13 @@ subroutine MaterialAuxVarCopy(auxvar,auxvar2,option)
   type(material_auxvar_type) :: auxvar, auxvar2
   type(option_type) :: option
 
+  auxvar2%id = auxvar%id
   auxvar2%volume = auxvar%volume
   auxvar2%porosity_0 = auxvar%porosity_0
   auxvar2%porosity_base = auxvar%porosity_base
   auxvar2%porosity = auxvar%porosity
+  auxvar2%porosity_res = auxvar%porosity_res
+  auxvar2%tran_diff_scale = auxvar%tran_diff_scale
   auxvar2%tortuosity = auxvar%tortuosity
   auxvar2%soil_particle_density = auxvar%soil_particle_density
   if (associated(auxvar%permeability)) then
@@ -365,7 +373,7 @@ subroutine MaterialAuxVarCopy(auxvar,auxvar2,option)
   if (associated(auxvar%soil_properties)) then
     auxvar2%soil_properties = auxvar%soil_properties
   endif
-  auxvar2%creep_closure_id = auxvar%creep_closure_id
+  auxvar2%secondary_material_id = auxvar%secondary_material_id
 
 end subroutine MaterialAuxVarCopy
 
@@ -851,6 +859,8 @@ function MaterialAuxVarGetValue(material_auxvar,ivar)
       MaterialAuxVarGetValue = material_auxvar%porosity_0
     case(BASE_POROSITY)
       MaterialAuxVarGetValue = material_auxvar%porosity_base
+    case(TRAN_DIFFUSION_SCALE)
+      MaterialAuxVarGetValue = material_auxvar%tran_diff_scale
     case(POROSITY)
       MaterialAuxVarGetValue = material_auxvar%porosity
     case(TORTUOSITY)
@@ -916,6 +926,8 @@ subroutine MaterialAuxVarSetValue(material_auxvar,ivar,value)
       material_auxvar%porosity_0 = value
     case(BASE_POROSITY)
       material_auxvar%porosity_base = value
+    case(TRAN_DIFFUSION_SCALE)
+      material_auxvar%tran_diff_scale = value
     case(POROSITY)
       material_auxvar%porosity = value
     case(TORTUOSITY)

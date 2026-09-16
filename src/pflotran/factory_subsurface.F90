@@ -173,10 +173,12 @@ subroutine FactorySubsurfaceSetFlowMode(pm_flow,pm_well,option)
   use PM_Richards_TS_class
   use PM_TH_TS_class
   use PM_ZFlow_class
+  use PM_THC_class
   use PM_SCO2_class
   use ZFlow_Aux_module
   use PM_PNF_class
   use PM_Well_class
+  use PM_Immiscible_class
 
   implicit none
 
@@ -213,8 +215,11 @@ subroutine FactorySubsurfaceSetFlowMode(pm_flow,pm_well,option)
       option%nphase = 2
       option%nflowdof = 3
       option%nflowspec = 2
-      co2_sw_itable = 2 ! read CO2DATA0.dat
-!     co2_sw_itable = 1 ! create CO2 database: co2data.dat
+      if (option%flow%write_co2data_dat) then
+        co2_sw_itable = 1 ! create CO2 database: co2data.dat
+      else
+        co2_sw_itable = 2 ! read CO2DATA0.dat
+      endif
       option%flow%isothermal = PETSC_FALSE
       option%water_id = 1
       option%air_id = 2
@@ -244,6 +249,21 @@ subroutine FactorySubsurfaceSetFlowMode(pm_flow,pm_well,option)
           &OPTIONS,PROCESSES.'
         call PrintErrMsg(option)
       endif
+    class is (pm_thc_type)
+      option%iflowmode = THC_MODE
+      option%flowmode = 'thc'
+      option%nphase = 1
+      option%nflowdof = 3
+      option%nflowspec = 1
+      option%flow%isothermal = PETSC_FALSE
+    class is (pm_immiscible_type)
+      option%iflowmode = IMMISCIBLE_MODE
+      option%nphase = 2
+      option%nflowdof = 2
+      option%nflowspec = 1
+      option%capillary_pressure_id = 3
+      option%flow%isothermal = PETSC_TRUE
+      option%flow%store_fluxes = PETSC_TRUE
     class is (pm_pnf_type)
       option%iflowmode = PNF_MODE
       option%nphase = 1
@@ -500,6 +520,8 @@ subroutine FactorySubsurfSetupRealization(simulation)
   call EOSReferenceDensity(option)
 
   call ParameterSetup(realization%parameter_list,option)
+  call RealProcessMatPropAndSatFunc(realization)
+
   select case(option%itranmode)
     case(RT_MODE)
       select type(pm=>simulation%tran_process_model_coupler%pm_list)
@@ -594,8 +616,7 @@ subroutine FactorySubsurfSetupRealization(simulation)
     call PatchGetCompMassInRegionAssign(realization%patch%region_list, &
          realization%output_option%mass_balance_region_list,option)
   endif
-  ! link conditions with regions through couplers and generate connectivity
-  call RealProcessMatPropAndSatFunc(realization)
+  call RealLinkMatPropsToDatasets(realization)
   ! must process conditions before couplers in order to determine dataset types
   call RealizationProcessConditions(realization)
   call RealizationProcessCouplers(realization)
@@ -771,6 +792,7 @@ subroutine FactorySubsurfaceInsertWellCells(simulation)
   use PM_Base_class
   use PM_Well_class
   use PM_SCO2_class
+  use PM_TH_class
   use PM_Hydrate_class
   use Option_module
   use Field_module
@@ -793,6 +815,7 @@ subroutine FactorySubsurfaceInsertWellCells(simulation)
   PetscInt, pointer :: well_cells(:)
   PetscInt, pointer :: h_all_global_id(:)
   PetscInt :: num_well_cells
+  PetscBool :: extend_ghost_cells
   PetscErrorCode :: ierr
 
   realization => simulation%realization
@@ -887,6 +910,20 @@ subroutine FactorySubsurfaceInsertWellCells(simulation)
             end select
             cur_pmc2 => cur_pmc2%peer
           enddo
+        class is (pm_th_type)
+          if (.not. associated(cur_pmc%child)) exit
+          cur_pmc2 => cur_pmc%child
+          do
+            cur_pm2 => cur_pmc2%pm_list
+            if (.not. associated(cur_pmc2)) exit
+            if (.not. associated(cur_pm2)) exit
+            select type (pm2 => cur_pm2)
+              class is (pm_well_type)
+                pm_well => pm2
+                exit
+            end select
+            cur_pmc2 => cur_pmc2%peer
+          enddo
         class default
           option%io_buffer = 'The fully implicit well model can only be run &
                                & in SCO2 or HYDRATE mode right now.'
@@ -895,8 +932,16 @@ subroutine FactorySubsurfaceInsertWellCells(simulation)
       cur_pm => cur_pm%next
     enddo
     nullify(well_cells)
+    ! closed-loop wells co-locate DOFs with reservoir cells and use standard
+    ! face ghosting; only hydrostatic/implicit wells need extended ghosting
+    extend_ghost_cells = PETSC_FALSE
     do
       if (.not. associated(pm_well)) exit
+      select type(pm => pm_well)
+        class is(pm_well_closed_loop_type)
+          pm_well => pm_well%next_well
+          cycle
+      end select
       call PMWellSetupGrid(pm_well,realization,option)
       pm_well%well_comm%petsc_rank = option%myrank
       allocate(h_all_global_id(pm_well%well_grid%nsegments))
@@ -904,12 +949,14 @@ subroutine FactorySubsurfaceInsertWellCells(simulation)
                          pm_well%well_grid%nsegments, &
                          MPI_INTEGER,MPI_MAX,option%mycomm,ierr);CHKERRQ(ierr)
       pm_well%well_grid%h_global_id = h_all_global_id
+      extend_ghost_cells = PETSC_TRUE
+
       num_well_cells = pm_well%well_grid%nsegments
       allocate(well_cells(num_well_cells))
       well_cells(:) = pm_well%well_grid%h_global_id(:)
 
       call UGridAddWellCells(realization%discretization%grid% &
-                              unstructured_grid,well_cells,realization%option)
+                             unstructured_grid,well_cells,realization%option)
 
       ! Destroy first-pass well grid
       call DeallocateArray(pm_well%well_grid%dh)
@@ -929,8 +976,10 @@ subroutine FactorySubsurfaceInsertWellCells(simulation)
 
     enddo
 
-    call GridExpandGhostCells(realization%discretization%grid, &
+    if (extend_ghost_cells) then
+      call GridExpandGhostCells(realization%discretization%grid, &
                                 realization%option)
+    endif
   endif
 
   ! Destroy the dummy DM's

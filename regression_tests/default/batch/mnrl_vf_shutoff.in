@@ -1,0 +1,204 @@
+#Description: Tests DIFFUSION_RAMP_WIDTH / MINIMUM_DIFFUSION_SCALE of
+#  LIMIT_MINERAL_VOLUME_FRACTION. Cell 1 (calcite VF 0.95, porosity 0.05,
+#  supersaturated water) caps at a volume fraction of 0.950001 and its face
+#  diffusion factor drops toward MINIMUM_DIFFUSION_SCALE. Cell 2 holds
+#  dilute water and no calcite. The throttled diffusive exchange slowly
+#  exports cell 1's remaining supersaturation; once cell 1 undersaturates,
+#  calcite dissolves through the cutoff (never gated) so the volume
+#  fraction ends below the cap and the diffusion factor recovers. Exercises
+#  seal, throttle, and reopen in one run.
+
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_TRANSPORT transport
+      MODE GIRT
+    /
+  /
+END
+
+SUBSURFACE
+
+#=========================== numerical methods ================================
+NUMERICAL_METHODS TRANSPORT
+
+  LINEAR_SOLVER
+    SOLVER DIRECT
+  /
+
+END
+
+#=========================== regression =======================================
+REGRESSION
+  CELL_IDS
+    1
+    2
+  /
+END
+
+#=========================== flow =============================================
+SPECIFIED_VELOCITY
+  UNIFORM? YES
+  DATASET 0.d0 0.d0 0.d0 m/yr
+END
+
+#=========================== chemistry ========================================
+CHEMISTRY
+  PRIMARY_SPECIES
+    H+
+    HCO3-
+    Ca++
+  /
+  SECONDARY_SPECIES
+    OH-
+    CO3--
+    CO2(aq)
+    CaCO3(aq)
+    CaHCO3+
+    CaOH+
+  /
+  PASSIVE_GAS_SPECIES
+    CO2(g)
+  /
+  MINERALS
+    Calcite
+  /
+  MINERAL_KINETICS
+    Calcite
+      RATE_CONSTANT 1.d-6
+      SURFACE_AREA_VOL_FRAC_POWER 1.d0
+      SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    /
+  /
+  DATABASE ../../../database/hanford.dat
+  LOG_FORMULATION
+  ACTIVITY_COEFFICIENTS TIMESTEP
+  UPDATE_POROSITY
+  MINIMUM_POROSITY 1.d-3
+  LIMIT_MINERAL_VOLUME_FRACTION
+    RESIDUAL_POROSITY 4.9999d-2
+    DIFFUSION_RAMP_WIDTH 1.d-3
+    MINIMUM_DIFFUSION_SCALE 1.d-2
+  /
+  OUTPUT
+    PH
+    TOTAL
+    ALL
+    MINERALS
+  /
+END
+
+#=========================== discretization ===================================
+GRID
+  TYPE STRUCTURED
+  NXYZ 1 1 2
+  BOUNDS
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 2.d0
+  /
+END
+
+#=========================== fluid properties =================================
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.d-9
+END
+
+#=========================== material properties ==============================
+MATERIAL_PROPERTY soil1
+  ID 1
+  POROSITY 5.d-2
+  TORTUOSITY 1.d0
+END
+
+#=========================== output options ===================================
+OUTPUT
+  PERIODIC_OBSERVATION TIMESTEP 1
+  FORMAT TECPLOT POINT
+  PRINT_COLUMN_IDS
+END
+
+#=========================== times ============================================
+TIME
+  FINAL_TIME 1.d0 y
+  INITIAL_TIMESTEP_SIZE 1.d0 h
+  MAXIMUM_TIMESTEP_SIZE 1.d-1 y
+END
+
+#=========================== regions ==========================================
+REGION bottom
+  COORDINATES
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 1.d0
+  /
+END
+
+REGION top
+  COORDINATES
+    0.d0 0.d0 1.d0
+    1.d0 1.d0 2.d0
+  /
+END
+
+#=========================== transport conditions =============================
+TRANSPORT_CONDITION initial_sealed
+  TYPE ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 initial_sealed
+  /
+END
+
+TRANSPORT_CONDITION initial_dilute
+  TYPE ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 initial_dilute
+  /
+END
+
+#=========================== constraints ======================================
+CONSTRAINT initial_sealed
+  CONCENTRATIONS
+    H+     1.d-8      F
+    HCO3-  1.d-3      G  CO2(g)
+    Ca++   1.d-1      T
+  /
+  MINERALS
+    Calcite  0.95d0 1.d2 m^2/m^3
+  /
+END
+
+CONSTRAINT initial_dilute
+  CONCENTRATIONS
+    H+     1.d-8      F
+    HCO3-  1.d-5      T
+    Ca++   1.d-6      T
+  /
+  MINERALS
+    Calcite  0.d0 0.d0 m^2/m^3
+  /
+  ACKNOWLEDGE_ZERO_SURFACE_AREA
+END
+
+#=========================== condition couplers ===============================
+# initial conditions
+INITIAL_CONDITION
+  TRANSPORT_CONDITION initial_sealed
+  REGION bottom
+END
+
+INITIAL_CONDITION
+  TRANSPORT_CONDITION initial_dilute
+  REGION top
+END
+
+#=========================== stratigraphy couplers ============================
+STRATA
+  REGION bottom
+  MATERIAL soil1
+END
+
+STRATA
+  REGION top
+  MATERIAL soil1
+END
+
+END_SUBSURFACE

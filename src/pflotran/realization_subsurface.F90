@@ -84,6 +84,8 @@ module Realization_Subsurface_class
             RealizationUpdatePropertiesTS, &
             RealizationUpdatePropertiesNI, &
             RealizationUpdateMineralPorosity, &
+            RealizationCheckResidualPorosity, &
+            RealizationUpdatePermFromPor, &
             RealizationCountCells, &
             RealizationPrintGridStatistics, &
             RealizationPassPtrsToPatches, &
@@ -97,7 +99,8 @@ module Realization_Subsurface_class
             RealizationCheckConsistency, &
             RealizationPrintStateAtCells, &
             RealizationProcessOutputVarList, &
-            RealizSetupPrescribedConservation
+            RealizSetupPrescribedConservation, &
+            RealLinkMatPropsToDatasets
 
 contains
 
@@ -650,14 +653,10 @@ subroutine RealProcessMatPropAndSatFunc(realization)
   ! Author: Glenn Hammond
   ! Date: 01/21/09, 01/12/11
   !
-
-  use String_module
-  use Dataset_Common_HDF5_class
-  use Dataset_module
   use Characteristic_Curves_module
   use Characteristic_Curves_Thermal_module
+  use Material_module, only : MaterialInitAuxIndices
   use TH_Aux_module, only : th_ice_model
-
 
   implicit none
 
@@ -681,6 +680,8 @@ subroutine RealProcessMatPropAndSatFunc(realization)
   call MaterialPropConvertListToArray(patch%material_properties, &
                                       patch%material_property_array, &
                                       option)
+  call MaterialInitAuxIndices(patch%material_property_array,option)
+
   if (associated(realization%saturation_functions)) then
     patch%saturation_functions => realization%saturation_functions
     call SaturatFuncConvertListToArray(patch%saturation_functions, &
@@ -884,6 +885,30 @@ subroutine RealProcessMatPropAndSatFunc(realization)
         call PrintErrMsg(option)
     endif
 
+    cur_material_property => cur_material_property%next
+  enddo
+
+end subroutine RealProcessMatPropAndSatFunc
+
+! ************************************************************************** !
+
+subroutine RealLinkMatPropsToDatasets(realization)
+  !
+  ! Setup linkeage between material properites and datasets, if they exist
+  !
+  ! Author: Glenn Hammond
+  ! Date: 06/19/26
+  !
+  implicit none
+
+  class(realization_subsurface_type) :: realization
+
+  type(material_property_type), pointer :: cur_material_property
+
+  cur_material_property => realization%material_properties
+  do
+    if (.not.associated(cur_material_property)) exit
+
     ! if named, link dataset to property
     call RealLinkMatPropToDataset(realization,cur_material_property, &
                                   cur_material_property%porosity_dataset, &
@@ -951,8 +976,7 @@ subroutine RealProcessMatPropAndSatFunc(realization)
     cur_material_property => cur_material_property%next
   enddo
 
-
-end subroutine RealProcessMatPropAndSatFunc
+end subroutine RealLinkMatPropsToDatasets
 
 ! ************************************************************************** !
 
@@ -1579,11 +1603,11 @@ subroutine RealizationRevertFlowParameters(realization)
   use Option_module
   use Field_module
   use Discretization_module
-  use Material_Aux_module, only : material_type, &
-                              POROSITY_CURRENT, POROSITY_BASE, POROSITY_INITIAL
-  use Variables_module, only : PERMEABILITY_X, PERMEABILITY_Y, PERMEABILITY_Z, &
-                               PERMEABILITY_XY, PERMEABILITY_XZ, &
-                               PERMEABILITY_YZ, POROSITY
+  use Material_Aux_module
+  use Variables_module, only : PERMEABILITY_X, PERMEABILITY_Y, &
+                               PERMEABILITY_Z, PERMEABILITY_XY, &
+                               PERMEABILITY_XZ, PERMEABILITY_YZ, &
+                               POROSITY, INITIAL_POROSITY, BASE_POROSITY
 
   implicit none
 
@@ -1602,39 +1626,30 @@ subroutine RealizationRevertFlowParameters(realization)
   if (option%nflowdof > 0) then
     call DiscretizationGlobalToLocal(discretization,field%perm0_xx, &
                                      field%work_loc,ONEDOF)
-    call MaterialSetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_X, &
-                                 ZERO_INTEGER)
+    call MaterialSetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_X)
     call DiscretizationGlobalToLocal(discretization,field%perm0_yy, &
                                      field%work_loc,ONEDOF)
-    call MaterialSetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_Y, &
-                                 ZERO_INTEGER)
+    call MaterialSetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_Y)
     call DiscretizationGlobalToLocal(discretization,field%perm0_zz, &
                                      field%work_loc,ONEDOF)
-    call MaterialSetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_Z, &
-                                 ZERO_INTEGER)
+    call MaterialSetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_Z)
     if (option%flow%full_perm_tensor) then
       call DiscretizationGlobalToLocal(discretization,field%perm0_xy, &
                                        field%work_loc,ONEDOF)
-      call MaterialSetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_XY, &
-                                   ZERO_INTEGER)
+      call MaterialSetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_XY)
       call DiscretizationGlobalToLocal(discretization,field%perm0_xz, &
                                        field%work_loc,ONEDOF)
-      call MaterialSetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_XZ, &
-                                   ZERO_INTEGER)
+      call MaterialSetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_XZ)
       call DiscretizationGlobalToLocal(discretization,field%perm0_yz, &
                                        field%work_loc,ONEDOF)
-      call MaterialSetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_YZ, &
-                                   ZERO_INTEGER)
+      call MaterialSetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_YZ)
      endif
   endif
   call DiscretizationGlobalToLocal(discretization,field%porosity0, &
                                    field%work_loc,ONEDOF)
-  call MaterialSetAuxVarVecLoc(Material,field%work_loc,POROSITY, &
-                               POROSITY_INITIAL)
-  call MaterialSetAuxVarVecLoc(Material,field%work_loc,POROSITY, &
-                               POROSITY_BASE)
-  call MaterialSetAuxVarVecLoc(Material,field%work_loc,POROSITY, &
-                               POROSITY_CURRENT)
+  call MaterialSetAuxVarVecLoc(Material,field%work_loc,INITIAL_POROSITY)
+  call MaterialSetAuxVarVecLoc(Material,field%work_loc,BASE_POROSITY)
+  call MaterialSetAuxVarVecLoc(Material,field%work_loc,POROSITY)
   ! tortuosity is not currently checkpointed
 !  call DiscretizationGlobalToLocal(discretization,field%tortuosity0, &
 !                                   field%work_loc,ONEDOF)
@@ -1675,40 +1690,31 @@ subroutine RealizStoreRestartFlowParams(realization)
   Material => realization%patch%aux%Material
 
   if (option%nflowdof > 0) then
-    call MaterialGetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_X, &
-                                 ZERO_INTEGER)
+    call MaterialGetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_X)
     call DiscretizationLocalToGlobal(discretization,field%work_loc, &
                                      field%perm0_xx,ONEDOF)
-    call MaterialGetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_Y, &
-                                 ZERO_INTEGER)
+    call MaterialGetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_Y)
     call DiscretizationLocalToGlobal(discretization,field%work_loc, &
                                      field%perm0_yy,ONEDOF)
-    call MaterialGetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_Z, &
-                                 ZERO_INTEGER)
+    call MaterialGetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_Z)
     call DiscretizationLocalToGlobal(discretization,field%work_loc, &
                                      field%perm0_zz,ONEDOF)
     if (option%flow%full_perm_tensor) then
-      call MaterialGetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_XY, &
-                                   ZERO_INTEGER)
+      call MaterialGetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_XY)
       call DiscretizationLocalToGlobal(discretization,field%work_loc, &
                                        field%perm0_xy,ONEDOF)
-      call MaterialGetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_XZ, &
-                                   ZERO_INTEGER)
+      call MaterialGetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_XZ)
       call DiscretizationLocalToGlobal(discretization,field%work_loc, &
                                        field%perm0_xz,ONEDOF)
-      call MaterialGetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_YZ, &
-                                   ZERO_INTEGER)
+      call MaterialGetAuxVarVecLoc(Material,field%work_loc,PERMEABILITY_YZ)
       call DiscretizationLocalToGlobal(discretization,field%work_loc, &
                                        field%perm0_yz,ONEDOF)
     endif
   endif
-  call MaterialGetAuxVarVecLoc(Material,field%work_loc,POROSITY, &
-                               POROSITY_BASE)
+  call MaterialGetAuxVarVecLoc(Material,field%work_loc,BASE_POROSITY)
   ! might as well update initial and base at the same time
-  call MaterialSetAuxVarVecLoc(Material,field%work_loc,POROSITY, &
-                               POROSITY_INITIAL)
-  call MaterialSetAuxVarVecLoc(Material,field%work_loc,POROSITY, &
-                               POROSITY_CURRENT)
+  call MaterialSetAuxVarVecLoc(Material,field%work_loc,INITIAL_POROSITY)
+  call MaterialSetAuxVarVecLoc(Material,field%work_loc,POROSITY)
   call DiscretizationLocalToGlobal(discretization,field%work_loc, &
                                    field%porosity0,ONEDOF)
   ! tortuosity is not currently checkpointed
@@ -1954,10 +1960,7 @@ subroutine RealizationUpdatePropertiesTS(realization)
   use Reaction_Aux_module
   use Reactive_Transport_Aux_module
   use Reaction_Mineral_module
-  use Variables_module, only : POROSITY, TORTUOSITY, PERMEABILITY_X, &
-                               PERMEABILITY_Y, PERMEABILITY_Z, &
-                               PERMEABILITY_XY, PERMEABILITY_XZ, &
-                               PERMEABILITY_YZ
+  use Variables_module, only : BASE_POROSITY, TORTUOSITY
 
   implicit none
 
@@ -2021,14 +2024,6 @@ subroutine RealizationUpdatePropertiesTS(realization)
 
     call VecRestoreArrayRead(field%porosity0,porosity0_p, &
                                 ierr);CHKERRQ(ierr)
-
-!geh:remove
-    call MaterialGetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                 TORTUOSITY,ZERO_INTEGER)
-    call DiscretizationLocalToLocal(discretization,field%work_loc, &
-                                    field%work_loc,ONEDOF)
-    call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                 TORTUOSITY,ZERO_INTEGER)
   endif
 
   if (reaction%update_tortuosity) then
@@ -2037,7 +2032,16 @@ subroutine RealizationUpdatePropertiesTS(realization)
     call VecGetArrayRead(field%porosity0,porosity0_p,ierr);CHKERRQ(ierr)
     do local_id = 1, grid%nlmax
       ghosted_id = grid%nL2G(local_id)
-      scale = (material_auxvars(ghosted_id)%porosity_base / &
+      porosity_base_ = material_auxvars(ghosted_id)%porosity_base
+      ! transport shutoff: tortuosity law sees un-floored 1-sumVF
+      if (reaction%use_unfloored_porosity) then
+        porosity_base_ = max(1.d0 - &
+          ReactionMnrlCalcSumVolFrac(rt_auxvars(ghosted_id), &
+                                     reaction%mineral), &
+          ReactionMnrlResPorosity(reaction,rt_auxvars(ghosted_id), &
+                                  material_auxvars(ghosted_id)))
+      endif
+      scale = (porosity_base_ / &
                porosity0_p(local_id))** &
         material_property_array(patch%imat(ghosted_id))%ptr%tortuosity_pwr
       material_auxvars(ghosted_id)%tortuosity = &
@@ -2048,11 +2052,11 @@ subroutine RealizationUpdatePropertiesTS(realization)
     call VecRestoreArrayRead(field%porosity0,porosity0_p, &
                                 ierr);CHKERRQ(ierr)
     call MaterialGetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                 TORTUOSITY,ZERO_INTEGER)
+                                 TORTUOSITY)
     call DiscretizationLocalToLocal(discretization,field%work_loc, &
                                     field%work_loc,ONEDOF)
     call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                 TORTUOSITY,ZERO_INTEGER)
+                                 TORTUOSITY)
   endif
 
   if (reaction%update_permeability) then
@@ -2071,6 +2075,14 @@ subroutine RealizationUpdatePropertiesTS(realization)
       critical_porosity = material_property_array(imat)%ptr% &
                             permeability_crit_por
       porosity_base_ = material_auxvars(ghosted_id)%porosity_base
+      ! transport shutoff: perm law sees un-floored 1-sumVF
+      if (reaction%use_unfloored_porosity) then
+        porosity_base_ = max(1.d0 - &
+          ReactionMnrlCalcSumVolFrac(rt_auxvars(ghosted_id), &
+                                     reaction%mineral), &
+          ReactionMnrlResPorosity(reaction,rt_auxvars(ghosted_id), &
+                                  material_auxvars(ghosted_id)))
+      endif
       scale = 0.d0
       if (porosity_base_ > critical_porosity .and. &
           porosity0_p(local_id) > critical_porosity) then
@@ -2109,52 +2121,15 @@ subroutine RealizationUpdatePropertiesTS(realization)
     call VecRestoreArrayRead(field%porosity0,porosity0_p, &
                                 ierr);CHKERRQ(ierr)
 
-    call MaterialGetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                 PERMEABILITY_X,ZERO_INTEGER)
-    call DiscretizationLocalToLocal(discretization,field%work_loc, &
-                                    field%work_loc,ONEDOF)
-    call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                 PERMEABILITY_X,ZERO_INTEGER)
-    call MaterialGetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                 PERMEABILITY_Y,ZERO_INTEGER)
-    call DiscretizationLocalToLocal(discretization,field%work_loc, &
-                                    field%work_loc,ONEDOF)
-    call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                 PERMEABILITY_Y,ZERO_INTEGER)
-    call MaterialGetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                 PERMEABILITY_Z,ZERO_INTEGER)
-    call DiscretizationLocalToLocal(discretization,field%work_loc, &
-                                    field%work_loc,ONEDOF)
-    call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                 PERMEABILITY_Z,ZERO_INTEGER)
-    if (option%flow%full_perm_tensor) then
-      call MaterialGetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                   PERMEABILITY_XY,ZERO_INTEGER)
-      call DiscretizationLocalToLocal(discretization,field%work_loc, &
-                                      field%work_loc,ONEDOF)
-      call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                   PERMEABILITY_XY,ZERO_INTEGER)
-      call MaterialGetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                   PERMEABILITY_XZ,ZERO_INTEGER)
-      call DiscretizationLocalToLocal(discretization,field%work_loc, &
-                                      field%work_loc,ONEDOF)
-      call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                   PERMEABILITY_XZ,ZERO_INTEGER)
-      call MaterialGetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                   PERMEABILITY_YZ,ZERO_INTEGER)
-      call DiscretizationLocalToLocal(discretization,field%work_loc, &
-                                      field%work_loc,ONEDOF)
-      call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                   PERMEABILITY_YZ,ZERO_INTEGER)
-    endif
+    call MaterialCommunicatePerms(realization%comm1,patch%aux%Material, &
+                                  field%work_loc,option)
   endif
 
   ! perform check to ensure that porosity is bounded between 0 and 1
   ! since it is calculated as 1.d-sum_volfrac, it cannot be > 1
-  call MaterialGetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                               POROSITY,POROSITY_BASE)
+  call MaterialGetAuxVarVecLoc(patch%aux%Material,field%work_loc,BASE_POROSITY)
   call DiscretizationLocalToGlobal(discretization,field%work_loc, &
-                                  field%work,ONEDOF)
+                                   field%work,ONEDOF)
   call VecMin(field%work,ivalue,min_value,ierr);CHKERRQ(ierr)
   if (min_value < 0.d0) then
     write(option%io_buffer,*) 'Sum of mineral volume fractions has ' // &
@@ -2163,6 +2138,126 @@ subroutine RealizationUpdatePropertiesTS(realization)
   endif
 
 end subroutine RealizationUpdatePropertiesTS
+
+! ************************************************************************** !
+
+subroutine RealizationUpdatePermFromPor(realization)
+  !
+  ! Updates permeability when solely a function of porosity
+  !
+  ! Author: Glenn Hammond
+  ! Date: 04/27/26
+  !
+  use Field_module
+  use Grid_module
+  use Material_Aux_module
+  use Reaction_Aux_module
+  use Reaction_Mineral_module
+  use Reactive_Transport_Aux_module
+
+  implicit none
+
+  class(realization_subsurface_type) :: realization
+
+  type(option_type), pointer :: option
+  type(patch_type), pointer :: patch
+  type(field_type), pointer :: field
+  type(grid_type), pointer :: grid
+  type(material_property_ptr_type), pointer :: material_property_array(:)
+  type(material_auxvar_type), pointer :: material_auxvars(:)
+  class(reaction_rt_type), pointer :: reaction
+  type(reactive_transport_auxvar_type), pointer :: rt_auxvars(:)
+
+  PetscInt :: local_id, ghosted_id
+  PetscInt :: imat
+  PetscReal :: scale
+  PetscReal, pointer :: porosity0_p(:)
+  PetscReal, pointer :: perm0_xx_p(:), perm0_yy_p(:), perm0_zz_p(:)
+  PetscReal, pointer :: perm0_xy_p(:), perm0_xz_p(:), perm0_yz_p(:)
+  PetscReal :: porosity
+  PetscReal :: critical_porosity
+  PetscBool :: unfloored
+  PetscErrorCode :: ierr
+
+  option => realization%option
+  patch => realization%patch
+  field => realization%field
+  grid => patch%grid
+  material_property_array => patch%material_property_array
+  material_auxvars => patch%aux%Material%auxvars
+  reaction => realization%reaction
+
+  unfloored = PETSC_FALSE
+  if (associated(reaction)) unfloored = reaction%use_unfloored_porosity
+  if (unfloored) rt_auxvars => patch%aux%RT%auxvars
+
+  if (option%flow%update_flow_perm_from_por) then
+    call VecGetArrayRead(field%perm0_xx,perm0_xx_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(field%perm0_zz,perm0_zz_p,ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(field%perm0_yy,perm0_yy_p,ierr);CHKERRQ(ierr)
+    if (option%flow%full_perm_tensor) then
+      call VecGetArrayRead(field%perm0_xy,perm0_xy_p,ierr);CHKERRQ(ierr)
+      call VecGetArrayRead(field%perm0_xz,perm0_xz_p,ierr);CHKERRQ(ierr)
+      call VecGetArrayRead(field%perm0_yz,perm0_yz_p,ierr);CHKERRQ(ierr)
+    endif
+    call VecGetArrayRead(field%porosity0,porosity0_p,ierr);CHKERRQ(ierr)
+    do local_id = 1, grid%nlmax
+      ghosted_id = grid%nL2G(local_id)
+      imat = patch%imat(ghosted_id)
+      critical_porosity = material_property_array(imat)%ptr% &
+                            permeability_crit_por
+      porosity = material_auxvars(ghosted_id)%porosity
+      ! transport shutoff: perm law sees un-floored 1-sumVF
+      if (unfloored) then
+        porosity = max(1.d0 - &
+          ReactionMnrlCalcSumVolFrac(rt_auxvars(ghosted_id), &
+                                     reaction%mineral), &
+          ReactionMnrlResPorosity(reaction,rt_auxvars(ghosted_id), &
+                                  material_auxvars(ghosted_id)))
+      endif
+      scale = 0.d0
+      if (porosity > critical_porosity .and. &
+          porosity0_p(local_id) > critical_porosity) then
+        scale = ((porosity - critical_porosity) / &
+                 (porosity0_p(local_id) - critical_porosity)) ** &
+                material_property_array(imat)%ptr%permeability_pwr
+      endif
+      scale = max(material_property_array(imat)%ptr% &
+                    permeability_min_scale_fac,scale)
+      material_auxvars(ghosted_id)%permeability(perm_xx_index) = &
+          perm0_xx_p(local_id)*scale
+      material_auxvars(ghosted_id)%permeability(perm_yy_index) = &
+          perm0_yy_p(local_id)*scale
+      material_auxvars(ghosted_id)%permeability(perm_zz_index) = &
+          perm0_zz_p(local_id)*scale
+      if (option%flow%full_perm_tensor) then
+        material_auxvars(ghosted_id)%permeability(perm_xy_index) = &
+          perm0_xy_p(local_id)*scale
+        material_auxvars(ghosted_id)%permeability(perm_xz_index) = &
+          perm0_xz_p(local_id)*scale
+        material_auxvars(ghosted_id)%permeability(perm_yz_index) = &
+          perm0_yz_p(local_id)*scale
+      endif
+    enddo
+    call VecRestoreArrayRead(field%perm0_xx,perm0_xx_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(field%perm0_zz,perm0_zz_p,ierr);CHKERRQ(ierr)
+    call VecRestoreArrayRead(field%perm0_yy,perm0_yy_p,ierr);CHKERRQ(ierr)
+    if (option%flow%full_perm_tensor) then
+      call VecRestoreArrayRead(field%perm0_xy,perm0_xy_p, &
+                                  ierr);CHKERRQ(ierr)
+      call VecRestoreArrayRead(field%perm0_xz,perm0_xz_p, &
+                                  ierr);CHKERRQ(ierr)
+      call VecRestoreArrayRead(field%perm0_yz,perm0_yz_p, &
+                                  ierr);CHKERRQ(ierr)
+    endif
+    call VecRestoreArrayRead(field%porosity0,porosity0_p, &
+                                ierr);CHKERRQ(ierr)
+
+    call MaterialCommunicatePerms(realization%comm1,patch%aux%Material, &
+                                  field%work_loc,option)
+  endif
+
+end subroutine RealizationUpdatePermFromPor
 
 ! ************************************************************************** !
 
@@ -2197,7 +2292,8 @@ subroutine RealizationUpdateMineralPorosity(realization)
   use Reaction_Mineral_module
   use Reactive_Transport_Aux_module
   use Material_Aux_module
-  use Variables_module, only : POROSITY
+  use Variables_module, only : POROSITY, BASE_POROSITY, INITIAL_POROSITY, &
+                               TRAN_DIFFUSION_SCALE
 
   implicit none
 
@@ -2214,6 +2310,7 @@ subroutine RealizationUpdateMineralPorosity(realization)
 
   PetscInt :: local_id, ghosted_id
   PetscReal :: sum_mnrl_volume_fractions
+  PetscReal :: unfloored_por, porosity_res, tran_scale
 
   option => realization%option
   discretization => realization%discretization
@@ -2244,18 +2341,135 @@ subroutine RealizationUpdateMineralPorosity(realization)
   endif
 
   ! update ghosted porosities
-  call MaterialGetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                               POROSITY,POROSITY_BASE)
+  call MaterialGetAuxVarVecLoc(patch%aux%Material,field%work_loc,BASE_POROSITY)
   call DiscretizationLocalToLocal(discretization,field%work_loc, &
                                   field%work_loc,ONEDOF)
-  call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                               POROSITY,POROSITY_BASE)
-  call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                               POROSITY,POROSITY_CURRENT)
+  call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc,BASE_POROSITY)
+  call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc,POROSITY)
+
+  ! face diffusion shutoff factor toward the precip cutoff; recomputed
+  ! each step from lagged VF so reopening by dissolution is automatic
+  if (reaction%tran_diff_ramp > 0.d0 .and. &
+      reaction%mineral%nkinmnrl > 0) then
+    do local_id = 1, grid%nlmax
+      ghosted_id = grid%nL2G(local_id)
+      tran_scale = 1.d0
+      porosity_res = ReactionMnrlResPorosity(reaction, &
+                                             rt_auxvars(ghosted_id), &
+                                             material_auxvars(ghosted_id))
+      if (porosity_res > 0.d0) then
+        unfloored_por = 1.d0 - &
+          ReactionMnrlCalcSumVolFrac(rt_auxvars(ghosted_id),reaction%mineral)
+        tran_scale = min(max((unfloored_por-porosity_res)/ &
+                             reaction%tran_diff_ramp, &
+                             reaction%tran_diff_min_scale),1.d0)
+      endif
+      material_auxvars(ghosted_id)%tran_diff_scale = tran_scale
+    enddo
+    call MaterialGetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
+                                 TRAN_DIFFUSION_SCALE)
+    call DiscretizationLocalToLocal(discretization,field%work_loc, &
+                                    field%work_loc,ONEDOF)
+    call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
+                                 TRAN_DIFFUSION_SCALE)
+  endif
 !  call MaterialSetAuxVarScalar(patch%aux%Material,UNINITIALIZED_DOUBLE, &
 !                               POROSITY,POROSITY_CURRENT)
 
 end subroutine RealizationUpdateMineralPorosity
+
+! ************************************************************************** !
+
+subroutine RealizationCheckResidualPorosity(realization)
+  !
+  ! Errors out if a cell's initial porosity (1 - sum of mineral volume
+  ! fractions) is already at or below RESIDUAL_POROSITY, which would ban
+  ! precipitation in that cell from the start
+  !
+  ! Author: Heeho Park
+  ! Date: 08/19/26
+  !
+
+  use Grid_module
+  use Material_Aux_module
+  use Reaction_Aux_module
+  use Reaction_Mineral_module
+  use Reactive_Transport_Aux_module
+  use String_module
+
+  implicit none
+
+  class(realization_subsurface_type) :: realization
+
+  type(option_type), pointer :: option
+  type(patch_type), pointer :: patch
+  class(reaction_rt_type), pointer :: reaction
+  type(grid_type), pointer :: grid
+  type(reactive_transport_auxvar_type), pointer :: rt_auxvars(:)
+  type(material_auxvar_type), pointer :: material_auxvars(:)
+
+  PetscInt :: local_id, ghosted_id
+  PetscReal :: porosity, porosity_res
+  PetscReal :: min_porosity, max_porosity_res
+  PetscReal :: temp_real_in(2), temp_real_out(2)
+  PetscErrorCode :: ierr
+
+  option => realization%option
+  reaction => realization%reaction
+
+  if (.not.associated(reaction)) return
+  if (reaction%mineral%nkinmnrl == 0) return
+
+  if ((reaction%tran_diff_ramp > 0.d0 .or. &
+       reaction%use_unfloored_porosity) .and. &
+      .not.reaction%update_porosity) then
+    option%io_buffer = 'DIFFUSION_RAMP_WIDTH and USE_UNFLOORED_POROSITY in &
+      &LIMIT_MINERAL_VOLUME_FRACTION require UPDATE_POROSITY.'
+    call PrintErrMsg(option)
+  endif
+
+  patch => realization%patch
+  grid => patch%grid
+  rt_auxvars => patch%aux%RT%auxvars
+  material_auxvars => patch%aux%Material%auxvars
+
+  ! track worst offender over cells that start at or below their cutoff
+  min_porosity = 1.d20
+  max_porosity_res = -1.d20
+  do local_id = 1, grid%nlmax
+    ghosted_id = grid%nL2G(local_id)
+    if (patch%imat(ghosted_id) <= 0) cycle
+    porosity_res = ReactionMnrlResPorosity(reaction,rt_auxvars(ghosted_id), &
+                                           material_auxvars(ghosted_id))
+    if (porosity_res <= 0.d0) cycle
+    porosity = 1.d0 - &
+      ReactionMnrlCalcSumVolFrac(rt_auxvars(ghosted_id),reaction%mineral)
+    if (porosity <= porosity_res) then
+      min_porosity = min(min_porosity,porosity)
+      max_porosity_res = max(max_porosity_res,porosity_res)
+    endif
+  enddo
+
+  temp_real_in(1) = -min_porosity
+  temp_real_in(2) = max_porosity_res
+  call MPI_Allreduce(temp_real_in,temp_real_out,TWO_INTEGER_MPI, &
+                     MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm, &
+                     ierr);CHKERRQ(ierr)
+  min_porosity = -temp_real_out(1)
+  max_porosity_res = temp_real_out(2)
+
+  if (max_porosity_res > 0.d0) then
+    option%io_buffer = 'RESIDUAL_POROSITY (' // &
+      trim(StringWrite('(es9.2)',max_porosity_res)) // &
+      ') must be below the initial porosity based on the sum of mineral &
+      &volume fractions (as low as ' // &
+      trim(StringWrite('(es9.2)',min_porosity)) // &
+      '). Precipitation would be cut off from the start in cells at or &
+      &below the cutoff.'
+    call PrintErrMsg(option)
+  endif
+
+end subroutine RealizationCheckResidualPorosity
 
 ! ************************************************************************** !
 

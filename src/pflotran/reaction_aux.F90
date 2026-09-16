@@ -308,6 +308,23 @@ module Reaction_Aux_module
     PetscBool :: update_porosity
     PetscBool :: calculate_initial_porosity
     PetscReal :: minimum_porosity
+    ! LIMIT_MINERAL_VOLUME_FRACTION block present
+    PetscBool :: limit_mnrl_vf
+    ! QPAC-style precip cutoff porosity (LIMIT_MINERAL_VOLUME_FRACTION);
+    ! 0 = off
+    PetscReal :: porosity_res
+    ! ramp width above porosity_res over which precip rates scale
+    ! linearly to zero; 0 = hard cutoff
+    PetscReal :: porosity_res_ramp
+    ! per-cell cutoff = fraction * initial porosity (1 - sumVF0);
+    ! alternative to absolute porosity_res; 0 = off
+    PetscReal :: porosity_res_fraction
+    ! transport shutoff: perm/tortuosity laws read un-floored 1-sumVF
+    PetscBool :: use_unfloored_porosity
+    ! face diffusion scales linearly to tran_diff_min_scale over this
+    ! porosity width above the cutoff; 0 = off
+    PetscReal :: tran_diff_ramp
+    PetscReal :: tran_diff_min_scale
 
     PetscBool :: update_armor_mineral_surface
     PetscInt :: update_armor_mineral_surface_flag
@@ -548,6 +565,13 @@ function ReactionAuxCreateAux()
   reaction%update_porosity = PETSC_FALSE
   reaction%calculate_initial_porosity = PETSC_FALSE
   reaction%minimum_porosity = 0.d0
+  reaction%limit_mnrl_vf = PETSC_FALSE
+  reaction%porosity_res = 0.d0
+  reaction%porosity_res_ramp = 0.d0
+  reaction%porosity_res_fraction = 0.d0
+  reaction%use_unfloored_porosity = PETSC_FALSE
+  reaction%tran_diff_ramp = 0.d0
+  reaction%tran_diff_min_scale = 1.d-6
 
   reaction%update_armor_mineral_surface = PETSC_FALSE
   reaction%update_armor_mineral_surface_flag = 0

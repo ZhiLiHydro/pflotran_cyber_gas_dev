@@ -1,3 +1,4 @@
+
 module PM_ERT_class
 
 #include "petsc/finclude/petscksp.h"
@@ -349,6 +350,10 @@ subroutine PMERTSetup(this)
   this%comm1 => this%realization%comm1
   ! setup survey
   this%survey => this%realization%survey
+
+  if (option%iflowmode == IMMISCIBLE_MODE) then
+    call PrintErrMsg(option,'PMERT not set up for IMMISCIBLE mode')
+  endif
 
   if ((option%iflowmode == ZFLOW_MODE .and. &
        zflow_sol_tran_eq > 0) .and. &
@@ -1045,6 +1050,7 @@ subroutine PMERTPreSolve(this)
                                          tracer_scale,dcond_dsat,dcond_dconc, &
                                          dcond_dpor, option)
     ert_auxvars(ghosted_id)%bulk_conductivity = cond
+    ert_auxvars(ghosted_id)%fluid_conductivity = cond_w
     if (this%coupled_ert_flow_jacobian) then
       if (local_id > 0) dcond_dsat_vec_ptr(local_id) = dcond_dsat
       if (associated(rt_auxvars) .or. associated(zflow_auxvars)) then

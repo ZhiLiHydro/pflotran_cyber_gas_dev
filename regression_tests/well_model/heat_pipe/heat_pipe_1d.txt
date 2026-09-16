@@ -4,6 +4,7 @@ REGRESSION
     TEMPERATURE
     WELL_TEMPERATURE
   /
+  ! Pipe samples along mid-plane path (nat = i + (k-1)*nx + (j-1)*nx*ny)
   CELL_IDS
     241
     246

@@ -39,12 +39,14 @@ eos_obj = \
 	${common_src}co2_span_wagner_spline.o \
 	${common_src}eos.o \
 	${common_src}eos_gas.o \
-	${common_src}gas_eos_mod.o
+	${common_src}gas_eos_mod.o \
+	${common_src}thc_eos_utils.o
 
 mode_aux_obj = \
 	${common_src}auxiliary.o \
 	${common_src}general_aux.o \
 	${common_src}hydrate_aux.o \
+	${common_src}immiscible_aux.o \
 	${common_src}inlinesurface_aux.o \
 	${common_src}kdtree.o \
 	${common_src}mphase_aux.o \
@@ -53,6 +55,7 @@ mode_aux_obj = \
 	${common_src}sco2_aux.o \
 	${common_src}th_aux.o \
 	${common_src}wipp_flow_aux.o \
+	${common_src}thc_aux.o \
 	${common_src}zflow_aux.o
 
 mode_process_model_obj = \
@@ -62,6 +65,7 @@ mode_process_model_obj = \
 	${common_src}pm_fracture.o \
 	${common_src}pm_general.o \
 	${common_src}pm_hydrate.o \
+	${common_src}pm_immiscible.o \
 	${common_src}pm_inversion.o \
 	${common_src}pm_material_transform.o \
 	${common_src}pm_mphase.o \
@@ -85,6 +89,7 @@ mode_process_model_obj = \
 	${common_src}pm_well.o \
 	${common_src}pm_wipp_flow.o \
 	${common_src}pm_wipp_srcsink.o \
+	${common_src}pm_thc.o \
 	${common_src}pm_zflow.o
 
 mode_obj = \
@@ -93,6 +98,8 @@ mode_obj = \
 	${common_src}global.o \
 	${common_src}hydrate.o \
 	${common_src}hydrate_common.o \
+	${common_src}immiscible.o \
+	${common_src}immiscible_common.o \
 	${common_src}inlinesurface.o \
 	${common_src}mphase.o \
 	${common_src}nw_transport.o \
@@ -100,11 +107,14 @@ mode_obj = \
 	${common_src}pnf.o \
 	${common_src}reactive_transport.o \
 	${common_src}richards.o \
+	${common_src}richards_aniso.o \
 	${common_src}richards_common.o \
 	${common_src}sco2.o \
 	${common_src}sco2_common.o \
 	${common_src}th.o \
 	${common_src}th_well.o \
+	${common_src}thc.o \
+	${common_src}thc_common.o \
 	${common_src}wipp_flow.o \
 	${common_src}wipp_flow_common.o \
 	${common_src}wipp_well.o \
@@ -156,6 +166,7 @@ chem_obj = \
 	${common_src}reaction_clm.o \
 	${common_src}reaction_redox.o \
 	${common_src}reaction_sandbox.o \
+	${common_src}reaction_sandbox_amendment.o \
 	${common_src}reaction_sandbox_base.o \
 	${common_src}reaction_sandbox_biohill.o \
 	${common_src}reaction_sandbox_bioTH.o \
@@ -180,6 +191,7 @@ chem_obj = \
 	${common_src}transport_constraint_nwt.o
 
 grid_obj = \
+	${common_src}anisodata.o \
 	${common_src}connection.o \
 	${common_src}communicator_base.o \
 	${common_src}communicator_structured.o \

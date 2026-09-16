@@ -888,6 +888,67 @@ subroutine ReactionReadPass1(reaction,input,option)
       case('MINIMUM_POROSITY')
         call InputReadDouble(input,option,reaction%minimum_porosity)
         call InputErrorMsg(input,option,'minimim porosity','CHEMISTRY')
+      case('LIMIT_MINERAL_VOLUME_FRACTION')
+        error_string = 'CHEMISTRY,LIMIT_MINERAL_VOLUME_FRACTION'
+        reaction%limit_mnrl_vf = PETSC_TRUE
+        call InputPushBlock(input,option)
+        do
+          call InputReadPflotranString(input,option)
+          if (InputError(input)) exit
+          if (InputCheckExit(input,option)) exit
+
+          call InputReadCard(input,option,word)
+          call InputErrorMsg(input,option,'keyword',error_string)
+          call StringToUpper(word)
+
+          select case(trim(word))
+            case('RESIDUAL_POROSITY','POROSITY_RES')
+              ! QPAC method: precip stops when porosity <= value
+              call InputReadDouble(input,option,reaction%porosity_res)
+              call InputErrorMsg(input,option,'residual porosity', &
+                                 error_string)
+            case('RAMP_WIDTH')
+              ! precip rates scale linearly to zero over this porosity
+              ! width above the cutoff
+              call InputReadDouble(input,option,reaction%porosity_res_ramp)
+              call InputErrorMsg(input,option,'ramp width',error_string)
+            case('RESIDUAL_POROSITY_FRACTION')
+              ! per-cell cutoff = fraction * initial porosity (1 - sumVF0)
+              call InputReadDouble(input,option, &
+                                   reaction%porosity_res_fraction)
+              call InputErrorMsg(input,option,'residual porosity fraction', &
+                                 error_string)
+            case('USE_UNFLOORED_POROSITY')
+              ! perm/tortuosity laws read un-floored 1-sumVF
+              reaction%use_unfloored_porosity = PETSC_TRUE
+            case('DIFFUSION_RAMP_WIDTH')
+              ! face diffusion scales linearly to zero over this porosity
+              ! width above the cutoff
+              call InputReadDouble(input,option,reaction%tran_diff_ramp)
+              call InputErrorMsg(input,option,'diffusion ramp width', &
+                                 error_string)
+            case('MINIMUM_DIFFUSION_SCALE')
+              call InputReadDouble(input,option, &
+                                   reaction%tran_diff_min_scale)
+              call InputErrorMsg(input,option,'minimum diffusion scale', &
+                                 error_string)
+            case default
+              call InputKeywordUnrecognized(input,word,error_string,option)
+          end select
+        enddo
+        call InputPopBlock(input,option)
+        if (reaction%porosity_res > 0.d0 .and. &
+            reaction%porosity_res_fraction > 0.d0) then
+          option%io_buffer = 'RESIDUAL_POROSITY and RESIDUAL_POROSITY_&
+            &FRACTION may not both be set in LIMIT_MINERAL_VOLUME_FRACTION.'
+          call PrintErrMsg(option)
+        endif
+        if (reaction%porosity_res_fraction < 0.d0 .or. &
+            reaction%porosity_res_fraction >= 1.d0) then
+          option%io_buffer = 'RESIDUAL_POROSITY_FRACTION must be greater &
+            &than 0. and less than 1.'
+          call PrintErrMsg(option)
+        endif
       case('USE_FULL_GEOCHEMISTRY')
         call InputKeywordDeprecated(word,'FORCE_READ_REACTION_DATABASE',option)
       case('FORCE_READ_OF_REACTION_DATABASE')
@@ -1036,7 +1097,8 @@ subroutine ReactionReadPass2(reaction,input,option)
             'IMMOBILE_SPECIES','RADIOACTIVE_DECAY_REACTION', &
             'IMMOBILE_DECAY_REACTION', &
             'ACTIVE_GAS_SPECIES','PASSIVE_GAS_SPECIES', &
-            'AQUEOUS_DIFFUSION_COEFFICIENTS','GAS_DIFFUSION_COEFFICIENTS')
+            'AQUEOUS_DIFFUSION_COEFFICIENTS','GAS_DIFFUSION_COEFFICIENTS', &
+            'LIMIT_MINERAL_VOLUME_FRACTION')
         call InputSkipToEND(input,option,card)
       case('DECOUPLED_EQUILIBRIUM_REACTIONS')
         call ReactionReadDecoupledSpecies(reaction,input,option)
@@ -2411,7 +2473,7 @@ subroutine ReactionPrintConstraint(global_auxvar,rt_auxvar, &
         option%flow%reference_density(option%liquid_phase)
       global_auxvar%temp = option%transport%reference_temperature
       global_auxvar%sat(iphase) = option%flow%reference_saturation
-    case(RICHARDS_MODE,RICHARDS_TS_MODE,ZFLOW_MODE,PNF_MODE)
+    case(RICHARDS_MODE,RICHARDS_TS_MODE,ZFLOW_MODE,PNF_MODE,IMMISCIBLE_MODE)
       global_auxvar%temp = option%transport%reference_temperature
   end select
 
@@ -5806,7 +5868,8 @@ subroutine RTAccumulation(rt_auxvar,global_auxvar,material_auxvar, &
   iphase = 1
   Res = 0.d0
 
-  if (global_auxvar%sat(LIQUID_PHASE) < rt_min_saturation) return
+  if (global_auxvar%sat(LIQUID_PHASE) < rt_min_saturation .and. &
+      reaction%gas%nactive_gas == 0) return
 
   ! units = (mol solute/L water)*(m^3 por/m^3 bulk)*(m^3 water/m^3 por)*
   !         (m^3 bulk)*(1000L water/m^3 water)/(sec) = mol/sec
@@ -5876,7 +5939,8 @@ subroutine RTAccumulationDerivative(rt_auxvar,global_auxvar, &
 
   J = 0.d0
 
-  if (global_auxvar%sat(LIQUID_PHASE) < rt_min_saturation) then
+  if (global_auxvar%sat(LIQUID_PHASE) < rt_min_saturation .and. &
+      reaction%gas%nactive_gas == 0) then
     ! set diagonal to 1 and return as this cell is dry and inert
     do idof = 1, reaction%ncomp
       J(idof,idof) = 1.d0
@@ -6610,7 +6674,7 @@ subroutine RTSetPlotVariables(list,reaction,option,time_unit)
   endif
 
   if (reaction%print%electrical_conductivity) then
-    name = 'Electrical Conductivity'
+    name = 'Aqueous Electrical Conductivity'
     units = 'S/m'
     call OutputVariableAddToList(list,name,OUTPUT_GENERIC,units, &
                                  AQUEOUS_ELECTRICAL_CONDUCTIVITY)

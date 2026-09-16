@@ -1,0 +1,161 @@
+#Description: Tests LIMIT_MINERAL_VOLUME_FRACTION RESIDUAL_POROSITY. Calcite
+#  starts at a volume fraction of 0.95 (porosity 0.05, just above the
+#  residual porosity of 0.049999). The water is supersaturated and would
+#  precipitate ~3.1e-6 in volume fraction, but only 1.e-6 of pore volume
+#  remains above the residual porosity: the step that crosses the cutoff
+#  must be scaled back to land the volume fraction at exactly 0.950001, and
+#  the precipitation cutoff must hold it there for the rest of the run.
+
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_TRANSPORT transport
+      MODE GIRT
+    /
+  /
+END
+
+SUBSURFACE
+
+#=========================== numerical methods ================================
+NUMERICAL_METHODS TRANSPORT
+
+  LINEAR_SOLVER
+    SOLVER DIRECT
+  /
+
+END
+
+#=========================== regression =======================================
+REGRESSION
+  CELLS_PER_PROCESS 1
+END
+
+#=========================== flow =============================================
+SPECIFIED_VELOCITY
+  UNIFORM? YES
+  DATASET 0.d0 0.d0 0.d0 m/yr
+END
+
+#=========================== chemistry ========================================
+CHEMISTRY
+  PRIMARY_SPECIES
+    H+
+    HCO3-
+    Ca++
+  /
+  SECONDARY_SPECIES
+    OH-
+    CO3--
+    CO2(aq)
+    CaCO3(aq)
+    CaHCO3+
+    CaOH+
+  /
+  PASSIVE_GAS_SPECIES
+    CO2(g)
+  /
+  MINERALS
+    Calcite
+  /
+  MINERAL_KINETICS
+    Calcite
+      RATE_CONSTANT 1.d-6
+      SURFACE_AREA_VOL_FRAC_POWER 1.d0
+      SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    /
+  /
+  DATABASE ../../../database/hanford.dat
+  LOG_FORMULATION
+  ACTIVITY_COEFFICIENTS TIMESTEP
+  UPDATE_POROSITY
+  MINIMUM_POROSITY 1.d-3
+  LIMIT_MINERAL_VOLUME_FRACTION
+    RESIDUAL_POROSITY 4.9999d-2
+  /
+  OUTPUT
+    PH
+    TOTAL
+    ALL
+    MINERALS
+  /
+END
+
+#=========================== discretization ===================================
+GRID
+  TYPE STRUCTURED
+  NXYZ 1 1 1
+  BOUNDS
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 1.d0
+  /
+END
+
+#=========================== fluid properties =================================
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.d-9
+END
+
+#=========================== material properties ==============================
+MATERIAL_PROPERTY soil1
+  ID 1
+  POROSITY 5.d-2
+  TORTUOSITY 1.d0
+END
+
+#=========================== output options ===================================
+OUTPUT
+  PERIODIC_OBSERVATION TIMESTEP 1
+  FORMAT TECPLOT POINT
+  PRINT_COLUMN_IDS
+END
+
+#=========================== times ============================================
+TIME
+  FINAL_TIME 1.d0 y
+  INITIAL_TIMESTEP_SIZE 1.d0 h
+  MAXIMUM_TIMESTEP_SIZE 1.d-1 y
+END
+
+#=========================== regions ==========================================
+REGION all
+  COORDINATES
+    -1.d20 -1.d20 -1.d20
+    1.d20 1.d20 1.d20
+  /
+END
+
+#=========================== transport conditions =============================
+TRANSPORT_CONDITION initial
+  TYPE ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 initial
+  /
+END
+
+#=========================== constraints ======================================
+CONSTRAINT initial
+  CONCENTRATIONS
+    H+     1.d-8      F
+    HCO3-  1.d-3      G  CO2(g)
+    Ca++   1.d-1      T
+  /
+  MINERALS
+    Calcite  0.95d0 1.d2 m^2/m^3
+  /
+END
+
+#=========================== condition couplers ===============================
+# initial condition
+INITIAL_CONDITION
+  TRANSPORT_CONDITION initial
+  REGION all
+END
+
+#=========================== stratigraphy couplers ============================
+STRATA
+  REGION all
+  MATERIAL soil1
+END
+
+END_SUBSURFACE

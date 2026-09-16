@@ -331,6 +331,9 @@ subroutine EOSWaterInit()
   quadratic_reference_density = UNINITIALIZED_DOUBLE
   quadratic_reference_pressure = UNINITIALIZED_DOUBLE
   quadratic_wat_compressibility = UNINITIALIZED_DOUBLE
+  linear_reference_density = UNINITIALIZED_DOUBLE
+  linear_reference_pressure = UNINITIALIZED_DOUBLE
+  linear_water_compressibility = UNINITIALIZED_DOUBLE
   halite_saturated_brine = PETSC_FALSE
 
   ! standard versions
@@ -3932,7 +3935,7 @@ subroutine EOSWaterEnthalpyTPPlanarSetup()
   PetscReal, parameter :: p0 = 1.d6
   PetscReal, parameter :: t0 = 30.d0
   PetscReal, parameter :: dh_dp = 1.65d-2
-  PetscReal, parameter :: dh_dT = 7.5d4
+  PetscReal, parameter :: dh_dT = 7.53762d4
   PetscReal, parameter :: h_reference = 2.27d6 ! J/kmol
 
   call GeomComputePlaneWithGradients(water_enthalpy_tp_plane,p0,t0, &
@@ -5260,7 +5263,7 @@ subroutine EOSWaterViscosityBatzleAndWang(T, P, PS, dPS_dT, &
   PetscReal :: exponential_term
   PetscReal :: temperature_term
 
-  t_C = T
+  t_C = max(T,1.d-3)
 
   ! this is Eq. 32 without all the salt terms.
   ! -0.057138d0 = -1.d0*0.42d0*(-0.17d0)**2.d0+0.045d0
@@ -5310,7 +5313,7 @@ subroutine EOSWaterViscosityBatzleAndWangExt(T, P, PS, dPS_dT, aux, &
   PetscReal :: temperature_term
 
   s = aux(1)
-  t_C = T
+  t_C = max(T,1.d-3)
 
   exponential_term = -1.d0*(0.42d0*(s**0.8d0-0.17d0)**2.d0 + 0.045d0)* &
                      t_C**0.8d0

@@ -24,9 +24,6 @@
 
    Edited by Teresa Portone (tporton@sandia.gov) 11/2020
    to take arguments.
-
-   Edited by Rosie Leone (rleone@sandia.gov) 6/2023 
-   to output as cell indexed
 '''
 import os.path as op
 import sys, os
@@ -70,11 +67,10 @@ def main(args):
   """ Setting the properties that depend on the meshing case """
   # origin of area of map in DFN domain coordinates where (0,0,0) is center of DFN
   # PFLOTRAN takes origin at bottom back corner
-  domain_origin = [ -500, -500, -500 ]
+  domain_origin = [ -500, -500, -250 ]
   if pa.meshing_case=='whole_domain':
     out_dir = dfn_dir+'cpm'
     if pa.no_user_defined: out_dir += '_no_user_defined'
-    if not pa.cell_size==20: out_dir+=f'/meshed_cell_size_{pa.cell_size}/'
     filenames = { 
         'mapEllipses_txt': out_dir+'/mapELLIPSES.txt',
         "mapEllipses_h5": out_dir+'/mapELLIPSES.h5', 
@@ -86,7 +82,7 @@ def main(args):
         }
     # Origin of area to map in DFN domain coordinates (0,0,0 is center of DFN)
     origin = domain_origin 
-    [Lx, Ly, Lz] = [ 1000, 1000, 1000 ]
+    [Lx, Ly, Lz] = [ 1000, 1000, 500 ]
     d = pa.cell_size
     if Lx%d + Ly%d + Lz%d > 0:
       sys.exit(f"ERROR: The cell size you've specified, {d} m, does not evenly "\
@@ -95,7 +91,6 @@ def main(args):
   if pa.meshing_case=='repo':
     sys.exit("ERROR: You haven't updated the origin for the repo for this problem yet!")
     out_dir = dfn_dir+'cpm_repository'
-    if not pa.cell_size==20: out_dir+='/meshed_cell_size_{}'.format(pa.cell_size)
     filenames = { 
         'mapEllipses_txt': out_dir+'mapELLIPSES.txt',
         "mapEllipses_h5": out_dir+'/mapELLIPSES.h5', 
@@ -219,7 +214,7 @@ def main(args):
   # 3d uniform grid
   h5grp = h5file2.create_group('Permeability')
   # 3D will always be XYZ where as 2D can be XY, XZ, etc. and 1D can be X, Y or Z
-  h5grp.attrs['Dimension'] = np.string_('XYZ')
+  h5grp.attrs['Dimension'] = np.bytes_('XYZ')
   # based on Dimension, specify the uniform grid spacing
   h5grp.attrs['Discretization'] = [d,d,d]
   # again, depends on Dimension
@@ -227,37 +222,90 @@ def main(args):
   # leave this line out if not cell centered.  If set to False, it will still
   # be true (issue with HDF5 and Fortran)
   h5grp.attrs['Cell Centered'] = [True]
-  h5grp.attrs['Interpolation Method'] = np.string_('Step')
+  h5grp.attrs['Space Interpolation Method'] = np.bytes_('Step')
   h5grp.create_dataset('Data', data=khdf5) #does this matter that it is also called data?
   h5file2.close()
   
-  # Write porosity as a cell index dataset for use with PFLOTRAN.
-  print ('And also porosity as a cell index dataset')
-  
-  iarray = np.zeros((nx*ny*nz),'=i4')
-  for i in range(nx*ny*nz):
-    iarray[i]=i+1
-
+  # Write porosity as a gridded dataset for use with PFLOTRAN.
+  print ('And also porosity as a gridded dataset')
   h5file2=File(filenames['porosity'],'w')
   # 3d uniform grid
-  h5dset = h5file2.create_dataset('Cell Ids', data=iarray)
-  h5dset = h5file2.create_dataset('Porosity', data=por)
+  h5grp = h5file2.create_group('Porosity')
+  # 3D will always be XYZ where as 2D can be XY, XZ, etc. and 1D can be X, Y or Z
+  h5grp.attrs['Dimension'] = np.bytes_('XYZ')
+  # based on Dimension, specify the uniform grid spacing
+  h5grp.attrs['Discretization'] = [d,d,d]
+  # again, depends on Dimension
+  h5grp.attrs['Origin'] = h5origin
+  # leave this line out if not cell centered.  If set to False, it will still
+  # be true (issue with HDF5 and Fortran)
+  h5grp.attrs['Cell Centered'] = [True]
+  h5grp.attrs['Space Interpolation Method'] = np.bytes_('Step')
+  h5grp.create_dataset('Data', data=phdf5) 
   h5file2.close()
   
-  # Write tortuosity as a cell index gridded dataset for use with PFLOTRAN.
-  print ('And also tortuosity as a cell index dataset')
+  # Write tortuosity as a gridded dataset for use with PFLOTRAN.
+  print ('And also tortuosity as a gridded dataset')
   h5file2=File(filenames['tortuosity'],'w')
-  h5dset = h5file2.create_dataset('Cell Ids', data=iarray)
-  h5dset = h5file2.create_dataset('Tortuosity', data=tortuosity_factor/por)
+  # 3d uniform grid
+  h5grp = h5file2.create_group('Tortuosity')
+  # 3D will always be XYZ where as 2D can be XY, XZ, etc. and 1D can be X, Y or Z
+  h5grp.attrs['Dimension'] = np.bytes_('XYZ')
+  # based on Dimension, specify the uniform grid spacing
+  h5grp.attrs['Discretization'] = [d,d,d]
+  # again, depends on Dimension
+  h5grp.attrs['Origin'] = h5origin
+  # leave this line out if not cell centered.  If set to False, it will still
+  # be true (issue with HDF5 and Fortran)
+  h5grp.attrs['Cell Centered'] = [True]
+  h5grp.attrs['Space Interpolation Method'] = np.bytes_('Step')
+  h5grp.create_dataset('Data', data=tortuosity_factor/phdf5) 
   h5file2.close()
   
-  # Write anisotropic permeability as a cell index dataset for use with PFLOTRAN.
+  # Write anisotropic permeability as a gridded dataset for use with PFLOTRAN.
   print('and anisotropic k')
   h5file3=File(filenames['anisotropic_k'],'w')
-  h5dset = h5file3.create_dataset('Cell Ids', data=iarray)
-  h5dset = h5file3.create_dataset('PermeabilityX', data=k_aniso[:,0])
-  h5dset = h5file3.create_dataset('PermeabilityY', data=k_aniso[:,1])
-  h5dset = h5file3.create_dataset('PermeabilityZ', data=k_aniso[:,2])
+  # 3d uniform grid
+  h5grp = h5file3.create_group('PermeabilityX')
+  # 3D will always be XYZ where as 2D can be XY, XZ, etc. and 1D can be X, Y or Z
+  h5grp.attrs['Dimension'] = np.bytes_('XYZ')
+  # based on Dimension, specify the uniform grid spacing
+  h5grp.attrs['Discretization'] = [d,d,d]
+  # again, depends on Dimension
+  h5grp.attrs['Origin'] = h5origin
+  # leave this line out if not cell centered.  If set to False, it will still
+  # be true (issue with HDF5 and Fortran)
+  h5grp.attrs['Cell Centered'] = [True]
+  h5grp.attrs['Space Interpolation Method'] = np.bytes_('Step')
+  h5grp.create_dataset('Data', data=kx) #does this matter that it is also called data?
+  
+  # 3d uniform grid
+  h5grp = h5file3.create_group('PermeabilityY')
+  # 3D will always be XYZ where as 2D can be XY, XZ, etc. and 1D can be X, Y or Z
+  h5grp.attrs['Dimension'] = np.bytes_('XYZ')
+  # based on Dimension, specify the uniform grid spacing
+  h5grp.attrs['Discretization'] = [d,d,d]
+  # again, depends on Dimension
+  h5grp.attrs['Origin'] = h5origin
+  # leave this line out if not cell centered.  If set to False, it will still
+  # be true (issue with HDF5 and Fortran)
+  h5grp.attrs['Cell Centered'] = [True]
+  h5grp.attrs['Space Interpolation Method'] = np.bytes_('Step')
+  h5grp.create_dataset('Data', data=ky) #does this matter that it is also called data?
+  
+  # 3d uniform grid
+  h5grp = h5file3.create_group('PermeabilityZ')
+  # 3D will always be XYZ where as 2D can be XY, XZ, etc. and 1D can be X, Y or Z
+  h5grp.attrs['Dimension'] = np.bytes_('XYZ')
+  # based on Dimension, specify the uniform grid spacing
+  h5grp.attrs['Discretization'] = [d,d,d]
+  # again, depends on Dimension
+  h5grp.attrs['Origin'] = h5origin
+  # leave this line out if not cell centered.  If set to False, it will still
+  # be true (issue with HDF5 and Fortran)
+  h5grp.attrs['Cell Centered'] = [True]
+  h5grp.attrs['Space Interpolation Method'] = np.bytes_('Step')
+  h5grp.create_dataset('Data', data=kz) #does this matter that it is also called data?
   h5file3.close()
   
   # Write materials.h5 to inactivate non-fracture cells in PFLOTRAN.
