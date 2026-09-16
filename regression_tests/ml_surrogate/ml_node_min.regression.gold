@@ -1,0 +1,40 @@
+-- GENERIC: Porosity --
+      Max:   9.8946195817684E-01
+      Min:   2.0000000000000E-02
+     Mean:   2.2404371140770E-01
+       91:   7.7271320524716E-01
+       92:   7.3366121928300E-01
+       93:   6.9905000738342E-01
+       94:   6.2651836912816E-01
+       96:   9.8430674689557E-01
+      100:   9.8940566999736E-01
+      108:   9.8335131890949E-01
+      116:   9.6065983750110E-01
+-- GENERIC: Permeability --
+      Max:   5.9486817413979E-11
+      Min:   2.5500000000000E-19
+     Mean:   1.1505252109423E-11
+       91:   2.8332078232061E-11
+       92:   2.4249909353941E-11
+       93:   2.0977231148933E-11
+       94:   1.5101665835340E-11
+       96:   5.8561853760490E-11
+      100:   5.9476665793248E-11
+      108:   5.8391488145230E-11
+      116:   5.4441782123193E-11
+-- SOLUTION: Flow --
+   Time (seconds):   5.2378190999207E-02
+   Time Steps:           58
+   Newton Iterations:           58
+   Linear Solver Iterations:           58
+   Time Step Cuts:            0
+   Solution 2-Norm:   1.1058850782009E+06
+   Residual 2-Norm:   2.1227126112523E-19
+-- SOLUTION: Transport --
+   Time (seconds):   1.4330267626002E+01
+   Time Steps:          155
+   Newton Iterations:          675
+   Linear Solver Iterations:          675
+   Time Step Cuts:           35
+   Solution 2-Norm:   5.9784417657694E+02
+   Residual 2-Norm:   2.5993863443817E-12

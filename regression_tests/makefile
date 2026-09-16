@@ -248,6 +248,13 @@ WIPP_CFG = \
 RUNTIME_CFG = \
 	runtime/runtime.cfg
 
+ML_SURROGATE_CFG = \
+	ml_surrogate/ml_surrogate.cfg
+
+STANDARD_CFG += $(ML_SURROGATE_CFG)
+
+.PHONY : ml_surrogate
+
 test : standard
 
 standard :
@@ -328,6 +335,10 @@ endif
 ngee-biogeochemistry : 
 	-$(PYTHON) $(TEST_MANAGER) -e $(PFLOTRAN) $(TEST_OPTIONS) \
 		-r ngee --suite biogeochemistry 
+
+ml_surrogate :
+	-$(PYTHON) $(TEST_MANAGER) -e $(PFLOTRAN) $(TEST_OPTIONS) \
+		--config-files $(ML_SURROGATE_CFG) --suite ml_surrogate
 
 test_mimetic :
 	-$(PYTHON) $(TEST_MANAGER) -e $(PFLOTRAN) $(TEST_OPTIONS) \

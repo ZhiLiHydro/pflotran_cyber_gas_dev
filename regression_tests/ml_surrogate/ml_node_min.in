@@ -1,0 +1,1173 @@
+! ML fracture-surrogate regression test: katdiss reference deck run.1 (ver1.2
+! database, cement-in-domain, RegI inlet) shortened to 300 y, with the
+! FRACTURE_ML_SURROGATE block active on the fracture material (ID 3).  The
+! REGRESSION block records the surrogate-owned porosity and permeability of
+! fracture cells 91..116 (top z-layer, inlet-most cells first).
+! Weight file: node_min_weights.h5
+!==============================================================================
+! numo_pr_1d_cement_regI.in — RESOLVED CEMENT LINER deck (QPAC material structure)
+!   Grid: 29x1x4 — 3 liner cells (0.025/0.015/0.010 m, R 2.50->2.55) + 26 rock/frac
+!   Cement: phi=0.1, k=1.02e-12 m2, QPAC paste inventory + full active set
+!   Fracture/rock: v5.2 QPAC-18 mask unchanged
+!   Inlet: RegI tunnel water at liner west face (full Z), DIRICHLET head
+!     (QPAC SpecifiedHead translation, ~1.64 kPa over outlet; self-limiting)
+!   Purpose: Task-1 physical-fidelity case — fracture chemistry EMERGES from
+!   paste dissolution (vs prescribed-inlet sweep deck). NOT for the Dakota sweep.
+! KNOWN LIMITATIONS:
+!   - No porosity-gate yet (POROSITY_RES patch pending): liner cells at the
+!     clogging face may VF-creep past physical bounds — watch Portlandite/CSH165
+!   - Full-Z inlet face; QPAC's "FracLinerInner" naming may mean fracture-mouth
+!     only — one-line region swap if flow field looks wrong
+!   - t=0 re-equilibration transient (RegI water vs seeded secondaries)
+! Base: v5.2 test deck (below header retained for provenance)
+!   aperture 1e-4 m | QPAC RegI inlet | 100 y | obs every step
+!   v5.2: pure VOLUME_FRACTION_RATIO area (porosity amplifier removed),
+!         rock silicates dissolve-only, ACKNOWLEDGE_ZERO_SURFACE_AREA present.
+! Pass: parses; masked stay VF=0; SO4 ~conservative; no C-S-H ladder
+!   oscillation; VF bounded. Then: calcite-in-rock check (item c).
+!==============================================================================
+!==============================================================================
+! NUMO Cement-Rock-Fracture Reactive Transport — 2D R-Z  (v4 sweep template)
+! numo_pr_1d_v4.template  (from cement_base/v4.in)
+!------------------------------------------------------------------------------
+! Sources:
+!   - Grid/geometry: numo_pr_transport.in (working 2D R-Z deck)
+!   - Chemistry setup: pflotran_HDP_3.in (NUMO reference 3D model)
+!   - Mineral reduction: March 2026 NUMO report (Section 1.1–1.2)
+!   - params.inc: ROCK_APERTURE=1e-2m, CRACK_RADIUS=4.15761m,
+!                 FLOW_RATE_FROM_LINER=1e-6m/s, WATER_CHANGE_TIME=5000y
+!
+! Key corrections vs numo_pr_transport.in:
+!   - RATE_CONSTANT in log10 format (no units), matching pflotran_HDP_3.in
+!   - SSA values from pflotran_HDP_3.in (10–100 m²/m³, not 1e4 cm²/cm³)
+!   - Zero initial VF for seed minerals (not 1e-10)
+!   - Quartz_Inert as inert solid filler to close porosity budget
+!   - UPDATE_PERMEABILITY disabled (avoids flow NaN from k→0 coupling)
+!   - MINIMUM_POROSITY 0.02 (from pflotran_HDP_3.in)
+!   - H2O 55.5 T in constraints (not deprecated S type)
+!   - MgH2SiO4(aq) commented out (DB typo — missing quote)
+!   - ACTIVITY_COEFFICIENTS NEWTON TIMESTEP + NO_BDOT + MOLAL
+!   - SNES_TYPE NTRDC (Newton Trust-Region solver fix)
+!   - Tracer species for cement-water plume tracking
+!   - No INTERPOLATION LINEAR in VARIANT transport condition
+!
+! Mineral reduction (41 → 29) per March 2026 report:
+!   CSH: 10-phase → 3 anchors (CSH165, CSH115, CSH075)
+!   C4AH13 removed → C4AH19 retained
+!   Hydrotalcite: 4-phase → M4Ac only
+!   Katoite: 3-phase → Katoite-Al only
+!   Hemicarbonate-Al removed
+!
+! Throttled rates per March 2026 report (hierarchy preserved):
+!   Gypsum:     -2.79 → -6.4
+!   Dolomite:   -5.1  → -6.6
+!   Calcite:    -5.2  → -6.7
+!   Portlandite: -6.0 → -7.0
+!==============================================================================
+
+!==============================================================================
+! v5 CHANGES (QPAC reaction-mask audit, July 2026):
+!   1. FRACTURE MINERAL MASK — QPAC zeroes all AFt/AFm/hydrotalcite/stratlingite
+!      /Friedel/gypsum/Portlandite reactions in the Fracture material
+!      (Chemistry.inc lines 1013,1160,1616,1801 etc.). Fracture-active in QPAC =
+!      C4AH13/19, Calcite, 13 C-S-H, 3 katoites (18). FULL QPAC-18 ACTIVE
+!      (March-2026 reduction set aside — preliminary; QPAC set is the
+!      reference-validated one). CSH065+CSH055 added to MINERALS/KINETICS.
+!      Rock: QPAC allows the same 18 => seeded there too (1e-8, negligible
+!      vs rock porosity budget). Mask via constraint: VF=0, SSA=0
+!      => zero surface area forever => kinetically inert, but still reported
+!      in output (SI observable: "would it have formed?").
+!   2. SURFACE_AREA_VOL_FRAC_POWER 0.667 -> 1.0 (QPAC area = SSA*MW = linear
+!      in mineral amount; also makes the VF=0 mask permanent).
+!      RateScale^2 smoothramp porosity gate (QPAC area itself has NO porosity
+!      term; replace 0.8 -> 0 when the POROSITY_RES source patch lands).
+!   3. Seeded-mineral SSA rescaled to QPAC-consistent A0 = SSA[m2/g]*rho*VF0
+!      so that area(VF) = A0*(VF/VF0)^1 reproduces QPAC's 5.5e7*VF-type slope.
+!   4. CSH165 rate -8.44 -> -8.47 (QPAC K_PRIMED); Calcite -5.2 -> -7.50
+!      (QPAC RMAX cap = 1 mol/m2/y). C4AH19/Katoite-Al -10.94 already match.
+!   5. Rock: QPAC-verified Rock=0 phases (ettringite, hydrotalcites, mono-
+!      sulfate/carbonate, stratlingite, Friedel, C4AH13, analcime, brucite)
+!      masked with SSA=0. QPAC rock silicates are DISSOLVE-ONLY (min(rate,0));
+!      PFLOTRAN has no per-direction flag — left symmetric, see notes.
+!   6. Fracture SO4 now has NO sink (as in QPAC): ettringite/gypsum/monosulfate
+!      are masked there. Sulfate transits; clogging is C-S-H/carbonate/katoite.
+!   7. (v5.2) SURFACE_AREA_FUNCTION switched to VOLUME_FRACTION_RATIO — the
+!      POROSITY_ variant's factor is ((1-phi)/(1-phi0))^p (SOLID-fraction ratio,
+!      reaction_mineral.F90:2053-2073): in the fracture (phi0=0.99) it AMPLIFIED
+!      area ~23x at phi=0.5, ~39x at the 0.02 floor. QPAC area has no porosity
+!      term; pure VF ratio is both faithful and removes the amplifier. The
+!      porosity shutoff must come from the POROSITY_RES source patch.
+!   8. (v5.2) Rock silicates (Albite/Anorthite/K-Feldspar/Muscovite/Phlogopite)
+!      set dissolve-only via DISSOLUTION_/PRECIPITATION_RATE_CONSTANT pair,
+!      matching QPAC's min(rate,0). Quartz symmetric (QPAC allows both).
+!   WARNING: never set VOLUME_FRACTION_EPSILON or SPECIFIC_SURFACE_AREA_EPSILON.
+!      For VF0=0 minerals the volfrac-scale branch is skipped and holds a STALE
+!      value from the previous mineral (reaction_mineral.F90) — the mask is safe
+!      only because area0=0. An epsilon >0 reactivates every masked mineral
+!      with a garbage area.
+!==============================================================================
+
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE RICHARDS
+    END
+    SUBSURFACE_TRANSPORT transport
+      MODE GIRT
+      OPTIONS
+        FRACTURE_ML_SURROGATE
+          FILENAME ./node_min_weights.h5
+          FRACTURE_MATERIAL_ID 3
+        /
+      /
+    END
+  END
+END
+
+SUBSURFACE
+
+!==============================================================================
+! Regression output: surrogate-owned porosity/permeability of fracture cells
+!==============================================================================
+REGRESSION
+  CELL_IDS
+    91
+    92
+    93
+    94
+    96
+    100
+    108
+    116
+  /
+  VARIABLES
+    POROSITY
+    PERMEABILITY
+  /
+END
+
+EOS WATER
+  DENSITY CONSTANT 1000.d0 kg/m^3
+  VISCOSITY CONSTANT 1.d-3 Pa-s
+END
+
+!==============================================================================
+! Numerical methods
+!==============================================================================
+NUMERICAL_METHODS FLOW
+  NEWTON_SOLVER
+    PRECONDITIONER_MATRIX_TYPE AIJ
+    RTOL 1.d-8
+    ATOL 1.d-8
+    STOL 1.d-8
+  /
+  LINEAR_SOLVER
+    SOLVER DIRECT
+  /
+END
+
+NUMERICAL_METHODS TRANSPORT
+  NEWTON_SOLVER
+    ITOL_RELATIVE_UPDATE 1.d-5
+    ITOL 1.d-8
+    RTOL 1.d-8
+    MAXIMUM_NUMBER_OF_ITERATIONS 20
+    VERBOSE_LOGGING
+    !SNES_TYPE NTRDC
+  /
+  LINEAR_SOLVER
+    SOLVER DIRECT
+  /
+END
+
+!==============================================================================
+! Chemistry
+!==============================================================================
+CHEMISTRY
+
+PRIMARY_SPECIES
+  Na+
+  Ca++
+  K+
+  Al+++
+  Mg++
+  H+
+  HCO3-
+  Cl-
+  SO4--
+  H4SiO4(aq)
+  H2O
+  Tracer
+/
+
+SECONDARY_SPECIES
+  OH-
+  CO3--
+  CO2(aq)
+  NaHCO3(aq)
+  NaCl(aq)
+  NaAl(OH)4(aq)
+  NaH2SiO4-
+  NaH3SiO4(aq)
+  NaOH(aq)
+  NaSO4-
+  CaCO3(aq)
+  CaHCO3+
+  CaCl+
+  CaH2SiO4(aq)
+  CaH3SiO4+
+  CaOH+
+  CaSO4(aq)
+  MgCl+
+  MgCO3(aq)
+  !MgH2SiO4(aq)   ! DB typo: missing closing quote on H+ — leave commented
+  MgH3SiO4+
+  MgHCO3+
+  MgOH+
+  MgSO4(aq)
+  KAl(OH)4(aq)
+  KCl(aq)
+  KCO3-
+  KH2SiO4-
+  KH3SiO4(aq)
+  KHCO3(aq)
+  KOH(aq)
+  KSO4-
+  Al(OH)3(aq)
+  Al(OH)4-
+  H2SiO4--
+  H3SiO4-
+  HCl(aq)
+  NaCO3-
+/
+
+MINERALS
+  Quartz_Inert
+  Analcime
+  Brucite
+  C4AH19
+  Calcite
+  CSH165
+  CSH115
+  CSH075
+  CSH155
+  CSH145
+  CSH135
+  CSH125
+  CSH105
+  CSH095
+  CSH085
+  CSH065
+  CSH055
+  C4AH13
+  Hydrotalcite-M4A
+  Hydrotalcite-M6A
+  Hydrotalcite-M6Ac
+  Katoite-AlSi040
+  Katoite-AlSi080
+  Dolomite
+  Ettringite-Al
+  Friedel-Salt
+  Gypsum
+  Hydrotalcite-M4Ac
+  K-Feldspar
+  Katoite-Al
+  Monocarbonate-Al
+  Monosulfate-Al
+  Portlandite
+  Pyrophyllite
+  Quartz
+  Sepiolite
+  Stratlingite-Al
+  Albite
+  Anorthite
+  Muscovite
+  Phlogopite
+  Illite
+  Kaolinite
+  Montmor-Na
+/
+
+MINERAL_KINETICS
+
+  Quartz_Inert
+    RATE_CONSTANT 1.d-30
+  /
+
+  !-- Cement primary phases --------------------------------------------------
+  Portlandite
+    RATE_CONSTANT -6.0  ! -7.0
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+
+  CSH165
+    RATE_CONSTANT -8.47   ! QPAC K_PRIMED 10^-8.47
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  CSH115
+    RATE_CONSTANT -10.67  ! QPAC K_PRIMED (was -10.66)
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  CSH075
+    RATE_CONSTANT -10.87
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+
+  Brucite
+    RATE_CONSTANT -8.24
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  C4AH19
+    RATE_CONSTANT -10.94
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  Ettringite-Al
+    RATE_CONSTANT -10.94
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  Friedel-Salt
+    RATE_CONSTANT -10.94
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  Monocarbonate-Al
+    RATE_CONSTANT -10.94
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  Monosulfate-Al
+    RATE_CONSTANT -10.94
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  Stratlingite-Al
+    RATE_CONSTANT -10.94
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  Katoite-Al
+    DISSOLUTION_RATE_CONSTANT -10.94
+    PRECIPITATION_RATE_CONSTANT -30.0   ! dissolve-only (cemdata18 25C: siliceous hydrogarnet kinetically inhibited)
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  Hydrotalcite-M4Ac
+    RATE_CONSTANT -8.24
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+
+  !-- Throttled carbonates (Section 1.1.2, March 2026 report) ----------------
+  Calcite
+    RATE_CONSTANT -7.50  ! QPAC RMAX cap: 1 mol/m2/y = 10^-7.50 mol/m2/s (was -5.2)
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  Dolomite
+    RATE_CONSTANT -5.1  ! -6.6
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  Gypsum
+    RATE_CONSTANT -2.79
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+
+  !-- Zeolites and clays -----------------------------------------------------
+  Analcime
+    RATE_CONSTANT -11.41
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  Sepiolite
+    RATE_CONSTANT -8.24
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  Illite
+    RATE_CONSTANT -13.55
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  Kaolinite
+    RATE_CONSTANT -13.18
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  Pyrophyllite
+    RATE_CONSTANT -12.40
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  Montmor-Na
+    RATE_CONSTANT -13.0
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+
+  !-- Plutonic rock minerals -------------------------------------------------
+  Albite
+    DISSOLUTION_RATE_CONSTANT -9.88
+    PRECIPITATION_RATE_CONSTANT -30.0   ! QPAC dissolve-only: min(rate,0)
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  Anorthite
+    DISSOLUTION_RATE_CONSTANT -9.10
+    PRECIPITATION_RATE_CONSTANT -30.0   ! QPAC dissolve-only: min(rate,0)
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  K-Feldspar
+    DISSOLUTION_RATE_CONSTANT -12.97
+    PRECIPITATION_RATE_CONSTANT -30.0   ! QPAC dissolve-only: min(rate,0)
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  Muscovite
+    DISSOLUTION_RATE_CONSTANT -20.0
+    PRECIPITATION_RATE_CONSTANT -30.0   ! QPAC dissolve-only: min(rate,0)
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  Phlogopite
+    DISSOLUTION_RATE_CONSTANT -20.0
+    PRECIPITATION_RATE_CONSTANT -30.0   ! QPAC dissolve-only: min(rate,0)
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  Quartz
+    RATE_CONSTANT -11.30
+    SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+    SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+  /
+  CSH155
+  RATE_CONSTANT -8.53
+  SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+  SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+/
+CSH145
+  RATE_CONSTANT -8.67
+  SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+  SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+/
+CSH135
+  RATE_CONSTANT -9.20
+  SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+  SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+/
+CSH125
+  RATE_CONSTANT -9.98
+  SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+  SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+/
+CSH105
+  RATE_CONSTANT -10.97
+  SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+  SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+/
+CSH095
+  RATE_CONSTANT -10.86
+  SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+  SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+/
+CSH085
+  RATE_CONSTANT -10.87
+  SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+  SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+/
+CSH065
+  RATE_CONSTANT -10.87   ! QPAC K_PRIMED
+  SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+  SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+/
+CSH055
+  RATE_CONSTANT -10.87   ! QPAC K_PRIMED
+  SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+  SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+/
+C4AH13
+  RATE_CONSTANT -10.94
+  SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+  SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+/
+Hydrotalcite-M4A
+  RATE_CONSTANT -8.24
+  SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+  SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+/
+Hydrotalcite-M6A
+  RATE_CONSTANT -8.24
+  SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+  SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+/
+Hydrotalcite-M6Ac
+  RATE_CONSTANT -8.24
+  SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+  SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+/
+Katoite-AlSi040
+  DISSOLUTION_RATE_CONSTANT -10.94
+  PRECIPITATION_RATE_CONSTANT -30.0   ! dissolve-only (cemdata18 25C: siliceous hydrogarnet kinetically inhibited)
+  SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+  SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+/
+Katoite-AlSi080
+  DISSOLUTION_RATE_CONSTANT -10.94
+  PRECIPITATION_RATE_CONSTANT -30.0   ! dissolve-only (cemdata18 25C: siliceous hydrogarnet kinetically inhibited)
+  SURFACE_AREA_FUNCTION VOLUME_FRACTION_RATIO
+  SURFACE_AREA_VOL_FRAC_POWER 1.0d0
+/
+/
+
+DATABASE ./GWB16v107_PFLOTRAN_2597B_ver1.2.dat
+ACTIVITY_COEFFICIENTS NEWTON TIMESTEP
+LOG_FORMULATION
+NO_BDOT
+MOLAL
+MINIMUM_POROSITY 0.02
+UPDATE_POROSITY
+UPDATE_PERMEABILITY    ! ENABLED with min-scale floor below
+
+OUTPUT
+  PH
+  IONIC_STRENGTH
+  ALL              ! all mineral volume fractions (+ rates, SI)
+  TOTAL
+  Ca++
+  Al+++
+  Mg++
+  HCO3-
+  SO4--
+  H4SiO4(aq)
+/
+
+/
+
+!==============================================================================
+! Grid: 2D R-Z, 18×1×4
+!   X(R): 2.50 → 10.8652 m  (cement 2.50-2.55, rock+fracture 2.55-10.8652)
+!   Y:    0.0  → 1.0 m      (degenerate — single 1m slab)
+!   Z:   -1.0  → 0.005 m    (rock -1.0→0, fracture half-aperture 0→0.005)
+!==============================================================================
+GRID
+  TYPE STRUCTURED
+  NXYZ 29 1 4
+  DXYZ
+    0.025 0.015 0.01 0.05 0.05 0.075 0.075 0.1125 0.1125 0.16875 0.16875 0.253125 0.253125 0.379688 0.379688 0.4455 0.4455 0.4455 0.4455 0.4455 0.4455 0.4455 0.4455 0.4455 0.4455 0.4455 0.4455 0.445537 0.445537
+    1.0
+    0.9 0.095 0.005 1.336980688e-05
+  /
+  ORIGIN 2.50d0 0.d0 -1.0d0
+  GRAVITY 0.d0 0.d0 -9.81d0
+END
+
+!==============================================================================
+! Fluid
+!==============================================================================
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 2.27d-9
+/
+
+!==============================================================================
+! Regions
+!==============================================================================
+REGION all
+  COORDINATES
+    2.5d0     0.0d0  -1.0d0
+    10.8652d0  1.0d0   1.336980688e-05
+  /
+END
+
+REGION cement
+  ! QPAC liner: R in [2.50, 2.55], full Z column (LinerInner_R -> LinerOuter_R)
+  COORDINATES
+    2.50d0    0.0d0  -1.0d0
+    2.55d0    1.0d0   1.336980688e-05
+  /
+END
+
+REGION cement_west_face
+  ! tunnel-side liner face — the new system inlet
+  FACE WEST
+  COORDINATES
+    2.50d0  0.0d0  -1.0d0
+    2.50d0  1.0d0   1.336980688e-05
+  /
+END
+
+REGION rock
+  COORDINATES
+    2.55d0    0.0d0  -1.0d0
+    10.8652d0  1.0d0   0.0d0
+  /
+END
+
+REGION fracture
+  COORDINATES
+    2.55d0    0.0d0  0.0d0
+    10.8652d0  1.0d0  1.336980688e-05
+  /
+END
+
+REGION inlet_fracture_face
+  FACE WEST
+  COORDINATES
+    2.55d0  0.0d0  0.0d0
+    2.55d0  1.0d0   1.336980688e-05
+  /
+END
+
+REGION outlet_far_face
+  ! v5.3: fracture-only, matching QPAC (rock east face sealed)
+  FACE EAST
+  COORDINATES
+    10.8652d0  0.0d0   0.0d0
+    10.8652d0  1.0d0   1.336980688e-05
+  /
+END
+
+REGION obs_frac_inlet
+  COORDINATE 2.6d0 0.5d0 6.684903441e-06
+END
+REGION obs_frac_mid
+  COORDINATE 6.5d0 0.5d0 6.684903441e-06
+END
+REGION obs_frac_outlet
+  COORDINATE 10.8d0 0.5d0 6.684903441e-06
+END
+
+!==============================================================================
+! Material properties
+!==============================================================================
+MATERIAL_PROPERTY cement
+  ID 4
+  POROSITY 0.1d0                      ! QPAC Chem::InitialPorosity = 0.1
+  CHARACTERISTIC_CURVES cc1
+  PERMEABILITY
+    PERM_ISO 1.02d-12                 ! QPAC K[Cement] = 1e-5 m/s hydraulic
+  /
+  PERMEABILITY_CRITICAL_POROSITY 0.001d0
+  PERMEABILITY_POWER 3.0d0
+  PERMEABILITY_MIN_SCALE_FACTOR 1.d-5
+END
+
+MATERIAL_PROPERTY rock
+  ID 2
+  POROSITY 0.008d0
+  !TORTUOSITY 2.82d-4
+  CHARACTERISTIC_CURVES cc1
+  PERMEABILITY
+    PERM_ISO 1.02d-19
+  /
+END
+
+MATERIAL_PROPERTY fracture
+  ID 3
+  POROSITY 0.99d0
+  TORTUOSITY_FUNCTION_OF_POROSITY 3.05d0
+  CHARACTERISTIC_CURVES cc1
+  PERMEABILITY
+    PERM_ISO 5.958391201e-11
+  /
+  PERMEABILITY_CRITICAL_POROSITY 0.001d0
+  PERMEABILITY_POWER 3.0d0
+  PERMEABILITY_MIN_SCALE_FACTOR 1.d-8   ! v5.3: was 1e-5 -> 27% flux leak through a sealed cell; 1e-8 -> 0.03%. Safe under DIRICHLET head (no force-feed blowup)
+END
+
+!==============================================================================
+! Characteristic curves
+!==============================================================================
+CHARACTERISTIC_CURVES cc1
+  SATURATION_FUNCTION VAN_GENUCHTEN
+    LIQUID_RESIDUAL_SATURATION 0.1d0
+    M 0.8d0
+    ALPHA 1.d-4
+  /
+  PERMEABILITY_FUNCTION MUALEM_VG_LIQ
+    LIQUID_RESIDUAL_SATURATION 0.1d0
+    M 0.8d0
+  /
+END
+
+!==============================================================================
+! Flow conditions
+!==============================================================================
+FLOW_CONDITION initial_head
+  TYPE
+    LIQUID_PRESSURE HYDROSTATIC
+  /
+  DATUM 0.d0 0.d0 0.d0
+  LIQUID_PRESSURE 1.013d5
+END
+
+! Superseded for this deck: Neumann fixed-flux (the sweep deck's BC) force-feeds
+! a clogging system -> inlet pressure diverges (Richards SNES_DIVERGED_DTOL).
+! FLOW_CONDITION inlet_pressure
+!   TYPE
+!     LIQUID_FLUX NEUMANN
+!   /
+!   LIQUID_FLUX 1.0d-6
+! END
+
+FLOW_CONDITION inlet_head
+  ! QPAC FracLinerInner_BC translation: SpecifiedHead (Dirichlet), head
+  ! back-computed to deliver fr through the INITIAL conductivity, then left
+  ! fixed -> delivered flux SELF-LIMITS as the system clogs (K = ap*phi/4
+  ! falls with porosity; QPAC NUMO_PR_model1.in line 79).
+  !   H  = fr/K0 * (RockThickness+LinerThickness)/2
+  !      = (1.0e-6 / 2.5e-5) * (8.3152+0.05)/2  =  0.167 m
+  !   P  = 1.013e5 + rho*g*H = 1.013e5 + 1.64e3  =  1.0294e5 Pa
+  ! fr = 1.0e-6 m/s from v3 deck provenance (params.inc not available —
+  ! VERIFY: initial Darcy flux at the liner face should be ~1e-6 m/s; if not,
+  ! scale the pressure offset linearly in fr.
+  TYPE
+    LIQUID_PRESSURE DIRICHLET
+  /
+  LIQUID_PRESSURE 1.0294d5
+END
+
+FLOW_CONDITION outlet_pressure
+  TYPE
+    LIQUID_PRESSURE DIRICHLET
+  /
+  LIQUID_PRESSURE 1.013d5
+END
+
+!==============================================================================
+! Transport conditions
+!==============================================================================
+TRANSPORT_CONDITION tc_cement_init
+  TYPE ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0  cement_ic
+  /
+END
+
+TRANSPORT_CONDITION tc_rock_init
+  TYPE ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0  rock_ic
+  /
+END
+
+TRANSPORT_CONDITION tc_fracture_init
+  TYPE ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0  fracture_ic
+  /
+END
+
+! VARIANT: step change RegI → RegIII at WATER_CHANGE_TIME = 5000 y
+TRANSPORT_CONDITION tc_inlet_VARIANT
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0     cement_water_RegI
+    5000.d0 y cement_water_RegIII
+  /
+END
+
+! RegI only (constant) — for Dakota sweep
+TRANSPORT_CONDITION tc_inlet_RegI
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0  cement_water_RegI
+  /
+END
+
+! RegIII only (constant) — for Dakota sweep
+TRANSPORT_CONDITION tc_inlet_RegIII
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0  cement_water_RegIII
+  /
+END
+
+TRANSPORT_CONDITION tc_outlet
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0  groundwater
+  /
+END
+
+!==============================================================================
+! Initial & boundary conditions
+!==============================================================================
+INITIAL_CONDITION
+  FLOW_CONDITION initial_head
+  TRANSPORT_CONDITION tc_cement_init
+  REGION cement
+END
+
+INITIAL_CONDITION
+  FLOW_CONDITION initial_head
+  TRANSPORT_CONDITION tc_rock_init
+  REGION rock
+END
+
+INITIAL_CONDITION
+  FLOW_CONDITION initial_head
+  TRANSPORT_CONDITION tc_fracture_init
+  REGION fracture
+END
+
+BOUNDARY_CONDITION inlet_bc
+  ! moved from inlet_fracture_face (x=2.55, now internal) to the tunnel-side
+  ! liner face. Tunnel water (RegI) enters the PASTE and is re-buffered before
+  ! reaching the fracture — chemistry at the fracture now EMERGES from the paste.
+  FLOW_CONDITION inlet_head          ! QPAC-faithful head BC (self-limiting)
+  TRANSPORT_CONDITION tc_inlet_RegI
+  REGION cement_west_face
+END
+
+BOUNDARY_CONDITION outlet_bc
+  FLOW_CONDITION outlet_pressure
+  TRANSPORT_CONDITION tc_outlet
+  REGION outlet_far_face
+END
+
+!==============================================================================
+! Strata
+!==============================================================================
+STRATA
+  REGION cement
+  MATERIAL cement
+END
+
+STRATA
+  REGION rock
+  MATERIAL rock
+END
+
+STRATA
+  REGION fracture
+  MATERIAL fracture
+END
+
+!==============================================================================
+! Observation points
+!==============================================================================
+
+!==============================================================================
+! Constraints
+!------------------------------------------------------------------------------
+! SSA values (m²/m³) taken directly from pflotran_HDP_3.in.
+! Zero VF for all non-present minerals: PFLOTRAN handles nucleation via SSA.
+! Quartz_Inert closes the porosity budget as inert solid matrix.
+!
+! Porosity check:
+!   cement:  Σ VF = 0.870 → φ = 0.130 ✓  (matches MATERIAL_PROPERTY 0.13)
+!   rock:    Σ VF = 0.992 → φ = 0.008 ✓
+!   fracture: Σ VF = 0.010 → φ = 0.990 ✓
+!==============================================================================
+
+
+CONSTRAINT cement_ic
+  ! QPAC cement paste inventory (Chemistry.inc lines 143-148, VF = X*1e-2):
+  !   Portlandite 0.049, CSH165 0.092, Monosulfate-Al 0.019,
+  !   Katoite-AlSi080 0.015, Hydrotalcite-M6A 0.007, Calcite 0.001  (sum 0.183)
+  ! porosity 0.1 (QPAC) => inert aggregate = 1 - 0.1 - 0.183 = 0.717
+  ! A0 = SSA_QPAC[m2/g] * rho[g/m3] * VF ; seeds (1e-8) for all potential
+  ! secondaries — QPAC's Cement material has the FULL mineral set active.
+  ! Pore water = RegI (paste-equilibrated); expect a brief re-equilibration
+  ! transient at t=0.
+  CONCENTRATIONS
+    Na+         1.97d-1      T
+    Ca++        4.44d-3      T
+    K+          2.26d-1      T
+    Al+++       1.82d-5      T
+    Mg++        4.39d-7      T
+    H+          12.36d0      pH
+    HCO3-       4.94d-5      T
+    Cl-         2.26d-3      T
+    SO4--       1.43d-1      T
+    H4SiO4(aq)  3.07d-5      T
+    H2O         55.5         T
+    Tracer      1.d-20       T
+  /
+  MINERALS
+    ! -- present phases (QPAC inventory) --
+    Quartz_Inert    0.717   1.0d5      ! inert aggregate filler
+    Portlandite     0.049   1.147d6    ! 10.44 m2/g * 2.2415 g/cc
+    CSH165          0.092   5.085d6    ! 22.43 * 2.4643
+    Monosulfate-Al  0.019   3.827d5    ! 10 * 2.0144
+    Katoite-AlSi080 0.015   4.158d5    ! 10 * 2.7720
+    Hydrotalcite-M6A 0.007  2.185d5    ! 11.94 * 2.6140
+    Calcite         0.001   2.710d4    ! 10 * 2.7103
+    ! -- potential secondaries: seeded (all active in QPAC cement) --
+    CSH155          1.e-8   0.7140d0
+    CSH145          1.e-8   0.8726d0
+    CSH135          1.e-8   1.0285d0
+    CSH125          1.e-8   1.1804d0
+    CSH115          1.e-8   1.3282d0
+    CSH105          1.e-8   1.4712d0
+    CSH095          1.e-8   1.6100d0
+    CSH085          1.e-8   1.7470d0
+    CSH075          1.e-8   1.8789d0
+    CSH065          1.e-8   2.0066d0
+    CSH055          1.e-8   2.1307d0
+    C4AH13          1.e-8   0.2046d0
+    C4AH19          1.e-8   0.1802d0
+    Katoite-Al      1.e-8   0.2522d0
+    Katoite-AlSi040 1.e-8   0.2644d0
+    Ettringite-Al   1.e-8   0.25d0     ! ~10 m2/g * ~2.5 g/cc generic seed A0
+    Stratlingite-Al 1.e-8   0.25d0
+    Monocarbonate-Al 1.e-8  0.25d0
+    Friedel-Salt    1.e-8   0.25d0
+    Gypsum          1.e-8   0.25d0
+    Hydrotalcite-M4A  1.e-8 0.25d0
+    Hydrotalcite-M4Ac 1.e-8 0.25d0
+    Hydrotalcite-M6Ac 1.e-8 0.25d0
+    Brucite         1.e-8   0.25d0
+    Dolomite        1.e-8   0.25d0
+    Analcime        1.e-8   0.25d0
+    Sepiolite       1.e-8   0.25d0
+    Pyrophyllite    1.e-8   0.25d0
+    Quartz          1.e-8   0.25d0
+    K-Feldspar      1.e-8   0.25d0
+    Albite          1.e-8   0.25d0     ! dissolve-only (precip -30) => stays at seed
+    Anorthite       1.e-8   0.25d0
+    Muscovite       1.e-8   0.25d0
+    Phlogopite      1.e-8   0.25d0
+    Illite          1.e-8   0.25d0
+    Kaolinite       1.e-8   0.25d0
+    Montmor-Na      1.e-8   0.25d0
+  /
+END
+
+CONSTRAINT rock_ic
+  ACKNOWLEDGE_ZERO_SURFACE_AREA   ! masked minerals (VF=0, SSA=0) are intentional
+  CONCENTRATIONS
+    Na+         3.1d-3    T
+    Ca++        4.0d-4    T
+    K+          1.6d-5    T
+    Al+++       7.9d-7    T
+    Mg++        8.2d-6    T
+    H+          8.16d0    pH
+    HCO3-       9.5d-4    T
+    Cl-         2.3d-3    T
+    SO4--       7.3d-6    T
+    H4SiO4(aq)  3.2d-4    T
+    H2O         55.5      T
+    Tracer      1.d-20    T
+  /
+  MINERALS
+    ! Plutonic rock mineralogy (Σ VF = 0.992 → φ = 0.008)
+    Quartz_Inert    0.0     10.0
+    K-Feldspar      0.2845  10.0
+    Albite          0.1241  10.0
+    Anorthite       0.1176  10.0
+    Quartz          0.3041  10.0
+    Muscovite       0.0551  10.0
+    Phlogopite      0.0745  10.0
+    Calcite         0.0100  2.710d5
+    Illite          0.0179  10.0
+    ! Cement-derived secondary phases: zero VF
+    CSH165          1.e-8   0.5527d0
+    CSH115          1.e-8   1.3282d0
+    CSH075          1.e-8   1.8789d0
+    CSH065          1.e-8   2.0066d0
+    CSH055          1.e-8   2.1307d0
+    Portlandite     0       10.44
+    Analcime        0       0.d0   ! QPAC Rock=0
+    Brucite         0       0.d0   ! QPAC Rock=0
+    C4AH19          1.e-8   0.1802d0
+    Dolomite        0       10.0
+    Ettringite-Al   0       0.d0   ! QPAC Rock=0
+    Friedel-Salt    0       0.d0   ! QPAC Rock=0 (family)
+    Gypsum          0       10.0
+    Hydrotalcite-M4Ac 0     0.d0   ! QPAC Rock=0
+    Katoite-Al      1.e-8   0.2522d0
+    Monocarbonate-Al 0      0.d0   ! QPAC Rock=0 (family)
+    Monosulfate-Al  0       0.d0   ! QPAC Rock=0
+    Pyrophyllite    0       10.0
+    Sepiolite       0       10.0
+    Stratlingite-Al 0       0.d0   ! QPAC Rock=0
+    Kaolinite       0       10.0
+    Montmor-Na      0       10.0
+    ! Outside March-2026 reduction — masked everywhere (SSA=0)
+    CSH155          1.e-8   0.7140d0
+    CSH145          1.e-8   0.8726d0
+    CSH135          1.e-8   1.0285d0
+    CSH125          1.e-8   1.1804d0
+    CSH105          1.e-8   1.4712d0
+    CSH095          1.e-8   1.6100d0
+    CSH085          1.e-8   1.7470d0
+    C4AH13          1.e-8   0.2046d0
+    Hydrotalcite-M4A  0  0.d0
+    Hydrotalcite-M6A  0  0.d0
+    Hydrotalcite-M6Ac 0  0.d0
+    Katoite-AlSi040 1.e-8   0.2644d0
+    Katoite-AlSi080 1.e-8   0.2772d0
+  /
+END
+
+CONSTRAINT fracture_ic
+  ACKNOWLEDGE_ZERO_SURFACE_AREA   ! masked minerals (VF=0, SSA=0) are intentional
+  CONCENTRATIONS
+    Na+         3.1d-3    T
+    Ca++        4.0d-4    T
+    K+          1.6d-5    T
+    Al+++       7.9d-7    T
+    Mg++        8.2d-6    T
+    H+          8.16d0    pH
+    HCO3-       9.5d-4    T
+    Cl-         2.3d-3    T
+    SO4--       7.3d-6    T
+    H4SiO4(aq)  3.2d-4    T
+    H2O         55.5      T
+    Tracer      1.d-20    T
+  /
+  MINERALS
+    !--------------------------------------------------------------------------
+    ! QPAC FRACTURE MASK (v5): active set = QPAC-18 ∩ March-2026 reduction.
+    ! Active minerals: 1e-8 VF seed, A0 = SSA_QPAC[m2/g] * rho[g/m3] * VF0
+    !   (so area = A0*(VF/VF0)^1 reproduces QPAC's linear area slope):
+    !   CSH165: 22.43 m2/g * 2.464e6 g/m3 * 1e-8 = 0.553 m2/m3
+    !   CSH115: 55.81 * 2.380e6 * 1e-8 = 1.328     CSH075: 82.51*2.277e6*1e-8 = 1.879
+    !   C4AH19: 10 * 1.802e6 * 1e-8 = 0.180        Katoite-Al: 10*2.522e6*1e-8 = 0.252
+    !   Calcite (VF0=0.005): 10 * 2.710e6 * 0.005 = 1.355e5 -> use 1.355d5
+    ! Masked minerals: VF=0, SSA=0 -> zero area forever (QPAC Rate=0 analogue);
+    ! still in output for SI diagnostics.
+    !--------------------------------------------------------------------------
+    ! Fracture: nearly open (Σ VF = 0.010 -> φ = 0.990)
+    Quartz_Inert    0.005   1.3d5
+    Calcite         0.005   1.355d5
+    ! -- active seeds: FULL QPAC-18 fracture set --
+    ! A0 = SSA_QPAC[m2/g] * rho[g/m3] * VF0(=1e-8); rho = MW/Vm from database
+    CSH165          1.e-8   0.5527d0
+    CSH155          1.e-8   0.7140d0
+    CSH145          1.e-8   0.8726d0
+    CSH135          1.e-8   1.0285d0
+    CSH125          1.e-8   1.1804d0
+    CSH115          1.e-8   1.3282d0
+    CSH105          1.e-8   1.4712d0
+    CSH095          1.e-8   1.6100d0
+    CSH085          1.e-8   1.7470d0
+    CSH075          1.e-8   1.8789d0
+    CSH065          1.e-8   2.0066d0
+    CSH055          1.e-8   2.1307d0
+    C4AH13          1.e-8   0.2046d0
+    C4AH19          1.e-8   0.1802d0
+    Katoite-Al      1.e-8   0.2522d0
+    Katoite-AlSi040 1.e-8   0.2644d0
+    Katoite-AlSi080 1.e-8   0.2772d0
+    ! -- masked: QPAC Rate_Mineral[*,Fracture] = 0 --
+    Portlandite     0.d0    0.d0
+    Analcime        0.d0    0.d0
+    Brucite         0.d0    0.d0
+    Dolomite        0.d0    0.d0
+    Ettringite-Al   0.d0    0.d0
+    Friedel-Salt    0.d0    0.d0
+    Gypsum          0.d0    0.d0
+    Hydrotalcite-M4Ac 1.e-8  0.2015d0   ! UNMASKED (QPAC-figure test)
+    K-Feldspar      0.d0    0.d0
+    Monocarbonate-Al 0.d0   0.d0
+    Monosulfate-Al  0.d0    0.d0
+    Pyrophyllite    0.d0    0.d0
+    Quartz          0.d0    0.d0
+    Sepiolite       0.d0    0.d0
+    Stratlingite-Al 0.d0    0.d0
+    Albite          0.d0    0.d0
+    Anorthite       0.d0    0.d0
+    Muscovite       0.d0    0.d0
+    Phlogopite      0.d0    0.d0
+    Illite          0.d0    0.d0
+    Kaolinite       0.d0    0.d0
+    Montmor-Na      0.d0    0.d0
+    ! -- masked: QPAC Rate=0 in Fracture (hydrotalcite family) --
+    Hydrotalcite-M4A  0.d0  0.d0
+    Hydrotalcite-M6A  0.d0  0.d0
+    Hydrotalcite-M6Ac 0.d0  0.d0
+  /
+END
+
+CONSTRAINT cement_water_RegI
+  ! Fresh cement porewater pH 12.36 (RegI) — 6 totals sampled by Dakota LHS
+  CONCENTRATIONS
+    Na+         1.97d-1      T
+    Ca++        0.01651643465   T
+    K+          2.26d-1      T
+    Al+++       1.647392901e-05   T
+    Mg++        4.234081423e-07   T
+    H+          12.36d0      pH
+    HCO3-       3.135995959e-05 T
+    Cl-         2.26d-3      T
+    SO4--       0.03530126889  T
+    H4SiO4(aq)  8.421672288e-06   T
+    H2O         55.5         T
+    Tracer      1.d0         T
+  /
+END
+
+CONSTRAINT cement_water_RegIII
+  ! Degraded cement porewater pH 11.606 (RegIII)
+  CONCENTRATIONS
+    Na+         3.096d-3  T
+    Ca++        2.132d-2  T
+    K+          1.598d-5  T
+    Al+++       5.005d-6  T
+    Mg++        3.763d-9  T
+    H+          11.606d0  pH
+    HCO3-       8.423d-6  T
+    Cl-         2.297d-3  T
+    SO4--       9.641d-3  T
+    H4SiO4(aq)  1.760d-5  T
+    H2O         55.5      T
+    Tracer      5.d-1     T
+  /
+END
+
+CONSTRAINT groundwater
+  ! Plutonic rock groundwater pH 8.16
+  CONCENTRATIONS
+    Na+         3.1d-3    T
+    Ca++        4.0d-4    T
+    K+          1.6d-5    T
+    Al+++       7.9d-7    T
+    Mg++        8.2d-6    T
+    H+          8.16d0    pH
+    HCO3-       9.5d-4    T
+    Cl-         2.3d-3    T
+    SO4--       7.3d-6    T
+    H4SiO4(aq)  3.2d-4    T
+    H2O         55.5      T
+    Tracer      1.d-20    T
+  /
+END
+
+!==============================================================================
+! Time — initial 5y test run matching pflotran_HDP_3.in benchmark
+!==============================================================================
+TIME
+  FINAL_TIME 300.d0 y
+  MAXIMUM_TIMESTEP_SIZE 10.d0 y
+END
+
+!==============================================================================
+! Output
+!==============================================================================
+OUTPUT
+  TIME_UNITS y
+!  MASS_BALANCE_FILE
+!    PERIODIC TIMESTEP 1
+!  /
+  VELOCITY_AT_CENTER
+  VARIABLES
+    LIQUID_PRESSURE
+    PERMEABILITY
+
+    POROSITY
+  /
+END
+
+END_SUBSURFACE

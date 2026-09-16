@@ -303,6 +303,20 @@ pflotran_derivative : $(pflotran_base_obj) pflotran_derivative.o
 validate_ml_surrogate : $(pflotran_base_obj) validate_ml_surrogate.o
 	${FLINKER} -o validate_ml_surrogate $(pflotran_base_obj) validate_ml_surrogate.o ${PETSC_LIB} ${LIBS}
 
+# Golden-vector regression of the ML fracture surrogate forward pass: every
+# shipped weight file in regression_tests/ml_surrogate must reproduce its
+# test-vector CSV (both output stages).  Fails on the first mismatch.
+ML_SURROGATE_TEST_DIR = ../../regression_tests/ml_surrogate
+test_ml_surrogate : validate_ml_surrogate
+	@status=0; \
+	for w in $(ML_SURROGATE_TEST_DIR)/*_weights.h5; do \
+	  v=$${w%_weights.h5}_test_vectors.csv; \
+	  echo "== $$w"; \
+	  ./validate_ml_surrogate $$w $$v || status=1; \
+	done; \
+	if [ $$status -ne 0 ]; then echo "test_ml_surrogate: FAIL"; exit 1; fi; \
+	echo "test_ml_surrogate: PASS"
+
 $(SRC_DIR)/pflotran_provenance.F90 : FORCE
 ifeq ($(UPDATE_PROVENANCE),1)
 	@-rm pflotran_provenance.o pflotran_provenance_module.mod $(SRC_DIR)/pflotran_provenance.F90; \
