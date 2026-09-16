@@ -1,0 +1,153 @@
+! 0-D (single-cell) regression/oracle test of the ML fracture surrogate.
+! Closed fracture cell, no minerals, no transport: the five totals the
+! surrogate reads are constant, so the porosity trajectory is exactly
+! reproducible in numpy from the weight file alone (ml_surrogate_oracle.py).
+! 10 steps of 10 y (the surrogate acts at the end of every step >= 1 y).
+! Weight file: node_phi_weights.h5
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE RICHARDS
+    /
+    SUBSURFACE_TRANSPORT transport
+      MODE GIRT
+      OPTIONS
+        FRACTURE_ML_SURROGATE
+          FILENAME ./node_phi_weights.h5
+          FRACTURE_MATERIAL_ID 3
+          DIAGNOSTIC_FILE ml0d_node_phi_diag
+        /
+      /
+    /
+  /
+END
+
+SUBSURFACE
+
+REGRESSION
+  CELL_IDS
+    1
+  /
+  VARIABLES
+    POROSITY
+    PERMEABILITY
+  /
+END
+
+CHEMISTRY
+  PRIMARY_SPECIES
+    H+
+    Ca++
+    H4SiO4(aq)
+    Al+++
+    Mg++
+  /
+  SECONDARY_SPECIES
+    OH-
+  /
+  DATABASE ./GWB16v107_PFLOTRAN_2597B_ver1.2.dat
+  ACTIVITY_COEFFICIENTS OFF
+  LOG_FORMULATION
+  OUTPUT
+    PRIMARY_SPECIES
+    TOTAL
+  /
+END
+
+GRID
+  TYPE STRUCTURED
+  NXYZ 1 1 1
+  BOUNDS
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 1.d0
+  /
+END
+
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.d-9
+END
+
+EOS WATER
+  DENSITY CONSTANT 1000.d0 kg/m^3
+  VISCOSITY CONSTANT 1.d-3 Pa-s
+END
+
+CHARACTERISTIC_CURVES cc1
+  SATURATION_FUNCTION VAN_GENUCHTEN
+    ALPHA 1.d-4
+    M 0.5d0
+    LIQUID_RESIDUAL_SATURATION 0.1d0
+  /
+  PERMEABILITY_FUNCTION MUALEM_VG_LIQ
+    M 0.5d0
+    LIQUID_RESIDUAL_SATURATION 0.1d0
+  /
+END
+
+MATERIAL_PROPERTY fracture
+  ID 3
+  POROSITY 0.99d0
+  TORTUOSITY 1.d0
+  CHARACTERISTIC_CURVES cc1
+  PERMEABILITY
+    PERM_ISO 5.958391201d-11
+  /
+END
+
+REGION all
+  COORDINATES
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 1.d0
+  /
+END
+
+FLOW_CONDITION initial
+  TYPE
+    LIQUID_PRESSURE DIRICHLET
+  /
+  LIQUID_PRESSURE 101325.d0
+END
+
+TRANSPORT_CONDITION tc_init
+  TYPE ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 cement_water
+  /
+END
+
+CONSTRAINT cement_water
+  CONCENTRATIONS
+    ! pH 12.735 with OH- as the only complex gives Total H+ = -0.0550, the
+    ! live inlet-cell value of katdiss run.1 at 1 y; the other totals are the
+    ! same cell's (a strongly clogging water for every shipped model)
+    H+          12.735d0         pH
+    Ca++        1.654d-2         T
+    H4SiO4(aq)  2.472d-5         T
+    Al+++       5.172d-4         T
+    Mg++        3.42d-10         T
+  /
+END
+
+INITIAL_CONDITION
+  FLOW_CONDITION initial
+  TRANSPORT_CONDITION tc_init
+  REGION all
+END
+
+STRATA
+  REGION all
+  MATERIAL fracture
+END
+
+TIME
+  FINAL_TIME 100.d0 y
+  INITIAL_TIMESTEP_SIZE 10.d0 y
+  MAXIMUM_TIMESTEP_SIZE 10.d0 y
+END
+
+OUTPUT
+  TIME_UNITS y
+END
+
+END_SUBSURFACE

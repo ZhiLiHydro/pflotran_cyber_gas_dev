@@ -307,6 +307,7 @@ validate_ml_surrogate : $(pflotran_base_obj) validate_ml_surrogate.o
 # shipped weight file in regression_tests/ml_surrogate must reproduce its
 # test-vector CSV (both output stages).  Fails on the first mismatch.
 ML_SURROGATE_TEST_DIR = ../../regression_tests/ml_surrogate
+PYTHON ?= python3
 test_ml_surrogate : validate_ml_surrogate
 	@status=0; \
 	for w in $(ML_SURROGATE_TEST_DIR)/*_weights.h5; do \
@@ -315,6 +316,14 @@ test_ml_surrogate : validate_ml_surrogate
 	  ./validate_ml_surrogate $$w $$v || status=1; \
 	done; \
 	if [ $$status -ne 0 ]; then echo "test_ml_surrogate: FAIL"; exit 1; fi; \
+	if [ -x ./pflotran ]; then \
+	  echo "== 0-D oracle (numpy) vs pflotran on the single-cell decks"; \
+	  $(PYTHON) $(ML_SURROGATE_TEST_DIR)/ml_surrogate_oracle.py -e $(CURDIR)/pflotran \
+	    $(ML_SURROGATE_TEST_DIR)/ml0d_*.in || status=1; \
+	  rm -f $(ML_SURROGATE_TEST_DIR)/ml0d_*.out $(ML_SURROGATE_TEST_DIR)/ml0d_*.stdout \
+	        $(ML_SURROGATE_TEST_DIR)/ml0d_*.regression; \
+	  if [ $$status -ne 0 ]; then echo "test_ml_surrogate: FAIL (oracle)"; exit 1; fi; \
+	fi; \
 	echo "test_ml_surrogate: PASS"
 
 $(SRC_DIR)/pflotran_provenance.F90 : FORCE
