@@ -2220,7 +2220,7 @@ subroutine ReactionMnrlUpdateKineticState(rt_auxvar,global_auxvar, &
   ! at extreme affinity); caps are per mineral, so minerals competing for
   ! a species may jointly overdraw by at most the number of competitors;
   ! transport influx within the step is not credited (conservative)
-  if (reaction%limit_mnrl_vf) then
+  if (reaction%limit_mnrl_vf .and. .not.reaction%no_avail_limit) then
     ! L water/m^3 bulk
     water_vol = 1.d3*material_auxvar%porosity*global_auxvar%sat(1)
     ! mol/m^3 bulk released by dissolving minerals this step

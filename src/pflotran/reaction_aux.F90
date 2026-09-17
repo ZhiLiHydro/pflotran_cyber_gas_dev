@@ -310,6 +310,9 @@ module Reaction_Aux_module
     PetscReal :: minimum_porosity
     ! LIMIT_MINERAL_VOLUME_FRACTION block present
     PetscBool :: limit_mnrl_vf
+    ! DIAGNOSTIC: NO_AVAILABILITY_LIMIT skips the aqueous-inventory growth cap
+    ! (keeps the residual-porosity cutoff and the pore-volume budget)
+    PetscBool :: no_avail_limit
     ! QPAC-style precip cutoff porosity (LIMIT_MINERAL_VOLUME_FRACTION);
     ! 0 = off
     PetscReal :: porosity_res
@@ -566,6 +569,7 @@ function ReactionAuxCreateAux()
   reaction%calculate_initial_porosity = PETSC_FALSE
   reaction%minimum_porosity = 0.d0
   reaction%limit_mnrl_vf = PETSC_FALSE
+  reaction%no_avail_limit = PETSC_FALSE
   reaction%porosity_res = 0.d0
   reaction%porosity_res_ramp = 0.d0
   reaction%porosity_res_fraction = 0.d0

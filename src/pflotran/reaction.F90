@@ -921,6 +921,9 @@ subroutine ReactionReadPass1(reaction,input,option)
             case('USE_UNFLOORED_POROSITY')
               ! perm/tortuosity laws read un-floored 1-sumVF
               reaction%use_unfloored_porosity = PETSC_TRUE
+            case('NO_AVAILABILITY_LIMIT')
+              ! DIAGNOSTIC: disable the aqueous-inventory growth cap only
+              reaction%no_avail_limit = PETSC_TRUE
             case('DIFFUSION_RAMP_WIDTH')
               ! face diffusion scales linearly to zero over this porosity
               ! width above the cutoff
