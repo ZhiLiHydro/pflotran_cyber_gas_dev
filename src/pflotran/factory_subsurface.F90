@@ -439,6 +439,9 @@ subroutine FactorySubsurfaceInitSimulation(simulation)
                               simulation)
   endif
 
+  ! re-apply parameters now that flow-mode auxvars exist (SOURCE_VARIABLE)
+  call GlobalUpdateParameterArray(realization)
+
   ! InitSubsurfaceSetupZeroArray must come after InitSubsurfaceXXXRealization
   call OutputVariableAppendDefaults(realization%output_option% &
                                       output_snap_variable_list,option)
@@ -519,6 +522,7 @@ subroutine FactorySubsurfSetupRealization(simulation)
   ! set reference densities if not specified in input file.
   call EOSReferenceDensity(option)
 
+  ! assign parameter ids before reaction/sandbox setup
   call ParameterSetup(realization%parameter_list,option)
   call RealProcessMatPropAndSatFunc(realization)
 
@@ -612,6 +616,7 @@ subroutine FactorySubsurfSetupRealization(simulation)
                                   realization%option)
   call RealizationPassPtrsToPatches(realization)
   call RealizationProcessDatasets(realization)
+  call RealizationSetupParameters(realization)
   if (realization%output_option%mass_balance_region_flag) then
     call PatchGetCompMassInRegionAssign(realization%patch%region_list, &
          realization%output_option%mass_balance_region_list,option)

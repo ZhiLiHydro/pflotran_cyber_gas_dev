@@ -73,6 +73,7 @@ module Realization_Subsurface_class
             RealizationInitAllCouplerAuxVars, &
             RealizationProcessConditions, &
             RealizationProcessDatasets, &
+            RealizationSetupParameters, &
             RealizationAddWaypointsToList, &
             RealizationCreateDiscretization, &
             RealizUpdateUniformVelocity, &
@@ -577,6 +578,31 @@ subroutine RealizationProcessDatasets(realization)
   call DatasetScreenForNonCellIndexed(realization%datasets,realization%option)
 
 end subroutine RealizationProcessDatasets
+
+! ************************************************************************** !
+
+subroutine RealizationSetupParameters(realization)
+  !
+  ! Links named datasets and maps SOURCE/TARGET variable names.
+  ! Call after RealizationProcessDatasets. ParameterSetup (id assignment)
+  ! must already have run earlier so consumers such as reaction sandboxes
+  ! can resolve parameter ids during ReactionSetupKinetics.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 07/10/26
+  !
+  use Parameter_module
+
+  implicit none
+
+  class(realization_subsurface_type) :: realization
+
+  call ParameterLinkDatasets(realization%parameter_list, &
+                             realization%datasets,realization%option)
+  call ParameterMapVariableList(realization%parameter_list, &
+                                realization%option)
+
+end subroutine RealizationSetupParameters
 
 ! ************************************************************************** !
 

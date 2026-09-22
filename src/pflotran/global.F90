@@ -18,7 +18,8 @@ module Global_module
          GlobalUpdateState, &
          GlobalSetAuxVarsAtTimeLevel, &
          GlobalParameterQualityCheck, &
-         GlobalUpdateParameter
+         GlobalUpdateParameter, &
+         GlobalUpdateParameterArray
 
 contains
 
@@ -70,7 +71,8 @@ subroutine GlobalSetup(realization)
   patch%aux%Global%auxvars => auxvars
   patch%aux%Global%num_aux = grid%ngmax
 
-  call GlobalUpdateParameterArray(realization)
+  ! Parameter array fill (including SOURCE_VARIABLE) is deferred until after
+  ! process-model Setup so flow-mode auxvars exist for GetVariable.
 
   ! count the number of boundary connections and allocate
   ! auxvar data structures for them
@@ -522,14 +524,17 @@ end subroutine GlobalGetAuxVarVecLoc
 
 subroutine GlobalUpdateParameter(realization,parameter)
   !
-  ! Updates values in the parameter array
+  ! Fills parameters(id) from scalar/dataset/source variable, then optionally
+  ! applies to TARGET_VARIABLE via RealizationSetVariable.
   !
   ! Author: Glenn Hammond
   ! Date: 05/28/26
   !
   use Dataset_Base_class
+  use Dataset_Ascii_class
   use Dataset_Common_HDF5_class
   use Dataset_Gridded_HDF5_class
+  use Dataset_module, only : DatasetUpdate
   use Discretization_module
   use Grid_module
   use HDF5_module
@@ -537,9 +542,10 @@ subroutine GlobalUpdateParameter(realization,parameter)
   use Parameter_module
   use Realization_Base_class
   use Realization_Subsurface_class
+  use Variables_module, only : POROSITY, BASE_POROSITY, INITIAL_POROSITY
 
   class(realization_subsurface_type) :: realization
-  type(parameter_type) :: parameter
+  type(parameter_type), pointer :: parameter
 
   class(dataset_base_type), pointer :: dataset
   type(grid_type), pointer :: grid
@@ -548,29 +554,35 @@ subroutine GlobalUpdateParameter(realization,parameter)
   character(len=MAXSTRINGLENGTH) :: err_string
   character(len=MAXSTRINGLENGTH) :: string, string2
 
+  PetscInt :: local_id
   PetscInt :: ghosted_id
   PetscReal :: tempreal
+  PetscReal, pointer :: vec_ptr(:)
+  PetscErrorCode :: ierr
 
   grid => realization%patch%grid
   option => realization%option
 
   auxvars => realization%patch%aux%Global%auxvars
+  err_string = 'PARAMETER "' // trim(parameter%name) // '"'
 
+  ! ---- fill parameters(id) ----
   select case(parameter%itype)
     case(PARAMETER_SCALAR)
+      tempreal = parameter%value
+      if (parameter%data_type == PARAMETER_DATA_INTEGER) then
+        tempreal = dble(parameter%ivalue)
+      endif
       do ghosted_id = 1, grid%ngmax
-        auxvars(ghosted_id)%parameters(parameter%id) = &
-          parameter%value
+        auxvars(ghosted_id)%parameters(parameter%id) = tempreal
       enddo
     case(PARAMETER_VARIABLE)
-      if (Uninitialized(parameter%ivar)) then
-        do ghosted_id = 1, grid%ngmax
-          auxvars(ghosted_id)%parameters(parameter%id) = UNINITIALIZED_DOUBLE
-        enddo
-      else
+      if (Initialized(parameter%source_ivar) .and. &
+          option%iflowmode /= NULL_MODE) then
         call RealizationGetVariable(realization, &
                                     realization%field%work, &
-                                    parameter%ivar,parameter%isubvar)
+                                    parameter%source_ivar, &
+                                    parameter%source_isubvar)
         call realization%comm1%GlobalToLocal(realization%field%work, &
                                       realization%field%work_loc)
         call GlobalSetParameterVecLoc(realization, &
@@ -578,29 +590,63 @@ subroutine GlobalUpdateParameter(realization,parameter)
                                       parameter%id)
       endif
     case(PARAMETER_DATASET)
-      err_string = 'PARAMETER "' // trim(parameter%name) // '"'
-      dataset => &
-        DatasetBaseGetPointer(realization%datasets, &
-                              parameter%linkage_name,err_string,option)
-      select type(dataset)
-        class is(dataset_gridded_hdf5_type)
-          call DatasetGriddedHDF5Load(dataset,option)
+      dataset => parameter%dataset
+      if (.not.associated(dataset)) then
+        if (len_trim(parameter%dataset_name) == 0) then
+          option%io_buffer = trim(err_string) // &
+            ' has no linked dataset.'
+          call PrintErrMsg(option)
+        endif
+        dataset => DatasetBaseGetPointer(realization%datasets, &
+                                         parameter%dataset_name, &
+                                         err_string,option)
+        parameter%dataset => dataset
+        parameter%dataset_is_owned = PETSC_FALSE
+      endif
+      select type (ds => dataset)
+        class is (dataset_ascii_type)
+          call DatasetUpdate(dataset,option)
+          if (.not.associated(ds%rarray)) then
+            option%io_buffer = trim(err_string) // &
+              ' ASCII dataset has no data array.'
+            call PrintErrMsg(option)
+          endif
+          tempreal = ds%rarray(1)
+          if (parameter%data_type == PARAMETER_DATA_INTEGER) then
+            tempreal = dble(nint(tempreal))
+          endif
           do ghosted_id = 1, grid%ngmax
-            call DatasetGriddedHDF5InterpolateReal(dataset, &
+            auxvars(ghosted_id)%parameters(parameter%id) = tempreal
+          enddo
+        class is (dataset_gridded_hdf5_type)
+          call DatasetGriddedHDF5Load(ds,option)
+          do ghosted_id = 1, grid%ngmax
+            call DatasetGriddedHDF5InterpolateReal(ds, &
                                                   grid%x(ghosted_id), &
                                                   grid%y(ghosted_id), &
                                                   grid%z(ghosted_id), &
                                                   tempreal,option)
+            if (parameter%data_type == PARAMETER_DATA_INTEGER) then
+              tempreal = dble(nint(tempreal))
+            endif
             auxvars(ghosted_id)%parameters(parameter%id) = tempreal
           enddo
-        class is(dataset_common_hdf5_type)
+        class is (dataset_common_hdf5_type)
           string = ''
-          string2 = dataset%hdf5_dataset_name
-          call HDF5ReadCellIndexedRealArray(realization, &
-                                            realization%field%work, &
-                                            dataset%filename, &
-                                            string,string2, &
-                                            dataset%realization_dependent)
+          string2 = ds%hdf5_dataset_name
+          if (parameter%data_type == PARAMETER_DATA_INTEGER) then
+            call HDF5ReadCellIndexedIntegerArray(realization, &
+                                                 realization%field%work, &
+                                                 ds%filename, &
+                                                 string,string2, &
+                                                 ds%realization_dependent)
+          else
+            call HDF5ReadCellIndexedRealArray(realization, &
+                                              realization%field%work, &
+                                              ds%filename, &
+                                              string,string2, &
+                                              ds%realization_dependent)
+          endif
           call DiscretizationGlobalToLocal(realization%discretization, &
                                           realization%field%work, &
                                           realization%field%work_loc,ONEDOF)
@@ -608,11 +654,34 @@ subroutine GlobalUpdateParameter(realization,parameter)
                                         realization%field%work_loc, &
                                         parameter%id)
         class default
-          option%io_buffer = 'Unrecognized dataset type in &
-            &GlobalSetup() for ' // trim(err_string)
+          option%io_buffer = 'Unrecognized dataset type for ' // &
+            trim(err_string) // '. Supported: ASCII LIST, gridded HDF5, &
+            &cell-indexed HDF5.'
           call PrintErrMsg(option)
       end select
   end select
+
+  ! ---- optional apply to TARGET_VARIABLE ----
+  if (Initialized(parameter%target_ivar)) then
+    call VecGetArray(realization%field%work,vec_ptr,ierr);CHKERRQ(ierr)
+    do local_id = 1, grid%nlmax
+      ghosted_id = grid%nL2G(local_id)
+      vec_ptr(local_id) = auxvars(ghosted_id)%parameters(parameter%id)
+    enddo
+    call VecRestoreArray(realization%field%work,vec_ptr,ierr);CHKERRQ(ierr)
+    call RealizationSetVariable(realization,realization%field%work,GLOBAL, &
+                                parameter%target_ivar, &
+                                parameter%target_isubvar)
+    ! Flow recomputes working porosity from porosity_base (and uses
+    ! porosity_0 for geomech); keep the triad consistent when POROSITY
+    ! is the target.
+    if (parameter%target_ivar == POROSITY) then
+      call RealizationSetVariable(realization,realization%field%work, &
+                                  GLOBAL,BASE_POROSITY,ZERO_INTEGER)
+      call RealizationSetVariable(realization,realization%field%work, &
+                                  GLOBAL,INITIAL_POROSITY,ZERO_INTEGER)
+    endif
+  endif
 
 end subroutine GlobalUpdateParameter
 
@@ -640,6 +709,7 @@ subroutine GlobalUpdateParameterArray(realization)
   enddo
 
 end subroutine GlobalUpdateParameterArray
+
 
 ! ************************************************************************** !
 

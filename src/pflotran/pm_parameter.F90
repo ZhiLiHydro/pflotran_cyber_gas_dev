@@ -14,10 +14,6 @@ module PM_Parameter_class
 
   private
 
-  PetscInt, parameter, public :: UPDATE_NEVER = 0
-  PetscInt, parameter, public :: UPDATE_AFTER_LAST_PM = 1
-  PetscInt, parameter, public :: UPDATE_AFTER_FLOW = 2
-
   PetscInt, parameter :: PARAMETER_BY_CELL = 1
   PetscInt, parameter :: PARAMETER_BY_MATERIAL = 2
 
@@ -27,6 +23,7 @@ module PM_Parameter_class
     type(parameter_type), pointer :: parameter
     PetscInt :: itype ! scalar, variable, or dataset
     PetscInt :: when_to_update
+    PetscInt :: target_pmc
     PetscInt :: ivar
     PetscInt :: isubvar
   contains
@@ -81,6 +78,7 @@ subroutine PMParameterInit(this)
   call PMBaseInit(this)
   this%when_to_update = UPDATE_NEVER
   this%itype = UNINITIALIZED_INTEGER
+  this%target_pmc = TARGET_PMC_NULL
   this%ivar = UNINITIALIZED_INTEGER
   this%isubvar = UNINITIALIZED_INTEGER
   nullify(this%parameter)
@@ -99,57 +97,37 @@ subroutine PMParameterSetup(this)
   ! Date: 12/22/23
 
   use Option_module
-  use Output_Aux_module
-  use String_module
 
   class(pm_parameter_type) :: this
 
   type(parameter_type), pointer :: cur_parameter
   character(len=MAXWORDLENGTH) :: parameter_name
-  ! for linking to realization variables
-  character(len=MAXWORDLENGTH) :: units
-  character(len=MAXWORDLENGTH) :: output_name
-  PetscInt :: category, ivar, isubvar, isubsubvar
 
   call this%SetRealization()
-  parameter_name = this%parameter%name
-  ! destroy the placeholder providing name
-  call ParameterDestroy(this%parameter)
-  if (len_trim(parameter_name)== 0) then
-    this%option%io_buffer = 'No PARAMETER_NAME specified for Parameter &
-      &process model "' // trim(this%name) // '".'
-    call PrintErrMsg(this%option)
-  endif
-
-  cur_parameter => this%realization%parameter_list
-  do
-    if (.not.associated(cur_parameter)) exit
-    if (StringCompare(cur_parameter%name,parameter_name)) then
-      this%parameter => cur_parameter
-      exit
-    endif
-    cur_parameter => cur_parameter%next
-  enddo
-
   if (.not.associated(this%parameter)) then
-    this%option%io_buffer = 'Parameter "' // trim(parameter_name) // &
-      '" not found among available parameters.'
+    this%option%io_buffer = 'Parameter process model "' // &
+      trim(this%name) // '" has no parameter.'
     call PrintErrMsg(this%option)
   endif
+  parameter_name = this%parameter%name
 
+  ! list setup, dataset link, and SOURCE/TARGET mapping already done in
+  ! RealizationSetupParameters
   cur_parameter => this%parameter
   select case(cur_parameter%itype)
     case(PARAMETER_SCALAR)
     case(PARAMETER_DATASET)
-      this%option%io_buffer = 'PMParameterSetup needs to be updated for &
-        &PARAMETER_DATASET.'
-      call PrintErrMsg(this%option)
+      if (.not.associated(cur_parameter%dataset)) then
+        this%option%io_buffer = 'Parameter "' // trim(parameter_name) // &
+          '" DATASET is not linked.'
+        call PrintErrMsg(this%option)
+      endif
     case(PARAMETER_VARIABLE)
-      call OutputVariableToID(cur_parameter%linkage_name, &
-                              output_name,units,category, &
-                              ivar,isubvar,isubsubvar,this%option)
-      cur_parameter%ivar = ivar
-      cur_parameter%isubvar = isubvar
+      if (Uninitialized(cur_parameter%source_ivar)) then
+        this%option%io_buffer = 'Parameter "' // trim(parameter_name) // &
+          '" SOURCE_VARIABLE was not mapped.'
+        call PrintErrMsg(this%option)
+      endif
     case default
       this%option%io_buffer = &
         'Unrecognized parameter type for parameter "' // &
@@ -157,8 +135,7 @@ subroutine PMParameterSetup(this)
       call PrintErrMsg(this%option)
   end select
 
-  this%header = 'PARAMETER (' // trim(this%name) // '->' // &
-                trim(parameter_name) // ')'
+  this%header = 'PARAMETER (' // trim(parameter_name) // ')'
 
 end subroutine PMParameterSetup
 
@@ -236,10 +213,20 @@ subroutine PMParameterRead(input,option,this)
         select case(trim(word))
           case('INITIAL')
             this%when_to_update = UPDATE_NEVER
+          case('BEFORE_STEP')
+            this%when_to_update = UPDATE_BEFORE_STEP
+            call PMParameterReadTargetPMC(this,input,option,error_str)
+          case('AFTER_STEP')
+            this%when_to_update = UPDATE_AFTER_STEP
+            call PMParameterReadTargetPMC(this,input,option,error_str)
+          case('BEFORE_FIRST_PM')
+            this%when_to_update = UPDATE_BEFORE_FIRST_PM
           case('AFTER_LAST_PM')
             this%when_to_update = UPDATE_AFTER_LAST_PM
           case('AFTER_FLOW')
-            this%when_to_update = UPDATE_AFTER_FLOW
+            ! synonym for AFTER_STEP FLOW
+            this%when_to_update = UPDATE_AFTER_STEP
+            this%target_pmc = TARGET_PMC_FLOW
           case default
             call InputKeywordUnrecognized(input,word,trim(error_str)//word, &
                                           option)
@@ -251,6 +238,50 @@ subroutine PMParameterRead(input,option,this)
   call InputPopBlock(input,option)
 
 end subroutine PMParameterRead
+
+! ************************************************************************** !
+
+subroutine PMParameterReadTargetPMC(this,input,option,error_str)
+  !
+  ! Reads FLOW / TRANSPORT / GEOMECHANICS / GEOPHYSICS after BEFORE_STEP
+  ! or AFTER_STEP.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/18/26
+  !
+  use Input_Aux_module
+  use Option_module
+  use String_module
+
+  implicit none
+
+  class(pm_parameter_type) :: this
+  type(input_type), pointer :: input
+  type(option_type) :: option
+  character(len=*) :: error_str
+
+  character(len=MAXWORDLENGTH) :: word
+
+  call InputReadWord(input,option,word,PETSC_TRUE)
+  call InputErrorMsg(input,option, &
+         'FLOW, TRANSPORT, GEOMECHANICS, or GEOPHYSICS', &
+         trim(error_str)//',WHEN_TO_UPDATE')
+  call StringToUpper(word)
+  select case(trim(word))
+    case('FLOW')
+      this%target_pmc = TARGET_PMC_FLOW
+    case('TRANSPORT')
+      this%target_pmc = TARGET_PMC_TRANSPORT
+    case('GEOMECHANICS')
+      this%target_pmc = TARGET_PMC_GEOMECH
+    case('GEOPHYSICS')
+      this%target_pmc = TARGET_PMC_GEOPHYSICS
+    case default
+      call InputKeywordUnrecognized(input,word, &
+             trim(error_str)//',WHEN_TO_UPDATE',option)
+  end select
+
+end subroutine PMParameterReadTargetPMC
 
 ! ************************************************************************** !
 
