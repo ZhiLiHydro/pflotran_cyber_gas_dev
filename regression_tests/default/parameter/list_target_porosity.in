@@ -1,0 +1,49 @@
+#Description: time-varying LIST TARGET POROSITY via AFTER_STEP FLOW
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE RICHARDS
+    /
+  /
+END
+
+SUBSURFACE
+
+REGRESSION
+  VARIABLES
+    POROSITY
+    MINERAL_POROSITY
+    PARAMETER phi_list
+  /
+  CELL_IDS
+    14
+  /
+END
+
+! LIST is uniform in space by design; this test covers time interpolation
+! and scheduled TARGET apply. Spatial heterogeneity is in target_porosity
+! and source_target_copy via Porosity_cell_indexed.
+PARAMETER
+  NAME phi_list
+  LIST
+    TIME_UNITS s
+    INTERPOLATION LINEAR
+    0.d0  0.12d0
+    1.d0  0.18d0
+  /
+  TARGET_VARIABLE POROSITY
+  WHEN_TO_UPDATE AFTER_STEP FLOW
+END
+
+OUTPUT
+  VARIABLES
+    POROSITY
+    MINERAL_POROSITY
+    PARAMETER phi_list
+  /
+END
+
+EXTERNAL_FILE common_domain.txt
+
+END_SUBSURFACE

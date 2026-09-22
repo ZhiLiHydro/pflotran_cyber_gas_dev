@@ -1,0 +1,48 @@
+#Description: time-series gridded HDF5 DATASET evolves under PARAMETER PM
+# Facet T5: named DATASET with Times + multi-slice Data; AFTER_STEP FLOW.
+# At FINAL_TIME 1 s (LINEAR), field should match t=1 spatial slice, not t=0.
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE RICHARDS
+    /
+  /
+END
+
+SUBSURFACE
+
+REGRESSION
+  VARIABLES
+    POROSITY
+    MINERAL_POROSITY
+    PARAMETER phi_grid_t
+  /
+  CELL_IDS
+    1
+    14
+    27
+  /
+END
+
+EXTERNAL_FILE common_datasets.txt
+
+! Time-varying gridded HDF5 (porosity_gridded_time.h5) -> PARAMETER + POROSITY.
+PARAMETER
+  NAME phi_grid_t
+  DATASET Porosity_gridded_time
+  TARGET_VARIABLE POROSITY
+  WHEN_TO_UPDATE AFTER_STEP FLOW
+END
+
+OUTPUT
+  VARIABLES
+    POROSITY
+    MINERAL_POROSITY
+    PARAMETER phi_grid_t
+  /
+END
+
+EXTERNAL_FILE common_domain.txt
+
+END_SUBSURFACE

@@ -1,0 +1,23 @@
+-- GENERIC: Porosity --
+      Max:   1.2000000000000E-01
+      Min:   1.2000000000000E-01
+     Mean:   1.2000000000000E-01
+       14:   1.2000000000000E-01
+-- GENERIC: Mineral Porosity --
+      Max:   1.2000000000000E-01
+      Min:   1.2000000000000E-01
+     Mean:   1.2000000000000E-01
+       14:   1.2000000000000E-01
+-- GENERIC: Parameter phi_step --
+      Max:   1.2000000000000E-01
+      Min:   1.2000000000000E-01
+     Mean:   1.2000000000000E-01
+       14:   1.2000000000000E-01
+-- SOLUTION: Flow --
+   Time (seconds):   6.0761700001422E-04
+   Time Steps:            1
+   Newton Iterations:            1
+   Linear Solver Iterations:            5
+   Time Step Cuts:            0
+   Solution 2-Norm:   6.0414614091159E+05
+   Residual 2-Norm:   5.3290705182008E-15

@@ -1,0 +1,45 @@
+#Description: cell-indexed DATASET TARGET POROSITY (spatially varying)
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE RICHARDS
+    /
+  /
+END
+
+SUBSURFACE
+
+REGRESSION
+  VARIABLES
+    POROSITY
+    MINERAL_POROSITY
+    PARAMETER phi_field
+  /
+  CELL_IDS
+    1
+    14
+    27
+  /
+END
+
+EXTERNAL_FILE common_datasets.txt
+
+! Heterogeneous porosity field -> material porosity (+ mineral/base).
+PARAMETER
+  NAME phi_field
+  DATASET Porosity_cell_indexed
+  TARGET_VARIABLE POROSITY
+END
+
+OUTPUT
+  VARIABLES
+    POROSITY
+    MINERAL_POROSITY
+    PARAMETER phi_field
+  /
+END
+
+EXTERNAL_FILE common_domain.txt
+
+END_SUBSURFACE

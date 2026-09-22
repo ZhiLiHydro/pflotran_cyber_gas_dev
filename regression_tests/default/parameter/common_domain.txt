@@ -1,0 +1,12 @@
+# Shared 3x3x3 Richards domain for parameter regressions (FINAL_TIME 1 s).
+# Decks that need a different final time should EXTERNAL_FILE
+# common_domain_body.txt and supply their own TIME block.
+
+EXTERNAL_FILE common_domain_body.txt
+
+#=========================== times ============================================
+TIME
+  FINAL_TIME 1.d0 s
+  INITIAL_TIMESTEP_SIZE 1.d0 s
+  MAXIMUM_TIMESTEP_SIZE 1.d0 s
+END

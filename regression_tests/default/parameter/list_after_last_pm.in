@@ -1,0 +1,47 @@
+#Description: time-varying LIST TARGET POROSITY via AFTER_LAST_PM schedule
+# Facet T3: same LIST as list_target_porosity, different WHEN_TO_UPDATE path.
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE RICHARDS
+    /
+  /
+END
+
+SUBSURFACE
+
+REGRESSION
+  VARIABLES
+    POROSITY
+    MINERAL_POROSITY
+    PARAMETER phi_list
+  /
+  CELL_IDS
+    14
+  /
+END
+
+PARAMETER
+  NAME phi_list
+  LIST
+    TIME_UNITS s
+    INTERPOLATION LINEAR
+    0.d0  0.12d0
+    1.d0  0.18d0
+  /
+  TARGET_VARIABLE POROSITY
+  WHEN_TO_UPDATE AFTER_LAST_PM
+END
+
+OUTPUT
+  VARIABLES
+    POROSITY
+    MINERAL_POROSITY
+    PARAMETER phi_list
+  /
+END
+
+EXTERNAL_FILE common_domain.txt
+
+END_SUBSURFACE

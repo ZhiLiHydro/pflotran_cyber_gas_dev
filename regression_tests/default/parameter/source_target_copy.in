@@ -1,0 +1,54 @@
+#Description: SOURCE of heterogeneous POROSITY after DATASET TARGET apply
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE RICHARDS
+    /
+  /
+END
+
+SUBSURFACE
+
+REGRESSION
+  VARIABLES
+    POROSITY
+    MINERAL_POROSITY
+    PARAMETER phi_field
+    PARAMETER phi_snap
+  /
+  CELL_IDS
+    1
+    14
+    27
+  /
+END
+
+EXTERNAL_FILE common_datasets.txt
+
+! Update order is PARAMETER list order:
+! 1) DATASET TARGET writes spatially varying porosity (and mineral/base).
+! 2) SOURCE reads that field into phi_snap (must match cell-by-cell).
+PARAMETER
+  NAME phi_field
+  DATASET Porosity_cell_indexed
+  TARGET_VARIABLE POROSITY
+END
+
+PARAMETER
+  NAME phi_snap
+  SOURCE_VARIABLE POROSITY
+END
+
+OUTPUT
+  VARIABLES
+    POROSITY
+    MINERAL_POROSITY
+    PARAMETER phi_field
+    PARAMETER phi_snap
+  /
+END
+
+EXTERNAL_FILE common_domain.txt
+
+END_SUBSURFACE

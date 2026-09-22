@@ -1,0 +1,55 @@
+#Description: time-varying LIST TARGET POROSITY via BEFORE_FIRST_PM
+# Counterpart of AFTER_LAST_PM: update before any physics PMC in the
+# timestep. With flow as the first PMC this matches BEFORE_STEP FLOW.
+# Two 0.5 s steps; LINEAR list 0.12 -> 0.18. Final output is 0.15.
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE RICHARDS
+    /
+  /
+END
+
+SUBSURFACE
+
+REGRESSION
+  VARIABLES
+    POROSITY
+    MINERAL_POROSITY
+    PARAMETER phi_list
+  /
+  CELL_IDS
+    14
+  /
+END
+
+PARAMETER
+  NAME phi_list
+  LIST
+    TIME_UNITS s
+    INTERPOLATION LINEAR
+    0.d0  0.12d0
+    1.d0  0.18d0
+  /
+  TARGET_VARIABLE POROSITY
+  WHEN_TO_UPDATE BEFORE_FIRST_PM
+END
+
+OUTPUT
+  VARIABLES
+    POROSITY
+    MINERAL_POROSITY
+    PARAMETER phi_list
+  /
+END
+
+EXTERNAL_FILE common_domain_body.txt
+
+TIME
+  FINAL_TIME 1.d0 s
+  INITIAL_TIMESTEP_SIZE 0.5d0 s
+  MAXIMUM_TIMESTEP_SIZE 0.5d0 s
+END
+
+END_SUBSURFACE

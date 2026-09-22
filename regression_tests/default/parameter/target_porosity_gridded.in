@@ -1,0 +1,45 @@
+#Description: gridded HDF5 DATASET TARGET POROSITY (spatially varying)
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE RICHARDS
+    /
+  /
+END
+
+SUBSURFACE
+
+REGRESSION
+  VARIABLES
+    POROSITY
+    MINERAL_POROSITY
+    PARAMETER phi_grid
+  /
+  CELL_IDS
+    1
+    14
+    27
+  /
+END
+
+EXTERNAL_FILE common_datasets.txt
+
+! Gridded HDF5 interpolated to cell centers -> material porosity (+ mineral/base).
+PARAMETER
+  NAME phi_grid
+  DATASET Porosity_gridded
+  TARGET_VARIABLE POROSITY
+END
+
+OUTPUT
+  VARIABLES
+    POROSITY
+    MINERAL_POROSITY
+    PARAMETER phi_grid
+  /
+END
+
+EXTERNAL_FILE common_domain.txt
+
+END_SUBSURFACE

@@ -17,28 +17,10 @@ REGRESSION
   /
 END
 
-#=========================== discretization ===================================
-GRID
-  TYPE STRUCTURED
-  NXYZ 3 3 3
-  BOUNDS 
-    0.d0 0.d0 0.d0
-    3.d0 3.d0 3.d0
-  /
-END
-
-#=========================== datasets =========================================
-DATASET Distance_cell_indexed
-  HDF5_DATASET_NAME Distance
-  FILENAME distance_cell_indexed.h5
-END
-
-DATASET Distance_gridded
-  HDF5_DATASET_NAME Distance
-  FILENAME distance_gridded.h5
-END
+EXTERNAL_FILE common_datasets.txt
 
 #=========================== parameters =======================================
+! SCALAR is intentionally uniform; cell_indexed and gridded vary in space.
 PARAMETER
   NAME scalar
   SCALAR 86.
@@ -54,21 +36,6 @@ PARAMETER
   DATASET Distance_gridded
 END
 
-#=========================== material properties ==============================
-MATERIAL_PROPERTY soil1
-  ID 1
-  POROSITY 0.25d0
-  PERMEABILITY
-    PERM_ISO 1.d-12
-  /
-  CHARACTERISTIC_CURVES cc1
-END
-
-#=========================== characteristic curves ============================
-CHARACTERISTIC_CURVES cc1
-  DEFAULT
-END
-
 #=========================== output options ===================================
 OUTPUT
   VARIABLES
@@ -79,40 +46,6 @@ OUTPUT
   /
 END
 
-#=========================== times ============================================
-TIME
-  FINAL_TIME 1.d0 s
-  INITIAL_TIMESTEP_SIZE 1.d0 s
-  MAXIMUM_TIMESTEP_SIZE 1.d0 s
-END
-
-#=========================== regions ==========================================
-REGION all
-  COORDINATES
-    -1.d20 -1.d20 -1.d20
-    1.d20 1.d20 1.d20
-  /
-END
-
-#=========================== flow conditions ==================================
-FLOW_CONDITION initial
-  TYPE
-    LIQUID_PRESSURE HYDROSTATIC
-  /
-  DATUM 0.d0 0.d0 3.d0
-  LIQUID_PRESSURE 101325
-END
-
-#=========================== condition couplers ===============================
-INITIAL_CONDITION
-  FLOW_CONDITION initial
-  REGION all
-END
-
-#=========================== stratigraphy couplers ============================
-STRATA
-  MATERIAL soil1
-  REGION all
-END
+EXTERNAL_FILE common_domain.txt
 
 END_SUBSURFACE

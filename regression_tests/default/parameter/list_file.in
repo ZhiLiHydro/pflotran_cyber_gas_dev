@@ -1,0 +1,42 @@
+#Description: time-varying LIST via FILE keyword (external ASCII time series)
+# Facet T7: FILE path of ParameterRead; same series as list_target_porosity.
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE RICHARDS
+    /
+  /
+END
+
+SUBSURFACE
+
+REGRESSION
+  VARIABLES
+    POROSITY
+    MINERAL_POROSITY
+    PARAMETER phi_file
+  /
+  CELL_IDS
+    14
+  /
+END
+
+PARAMETER
+  NAME phi_file
+  FILE phi_vs_time.dat
+  TARGET_VARIABLE POROSITY
+  WHEN_TO_UPDATE AFTER_STEP FLOW
+END
+
+OUTPUT
+  VARIABLES
+    POROSITY
+    MINERAL_POROSITY
+    PARAMETER phi_file
+  /
+END
+
+EXTERNAL_FILE common_domain.txt
+
+END_SUBSURFACE
