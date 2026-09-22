@@ -239,7 +239,6 @@ subroutine FactoryForwardReadSimProcessModels(input,pm_master,option)
   use PM_Base_class
   use PM_Geomechanics_Force_class
   use PM_Auxiliary_class
-  use PM_Parameter_class
   use PM_Ponded_Water_class
   use PM_Unit_Test_class
   use PM_Unit_Test_WIPP_class
@@ -341,8 +340,9 @@ subroutine FactoryForwardReadSimProcessModels(input,pm_master,option)
       case('FRACTURE_MODEL')
         call FactorySubsurfReadFracturePM(input,option,new_pm)
       case('PARAMETER')
-        new_pm => PMParameterCreate()
-        call PMParameterRead(input,option,PMParameterCast(new_pm))
+        option%io_buffer = 'PARAMETER is not a process model. Specify &
+          &WHEN_TO_UPDATE on the PARAMETER card.'
+        call PrintErrMsg(option)
       case('PONDED_WATER')
         new_pm => PMPondedWaterCreate()
         call PMPondedWaterRead(input,option,PMPondedWaterCast(new_pm))
@@ -359,20 +359,22 @@ subroutine FactoryForwardReadSimProcessModels(input,pm_master,option)
         call InputKeywordUnrecognized(input,word, &
                'SIMULATION,PROCESS_MODELS',option)
     end select
-    if (.not.associated(new_pm%option)) new_pm%option => option
-    if (len_trim(pm_name) > 0) then
-      new_pm%name = pm_name
-    endif
-    if (associated(cur_pm)) then
-      cur_pm%next => new_pm
-    else
+    if (associated(new_pm)) then
+      if (.not.associated(new_pm%option)) new_pm%option => option
+      if (len_trim(pm_name) > 0) then
+        new_pm%name = pm_name
+      endif
+      if (associated(cur_pm)) then
+        cur_pm%next => new_pm
+      else
+        cur_pm => new_pm
+      endif
+      if (.not.associated(pm_master)) then
+        pm_master => new_pm
+      endif
       cur_pm => new_pm
+      nullify(new_pm)
     endif
-    if (.not.associated(pm_master)) then
-      pm_master => new_pm
-    endif
-    cur_pm => new_pm
-    nullify(new_pm)
   enddo
   call InputPopBlock(input,option)
 

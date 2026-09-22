@@ -55,6 +55,10 @@ recursive subroutine FactSubLinkSetupPMCs(pmc,simulation)
 
   call pmc%SetupSolvers()
 
+  if (associated(pmc%prerequisite)) then
+    call FactSubLinkSetupPMCs(pmc%prerequisite,simulation)
+  endif
+
   if (associated(pmc%child)) then
     call FactSubLinkSetupPMCs(pmc%child,simulation)
   endif
@@ -119,7 +123,7 @@ subroutine FactSubLinkExtractPMsFromPMList(simulation,pm_flow,pm_tran, &
   class(pm_parameter_type), pointer :: pm_parameter_list
   class(pm_unittest_type), pointer :: pm_unittest
   class(pm_fracture_type), pointer :: pm_fracture
-  class(pm_base_type), pointer :: cur_pm, next_pm, cur_pm2
+  class(pm_base_type), pointer :: cur_pm, next_pm
   class(pm_geomech_force_type), pointer :: pm_geomech
   class(pm_ponded_water_type), pointer :: pm_ponded_water
 
@@ -169,16 +173,9 @@ subroutine FactSubLinkExtractPMsFromPMList(simulation,pm_flow,pm_tran, &
       class is (pm_geomech_force_type)
         pm_geomech => cur_pm
       class is(pm_parameter_type)
-        if (associated(pm_parameter_list)) then
-          cur_pm2 => pm_parameter_list
-          do
-            if (.not.associated(cur_pm2%next)) exit
-            cur_pm2 => cur_pm2%next
-          enddo
-          cur_pm2%next => cur_pm
-        else
-          pm_parameter_list => cur_pm
-        endif
+        option%io_buffer = 'PARAMETER is not a process model. Specify &
+          &WHEN_TO_UPDATE on the PARAMETER card.'
+        call PrintErrMsg(option)
       class is (pm_ponded_water_type)
         pm_ponded_water => cur_pm
       class is(pm_unittest_type)
@@ -261,9 +258,7 @@ subroutine FactSubLinkSetupPMCLinkages(simulation,pm_flow,pm_tran, &
   type(option_type), pointer :: option
   type(input_type), pointer :: input
   class(realization_subsurface_type), pointer :: realization
-  class(pm_parameter_type), pointer :: cur_pm_parameter
 !  class(pm_unittest_type), pointer :: cur_pm_unittest
-  class(pm_base_type), pointer :: next_pm
 
   realization => simulation%realization
   option => realization%option
@@ -352,16 +347,7 @@ subroutine FactSubLinkSetupPMCLinkages(simulation,pm_flow,pm_tran, &
     call FactSubLinkAddPMCUnitTest(simulation,pm_unittest)
   endif
 
-  call PMParameterSortPMs(pm_parameter_list)
-  cur_pm_parameter => pm_parameter_list
-  do
-    if (.not.associated(cur_pm_parameter)) exit
-    ! ordering can be altered within FactSubLinkAddPMCParameter
-    next_pm => cur_pm_parameter%next
-    nullify(cur_pm_parameter%next)
-    call FactSubLinkAddPMCParameter(simulation,cur_pm_parameter)
-    cur_pm_parameter => PMParameterCast(next_pm)
-  enddo
+  call FactSubLinkAddParamPMs(simulation)
 
   call InputDestroy(input)
 
@@ -1371,6 +1357,61 @@ end subroutine FactSubLinkAddPMCInversion
 
 ! ************************************************************************** !
 
+subroutine FactSubLinkAddParamPMs(simulation)
+  !
+  ! Creates evaluator process models for PARAMETER cards that specify
+  ! WHEN_TO_UPDATE other than INITIAL.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/21/26
+  !
+  use Option_module
+  use Parameter_module
+  use PM_Parameter_class
+  use Simulation_Subsurface_class
+
+  implicit none
+
+  class(simulation_subsurface_type) :: simulation
+
+  type(parameter_type), pointer :: cur_parameter
+  class(pm_parameter_type), pointer :: pm_parameter
+  PetscInt :: i
+  PetscInt :: nordered
+
+  call ParameterOrderUpdates(simulation%realization%parameter_list, &
+                             simulation%option)
+  nordered = 0
+  cur_parameter => simulation%realization%parameter_list
+  do
+    if (.not.associated(cur_parameter)) exit
+    if (cur_parameter%update_order > nordered) then
+      nordered = cur_parameter%update_order
+    endif
+    cur_parameter => cur_parameter%next
+  enddo
+  do i = 1, nordered
+    cur_parameter => simulation%realization%parameter_list
+    do
+      if (.not.associated(cur_parameter)) exit
+      if (cur_parameter%update_order == i) then
+        pm_parameter => PMParameterCreate()
+        pm_parameter%option => simulation%option
+        pm_parameter%name = cur_parameter%name
+        pm_parameter%parameter => cur_parameter
+        pm_parameter%when_to_update = cur_parameter%when_to_update
+        pm_parameter%target_pmc = cur_parameter%target_pmc
+        call FactSubLinkAddPMCParameter(simulation,pm_parameter)
+        exit
+      endif
+      cur_parameter => cur_parameter%next
+    enddo
+  enddo
+
+end subroutine FactSubLinkAddParamPMs
+
+! ************************************************************************** !
+
 subroutine FactSubLinkAddPMCParameter(simulation,pm_parameter)
 !
 ! Adds a parameter process model
@@ -1382,6 +1423,7 @@ subroutine FactSubLinkAddPMCParameter(simulation,pm_parameter)
   use PMC_General_class
   use PMC_Base_class
   use PM_Parameter_class
+  use Parameter_module
   use Simulation_Subsurface_class
 
   implicit none
@@ -1392,26 +1434,109 @@ subroutine FactSubLinkAddPMCParameter(simulation,pm_parameter)
   type(option_type), pointer :: option
   class(pmc_general_type), pointer :: pmc_general
   class(pmc_base_type), pointer :: pmc_dummy
+  class(pmc_base_type), pointer :: pmc_owner
 
   option => simulation%option
   pm_parameter%realization => simulation%realization
   pm_parameter%option => option
 
+  ! INITIAL: filled once in GlobalUpdateParameterArray; no PMC.
+  if (pm_parameter%when_to_update == UPDATE_NEVER) then
+    nullify(pm_parameter%parameter)
+    call pm_parameter%Destroy()
+    deallocate(pm_parameter)
+    nullify(pm_parameter)
+    return
+  endif
+
+  nullify(pmc_dummy)
+  nullify(pmc_owner)
   pmc_general => PMCGeneralCreate(pm_parameter%name, &
                                   pm_parameter%CastToBase())
   ! use select case to determine where to insert the pm
   select case(pm_parameter%when_to_update)
-    case(UPDATE_AFTER_FLOW)
-      if (.not.associated(simulation%flow_process_model_coupler)) then
-        option%io_buffer = 'Placing a parameter process model after flow &
-          &only supported when a flow processs model is employed.'
+    case(UPDATE_BEFORE_STEP,UPDATE_AFTER_STEP)
+      select case(pm_parameter%target_pmc)
+        case(TARGET_PMC_FLOW)
+          if (associated(simulation%flow_process_model_coupler)) then
+            pmc_owner => &
+              simulation%flow_process_model_coupler%CastToBase()
+          else
+            option%io_buffer = 'PARAMETER WHEN_TO_UPDATE FLOW requires &
+              &a SUBSURFACE_FLOW process model.'
+            call PrintErrMsg(option)
+          endif
+        case(TARGET_PMC_TRANSPORT)
+          if (associated(simulation%tran_process_model_coupler)) then
+            pmc_owner => &
+              simulation%tran_process_model_coupler%CastToBase()
+          else
+            option%io_buffer = 'PARAMETER WHEN_TO_UPDATE TRANSPORT &
+              &requires a SUBSURFACE_TRANSPORT process model.'
+            call PrintErrMsg(option)
+          endif
+        case(TARGET_PMC_GEOMECH)
+          if (associated(simulation%geomech)) then
+            if (associated(simulation%geomech%process_model_coupler)) then
+              pmc_owner => &
+                simulation%geomech%process_model_coupler%CastToBase()
+            endif
+          endif
+          if (.not.associated(pmc_owner)) then
+            option%io_buffer = 'PARAMETER WHEN_TO_UPDATE GEOMECHANICS &
+              &requires a GEOMECHANICS process model.'
+            call PrintErrMsg(option)
+          endif
+        case(TARGET_PMC_GEOPHYSICS)
+          if (associated(simulation%geop_process_model_coupler)) then
+            pmc_owner => &
+              simulation%geop_process_model_coupler%CastToBase()
+          else
+            option%io_buffer = 'PARAMETER WHEN_TO_UPDATE GEOPHYSICS &
+              &requires a GEOPHYSICS process model.'
+            call PrintErrMsg(option)
+          endif
+        case default
+          option%io_buffer = 'WHEN_TO_UPDATE BEFORE_STEP/AFTER_STEP must &
+            &be followed by FLOW, TRANSPORT, GEOMECHANICS, or GEOPHYSICS.'
+          call PrintErrMsg(option)
+      end select
+      if (pm_parameter%when_to_update == UPDATE_BEFORE_STEP) then
+        call PMCBaseSetChildPeerPtr(pmc_general%CastToBase(), &
+               PM_PREREQUISITE,pmc_owner,pmc_dummy,PM_APPEND)
+      else
+        ! AFTER_STEP: run after StepDT, before other children, in
+        ! ParameterOrderUpdates sequence (not reverse-insert).
+        if (FactSubLinkIsAfterStepPM(pmc_owner%child)) then
+          pmc_dummy => pmc_owner%child
+          do
+            if (.not.FactSubLinkIsAfterStepPM(pmc_dummy%peer)) exit
+            pmc_dummy => pmc_dummy%peer
+          enddo
+          pmc_general%peer => pmc_dummy%peer
+          pmc_dummy%peer => pmc_general
+        else
+          pmc_dummy => pmc_owner%child
+          pmc_owner%child => pmc_general
+          pmc_general%peer => pmc_dummy
+        endif
+      endif
+    case(UPDATE_BEFORE_FIRST_PM)
+      if (.not.associated(simulation%process_model_coupler_list)) then
+        option%io_buffer = 'WHEN_TO_UPDATE BEFORE_FIRST_PM requires a &
+          &FLOW, TRANSPORT, GEOMECHANICS, or GEOPHYSICS process model.'
         call PrintErrMsg(option)
       endif
-      ! insert at first child of flow
-      pmc_dummy => simulation%flow_process_model_coupler%child
-      simulation%flow_process_model_coupler%child => pmc_general
-      pmc_general%peer => pmc_dummy
+      call PMCBaseSetChildPeerPtr(pmc_general%CastToBase(), &
+             PM_PREREQUISITE, &
+             simulation%process_model_coupler_list%CastToBase(), &
+             pmc_dummy,PM_APPEND)
     case(UPDATE_AFTER_LAST_PM)
+      if (.not.associated(simulation%process_model_coupler_list)) then
+        option%io_buffer = 'WHEN_TO_UPDATE AFTER_LAST_PM requires a &
+          &FLOW, TRANSPORT, GEOMECHANICS, or GEOPHYSICS process model.'
+        call PrintErrMsg(option)
+      endif
       ! the last process model executed in a time step will be a
       ! child to the master and the last peer among children
       call PMCBaseSetChildPeerPtr(pmc_general%CastToBase(),PM_CHILD, &
@@ -1421,6 +1546,37 @@ subroutine FactSubLinkAddPMCParameter(simulation,pm_parameter)
   nullify(pmc_general)
 
 end subroutine FactSubLinkAddPMCParameter
+
+! ************************************************************************** !
+
+function FactSubLinkIsAfterStepPM(pmc)
+  !
+  ! True if pmc is a PARAMETER evaluator scheduled AFTER_STEP.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 09/21/26
+  !
+  use PMC_Base_class
+  use PM_Parameter_class
+  use Parameter_module
+
+  implicit none
+
+  class(pmc_base_type), pointer :: pmc
+
+  PetscBool :: FactSubLinkIsAfterStepPM
+
+  FactSubLinkIsAfterStepPM = PETSC_FALSE
+  if (.not.associated(pmc)) return
+  if (.not.associated(pmc%pm_list)) return
+  select type(pm=>pmc%pm_list)
+    class is (pm_parameter_type)
+      if (pm%when_to_update == UPDATE_AFTER_STEP) then
+        FactSubLinkIsAfterStepPM = PETSC_TRUE
+      endif
+  end select
+
+end function FactSubLinkIsAfterStepPM
 
 ! ************************************************************************** !
 
