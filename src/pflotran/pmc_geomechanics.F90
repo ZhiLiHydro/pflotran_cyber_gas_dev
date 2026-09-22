@@ -278,6 +278,12 @@ recursive subroutine PMCGeomechanicsRunToTime(this,sync_time,stop_flag)
 
   local_stop_flag = 0
 
+  if (associated(this%prerequisite)) then
+    call this%SetAuxData()
+    call this%prerequisite%RunToTime(this%option%time,local_stop_flag)
+    call this%GetAuxData()
+  endif
+
   call SetOutputFlags(this)
   sync_flag = PETSC_FALSE
   snapshot_plot_flag = PETSC_FALSE
@@ -421,7 +427,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
   use Grid_module
   use Discretization_module
   use Geomechanics_Subsurface_Properties_module
-  use Parameter_module
+  use Option_Parameter_module
   use Global_Aux_module
 
   implicit none
@@ -600,8 +606,9 @@ subroutine PMCGeomechanicsSetAuxData(this)
                  pmc%subsurf_realization%field%work_loc,ONEDOF)
           call VecGetArray(pmc%subsurf_realization%field%work_loc, &
                               vec_ptr,ierr);CHKERRQ(ierr)
-          parameter_index = ParameterGetIDFromName('geomechanics_stress', &
-                                                   option)
+          parameter_index = OptionParameterGetIDFromName( &
+                              'geomechanics_stress',option%parameter, &
+                              option%driver)
           do ghosted_id = 1, grid%ngmax
             pmc%subsurf_realization%patch%aux% &
               Global%auxvars(ghosted_id)%parameters(parameter_index) = &
@@ -628,8 +635,9 @@ subroutine PMCGeomechanicsSetAuxData(this)
                  pmc%subsurf_realization%field%work_loc,ONEDOF)
           call VecGetArray(pmc%subsurf_realization%field%work_loc, &
                               vec_ptr,ierr);CHKERRQ(ierr)
-          parameter_index = ParameterGetIDFromName('geomechanics_strain', &
-                                                   option)
+          parameter_index = OptionParameterGetIDFromName( &
+                              'geomechanics_strain',option%parameter, &
+                              option%driver)
           do ghosted_id = 1, grid%ngmax
             pmc%subsurf_realization%patch%aux% &
               Global%auxvars(ghosted_id)%parameters(parameter_index) = &
@@ -658,13 +666,22 @@ subroutine PMCGeomechanicsSetAuxData(this)
           ! Hoist constant parameter ID lookups outside the element loop
           if (option%geomechanics%split_scheme == &
               GEOMECH_FIXED_STRESS_SPLIT) then
-            strainv_0_id = ParameterGetIDFromName('vol_strain_0',option)
-            strainv_id = ParameterGetIDFromName('vol_strain', option)
-            press_0_id = ParameterGetIDFromName('press_0', option)
-            flow_porosity_id = ParameterGetIDFromName('flow_porosity',option)
-            temp_0_id = ParameterGetIDFromName('temp_0',option)
-            id_porosity_mech=ParameterGetIDFromName('stored_porosity',option)
-            id_pressure_mech=ParameterGetIDFromName('stored_pressure', option)
+            strainv_0_id = OptionParameterGetIDFromName( &
+                             'vol_strain_0',option%parameter,option%driver)
+            strainv_id = OptionParameterGetIDFromName( &
+                           'vol_strain',option%parameter,option%driver)
+            press_0_id = OptionParameterGetIDFromName( &
+                           'press_0',option%parameter,option%driver)
+            flow_porosity_id = OptionParameterGetIDFromName( &
+                                 'flow_porosity',option%parameter,option%driver)
+            temp_0_id = OptionParameterGetIDFromName( &
+                          'temp_0',option%parameter,option%driver)
+            id_porosity_mech = OptionParameterGetIDFromName( &
+                                 'stored_porosity',option%parameter, &
+                                 option%driver)
+            id_pressure_mech = OptionParameterGetIDFromName( &
+                                 'stored_pressure',option%parameter, &
+                                 option%driver)
           endif
 
           do local_id = 1, grid%nlmax
@@ -1421,20 +1438,7 @@ recursive subroutine PMCGeomechanicsDestroy(this)
   call PrintMsg(this%option,'PMCGeomechanics%Destroy()')
 #endif
 
-  if (associated(this%child)) then
-    call this%child%Destroy()
-    ! destroy does not currently destroy; it strips
-    deallocate(this%child)
-    nullify(this%child)
-  endif
-
-  if (associated(this%peer)) then
-    call this%peer%Destroy()
-    ! destroy does not currently destroy; it strips
-    deallocate(this%peer)
-    nullify(this%peer)
-  endif
-
+  call this%pmc_base_type%Destroy()
   call PMCGeomechanicsStrip(this)
 
 end subroutine PMCGeomechanicsDestroy

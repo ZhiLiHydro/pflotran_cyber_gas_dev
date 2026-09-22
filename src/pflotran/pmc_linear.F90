@@ -223,20 +223,7 @@ recursive subroutine PMCLinearDestroy(this)
 
   class(pmc_linear_type) :: this
 
-  if (associated(this%child)) then
-    call this%child%Destroy()
-    ! destroy does not currently destroy; it strips
-    deallocate(this%child)
-    nullify(this%child)
-  endif
-
-  if (associated(this%peer)) then
-    call this%peer%Destroy()
-    ! destroy does not currently destroy; it strips
-    deallocate(this%peer)
-    nullify(this%peer)
-  endif
-
+  call this%pmc_base_type%Destroy()
   call PMCLinearStrip(this)
 
 end subroutine PMCLinearDestroy

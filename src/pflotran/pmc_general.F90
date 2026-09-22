@@ -115,6 +115,11 @@ recursive subroutine PMCGeneralRunToTime(this,sync_time,stop_flag)
   call this%GetAuxData()
 
   local_stop_flag = TS_CONTINUE
+  if (associated(this%prerequisite)) then
+    call this%SetAuxData()
+    call this%prerequisite%RunToTime(sync_time,local_stop_flag)
+    call this%GetAuxData()
+  endif
   if (stop_flag /= TS_STOP_END_SIMULATION .or. &
       this%evaluate_at_end_of_simulation) then
     call this%PrintHeader()
@@ -145,7 +150,11 @@ recursive subroutine PMCGeneralRunToTime(this,sync_time,stop_flag)
   if (associated(this%child)) then
     ! Set data needed by process-models
     call this%SetAuxData()
-    call this%child%RunToTime(this%timestepper%target_time,local_stop_flag)
+    if (associated(this%timestepper)) then
+      call this%child%RunToTime(this%timestepper%target_time,local_stop_flag)
+    else
+      call this%child%RunToTime(sync_time,local_stop_flag)
+    endif
     ! Get data from other process-models
     call this%GetAuxData()
   endif
@@ -223,21 +232,8 @@ recursive subroutine PMCGeneralDestroy(this)
 
   class(pmc_general_type) :: this
 
+  call this%pmc_base_type%Destroy()
   call PMCGeneralStrip(this)
-
-  if (associated(this%child)) then
-    call this%child%Destroy()
-    ! destroy does not currently destroy; it strips
-    deallocate(this%child)
-    nullify(this%child)
-  endif
-
-  if (associated(this%peer)) then
-    call this%peer%Destroy()
-    ! destroy does not currently destroy; it strips
-    deallocate(this%peer)
-    nullify(this%peer)
-  endif
 
 end subroutine PMCGeneralDestroy
 

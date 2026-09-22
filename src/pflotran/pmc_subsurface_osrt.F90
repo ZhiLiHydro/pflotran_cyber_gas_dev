@@ -473,22 +473,7 @@ recursive subroutine PMCSubsurfaceOSRTDestroy(this)
 
   class(pmc_subsurface_osrt_type) :: this
 
-  if (associated(this%child)) then
-    call this%child%Destroy()
-    ! destroy does not currently destroy; it strips
-    deallocate(this%child)
-    nullify(this%child)
-  endif
-
-  if (associated(this%peer)) then
-    call this%peer%Destroy()
-    ! destroy does not currently destroy; it strips
-    deallocate(this%peer)
-    nullify(this%peer)
-  endif
-
-  !TODO(geh): place this routine in PMC_Base_class and redirect Strip() to
-  !           avoid creating all these Destroy routines
+  call this%pmc_base_type%Destroy()
   call PMCSubsurfaceOSRTStrip(this)
 
 end subroutine PMCSubsurfaceOSRTDestroy

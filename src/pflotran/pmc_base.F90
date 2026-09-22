@@ -20,6 +20,7 @@ module PMC_Base_class
 
   PetscInt, parameter, public :: PM_CHILD = 0
   PetscInt, parameter, public :: PM_PEER = 1
+  PetscInt, parameter, public :: PM_PREREQUISITE = 2
   PetscInt, parameter, public :: PM_APPEND = 0
   PetscInt, parameter, public :: PM_INSERT = 1
 
@@ -36,6 +37,9 @@ module PMC_Base_class
     type(waypoint_list_type), pointer :: waypoint_list
     class(pmc_base_type), pointer :: child
     class(pmc_base_type), pointer :: peer
+    ! run at the start of this PMC's step, after the previous step's
+    ! output and before SetTargetTime / StepDT
+    class(pmc_base_type), pointer :: prerequisite
     type(pm_base_pointer_type), pointer :: pm_ptr
     type(simulation_aux_type),pointer :: sim_aux
     procedure(Output), nopass, pointer :: Output
@@ -168,6 +172,7 @@ subroutine PMCBaseInit(this)
   nullify(this%waypoint_list)
   nullify(this%child)
   nullify(this%peer)
+  nullify(this%prerequisite)
   nullify(this%sim_aux)
   this%Output => null()
 
@@ -307,22 +312,25 @@ recursive subroutine PMCBaseInputRecord(this)
   write(id,'(a29)',advance='no') 'pmc: '
   write(id,'(a)') this%name
   if (associated(this%timestepper)) then
-    call this%timestepper%inputrecord
+    call this%timestepper%InputRecord()
   endif
   cur_pm => this%pm_list
   do ! loop through this pmc's process models
     if (.not.associated(cur_pm)) exit
-    call cur_pm%inputrecord
+    call cur_pm%InputRecord()
     cur_pm => cur_pm%next
   enddo
 
+  if (associated(this%prerequisite)) then
+    call this%prerequisite%InputRecord()
+  endif
   ! print information about child's pmc
   if (associated(this%child)) then
-    call this%child%inputrecord
+    call this%child%InputRecord()
   endif
   ! print information about peer's pmc
   if (associated(this%peer)) then
-    call this%peer%inputrecord
+    call this%peer%InputRecord()
   endif
 
 end subroutine PMCBaseInputRecord
@@ -355,9 +363,10 @@ end subroutine PMCBaseSetWaypointPtr
 recursive subroutine PMCBaseSetChildPeerPtr(pmcA,relationship_to,pmcB, &
                                             pmcB_parent,position_instruction)
   !
-  ! Orders pmcA under pmcB relative to the specified relationship (child or
-  ! peer) and insert/append instruction. If pmcB's parent is not relevant, a
-  ! null dummy pointer of pmc_base_type should be passed in.
+  ! Orders pmcA under pmcB relative to the specified relationship (child,
+  ! peer, or prerequisite) and insert/append instruction. If pmcB's parent
+  ! is not relevant, a null dummy pointer of pmc_base_type should be passed
+  ! in.
   !
   ! Author: Jenn Frederick, SNL
   ! Date: 02/15/2017
@@ -433,6 +442,37 @@ recursive subroutine PMCBaseSetChildPeerPtr(pmcA,relationship_to,pmcB, &
             call PrintErrMsg(pmcA%option)
           endif
       !----------------------------------------------------
+      end select
+  !--------------------------------------------------------
+    case(PM_PREREQUISITE)
+      select case(position_instruction)
+        case(PM_APPEND)
+          if (associated(pmcB%prerequisite)) then
+            new_relationship = PM_PEER
+            call PMCBaseSetChildPeerPtr(pmcA,new_relationship, &
+                                        pmcB%prerequisite,pmcB_dummy, &
+                                        position_instruction)
+          else
+            pmcB%prerequisite => pmcA
+#ifdef DEBUG
+            pmcA%option%io_buffer = trim(pmcA%name) // &
+              ' assigned as prerequisite of ' // trim(pmcB%name) // '.'
+            call PrintMsg(pmcA%option)
+#endif
+          endif
+        case(PM_INSERT)
+          pmcA%peer => pmcB%prerequisite
+          pmcB%prerequisite => pmcA
+#ifdef DEBUG
+          pmcA%option%io_buffer = trim(pmcA%name) // &
+            ' assigned as first prerequisite of ' // &
+            trim(pmcB%name) // '.'
+          call PrintMsg(pmcA%option)
+#endif
+        case default
+          pmcA%option%io_buffer = 'PMC position_instruction not understood &
+            &for PM_PREREQUISITE in PMCBaseSetChildPeerPtr.'
+          call PrintErrMsg(pmcA%option)
       end select
   !--------------------------------------------------------
     case default
@@ -534,6 +574,10 @@ recursive subroutine PMCBaseInitializeRun(this)
     call this%timestepper%InitializeRun(this%option)
   endif
 
+  if (associated(this%prerequisite)) then
+    call this%prerequisite%InitializeRun()
+  endif
+
   cur_pm => this%pm_list
   do
     if (.not.associated(cur_pm)) exit
@@ -601,6 +645,14 @@ recursive subroutine PMCBaseRunToTime(this,sync_time,stop_flag)
   do
     if (local_stop_flag /= TS_CONTINUE) exit ! end simulation
     if (this%timestepper%target_time >= sync_time) exit
+
+    ! After the previous step's Output; option%time is still that step.
+    ! Do not run after the last step (the target_time check above exits).
+    if (associated(this%prerequisite)) then
+      call this%SetAuxData()
+      call this%prerequisite%RunToTime(this%option%time,local_stop_flag)
+      call this%GetAuxData()
+    endif
 
     call SetOutputFlags(this)
     sync_flag = PETSC_FALSE
@@ -880,6 +932,10 @@ recursive subroutine PMCBaseFinalizeRun(this)
     call this%pm_list%FinalizeRun()
   endif
 
+  if (associated(this%prerequisite)) then
+    call this%prerequisite%FinalizeRun()
+  endif
+
   if (associated(this%child)) then
     call this%child%FinalizeRun()
   endif
@@ -1024,6 +1080,10 @@ recursive subroutine PMCBaseCheckpointBinary(this,viewer,append_name)
     call cur_pm%CheckpointBinary(viewer)
     cur_pm => cur_pm%next
   enddo
+
+  if (associated(this%prerequisite)) then
+    call this%prerequisite%CheckpointBinary(viewer,append_name)
+  endif
 
   if (associated(this%child)) then
     call this%child%CheckpointBinary(viewer,append_name)
@@ -1216,6 +1276,10 @@ recursive subroutine PMCBaseRestartBinary(this,viewer)
     cur_pm => cur_pm%next
   enddo
 
+  if (associated(this%prerequisite)) then
+    call this%prerequisite%RestartBinary(viewer)
+  endif
+
   if (associated(this%child)) then
     call this%child%RestartBinary(viewer)
   endif
@@ -1345,6 +1409,10 @@ recursive subroutine PMCBaseCheckpointHDF5(this,h5_chk_grp_id,append_name)
   enddo
 
   call HDF5GroupClose(h5_pmc_grp_id,this%option)
+
+  if (associated(this%prerequisite)) then
+    call this%prerequisite%CheckpointHDF5(h5_chk_grp_id,append_name)
+  endif
 
   if (associated(this%child)) then
     call this%child%CheckpointHDF5(h5_chk_grp_id,append_name)
@@ -1502,6 +1570,10 @@ recursive subroutine PMCBaseRestartHDF5(this,h5_chk_grp_id)
     enddo
 
     call HDF5GroupClose(h5_pmc_grp_id,this%option)
+  endif
+
+  if (associated(this%prerequisite)) then
+    call this%prerequisite%RestartHDF5(h5_chk_grp_id)
   endif
 
   if (associated(this%child)) then
@@ -1740,6 +1812,10 @@ recursive subroutine PMCBaseCheckNullPM(this,option)
     call PrintErrMsg(option)
   endif
 
+  if (associated(this%prerequisite)) then
+    call this%prerequisite%CheckNullPM(option)
+  endif
+
   if (associated(this%peer)) then
     call this%peer%CheckNullPM(option)
   endif
@@ -1846,7 +1922,8 @@ end subroutine SetWaypointList
 
 recursive subroutine PMCBaseDestroy(this)
   !
-  ! Deallocates a pmc object
+  ! Recursively destroys prerequisite, child, and peer PMCs. Subclasses
+  ! should call this%pmc_base_type%Destroy() then Strip extra members.
   !
   ! Author: Glenn Hammond
   ! Date: 03/14/13
@@ -1861,6 +1938,12 @@ recursive subroutine PMCBaseDestroy(this)
 #ifdef DEBUG
   call PrintMsg(this%option,'PMC%Destroy()')
 #endif
+
+  if (associated(this%prerequisite)) then
+    call this%prerequisite%Destroy()
+    deallocate(this%prerequisite)
+    nullify(this%prerequisite)
+  endif
 
   if (associated(this%child)) then
     call this%child%Destroy()

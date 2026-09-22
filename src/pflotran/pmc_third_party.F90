@@ -105,6 +105,12 @@ recursive subroutine PMCThirdPartyRunToTime(this,sync_time,stop_flag)
 
   local_stop_flag = TS_CONTINUE
 
+  if (associated(this%prerequisite)) then
+    call this%SetAuxData()
+    call this%prerequisite%RunToTime(sync_time,local_stop_flag)
+    call this%GetAuxData()
+  endif
+
   call this%pm_list%InitializeTimestep()
   call this%pm_list%Solve(sync_time,ierr)
   call this%pm_list%FinalizeTimestep()
@@ -195,15 +201,8 @@ recursive subroutine PMCThirdPartyDestroy(this)
 
 !  call PrintMsg(this%option,'PMCThirdParty%Destroy()')
 
+  call this%pmc_base_type%Destroy()
   call PMCThirdPartyStrip(this)
-
-  if (associated(this%child)) then
-    call this%child%Destroy()
-  endif
-
-  if (associated(this%peer)) then
-    call this%peer%Destroy()
-  endif
 
 end subroutine PMCThirdPartyDestroy
 
