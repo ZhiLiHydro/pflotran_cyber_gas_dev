@@ -526,8 +526,8 @@ subroutine AmendmentSetup(this,reaction,option)
   use Reaction_Aux_module
   use Reaction_Immobile_Aux_module
   use Option_module
-  use Parameter_module
   use Material_Aux_module, only : mean_soil_grain_size_index
+  use Option_Parameter_module
 
   implicit none
 
@@ -541,7 +541,9 @@ subroutine AmendmentSetup(this,reaction,option)
   this%species_Vim_id = &
     ReactionImGetSpeciesIDFromName(this%name_immobile,reaction%immobile,option)
 
-  this%viscosity_id = ParameterGetIDFromName('Viscosity',option)
+  this%viscosity_id = OptionParameterGetIDFromName('Viscosity', &
+                                                   option%parameter, &
+                                                   option%driver)
 
   select case(this%attachment_model)
     case(MODEL_CONSTANT)

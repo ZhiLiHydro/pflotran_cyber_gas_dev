@@ -870,7 +870,7 @@ subroutine PMERTPreSolve(this)
   use Variables_module
   use ERT_module
   use ZFlow_Aux_module
-  use Parameter_module
+  use Option_Parameter_module
 
   implicit none
 
@@ -1040,7 +1040,8 @@ subroutine PMERTPreSolve(this)
     endif
 
     if (option%geomechanics%geophysics_coupling == GEOMECH_ERT_COUPLING) then
-      parameter_index = ParameterGetIDFromName('geomechanics_stress',option)
+      parameter_index = OptionParameterGetIDFromName( &
+                          'geomechanics_stress',option%parameter,option%driver)
       dstress = patch%aux% &
               Global%auxvars(ghosted_id)%parameters(parameter_index)
       drho_geomech = 0.d0

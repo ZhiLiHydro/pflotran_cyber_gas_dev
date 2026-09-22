@@ -134,7 +134,6 @@ shared_mode_aux_obj = \
 	${common_src}lookup_table.o \
 	${common_src}material_aux.o \
 	${common_src}nw_transport_aux.o \
-	${common_src}parameter.o \
 	${common_src}reactive_transport_aux.o
 
 # DO NOT place any object files that depend on the discretization within
@@ -234,7 +233,8 @@ dataset_obj = \
 	${common_src}dataset_global_hdf5.o \
 	${common_src}dataset_gridded_hdf5.o \
 	${common_src}dataset_map_hdf5.o \
-	${common_src}time_storage.o
+	${common_src}time_storage.o \
+	${common_src}parameter.o
 
 srcsink_obj = \
 	${common_src}srcsink_sandbox.o \

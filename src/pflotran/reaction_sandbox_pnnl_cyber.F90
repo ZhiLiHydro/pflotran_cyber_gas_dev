@@ -343,7 +343,7 @@ subroutine CyberSetup(this,reaction,option)
   use Reaction_Immobile_Aux_module
   use Reaction_Mineral_Aux_module
   use Option_module
-  use Parameter_module
+  use Option_Parameter_module
 
   implicit none
 
@@ -526,7 +526,8 @@ subroutine CyberSetup(this,reaction,option)
   ! set up spatially variable rate constant for O2
   if (len_trim(this%k3_rate_constant_parameter_name) > 0) then
     this%k3_rate_constant_parameter_id = &
-      ParameterGetIDFromName(this%k3_rate_constant_parameter_name,option)
+      OptionParameterGetIDFromName(this%k3_rate_constant_parameter_name, &
+                                   option%parameter,option%driver)
   endif
 
 end subroutine CyberSetup

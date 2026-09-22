@@ -71,7 +71,7 @@ subroutine GeomechForceSetupPatch(geomech_realization)
   use Geomechanics_Realization_class
   use Geomechanics_Patch_module
   use Option_module
-  use Parameter_module
+  use Option_Parameter_module
 
   implicit none
 
@@ -174,19 +174,26 @@ subroutine GeomechForceSetupPatch(geomech_realization)
       select case(option%geomechanics%split_scheme)
         case(GEOMECH_FIXED_STRESS_SPLIT)
           geomech_parameter%press_0_id = &
-            ParameterGetIDFromName('press_0',option)
+            OptionParameterGetIDFromName('press_0',option%parameter, &
+                                         option%driver)
           geomech_parameter%temp_0_id = &
-            ParameterGetIDFromName('temp_0',option)
+            OptionParameterGetIDFromName('temp_0',option%parameter, &
+                                         option%driver)
           geomech_parameter%vol_strain_0_id = &
-            ParameterGetIDFromName('vol_strain_0',option)
+            OptionParameterGetIDFromName('vol_strain_0',option%parameter, &
+                                         option%driver)
           geomech_parameter%vol_strain_id = &
-            ParameterGetIDFromName('vol_strain',option)
+            OptionParameterGetIDFromName('vol_strain',option%parameter, &
+                                         option%driver)
           geomech_parameter%stored_pressure_id = &
-            ParameterGetIDFromName('stored_pressure',option)
+            OptionParameterGetIDFromName('stored_pressure',option%parameter, &
+                                         option%driver)
           geomech_parameter%stored_porosity_id = &
-            ParameterGetIDFromName('stored_porosity',option)
+            OptionParameterGetIDFromName('stored_porosity',option%parameter, &
+                                         option%driver)
           geomech_parameter%flow_porosity_id = &
-            ParameterGetIDFromName('flow_porosity',option)
+            OptionParameterGetIDFromName('flow_porosity',option%parameter, &
+                                         option%driver)
       end select
   end select
 

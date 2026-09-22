@@ -1052,6 +1052,8 @@ global.o : \
   communicator_base.o \
   connection.o \
   coupler.o \
+  dataset.o \
+  dataset_ascii.o \
   dataset_base.o \
   dataset_common_hdf5.o \
   dataset_gridded_hdf5.o \
@@ -1786,7 +1788,9 @@ option_inversion.o : \
   communicator_aux.o \
   pflotran_constants.o
 option_parameter.o : \
-  pflotran_constants.o
+  driver.o \
+  pflotran_constants.o \
+  string.o
 option_transport.o : \
   pflotran_constants.o
 output.o : \
@@ -2035,12 +2039,17 @@ output_vtk.o : \
   string.o \
   variables.o
 parameter.o : \
+  dataset.o \
+  dataset_ascii.o \
+  dataset_base.o \
   input_aux.o \
   option.o \
   option_parameter.o \
+  output_aux.o \
   pflotran_constants.o \
   string.o \
-  units.o
+  time_storage.o \
+  variables.o
 patch.o : \
   auxiliary.o \
   characteristic_curves.o \
@@ -2429,7 +2438,6 @@ pm_parameter.o : \
   global.o \
   input_aux.o \
   option.o \
-  output_aux.o \
   parameter.o \
   pflotran_constants.o \
   pm_base.o \
