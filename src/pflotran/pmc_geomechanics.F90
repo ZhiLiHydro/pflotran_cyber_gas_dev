@@ -644,24 +644,29 @@ subroutine PMCGeomechanicsSetAuxData(this)
               Global%auxvars(ghosted_id)%parameters(parameter_index) = &
                 vec_ptr(ghosted_id)
           enddo
-          ! Latch the initial mean effective stress as the reference state, so
-          ! that the Brace correction is applied to (sigma_m - sigma_m,0) and
-          ! vanishes at t=0 rather than offsetting the baseline resistivity by
-          ! the in-situ (e.g. lithostatic) stress.
+          ! Reference mean effective stress for Brace is the cell mean at
+          ! BRACE_TIME_REFERENCE (option%geomechanics%brace_time_reference,
+          ! seconds, default 0). Until option%time reaches that time, keep
+          ! the stored reference equal to the current mean so the resistivity
+          ! increment is zero. Freeze it on the first aux update at or after
+          ! the reference time. A step that jumps over the reference time
+          ! stores the stress at that later time.
           !
           ! KNOWN LIMITATION: this reference is not checkpointed (the subsurface
-          ! parameters array never is), so a restarted run re-anchors it to the
-          ! restart time instead of t=0 and the Brace correction restarts from
-          ! zero. Fixing it requires persisting the t=0 effective stress as a
-          ! checkpointed field, which in turn requires two unrelated
-          ! pre-existing checkpoint bugs to be resolved first.
+          ! parameters array never is). stress_0_stored starts false on a
+          ! restart, and initialization pushes aux data at time 0 before the
+          ! restart file is read. A reference time of 0 is therefore frozen
+          ! before the restarted stress is available.
           if (.not.pmc%stress_0_stored) then
             do ghosted_id = 1, grid%ngmax
               pmc%subsurf_realization%patch%aux% &
                 Global%auxvars(ghosted_id)%parameters(parameter_0_index) = &
                   vec_ptr(ghosted_id)
             enddo
-            pmc%stress_0_stored = PETSC_TRUE
+            if (option%time >= &
+                option%geomechanics%brace_time_reference) then
+              pmc%stress_0_stored = PETSC_TRUE
+            endif
           endif
           call VecRestoreArray(pmc%subsurf_realization%field%work_loc, &
                                   vec_ptr,ierr);CHKERRQ(ierr)
