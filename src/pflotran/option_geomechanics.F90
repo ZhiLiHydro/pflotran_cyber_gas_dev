@@ -19,6 +19,9 @@ module Option_Geomechanics_module
     PetscReal :: time
     PetscInt :: flow_coupling
     PetscInt :: geophysics_coupling
+    ! Time [sec] at which the ERT Brace correction stores its reference
+    ! mean effective stress. Read from BRACE_TIME_REFERENCE. Default 0 s.
+    PetscReal :: brace_time_reference
     PetscReal :: gravity(3)
     PetscInt :: split_scheme
     PetscBool :: improve_tet_weighting
@@ -108,6 +111,7 @@ subroutine OptionGeomechanicsInitRealization(option)
   option%time = 0.d0
   option%flow_coupling = 0
   option%geophysics_coupling = 0
+  option%brace_time_reference = 0.d0
   option%split_scheme = 0
   option%gravity(:) = 0.d0
   option%gravity(3) = -1.d0*EARTH_GRAVITY    ! m/s^2
