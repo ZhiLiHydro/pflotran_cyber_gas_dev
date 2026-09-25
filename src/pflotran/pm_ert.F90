@@ -303,6 +303,20 @@ subroutine PMERTReadSimOptionsBlock(this,input)
       case('BRACE_STRESS_RESISTIVITY_SLOPE')
         call InputReadDouble(input,option,this%brace_stress_resistivity_slope)
         call InputErrorMsg(input,option,keyword,error_string)
+      case('BRACE_TIME_REFERENCE')
+        ! Reference time for the Brace stress increment. Internal units are
+        ! seconds. Units may be omitted, in which case the value is seconds.
+        call InputReadDouble(input,option, &
+                             option%geomechanics%brace_time_reference)
+        call InputErrorMsg(input,option,keyword,error_string)
+        call InputReadAndConvertUnits(input, &
+               option%geomechanics%brace_time_reference,'sec', &
+               trim(error_string)//','//keyword,option)
+        if (option%geomechanics%brace_time_reference < 0.d0) then
+          option%io_buffer = 'BRACE_TIME_REFERENCE must be greater than &
+            &or equal to 0.'
+          call PrintErrMsg(option)
+        endif
       case('CALC_MAX_TRACER_CONCENTRATION')
         this%calc_max_tracer_concentration = PETSC_TRUE
       case default
@@ -1042,8 +1056,9 @@ subroutine PMERTPreSolve(this)
     drho_geomech = 0.d0
     if (option%geomechanics%geophysics_coupling == GEOMECH_ERT_COUPLING) then
       ! Brace's regression equation rho = 21054*pressure (kbar) + 3457.9 is
-      ! expressed in terms of a compression-positive effective pressure, and is
-      ! relative to the initial state.
+      ! expressed in terms of a compression-positive effective pressure.
+      ! The stress increment is relative to the mean effective stress stored
+      ! at BRACE_TIME_REFERENCE (default 0 s).
       dstress = -(patch%aux% &
                     Global%auxvars(ghosted_id)%parameters(parameter_index) - &
                   patch%aux% &
