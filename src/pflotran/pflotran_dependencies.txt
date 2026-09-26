@@ -377,6 +377,7 @@ discretization.o : \
   grid_unstructured_aux.o \
   grid_unstructured_explicit.o \
   grid_unstructured_polyhedra.o \
+  grid_unstructured_polyhedra_hdf5.o \
   input_aux.o \
   material_aux.o \
   option.o \
@@ -1166,6 +1167,18 @@ grid_unstructured_polyhedra.o : \
   pflotran_constants.o \
   string.o \
   utility.o
+grid_unstructured_polyhedra_hdf5.o : \
+  geometry.o \
+  grid_unstructured_aux.o \
+  grid_unstructured_cell.o \
+  grid_unstructured_xdmf.o \
+  hdf5_aux.o \
+  option.o \
+  pflotran_constants.o \
+  string.o \
+  utility.o
+grid_unstructured_xdmf.o : \
+  pflotran_constants.o
 hdf5.o : \
   discretization.o \
   field.o \

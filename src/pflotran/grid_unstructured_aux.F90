@@ -128,7 +128,35 @@ module Grid_Unstructured_Aux_module
     PetscInt, pointer :: uface_right_natcellids(:)
     PetscInt, pointer :: ugridf2pgridf(:)
     PetscInt :: ugrid_num_faces_local
+    ! source representation; selects the decomposition path
+    PetscInt :: representation
+    ! HDF5 XDMF-code representation, before decomposition: this rank's
+    ! contiguous I/O block of natural cells and of vertex rows
+    PetscInt :: io_num_cells
+    PetscInt :: io_first_cell            ! natural id of first cell in block
+    PetscInt, pointer :: io_record_offset(:) ! (io_num_cells+1), 1-based
+    PetscInt, pointer :: io_records(:)       ! XDMF records, natural node ids
+    PetscInt :: io_first_vertex          ! natural id of vertex_coordinates(1)
+    ! HDF5 XDMF-code representation, after decomposition; all arrays cover
+    ! local and ghost cells in ghosted order, and cell-face occurrences are
+    ! numbered consecutively by ghosted cell (face ids of pgrid%face_*)
+    PetscInt, pointer :: cell_xdmf_code(:)      ! (ngmax) original code
+    PetscInt, pointer :: cell_record_offset(:)  ! (ngmax+1) CSR
+    PetscInt, pointer :: cell_records(:)        ! records, natural node ids
+    PetscInt, pointer :: cell_face_offset(:)    ! (ngmax+1) CSR: occurrences
+    PetscInt, pointer :: face_vert_offset(:)    ! (nocc+1) CSR
+    PetscInt, pointer :: face_vert_ids(:)       ! local vertex ids, cyclic
+    PetscInt, pointer :: face_nbr_ghosted(:)    ! (nocc) >0: ghosted id of
+                                                ! neighbor; 0: domain
+                                                ! boundary; -1: neighbor
+                                                ! outside local halo
+    PetscInt, pointer :: face_nbr_face(:)       ! (nocc) matching occurrence
+                                                ! of the neighbor (or 0)
+    type(point3d_type), pointer :: face_normals(:) ! (nocc) outward unit
   end type unstructured_polyhedra_type
+
+  PetscInt, parameter, public :: POLYHEDRA_REPR_ASCII = 1
+  PetscInt, parameter, public :: POLYHEDRA_REPR_XDMF_HDF5 = 2
 
   !  PetscInt, parameter :: HEX_TYPE          = 1
   !  PetscInt, parameter :: TET_TYPE          = 2
@@ -311,6 +339,22 @@ function UGridPolyhedraCreate()
   nullify(polyhedra_grid%uface_left_natcellids)
   nullify(polyhedra_grid%uface_right_natcellids)
   nullify(polyhedra_grid%ugridf2pgridf)
+
+  polyhedra_grid%representation = POLYHEDRA_REPR_ASCII
+  polyhedra_grid%io_num_cells = 0
+  polyhedra_grid%io_first_cell = 0
+  polyhedra_grid%io_first_vertex = 0
+  nullify(polyhedra_grid%io_record_offset)
+  nullify(polyhedra_grid%io_records)
+  nullify(polyhedra_grid%cell_xdmf_code)
+  nullify(polyhedra_grid%cell_record_offset)
+  nullify(polyhedra_grid%cell_records)
+  nullify(polyhedra_grid%cell_face_offset)
+  nullify(polyhedra_grid%face_vert_offset)
+  nullify(polyhedra_grid%face_vert_ids)
+  nullify(polyhedra_grid%face_nbr_ghosted)
+  nullify(polyhedra_grid%face_nbr_face)
+  nullify(polyhedra_grid%face_normals)
 
   UGridPolyhedraCreate => polyhedra_grid
 
@@ -2138,6 +2182,20 @@ subroutine UGridPolyhedraDestroy(polyhedra_grid)
   if (associated(polyhedra_grid%uface_right_natcellids)) &
     deallocate(polyhedra_grid%uface_right_natcellids)
   nullify(polyhedra_grid%uface_right_natcellids)
+
+  call DeallocateArray(polyhedra_grid%io_record_offset)
+  call DeallocateArray(polyhedra_grid%io_records)
+  call DeallocateArray(polyhedra_grid%cell_xdmf_code)
+  call DeallocateArray(polyhedra_grid%cell_record_offset)
+  call DeallocateArray(polyhedra_grid%cell_records)
+  call DeallocateArray(polyhedra_grid%cell_face_offset)
+  call DeallocateArray(polyhedra_grid%face_vert_offset)
+  call DeallocateArray(polyhedra_grid%face_vert_ids)
+  call DeallocateArray(polyhedra_grid%face_nbr_ghosted)
+  call DeallocateArray(polyhedra_grid%face_nbr_face)
+  if (associated(polyhedra_grid%face_normals)) &
+    deallocate(polyhedra_grid%face_normals)
+  nullify(polyhedra_grid%face_normals)
 
   deallocate(polyhedra_grid)
   nullify(polyhedra_grid)

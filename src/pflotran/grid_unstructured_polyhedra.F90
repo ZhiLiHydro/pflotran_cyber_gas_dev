@@ -1499,6 +1499,12 @@ function UGridPolyhedraComputeInternConnect(ugrid, grid_x, &
 
   pgrid => ugrid%polyhedra_grid
 
+  if (pgrid%representation == POLYHEDRA_REPR_XDMF_HDF5) then
+    UGridPolyhedraComputeInternConnect => &
+      UGridPolyhedraXDMFInternConnect(ugrid,grid_x,grid_y,grid_z,option)
+    return
+  endif
+
   max_face_per_cell = pgrid%max_nface_per_cell
   max_vert_per_face = pgrid%max_nvert_per_face
   max_vert_per_cell = ugrid%max_nvert_per_cell
@@ -2014,6 +2020,156 @@ end function UGridPolyhedraComputeInternConnect
 
 ! ************************************************************************** !
 
+function UGridPolyhedraXDMFInternConnect(ugrid,grid_x,grid_y,grid_z,option)
+  !
+  ! Computes internal connections of a polyhedra grid read from the HDF5
+  ! XDMF-code schema. Shared faces are known exactly from the distributed
+  ! face matching (pgrid%face_nbr_ghosted/face_nbr_face), so no vertex
+  ! search is needed and two cells may share faces of any polygon type.
+  !
+  ! Unique faces are numbered in ghosted-cell order; a face shared by two
+  ! local/ghost cells is created by the cell with the lower ghosted id,
+  ! whose outward winding and normal it keeps. Each connection intercept is
+  ! the intersection of the line between the two cell centroids with the
+  ! plane through the face centroid normal to the face area vector.
+  !
+  use Connection_module
+  use Option_module
+  use String_module
+
+  implicit none
+
+  type(connection_set_type), pointer :: UGridPolyhedraXDMFInternConnect
+  type(grid_unstructured_type) :: ugrid
+  PetscReal :: grid_x(*), grid_y(*), grid_z(*)
+  type(option_type) :: option
+
+  type(connection_set_type), pointer :: connections
+  type(unstructured_polyhedra_type), pointer :: pgrid
+  PetscInt, allocatable :: occ_to_face(:)
+  PetscInt :: ghosted_id, local_id, nbr, occ, nface, nconn, iconn, nv
+  PetscInt :: ibeg, iface, nerr, nerr_global
+  PetscReal :: point_up(3), point_dn(3), d(3), normal(3), face_center(3)
+  PetscReal :: dist, denom, t
+  PetscErrorCode :: ierr
+
+  pgrid => ugrid%polyhedra_grid
+
+  ! unique faces
+  allocate(occ_to_face(max(pgrid%num_faces_local,1)))
+  nface = 0
+  do ghosted_id = 1, ugrid%ngmax
+    do occ = pgrid%cell_face_offset(ghosted_id), &
+             pgrid%cell_face_offset(ghosted_id+1)-1
+      nbr = pgrid%face_nbr_ghosted(occ)
+      if (nbr > 0 .and. nbr < ghosted_id) then
+        occ_to_face(occ) = occ_to_face(pgrid%face_nbr_face(occ))
+      else
+        nface = nface + 1
+        occ_to_face(occ) = nface
+      endif
+    enddo
+  enddo
+
+  allocate(ugrid%face_to_cell_ghosted(2,nface))
+  allocate(ugrid%face_to_vertex(pgrid%max_nvert_per_face,nface))
+  allocate(ugrid%face_area(nface))
+  allocate(ugrid%face_centroid(nface))
+  allocate(ugrid%cell_to_face_ghosted(pgrid%max_nface_per_cell,ugrid%ngmax))
+  ugrid%face_to_cell_ghosted = 0
+  ugrid%face_to_vertex = 0
+  ugrid%cell_to_face_ghosted = 0
+  do ghosted_id = 1, ugrid%ngmax
+    iface = 0
+    do occ = pgrid%cell_face_offset(ghosted_id), &
+             pgrid%cell_face_offset(ghosted_id+1)-1
+      iface = iface + 1
+      ugrid%cell_to_face_ghosted(iface,ghosted_id) = occ_to_face(occ)
+      nbr = pgrid%face_nbr_ghosted(occ)
+      if (nbr > 0 .and. nbr < ghosted_id) cycle
+      nface = occ_to_face(occ)
+      ugrid%face_to_cell_ghosted(1,nface) = ghosted_id
+      ugrid%face_to_cell_ghosted(2,nface) = max(nbr,0)
+      ibeg = pgrid%face_vert_offset(occ)
+      nv = pgrid%face_vert_offset(occ+1) - ibeg
+      ugrid%face_to_vertex(1:nv,nface) = pgrid%face_vert_ids(ibeg:ibeg+nv-1)
+      ugrid%face_area(nface) = pgrid%face_areas(occ)
+      ugrid%face_centroid(nface) = pgrid%face_centroids(occ)
+    enddo
+  enddo
+
+  ! connections: owned cell to each neighbor with a larger ghosted id
+  nconn = 0
+  do local_id = 1, ugrid%nlmax
+    do occ = pgrid%cell_face_offset(local_id), &
+             pgrid%cell_face_offset(local_id+1)-1
+      if (pgrid%face_nbr_ghosted(occ) > local_id) nconn = nconn + 1
+    enddo
+  enddo
+  connections => ConnectionCreate(nconn,INTERNAL_FACE_CONNECTION_TYPE, &
+                                  POLYHEDRA_UNSTRUCTURED_GRID)
+  allocate(ugrid%connection_to_face(nconn))
+
+  nerr = 0
+  iconn = 0
+  do local_id = 1, ugrid%nlmax
+    do occ = pgrid%cell_face_offset(local_id), &
+             pgrid%cell_face_offset(local_id+1)-1
+      nbr = pgrid%face_nbr_ghosted(occ)
+      if (nbr <= local_id) cycle
+      iconn = iconn + 1
+      point_up = [grid_x(local_id),grid_y(local_id),grid_z(local_id)]
+      point_dn = [grid_x(nbr),grid_y(nbr),grid_z(nbr)]
+      normal = [pgrid%face_normals(occ)%x,pgrid%face_normals(occ)%y, &
+                pgrid%face_normals(occ)%z]
+      face_center = [pgrid%face_centroids(occ)%x, &
+                     pgrid%face_centroids(occ)%y, &
+                     pgrid%face_centroids(occ)%z]
+      d = point_dn - point_up
+      dist = sqrt(dot_product(d,d))
+      denom = dot_product(d,normal)
+      t = -1.d0
+      if (denom > 0.d0) t = dot_product(face_center-point_up,normal)/denom
+      if (t <= 0.d0 .or. t >= 1.d0) then
+        ! the centroids are not on opposite sides of the shared face
+        nerr = nerr + 1
+        if (nerr <= 10) then
+          option%io_buffer = 'Centroids of natural cells ' // &
+            trim(StringWrite(ugrid%cell_ids_natural(local_id))) // &
+            ' and ' // trim(StringWrite(ugrid%cell_ids_natural(nbr))) // &
+            ' are not separated by their shared face.'
+          call PrintMsgByRank(option)
+        endif
+        t = 0.5d0
+      endif
+      connections%id_up(iconn) = local_id
+      connections%id_dn(iconn) = nbr
+      connections%face_id(iconn) = occ_to_face(occ)
+      connections%dist(-1:3,iconn) = 0.d0
+      connections%dist(-1,iconn) = t
+      connections%dist(0,iconn) = dist
+      connections%dist(1:3,iconn) = d/dist
+      connections%area(iconn) = pgrid%face_areas(occ)
+      connections%intercp(1:3,iconn) = point_up + t*d
+      ugrid%connection_to_face(iconn) = occ_to_face(occ)
+    enddo
+  enddo
+  deallocate(occ_to_face)
+
+  call MPI_Allreduce(nerr,nerr_global,ONE_INTEGER_MPI,MPIU_INTEGER,MPI_SUM, &
+                     option%mycomm,ierr);CHKERRQ(ierr)
+  if (nerr_global > 0) then
+    option%io_buffer = 'Unsupported polyhedra geometry: cell centroids must &
+      &lie on opposite sides of each shared face.'
+    call PrintErrMsg(option)
+  endif
+
+  UGridPolyhedraXDMFInternConnect => connections
+
+end function UGridPolyhedraXDMFInternConnect
+
+! ************************************************************************** !
+
 subroutine UGridPolyhedraComputeVolumes(ugrid, option, volume)
   !
   ! This routine sets volumes of local control volumes.
@@ -2191,7 +2347,8 @@ subroutine UGridPolyhedraGetCellsInRectangle(x_min, x_max, y_min, y_max, z_min, 
     num_faces = pgrid%cell_nfaces(ghosted_id)
     do iface = 1, num_faces
       face_id = ugrid%cell_to_face_ghosted(iface, ghosted_id)
-      num_vertices = pgrid%face_nverts(ghosted_id)
+      ! face_nverts is indexed by cell-face occurrence, not by cell
+      num_vertices = pgrid%face_nverts(pgrid%cell_faceids(iface,ghosted_id))
       in_rectangle = PETSC_TRUE
       do ivertex = 1, num_vertices
         !vertex_id = pgrid%face_vertids(ivertex,face_id)

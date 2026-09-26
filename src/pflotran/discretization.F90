@@ -10,6 +10,7 @@ module Discretization_module
   use Grid_Unstructured_Explicit_module
   use UGDM_Pointer_module
   use Grid_Unstructured_Polyhedra_module
+  use Grid_Unstructured_Poly_HDF5_module
 
   use PFLOTRAN_Constants_module
 
@@ -287,8 +288,8 @@ subroutine DiscretizationReadRequiredCards(discretization,input,option)
         case(POLYHEDRA_UNSTRUCTURED_GRID)
           un_str_grid%polyhedra_grid => UGridPolyhedraCreate()
           if (index(discretization%filename,'.h5') > 0 ) then
-            !call UGridPolyhedraReadHDF5(un_str_grid,discretization%filename,option)
-            call PrintErrMsg(option,'Add UGridPolyhedraReadHDF5')
+            call UGridPolyhedraReadHDF5(un_str_grid,discretization%filename, &
+                                        option)
           else
             call UGridPolyhedraRead(un_str_grid,discretization%filename,option)
           endif
@@ -661,7 +662,14 @@ subroutine DiscretizationDecomposeDomain(discretization,option)
              'Must compile with Parmetis or Metis in order to use implicit unstructured grids.'
             call PrintErrMsg(option)
 #endif
-          call UGridPolyhedraDecompose(discretization%grid%unstructured_grid,option)
+          if (discretization%grid%unstructured_grid%polyhedra_grid% &
+                representation == POLYHEDRA_REPR_XDMF_HDF5) then
+            call UGridPolyhedraDecomposeDistributed( &
+                   discretization%grid%unstructured_grid,option)
+          else
+            call UGridPolyhedraDecompose( &
+                   discretization%grid%unstructured_grid,option)
+          endif
         case(ECLIPSE_UNSTRUCTURED_GRID)
 #if (!defined(PETSC_HAVE_PARMETIS) && !defined(PETSC_HAVE_METIS)) && !defined(PETSC_HAVE_PTSCOTCH)
             option%io_buffer = &

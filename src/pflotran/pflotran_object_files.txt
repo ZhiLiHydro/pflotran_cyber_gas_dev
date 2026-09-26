@@ -206,6 +206,8 @@ grid_obj = \
 	${common_src}grid_unstructured_aux.o \
 	${common_src}grid_unstructured.o \
 	${common_src}grid_unstructured_polyhedra.o \
+	${common_src}grid_unstructured_polyhedra_hdf5.o \
+	${common_src}grid_unstructured_xdmf.o \
 	${common_src}ugdm_pointer.o \
 	${common_src}well_grid.o
 
