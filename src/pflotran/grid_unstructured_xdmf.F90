@@ -58,6 +58,7 @@ module Grid_Unstructured_XDMF_module
             XDMFConventionalNumNodes, &
             XDMFRecordCheck, &
             XDMFRecordExpand, &
+            XDMFRecordShiftNodes, &
             XDMFRecordStatusString, &
             XDMFFaceIsReversed, &
             XDMFCompareKeys, &
@@ -382,6 +383,35 @@ subroutine XDMFRecordExpand(record,face_offset,face_nodes)
   endif
 
 end subroutine XDMFRecordExpand
+
+! ************************************************************************** !
+
+subroutine XDMFRecordShiftNodes(record,shift)
+  !
+  ! Adds shift to the node ids of a valid record, leaving the code, the
+  ! face count, and the face node counts unchanged (e.g. shift = -1
+  ! converts 1-based input ids to the 0-based indices of XDMF output).
+  !
+  implicit none
+
+  PetscInt :: record(:)
+  PetscInt, intent(in) :: shift
+
+  PetscInt :: iface, pos, nv
+
+  if (record(1) == XDMF_CODE_POLYHEDRON) then
+    pos = 2
+    do iface = 1, record(2)
+      pos = pos + 1
+      nv = record(pos)
+      record(pos+1:pos+nv) = record(pos+1:pos+nv) + shift
+      pos = pos + nv
+    enddo
+  else
+    record(2:) = record(2:) + shift
+  endif
+
+end subroutine XDMFRecordShiftNodes
 
 ! ************************************************************************** !
 

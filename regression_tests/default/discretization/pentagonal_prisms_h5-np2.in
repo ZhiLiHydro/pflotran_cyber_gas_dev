@@ -56,7 +56,11 @@ END
 
 #=========================== output options ===================================
 OUTPUT
+  SNAPSHOT_FILE
+    FORMAT HDF5
+  /
   VARIABLES
+    NATURAL_ID
     LIQUID_PRESSURE
     LIQUID_SATURATION
     VOLUME

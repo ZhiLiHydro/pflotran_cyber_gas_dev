@@ -136,7 +136,11 @@ module Grid_Unstructured_Aux_module
     PetscInt :: io_first_cell            ! natural id of first cell in block
     PetscInt, pointer :: io_record_offset(:) ! (io_num_cells+1), 1-based
     PetscInt, pointer :: io_records(:)       ! XDMF records, natural node ids
-    PetscInt :: io_first_vertex          ! natural id of vertex_coordinates(1)
+    PetscInt :: io_first_vertex          ! natural id of io_vertex_xyz(:,1)
+    PetscInt :: io_num_vertices          ! vertex rows in this rank's block
+    ! vertex rows of the I/O block; kept after decomposition to serve
+    ! coordinate requests and to write output vertices without a gather
+    PetscReal, pointer :: io_vertex_xyz(:,:) ! (3,io_num_vertices)
     ! HDF5 XDMF-code representation, after decomposition; all arrays cover
     ! local and ghost cells in ghosted order, and cell-face occurrences are
     ! numbered consecutively by ghosted cell (face ids of pgrid%face_*)
@@ -344,6 +348,8 @@ function UGridPolyhedraCreate()
   polyhedra_grid%io_num_cells = 0
   polyhedra_grid%io_first_cell = 0
   polyhedra_grid%io_first_vertex = 0
+  polyhedra_grid%io_num_vertices = 0
+  nullify(polyhedra_grid%io_vertex_xyz)
   nullify(polyhedra_grid%io_record_offset)
   nullify(polyhedra_grid%io_records)
   nullify(polyhedra_grid%cell_xdmf_code)
@@ -2185,6 +2191,7 @@ subroutine UGridPolyhedraDestroy(polyhedra_grid)
 
   call DeallocateArray(polyhedra_grid%io_record_offset)
   call DeallocateArray(polyhedra_grid%io_records)
+  call DeallocateArray(polyhedra_grid%io_vertex_xyz)
   call DeallocateArray(polyhedra_grid%cell_xdmf_code)
   call DeallocateArray(polyhedra_grid%cell_record_offset)
   call DeallocateArray(polyhedra_grid%cell_records)

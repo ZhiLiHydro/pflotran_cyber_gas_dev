@@ -688,9 +688,13 @@ end subroutine OutputGetCellVerticesExplicit
 ! ************************************************************************** !
 
 subroutine OutputXMFHeader(fid,time,nmax,xmf_vert_len,ngvert,filename, &
-                           include_cell_centers)
+                           include_cell_centers,xdmf3)
   !
   ! This subroutine writes header to a .xmf file
+  !
+  ! If xdmf3 is present and true, the file declares XDMF version 3.0 (the
+  ! mixed-topology polyhedron code 16 is defined only in XDMF3) and the
+  ! topology stream is read as 64-bit integers.
   !
   ! Author: Gautam Bisht, LBNL
   ! Date: 10/29/12
@@ -702,10 +706,15 @@ subroutine OutputXMFHeader(fid,time,nmax,xmf_vert_len,ngvert,filename, &
   PetscInt :: fid, nmax, xmf_vert_len, ngvert
   character(len=MAXSTRINGLENGTH) :: filename
   PetscBool :: include_cell_centers
+  PetscBool, optional :: xdmf3
 
   character(len=MAXSTRINGLENGTH) :: string, string2
   character(len=MAXWORDLENGTH) :: word
   PetscInt :: i
+  PetscBool :: xdmf3_
+
+  xdmf3_ = PETSC_FALSE
+  if (present(xdmf3)) xdmf3_ = xdmf3
 
   string='<?xml version="1.0" ?>'
   write(fid,'(a)') trim(string)
@@ -713,7 +722,11 @@ subroutine OutputXMFHeader(fid,time,nmax,xmf_vert_len,ngvert,filename, &
   string='<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>'
   write(fid,'(a)') trim(string)
 
-  string='<Xdmf>'
+  if (xdmf3_) then
+    string='<Xdmf Version="3.0">'
+  else
+    string='<Xdmf>'
+  endif
   write(fid,'(a)') trim(string)
 
   string='  <Domain>'
@@ -732,8 +745,13 @@ subroutine OutputXMFHeader(fid,time,nmax,xmf_vert_len,ngvert,filename, &
   write(fid,'(a)') trim(string)
 
   write(string2,*) xmf_vert_len
-  string='        <DataItem Format="HDF" DataType="Int" Dimensions="' // &
-    trim(adjustl(string2)) // '">'
+  if (xdmf3_) then
+    string='        <DataItem Format="HDF" DataType="Int" Precision="8" &
+      &Dimensions="' // trim(adjustl(string2)) // '">'
+  else
+    string='        <DataItem Format="HDF" DataType="Int" Dimensions="' // &
+      trim(adjustl(string2)) // '">'
+  endif
   write(fid,'(a)') trim(string)
 
   string='          ' // trim(filename) // ':/Domain/Cells'

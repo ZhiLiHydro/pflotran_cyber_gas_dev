@@ -1067,6 +1067,7 @@ subroutine Output(realization_base,snapshot_plot_flag, &
 
   use Realization_Base_class, only : realization_base_type
   use Option_module
+  use Grid_Unstructured_Aux_module, only : POLYHEDRA_REPR_XDMF_HDF5
 
   implicit none
 
@@ -1111,8 +1112,13 @@ subroutine Output(realization_base,snapshot_plot_flag, &
           case (IMPLICIT_UNSTRUCTURED_GRID)
             call OutputHDF5UGridXDMF(realization_base,INSTANTANEOUS_VARS)
           case (POLYHEDRA_UNSTRUCTURED_GRID)
-            call PrintErrMsg(option,'Add code for HDF5 output for &
-                                    &Polyhedra mesh')
+            if (realization_base%discretization%grid%unstructured_grid% &
+                  polyhedra_grid%representation /= &
+                  POLYHEDRA_REPR_XDMF_HDF5) then
+              call PrintErrMsg(option,'HDF5 output is supported only for &
+                &UNSTRUCTURED_POLYHEDRA meshes read from HDF5 (.h5) files.')
+            endif
+            call OutputHDF5UGridXDMF(realization_base,INSTANTANEOUS_VARS)
         end select
       else
         call OutputHDF5(realization_base,INSTANTANEOUS_VARS)

@@ -452,6 +452,7 @@ subroutine OutputHDF5UGridXDMF(realization_base,var_list_type)
   PetscInt :: i
   PetscMPIInt, parameter :: ON=1, OFF=0
   PetscBool :: first
+  PetscBool :: xdmf3
   PetscInt :: ivar
   Vec :: ivec
   PetscErrorCode :: ierr
@@ -538,6 +539,8 @@ subroutine OutputHDF5UGridXDMF(realization_base,var_list_type)
     call HDF5GroupClose(grp_id,option)
   endif
 
+  ! polyhedra (code 16) topology requires XDMF3
+  xdmf3 = (grid%itype == POLYHEDRA_UNSTRUCTURED_GRID)
   if (OptionIsIORank(option)) then
     option%io_buffer = ' --> write xmf output file: ' // trim(xmf_filename)
     call PrintMsg(option)
@@ -547,7 +550,7 @@ subroutine OutputHDF5UGridXDMF(realization_base,var_list_type)
                          grid%nmax, &
                          realization_base%output_option%xmf_vert_len, &
                          grid%unstructured_grid%num_vertices_global,&
-                         filename_header,PETSC_TRUE)
+                         filename_header,PETSC_TRUE,xdmf3)
   endif
 
   ! create a group for the data set
@@ -1786,6 +1789,7 @@ subroutine OutputHDF5WriteCoordUGridXDMF(realization_base,option,file_id)
   use Grid_module
   use Option_module
   use Grid_Unstructured_Aux_module
+  use Grid_Unstructured_Poly_HDF5_module
   use UGDM_Pointer_module
   use Variables_module
 
@@ -1831,8 +1835,16 @@ subroutine OutputHDF5WriteCoordUGridXDMF(realization_base,option,file_id)
   PetscInt :: PYR_ID_XDMF = 7
   PetscInt :: WED_ID_XDMF = 8
   PetscInt :: HEX_ID_XDMF = 9
+  PetscInt64 :: stream_length
 
   grid => realization_base%patch%grid
+
+  if (grid%itype == POLYHEDRA_UNSTRUCTURED_GRID) then
+    ! vertices and the variable-length mixed connectivity stream
+    call UGridPolyhedraWriteXDMFMesh(grid%unstructured_grid,file_id, &
+                                     option,stream_length)
+    call OutputHDF5SetXMFStreamLength(realization_base,stream_length,option)
+  else
 
   call VecCreateMPI(option%mycomm,PETSC_DECIDE, &
                     grid%unstructured_grid%num_vertices_global, &
@@ -2054,6 +2066,8 @@ subroutine OutputHDF5WriteCoordUGridXDMF(realization_base,option,file_id)
   call VecDestroy(global_vec,ierr);CHKERRQ(ierr)
   call VecDestroy(natural_vec,ierr);CHKERRQ(ierr)
   call UGridDMDestroy(ugdm_element)
+
+  endif ! polyhedra
 
   ! Cell center X/Y/Z
   call VecCreateMPI(option%mycomm,grid%nlmax,PETSC_DETERMINE, &
@@ -2303,6 +2317,7 @@ subroutine OutputHDF5DetermineNumVertices(realization_base,option)
   use Grid_module
   use Option_module
   use Grid_Unstructured_Aux_module
+  use Grid_Unstructured_Poly_HDF5_module
   use UGDM_Pointer_module
   use Variables_module
 
@@ -2323,6 +2338,13 @@ subroutine OutputHDF5DetermineNumVertices(realization_base,option)
   PetscErrorCode :: ierr
 
   grid => realization_base%patch%grid
+
+  if (grid%itype == POLYHEDRA_UNSTRUCTURED_GRID) then
+    call OutputHDF5SetXMFStreamLength(realization_base, &
+           UGridPolyhedraXDMFStreamLength(grid%unstructured_grid,option), &
+           option)
+    return
+  endif
 
   PetscObjectNullify(dm_ptr%dm)
   nullify(dm_ptr%ugdm)
@@ -2357,6 +2379,35 @@ subroutine OutputHDF5DetermineNumVertices(realization_base,option)
   call UGridDMDestroy(ugdm_element)
 
 end subroutine OutputHDF5DetermineNumVertices
+
+! ************************************************************************** !
+
+subroutine OutputHDF5SetXMFStreamLength(realization_base,stream_length, &
+                                        option)
+  !
+  ! Stores the length of a polyhedra mixed-topology stream for the .xmf
+  ! header, checking that it fits the PetscInt used by the header.
+  !
+  use Realization_Base_class, only : realization_base_type
+  use Option_module
+
+  implicit none
+
+  class(realization_base_type) :: realization_base
+  PetscInt64, intent(in) :: stream_length
+  type(option_type), pointer :: option
+
+  PetscInt :: max_int
+
+  max_int = huge(max_int)
+  if (stream_length > max_int) then
+    option%io_buffer = 'The polyhedra output connectivity stream exceeds &
+      &the PETSc integer range; configure PETSc with --with-64-bit-indices.'
+    call PrintErrMsg(option)
+  endif
+  realization_base%output_option%xmf_vert_len = int(stream_length)
+
+end subroutine OutputHDF5SetXMFStreamLength
 
 ! ************************************************************************** !
 

@@ -54,7 +54,9 @@ module Grid_Unstructured_Poly_HDF5_module
   PetscReal, parameter :: SHARED_FACE_TOL = 1.d-10
 
   public :: UGridPolyhedraReadHDF5, &
-            UGridPolyhedraDecomposeDistributed
+            UGridPolyhedraDecomposeDistributed, &
+            UGridPolyhedraWriteXDMFMesh, &
+            UGridPolyhedraXDMFStreamLength
 
 contains
 
@@ -93,7 +95,6 @@ subroutine UGridPolyhedraReadHDF5(ugrid,filename,option)
   PetscInt64 :: first_cell, ncell_local, first_vertex, nvert_local
   PetscInt64 :: conn_start, conn_count, conn_sum
   PetscInt64, allocatable, target :: offsets8(:), conn8(:)
-  PetscReal, allocatable, target :: coords(:,:)
   PetscInt :: icell, ivert, nerr, status, bad_position, nfaces, nface_nodes
   PetscInt :: ibeg, iend, nranks, myrank
   PetscBool :: found
@@ -324,20 +325,13 @@ subroutine UGridPolyhedraReadHDF5(ugrid,filename,option)
   ! this rank's block of vertex rows
   call PolyBlockRange(num_vertices_global,nranks,myrank,first_vertex, &
                       nvert_local)
-  allocate(coords(3,max(nvert_local,1_8)))
-  coords = 0.d0
-  call PolyH5ReadVertices(dset_vert,first_vertex-1,nvert_local,coords, &
-                          xfer_id,hdf5_err)
+  allocate(pgrid%io_vertex_xyz(3,max(nvert_local,1_8)))
+  pgrid%io_vertex_xyz = 0.d0
+  call PolyH5ReadVertices(dset_vert,first_vertex-1,nvert_local, &
+                          pgrid%io_vertex_xyz,xfer_id,hdf5_err)
   call PolyCheckHDF5Error(hdf5_err,'Vertices',filename,option)
   pgrid%io_first_vertex = int(first_vertex)
-  pgrid%num_vertices_local = int(nvert_local)
-  allocate(pgrid%vertex_coordinates(max(pgrid%num_vertices_local,1)))
-  do ivert = 1, pgrid%num_vertices_local
-    pgrid%vertex_coordinates(ivert)%x = coords(1,ivert)
-    pgrid%vertex_coordinates(ivert)%y = coords(2,ivert)
-    pgrid%vertex_coordinates(ivert)%z = coords(3,ivert)
-  enddo
-  deallocate(coords)
+  pgrid%io_num_vertices = int(nvert_local)
 
   call h5pclose_f(xfer_id,hdf5_err)
   call HDF5DatasetClose(dset_offsets,option)
@@ -725,6 +719,166 @@ subroutine UGridPolyhedraDecomposeDistributed(ugrid,option)
   call PrintMsg(option,'Polyhedra mesh decomposition complete.')
 
 end subroutine UGridPolyhedraDecomposeDistributed
+
+! ************************************************************************** !
+
+function UGridPolyhedraXDMFStreamLength(ugrid,option)
+  !
+  ! Length of the global mixed-topology connectivity stream written by
+  ! UGridPolyhedraWriteXDMFMesh() (sum of the record lengths of all cells).
+  !
+  use Option_module
+
+  implicit none
+
+  type(grid_unstructured_type) :: ugrid
+  type(option_type) :: option
+  PetscInt64 :: UGridPolyhedraXDMFStreamLength
+
+  type(unstructured_polyhedra_type), pointer :: pgrid
+  PetscInt64 :: local_length
+  PetscErrorCode :: ierr
+
+  pgrid => ugrid%polyhedra_grid
+  local_length = int(pgrid%cell_record_offset(ugrid%nlmax+1) - &
+                     pgrid%cell_record_offset(1),kind=8)
+  call MPI_Allreduce(local_length,UGridPolyhedraXDMFStreamLength, &
+                     ONE_INTEGER_MPI,MPI_INTEGER8,MPI_SUM,option%mycomm, &
+                     ierr);CHKERRQ(ierr)
+
+end function UGridPolyhedraXDMFStreamLength
+
+! ************************************************************************** !
+
+subroutine UGridPolyhedraWriteXDMFMesh(ugrid,loc_id,option,stream_length)
+  !
+  ! Writes the mesh of a polyhedra grid read from the HDF5 XDMF-code schema
+  ! for XDMF3 visualization, under loc_id:
+  !
+  !   Vertices  float64 [Nv, 3]  rows in natural vertex order
+  !   Cells     int64   [L]      mixed-topology stream in natural cell order
+  !
+  ! Cells holds each cell's original record (codes 6-9 stay compact; code
+  ! 16 keeps its face records) with node ids converted to the 0-based
+  ! vertex row indices required by XDMF; codes and counts are unchanged.
+  ! Natural cell order matches cell fields written from natural vectors.
+  !
+  ! Owned records are routed to the ranks holding contiguous blocks of
+  ! natural ids, and every rank writes its block (and its I/O block of
+  ! vertex rows) as a hyperslab; no rank assembles the output mesh.
+  !
+  use Option_module
+
+  implicit none
+
+  type(grid_unstructured_type) :: ugrid
+  integer(HID_T) :: loc_id
+  type(option_type) :: option
+  PetscInt64, intent(out) :: stream_length
+
+  type(unstructured_polyhedra_type), pointer :: pgrid
+  PetscInt :: nranks, local_id, dest, reclen, ibeg, pos, i, nerr, nblock
+  PetscInt :: count
+  PetscInt64 :: first_cell, nblock8, local_length, offset
+  PetscInt, allocatable :: send_buf(:), recv_buf(:), send_count(:)
+  PetscInt, allocatable :: recv_count(:), cursor(:), block_pos(:)
+  PetscInt, allocatable :: record(:)
+  PetscInt64, allocatable, target :: stream(:)
+  PetscErrorCode :: ierr
+
+  pgrid => ugrid%polyhedra_grid
+  nranks = option%comm%size
+
+  ! route owned records to the natural-block owners
+  allocate(send_count(nranks))
+  allocate(cursor(nranks))
+  send_count = 0
+  do local_id = 1, ugrid%nlmax
+    dest = PolyBlockOwner(int(ugrid%cell_ids_natural(local_id),kind=8), &
+                          int(pgrid%num_cells_global,kind=8),nranks) + 1
+    reclen = pgrid%cell_record_offset(local_id+1) - &
+             pgrid%cell_record_offset(local_id)
+    send_count(dest) = send_count(dest) + 2 + reclen
+  enddo
+  allocate(send_buf(max(sum(send_count),1)))
+  cursor(1) = 0
+  do i = 2, nranks
+    cursor(i) = cursor(i-1) + send_count(i-1)
+  enddo
+  do local_id = 1, ugrid%nlmax
+    dest = PolyBlockOwner(int(ugrid%cell_ids_natural(local_id),kind=8), &
+                          int(pgrid%num_cells_global,kind=8),nranks) + 1
+    ibeg = pgrid%cell_record_offset(local_id)
+    reclen = pgrid%cell_record_offset(local_id+1) - ibeg
+    pos = cursor(dest)
+    send_buf(pos+1) = ugrid%cell_ids_natural(local_id)
+    send_buf(pos+2) = reclen
+    send_buf(pos+3:pos+2+reclen) = pgrid%cell_records(ibeg:ibeg+reclen-1)
+    cursor(dest) = pos + 2 + reclen
+  enddo
+  call PolyExchangeInt(send_buf,send_count,recv_buf,recv_count, &
+                       'output cell records',option,PETSC_FALSE)
+  deallocate(send_buf,send_count,cursor)
+
+  ! order this block's records by natural id
+  call PolyBlockRange(int(pgrid%num_cells_global,kind=8),nranks, &
+                      int(option%comm%rank),first_cell,nblock8)
+  nblock = int(nblock8)
+  allocate(block_pos(max(nblock,1)))
+  block_pos = 0
+  nerr = 0
+  local_length = 0
+  pos = 0
+  do while (pos < sum(recv_count))
+    i = recv_buf(pos+1) - int(first_cell) + 1
+    if (i < 1 .or. i > nblock) then
+      nerr = nerr + 1
+    else if (block_pos(i) /= 0) then
+      nerr = nerr + 1
+    else
+      block_pos(i) = pos + 1
+      local_length = local_length + recv_buf(pos+2)
+    endif
+    pos = pos + 2 + recv_buf(pos+2)
+  enddo
+  if (nblock > 0) then
+    if (any(block_pos(1:nblock) == 0)) nerr = nerr + 1
+  endif
+  call PolyCheckErrors(nerr,'Inconsistent cell records in polyhedra &
+                       &output.',option)
+
+  allocate(stream(max(local_length,1_8)))
+  count = 0
+  do i = 1, nblock
+    pos = block_pos(i)
+    reclen = recv_buf(pos+1)
+    allocate(record(reclen))
+    record = recv_buf(pos+2:pos+1+reclen)
+    call XDMFRecordShiftNodes(record,-1)
+    stream(count+1:count+reclen) = int(record,kind=8)
+    count = count + reclen
+    deallocate(record)
+  enddo
+  deallocate(recv_buf,recv_count,block_pos)
+
+  offset = 0
+  call MPI_Exscan(local_length,offset,ONE_INTEGER_MPI,MPI_INTEGER8, &
+                  MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
+  if (option%comm%rank == 0) offset = 0
+  call MPI_Allreduce(local_length,stream_length,ONE_INTEGER_MPI, &
+                     MPI_INTEGER8,MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
+
+  call PolyH5WriteInt64(loc_id,'Cells',stream_length,offset,local_length, &
+                        stream,option)
+  deallocate(stream)
+
+  call PolyH5WriteVertices(loc_id,'Vertices', &
+                           int(pgrid%num_vertices_global,kind=8), &
+                           int(pgrid%io_first_vertex-1,kind=8), &
+                           int(pgrid%io_num_vertices,kind=8), &
+                           pgrid%io_vertex_xyz,option)
+
+end subroutine UGridPolyhedraWriteXDMFMesh
 
 ! ************************************************************************** !
 
@@ -1121,20 +1275,17 @@ subroutine PolyBuildLocalGrid(ugrid,owned_buf,owned_pos,ghost_buf,ghost_pos, &
   nerr = 0
   do i = 1, n
     vid = recv_ids(i) - pgrid%io_first_vertex + 1
-    if (vid < 1 .or. vid > pgrid%num_vertices_local) then
+    if (vid < 1 .or. vid > pgrid%io_num_vertices) then
       nerr = nerr + 1
       cycle
     endif
-    send_xyz(3*i-2) = pgrid%vertex_coordinates(vid)%x
-    send_xyz(3*i-1) = pgrid%vertex_coordinates(vid)%y
-    send_xyz(3*i) = pgrid%vertex_coordinates(vid)%z
+    send_xyz(3*i-2:3*i) = pgrid%io_vertex_xyz(:,vid)
   enddo
   call PolyCheckErrors(nerr,'Inconsistent vertex request in polyhedra &
                        &decomposition.',option)
   call PolyExchangeReal(send_xyz,3*recv_count,recv_xyz,3*send_count, &
                         'vertex coordinates',option)
   deallocate(send_xyz,recv_ids,recv_count)
-  deallocate(pgrid%vertex_coordinates)
   ugrid%num_vertices_local = nvert_local
   pgrid%num_vertices_local = nvert_local
   allocate(ugrid%vertices(max(nvert_local,1)))
@@ -1705,7 +1856,7 @@ end function PolyKeyOwner
 ! ************************************************************************** !
 
 subroutine PolyExchangeInt(send_buf,send_count,recv_buf,recv_count,label, &
-                           option)
+                           option,report)
   !
   ! Personalized all-to-all exchange of PetscInt data. send_buf holds the
   ! data for rank 0, then rank 1, etc.; send_count(r+1) entries go to rank
@@ -1721,10 +1872,15 @@ subroutine PolyExchangeInt(send_buf,send_count,recv_buf,recv_count,label, &
   PetscInt, allocatable, intent(out) :: recv_count(:)
   character(len=*) :: label
   type(option_type) :: option
+  PetscBool, optional :: report
 
   PetscMPIInt, allocatable :: scount(:), sdispl(:), rcount(:), rdispl(:)
   PetscInt :: nranks, ntotal
+  PetscBool :: report_
   PetscErrorCode :: ierr
+
+  report_ = PETSC_TRUE
+  if (present(report)) report_ = report
 
   nranks = option%comm%size
   allocate(scount(nranks),sdispl(nranks),rcount(nranks),rdispl(nranks))
@@ -1736,8 +1892,10 @@ subroutine PolyExchangeInt(send_buf,send_count,recv_buf,recv_count,label, &
   call MPI_Alltoallv(send_buf,scount,sdispl,MPIU_INTEGER, &
                      recv_buf,rcount,rdispl,MPIU_INTEGER, &
                      option%mycomm,ierr);CHKERRQ(ierr)
-  call PolyReportTransfer(label,int(sum(send_count),kind=8)*8, &
-                          int(ntotal,kind=8)*8,option)
+  if (report_) then
+    call PolyReportTransfer(label,int(sum(send_count),kind=8)*8, &
+                            int(ntotal,kind=8)*8,option)
+  endif
   deallocate(scount,sdispl,rcount,rdispl)
 
 end subroutine PolyExchangeInt
@@ -2175,6 +2333,126 @@ end subroutine PolyH5ReadVertices
 
 ! ************************************************************************** !
 
+subroutine PolyH5WriteInt64(loc_id,name,total,start,count,buf,option)
+  !
+  ! Collectively creates (or opens) a rank-1 int64 dataset of length total
+  ! and writes count entries at the 0-based position start.
+  !
+  use Option_module
+
+  implicit none
+
+  integer(HID_T), intent(in) :: loc_id
+  character(len=*), intent(in) :: name
+  PetscInt64, intent(in) :: total
+  PetscInt64, intent(in) :: start
+  PetscInt64, intent(in) :: count
+  PetscInt64, target :: buf(:)
+  type(option_type) :: option
+
+  integer(HID_T) :: dset_id, file_space_id, mem_space_id, xfer_id
+  integer(HSIZE_T) :: dims(1), hstart(1), hcount(1)
+  type(c_ptr) :: f_ptr
+  integer :: hdf5_err, err
+
+  dims(1) = int(total,kind=HSIZE_T)
+  if (PolyH5LinkExists(loc_id,name)) then
+    call h5dopen_f(loc_id,name,dset_id,err)
+  else
+    call h5screate_simple_f(1,dims,file_space_id,err)
+    call h5dcreate_f(loc_id,name,H5T_STD_I64LE,file_space_id,dset_id,err)
+    call h5sclose_f(file_space_id,err)
+  endif
+  call h5dget_space_f(dset_id,file_space_id,err)
+  if (count > 0) then
+    hstart(1) = int(start,kind=HSIZE_T)
+    hcount(1) = int(count,kind=HSIZE_T)
+    call h5sselect_hyperslab_f(file_space_id,H5S_SELECT_SET_F,hstart, &
+                               hcount,err)
+    call h5screate_simple_f(1,hcount,mem_space_id,err)
+  else
+    call h5sselect_none_f(file_space_id,err)
+    hcount(1) = 1
+    call h5screate_simple_f(1,hcount,mem_space_id,err)
+    call h5sselect_none_f(mem_space_id,err)
+  endif
+  call h5pcreate_f(H5P_DATASET_XFER_F,xfer_id,err)
+#ifndef SERIAL_HDF5
+  call h5pset_dxpl_mpio_f(xfer_id,H5FD_MPIO_COLLECTIVE_F,err)
+#endif
+  f_ptr = c_loc(buf(1))
+  call h5dwrite_f(dset_id,h5kind_to_type(8,H5_INTEGER_KIND),f_ptr, &
+                  hdf5_err,mem_space_id,file_space_id,xfer_id)
+  call h5pclose_f(xfer_id,err)
+  call h5sclose_f(mem_space_id,err)
+  call h5sclose_f(file_space_id,err)
+  call h5dclose_f(dset_id,err)
+  call PolyCheckHDF5Error(hdf5_err,name,'output file',option)
+
+end subroutine PolyH5WriteInt64
+
+! ************************************************************************** !
+
+subroutine PolyH5WriteVertices(loc_id,name,total,start,count,buf,option)
+  !
+  ! Collectively creates (or opens) a float64 [total,3] dataset and writes
+  ! count rows (buf(3,count)) at the 0-based row start.
+  !
+  use Option_module
+
+  implicit none
+
+  integer(HID_T), intent(in) :: loc_id
+  character(len=*), intent(in) :: name
+  PetscInt64, intent(in) :: total
+  PetscInt64, intent(in) :: start
+  PetscInt64, intent(in) :: count
+  PetscReal, target :: buf(:,:)
+  type(option_type) :: option
+
+  integer(HID_T) :: dset_id, file_space_id, mem_space_id, xfer_id
+  integer(HSIZE_T) :: dims(2), hstart(2), hcount(2)
+  type(c_ptr) :: f_ptr
+  integer :: hdf5_err, err
+
+  dims = [3_HSIZE_T,int(total,kind=HSIZE_T)]
+  if (PolyH5LinkExists(loc_id,name)) then
+    call h5dopen_f(loc_id,name,dset_id,err)
+  else
+    call h5screate_simple_f(2,dims,file_space_id,err)
+    call h5dcreate_f(loc_id,name,H5T_NATIVE_DOUBLE,file_space_id,dset_id,err)
+    call h5sclose_f(file_space_id,err)
+  endif
+  call h5dget_space_f(dset_id,file_space_id,err)
+  if (count > 0) then
+    hstart = [0_HSIZE_T,int(start,kind=HSIZE_T)]
+    hcount = [3_HSIZE_T,int(count,kind=HSIZE_T)]
+    call h5sselect_hyperslab_f(file_space_id,H5S_SELECT_SET_F,hstart, &
+                               hcount,err)
+    call h5screate_simple_f(2,hcount,mem_space_id,err)
+  else
+    call h5sselect_none_f(file_space_id,err)
+    hcount = [3_HSIZE_T,1_HSIZE_T]
+    call h5screate_simple_f(2,hcount,mem_space_id,err)
+    call h5sselect_none_f(mem_space_id,err)
+  endif
+  call h5pcreate_f(H5P_DATASET_XFER_F,xfer_id,err)
+#ifndef SERIAL_HDF5
+  call h5pset_dxpl_mpio_f(xfer_id,H5FD_MPIO_COLLECTIVE_F,err)
+#endif
+  f_ptr = c_loc(buf(1,1))
+  call h5dwrite_f(dset_id,H5T_NATIVE_DOUBLE,f_ptr,hdf5_err,mem_space_id, &
+                  file_space_id,xfer_id)
+  call h5pclose_f(xfer_id,err)
+  call h5sclose_f(mem_space_id,err)
+  call h5sclose_f(file_space_id,err)
+  call h5dclose_f(dset_id,err)
+  call PolyCheckHDF5Error(hdf5_err,name,'output file',option)
+
+end subroutine PolyH5WriteVertices
+
+! ************************************************************************** !
+
 subroutine PolyCheckHDF5Error(hdf5_err,dataset_name,filename,option)
   !
   ! Collective check of a dataset read.
@@ -2192,7 +2470,7 @@ subroutine PolyCheckHDF5Error(hdf5_err,dataset_name,filename,option)
 
   nerr = 0
   if (hdf5_err < 0) nerr = 1
-  call PolyCheckErrors(nerr,'Error reading dataset "' // &
+  call PolyCheckErrors(nerr,'Error reading or writing dataset "' // &
                        trim(dataset_name) // '" from "' // trim(filename) // &
                        '".',option)
 

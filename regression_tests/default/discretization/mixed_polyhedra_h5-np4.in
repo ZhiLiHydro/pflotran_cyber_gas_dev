@@ -86,7 +86,12 @@ END
 
 #=========================== output options ===================================
 OUTPUT
+  SNAPSHOT_FILE
+    FORMAT HDF5
+    PERIODIC TIME 20.d0 d
+  /
   VARIABLES
+    NATURAL_ID
     LIQUID_PRESSURE
     LIQUID_SATURATION
     VOLUME

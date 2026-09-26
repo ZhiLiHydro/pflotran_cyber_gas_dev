@@ -1,3 +1,11 @@
+-- DISCRETE: Natural ID --
+      Max:         4
+      Min:         1
+     Mean:   2.5000000000000E+00
+        1:         1
+        2:         2
+        3:         3
+        4:         4
 -- PRESSURE: Liquid Pressure --
       Max:   9.9414168859965E+04
       Min:   9.3888714753262E+04
@@ -31,7 +39,7 @@
         3:         1
         4:         1
 -- SOLUTION: Flow --
-   Time (seconds):   3.6454300000000E-01
+   Time (seconds):   3.7613500000000E-01
    Time Steps:           48
    Newton Iterations:          714
    Linear Solver Iterations:         1391

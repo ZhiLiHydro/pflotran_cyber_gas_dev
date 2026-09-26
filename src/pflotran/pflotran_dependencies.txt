@@ -1810,6 +1810,7 @@ output.o : \
   field.o \
   general_aux.o \
   grid.o \
+  grid_unstructured_aux.o \
   hdf5.o \
   hydrate_aux.o \
   immiscible_aux.o \
@@ -1935,6 +1936,7 @@ output_hdf5.o : \
   grid.o \
   grid_unstructured_aux.o \
   grid_unstructured_cell.o \
+  grid_unstructured_polyhedra_hdf5.o \
   hdf5.o \
   hdf5_aux.o \
   input_aux.o \
@@ -2765,6 +2767,7 @@ pm_waste_form.o : \
   dataset_ascii.o \
   dataset_base.o \
   discretization.o \
+  eos_water.o \
   field.o \
   geometry.o \
   global_aux.o \
@@ -4195,7 +4198,6 @@ thc.o : \
   coupler.o \
   debug.o \
   discretization.o \
-  eos_water.o \
   field.o \
   fluid.o \
   global_aux.o \
