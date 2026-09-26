@@ -1088,6 +1088,7 @@ grid.o : \
   grid_unstructured_aux.o \
   grid_unstructured_explicit.o \
   grid_unstructured_polyhedra.o \
+  grid_unstructured_polyhedra_hdf5.o \
   logging.o \
   option.o \
   pflotran_constants.o \

@@ -56,7 +56,8 @@ module Grid_Unstructured_Poly_HDF5_module
   public :: UGridPolyhedraReadHDF5, &
             UGridPolyhedraDecomposeDistributed, &
             UGridPolyhedraWriteXDMFMesh, &
-            UGridPolyhedraXDMFStreamLength
+            UGridPolyhedraXDMFStreamLength, &
+            UGridPolyhedraLocalizeCellFaces
 
 contains
 
@@ -879,6 +880,178 @@ subroutine UGridPolyhedraWriteXDMFMesh(ugrid,loc_id,option,stream_length)
                            pgrid%io_vertex_xyz,option)
 
 end subroutine UGridPolyhedraWriteXDMFMesh
+
+! ************************************************************************** !
+
+subroutine UGridPolyhedraLocalizeCellFaces(ugrid,region_name,num_entries, &
+                                           cell_ids,face_ids,option)
+  !
+  ! Localizes a region given as (natural cell id, cell-local face index)
+  ! pairs, e.g. the "Cell Ids" and "Face Ids" datasets of an HDF5 region.
+  ! Face indices are 1-based and follow the cell's record: for XDMF codes
+  ! 6-9 the template order of Grid_Unstructured_XDMF_module (that of
+  ! UCellGetFaceVertices), for code 16 the order of the faces in the
+  ! record. Every face must lie on the domain boundary.
+  !
+  ! On input, cell_ids/face_ids hold this rank's share of the pairs (in any
+  ! distribution); each pair is sent to the rank owning the cell, found
+  ! through the memory-scalable AO and O(number of ranks) offsets. On
+  ! output they hold the local cell ids and face indices of owned cells.
+  !
+  use Option_module
+  use String_module
+  use Utility_module, only : DeallocateArray
+
+  implicit none
+
+  type(grid_unstructured_type) :: ugrid
+  character(len=*) :: region_name
+  PetscInt :: num_entries
+  PetscInt, pointer :: cell_ids(:)
+  PetscInt, pointer :: face_ids(:)
+  type(option_type) :: option
+
+  type(unstructured_polyhedra_type), pointer :: pgrid
+  PetscInt :: nranks, n, i, dest, nerr, local_id, iface, natural_id, occ
+  PetscInt :: nrecv, count
+  PetscInt, allocatable :: petsc_ids(:), send_count(:), cursor(:)
+  PetscInt, allocatable :: send_buf(:), recv_buf(:), recv_count(:)
+  PetscInt, allocatable :: rank_offset(:), keys(:)
+  PetscErrorCode :: ierr
+
+  pgrid => ugrid%polyhedra_grid
+  nranks = option%comm%size
+  n = 0
+  if (associated(cell_ids)) n = num_entries
+  if (n > 0 .and. .not.associated(face_ids)) then
+    option%io_buffer = 'Region "' // trim(region_name) // '" has cell ids &
+      &but no face ids.'
+    call PrintErrMsgByRank(option)
+  endif
+
+  ! natural -> PETSc ids (0-based) and owning ranks
+  nerr = 0
+  allocate(petsc_ids(max(n,1)))
+  do i = 1, n
+    if (cell_ids(i) < 1 .or. cell_ids(i) > pgrid%num_cells_global) then
+      nerr = nerr + 1
+      if (nerr <= MAX_ERRORS_PRINTED) then
+        option%io_buffer = 'Region "' // trim(region_name) // '": cell id ' // &
+          trim(StringWrite(cell_ids(i))) // ' is outside [1,' // &
+          trim(StringWrite(pgrid%num_cells_global)) // '].'
+        call PrintMsgByRank(option)
+      endif
+      petsc_ids(i) = 0
+    else
+      petsc_ids(i) = cell_ids(i) - 1
+    endif
+  enddo
+  call PolyCheckErrors(nerr,'Invalid cell ids in region "' // &
+                       trim(region_name) // '".',option)
+  call AOApplicationToPetsc(ugrid%ao_natural_to_petsc,n,petsc_ids, &
+                            ierr);CHKERRQ(ierr)
+
+  allocate(rank_offset(nranks+1))
+  call PolyRankOffsets(ugrid%nlmax,rank_offset,option)
+  allocate(send_count(nranks))
+  allocate(cursor(nranks))
+  send_count = 0
+  do i = 1, n
+    dest = PolyOwnerFromOffsets(petsc_ids(i),rank_offset)
+    send_count(dest) = send_count(dest) + 3
+  enddo
+  allocate(send_buf(max(sum(send_count),1)))
+  cursor(1) = 0
+  do i = 2, nranks
+    cursor(i) = cursor(i-1) + send_count(i-1)
+  enddo
+  do i = 1, n
+    dest = PolyOwnerFromOffsets(petsc_ids(i),rank_offset)
+    send_buf(cursor(dest)+1) = petsc_ids(i)
+    send_buf(cursor(dest)+2) = cell_ids(i)
+    send_buf(cursor(dest)+3) = face_ids(i)
+    cursor(dest) = cursor(dest) + 3
+  enddo
+  deallocate(petsc_ids,rank_offset,cursor)
+  call PolyExchangeInt(send_buf,send_count,recv_buf,recv_count, &
+                       'region faces',option,PETSC_FALSE)
+  deallocate(send_buf,send_count)
+
+  ! validate on the owning rank
+  nrecv = sum(recv_count)/3
+  call DeallocateArray(cell_ids)
+  call DeallocateArray(face_ids)
+  allocate(cell_ids(max(nrecv,1)))
+  allocate(face_ids(max(nrecv,1)))
+  allocate(keys(max(nrecv,1)))
+  nerr = 0
+  count = 0
+  do i = 1, nrecv
+    local_id = recv_buf(3*i-2) - ugrid%global_offset + 1
+    natural_id = recv_buf(3*i-1)
+    iface = recv_buf(3*i)
+    if (local_id < 1 .or. local_id > ugrid%nlmax) then
+      nerr = nerr + 1
+      cycle
+    endif
+    if (iface < 1 .or. iface > pgrid%cell_nfaces(local_id)) then
+      nerr = nerr + 1
+      if (nerr <= MAX_ERRORS_PRINTED) then
+        option%io_buffer = 'Region "' // trim(region_name) // '": face ' // &
+          trim(StringWrite(iface)) // ' of natural cell ' // &
+          trim(StringWrite(natural_id)) // ' is outside [1,' // &
+          trim(StringWrite(pgrid%cell_nfaces(local_id))) // '].'
+        call PrintMsgByRank(option)
+      endif
+      cycle
+    endif
+    occ = pgrid%cell_face_offset(local_id) + iface - 1
+    if (pgrid%face_nbr_ghosted(occ) /= 0) then
+      nerr = nerr + 1
+      if (nerr <= MAX_ERRORS_PRINTED) then
+        option%io_buffer = 'Region "' // trim(region_name) // '": face ' // &
+          trim(StringWrite(iface)) // ' of natural cell ' // &
+          trim(StringWrite(natural_id)) // ' is an interior face, not a &
+          &domain boundary face.'
+        call PrintMsgByRank(option)
+      endif
+      cycle
+    endif
+    count = count + 1
+    cell_ids(count) = local_id
+    face_ids(count) = iface
+    keys(count) = occ
+  enddo
+  deallocate(recv_buf,recv_count)
+  ! a face listed twice would be counted twice by a boundary condition
+  if (count > 1) then
+    call PolySortInt(count,keys,ierr)
+    do i = 2, count
+      if (keys(i) == keys(i-1)) then
+        nerr = nerr + 1
+        if (nerr <= MAX_ERRORS_PRINTED) then
+          local_id = pgrid%face_cellids(keys(i))
+          option%io_buffer = 'Region "' // trim(region_name) // &
+            '": face ' // trim(StringWrite(keys(i) - &
+            pgrid%cell_face_offset(local_id) + 1)) // ' of natural cell ' // &
+            trim(StringWrite(ugrid%cell_ids_natural(local_id))) // &
+            ' is listed more than once.'
+          call PrintMsgByRank(option)
+        endif
+      endif
+    enddo
+  endif
+  deallocate(keys)
+  call PolyCheckErrors(nerr,'Invalid cell faces in region "' // &
+                       trim(region_name) // '".',option)
+
+  num_entries = count
+  if (count == 0) then
+    call DeallocateArray(cell_ids)
+    call DeallocateArray(face_ids)
+  endif
+
+end subroutine UGridPolyhedraLocalizeCellFaces
 
 ! ************************************************************************** !
 

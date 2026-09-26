@@ -18,6 +18,12 @@ order of PFLOTRAN's cell templates (grid_unstructured_cell.F90); for the
 wedge, nodes 1-2-3 wind toward nodes 4-5-6 (Exodus convention). No
 geometry (volumes, centroids, areas) is stored; PFLOTRAN computes it.
 
+Each file also holds a boundary region /Regions/top defined by
+"Cell Ids" (1-based natural cell ids) and "Face Ids" (1-based cell-local
+face indices): the faces whose vertices all lie on the top of the domain.
+Cell-local faces are numbered in template order for codes 6-9 (TEMPLATES
+below, matching UCellGetFaceVertices) and in record order for code 16.
+
 Files written (all describe outward-wound, closed cells):
 
   mixed_polyhedra.h5        mixed.ugp with conventional cells stored
@@ -120,6 +126,33 @@ def polyhedron_record(faces):
     return rec
 
 
+def record_faces(rec):
+    """Faces of a record (node ids) in PFLOTRAN's cell-local face order."""
+    code = rec[0]
+    if code == XDMF_POLYHEDRON:
+        faces = []
+        p = 2
+        for _ in range(rec[1]):
+            n = rec[p]
+            faces.append(list(rec[p + 1:p + 1 + n]))
+            p += 1 + n
+        return faces
+    return [[rec[i] for i in f] for f in TEMPLATES[code][1]]
+
+
+def top_faces(records, vertices):
+    """(cell id, face index) pairs of faces lying on the domain top."""
+    ztop = vertices[:, 2].max()
+    cell_ids = []
+    face_ids = []
+    for icell, rec in enumerate(records, 1):
+        for iface, face in enumerate(record_faces(rec), 1):
+            if np.all(np.isclose(vertices[[v - 1 for v in face], 2], ztop)):
+                cell_ids.append(icell)
+                face_ids.append(iface)
+    return cell_ids, face_ids
+
+
 def write_mesh(filename, vertices, records):
     offsets = [1]
     conn = []
@@ -137,8 +170,13 @@ def write_mesh(filename, vertices, records):
         grp.attrs['CellTypeConvention'] = 'XDMF'
         grp.attrs['NodeIndexBase'] = np.int64(1)
         grp.attrs['OffsetIndexBase'] = np.int64(1)
-    print('Wrote {}: {} cells, {} vertices, {} connectivity integers'.format(
-        filename, len(records), len(vertices), len(conn)))
+        cell_ids, face_ids = top_faces(records, np.asarray(vertices))
+        top = h5.create_group('Regions').create_group('top')
+        top.create_dataset('Cell Ids', data=np.asarray(cell_ids, 'i8'))
+        top.create_dataset('Face Ids', data=np.asarray(face_ids, 'i8'))
+    print('Wrote {}: {} cells, {} vertices, {} connectivity integers, '
+          '{} top faces'.format(filename, len(records), len(vertices),
+                                len(conn), len(cell_ids)))
 
 
 def validate(cells, vertices):

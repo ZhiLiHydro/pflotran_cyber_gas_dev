@@ -625,6 +625,8 @@ subroutine GridLocalizeRegions(grid,region_list,option)
   use Option_module
   use Region_module
   use Geometry_module
+  use Grid_Unstructured_Poly_HDF5_module, only : &
+    UGridPolyhedraLocalizeCellFaces
 
   implicit none
 
@@ -660,11 +662,26 @@ subroutine GridLocalizeRegions(grid,region_list,option)
             call GridLocalizeRegionsFromCellIDs(grid,region,option)
           case(EXPLICIT_UNSTRUCTURED_GRID,ECLIPSE_UNSTRUCTURED_GRID)
             call GridLocalizeRegionsFromCellIDs(grid,region,option)
+          case(POLYHEDRA_UNSTRUCTURED_GRID)
+            call GridLocalizeRegionsFromCellIDs(grid,region,option)
         end select
       case (DEFINED_BY_CELL_AND_FACE_IDS)
         select case(grid%itype)
           case (STRUCTURED_GRID)
             call GridLocalizeRegionsFromCellIDs(grid,region,option)
+          case (POLYHEDRA_UNSTRUCTURED_GRID)
+            if (grid%unstructured_grid%polyhedra_grid%representation /= &
+                POLYHEDRA_REPR_XDMF_HDF5) then
+              option%io_buffer = 'Regions defined by cell and face ids &
+                &require an UNSTRUCTURED_POLYHEDRA mesh read from HDF5 &
+                &(REGION "' // trim(region%name) // '").'
+              call PrintErrMsg(option)
+            endif
+            call UGridPolyhedraLocalizeCellFaces(grid%unstructured_grid, &
+                                                 region%name, &
+                                                 region%num_cells, &
+                                                 region%cell_ids, &
+                                                 region%faces,option)
           case default
             option%io_buffer = 'GridLocalizeRegions() must be extended ' // &
             'for unstructured region DEFINED_BY_CELL_AND_FACE_IDS'
