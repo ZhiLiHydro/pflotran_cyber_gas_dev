@@ -23,6 +23,11 @@ Each file also holds a boundary region /Regions/top defined by
 face indices): the faces whose vertices all lie on the top of the domain.
 Cell-local faces are numbered in template order for codes 6-9 (TEMPLATES
 below, matching UCellGetFaceVertices) and in record order for code 16.
+The same faces are also written as the face set /Regions/top_vertices:
+"FaceVertexIDs" (1-based node ids, faces concatenated) and "FaceOffsets"
+(1-based, Nf + 1 entries), with SchemaVersion, NodeIndexBase, and
+OffsetIndexBase attributes. Winding and starting node are not significant;
+every other face is written reversed and rotated to exercise that.
 
 Files written (all describe outward-wound, closed cells):
 
@@ -174,6 +179,21 @@ def write_mesh(filename, vertices, records):
         top = h5.create_group('Regions').create_group('top')
         top.create_dataset('Cell Ids', data=np.asarray(cell_ids, 'i8'))
         top.create_dataset('Face Ids', data=np.asarray(face_ids, 'i8'))
+        ids = []
+        offsets = [1]
+        for n, (icell, iface) in enumerate(zip(cell_ids, face_ids)):
+            face = record_faces(records[icell - 1])[iface - 1]
+            if n % 2 == 1:
+                face = list(reversed(face))
+                face = face[1:] + face[:1]
+            ids.extend(face)
+            offsets.append(offsets[-1] + len(face))
+        fset = h5['Regions'].create_group('top_vertices')
+        fset.create_dataset('FaceVertexIDs', data=np.asarray(ids, 'i8'))
+        fset.create_dataset('FaceOffsets', data=np.asarray(offsets, 'i8'))
+        fset.attrs['SchemaVersion'] = np.int64(1)
+        fset.attrs['NodeIndexBase'] = np.int64(1)
+        fset.attrs['OffsetIndexBase'] = np.int64(1)
     print('Wrote {}: {} cells, {} vertices, {} connectivity integers, '
           '{} top faces'.format(filename, len(records), len(vertices),
                                 len(conn), len(cell_ids)))

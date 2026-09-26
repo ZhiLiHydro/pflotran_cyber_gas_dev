@@ -626,7 +626,7 @@ subroutine GridLocalizeRegions(grid,region_list,option)
   use Region_module
   use Geometry_module
   use Grid_Unstructured_Poly_HDF5_module, only : &
-    UGridPolyhedraLocalizeCellFaces
+    UGridPolyhedraLocalizeCellFaces, UGridPolyhedraLocalizeFaceSet
 
   implicit none
 
@@ -691,6 +691,25 @@ subroutine GridLocalizeRegions(grid,region_list,option)
         option%io_buffer = 'GridLocalizeRegions() must be extended ' // &
           'for unstructured region DEFINED_BY_VERTEX_IDS'
         call PrintErrMsg(option)
+      case (DEFINED_BY_FACE_VERTICES_POLY)
+        if (grid%itype /= POLYHEDRA_UNSTRUCTURED_GRID) then
+          option%io_buffer = 'Regions defined by FaceVertexIDs/FaceOffsets &
+            &are only supported for UNSTRUCTURED_POLYHEDRA meshes read from &
+            &HDF5 (REGION "' // trim(region%name) // '").'
+          call PrintErrMsg(option)
+        endif
+        if (grid%unstructured_grid%polyhedra_grid%representation /= &
+            POLYHEDRA_REPR_XDMF_HDF5) then
+          option%io_buffer = 'Regions defined by FaceVertexIDs/FaceOffsets &
+            &require an UNSTRUCTURED_POLYHEDRA mesh read from HDF5 &
+            &(REGION "' // trim(region%name) // '").'
+          call PrintErrMsg(option)
+        endif
+        call UGridPolyhedraLocalizeFaceSet(grid%unstructured_grid, &
+                                           region%name,region%filename, &
+                                           region%num_cells, &
+                                           region%cell_ids, &
+                                           region%faces,option)
       case (DEFINED_BY_SIDESET_UGRID)
         if (grid%itype /= IMPLICIT_UNSTRUCTURED_GRID) then
           option%io_buffer = 'Regions defined through sidesets are &

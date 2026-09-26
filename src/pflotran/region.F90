@@ -22,6 +22,8 @@ module Region_module
   PetscInt, parameter, public :: DEFINED_BY_POLY_CELL_CENTER = 9
   PetscInt, parameter, public :: DEFINED_BY_CARTESIAN_BOUNDARY = 10
   PetscInt, parameter, public :: DEFINED_BY_PLANAR_PATCH = 11
+  ! polyhedra face set given by variable-length face vertex lists
+  PetscInt, parameter, public :: DEFINED_BY_FACE_VERTICES_POLY = 12
   PetscInt, parameter, public :: PLANAR_PATCH_ELLIPSE = 1
   PetscInt, parameter, public :: PLANAR_PATCH_RECTANGLE = 2
 
@@ -1565,6 +1567,10 @@ subroutine RegionInputRecord(region_list)
       case (DEFINED_BY_CELL_AND_FACE_IDS)
         write(id,'(a29)',advance='no') 'defined by: '
         write(id,'(a)') 'CELL AND FACE IDS'
+    !--------------------------------
+      case (DEFINED_BY_FACE_VERTICES_POLY)
+        write(id,'(a29)',advance='no') 'defined by: '
+        write(id,'(a)') 'FACE VERTEX IDS (POLYHEDRA)'
     !--------------------------------
       case (DEFINED_BY_CELL_IDS)
         write(id,'(a29)',advance='no') 'defined by: '

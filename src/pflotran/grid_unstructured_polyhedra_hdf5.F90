@@ -57,7 +57,8 @@ module Grid_Unstructured_Poly_HDF5_module
             UGridPolyhedraDecomposeDistributed, &
             UGridPolyhedraWriteXDMFMesh, &
             UGridPolyhedraXDMFStreamLength, &
-            UGridPolyhedraLocalizeCellFaces
+            UGridPolyhedraLocalizeCellFaces, &
+            UGridPolyhedraLocalizeFaceSet
 
 contains
 
@@ -131,9 +132,12 @@ subroutine UGridPolyhedraReadHDF5(ugrid,filename,option)
     call PrintErrMsg(option)
   endif
   call h5gopen_f(file_id,'Domain/CellsPolyhedra',grp_id,hdf5_err)
-  call PolyH5CheckIntAttribute(grp_id,'SchemaVersion',1_8,filename,option)
-  call PolyH5CheckIntAttribute(grp_id,'NodeIndexBase',1_8,filename,option)
-  call PolyH5CheckIntAttribute(grp_id,'OffsetIndexBase',1_8,filename,option)
+  call PolyH5CheckIntAttribute(grp_id,'Domain/CellsPolyhedra', &
+                               'SchemaVersion',1_8,filename,option)
+  call PolyH5CheckIntAttribute(grp_id,'Domain/CellsPolyhedra', &
+                               'NodeIndexBase',1_8,filename,option)
+  call PolyH5CheckIntAttribute(grp_id,'Domain/CellsPolyhedra', &
+                               'OffsetIndexBase',1_8,filename,option)
   call PolyH5ReadStringAttribute(grp_id,'CellTypeConvention',string,found)
   if (.not.found .or. trim(string) /= 'XDMF') then
     option%io_buffer = 'Attribute /Domain/CellsPolyhedra/&
@@ -1052,6 +1056,435 @@ subroutine UGridPolyhedraLocalizeCellFaces(ugrid,region_name,num_entries, &
   endif
 
 end subroutine UGridPolyhedraLocalizeCellFaces
+
+! ************************************************************************** !
+
+subroutine UGridPolyhedraLocalizeFaceSet(ugrid,region_name,filename, &
+                                         num_entries,cell_ids,face_ids, &
+                                         option)
+  !
+  ! Reads and localizes a face set given by variable-length vertex lists:
+  !
+  !   /Regions/<name>/FaceVertexIDs  int64 [M]      1-based node ids,
+  !                                                 faces concatenated
+  !   /Regions/<name>/FaceOffsets    int64 [Nf + 1] 1-based; starts at 1,
+  !                                                 ends at M + 1
+  !
+  ! with attributes SchemaVersion = 1, NodeIndexBase = 1, and
+  ! OffsetIndexBase = 1 on /Regions/<name>. Each face lists its complete
+  ! vertex set; winding and starting vertex are not significant.
+  !
+  ! Faces are read in contiguous blocks with offsets-driven hyperslabs, as
+  ! for the cells. Each face-set face and each face of every owned cell is
+  ! routed to a directory rank chosen by hashing its sorted node ids; the
+  ! directory matches full keys. Every face-set face must match exactly one
+  ! domain-boundary face; unmatched faces, interior faces, and faces listed
+  ! more than once are errors reported with their 1-based face-set index.
+  ! On output, cell_ids/face_ids hold the local cell ids and cell-local
+  ! face indices of this rank's matched faces.
+  !
+  use Option_module
+  use String_module
+  use HDF5_Aux_module
+  use Utility_module, only : DeallocateArray
+
+  implicit none
+
+  type(grid_unstructured_type) :: ugrid
+  character(len=*) :: region_name
+  character(len=MAXSTRINGLENGTH) :: filename
+  PetscInt :: num_entries
+  PetscInt, pointer :: cell_ids(:)
+  PetscInt, pointer :: face_ids(:)
+  type(option_type) :: option
+
+  type(unstructured_polyhedra_type), pointer :: pgrid
+  character(len=MAXSTRINGLENGTH) :: group_path
+  integer(HID_T) :: file_id, grp_id, dset_offsets, dset_ids, xfer_id
+  integer(HSIZE_T) :: dims(2)
+  integer :: hdf5_err
+  PetscInt64 :: nface_global, length_global, first_face, nface_local
+  PetscInt64 :: ids_start, ids_count
+  PetscInt64, allocatable, target :: offsets8(:), ids8(:)
+  PetscInt :: nranks, myrank, nerr, i, j, k, nv, pos, dest, local_id, occ
+  PetscInt :: nset, nocc_msg, ntotal, gbeg, gend, nmatch, isrc, nreply
+  PetscInt :: set_index, count
+  PetscInt, allocatable :: face_offset(:), face_nodes(:), key(:)
+  PetscInt, allocatable :: send_buf(:), send_count(:), cursor(:)
+  PetscInt, allocatable :: set_buf(:), set_count(:), occ_buf(:), occ_count(:)
+  PetscInt, allocatable :: key_offset(:), keys(:), perm(:), kind(:)
+  PetscInt, allocatable :: msg_pos(:), msg_src(:)
+  PetscInt, allocatable :: reply_dest(:), reply_local(:), reply_face(:)
+  PetscInt, allocatable :: recv_buf(:), recv_count(:)
+  PetscErrorCode :: ierr
+
+  pgrid => ugrid%polyhedra_grid
+  nranks = option%comm%size
+  myrank = option%comm%rank
+  group_path = 'Regions/' // trim(region_name)
+
+  option%io_buffer = 'Reading polyhedra face set "' // trim(region_name) // &
+    '" from "' // trim(filename) // '".'
+  call PrintMsg(option)
+
+  ! ---- read this rank's block of faces ------------------------------------
+  call HDF5FileOpenReadOnly(filename,file_id,PETSC_TRUE,'',option)
+  call h5gopen_f(file_id,trim(group_path),grp_id,hdf5_err)
+  call PolyH5CheckIntAttribute(grp_id,group_path,'SchemaVersion',1_8, &
+                               filename,option)
+  call PolyH5CheckIntAttribute(grp_id,group_path,'NodeIndexBase',1_8, &
+                               filename,option)
+  call PolyH5CheckIntAttribute(grp_id,group_path,'OffsetIndexBase',1_8, &
+                               filename,option)
+  call h5gclose_f(grp_id,hdf5_err)
+  call PolyH5OpenDataset(file_id,trim(group_path)//'/FaceOffsets',1, &
+                         H5T_INTEGER_F,8,filename,dset_offsets,dims,option)
+  nface_global = int(dims(1),kind=8) - 1
+  call PolyH5OpenDataset(file_id,trim(group_path)//'/FaceVertexIDs',1, &
+                         H5T_INTEGER_F,8,filename,dset_ids,dims,option)
+  length_global = int(dims(1),kind=8)
+  if (nface_global < 1 .or. length_global < 1) then
+    option%io_buffer = 'Face set /' // trim(group_path) // ' in "' // &
+      trim(filename) // '" contains no faces.'
+    call PrintErrMsg(option)
+  endif
+  if (nface_global > MAX_PETSC_INT) then
+    option%io_buffer = 'The number of faces in /' // trim(group_path) // &
+      ' exceeds the PETSc integer range.'
+    call PrintErrMsg(option)
+  endif
+
+  call h5pcreate_f(H5P_DATASET_XFER_F,xfer_id,hdf5_err)
+#ifndef SERIAL_HDF5
+  call h5pset_dxpl_mpio_f(xfer_id,H5FD_MPIO_COLLECTIVE_F,hdf5_err)
+#endif
+  call PolyBlockRange(nface_global,nranks,myrank,first_face,nface_local)
+  allocate(offsets8(nface_local+1))
+  offsets8 = 0
+  if (nface_local > 0) then
+    call PolyH5ReadInt64(dset_offsets,first_face-1,nface_local+1,offsets8, &
+                         xfer_id,hdf5_err)
+  else
+    call PolyH5ReadInt64(dset_offsets,0_8,0_8,offsets8,xfer_id,hdf5_err)
+  endif
+  call PolyCheckHDF5Error(hdf5_err,'FaceOffsets',filename,option)
+  nerr = 0
+  if (nface_local > 0) then
+    if (first_face == 1 .and. offsets8(1) /= 1) nerr = nerr + 1
+    if (first_face + nface_local - 1 == nface_global .and. &
+        offsets8(nface_local+1) /= length_global + 1) nerr = nerr + 1
+    do i = 1, int(nface_local)
+      if (offsets8(i) < 1 .or. offsets8(i+1) > length_global + 1 .or. &
+          offsets8(i+1) - offsets8(i) < XDMF_POLYGON_MIN_NODES) then
+        nerr = nerr + 1
+        if (nerr <= MAX_ERRORS_PRINTED) then
+          option%io_buffer = 'Face set "' // trim(region_name) // &
+            '": offsets of face ' // trim(PolyIntString(first_face+i-1)) // &
+            ' do not describe at least 3 nodes within [1,M+1].'
+          call PrintMsgByRank(option)
+        endif
+      endif
+    enddo
+  endif
+  call PolyCheckErrors(nerr,'Invalid FaceOffsets in face set "' // &
+                       trim(region_name) // '" (must start at 1, end at &
+                       &M + 1, and give at least 3 nodes per face).',option)
+
+  ids_start = 0
+  ids_count = 0
+  if (nface_local > 0) then
+    ids_start = offsets8(1) - 1
+    ids_count = offsets8(nface_local+1) - offsets8(1)
+  endif
+  allocate(ids8(max(ids_count,1_8)))
+  call PolyH5ReadInt64(dset_ids,ids_start,ids_count,ids8,xfer_id,hdf5_err)
+  call PolyCheckHDF5Error(hdf5_err,'FaceVertexIDs',filename,option)
+  call h5pclose_f(xfer_id,hdf5_err)
+  call HDF5DatasetClose(dset_offsets,option)
+  call HDF5DatasetClose(dset_ids,option)
+  call HDF5FileClose(file_id,option)
+
+  ! narrow and validate: node ids in [1,Nv], no node repeated in a face
+  nset = int(nface_local)
+  allocate(face_offset(nset+1))
+  allocate(face_nodes(max(ids_count,1_8)))
+  nerr = 0
+  do i = 1, nset + 1
+    face_offset(i) = int(offsets8(i) - offsets8(1)) + 1
+  enddo
+  if (nset == 0) face_offset(1) = 1
+  do i = 1, nset
+    do j = face_offset(i), face_offset(i+1)-1
+      if (ids8(j) < 1 .or. ids8(j) > pgrid%num_vertices_global) then
+        nerr = nerr + 1
+        if (nerr <= MAX_ERRORS_PRINTED) then
+          option%io_buffer = 'Face set "' // trim(region_name) // &
+            '": face ' // trim(PolyIntString(first_face+i-1)) // &
+            ' has a node id outside [1,number of vertices].'
+          call PrintMsgByRank(option)
+        endif
+        face_nodes(j) = 0
+      else
+        face_nodes(j) = int(ids8(j))
+      endif
+      do k = face_offset(i), j-1
+        if (ids8(k) == ids8(j)) then
+          nerr = nerr + 1
+          if (nerr <= MAX_ERRORS_PRINTED) then
+            option%io_buffer = 'Face set "' // trim(region_name) // &
+              '": face ' // trim(PolyIntString(first_face+i-1)) // &
+              ' repeats a node.'
+            call PrintMsgByRank(option)
+          endif
+        endif
+      enddo
+    enddo
+  enddo
+  deallocate(offsets8,ids8)
+  call PolyCheckErrors(nerr,'Invalid FaceVertexIDs in face set "' // &
+                       trim(region_name) // '".',option)
+
+  ! ---- route face-set faces: nv, sorted nodes, face-set index -------------
+  allocate(send_count(nranks))
+  allocate(cursor(nranks))
+  send_count = 0
+  do i = 1, nset
+    nv = face_offset(i+1) - face_offset(i)
+    allocate(key(nv))
+    key = face_nodes(face_offset(i):face_offset(i+1)-1)
+    call PolySortInt(nv,key,ierr)
+    dest = PolyKeyOwner(key,nranks) + 1
+    send_count(dest) = send_count(dest) + nv + 2
+    deallocate(key)
+  enddo
+  allocate(send_buf(max(sum(send_count),1)))
+  cursor(1) = 0
+  do i = 2, nranks
+    cursor(i) = cursor(i-1) + send_count(i-1)
+  enddo
+  do i = 1, nset
+    nv = face_offset(i+1) - face_offset(i)
+    allocate(key(nv))
+    key = face_nodes(face_offset(i):face_offset(i+1)-1)
+    call PolySortInt(nv,key,ierr)
+    dest = PolyKeyOwner(key,nranks) + 1
+    pos = cursor(dest)
+    send_buf(pos+1) = nv
+    send_buf(pos+2:pos+1+nv) = key
+    send_buf(pos+2+nv) = int(first_face) + i - 1
+    cursor(dest) = pos + nv + 2
+    deallocate(key)
+  enddo
+  deallocate(face_offset,face_nodes)
+  call PolyExchangeInt(send_buf,send_count,set_buf,set_count, &
+                       'face set faces',option,PETSC_FALSE)
+  deallocate(send_buf)
+
+  ! ---- route faces of owned cells: nv, sorted natural nodes, boundary
+  !      flag, local id, cell-local face ------------------------------------
+  send_count = 0
+  do local_id = 1, ugrid%nlmax
+    do occ = pgrid%cell_face_offset(local_id), &
+             pgrid%cell_face_offset(local_id+1)-1
+      nv = pgrid%face_vert_offset(occ+1) - pgrid%face_vert_offset(occ)
+      allocate(key(nv))
+      key = ugrid%vertex_ids_natural(pgrid%face_vert_ids( &
+              pgrid%face_vert_offset(occ):pgrid%face_vert_offset(occ+1)-1))
+      call PolySortInt(nv,key,ierr)
+      dest = PolyKeyOwner(key,nranks) + 1
+      send_count(dest) = send_count(dest) + nv + 4
+      deallocate(key)
+    enddo
+  enddo
+  allocate(send_buf(max(sum(send_count),1)))
+  cursor(1) = 0
+  do i = 2, nranks
+    cursor(i) = cursor(i-1) + send_count(i-1)
+  enddo
+  do local_id = 1, ugrid%nlmax
+    do occ = pgrid%cell_face_offset(local_id), &
+             pgrid%cell_face_offset(local_id+1)-1
+      nv = pgrid%face_vert_offset(occ+1) - pgrid%face_vert_offset(occ)
+      allocate(key(nv))
+      key = ugrid%vertex_ids_natural(pgrid%face_vert_ids( &
+              pgrid%face_vert_offset(occ):pgrid%face_vert_offset(occ+1)-1))
+      call PolySortInt(nv,key,ierr)
+      dest = PolyKeyOwner(key,nranks) + 1
+      pos = cursor(dest)
+      send_buf(pos+1) = nv
+      send_buf(pos+2:pos+1+nv) = key
+      send_buf(pos+2+nv) = merge(1,0,pgrid%face_nbr_ghosted(occ) == 0)
+      send_buf(pos+3+nv) = local_id
+      send_buf(pos+4+nv) = occ - pgrid%cell_face_offset(local_id) + 1
+      cursor(dest) = pos + nv + 4
+      deallocate(key)
+    enddo
+  enddo
+  call PolyExchangeInt(send_buf,send_count,occ_buf,occ_count, &
+                       'face set cell faces',option,PETSC_FALSE)
+  deallocate(send_buf)
+
+  ! ---- directory: sort both kinds of messages by full key -----------------
+  nset = 0
+  pos = 0
+  do while (pos < sum(set_count))
+    nset = nset + 1
+    pos = pos + set_buf(pos+1) + 2
+  enddo
+  nocc_msg = 0
+  pos = 0
+  do while (pos < sum(occ_count))
+    nocc_msg = nocc_msg + 1
+    pos = pos + occ_buf(pos+1) + 4
+  enddo
+  ntotal = nset + nocc_msg
+  allocate(key_offset(ntotal+1))
+  allocate(keys(max(sum(set_count)+sum(occ_count),1)))
+  allocate(kind(max(ntotal,1)))
+  allocate(msg_pos(max(ntotal,1)))
+  allocate(msg_src(max(ntotal,1)))
+  key_offset(1) = 1
+  pos = 0
+  do i = 1, nset
+    nv = set_buf(pos+1)
+    keys(key_offset(i):key_offset(i)+nv-1) = set_buf(pos+2:pos+1+nv)
+    key_offset(i+1) = key_offset(i) + nv
+    kind(i) = 1
+    msg_pos(i) = pos
+    msg_src(i) = 0
+    pos = pos + nv + 2
+  enddo
+  pos = 0
+  isrc = 1
+  do i = nset+1, ntotal
+    do while (isrc < nranks .and. pos >= sum(occ_count(1:isrc)))
+      isrc = isrc + 1
+    enddo
+    nv = occ_buf(pos+1)
+    keys(key_offset(i):key_offset(i)+nv-1) = occ_buf(pos+2:pos+1+nv)
+    key_offset(i+1) = key_offset(i) + nv
+    kind(i) = 2
+    msg_pos(i) = pos
+    msg_src(i) = isrc
+    pos = pos + nv + 4
+  enddo
+  allocate(perm(max(ntotal,1)))
+  call XDMFSortKeys(ntotal,key_offset,keys,perm)
+
+  allocate(reply_dest(max(nset,1)))
+  allocate(reply_local(max(nset,1)))
+  allocate(reply_face(max(nset,1)))
+  nreply = 0
+  nerr = 0
+  gbeg = 1
+  do while (gbeg <= ntotal)
+    gend = gbeg
+    do while (gend < ntotal)
+      if (XDMFCompareKeys( &
+            keys(key_offset(perm(gbeg)):key_offset(perm(gbeg)+1)-1), &
+            keys(key_offset(perm(gend+1)):key_offset(perm(gend+1)+1)-1)) &
+          /= 0) exit
+      gend = gend + 1
+    enddo
+    count = 0
+    nmatch = 0
+    set_index = 0
+    j = 0
+    do k = gbeg, gend
+      i = perm(k)
+      if (kind(i) == 1) then
+        count = count + 1
+        if (count == 1) then
+          set_index = set_buf(msg_pos(i)+set_buf(msg_pos(i)+1)+2)
+        else
+          nerr = nerr + 1
+          if (nerr <= MAX_ERRORS_PRINTED) then
+            option%io_buffer = 'Face set "' // trim(region_name) // &
+              '": face ' // trim(StringWrite(set_buf(msg_pos(i)+ &
+              set_buf(msg_pos(i)+1)+2))) // ' repeats face ' // &
+              trim(StringWrite(set_index)) // '.'
+            call PrintMsgByRank(option)
+          endif
+        endif
+      else
+        nmatch = nmatch + 1
+        j = i
+      endif
+    enddo
+    if (count > 0) then
+      if (nmatch == 0) then
+        nerr = nerr + 1
+        if (nerr <= MAX_ERRORS_PRINTED) then
+          option%io_buffer = 'Face set "' // trim(region_name) // &
+            '": face ' // trim(StringWrite(set_index)) // ' does not &
+            &match any face of the mesh.'
+          call PrintMsgByRank(option)
+        endif
+      else if (nmatch > 1 .or. occ_buf(msg_pos(j)+occ_buf(msg_pos(j)+1)+2) &
+               == 0) then
+        nerr = nerr + 1
+        if (nerr <= MAX_ERRORS_PRINTED) then
+          option%io_buffer = 'Face set "' // trim(region_name) // &
+            '": face ' // trim(StringWrite(set_index)) // ' is an &
+            &interior face, not a domain boundary face.'
+          call PrintMsgByRank(option)
+        endif
+      else if (count == 1) then
+        nreply = nreply + 1
+        nv = occ_buf(msg_pos(j)+1)
+        reply_dest(nreply) = msg_src(j)
+        reply_local(nreply) = occ_buf(msg_pos(j)+nv+3)
+        reply_face(nreply) = occ_buf(msg_pos(j)+nv+4)
+      endif
+    endif
+    gbeg = gend + 1
+  enddo
+  deallocate(set_buf,set_count,occ_buf,occ_count)
+  deallocate(key_offset,keys,kind,msg_pos,msg_src,perm)
+  call PolyCheckErrors(nerr,'Invalid faces in face set "' // &
+                       trim(region_name) // '".',option)
+
+  ! ---- return matched (local id, face) pairs to the cell owners ----------
+  send_count = 0
+  do i = 1, nreply
+    send_count(reply_dest(i)) = send_count(reply_dest(i)) + 2
+  enddo
+  allocate(send_buf(max(sum(send_count),1)))
+  cursor(1) = 0
+  do i = 2, nranks
+    cursor(i) = cursor(i-1) + send_count(i-1)
+  enddo
+  do i = 1, nreply
+    dest = reply_dest(i)
+    send_buf(cursor(dest)+1) = reply_local(i)
+    send_buf(cursor(dest)+2) = reply_face(i)
+    cursor(dest) = cursor(dest) + 2
+  enddo
+  deallocate(reply_dest,reply_local,reply_face)
+  call PolyExchangeInt(send_buf,send_count,recv_buf,recv_count, &
+                       'face set replies',option,PETSC_FALSE)
+  deallocate(send_buf,send_count,cursor)
+
+  call DeallocateArray(cell_ids)
+  call DeallocateArray(face_ids)
+  num_entries = sum(recv_count)/2
+  if (num_entries > 0) then
+    allocate(cell_ids(num_entries))
+    allocate(face_ids(num_entries))
+    do i = 1, num_entries
+      cell_ids(i) = recv_buf(2*i-1)
+      face_ids(i) = recv_buf(2*i)
+    enddo
+  endif
+  deallocate(recv_buf,recv_count)
+
+  call MPI_Allreduce(num_entries,count,ONE_INTEGER_MPI,MPIU_INTEGER, &
+                     MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
+  option%io_buffer = '  ' // trim(StringWrite(count)) // &
+    ' boundary faces matched.'
+  call PrintMsg(option)
+
+end subroutine UGridPolyhedraLocalizeFaceSet
 
 ! ************************************************************************** !
 
@@ -2651,7 +3084,8 @@ end subroutine PolyCheckHDF5Error
 
 ! ************************************************************************** !
 
-subroutine PolyH5CheckIntAttribute(loc_id,name,expected,filename,option)
+subroutine PolyH5CheckIntAttribute(loc_id,object_path,name,expected, &
+                                   filename,option)
   !
   ! Requires a scalar integer attribute with the expected value.
   !
@@ -2661,6 +3095,7 @@ subroutine PolyH5CheckIntAttribute(loc_id,name,expected,filename,option)
   implicit none
 
   integer(HID_T), intent(in) :: loc_id
+  character(len=*), intent(in) :: object_path
   character(len=*), intent(in) :: name
   PetscInt64, intent(in) :: expected
   character(len=*), intent(in) :: filename
@@ -2694,8 +3129,8 @@ subroutine PolyH5CheckIntAttribute(loc_id,name,expected,filename,option)
     call h5aclose_f(attr_id,hdf5_err)
   endif
   if (.not.valid) then
-    option%io_buffer = 'Attribute /Domain/CellsPolyhedra/' // trim(name) // &
-      ' must be the integer ' // trim(PolyIntString(expected)) // ' in "' // &
+    option%io_buffer = 'Attribute /' // trim(object_path) // '/' // &
+      trim(name) // ' must be the integer ' // trim(PolyIntString(expected)) // ' in "' // &
       trim(filename) // '"'
     if (exists .and. value(1) /= -huge(value(1))) then
       option%io_buffer = trim(option%io_buffer) // ' (found ' // &

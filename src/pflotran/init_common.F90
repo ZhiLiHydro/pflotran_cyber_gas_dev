@@ -149,6 +149,7 @@ subroutine InitCommonReadRegionFiles(patch,region_list,option)
   use Realization_Subsurface_class
   use Region_module
   use HDF5_module
+  use HDF5_Aux_module, only : HDF5DatasetExists
   use Option_module
   use Patch_module
 
@@ -162,12 +163,24 @@ subroutine InitCommonReadRegionFiles(patch,region_list,option)
   PetscBool :: cell_ids_exists
   PetscBool :: face_ids_exists
   PetscBool :: vert_ids_exists
+  character(len=MAXWORDLENGTH) :: group_name
+  character(len=MAXWORDLENGTH) :: dataset_name
 
   region => region_list%first
   do
     if (.not.associated(region)) exit
     if (len_trim(region%filename) > 1) then
+      group_name = 'Regions/' // trim(region%name)
+      dataset_name = 'FaceVertexIDs'
       if (index(region%filename,'.h5') > 0) then
+        if (HDF5DatasetExists(region%filename,group_name,dataset_name, &
+                              option)) then
+          ! variable-length face vertex lists (polyhedra face set); read
+          ! and matched in parallel when the region is localized
+          region%def_type = DEFINED_BY_FACE_VERTICES_POLY
+          region => region%next
+          cycle
+        endif
         call HDF5QueryRegionDefinition(region, region%filename, &
                                        option, cell_ids_exists, &
                                        face_ids_exists, vert_ids_exists)
