@@ -934,7 +934,7 @@ subroutine OutputGetFaceVelUGrid(realization_base)
   PetscInt :: dof
   PetscInt :: sum_connection
   PetscInt :: offset
-  PetscInt :: cell_type
+  PetscInt :: nface_out
   PetscInt :: i
   PetscInt :: idx
 
@@ -960,12 +960,13 @@ subroutine OutputGetFaceVelUGrid(realization_base)
   output_option =>realization_base%output_option
   option => realization_base%option
   field => realization_base%field
+  nface_out = GridOutputFacesPerCell(grid)
 
   ! Create UGDM for
   PetscObjectNullify(dm_ptr%dm)
   nullify(dm_ptr%ugdm)
   call UGridCreateUGDM(grid%unstructured_grid,dm_ptr, &
-                       (option%nflowspec*MAX_FACE_PER_CELL + 1),option)
+                       (option%nflowspec*nface_out + 1),option)
   ugdm => dm_ptr%ugdm
 
   ! Create vectors in natural order for velocity in x/y/z direction
@@ -976,9 +977,9 @@ subroutine OutputGetFaceVelUGrid(realization_base)
   call UGridDMCreateVector(grid%unstructured_grid,dm_ptr,natural_vz_vec, &
                            NATURAL,option)
 
-  allocate(vx(option%nflowspec,MAX_FACE_PER_CELL,ugrid%nlmax))
-  allocate(vy(option%nflowspec,MAX_FACE_PER_CELL,ugrid%nlmax))
-  allocate(vz(option%nflowspec,MAX_FACE_PER_CELL,ugrid%nlmax))
+  allocate(vx(option%nflowspec,nface_out,ugrid%nlmax))
+  allocate(vy(option%nflowspec,nface_out,ugrid%nlmax))
+  allocate(vz(option%nflowspec,nface_out,ugrid%nlmax))
 
   vx = 0.d0
   vy = 0.d0
@@ -992,16 +993,15 @@ subroutine OutputGetFaceVelUGrid(realization_base)
   vy_ptr = 0.d0
   vz_ptr = 0.d0
 
-  offset = 1 + option%nflowspec*MAX_FACE_PER_CELL
+  offset = 1 + option%nflowspec*nface_out
 
   ! Save the number of faces of all cell
   do local_id = 1,grid%nlmax
     ghosted_id = grid%nL2G(local_id)
-    cell_type = ugrid%cell_type(ghosted_id)
 
-    vx_ptr((local_id-1)*offset+1) = UCellGetNFaces(cell_type,option)
-    vy_ptr((local_id-1)*offset+1) = UCellGetNFaces(cell_type,option)
-    vz_ptr((local_id-1)*offset+1) = UCellGetNFaces(cell_type,option)
+    vx_ptr((local_id-1)*offset+1) = GridCellNumFaces(grid,ghosted_id,option)
+    vy_ptr((local_id-1)*offset+1) = GridCellNumFaces(grid,ghosted_id,option)
+    vz_ptr((local_id-1)*offset+1) = GridCellNumFaces(grid,ghosted_id,option)
   enddo
 
   ! Interior Flowrates Terms -----------------------------------
@@ -1021,16 +1021,12 @@ subroutine OutputGetFaceVelUGrid(realization_base)
 
       iface_up=-1
       if (local_id_up>0) then
-        do iface_up = 1,MAX_FACE_PER_CELL
-          if (face_id==ugrid%cell_to_face_ghosted(iface_up,ghosted_id_up)) exit
-        enddo
+        iface_up = OutputUGridCellFaceIndex(ugrid,face_id,ghosted_id_up)
       endif
 
       iface_dn=-1
       if (local_id_dn>0) then
-        do iface_dn = 1,MAX_FACE_PER_CELL
-          if (face_id==ugrid%cell_to_face_ghosted(iface_dn,ghosted_id_dn)) exit
-        enddo
+        iface_dn = OutputUGridCellFaceIndex(ugrid,face_id,ghosted_id_dn)
       endif
 
       do dof=1,option%nflowspec
@@ -1044,7 +1040,7 @@ subroutine OutputGetFaceVelUGrid(realization_base)
           vy(dof,iface_up,local_id_up) = vel_vector(2)
           vz(dof,iface_up,local_id_up) = vel_vector(3)
 
-          idx = (local_id_up-1)*offset + (dof-1)*MAX_FACE_PER_CELL + iface_up + 1
+          idx = (local_id_up-1)*offset + (dof-1)*nface_out + iface_up + 1
 
           vx_ptr(idx) = vel_vector(1)
           vy_ptr(idx) = vel_vector(2)
@@ -1055,7 +1051,7 @@ subroutine OutputGetFaceVelUGrid(realization_base)
 
           ! Save velocity for iface_dn of local_id_dn cell using -ve flowrate up-->dn
 
-          idx = (local_id_dn-1)*offset + (dof-1)*MAX_FACE_PER_CELL + iface_dn + 1
+          idx = (local_id_dn-1)*offset + (dof-1)*nface_out + iface_dn + 1
 
           vx(dof,iface_dn,local_id_dn) = vel_vector(1)
           vy(dof,iface_dn,local_id_dn) = vel_vector(2)
@@ -1090,9 +1086,8 @@ subroutine OutputGetFaceVelUGrid(realization_base)
       local_id_dn = cur_connection_set%id_dn(iconn)
       ghosted_id_dn = grid%nL2G(local_id_dn)
 
-      do iface_dn = 1,MAX_FACE_PER_CELL
-        if (face_id==ugrid%cell_to_face_ghosted(iface_dn,ghosted_id_dn)) exit
-      enddo
+      iface_dn = OutputUGridCellFaceIndex(ugrid,face_id,ghosted_id_dn)
+      if (iface_dn < 1) cycle
 
       do dof=1,option%nflowspec
 
@@ -1100,7 +1095,7 @@ subroutine OutputGetFaceVelUGrid(realization_base)
         vel_vector = cur_connection_set%dist(1:3,iconn)* &
                      patch%boundary_velocities(dof,sum_connection)
 
-        idx = (local_id_dn-1)*offset + (dof-1)*MAX_FACE_PER_CELL + iface_dn + 1
+        idx = (local_id_dn-1)*offset + (dof-1)*nface_out + iface_dn + 1
 
         vx(dof,iface_dn,local_id_dn) = vel_vector(1)
         vy(dof,iface_dn,local_id_dn) = vel_vector(2)
@@ -1235,7 +1230,7 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
   PetscInt :: dof
   PetscInt :: sum_connection
   PetscInt :: offset
-  PetscInt :: cell_type
+  PetscInt :: nface_out
   PetscInt :: idx
 
   PetscReal, pointer :: flowrates(:,:,:)
@@ -1253,30 +1248,30 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
   output_option =>realization_base%output_option
   option => realization_base%option
   field => realization_base%field
+  nface_out = GridOutputFacesPerCell(grid)
 
   ! Create UGDM for
   PetscObjectNullify(dm_ptr%dm)
   nullify(dm_ptr%ugdm)
   call UGridCreateUGDM(grid%unstructured_grid,dm_ptr, &
-                       (option%nflowdof*MAX_FACE_PER_CELL + 1),option)
+                       (option%nflowdof*nface_out + 1),option)
   ugdm => dm_ptr%ugdm
 
   ! Create a flowrate vector in natural order
   call UGridDMCreateVector(grid%unstructured_grid,dm_ptr, &
                            natural_flowrates_vec,NATURAL,option)
 
-  allocate(flowrates(option%nflowdof,MAX_FACE_PER_CELL,ugrid%nlmax))
+  allocate(flowrates(option%nflowdof,nface_out,ugrid%nlmax))
   flowrates = 0.d0
 
   call VecGetArray(field%flowrate_inst,vec_ptr,ierr);CHKERRQ(ierr)
   vec_ptr = 0.d0
 
-  offset = 1 + option%nflowdof*MAX_FACE_PER_CELL
+  offset = 1 + option%nflowdof*nface_out
   ! Save the number of faces of all cell
   do local_id = 1,grid%nlmax
     ghosted_id = grid%nL2G(local_id)
-    cell_type = ugrid%cell_type(ghosted_id)
-    vec_ptr((local_id-1)*offset+1) = UCellGetNFaces(cell_type,option)
+    vec_ptr((local_id-1)*offset+1) = GridCellNumFaces(grid,ghosted_id,option)
   enddo
 
   ! Interior Flowrates Terms -----------------------------------
@@ -1294,31 +1289,30 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
       local_id_up = grid%nG2L(ghosted_id_up)
       local_id_dn = grid%nG2L(ghosted_id_dn)
 
-      do iface_up = 1,MAX_FACE_PER_CELL
-        if (face_id==ugrid%cell_to_face_ghosted(iface_up,ghosted_id_up)) exit
-      enddo
+      iface_up = OutputUGridCellFaceIndex(ugrid,face_id,ghosted_id_up)
 
       iface_dn=-1
       if (local_id_dn>0) then
-        do iface_dn = 1,MAX_FACE_PER_CELL
-          if (face_id==ugrid%cell_to_face_ghosted(iface_dn,ghosted_id_dn)) exit
-        enddo
+        iface_dn = OutputUGridCellFaceIndex(ugrid,face_id,ghosted_id_dn)
       endif
 
       do dof=1,option%nflowdof
 
         ! Save flowrate for iface_up of local_id_up cell using flowrate up-->dn
-        flowrates(dof,iface_up,local_id_up) = &
-          patch%internal_flow_fluxes(dof,sum_connection)
+        if (iface_up > 0) then
+          flowrates(dof,iface_up,local_id_up) = &
+            patch%internal_flow_fluxes(dof,sum_connection)
 
-        idx = (local_id_up-1)*offset + (dof-1)*MAX_FACE_PER_CELL + iface_up + 1
-        vec_ptr(idx) = patch%internal_flow_fluxes(dof,sum_connection)
+          idx = (local_id_up-1)*offset + (dof-1)*nface_out + &
+                iface_up + 1
+          vec_ptr(idx) = patch%internal_flow_fluxes(dof,sum_connection)
+        endif
 
         if (iface_dn>0) then
           ! Save flowrate for iface_dn of local_id_dn cell using -ve flowrate up-->dn
           flowrates(dof,iface_dn,local_id_dn) = -patch%internal_flow_fluxes(dof,sum_connection)
 
-          idx = (local_id_dn-1)*offset + (dof-1)*MAX_FACE_PER_CELL + iface_dn + 1
+          idx = (local_id_dn-1)*offset + (dof-1)*nface_out + iface_dn + 1
           vec_ptr(idx) = -patch%internal_flow_fluxes(dof,sum_connection)
         endif
 
@@ -1342,14 +1336,13 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
       face_id = cur_connection_set%face_id(iconn)
       local_id_dn = cur_connection_set%id_dn(iconn)
       ghosted_id_dn = grid%nL2G(local_id_dn)
-      do iface_dn = 1,MAX_FACE_PER_CELL
-        if (face_id==ugrid%cell_to_face_ghosted(iface_dn,ghosted_id_dn)) exit
-      enddo
+      iface_dn = OutputUGridCellFaceIndex(ugrid,face_id,ghosted_id_dn)
+      if (iface_dn < 1) cycle
 
       do dof=1,option%nflowdof
 
         ! Save flowrate for iface_dn of local_id_dn cell using -ve flowrate up-->dn
-        idx = (local_id_dn-1)*offset + (dof-1)*MAX_FACE_PER_CELL + iface_dn + 1
+        idx = (local_id_dn-1)*offset + (dof-1)*nface_out + iface_dn + 1
         flowrates(dof,iface_dn,local_id_dn) = &
           -patch%boundary_flow_fluxes(dof,sum_connection)
         vec_ptr(idx) = &
@@ -1396,6 +1389,34 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
   call UGridDMDestroy(ugdm)
 
 end subroutine OutputGetFaceFlowrateUGrid
+
+! ************************************************************************** !
+
+function OutputUGridCellFaceIndex(ugrid,face_id,ghosted_id)
+  !
+  ! Cell-local index of the unique face face_id of a ghosted cell, or -1 if
+  ! the cell does not have that face.
+  !
+  use Grid_Unstructured_Aux_module
+
+  implicit none
+
+  type(grid_unstructured_type) :: ugrid
+  PetscInt :: face_id
+  PetscInt :: ghosted_id
+  PetscInt :: OutputUGridCellFaceIndex
+
+  PetscInt :: iface
+
+  OutputUGridCellFaceIndex = -1
+  do iface = 1, size(ugrid%cell_to_face_ghosted,1)
+    if (face_id == ugrid%cell_to_face_ghosted(iface,ghosted_id)) then
+      OutputUGridCellFaceIndex = iface
+      return
+    endif
+  enddo
+
+end function OutputUGridCellFaceIndex
 
 ! ************************************************************************** !
 

@@ -1933,6 +1933,9 @@ subroutine PolyBuildLocalGrid(ugrid,owned_buf,owned_pos,ghost_buf,ghost_pos, &
                                         pgrid%face_vert_offset(occ))
   enddo
   pgrid%max_nface_per_cell = max_nface
+  call MPI_Allreduce(max_nface,pgrid%max_nface_per_cell_global, &
+                     ONE_INTEGER_MPI,MPIU_INTEGER,MPI_MAX,option%mycomm, &
+                     ierr);CHKERRQ(ierr)
   pgrid%max_nvert_per_face = max_nvert_face
   pgrid%max_nvert_per_cell = max_nvert_cell
   ugrid%max_nvert_per_cell = max_nvert_cell

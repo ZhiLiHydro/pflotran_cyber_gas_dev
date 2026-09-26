@@ -2725,11 +2725,13 @@ subroutine OutputHDF5WriteFlowratesUGrid(realization_base,option,file_id, &
 
   PetscMPIInt :: hdf5_err
   PetscErrorCode :: ierr
+  PetscInt :: nface_out
 
   character(len=MAXSTRINGLENGTH) :: string
 
   patch => realization_base%patch
   grid => patch%grid
+  nface_out = GridOutputFacesPerCell(grid)
   ugrid => grid%unstructured_grid
   output_option =>realization_base%output_option
   field => realization_base%field
@@ -2747,12 +2749,12 @@ subroutine OutputHDF5WriteFlowratesUGrid(realization_base,option,file_id, &
   end select
 
   call VecGetLocalSize(field%flowrate_inst,local_size,ierr);CHKERRQ(ierr)
-  local_size = local_size/(option%nflowdof*MAX_FACE_PER_CELL + 1)
+  local_size = local_size/(option%nflowdof*nface_out + 1)
 
-  allocate(double_array(local_size*(MAX_FACE_PER_CELL+1)))
+  allocate(double_array(local_size*(nface_out+1)))
   double_array = 0.d0
 
-  offset = option%nflowdof*MAX_FACE_PER_CELL+1
+  offset = option%nflowdof*nface_out+1
 
   select case (var_list_type)
     case (INSTANTANEOUS_VARS)
@@ -2795,14 +2797,14 @@ subroutine OutputHDF5WriteFlowratesUGrid(realization_base,option,file_id, &
     ! memory space which is a 1D vector
     rank_mpi = 1
     dims = 0
-    dims(1) = local_size*(MAX_FACE_PER_CELL+1)
+    dims(1) = local_size*(nface_out+1)
     call h5screate_simple_f(rank_mpi,dims,memory_space_id,hdf5_err,dims)
 
     ! file space which is a 2D block
     rank_mpi = 2
     dims = 0
     dims(2) = ugrid%nmax
-    dims(1) = MAX_FACE_PER_CELL + 1
+    dims(1) = nface_out + 1
     call h5pcreate_f(H5P_DATASET_CREATE_F,prop_id,hdf5_err)
 
     call h5eset_auto_f(OFF,hdf5_err)
@@ -2828,7 +2830,7 @@ subroutine OutputHDF5WriteFlowratesUGrid(realization_base,option,file_id, &
     start(1) = 0
 
     length(2) = local_size
-    length(1) = MAX_FACE_PER_CELL + 1
+    length(1) = nface_out + 1
 
     stride = 1
     call h5sselect_hyperslab_f(file_space_id,H5S_SELECT_SET_F,start,length, &
@@ -2845,12 +2847,12 @@ subroutine OutputHDF5WriteFlowratesUGrid(realization_base,option,file_id, &
 
         do i=1,local_size
           ! Num. of faces for each cell (Note: Use vec_ptr1 not vec_ptr2)
-          double_array((i-1)*(MAX_FACE_PER_CELL+1)+1) = &
+          double_array((i-1)*(nface_out+1)+1) = &
             vec_ptr1((i-1)*offset+1)
           ! Flowrate values for each face
-          do iface = 1,MAX_FACE_PER_CELL
-            double_array((i-1)*(MAX_FACE_PER_CELL+1)+iface+1) = &
-            vec_ptr1((i-1)*offset + (dof-1)*MAX_FACE_PER_CELL + iface + 1)
+          do iface = 1,nface_out
+            double_array((i-1)*(nface_out+1)+iface+1) = &
+            vec_ptr1((i-1)*offset + (dof-1)*nface_out + iface + 1)
           enddo
         enddo
 
@@ -2858,12 +2860,12 @@ subroutine OutputHDF5WriteFlowratesUGrid(realization_base,option,file_id, &
 
         do i=1,local_size
           ! Num. of faces for each cell (Note: Use vec_ptr1 not vec_ptr2)
-          double_array((i-1)*(MAX_FACE_PER_CELL+1)+1) = &
+          double_array((i-1)*(nface_out+1)+1) = &
             vec_ptr1((i-1)*offset+1)
           ! Divide the flowrate values by integration 'time'
-          do iface = 1,MAX_FACE_PER_CELL
-            double_array((i-1)*(MAX_FACE_PER_CELL+1)+iface+1) = &
-            vec_ptr2((i-1)*offset + (dof-1)*MAX_FACE_PER_CELL + iface + 1)/ &
+          do iface = 1,nface_out
+            double_array((i-1)*(nface_out+1)+iface+1) = &
+            vec_ptr2((i-1)*offset + (dof-1)*nface_out + iface + 1)/ &
             output_option%periodic_snap_output_time_incr
           enddo
         enddo
@@ -2954,12 +2956,14 @@ subroutine OutputHDF5WriteFaceVelUGrid(realization_base,option,file_id, &
 
   PetscMPIInt :: hdf5_err
   PetscErrorCode :: ierr
+  PetscInt :: nface_out
 
   character(len=MAXSTRINGLENGTH) :: string
   character(len=1) :: string_dir
 
   patch => realization_base%patch
   grid => patch%grid
+  nface_out = GridOutputFacesPerCell(grid)
   ugrid => grid%unstructured_grid
   output_option =>realization_base%output_option
   field => realization_base%field
@@ -2970,12 +2974,12 @@ subroutine OutputHDF5WriteFaceVelUGrid(realization_base,option,file_id, &
     call PrintErrMsg(option)
   endif
   call VecGetLocalSize(field%vx_face_inst,local_size,ierr);CHKERRQ(ierr)
-  local_size = local_size/(option%nphase*MAX_FACE_PER_CELL + 1)
+  local_size = local_size/(option%nphase*nface_out + 1)
 
-  allocate(double_array(local_size*(MAX_FACE_PER_CELL+1)))
+  allocate(double_array(local_size*(nface_out+1)))
   double_array = 0.d0
 
-  offset = option%nphase*MAX_FACE_PER_CELL+1
+  offset = option%nphase*nface_out+1
 
   do idir = 1,3
 
@@ -3005,14 +3009,14 @@ subroutine OutputHDF5WriteFaceVelUGrid(realization_base,option,file_id, &
       ! memory space which is a 1D vector
       rank_mpi = 1
       dims = 0
-      dims(1) = local_size*(MAX_FACE_PER_CELL+1)
+      dims(1) = local_size*(nface_out+1)
       call h5screate_simple_f(rank_mpi,dims,memory_space_id,hdf5_err,dims)
 
       ! file space which is a 2D block
       rank_mpi = 2
       dims = 0
       dims(2) = ugrid%nmax
-      dims(1) = MAX_FACE_PER_CELL + 1
+      dims(1) = nface_out + 1
       call h5pcreate_f(H5P_DATASET_CREATE_F,prop_id,hdf5_err)
 
       call h5eset_auto_f(OFF,hdf5_err)
@@ -3038,7 +3042,7 @@ subroutine OutputHDF5WriteFaceVelUGrid(realization_base,option,file_id, &
       start(1) = 0
 
       length(2) = local_size
-      length(1) = MAX_FACE_PER_CELL + 1
+      length(1) = nface_out + 1
 
       stride = 1
       call h5sselect_hyperslab_f(file_space_id,H5S_SELECT_SET_F,start,length, &
@@ -3055,12 +3059,12 @@ subroutine OutputHDF5WriteFaceVelUGrid(realization_base,option,file_id, &
 
           do i=1,local_size
             ! Num. of faces for each cell
-            double_array((i-1)*(MAX_FACE_PER_CELL+1)+1) = &
+            double_array((i-1)*(nface_out+1)+1) = &
               vec_ptr1((i-1)*offset+1)
             ! Flowrate values for each face
-            do iface = 1,MAX_FACE_PER_CELL
-              double_array((i-1)*(MAX_FACE_PER_CELL+1)+iface+1) = &
-              vec_ptr1((i-1)*offset + (iphase-1)*MAX_FACE_PER_CELL + iface + 1)* &
+            do iface = 1,nface_out
+              double_array((i-1)*(nface_out+1)+iface+1) = &
+              vec_ptr1((i-1)*offset + (iphase-1)*nface_out + iface + 1)* &
               realization_base%output_option%tconv
             enddo
           enddo

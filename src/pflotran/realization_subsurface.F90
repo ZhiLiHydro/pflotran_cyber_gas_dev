@@ -458,7 +458,9 @@ subroutine RealizationCreateDiscretization(realization)
      realization%output_option%print_hdf5_aveg_mass_flowrate.or. &
      realization%output_option%print_hdf5_aveg_energy_flowrate) then
     call VecCreateMPI(option%mycomm, &
-                      (option%nflowdof*MAX_FACE_PER_CELL+1)*realization% &
+                      (option%nflowdof* &
+                       GridOutputFacesPerCell(realization%patch%grid)+1)* &
+                      realization% &
                         patch%grid%nlmax, &
                       PETSC_DETERMINE,field%flowrate_inst,ierr);CHKERRQ(ierr)
     call VecSet(field%flowrate_inst,0.d0,ierr);CHKERRQ(ierr)
@@ -469,7 +471,9 @@ subroutine RealizationCreateDiscretization(realization)
 
     ! vx
     call VecCreateMPI(option%mycomm, &
-                      (option%nflowspec*MAX_FACE_PER_CELL+1)*realization% &
+                      (option%nflowspec* &
+                       GridOutputFacesPerCell(realization%patch%grid)+1)* &
+                      realization% &
                         patch%grid%nlmax, &
                       PETSC_DETERMINE,field%vx_face_inst,ierr);CHKERRQ(ierr)
     call VecSet(field%vx_face_inst,0.d0,ierr);CHKERRQ(ierr)
@@ -493,7 +497,9 @@ subroutine RealizationCreateDiscretization(realization)
   if (realization%output_option%print_hdf5_aveg_mass_flowrate.or. &
       realization%output_option%print_hdf5_aveg_energy_flowrate) then
     call VecCreateMPI(option%mycomm, &
-                      (option%nflowdof*MAX_FACE_PER_CELL+1)*realization% &
+                      (option%nflowdof* &
+                       GridOutputFacesPerCell(realization%patch%grid)+1)* &
+                      realization% &
                         patch%grid%nlmax, &
                       PETSC_DETERMINE,field%flowrate_aveg,ierr);CHKERRQ(ierr)
     call VecSet(field%flowrate_aveg,0.d0,ierr);CHKERRQ(ierr)

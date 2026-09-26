@@ -18,6 +18,7 @@ module Grid_Unstructured_Polyhedra_module
             UGridPolyhedraComputeVolumes, &
             UGridPolyhedraPopulateConnection, &
             UGridPolyhedraGetCellsInRectangle, &
+            UGridPolyhedraGetCellFromPoint, &
             UGridPolyhedraComputeOutputInfo
 
 contains
@@ -475,6 +476,7 @@ subroutine UGridPolyhedraRead(ugrid, filename, option)
   call MPI_Bcast(temp_int,ONE_INTEGER_MPI,MPI_INTEGER,option%comm%io_rank, &
                  option%mycomm,ierr);CHKERRQ(ierr)
   pgrid%max_nface_per_cell = temp_int
+  pgrid%max_nface_per_cell_global = temp_int
 
   temp_int = max_nvert_per_face
   call MPI_Bcast(temp_int,ONE_INTEGER_MPI,MPI_INTEGER,option%comm%io_rank, &
@@ -2257,7 +2259,7 @@ subroutine UGridPolyhedraPopulateConnection(ugrid, connection, iface_cell, &
       point%y = v2(2)
       point%z = v2(3)
 
-      !face_id = ugrid%cell_to_face_ghosted(iface_cell, ghosted_id)
+      ! geometry is stored per cell-face occurrence
       face_id = pgrid%cell_faceids(iface_cell, ghosted_id)
       intercept%x = pgrid%face_centroids(face_id)%x
       intercept%y = pgrid%face_centroids(face_id)%y
@@ -2278,7 +2280,10 @@ subroutine UGridPolyhedraPopulateConnection(ugrid, connection, iface_cell, &
       connection%intercp(1,iconn)= intercept%x
       connection%intercp(2,iconn)= intercept%y
       connection%intercp(3,iconn)= intercept%z
-      connection%face_id(iconn)  = face_id
+      ! connections carry the unique face id, as for internal connections
+      ! and implicit unstructured grids (cell_to_face_ghosted numbering)
+      connection%face_id(iconn)  = &
+        ugrid%cell_to_face_ghosted(iface_cell, ghosted_id)
 
   end select
 
@@ -2599,5 +2604,141 @@ subroutine UGridPolyhedraComputeOutputInfo(ugrid, nL2G, nG2L, nG2A, option)
   enddo
 
 end subroutine UGridPolyhedraComputeOutputInfo
+
+! ************************************************************************** !
+
+subroutine UGridPolyhedraGetCellFromPoint(x,y,z,ugrid,option,local_id)
+  !
+  ! Returns the local id of the owned cell containing the point (x,y,z), or
+  ! 0 if no owned cell is selected. Collective: when the point lies in
+  ! several cells (e.g. on a shared face), only the cell with the lowest
+  ! natural id, over all ranks, is selected, so exactly one rank returns a
+  ! cell for any point inside the domain.
+  !
+  ! A point is inside a cell if it lies on the cell surface or if the
+  ! generalized winding number of the surface about the point is 1. The
+  ! surface is the fan triangulation of each face about its node average
+  ! (as used for the geometry); the winding number sums the solid angles of
+  ! the triangles (Van Oosterom and Strackee), which is exact for
+  ! non-convex cells and independent of the face winding direction.
+  !
+  use Option_module
+  use Utility_module, only : DotProduct, CrossProduct
+
+  implicit none
+
+  PetscReal :: x, y, z
+  type(grid_unstructured_type) :: ugrid
+  type(option_type) :: option
+  PetscInt :: local_id
+
+  PetscReal, parameter :: REL_TOL = 1.d-10
+  type(unstructured_polyhedra_type), pointer :: pgrid
+  PetscInt :: icell, ghosted_id, ivert, iface, occ, nv, i
+  PetscInt :: best_natural, best_local, global_min
+  PetscReal :: point(3), xmin(3), xmax(3), v(3), extent, tol
+  PetscReal :: center(3), p1(3), p2(3), a(3), b(3), c(3), n(3), q(3)
+  PetscReal :: la, lb, lc, numer, denom, nn, dist, lambda1, lambda2
+  PetscReal :: lambda3, solid_angle
+  PetscBool :: on_surface
+  PetscErrorCode :: ierr
+
+  pgrid => ugrid%polyhedra_grid
+  point = [x,y,z]
+  best_natural = huge(best_natural)
+  best_local = 0
+
+  do icell = 1, ugrid%nlmax
+    ghosted_id = icell
+    ! bounding box prefilter
+    xmin = huge(1.d0)
+    xmax = -huge(1.d0)
+    do ivert = 1, pgrid%cell_nverts(ghosted_id)
+      v = PolyVertex(ugrid,pgrid%cell_vertids(ivert,ghosted_id))
+      xmin = min(xmin,v)
+      xmax = max(xmax,v)
+    enddo
+    extent = maxval(xmax-xmin)
+    tol = REL_TOL*extent
+    if (any(point < xmin - tol) .or. any(point > xmax + tol)) cycle
+
+    on_surface = PETSC_FALSE
+    solid_angle = 0.d0
+    do iface = 1, pgrid%cell_nfaces(ghosted_id)
+      occ = pgrid%cell_faceids(iface,ghosted_id)
+      nv = pgrid%face_nverts(occ)
+      center = 0.d0
+      do i = 1, nv
+        center = center + PolyVertex(ugrid,pgrid%face_vertids(i,occ))
+      enddo
+      center = center/dble(nv)
+      do i = 1, nv
+        p1 = PolyVertex(ugrid,pgrid%face_vertids(i,occ))
+        p2 = PolyVertex(ugrid,pgrid%face_vertids(mod(i,nv)+1,occ))
+        ! point on this triangle?
+        n = CrossProduct(p1-center,p2-center)
+        nn = DotProduct(n,n)
+        if (nn > 0.d0) then
+          dist = DotProduct(point-center,n)/sqrt(nn)
+          if (abs(dist) <= tol) then
+            q = point - center
+            lambda1 = DotProduct(CrossProduct(p1-center,q),n)/nn
+            q = point - p1
+            lambda2 = DotProduct(CrossProduct(p2-p1,q),n)/nn
+            q = point - p2
+            lambda3 = DotProduct(CrossProduct(center-p2,q),n)/nn
+            if (min(lambda1,lambda2,lambda3) >= -REL_TOL) then
+              on_surface = PETSC_TRUE
+              exit
+            endif
+          endif
+        endif
+        ! solid angle subtended by the triangle
+        a = center - point
+        b = p1 - point
+        c = p2 - point
+        la = sqrt(DotProduct(a,a))
+        lb = sqrt(DotProduct(b,b))
+        lc = sqrt(DotProduct(c,c))
+        numer = DotProduct(a,CrossProduct(b,c))
+        denom = la*lb*lc + DotProduct(a,b)*lc + DotProduct(a,c)*lb + &
+                DotProduct(b,c)*la
+        solid_angle = solid_angle + 2.d0*atan2(numer,denom)
+      enddo
+      if (on_surface) exit
+    enddo
+
+    if (on_surface .or. abs(solid_angle) > 2.d0*PI) then
+      ! |winding number| = |solid angle|/(4 pi) > 1/2
+      if (ugrid%cell_ids_natural(ghosted_id) < best_natural) then
+        best_natural = ugrid%cell_ids_natural(ghosted_id)
+        best_local = icell
+      endif
+    endif
+  enddo
+
+  call MPI_Allreduce(best_natural,global_min,ONE_INTEGER_MPI,MPIU_INTEGER, &
+                     MPI_MIN,option%mycomm,ierr);CHKERRQ(ierr)
+  local_id = 0
+  if (best_local > 0 .and. best_natural == global_min) local_id = best_local
+
+end subroutine UGridPolyhedraGetCellFromPoint
+
+! ************************************************************************** !
+
+function PolyVertex(ugrid,vertex_id)
+  !
+  ! Coordinates of a local vertex.
+  !
+  implicit none
+
+  type(grid_unstructured_type) :: ugrid
+  PetscInt :: vertex_id
+  PetscReal :: PolyVertex(3)
+
+  PolyVertex = [ugrid%vertices(vertex_id)%x,ugrid%vertices(vertex_id)%y, &
+                ugrid%vertices(vertex_id)%z]
+
+end function PolyVertex
 
 end module Grid_Unstructured_Polyhedra_module

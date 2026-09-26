@@ -122,7 +122,9 @@ module Grid_module
             GridPrintSize, &
             GridSetupCellNeighbors, &
             GridMapCellsToConnections, &
-            GridExpandGhostCells
+            GridExpandGhostCells, &
+            GridOutputFacesPerCell, &
+            GridCellNumFaces
 
 contains
 
@@ -2469,9 +2471,9 @@ subroutine GridGetLocalIDFromCoordinate3(grid,x,y,z,option,local_id)
                             MPI_MIN,option%mycomm,ierr);CHKERRQ(ierr)
         if (dz == min_dz) local_id = champion
       case(POLYHEDRA_UNSTRUCTURED_GRID)
-          option%io_buffer = &
-            'add code POLYHDERA in GridGetLocalIDFromCoordinate'
-          call PrintErrMsg(option)
+        ! collective; selects a unique cell over all ranks
+        call UGridPolyhedraGetCellFromPoint(x,y,z,grid%unstructured_grid, &
+                                            option,local_id)
     end select
   endif
 
@@ -2763,5 +2765,56 @@ subroutine GridExpandGhostCells(grid,option)
   call VecScatterDestroy(scatter_gtol,ierr);CHKERRQ(ierr)
 
 end subroutine GridExpandGhostCells
+
+! ************************************************************************** !
+
+function GridOutputFacesPerCell(grid)
+  !
+  ! Number of per-face entries stored for each cell in face-based output
+  ! (face flow rates and face velocities). MAX_FACE_PER_CELL for grids of
+  ! conventional cells; for polyhedra grids at least the largest number of
+  ! faces of any cell in the mesh (a global value, identical on all ranks).
+  !
+  use Grid_Unstructured_Cell_module, only : MAX_FACE_PER_CELL
+
+  implicit none
+
+  type(grid_type) :: grid
+  PetscInt :: GridOutputFacesPerCell
+
+  GridOutputFacesPerCell = MAX_FACE_PER_CELL
+  if (grid%itype == POLYHEDRA_UNSTRUCTURED_GRID) then
+    GridOutputFacesPerCell = &
+      max(MAX_FACE_PER_CELL, &
+          grid%unstructured_grid%polyhedra_grid%max_nface_per_cell_global)
+  endif
+
+end function GridOutputFacesPerCell
+
+! ************************************************************************** !
+
+function GridCellNumFaces(grid,ghosted_id,option)
+  !
+  ! Number of faces of an unstructured grid cell.
+  !
+  use Option_module
+  use Grid_Unstructured_Cell_module, only : UCellGetNFaces
+
+  implicit none
+
+  type(grid_type) :: grid
+  PetscInt :: ghosted_id
+  type(option_type) :: option
+  PetscInt :: GridCellNumFaces
+
+  if (grid%itype == POLYHEDRA_UNSTRUCTURED_GRID) then
+    GridCellNumFaces = &
+      grid%unstructured_grid%polyhedra_grid%cell_nfaces(ghosted_id)
+  else
+    GridCellNumFaces = &
+      UCellGetNFaces(grid%unstructured_grid%cell_type(ghosted_id),option)
+  endif
+
+end function GridCellNumFaces
 
 end module Grid_module

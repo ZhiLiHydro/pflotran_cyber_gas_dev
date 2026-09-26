@@ -117,6 +117,7 @@ module Grid_Unstructured_Aux_module
     PetscInt :: max_nface_per_cell
     PetscInt :: max_nvert_per_face
     PetscInt :: max_nvert_per_cell
+    PetscInt :: max_nface_per_cell_global ! over all cells of all ranks
     PetscInt :: num_ufaces_local
     PetscInt :: num_ufaces_global
     PetscInt :: num_verts_of_ufaces_local
@@ -317,6 +318,7 @@ function UGridPolyhedraCreate()
   polyhedra_grid%max_nface_per_cell = 0
   polyhedra_grid%max_nvert_per_face = 0
   polyhedra_grid%max_nvert_per_cell = 0
+  polyhedra_grid%max_nface_per_cell_global = 0
   polyhedra_grid%num_ufaces_local = 0
   polyhedra_grid%num_ufaces_global = 0
   polyhedra_grid%num_verts_of_ufaces_local = 0
