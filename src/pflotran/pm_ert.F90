@@ -26,6 +26,12 @@ module PM_ERT_class
     PetscInt :: linear_iterations_in_step
     PetscLogDouble :: ksp_time
     Vec :: rhs
+    ! Number of right-hand sides (electrodes) solved for simultaneously via
+    ! KSPMatSolve().  A block size of 1 (the default) solves for one electrode
+    ! at a time with KSPSolve(), and the dense matrices below go unused.
+    PetscInt :: solver_block_size
+    Mat :: rhs_block        ! block of right-hand sides, B in KSPMatSolve()
+    Mat :: solution_block   ! block of solutions, X in KSPMatSolve()
     Vec :: dconductivity_dsaturation
     Vec :: dconductivity_dconcentration
     Vec :: dconductivity_dporosity
@@ -121,6 +127,9 @@ subroutine PMERTInit(pm_ert)
   pm_ert%linear_iterations_in_step = 0
   pm_ert%ksp_time = 0.d0
   PetscObjectNullify(pm_ert%rhs)
+  pm_ert%solver_block_size = 1
+  PetscObjectNullify(pm_ert%rhs_block)
+  PetscObjectNullify(pm_ert%solution_block)
   PetscObjectNullify(pm_ert%dconductivity_dsaturation)
   PetscObjectNullify(pm_ert%dconductivity_dconcentration)
   PetscObjectNullify(pm_ert%dconductivity_dporosity)
@@ -780,6 +789,7 @@ subroutine PMERTSetupSolvers(this)
   type(solver_type), pointer :: solver
 
   PetscBool :: dm_mat_type_found
+  PetscBool :: option_found
   PetscErrorCode :: ierr
   character(len=MAXSTRINGLENGTH) :: string
 
@@ -792,6 +802,19 @@ subroutine PMERTSetupSolvers(this)
   ! TODO(pj): set ert as prefix
   call KSPSetOptionsPrefix(solver%ksp,"geop_",ierr);CHKERRQ(ierr)
   call SolverCheckCommandLine(solver)
+
+  ! Number of electrodes (right-hand sides) to solve for at once.  A block
+  ! size of 1 preserves the historical behavior of one KSPSolve() per
+  ! electrode; anything larger batches the right-hand sides into a dense
+  ! matrix solved by KSPMatSolve().
+  call PetscOptionsGetInt(PETSC_NULL_OPTIONS,'geop_','-solver_block_size', &
+                          this%solver_block_size,option_found, &
+                          ierr);CHKERRQ(ierr)
+  if (this%solver_block_size < 1) then
+    option%io_buffer = 'The block size given by "-geop_solver_block_size" &
+      &must be >= 1.'
+    call PrintErrMsg(option)
+  endif
 
   ! Default to MATAIJ (not MATBAIJ, the default in most other process models)
   ! if the user has not specified otherwise.
@@ -842,6 +865,46 @@ subroutine PMERTSetupSolvers(this)
 
   ! TODO(pj): Whay do I need the follwing call as other pmc don't need?
   call KSPSetOperators(solver%ksp,solver%M,solver%Mpre,ierr);CHKERRQ(ierr)
+
+  if (this%solver_block_size > 1) then
+#if defined(PETSC_HAVE_HPDDM)
+    ! KSPHPDDM is the only Krylov method in PETSc that actually solves for a
+    ! block of right-hand sides at once; for every other type KSPMatSolve()
+    ! simply loops over the columns, calling KSPSolve() on each.  Select it,
+    ! along with block GMRES, unless the user has asked for a particular
+    ! Krylov method in the input deck or on the command line.  Setting these
+    ! in the options database (rather than calling KSPSetType() directly)
+    ! leaves them visible to -geop_ksp_view and overridable from the command
+    ! line, as SolverSetKSPOptions() calls KSPSetFromOptions() below.
+    if (.not.solver%ksp_type_specified) then
+      call PetscOptionsSetValue(PETSC_NULL_OPTIONS,'-geop_ksp_type',KSPHPDDM, &
+                                ierr);CHKERRQ(ierr)
+      call PetscOptionsHasName(PETSC_NULL_OPTIONS,'geop_','-ksp_hpddm_type', &
+                               option_found,ierr);CHKERRQ(ierr)
+      if (.not.option_found) then
+        call PetscOptionsSetValue(PETSC_NULL_OPTIONS,'-geop_ksp_hpddm_type', &
+                                  'bgmres',ierr);CHKERRQ(ierr)
+      endif
+      option%io_buffer = '  "-geop_solver_block_size" > 1 was specified and &
+        &no Krylov method was requested, so the ERT solve will use HPDDM &
+        &block GMRES.  Specify "-geop_ksp_type" to override this.'
+      call PrintMsg(option)
+    else
+      option%io_buffer = '  "-geop_solver_block_size" > 1 was specified, but &
+        &a Krylov method other than HPDDM may have been requested.  Only &
+        &KSPHPDDM solves for a block of right-hand sides at once; with any &
+        &other method KSPMatSolve() solves for one right-hand side at a time &
+        &and no speedup is expected.'
+      call PrintMsg(option)
+    endif
+#else
+    option%io_buffer = '  "-geop_solver_block_size" > 1 was specified, but &
+      &PETSc was not configured with HPDDM support.  KSPMatSolve() will solve &
+      &for one right-hand side at a time and no speedup is expected.  &
+      &Configure PETSc with "--download-hpddm" for an effective block solve.'
+    call PrintMsg(option)
+#endif
+  endif
 
   call SolverSetKSPOptions(solver,option)
 
@@ -1096,14 +1159,8 @@ subroutine PMERTSolve(this,time,ierr)
   ! Author: Piyoosh Jaysaval
   ! Date: 01/27/21
   !
-  use Patch_module
-  use Debug_module
-  use Grid_module
   use Solver_module
-  use Field_module
-  use Discretization_module
   use ERT_module
-  use String_module
 
   implicit none
 
@@ -1112,30 +1169,14 @@ subroutine PMERTSolve(this,time,ierr)
   PetscErrorCode :: solve_ierr
 
   class(realization_subsurface_type), pointer :: realization
-  type(patch_type), pointer :: patch
-  type(grid_type), pointer :: grid
   type(solver_type), pointer :: solver
-  type(field_type), pointer :: field
-  type(discretization_type), pointer :: discretization
   type(survey_type), pointer :: survey
-  type(ert_auxvar_type), pointer :: ert_auxvars(:)
 
-  PetscInt :: ielec,nelec
-  PetscInt :: elec_id
-  PetscInt :: local_id
-  PetscInt :: ghosted_id, ghost_elec_id
-  PetscInt :: num_linear_iterations
-  PetscReal :: val
   PetscReal :: average_cond
-  PetscReal, pointer :: vec_ptr(:)
-  character(len=MAXSTRINGLENGTH) :: string
 
   !PetscLogDouble :: log_start_time
-  PetscLogDouble :: log_ksp_start_time
   PetscLogDouble :: log_start_time
-  PetscLogDouble :: log_end_time
   PetscErrorCode :: ierr
-  KSPConvergedReason :: ksp_reason
 
   solve_ierr = 0
   ! Forward solve start
@@ -1144,12 +1185,6 @@ subroutine PMERTSolve(this,time,ierr)
   solver => this%solver
   survey => this%survey
   realization => this%realization
-  field => realization%field
-  discretization => realization%discretization
-  patch => realization%patch
-  grid => patch%grid
-
-  ert_auxvars => patch%aux%ERT%auxvars
 
   ! Build System matrix
   call ERTCalculateMatrix(realization,solver%M, &
@@ -1162,92 +1197,15 @@ subroutine PMERTSolve(this,time,ierr)
   call ERTCalculateAverageConductivity(realization)
   average_cond = survey%average_conductivity
 
-  nelec = survey%num_electrode
   this%linear_iterations_in_step = 0
 
   this%option%io_buffer = '  Solving for electrode:'
   call PrintMsgNoAdvance(this%option)
-  do ielec=1,nelec
-    ! cycle if it's a ghost electrode
-    if (survey%flag_electrode(ielec) == -1) cycle
-    write(this%option%io_buffer,'(x,a)') trim(StringWrite(ielec))
-    call PrintMsgNoAdvance(this%option)
-    if (this%analytical_potential) then
-      ! Initial Solution -> analytic sol for a half-space
-      ! Get Analytical potential for a half-space
-      call ERTCalculateAnalyticPotential(realization,ielec,average_cond)
-      ! assign analytic potential as initial solution
-      call VecGetArray(field%work,vec_ptr,ierr);CHKERRQ(ierr)
-      do local_id=1,grid%nlmax
-        ghosted_id = grid%nL2G(local_id)
-        if (patch%imat(ghosted_id) <= 0) cycle
-        vec_ptr(local_id) = ert_auxvars(ghosted_id)%potential(ielec)
-      enddo
-      call VecRestoreArray(field%work,vec_ptr,ierr);CHKERRQ(ierr)
-      call KSPSetInitialGuessNonzero(solver%ksp,PETSC_TRUE,ierr);CHKERRQ(ierr)
-    else
-      ! zero initial solution
-      call VecZeroEntries(field%work,ierr);CHKERRQ(ierr)
-    endif
-
-    ! RHS
-    call VecZeroEntries(this%rhs,ierr);CHKERRQ(ierr)
-    call VecGetArray(this%rhs,vec_ptr,ierr);CHKERRQ(ierr)
-
-    ! Get the local-id of ielec
-    elec_id = survey%ipos_electrode(ielec)
-
-    if (elec_id > 0) then
-      ! DBG
-      !print*,'Source cell-id: ',elec_id,grid%x(grid%nL2G(elec_id)), &
-      !         grid%y(grid%nL2G(elec_id)),grid%z(grid%nL2G(elec_id))
-      ! it should qualify on only one proc
-      val = -1.0
-      vec_ptr(elec_id) = val
-    endif
-    ! check for ghosted sink electrode and modify RHS
-    if (survey%ghost_electrode_exist) then
-      ! get the local id of the ghosted electrode
-      ghost_elec_id = survey%ipos_electrode(survey%ghost_electrode_id)
-      if (ghost_elec_id > 0) then
-        val = 1.0
-        vec_ptr(ghost_elec_id) = val
-      endif
-    endif
-    call VecRestoreArray(this%rhs,vec_ptr,ierr);CHKERRQ(ierr)
-
-    if (this%debug%vecview_residual) then
-      string = 'ERTrhs_' // trim(adjustl(StringWrite(elec_id)))
-      call DebugVecView(this%debug,this%rhs,string,this%option)
-    endif
-
-    ! Solve system
-    call PetscTime(log_ksp_start_time,ierr);CHKERRQ(ierr)
-    call KSPSolve(solver%ksp,this%rhs,field%work,ierr);CHKERRQ(ierr)
-    call PetscTime(log_end_time,ierr);CHKERRQ(ierr)
-    this%ksp_time = this%ksp_time + (log_end_time - log_ksp_start_time)
-
-    if (this%debug%vecview_solution) then
-      string = 'ERTsolution_' // trim(adjustl(StringWrite(elec_id)))
-      call DebugVecView(this%debug,field%work,string,this%option)
-    endif
-
-    call DiscretizationGlobalToLocal(discretization,field%work, &
-                                     field%work_loc,NGEOPDOF)
-    call VecGetArray(field%work_loc,vec_ptr,ierr);CHKERRQ(ierr)
-    ! store potentials for each electrode
-    do ghosted_id=1,grid%ngmax
-      if (patch%imat(ghosted_id) <= 0) cycle
-      ert_auxvars(ghosted_id)%potential(ielec) = vec_ptr(ghosted_id)
-    enddo
-    call VecRestoreArray(field%work_loc,vec_ptr,ierr);CHKERRQ(ierr)
-
-    call KSPGetIterationNumber(solver%ksp,num_linear_iterations, &
-                               ierr);CHKERRQ(ierr)
-    call KSPGetConvergedReason(solver%ksp,ksp_reason,ierr);CHKERRQ(ierr)
-    this%linear_iterations_in_step = this%linear_iterations_in_step + &
-                                     num_linear_iterations
-  enddo
+  if (this%solver_block_size > 1) then
+    call PMERTSolveBlocked(this,average_cond)
+  else
+    call PMERTSolveSingleRHS(this,average_cond)
+  endif
   call PrintMsg(this%option,'')
 
   ! Assemble solutions
@@ -1268,6 +1226,392 @@ subroutine PMERTSolve(this,time,ierr)
   endif
 
 end subroutine PMERTSolve
+
+! ************************************************************************** !
+
+subroutine PMERTSolveSingleRHS(this,average_cond)
+
+  ! Solves the ERT linear system for one electrode at a time.
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date: 01/27/21
+  !
+  use Field_module
+  use Solver_module
+  use String_module
+
+  implicit none
+
+  class(pm_ert_type) :: this
+  PetscReal :: average_cond
+
+  type(solver_type), pointer :: solver
+  type(survey_type), pointer :: survey
+  type(field_type), pointer :: field
+
+  PetscInt :: ielec,nelec
+  PetscInt :: num_linear_iterations
+
+  PetscLogDouble :: log_ksp_start_time
+  PetscLogDouble :: log_end_time
+  PetscErrorCode :: ierr
+  KSPConvergedReason :: ksp_reason
+
+  solver => this%solver
+  survey => this%survey
+  field => this%realization%field
+
+  nelec = survey%num_electrode
+
+  if (this%analytical_potential) then
+    call KSPSetInitialGuessNonzero(solver%ksp,PETSC_TRUE,ierr);CHKERRQ(ierr)
+  endif
+
+  do ielec=1,nelec
+    ! cycle if it's a ghost electrode
+    if (survey%flag_electrode(ielec) == -1) cycle
+    write(this%option%io_buffer,'(x,a)') trim(StringWrite(ielec))
+    call PrintMsgNoAdvance(this%option)
+
+    call PMERTSetInitialGuess(this,ielec,average_cond,field%work)
+    call PMERTSetSourceRHS(this,ielec,this%rhs)
+
+    ! Solve system
+    call PetscTime(log_ksp_start_time,ierr);CHKERRQ(ierr)
+    call KSPSolve(solver%ksp,this%rhs,field%work,ierr);CHKERRQ(ierr)
+    call PetscTime(log_end_time,ierr);CHKERRQ(ierr)
+    this%ksp_time = this%ksp_time + (log_end_time - log_ksp_start_time)
+
+    call PMERTStoreSolution(this,ielec,field%work)
+
+    call KSPGetIterationNumber(solver%ksp,num_linear_iterations, &
+                               ierr);CHKERRQ(ierr)
+    call KSPGetConvergedReason(solver%ksp,ksp_reason,ierr);CHKERRQ(ierr)
+    this%linear_iterations_in_step = this%linear_iterations_in_step + &
+                                     num_linear_iterations
+  enddo
+
+end subroutine PMERTSolveSingleRHS
+
+! ************************************************************************** !
+
+subroutine PMERTSolveBlocked(this,average_cond)
+
+  ! Solves the ERT linear system for several electrodes at once, batching
+  ! their right-hand sides into the columns of a dense matrix handed to
+  ! KSPMatSolve().  Note that only KSPHPDDM actually solves for the block as
+  ! a whole; with any other Krylov method KSPMatSolve() simply loops over the
+  ! columns, calling KSPSolve() on each.
+  !
+  ! Author: Richard Tran Mills
+  ! Date: 09/28/26
+  !
+  use Solver_module
+  use String_module
+
+  implicit none
+
+  class(pm_ert_type) :: this
+  PetscReal :: average_cond
+
+  type(solver_type), pointer :: solver
+  type(survey_type), pointer :: survey
+
+  Mat :: rhs_block
+  Mat :: solution_block
+  Vec :: column
+  VecType :: vec_type
+  PetscInt, allocatable :: electrode_ids(:)
+  PetscInt :: ielec,nelec,nactive
+  PetscInt :: iblock,icolumn,ncolumn
+  PetscInt :: block_size
+  PetscInt :: num_local,num_global
+  PetscInt :: num_linear_iterations
+
+  PetscLogDouble :: log_ksp_start_time
+  PetscLogDouble :: log_end_time
+  PetscErrorCode :: ierr
+
+  solver => this%solver
+  survey => this%survey
+
+  nelec = survey%num_electrode
+
+  ! Collect the electrodes to be solved for, skipping any ghost electrode.
+  allocate(electrode_ids(nelec))
+  nactive = 0
+  do ielec=1,nelec
+    if (survey%flag_electrode(ielec) == -1) cycle
+    nactive = nactive + 1
+    electrode_ids(nactive) = ielec
+  enddo
+
+  ! Never ask for more columns than there are electrodes to solve for.  The
+  ! lower bound guards the loop stride below in the degenerate case of a
+  ! survey in which every electrode is a ghost.
+  block_size = max(ONE_INTEGER,min(this%solver_block_size,nactive))
+
+  if (PetscObjectIsNull(this%rhs_block)) then
+    ! The blocks of right-hand sides and of solutions must be dense, must
+    ! share the row layout of the system matrix, and must be of the VecType
+    ! of that matrix, as KSPMatSolve() requires the right-hand sides and the
+    ! solutions to be in the same memory space as the operator.
+    call VecGetLocalSize(this%rhs,num_local,ierr);CHKERRQ(ierr)
+    call VecGetSize(this%rhs,num_global,ierr);CHKERRQ(ierr)
+    call MatGetVecType(solver%M,vec_type,ierr);CHKERRQ(ierr)
+    call MatCreateDenseFromVecType(this%option%mycomm,vec_type,num_local, &
+                                   PETSC_DECIDE,num_global,block_size, &
+                                   PETSC_DECIDE,PETSC_NULL_SCALAR, &
+                                   this%rhs_block,ierr);CHKERRQ(ierr)
+    call MatCreateDenseFromVecType(this%option%mycomm,vec_type,num_local, &
+                                   PETSC_DECIDE,num_global,block_size, &
+                                   PETSC_DECIDE,PETSC_NULL_SCALAR, &
+                                   this%solution_block,ierr);CHKERRQ(ierr)
+  endif
+
+  if (this%analytical_potential) then
+    call KSPSetInitialGuessNonzero(solver%ksp,PETSC_TRUE,ierr);CHKERRQ(ierr)
+  endif
+
+  do iblock=1,nactive,block_size
+    ncolumn = min(block_size,nactive-iblock+1)
+    if (ncolumn < block_size) then
+      ! Final, partial block.  A leading set of columns is taken so that the
+      ! leading dimension is that of the full block, as KSPMatSolve() with
+      ! KSPHPDDM requires it to equal the local number of rows.
+      call MatDenseGetSubMatrix(this%rhs_block,PETSC_DECIDE,PETSC_DECIDE, &
+                                0,ncolumn,rhs_block,ierr);CHKERRQ(ierr)
+      call MatDenseGetSubMatrix(this%solution_block,PETSC_DECIDE, &
+                                PETSC_DECIDE,0,ncolumn,solution_block, &
+                                ierr);CHKERRQ(ierr)
+    else
+      rhs_block = this%rhs_block
+      solution_block = this%solution_block
+    endif
+
+    do icolumn=1,ncolumn
+      ielec = electrode_ids(iblock+icolumn-1)
+      write(this%option%io_buffer,'(x,a)') trim(StringWrite(ielec))
+      call PrintMsgNoAdvance(this%option)
+      call MatDenseGetColumnVecWrite(rhs_block,icolumn-1,column, &
+                                     ierr);CHKERRQ(ierr)
+      call PMERTSetSourceRHS(this,ielec,column)
+      call MatDenseRestoreColumnVecWrite(rhs_block,icolumn-1,column, &
+                                         ierr);CHKERRQ(ierr)
+      call MatDenseGetColumnVec(solution_block,icolumn-1,column, &
+                                ierr);CHKERRQ(ierr)
+      call PMERTSetInitialGuess(this,ielec,average_cond,column)
+      call MatDenseRestoreColumnVec(solution_block,icolumn-1,column, &
+                                    ierr);CHKERRQ(ierr)
+    enddo
+
+    ! Solve for the entire block of right-hand sides
+    call PetscTime(log_ksp_start_time,ierr);CHKERRQ(ierr)
+    call KSPMatSolve(solver%ksp,rhs_block,solution_block,ierr);CHKERRQ(ierr)
+    call PetscTime(log_end_time,ierr);CHKERRQ(ierr)
+    this%ksp_time = this%ksp_time + (log_end_time - log_ksp_start_time)
+
+    do icolumn=1,ncolumn
+      ielec = electrode_ids(iblock+icolumn-1)
+      call MatDenseGetColumnVecRead(solution_block,icolumn-1,column, &
+                                    ierr);CHKERRQ(ierr)
+      call PMERTStoreSolution(this,ielec,column)
+      call MatDenseRestoreColumnVecRead(solution_block,icolumn-1,column, &
+                                        ierr);CHKERRQ(ierr)
+    enddo
+
+    ! Note that for a true block solve this is the number of iterations taken
+    ! by the block as a whole, and not by any one right-hand side, so it is
+    ! not directly comparable to the count for a block size of 1.
+    call KSPGetIterationNumber(solver%ksp,num_linear_iterations, &
+                               ierr);CHKERRQ(ierr)
+    this%linear_iterations_in_step = this%linear_iterations_in_step + &
+                                     num_linear_iterations
+
+    if (ncolumn < block_size) then
+      call MatDenseRestoreSubMatrix(this%rhs_block,rhs_block, &
+                                    ierr);CHKERRQ(ierr)
+      call MatDenseRestoreSubMatrix(this%solution_block,solution_block, &
+                                    ierr);CHKERRQ(ierr)
+    endif
+  enddo
+
+  deallocate(electrode_ids)
+
+end subroutine PMERTSolveBlocked
+
+! ************************************************************************** !
+
+subroutine PMERTSetInitialGuess(this,ielec,average_cond,solution)
+
+  ! Sets the initial guess for the potential due to electrode ielec.  When
+  ! requested, the analytic solution for a half-space is used; otherwise the
+  ! initial guess is zero.
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date: 01/27/21
+  !
+  use Grid_module
+  use Patch_module
+  use ERT_module
+
+  implicit none
+
+  class(pm_ert_type) :: this
+  PetscInt :: ielec
+  PetscReal :: average_cond
+  Vec :: solution
+
+  type(patch_type), pointer :: patch
+  type(grid_type), pointer :: grid
+  type(ert_auxvar_type), pointer :: ert_auxvars(:)
+
+  PetscInt :: local_id
+  PetscInt :: ghosted_id
+  PetscReal, pointer :: vec_ptr(:)
+  PetscErrorCode :: ierr
+
+  patch => this%realization%patch
+  grid => patch%grid
+  ert_auxvars => patch%aux%ERT%auxvars
+
+  if (this%analytical_potential) then
+    ! Initial Solution -> analytic sol for a half-space
+    ! Get Analytical potential for a half-space
+    call ERTCalculateAnalyticPotential(this%realization,ielec,average_cond)
+    ! assign analytic potential as initial solution
+    call VecGetArray(solution,vec_ptr,ierr);CHKERRQ(ierr)
+    do local_id=1,grid%nlmax
+      ghosted_id = grid%nL2G(local_id)
+      if (patch%imat(ghosted_id) <= 0) cycle
+      vec_ptr(local_id) = ert_auxvars(ghosted_id)%potential(ielec)
+    enddo
+    call VecRestoreArray(solution,vec_ptr,ierr);CHKERRQ(ierr)
+  else
+    ! zero initial solution
+    call VecZeroEntries(solution,ierr);CHKERRQ(ierr)
+  endif
+
+end subroutine PMERTSetInitialGuess
+
+! ************************************************************************** !
+
+subroutine PMERTSetSourceRHS(this,ielec,rhs)
+
+  ! Sets the right-hand side for a unit current injected at electrode ielec,
+  ! sunk at the ghost electrode when one exists.
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date: 01/27/21
+  !
+  use Debug_module
+  use String_module
+
+  implicit none
+
+  class(pm_ert_type) :: this
+  PetscInt :: ielec
+  Vec :: rhs
+
+  type(survey_type), pointer :: survey
+
+  PetscInt :: elec_id
+  PetscInt :: ghost_elec_id
+  PetscReal :: val
+  PetscReal, pointer :: vec_ptr(:)
+  character(len=MAXSTRINGLENGTH) :: string
+  PetscErrorCode :: ierr
+
+  survey => this%survey
+
+  call VecZeroEntries(rhs,ierr);CHKERRQ(ierr)
+  call VecGetArray(rhs,vec_ptr,ierr);CHKERRQ(ierr)
+
+  ! Get the local-id of ielec
+  elec_id = survey%ipos_electrode(ielec)
+
+  if (elec_id > 0) then
+    ! DBG
+    !print*,'Source cell-id: ',elec_id,grid%x(grid%nL2G(elec_id)), &
+    !         grid%y(grid%nL2G(elec_id)),grid%z(grid%nL2G(elec_id))
+    ! it should qualify on only one proc
+    val = -1.0
+    vec_ptr(elec_id) = val
+  endif
+  ! check for ghosted sink electrode and modify RHS
+  if (survey%ghost_electrode_exist) then
+    ! get the local id of the ghosted electrode
+    ghost_elec_id = survey%ipos_electrode(survey%ghost_electrode_id)
+    if (ghost_elec_id > 0) then
+      val = 1.0
+      vec_ptr(ghost_elec_id) = val
+    endif
+  endif
+  call VecRestoreArray(rhs,vec_ptr,ierr);CHKERRQ(ierr)
+
+  if (this%debug%vecview_residual) then
+    string = 'ERTrhs_' // trim(adjustl(StringWrite(elec_id)))
+    call DebugVecView(this%debug,rhs,string,this%option)
+  endif
+
+end subroutine PMERTSetSourceRHS
+
+! ************************************************************************** !
+
+subroutine PMERTStoreSolution(this,ielec,solution)
+
+  ! Scatters the solution for electrode ielec to the local vector and stores
+  ! it as the potential due to that electrode.
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date: 01/27/21
+  !
+  use Debug_module
+  use Discretization_module
+  use Field_module
+  use Grid_module
+  use Patch_module
+  use String_module
+
+  implicit none
+
+  class(pm_ert_type) :: this
+  PetscInt :: ielec
+  Vec :: solution
+
+  type(patch_type), pointer :: patch
+  type(grid_type), pointer :: grid
+  type(field_type), pointer :: field
+  type(ert_auxvar_type), pointer :: ert_auxvars(:)
+
+  PetscInt :: elec_id
+  PetscInt :: ghosted_id
+  PetscReal, pointer :: vec_ptr(:)
+  character(len=MAXSTRINGLENGTH) :: string
+  PetscErrorCode :: ierr
+
+  patch => this%realization%patch
+  grid => patch%grid
+  field => this%realization%field
+  ert_auxvars => patch%aux%ERT%auxvars
+
+  if (this%debug%vecview_solution) then
+    elec_id = this%survey%ipos_electrode(ielec)
+    string = 'ERTsolution_' // trim(adjustl(StringWrite(elec_id)))
+    call DebugVecView(this%debug,solution,string,this%option)
+  endif
+
+  call DiscretizationGlobalToLocal(this%realization%discretization,solution, &
+                                   field%work_loc,NGEOPDOF)
+  call VecGetArray(field%work_loc,vec_ptr,ierr);CHKERRQ(ierr)
+  ! store potentials for each electrode
+  do ghosted_id=1,grid%ngmax
+    if (patch%imat(ghosted_id) <= 0) cycle
+    ert_auxvars(ghosted_id)%potential(ielec) = vec_ptr(ghosted_id)
+  enddo
+  call VecRestoreArray(field%work_loc,vec_ptr,ierr);CHKERRQ(ierr)
+
+end subroutine PMERTStoreSolution
 
 ! ************************************************************************** !
 
@@ -1857,6 +2201,8 @@ subroutine PMERTStrip(this)
   call WaypointListDestroy(this%waypoint_list)
 
   call PUVecDestroy(this%rhs)
+  call PUMatDestroy(this%rhs_block)
+  call PUMatDestroy(this%solution_block)
   call PUVecDestroy(this%dconductivity_dsaturation)
   call PUVecDestroy(this%dconductivity_dconcentration)
   call PUVecDestroy(this%dconductivity_dporosity)

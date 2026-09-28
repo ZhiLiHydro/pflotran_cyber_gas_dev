@@ -72,6 +72,11 @@ module Solver_module
     KSPType :: ksp_type
     PCType :: pc_type
 
+    ! PETSC_TRUE if the user explicitly requested a Krylov method, either
+    ! through the input deck or on the command line.  Note that ksp_type
+    ! alone cannot convey this, as it is initialized to a default value.
+    PetscBool :: ksp_type_specified
+
     PetscBool :: inexact_newton
 
     PetscBool :: print_convergence
@@ -175,6 +180,7 @@ function SolverCreate()
 
   solver%snes_type = SNESNEWTONLS
   solver%ksp_type = KSPBCGS
+  solver%ksp_type_specified = PETSC_FALSE
   solver%pc_type = ""
 
   solver%inexact_newton = PETSC_FALSE
@@ -615,6 +621,7 @@ subroutine SolverReadLinear(solver,input,option)
                                 ' unknown.'
             call PrintErrMsg(option)
         end select
+        solver%ksp_type_specified = PETSC_TRUE
 
       case('PRECONDITIONER','PC_TYPE')
         call InputReadCard(input,option,word)
@@ -1555,6 +1562,13 @@ subroutine SolverCheckCommandLine(solver)
   call PetscOptionsGetString(PETSC_NULL_OPTIONS,prefix,'-pre_mat_type', &
                              mat_type,is_present,ierr);CHKERRQ(ierr)
   if (is_present) solver%Mpre_mat_type = trim(mat_type)
+
+  ! Parse the options to determine if the Krylov method has been specified.
+  ! Note that the type itself is set by KSPSetFromOptions(); all that is
+  ! recorded here is that the choice was the user's.
+  call PetscOptionsHasName(PETSC_NULL_OPTIONS,prefix,'-ksp_type',is_present, &
+                           ierr);CHKERRQ(ierr)
+  if (is_present) solver%ksp_type_specified = PETSC_TRUE
 
   ! Parse the options for the Galerkin multigrid solver.
   ! Users can specify the number of levels of coarsening via the
