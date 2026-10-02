@@ -571,6 +571,9 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
                                            cond_c,empirical_law,cond, &
                                            temp_dependence, scaled_temp_diff, &
                                            drho_geomech, cond_baseline, &
+                                           brace_stress_conductivity_slope, &
+                                           dstress, &
+                                           use_brace_conductivity_slope, &
                                            dfluid_dconc,dcond_dsat, &
                                            dcond_dconc,dcond_dpor,option)
   !
@@ -610,6 +613,9 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
   ! variables for geomechanics coupling
   PetscReal :: drho_geomech
   PetscReal :: cond_baseline
+  PetscReal :: brace_stress_conductivity_slope
+  PetscReal :: dstress
+  PetscBool :: use_brace_conductivity_slope
 
   ! to get dconductivty/dsaturation
   PetscReal :: dfluid_dconc
@@ -680,19 +686,27 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
     end select
 
     if (use_geomech .and. cond > 1d-12) then
-      ! Geomechanics coupling
-      ! get updated resistivity
-      rho_min = 1.d0 / cond_max
-      rho = 1.d0 / cond + drho_geomech
-      if (rho > rho_min) then
-        ! get conductivity from resistivity
-        geomech_factor = 1.d0 / (1.d0 + drho_geomech*cond)**2
-        cond = 1.d0 / rho
+      if (use_brace_conductivity_slope) then
+        ! Slope is conductivity per kbar. dstress is Pa; 1 kbar = 1.0d8 Pa.
+        ! Additive update, so saturation, concentration, and porosity
+        ! derivatives are unchanged.
+        cond = cond + brace_stress_conductivity_slope * dstress * 1.0d-8
+        geomech_factor = 1.d0
       else
-        ! resistivity is too low/negative, use linearized approx for Brace eq.
-        geomech_factor = 1.d0 - 2.d0 * drho_geomech * cond
-        dcond_geomech = - drho_geomech * cond * cond
-        cond = cond + dcond_geomech
+        ! Geomechanics coupling
+        ! get updated resistivity
+        rho_min = 1.d0 / cond_max
+        rho = 1.d0 / cond + drho_geomech
+        if (rho > rho_min) then
+          ! get conductivity from resistivity
+          geomech_factor = 1.d0 / (1.d0 + drho_geomech*cond)**2
+          cond = 1.d0 / rho
+        else
+          ! resistivity is too low/negative, use linearized approx for Brace eq.
+          geomech_factor = 1.d0 - 2.d0 * drho_geomech * cond
+          dcond_geomech = - drho_geomech * cond * cond
+          cond = cond + dcond_geomech
+        endif
       endif
       dcond_dsat = dcond_dsat * geomech_factor
       dcond_dconc = dcond_dconc * geomech_factor
@@ -701,16 +715,22 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
 
   elseif (.not. use_flow .and. .not. use_trans .and. use_geomech .and. &
           cond_baseline > 1e-12) then
-    ! get updated resistivity
-    rho_min = 1.d0 / cond_max
-    rho = 1.d0 / cond_baseline + drho_geomech
-    if (rho > rho_min) then
-      ! get conductivity from resistivity
-      cond = 1.d0 / rho
+    if (use_brace_conductivity_slope) then
+      ! Slope is conductivity per kbar. dstress is Pa; 1 kbar = 1.0d8 Pa.
+      cond = cond_baseline + &
+        brace_stress_conductivity_slope * dstress * 1.0d-8
     else
-      ! resistivity is too low/negative, use linearized approx for Brace eq.
-      dcond_geomech = - drho_geomech * cond_baseline * cond_baseline
-      cond = cond_baseline + dcond_geomech
+      ! get updated resistivity
+      rho_min = 1.d0 / cond_max
+      rho = 1.d0 / cond_baseline + drho_geomech
+      if (rho > rho_min) then
+        ! get conductivity from resistivity
+        cond = 1.d0 / rho
+      else
+        ! resistivity is too low/negative, use linearized approx for Brace eq.
+        dcond_geomech = - drho_geomech * cond_baseline * cond_baseline
+        cond = cond_baseline + dcond_geomech
+      endif
     endif
   endif
 
