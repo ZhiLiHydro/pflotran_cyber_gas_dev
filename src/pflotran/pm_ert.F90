@@ -45,6 +45,9 @@ module PM_ERT_class
     PetscReal :: temperature_coefficient
     ! For Brace's empirical model drho = slope * dstress
     PetscReal :: brace_stress_resistivity_slope
+    ! Optional Brace update dcond = slope * dstress [S/m per kbar].
+    ! UNINITIALIZED selects BRACE_STRESS_RESISTIVITY_SLOPE instead.
+    PetscReal :: brace_stress_conductivity_slope
     character(len=MAXSTRINGLENGTH) :: survey_time_units
     ! Starting sulution/potential
     PetscBool :: analytical_potential
@@ -142,6 +145,7 @@ subroutine PMERTInit(pm_ert)
 
   ! Brace's regression equation rho = 21054*pressure (kbar) + 3457.9
   pm_ert%brace_stress_resistivity_slope = 21054.d0
+  pm_ert%brace_stress_conductivity_slope = UNINITIALIZED_DOUBLE
 
   pm_ert%analytical_potential = PETSC_TRUE
   pm_ert%coupled_ert_flow_jacobian = PETSC_FALSE
@@ -184,12 +188,14 @@ subroutine PMERTReadSimOptionsBlock(this,input)
   PetscInt :: temp_int
   PetscBool :: found
   PetscBool :: output_all_surveys
+  PetscBool :: resistivity_slope_specified
 
   option => this%option
 
   error_string = 'ERT Options'
 
   output_all_surveys = PETSC_FALSE
+  resistivity_slope_specified = PETSC_FALSE
   input%ierr = 0
   call InputPushBlock(input,option)
   do
@@ -303,6 +309,12 @@ subroutine PMERTReadSimOptionsBlock(this,input)
       case('BRACE_STRESS_RESISTIVITY_SLOPE')
         call InputReadDouble(input,option,this%brace_stress_resistivity_slope)
         call InputErrorMsg(input,option,keyword,error_string)
+        resistivity_slope_specified = PETSC_TRUE
+      case('BRACE_STRESS_CONDUCTIVITY_SLOPE')
+        ! Conductivity per kbar. Replaces BRACE_STRESS_RESISTIVITY_SLOPE.
+        call InputReadDouble(input,option, &
+                             this%brace_stress_conductivity_slope)
+        call InputErrorMsg(input,option,keyword,error_string)
       case('BRACE_TIME_REFERENCE')
         ! Reference time for the Brace stress increment. Internal units are
         ! seconds. Units may be omitted, in which case the value is seconds.
@@ -324,6 +336,14 @@ subroutine PMERTReadSimOptionsBlock(this,input)
     end select
   enddo
   call InputPopBlock(input,option)
+
+  if (resistivity_slope_specified .and. &
+      Initialized(this%brace_stress_conductivity_slope)) then
+    option%io_buffer = 'Specify only one of &
+      &BRACE_STRESS_RESISTIVITY_SLOPE and &
+      &BRACE_STRESS_CONDUCTIVITY_SLOPE.'
+    call PrintErrMsg(option)
+  endif
 
   if (output_all_surveys) then
     waypoint => this%waypoint_list%first
@@ -907,6 +927,8 @@ subroutine PMERTPreSolve(this)
   PetscReal :: relative_tracer_concentration
   PetscReal :: dstress,drho_geomech
   PetscReal :: cond_baseline
+  PetscReal :: brace_stress_conductivity_slope
+  PetscBool :: use_brace_conductivity_slope
   PetscReal, pointer :: dcond_dsat_vec_ptr(:),dcond_dconc_vec_ptr(:)
   PetscReal, pointer :: dcond_dpor_vec_ptr(:)
   PetscBool :: cementation_cell_by_cell
@@ -994,6 +1016,14 @@ subroutine PMERTPreSolve(this)
                                                  option)
   endif
 
+  use_brace_conductivity_slope = &
+    Initialized(this%brace_stress_conductivity_slope)
+  if (use_brace_conductivity_slope) then
+    brace_stress_conductivity_slope = this%brace_stress_conductivity_slope
+  else
+    brace_stress_conductivity_slope = 0.d0
+  endif
+
   do ghosted_id = 1, grid%ngmax
     local_id = grid%nG2L(ghosted_id)
     dcond_dsat = 0.d0
@@ -1054,17 +1084,22 @@ subroutine PMERTPreSolve(this)
     endif
 
     drho_geomech = 0.d0
+    dstress = 0.d0
     if (option%geomechanics%geophysics_coupling == GEOMECH_ERT_COUPLING) then
       ! Brace's regression equation rho = 21054*pressure (kbar) + 3457.9 is
       ! expressed in terms of a compression-positive effective pressure.
       ! The stress increment is relative to the mean effective stress stored
       ! at BRACE_TIME_REFERENCE (default 0 s).
+      ! BRACE_STRESS_CONDUCTIVITY_SLOPE, when set, replaces this resistivity
+      ! update. The conductivity slope is applied below.
       dstress = -(patch%aux% &
                     Global%auxvars(ghosted_id)%parameters(parameter_index) - &
                   patch%aux% &
                     Global%auxvars(ghosted_id)%parameters(parameter_0_index))
       ! dstress is in Pa; 1 kbar = 1.0d8 Pa
-      drho_geomech = this%brace_stress_resistivity_slope * dstress * 1.0d-8
+      if (.not. use_brace_conductivity_slope) then
+        drho_geomech = this%brace_stress_resistivity_slope * dstress * 1.0d-8
+      endif
     endif
 
     if (.not.option%flow%isothermal) then
@@ -1076,6 +1111,8 @@ subroutine PMERTPreSolve(this)
                                          cond_c,empirical_law,cond, &
                                          temp_dependence, scaled_temp_diff, &
                                          drho_geomech, cond_baseline, &
+                                         brace_stress_conductivity_slope, &
+                                         dstress, use_brace_conductivity_slope, &
                                          tracer_scale,dcond_dsat,dcond_dconc, &
                                          dcond_dpor, option)
     ert_auxvars(ghosted_id)%bulk_conductivity = cond
