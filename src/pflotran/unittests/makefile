@@ -50,6 +50,7 @@ PFLOTRAN_OBJS = \
 	$(EXE_DIR)/option_parameter.o \
 	$(EXE_DIR)/pflotran_constants.o \
 	$(EXE_DIR)/print.o \
+	$(EXE_DIR)/reaction_inhibition_aux.o \
 	$(EXE_DIR)/saturation_function.o \
 	$(EXE_DIR)/string.o \
 	$(EXE_DIR)/units.o \

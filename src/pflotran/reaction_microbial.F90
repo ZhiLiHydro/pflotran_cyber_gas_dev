@@ -12,6 +12,7 @@ module Reaction_Microbial_module
   private
 
   public :: ReactionMicrobReadMicrobial, &
+            ReactionMicrobConcentrations, &
             ReactionMicrobRate
 
 contains
@@ -229,10 +230,51 @@ end subroutine ReactionMicrobReadMicrobial
 
 ! ************************************************************************** !
 
-subroutine ReactionMicrobRate(Res,Jac,compute_derivative,rt_auxvar, &
-                              global_auxvar,material_auxvar,reaction,option)
+subroutine ReactionMicrobConcentrations(rt_auxvar,global_auxvar,microbial, &
+                                        concentration,dconcentration_dmolal)
   !
-  ! Computes the microbial reaction
+  ! The primary species concentrations the rate laws read (in the
+  ! microbial concentration units) and their derivatives with respect to
+  ! molality.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/06/26
+  !
+  use Reactive_Transport_Aux_module, only : reactive_transport_auxvar_type
+  use Global_Aux_module, only : global_auxvar_type
+
+  implicit none
+
+  type(reactive_transport_auxvar_type) :: rt_auxvar
+  type(global_auxvar_type) :: global_auxvar
+  type(microbial_type) :: microbial
+  PetscReal :: concentration(:)
+  PetscReal :: dconcentration_dmolal(:)
+
+  PetscInt, parameter :: iphase = 1
+
+  select case(microbial%concentration_units)
+    case(MICROBIAL_MOLALITY)
+      dconcentration_dmolal = 1.d0
+    case(MICROBIAL_ACTIVITY)
+      dconcentration_dmolal = rt_auxvar%pri_act_coef
+    case(MICROBIAL_MOLARITY)
+      dconcentration_dmolal = global_auxvar%den_kg(iphase)*1.d-3
+  end select
+  concentration = rt_auxvar%pri_molal*dconcentration_dmolal
+
+end subroutine ReactionMicrobConcentrations
+
+! ************************************************************************** !
+
+subroutine ReactionMicrobRate(Res,Jac,compute_derivative,rt_auxvar, &
+                              global_auxvar,material_auxvar,reaction,option, &
+                              irxn_filter,rate_value,unit_rate,omit_inhibition)
+  !
+  ! Computes the microbial reaction. Optional: irxn_filter evaluates one
+  ! reaction; rate_value returns the summed rate [mol/sec]; unit_rate sets
+  ! the rate constant to 1 (the derivative with respect to it);
+  ! omit_inhibition sets the inhibition term it indexes to 1.
   !
   ! Author: Glenn Hammond
   ! Date: 10/31/12
@@ -259,6 +301,11 @@ subroutine ReactionMicrobRate(Res,Jac,compute_derivative,rt_auxvar, &
   type(material_auxvar_type) :: material_auxvar
 
   PetscInt, parameter :: iphase = 1
+  PetscInt, optional :: irxn_filter
+  PetscReal, optional :: rate_value
+  PetscBool, optional :: unit_rate
+  PetscInt, optional :: omit_inhibition
+  PetscInt :: irxn_start, irxn_end
   PetscInt :: irxn, i, ii, jj, icomp, jcomp, ncomp
   PetscInt :: imonod, iinhibition, ibiomass
   PetscReal :: rate
@@ -284,15 +331,8 @@ subroutine ReactionMicrobRate(Res,Jac,compute_derivative,rt_auxvar, &
   microbial => reaction%microbial
   immobile => reaction%immobile
 
-  select case(microbial%concentration_units)
-    case(MICROBIAL_MOLALITY)
-      dconcentration_dmolal = 1.d0
-    case(MICROBIAL_ACTIVITY)
-      dconcentration_dmolal = rt_auxvar%pri_act_coef
-    case(MICROBIAL_MOLARITY)
-      dconcentration_dmolal = global_auxvar%den_kg(iphase)*1.d-3
-  end select
-  concentration = rt_auxvar%pri_molal*dconcentration_dmolal
+  call ReactionMicrobConcentrations(rt_auxvar,global_auxvar,microbial, &
+                                    concentration,dconcentration_dmolal)
 
   L_water = material_auxvar%porosity*global_auxvar%sat(iphase)* &
             material_auxvar%volume*1.d3
@@ -300,7 +340,14 @@ subroutine ReactionMicrobRate(Res,Jac,compute_derivative,rt_auxvar, &
   ! Residual: mol/sec
   ! Jacobian: (mol/sec)*(kg water/mol) = kg water/sec
 
-  do irxn = 1, microbial%nrxn
+  if (present(rate_value)) rate_value = 0.d0
+  irxn_start = 1
+  irxn_end = microbial%nrxn
+  if (present(irxn_filter)) then
+    irxn_start = irxn_filter
+    irxn_end = irxn_filter
+  endif
+  do irxn = irxn_start, irxn_end
 
     ! units:
     !   without biomass: mol/L-sec
@@ -308,6 +355,9 @@ subroutine ReactionMicrobRate(Res,Jac,compute_derivative,rt_auxvar, &
 
     ncomp = microbial%specid(0,irxn)
     effective_rate_constant = microbial%rate_constant(irxn)
+    if (present(unit_rate)) then
+      if (unit_rate) effective_rate_constant = 1.d0
+    endif
     if (associated(microbial%activation_energy)) then
       ! ideal gas constant units: J/mol-K
       effective_rate_constant = effective_rate_constant * &
@@ -349,6 +399,9 @@ subroutine ReactionMicrobRate(Res,Jac,compute_derivative,rt_auxvar, &
                                         tempreal,dummy)
       end select
       inhibition(ii) = tempreal
+      if (present(omit_inhibition)) then
+        if (iinhibition == omit_inhibition) inhibition(ii) = 1.d0
+      endif
       inhibition_terms = inhibition_terms*inhibition(ii)
     enddo
 
@@ -388,6 +441,7 @@ subroutine ReactionMicrobRate(Res,Jac,compute_derivative,rt_auxvar, &
            monod_terms* &
            inhibition_terms* &
            biomass_term
+    if (present(rate_value)) rate_value = rate_value + rate
     do i = 1, ncomp
       icomp = microbial%specid(i,irxn)
       Res(icomp) = Res(icomp) - microbial%stoich(i,irxn)*rate
@@ -437,6 +491,9 @@ subroutine ReactionMicrobRate(Res,Jac,compute_derivative,rt_auxvar, &
     do ii = 1, microbial%inhibitionid(0,irxn)
       iinhibition = microbial%inhibitionid(ii,irxn)
       jcomp = microbial%inhibition_specid(iinhibition)
+      if (present(omit_inhibition)) then
+        if (iinhibition == omit_inhibition) cycle
+      endif
       conc = concentration(jcomp)
       threshold_conc = microbial%inhibition_C(iinhibition)
       dconc_dmolal = dconcentration_dmolal(jcomp)

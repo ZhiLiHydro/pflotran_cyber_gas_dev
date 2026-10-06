@@ -243,9 +243,11 @@ end subroutine ReactionImProcessConstraint
 
 subroutine ReactionImDecay(Res,Jac,compute_derivative,rt_auxvar, &
                            global_auxvar,material_auxvar,reaction, &
-                           option)
+                           option,irxn_filter,unit_rate)
   !
-  ! Computes decay of biomass species
+  ! Computes decay of biomass species. Optional: irxn_filter evaluates one
+  ! reaction; unit_rate sets the rate constant to 1 (the derivative with
+  ! respect to it).
   !
   ! Author: Glenn Hammond
   ! Date: 03/31/15
@@ -266,18 +268,29 @@ subroutine ReactionImDecay(Res,Jac,compute_derivative,rt_auxvar, &
   type(reactive_transport_auxvar_type) :: rt_auxvar
   type(global_auxvar_type) :: global_auxvar
   type(material_auxvar_type) :: material_auxvar
+  PetscInt, optional :: irxn_filter
+  PetscBool, optional :: unit_rate
 
-  PetscInt :: icomp, irxn, immobile_id
+  PetscInt :: icomp, irxn, immobile_id, irxn_start, irxn_end
   PetscReal :: rate_constant, rate, volume
 
   volume = material_auxvar%volume
 
-  do irxn = 1, reaction%immobile%ndecay_rxn ! for each reaction
+  irxn_start = 1
+  irxn_end = reaction%immobile%ndecay_rxn
+  if (present(irxn_filter)) then
+    irxn_start = irxn_filter
+    irxn_end = irxn_filter
+  endif
+  do irxn = irxn_start, irxn_end ! for each reaction
 
     ! we assume only one chemical component involved in decay reaction
     icomp = reaction%immobile%decayspecid(irxn)
     ! units = m^3 bulk/sec = [1/sec] * [m^3 bulk]
     rate_constant = reaction%immobile%decay_rate_constant(irxn)*volume
+    if (present(unit_rate)) then
+      if (unit_rate) rate_constant = volume
+    endif
     ! rate [mol/sec] = [m^3 bulk/sec] * [mol/m^3 bulk]
     rate = rate_constant*rt_auxvar%immobile(icomp)
     immobile_id = reaction%offset_immobile + icomp

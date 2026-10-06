@@ -1,0 +1,39 @@
+module Test_Reaction_Inhibition_module
+
+#include "petsc/finclude/petscsys.h"
+  use petscsys
+  use pFUnit_mod
+  use Reaction_Inhibition_Aux_module, only : &
+    ReactionInhibitionSmoothstepParameters
+  implicit none
+
+contains
+
+  @Test
+  subroutine testSmoothstepNearUpperEndpoint()
+    ! Inhibit above, just inside the end of the interval (factor 3e-18):
+    ! both parameter derivatives.
+    PetscReal :: concentration, da, dw, expected
+
+    concentration = 10.d0**(1.d0-2.d-9)
+    call ReactionInhibitionSmoothstepParameters(concentration,-1.d0,2.d0, &
+                                                 da,dw)
+    expected = 3.d-9/log(10.d0)
+    @assertEqual(expected, da, expected*1.d-6)
+    @assertEqual(1.5d-9, dw, 1.5d-15)
+  end subroutine testSmoothstepNearUpperEndpoint
+
+  @Test
+  subroutine testSmoothstepMidpointAndFlatRegions()
+    PetscReal :: da, dw
+
+    call ReactionInhibitionSmoothstepParameters(1.d0,1.d0,2.d0,da,dw)
+    @assertEqual(-0.75d0/log(10.d0), da, 1.d-15)
+    @assertEqual(0.d0, dw, 1.d-15)
+    call ReactionInhibitionSmoothstepParameters(100.d0,-1.d0,2.d0,da,dw)
+    @assertEqual(0.d0, abs(da)+abs(dw), 1.d-15)
+    call ReactionInhibitionSmoothstepParameters(0.01d0,-1.d0,2.d0,da,dw)
+    @assertEqual(0.d0, abs(da)+abs(dw), 1.d-15)
+  end subroutine testSmoothstepMidpointAndFlatRegions
+
+end module Test_Reaction_Inhibition_module

@@ -39,6 +39,7 @@ def get_unit_test_files():
     source_file_roots.append('unittests/test_eos_water.pf')
     source_file_roots.append('unittests/test_geometry.pf')
     source_file_roots.append('unittests/test_material.pf')
+    source_file_roots.append('unittests/test_reaction_inhibition.pf')
     source_file_roots.append('unittests/test_saturation_function.pf')
     source_file_roots.append('unittests/test_string.pf')
     source_file_roots.append('unittests/test_utility.pf')

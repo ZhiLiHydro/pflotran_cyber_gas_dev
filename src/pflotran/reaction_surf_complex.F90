@@ -20,6 +20,7 @@ module Reaction_Surface_Complexation_module
   public :: ReactionSrfCplxReadSrfCplxRxn, &
             ReactionSrfCplxProcessConstraint, &
             ReactionSrfCplxTotalSorbEq, &
+            ReactionSrfCplxTotalSorbEq1, &
             ReactionSrfCplxMultirateRate, &
             ReactionSrfCplxKineticRate, &
             ReactionSrfCplxTotSorbMRAsEQ, &

@@ -58,7 +58,11 @@ module Reaction_module
             RUpdateKineticState, &
             RUpdateTempDependentCoefs, &
             RTotalSorb, &
+            RGeneral, &
+            RRadioactiveDecay, &
             RIonicStrength, &
+            RDebyeHuckelLnGamma, &
+            RDebyeHuckelDLog10GammaDI, &
             RElectricalConductivity, &
             ReactionReadMobilityDatabase
 
@@ -4554,17 +4558,16 @@ subroutine RActivityCoefficients(rt_auxvar,global_auxvar,reaction,option)
         sqrt_I = sqrt(I)
         do icplx = 1, reaction%neqcplx
           if (abs(reaction%eqcplx_Z(icplx)) > 0.d0) then
-            sum = 0.5d0*reaction%debyeA*reaction%eqcplx_Z(icplx)* &
-            reaction%eqcplx_Z(icplx) &
-            /(sqrt_I*(1.d0+reaction%debyeB*reaction%eqcplx_a0(icplx)*sqrt_I)**2) &
-            -reaction%debyeBdot
+            sum = -RDebyeHuckelDLog10GammaDI(reaction, &
+                                             reaction%eqcplx_Z(icplx), &
+                                             reaction%eqcplx_a0(icplx),sqrt_I)
             ncomp = reaction%eqcplxspecid(0,icplx)
             do jcomp = 1, ncomp
               j = reaction%eqcplxspecid(jcomp,icplx)
               if (abs(reaction%primary_spec_Z(j)) > 0.d0) then
-                dgamdi = -0.5d0*reaction%debyeA*reaction%primary_spec_Z(j)**2/(sqrt_I* &
-                (1.d0+reaction%debyeB*reaction%primary_spec_a0(j)*sqrt_I)**2)+ &
-                reaction%debyeBdot
+                dgamdi = RDebyeHuckelDLog10GammaDI(reaction, &
+                           reaction%primary_spec_Z(j), &
+                           reaction%primary_spec_a0(j),sqrt_I)
                 sum = sum + reaction%eqcplxstoich(jcomp,icplx)*dgamdi
               endif
             enddo
@@ -4599,13 +4602,9 @@ subroutine RActivityCoefficients(rt_auxvar,global_auxvar,reaction,option)
       sqrt_I = sqrt(I)
       do icomp = 1, reaction%naqcomp
         if (abs(reaction%primary_spec_Z(icomp)) > 0.d0) then
-          rt_auxvar%pri_act_coef(icomp) = exp((-reaction%primary_spec_Z(icomp)* &
-                                        reaction%primary_spec_Z(icomp)* &
-                                        sqrt_I*reaction%debyeA/ &
-                                        (1.d0+reaction%primary_spec_a0(icomp)* &
-                                        reaction%debyeB*sqrt_I)+ &
-                                        reaction%debyeBdot*I)* &
-                                        LOG_TO_LN)
+          rt_auxvar%pri_act_coef(icomp) = &
+            exp(RDebyeHuckelLnGamma(reaction,reaction%primary_spec_Z(icomp), &
+                                    reaction%primary_spec_a0(icomp),I,sqrt_I))
         else
           rt_auxvar%pri_act_coef(icomp) = 1.d0
         endif
@@ -4615,13 +4614,9 @@ subroutine RActivityCoefficients(rt_auxvar,global_auxvar,reaction,option)
       sum_sec_molal = 0.d0
       do icplx = 1, reaction%neqcplx
         if (abs(reaction%eqcplx_Z(icplx)) > 0.d0) then
-          rt_auxvar%sec_act_coef(icplx) = exp((-reaction%eqcplx_Z(icplx)* &
-                                        reaction%eqcplx_Z(icplx)* &
-                                        sqrt_I*reaction%debyeA/ &
-                                        (1.d0+reaction%eqcplx_a0(icplx)* &
-                                        reaction%debyeB*sqrt_I)+ &
-                                        reaction%debyeBdot*I)* &
-                                        LOG_TO_LN)
+          rt_auxvar%sec_act_coef(icplx) = &
+            exp(RDebyeHuckelLnGamma(reaction,reaction%eqcplx_Z(icplx), &
+                                    reaction%eqcplx_a0(icplx),I,sqrt_I))
         else
           rt_auxvar%sec_act_coef(icplx) = 1.d0
         endif
@@ -4668,13 +4663,9 @@ subroutine RActivityCoefficients(rt_auxvar,global_auxvar,reaction,option)
   ! primary species
     do icomp = 1, reaction%naqcomp
       if (abs(reaction%primary_spec_Z(icomp)) > 1.d-10) then
-        rt_auxvar%pri_act_coef(icomp) = exp((-reaction%primary_spec_Z(icomp)* &
-                                      reaction%primary_spec_Z(icomp)* &
-                                      sqrt_I*reaction%debyeA/ &
-                                      (1.d0+reaction%primary_spec_a0(icomp)* &
-                                      reaction%debyeB*sqrt_I)+ &
-                                      reaction%debyeBdot*I)* &
-                                      LOG_TO_LN)
+        rt_auxvar%pri_act_coef(icomp) = &
+          exp(RDebyeHuckelLnGamma(reaction,reaction%primary_spec_Z(icomp), &
+                                  reaction%primary_spec_a0(icomp),I,sqrt_I))
       else
         rt_auxvar%pri_act_coef(icomp) = 1.d0
       endif
@@ -4684,13 +4675,9 @@ subroutine RActivityCoefficients(rt_auxvar,global_auxvar,reaction,option)
     sum_sec_molal = 0.d0
     do icplx = 1, reaction%neqcplx
       if (dabs(reaction%eqcplx_Z(icplx)) > 1.d-10) then
-        rt_auxvar%sec_act_coef(icplx) = exp((-reaction%eqcplx_Z(icplx)* &
-                                      reaction%eqcplx_Z(icplx)* &
-                                      sqrt_I*reaction%debyeA/ &
-                                      (1.d0+reaction%eqcplx_a0(icplx)* &
-                                      reaction%debyeB*sqrt_I)+ &
-                                      reaction%debyeBdot*I)* &
-                                      LOG_TO_LN)
+        rt_auxvar%sec_act_coef(icplx) = &
+          exp(RDebyeHuckelLnGamma(reaction,reaction%eqcplx_Z(icplx), &
+                                  reaction%eqcplx_a0(icplx),I,sqrt_I))
       else
         rt_auxvar%sec_act_coef(icplx) = 1.d0
       endif
@@ -4743,6 +4730,54 @@ function RIonicStrength(rt_auxvar,reaction)
   RIonicStrength = 0.5d0*I
 
 end function RIonicStrength
+
+! ************************************************************************** !
+
+function RDebyeHuckelLnGamma(reaction,Z,a0,I,sqrt_I)
+  !
+  ! ln of the activity coefficient of a charged species (charge Z, ion size
+  ! a0) at ionic strength I by the B-dot form; sqrt_I = sqrt(I)
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/05/26
+  !
+  implicit none
+
+  class(reaction_rt_type) :: reaction
+  PetscReal :: Z
+  PetscReal :: a0
+  PetscReal :: I
+  PetscReal :: sqrt_I
+  PetscReal :: RDebyeHuckelLnGamma
+
+  RDebyeHuckelLnGamma = (-Z*Z*sqrt_I*reaction%debyeA/ &
+                         (1.d0+a0*reaction%debyeB*sqrt_I)+ &
+                         reaction%debyeBdot*I)*LOG_TO_LN
+
+end function RDebyeHuckelLnGamma
+
+! ************************************************************************** !
+
+function RDebyeHuckelDLog10GammaDI(reaction,Z,a0,sqrt_I)
+  !
+  ! d log10(gamma)/dI of RDebyeHuckelLnGamma's activity coefficient
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/05/26
+  !
+  implicit none
+
+  class(reaction_rt_type) :: reaction
+  PetscReal :: Z
+  PetscReal :: a0
+  PetscReal :: sqrt_I
+  PetscReal :: RDebyeHuckelDLog10GammaDI
+
+  RDebyeHuckelDLog10GammaDI = &
+    -0.5d0*reaction%debyeA*Z**2/(sqrt_I*(1.d0+reaction%debyeB*a0*sqrt_I)**2)+ &
+    reaction%debyeBdot
+
+end function RDebyeHuckelDLog10GammaDI
 
 ! ************************************************************************** !
 

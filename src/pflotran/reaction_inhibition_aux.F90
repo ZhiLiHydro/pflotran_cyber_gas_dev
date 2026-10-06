@@ -37,6 +37,7 @@ module Reaction_Inhibition_Aux_module
             ReactionInhibitionMonod, &
             ReactionInhibitionThreshold, &
             ReactionInhibitionSmoothstep, &
+            ReactionInhibitionSmoothstepParameters, &
             ReactionInhibitionDestroyAux
 
 contains
@@ -232,6 +233,40 @@ subroutine ReactionInhibitionSmoothstep2(concentration, &
   endif
 
 end subroutine ReactionInhibitionSmoothstep2
+
+! ************************************************************************** !
+
+subroutine ReactionInhibitionSmoothstepParameters(concentration,threshold, &
+                                                  width,da,dw)
+  !
+  ! Derivatives of the factor of ReactionInhibitionSmoothstep2 with respect
+  ! to its parameters: the threshold magnitude (da) and the log10 interval
+  ! (dw); zero where the factor is flat.
+  !
+  ! Author: Hansol Suh
+  ! Date: 09/21/26
+  !
+  implicit none
+
+  PetscReal :: concentration, threshold, width, da, dw
+
+  PetscReal :: z, direction, dsm, magnitude
+
+  magnitude = abs(threshold)
+  direction = 1.d0
+  if (threshold < 0.d0) direction = -1.d0 ! INHIBIT_ABOVE_THRESHOLD
+  ! smoothstep coordinate, increasing toward a factor of one
+  z = 0.5d0 + direction*(log10(concentration)-log10(magnitude))/width
+  da = 0.d0
+  dw = 0.d0
+  ! (a NaN z, from an invalid concentration, propagates)
+  if (.not.(z <= 0.d0) .and. .not.(z >= 1.d0)) then
+    dsm = 6.d0*z*(1.d0-z)
+    da = -direction*dsm/(width*magnitude*log(10.d0))
+    dw = -dsm*(z-0.5d0)/width
+  endif
+
+end subroutine ReactionInhibitionSmoothstepParameters
 
 ! ************************************************************************** !
 

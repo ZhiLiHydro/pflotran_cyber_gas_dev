@@ -23,9 +23,11 @@ module Reaction_Mineral_module
             ReactionMnrlProcessConstraint, &
             ReactionMnrlSetup, &
             ReactionMnrlKinetics, &
+            ReactionMnrlTSTSimpleRate, &
             ReactionMnrlSaturationIndex, &
             ReactionMnrlUpdateTempDepCoefs, &
             ReactionMnrlUpdateSpecSurfArea, &
+            ReactionMnrlSpecSurfArea, &
             ReactionMnrlUpdateKineticState, &
             ReactionMnrlReportZeroSurfArea, &
             ReactionMnrlCalcSumVolFrac
@@ -1233,67 +1235,31 @@ subroutine ReactionMnrlKineticRateTSTSimple(Res,Jac, &
   type(material_auxvar_type) :: material_auxvar
 
   PetscInt :: i, j, icomp, jcomp
-  PetscReal :: affinity_factor, sign_
   PetscReal :: Im, Im_const, dIm_dQK
   PetscReal :: QK, lnQK, dQK_dmj
-  PetscBool :: precipitation
+  PetscBool :: may_dissolve
   PetscReal :: rate_constant
   type(mineral_type), pointer :: mineral
 
   mineral => reaction%mineral
 
-  ! compute ion activity product
-  lnQK = -mineral%kinmnrl_logK(imnrl)*LOG_TO_LN
-
-  ! activity of water
-  if (mineral%kinmnrlh2oid(imnrl) > 0) then
-    lnQK = lnQK + mineral%kinmnrlh2ostoich(imnrl)* &
-                  rt_auxvar%ln_act_h2o
-  endif
-
-  do i = 1, mineral%kinmnrlspecid(0,imnrl)
-    icomp = mineral%kinmnrlspecid(i,imnrl)
-    lnQK = lnQK + mineral%kinmnrlstoich(i,imnrl)*ln_act(icomp)
-  enddo
-
-  QK = exp(lnQK)
-
-  affinity_factor = 1.d0-QK
-
-  sign_ = sign(1.d0,affinity_factor) ! sign_ > 0 = dissolution
-
-  if (rt_auxvar%mnrl_volfrac(imnrl) > 0 .or. sign_ < 0.d0) then
-
-    precipitation = (sign_ < 0.d0)
-
-    if (precipitation) then
-      rate_constant = mineral%kinmnrl_precip_rate_constant(imnrl)
-    else
-      rate_constant = mineral%kinmnrl_dissol_rate_constant(imnrl)
-    endif
-    if (.not.(rate_constant > 0.d0)) return
-
-    ! compute rate
-    ! rate: mol/m^2 mnrl/sec
-    ! area: m^2 mnrl/m^3 bulk
-    ! volume: m^3 bulk
-    Im_const = -rt_auxvar%mnrl_area(imnrl)
-
-    ! units: mol/sec/m^3 bulk
-    Im = Im_const*sign_*dabs(affinity_factor)*rate_constant
-    ! store volumetric rate to be used in updating mineral volume fractions
-    ! at end of time step
-    if (store_rate) then
-      ! mol/sec/m^3 bulk
-      rt_auxvar%mnrl_rate(imnrl) = rt_auxvar%mnrl_rate(imnrl) + Im
-    endif
-  else ! rate is already zero by default; move on to next mineral
-    return
+  may_dissolve = rt_auxvar%mnrl_volfrac(imnrl) > 0
+  ! units: mol/sec/m^3 bulk
+  call ReactionMnrlTSTSimpleRate(mineral,imnrl,ln_act,rt_auxvar%ln_act_h2o, &
+                                 rt_auxvar%mnrl_area(imnrl),may_dissolve, &
+                                 lnQK,QK,rate_constant,Im)
+  ! rate is already zero by default; move on to next mineral
+  if (rate_constant == 0.d0) return
+  ! store volumetric rate to be used in updating mineral volume fractions
+  ! at end of time step
+  if (store_rate) then
+    ! mol/sec/m^3 bulk
+    rt_auxvar%mnrl_rate(imnrl) = rt_auxvar%mnrl_rate(imnrl) + Im
   endif
 
   ! scale Im_const by volume for calculating derivatives below
   ! units: m^2 mnrl
-  Im_const = Im_const*material_auxvar%volume
+  Im_const = -rt_auxvar%mnrl_area(imnrl)*material_auxvar%volume
 
   ! convert rate from volumetric (mol/sec/m^3 bulk) to mol/sec
   ! units: mol/sec
@@ -1325,6 +1291,81 @@ subroutine ReactionMnrlKineticRateTSTSimple(Res,Jac, &
   enddo
 
 end subroutine ReactionMnrlKineticRateTSTSimple
+
+! ************************************************************************** !
+
+subroutine ReactionMnrlTSTSimpleRate(mineral,imnrl,ln_act,ln_act_h2o,area, &
+                                     may_dissolve,lnQK,QK,rate_constant, &
+                                     rate,unit_rate)
+  !
+  ! Transition-state rate of kinetic mineral imnrl by the simple rate law,
+  ! area*k*(QK-1) [mol/sec/m^3 bulk], precipitation positive. k is the
+  ! precipitation or dissolution rate constant; it is returned as zero,
+  ! with a zero rate, when an absent mineral would dissolve (may_dissolve
+  ! false) or k is not positive. Optional: unit_rate sets k to 1 (the
+  ! derivative with respect to it).
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/05/26
+  !
+  implicit none
+
+  type(mineral_type) :: mineral
+  PetscInt :: imnrl
+  PetscReal :: ln_act(:)
+  PetscReal :: ln_act_h2o
+  PetscReal :: area
+  PetscBool :: may_dissolve
+  PetscReal :: lnQK
+  PetscReal :: QK
+  PetscReal :: rate_constant
+  PetscReal :: rate
+  PetscBool, optional :: unit_rate
+
+  PetscInt :: i, icomp
+  PetscReal :: affinity_factor, sign_
+
+  ! compute ion activity product
+  lnQK = -mineral%kinmnrl_logK(imnrl)*LOG_TO_LN
+
+  ! activity of water
+  if (mineral%kinmnrlh2oid(imnrl) > 0) then
+    lnQK = lnQK + mineral%kinmnrlh2ostoich(imnrl)*ln_act_h2o
+  endif
+
+  do i = 1, mineral%kinmnrlspecid(0,imnrl)
+    icomp = mineral%kinmnrlspecid(i,imnrl)
+    lnQK = lnQK + mineral%kinmnrlstoich(i,imnrl)*ln_act(icomp)
+  enddo
+
+  QK = exp(lnQK)
+
+  affinity_factor = 1.d0-QK
+
+  sign_ = sign(1.d0,affinity_factor) ! sign_ > 0 = dissolution
+
+  rate_constant = 0.d0
+  rate = 0.d0
+  if (.not.(may_dissolve .or. sign_ < 0.d0)) return
+
+  if (sign_ < 0.d0) then
+    rate_constant = mineral%kinmnrl_precip_rate_constant(imnrl)
+  else
+    rate_constant = mineral%kinmnrl_dissol_rate_constant(imnrl)
+  endif
+  if (present(unit_rate)) then
+    if (unit_rate) rate_constant = 1.d0
+  endif
+  if (.not.(rate_constant > 0.d0)) then
+    rate_constant = 0.d0
+    return
+  endif
+
+  ! rate: mol/m^2 mnrl/sec
+  ! area: m^2 mnrl/m^3 bulk
+  rate = (-area)*sign_*dabs(affinity_factor)*rate_constant
+
+end subroutine ReactionMnrlTSTSimpleRate
 
 ! ************************************************************************** !
 
@@ -2023,11 +2064,6 @@ subroutine ReactionMnrlUpdateSpecSurfArea(reaction,rt_auxvar, &
   PetscInt :: imnrl1
   PetscInt :: imnrl_armor
   PetscReal :: porosity_scale
-  PetscReal :: volfrac_scale
-  PetscReal :: mnrl_volfrac0
-  PetscReal :: mnrl_volfrac
-  PetscBool :: calc_porosity
-  PetscBool :: calc_volfrac
 
   mineral => reaction%mineral
 
@@ -2037,42 +2073,20 @@ subroutine ReactionMnrlUpdateSpecSurfArea(reaction,rt_auxvar, &
       case(MINERAL_SURF_AREA_F_POR_VF_RATIO, &
            MINERAL_SURF_AREA_F_POR_RATIO, &
            MINERAL_SURF_AREA_F_VF_RATIO)
-        select case(mineral%kinmnrl_surf_area_function(imnrl))
-          case(MINERAL_SURF_AREA_F_POR_RATIO)
-            calc_porosity = PETSC_TRUE
-            calc_volfrac = PETSC_FALSE
-            volfrac_scale = 1.d0
-          case(MINERAL_SURF_AREA_F_VF_RATIO)
-            calc_porosity = PETSC_FALSE
-            calc_volfrac = PETSC_TRUE
-            porosity_scale = 1.d0
-          case(MINERAL_SURF_AREA_F_POR_VF_RATIO)
-            calc_porosity = PETSC_TRUE
-            calc_volfrac = PETSC_TRUE
-        end select
-        if (calc_porosity) then
+        porosity_scale = 1.d0
+        if (mineral%kinmnrl_surf_area_function(imnrl) /= &
+            MINERAL_SURF_AREA_F_VF_RATIO) then
           porosity_scale = &
               ((1.d0-material_auxvar%porosity_base) / &
               (1.d0-porosity0))** &
               mineral%kinmnrl_surf_area_porosity_pwr(imnrl)
         endif
-        if (calc_volfrac) then
-          mnrl_volfrac0 = max(rt_auxvar%mnrl_volfrac0(imnrl), &
-                              mineral%kinmnrl_vol_frac_epsilon(imnrl))
-          mnrl_volfrac = max(rt_auxvar%mnrl_volfrac(imnrl), &
-                            mineral%kinmnrl_vol_frac_epsilon(imnrl))
-          if (mnrl_volfrac0 > 0.d0) then
-            volfrac_scale = (mnrl_volfrac/mnrl_volfrac0)** &
-                            mineral%kinmnrl_surf_area_vol_frac_pwr(imnrl)
-          else
-            volfrac_scale = 1.d0
-          endif
-        endif
-
-        rt_auxvar%mnrl_area(imnrl) = &
-            max(rt_auxvar%mnrl_area0(imnrl), &
-                mineral%kinmnrl_surf_area_epsilon(imnrl)) * &
-            porosity_scale*volfrac_scale
+        call ReactionMnrlSpecSurfArea(mineral,imnrl, &
+                                      rt_auxvar%mnrl_area0(imnrl), &
+                                      rt_auxvar%mnrl_volfrac0(imnrl), &
+                                      rt_auxvar%mnrl_volfrac(imnrl), &
+                                      porosity_scale, &
+                                      rt_auxvar%mnrl_area(imnrl))
 
         if (reaction%update_armor_mineral_surface .and. &
             mineral%kinmnrl_armor_crit_vol_frac(imnrl) > 0.d0) then
@@ -2108,20 +2122,89 @@ subroutine ReactionMnrlUpdateSpecSurfArea(reaction,rt_auxvar, &
           endif
         endif
       case(MINERAL_SURF_AREA_F_MNRL_MASS)
-        ! m^2 mnrl/m^3 bulk = m^2 mnrl/kg mnrl *    [specific surface area]
-        !                     kg mnrl/mol mnrl /    [formula weight]
-        !                     m^3 mnrl/mol mnrl *   [molar volume]
-        !                     m^3 mnrl/m^3 bulk     [volume fraction]
-        rt_auxvar%mnrl_area(imnrl) = &
-          mineral%kinmnrl_spec_surf_area(imnrl) * &
-          mineral%kinmnrl_molar_wt(imnrl) / &
-          mineral%kinmnrl_molar_vol(imnrl) * &
-          rt_auxvar%mnrl_volfrac(imnrl)
+        call ReactionMnrlSpecSurfArea(mineral,imnrl, &
+                                      rt_auxvar%mnrl_area0(imnrl), &
+                                      rt_auxvar%mnrl_volfrac0(imnrl), &
+                                      rt_auxvar%mnrl_volfrac(imnrl), &
+                                      1.d0,rt_auxvar%mnrl_area(imnrl))
       case default
     end select
   enddo
 
 end subroutine ReactionMnrlUpdateSpecSurfArea
+
+! ************************************************************************** !
+
+subroutine ReactionMnrlSpecSurfArea(mineral,imnrl,area0,volfrac0,volfrac, &
+                                    porosity_scale,area,darea_dvolfrac)
+  !
+  ! Specific surface area [m^2 mnrl/m^3 bulk] of kinetic mineral imnrl by
+  ! its surface area function, without armoring, and optionally its
+  ! derivative with respect to the volume fraction. porosity_scale is the
+  ! porosity factor of the POROSITY functions (1 otherwise).
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/05/26
+  !
+  implicit none
+
+  type(mineral_type) :: mineral
+  PetscInt :: imnrl
+  PetscReal :: area0
+  PetscReal :: volfrac0
+  PetscReal :: volfrac
+  PetscReal :: porosity_scale
+  PetscReal :: area
+  PetscReal, optional :: darea_dvolfrac
+
+  PetscReal :: volfrac_scale, dscale_dvolfrac
+  PetscReal :: mnrl_volfrac0
+  PetscReal :: mnrl_volfrac
+  PetscReal :: pwr
+  PetscReal :: area_base
+  PetscReal :: area_per_volfrac
+
+  volfrac_scale = 1.d0
+  dscale_dvolfrac = 0.d0
+  select case(mineral%kinmnrl_surf_area_function(imnrl))
+    case(MINERAL_SURF_AREA_F_POR_VF_RATIO, &
+         MINERAL_SURF_AREA_F_POR_RATIO, &
+         MINERAL_SURF_AREA_F_VF_RATIO)
+      if (mineral%kinmnrl_surf_area_function(imnrl) /= &
+          MINERAL_SURF_AREA_F_POR_RATIO) then
+        mnrl_volfrac0 = max(volfrac0,mineral%kinmnrl_vol_frac_epsilon(imnrl))
+        mnrl_volfrac = max(volfrac,mineral%kinmnrl_vol_frac_epsilon(imnrl))
+        if (mnrl_volfrac0 > 0.d0) then
+          pwr = mineral%kinmnrl_surf_area_vol_frac_pwr(imnrl)
+          volfrac_scale = (mnrl_volfrac/mnrl_volfrac0)**pwr
+          ! flat below the volume fraction epsilon
+          if (volfrac > mineral%kinmnrl_vol_frac_epsilon(imnrl)) &
+            dscale_dvolfrac = volfrac_scale*pwr/mnrl_volfrac
+        endif
+      endif
+      area_base = max(area0,mineral%kinmnrl_surf_area_epsilon(imnrl))
+      area = area_base*porosity_scale*volfrac_scale
+      if (present(darea_dvolfrac)) &
+        darea_dvolfrac = area_base*porosity_scale*dscale_dvolfrac
+    case(MINERAL_SURF_AREA_F_MNRL_MASS)
+      ! m^2 mnrl/m^3 bulk = m^2 mnrl/kg mnrl *    [specific surface area]
+      !                     kg mnrl/mol mnrl /    [formula weight]
+      !                     m^3 mnrl/mol mnrl *   [molar volume]
+      !                     m^3 mnrl/m^3 bulk     [volume fraction]
+      area_per_volfrac = mineral%kinmnrl_spec_surf_area(imnrl) * &
+                         mineral%kinmnrl_molar_wt(imnrl) / &
+                         mineral%kinmnrl_molar_vol(imnrl)
+      area = area_per_volfrac*max(volfrac,0.d0)
+      if (present(darea_dvolfrac)) then
+        darea_dvolfrac = 0.d0
+        if (volfrac > 0.d0) darea_dvolfrac = area_per_volfrac
+      endif
+    case default
+      area = area0
+      if (present(darea_dvolfrac)) darea_dvolfrac = 0.d0
+  end select
+
+end subroutine ReactionMnrlSpecSurfArea
 
 ! ************************************************************************** !
 
