@@ -1,3 +1,57 @@
+adjoint.o : \
+  adjoint_cost.o \
+  adjoint_param.o \
+  input_aux.o \
+  option.o \
+  pflotran_constants.o \
+  string.o
+adjoint_cost.o : \
+  dataset_ascii.o \
+  geometry.o \
+  grid.o \
+  input_aux.o \
+  option.o \
+  pflotran_constants.o \
+  reaction_aux.o \
+  reaction_immobile_aux.o \
+  realization_subsurface.o \
+  region.o \
+  string.o \
+  utility.o
+adjoint_param.o : \
+  input_aux.o \
+  material.o \
+  option.o \
+  patch.o \
+  pflotran_constants.o \
+  reaction_inhibition_aux.o \
+  reaction_microbial_aux.o \
+  reaction_mineral_aux.o \
+  realization_subsurface.o \
+  string.o
+adjoint_rt_dae.o : \
+  adjoint.o \
+  adjoint_cost.o \
+  adjoint_param.o \
+  condition.o \
+  coupler.o \
+  flow_rt_dae_model.o \
+  grid.o \
+  option.o \
+  patch.o \
+  pflotran_constants.o \
+  reaction_immobile.o \
+  reaction_inhibition_aux.o \
+  reaction_microbial.o \
+  reaction_microbial_aux.o \
+  reaction_mineral.o \
+  reaction_mineral_aux.o \
+  realization_subsurface.o \
+  richards_dae_model.o \
+  rt_dae_flow_coupling.o \
+  rt_dae_model.o \
+  ts_adjoint.o \
+  ts_model.o
 anisodata.o : \
   geometry.o \
   pflotran_constants.o \
@@ -603,6 +657,8 @@ factory_subsurface.o : \
   wipp.o \
   zflow_aux.o
 factory_subsurface_linkage.o : \
+  adjoint.o \
+  adjoint_rt_dae.o \
   factory_subsurface_read.o \
   geomechanics_attributes.o \
   geomechanics_realization.o \
@@ -662,6 +718,7 @@ factory_subsurface_linkage.o : \
   wipp_flow_aux.o \
   wipp_well.o
 factory_subsurface_read.o : \
+  adjoint.o \
   characteristic_curves.o \
   characteristic_curves_thermal.o \
   checkpoint.o \

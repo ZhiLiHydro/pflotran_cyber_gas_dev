@@ -260,6 +260,12 @@ srcsink_obj = \
 	${common_src}srcsink_sandbox_wipp_gas.o \
 	${common_src}srcsink_sandbox_wipp_well.o
 
+adjoint_obj = \
+	${common_src}adjoint.o \
+	${common_src}adjoint_cost.o \
+	${common_src}adjoint_param.o \
+	${common_src}adjoint_rt_dae.o
+
 io_obj = \
 	${common_src}hdf5.o \
 	${common_src}hdf5_aux.o \

@@ -287,6 +287,7 @@ subroutine FactSubLinkSetupPMCLinkages(simulation,pm_flow,pm_tran, &
 
   call FactorySubsurfReadRequiredCards(simulation,input)
   call FactorySubsurfReadInput(simulation,input)
+  call FactSubLinkAttachAdjoint(simulation)
 
   if (associated(pm_waste_form)) &
     call FactSubLinkAddPMCWasteForm(simulation,pm_waste_form, &
@@ -370,6 +371,42 @@ subroutine FactSubLinkSetupPMCLinkages(simulation,pm_flow,pm_tran, &
   call InputDestroy(input)
 
 end subroutine FactSubLinkSetupPMCLinkages
+
+! ************************************************************************** !
+
+subroutine FactSubLinkAttachAdjoint(simulation)
+  !
+  ! Attaches the discrete adjoint of the ADJOINT block to the transport
+  ! coupler (MODE GIRT_DAE, required by the deck reader).
+  !
+  ! Author: Hansol Suh
+  ! Date: 09/23/26
+  !
+  use Adjoint_module, only : AdjointIsActive
+  use Adjoint_RT_DAE_class, only : AdjointRTDAECreate
+  use PMC_TS_Driver_class
+  use PM_RT_DAE_class
+  use Option_module
+
+  implicit none
+
+  class(simulation_subsurface_type) :: simulation
+
+  type(option_type), pointer :: option
+
+  if (.not.AdjointIsActive()) return
+  option => simulation%option
+  if (associated(simulation%tran_process_model_coupler)) then
+    select type(pmc => simulation%tran_process_model_coupler)
+      class is (pmc_ts_driver_type)
+        select type(pm => pmc%pm_ptr%pm)
+          class is (pm_rt_dae_type)
+            pmc%adjoint => AdjointRTDAECreate(option)
+        end select
+    end select
+  endif
+
+end subroutine FactSubLinkAttachAdjoint
 
 ! ************************************************************************** !
 

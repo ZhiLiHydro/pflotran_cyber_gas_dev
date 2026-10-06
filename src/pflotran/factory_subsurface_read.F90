@@ -934,6 +934,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
   use EOS_module
   use EOS_Water_module
   use SrcSink_Sandbox_module
+  use Adjoint_module
   use Klinkenberg_module
   use WIPP_module
   use Utility_module
@@ -988,6 +989,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
   PetscBool :: aveg_energy_flowrate
 
   PetscInt :: flag1
+  PetscInt :: n_adjoint_blocks
 
   type(region_type), pointer :: region
   type(flow_condition_type), pointer :: flow_condition
@@ -1043,6 +1045,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
   nullify(default_time_storage)
   nullify(waypoint_list_time_card)
   nullify(cur_well)
+  n_adjoint_blocks = 0
 
   realization => simulation%realization
   output_option => simulation%output_option
@@ -1347,6 +1350,24 @@ subroutine FactorySubsurfReadInput(simulation,input)
 !....................
       case ('SOURCE_SINK_SANDBOX')
         call SSSandboxRead(input,option)
+
+!....................
+      case ('ADJOINT')
+        if (option%itranmode /= RT_TS_MODE) then
+          option%io_buffer = 'ADJOINT block requires MODE GIRT_DAE in &
+            &SUBSURFACE_TRANSPORT.'
+          call PrintErrMsg(option)
+        endif
+        ! AdjointReadInput resets the lists: a second block would silently
+        ! replace the first
+        n_adjoint_blocks = n_adjoint_blocks + 1
+        if (n_adjoint_blocks > 1) then
+          option%io_buffer = 'More than one ADJOINT block found in the &
+            &deck; merge their COST_FUNCTION and PARAMETER entries into a &
+            &single ADJOINT block.'
+          call PrintErrMsg(option)
+        endif
+        call AdjointReadInput(input,option)
 
 !....................
       case ('FLOW_MASS_TRANSFER')
