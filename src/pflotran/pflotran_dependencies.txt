@@ -3790,6 +3790,13 @@ richards_common.o : \
   richards_aniso.o \
   richards_aux.o \
   utility.o
+rt_dae_chem.o : \
+  global_aux.o \
+  option.o \
+  pflotran_constants.o \
+  reaction.o \
+  reaction_aux.o \
+  reactive_transport_aux.o
 saturation_function.o : \
   input_aux.o \
   option.o \
