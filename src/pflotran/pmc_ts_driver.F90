@@ -1098,7 +1098,8 @@ end subroutine TSDriverStepOutput
 subroutine TSDriverSNESConverged(snes,it,xnorm,unorm,fnorm,reason,ctx,ierr)
   !
   ! PETSc's norm tests, then from the first iteration on the model's test
-  ! (-ts_model_newton_kappa, default 0.1; 0 disables it).
+  ! (-ts_model_newton_kappa, default 0.1; 0 disables it). An update the
+  ! model held back in part never converges.
   !
   ! Author: Hansol Suh
   ! Date: 09/22/26
@@ -1118,6 +1119,9 @@ subroutine TSDriverSNESConverged(snes,it,xnorm,unorm,fnorm,reason,ctx,ierr)
 
   call SNESConvergedDefault(snes,it,xnorm,unorm,fnorm,reason,0,ierr)
   CHKERRQ(ierr)
+  if (reason%v > 0 .and. it > 0) then
+    if (ctx%model%HoldsUpdate()) reason = SNES_CONVERGED_ITERATING
+  endif
   if (reason /= SNES_CONVERGED_ITERATING) return
   if (it < 1 .or. .not.(ctx%newton_kappa > 0.d0)) return
   if (.not.(fnorm < huge(fnorm))) return

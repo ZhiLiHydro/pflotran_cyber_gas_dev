@@ -91,6 +91,7 @@ module TS_Model_class
     procedure, public :: DefaultTolerances => TSModelDefaultTolerances
     procedure(TSModelPublish), deferred :: Publish
     procedure, public :: PreCheck => TSModelPreCheck
+    procedure, public :: HoldsUpdate => TSModelHoldsUpdate
     procedure, public :: ProjectInitialGuess => TSModelProjectInitialGuess
     procedure, public :: NumEvents => TSModelNumEvents
     procedure, public :: EventSetup => TSModelEventSetup
@@ -319,6 +320,26 @@ subroutine TSModelPreCheck(this,Y,dY,changed)
   changed = PETSC_FALSE
 
 end subroutine TSModelPreCheck
+
+! ************************************************************************** !
+
+function TSModelHoldsUpdate(this)
+  !
+  ! Whether PreCheck held part of the last Newton update back: the
+  ! iteration has not converged, whatever the norm tests say. Collective.
+  ! The default holds nothing.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/13/26
+  !
+  implicit none
+
+  class(ts_model_type) :: this
+  PetscBool :: TSModelHoldsUpdate
+
+  TSModelHoldsUpdate = PETSC_FALSE
+
+end function TSModelHoldsUpdate
 
 ! ************************************************************************** !
 

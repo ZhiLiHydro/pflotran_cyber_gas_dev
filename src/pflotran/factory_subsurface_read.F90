@@ -1570,7 +1570,13 @@ subroutine FactorySubsurfReadInput(simulation,input)
         call StringToUpper(word)
         select case(word)
           case('FLOW')
-            if (associated(simulation%flow_process_model_coupler)) then
+            if (associated(simulation%flow_process_model_coupler, &
+                           simulation%tran_process_model_coupler)) then
+              option%io_buffer = 'Flow and transport are one model &
+                &(RICHARDS_DAE with GIRT_DAE): use NUMERICAL_METHODS &
+                &TRANSPORT (and -flow_ksp_*/-flow_pc_* for the flow block).'
+              call PrintErrMsg(option)
+            else if (associated(simulation%flow_process_model_coupler)) then
               call simulation%flow_process_model_coupler% &
                      ReadNumericalMethods(input,word)
             else

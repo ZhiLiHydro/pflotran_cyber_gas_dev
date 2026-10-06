@@ -95,6 +95,7 @@ mode_process_model_obj = \
 	${common_src}pm_zflow.o
 
 mode_obj = \
+	${common_src}flow_rt_dae_model.o \
 	${common_src}general.o \
 	${common_src}general_common.o \
 	${common_src}global.o \
@@ -114,6 +115,7 @@ mode_obj = \
 	${common_src}richards_common.o \
 	${common_src}richards_dae_model.o \
 	${common_src}rt_dae_chem.o \
+	${common_src}rt_dae_flow_coupling.o \
 	${common_src}rt_dae_forcing.o \
 	${common_src}rt_dae_linear.o \
 	${common_src}rt_dae_model.o \

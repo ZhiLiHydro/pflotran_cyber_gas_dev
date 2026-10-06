@@ -761,6 +761,18 @@ factory_subsurface_read.o : \
 field.o : \
   petsc_utility.o \
   pflotran_constants.o
+flow_rt_dae_model.o : \
+  discretization.o \
+  grid.o \
+  option.o \
+  pflotran_constants.o \
+  richards_dae_model.o \
+  rt_dae_flow_coupling.o \
+  rt_dae_linear.o \
+  rt_dae_model.o \
+  ts_flow_state.o \
+  ts_model.o \
+  ugdm_pointer.o
 fluid.o : \
   input_aux.o \
   option.o \
@@ -2563,9 +2575,11 @@ pm_rt.o : \
   utility.o \
   variables.o
 pm_rt_dae.o : \
+  flow_rt_dae_model.o \
   option.o \
   pflotran_constants.o \
   pm_base.o \
+  pm_richards_dae.o \
   pm_rt.o \
   realization_subsurface.o \
   rt_dae_model.o \
@@ -3843,6 +3857,20 @@ rt_dae_chem.o : \
   reaction.o \
   reaction_aux.o \
   reactive_transport_aux.o
+rt_dae_flow_coupling.o : \
+  grid.o \
+  option.o \
+  patch.o \
+  pflotran_constants.o \
+  reaction.o \
+  reaction_microbial.o \
+  reaction_microbial_aux.o \
+  reaction_surf_complex_aux.o \
+  reactive_transport_aux.o \
+  rt_dae_model.o \
+  transport.o \
+  ts_flow_state.o \
+  ts_model.o
 rt_dae_forcing.o : \
   condition.o \
   coupler.o \

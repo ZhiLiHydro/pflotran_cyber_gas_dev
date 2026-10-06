@@ -268,13 +268,16 @@ subroutine FactSubLinkSetupPMCLinkages(simulation,pm_flow,pm_tran, &
   realization => simulation%realization
   option => realization%option
 
-  call FactSubLinkCheckDAE(simulation,pm_flow,pm_tran)
-  if (associated(pm_flow)) then
-    call FactSubLinkAddPMCSubsurfFlow(simulation,pm_flow,'PMCSubsurfaceFlow')
-  endif
-  if (associated(pm_tran)) then
-    call FactSubLinkAddPMCSubsurfTran(simulation,pm_tran, &
-                                      'PMCSubsurfaceTransport')
+  if (FactSubLinkFlowRTDAE(simulation,pm_flow,pm_tran)) then
+    call FactSubLinkAddPMCFlowRTDAE(simulation,pm_flow,pm_tran)
+  else
+    if (associated(pm_flow)) then
+      call FactSubLinkAddPMCSubsurfFlow(simulation,pm_flow,'PMCSubsurfaceFlow')
+    endif
+    if (associated(pm_tran)) then
+      call FactSubLinkAddPMCSubsurfTran(simulation,pm_tran, &
+                                        'PMCSubsurfaceTransport')
+    endif
   endif
   if (associated(pm_geop)) then
     call FactSubLinkAddPMCSubsurfGeophys(simulation,pm_geop, &
@@ -370,20 +373,21 @@ end subroutine FactSubLinkSetupPMCLinkages
 
 ! ************************************************************************** !
 
-subroutine FactSubLinkCheckDAE(simulation,pm_flow,pm_tran)
+function FactSubLinkFlowRTDAE(simulation,pm_flow,pm_tran)
   !
-  ! The TS models run alone: GIRT_DAE without flow (flow as forcing,
-  ! lagged by a flow step, would cap the transport integrator at first
-  ! order), RICHARDS_DAE without transport (its flow state lives in its TS
-  ! solution, which the transport modes do not read).
+  ! Whether flow (RICHARDS_DAE) and transport (GIRT_DAE) run as one TS
+  ! model. RICHARDS_DAE with another transport mode is rejected: its flow
+  ! state lives in the TS solution, which classic transport does not read.
+  ! GIRT_DAE with classic flow is rejected too: flow as forcing, lagged by
+  ! a flow step, caps the transport integrator at first order.
   !
   ! Author: Hansol Suh
   ! Date: 09/23/26
   !
   use PM_Base_class
   use PM_Subsurface_Flow_class
-  use PM_RT_DAE_class
   use PM_Richards_DAE_class
+  use PM_RT_DAE_class
   use Option_module
 
   implicit none
@@ -391,19 +395,77 @@ subroutine FactSubLinkCheckDAE(simulation,pm_flow,pm_tran)
   class(simulation_subsurface_type) :: simulation
   class(pm_subsurface_flow_type), pointer :: pm_flow
   class(pm_base_type), pointer :: pm_tran
+  PetscBool :: FactSubLinkFlowRTDAE
 
-  if (.not.(associated(pm_flow) .and. associated(pm_tran))) return
-  select type(pm_tran)
-    class is(pm_rt_dae_type)
-      call PrintErrMsg(simulation%option,'MODE GIRT_DAE runs without flow.')
-  end select
+  FactSubLinkFlowRTDAE = PETSC_FALSE
+  if (.not.associated(pm_flow)) return
   select type(pm_flow)
     class is(pm_richards_dae_type)
-      call PrintErrMsg(simulation%option,'MODE RICHARDS_DAE runs without &
-        &transport.')
+    class default
+      if (.not.associated(pm_tran)) return
+      select type(pm_tran)
+        class is(pm_rt_dae_type)
+          call PrintErrMsg(simulation%option,'MODE GIRT_DAE runs without &
+            &flow or with flow MODE RICHARDS_DAE (as one model).')
+      end select
+      return
+  end select
+  if (.not.associated(pm_tran)) return
+  select type(pm_tran)
+    class is(pm_rt_dae_type)
+      FactSubLinkFlowRTDAE = PETSC_TRUE
+    class default
+      call PrintErrMsg(simulation%option,'MODE RICHARDS_DAE runs with &
+        &transport MODE GIRT_DAE only (flow and transport as one model).')
   end select
 
-end subroutine FactSubLinkCheckDAE
+end function FactSubLinkFlowRTDAE
+
+! ************************************************************************** !
+
+subroutine FactSubLinkAddPMCFlowRTDAE(simulation,pm_flow,pm_tran)
+  !
+  ! Adds one TS driver coupler (the transport coupler, NUMERICAL_METHODS
+  ! TRANSPORT) with process models RICHARDS_DAE flow, then GIRT_DAE
+  ! transport; it is both the flow and the transport coupler.
+  !
+  ! Author: Hansol Suh
+  ! Date: 09/23/26
+  !
+  use PM_Base_class
+  use PM_Subsurface_Flow_class
+  use PM_Richards_DAE_class
+  use PM_RT_DAE_class
+
+  implicit none
+
+  class(simulation_subsurface_type) :: simulation
+  class(pm_subsurface_flow_type), pointer :: pm_flow
+  class(pm_base_type), pointer :: pm_tran
+
+  class(pm_base_type), pointer :: pm_first
+
+  call FactSubLinkAddPMCSubsurfTran(simulation,pm_tran, &
+                                    'PMCSubsurfaceFlowTransport')
+  select type(pm_flow)
+    class is(pm_richards_dae_type)
+      pm_flow%coupled = PETSC_TRUE
+      select type(pm_tran)
+        class is(pm_rt_dae_type)
+          pm_tran%pm_flow => pm_flow
+      end select
+  end select
+  ! as for flow alone, so that RICHARDS_DAE rejects it
+  if (pm_flow%steady_state) simulation%option%flow%steady_state = PETSC_TRUE
+  ! a solver object of its own, unused (the coupler's is transport's)
+  call pm_flow%InitializeSolver()
+  pm_first => pm_flow
+  pm_first%next => pm_tran
+  simulation%tran_process_model_coupler%pm_list => pm_first
+  simulation%flow_process_model_coupler => &
+    simulation%tran_process_model_coupler
+
+end subroutine FactSubLinkAddPMCFlowRTDAE
 
 ! ************************************************************************** !
 

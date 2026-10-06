@@ -16,6 +16,8 @@ module PM_RT_DAE_class
   use PM_RT_class
   use TS_Model_class
   use RT_DAE_Model_class
+  use PM_Richards_DAE_class
+  use Flow_RT_DAE_Model_class
   use Option_module
   use PFLOTRAN_Constants_module
 
@@ -25,6 +27,9 @@ module PM_RT_DAE_class
 
   type, public, extends(pm_rt_type) :: pm_rt_dae_type
     class(rt_dae_model_type), pointer :: model => null()
+    ! RICHARDS_DAE flow (set by the factory) and the coupled model
+    class(pm_richards_dae_type), pointer :: pm_flow => null()
+    class(flow_rt_dae_model_type), pointer :: coupled_model => null()
   contains
     procedure, public :: Setup => PMRTDAESetup
     procedure, public :: InitializeTimestep => PMRTDAENotInThisMode
@@ -80,13 +85,15 @@ subroutine PMRTDAESetup(this)
   class(pm_rt_dae_type) :: this
 
   class(realization_subsurface_type), pointer :: realization
+  PetscBool :: flow_coupled
 
   call this%pm_rt_type%Setup()
   call PMRTDAECheckOptions(this)
 
   ! the model defines the state layout and creates the TS solution's DM
   realization => this%realization
-  this%model => RTDAEModelCreate(realization,PETSC_FALSE)
+  flow_coupled = associated(this%pm_flow)
+  this%model => RTDAEModelCreate(realization,flow_coupled)
 
 end subroutine PMRTDAESetup
 
@@ -152,7 +159,9 @@ end subroutine PMRTDAECheckOptions
 
 subroutine PMRTDAEGetModel(pm,model)
   !
-  ! The TS driver's equation model: the transport model.
+  ! The TS driver's equation model: the transport model, or with
+  ! RICHARDS_DAE flow the coupled model, created here after both process
+  ! models' Setup.
   !
   ! Author: Hansol Suh
   ! Date: 09/22/26
@@ -165,7 +174,14 @@ subroutine PMRTDAEGetModel(pm,model)
   nullify(model)
   select type(pm)
     class is(pm_rt_dae_type)
-      model => pm%model
+      if (associated(pm%pm_flow)) then
+        if (.not.associated(pm%coupled_model)) then
+          pm%coupled_model => FlowRTDAEModelCreate(pm%pm_flow%model,pm%model)
+        endif
+        model => pm%coupled_model
+      else
+        model => pm%model
+      endif
   end select
 
 end subroutine PMRTDAEGetModel
@@ -239,6 +255,12 @@ subroutine PMRTDAEDestroy(this)
 
   class(pm_rt_dae_type) :: this
 
+  if (associated(this%coupled_model)) then
+    call this%coupled_model%Destroy()
+    deallocate(this%coupled_model)
+    nullify(this%coupled_model)
+  endif
+  nullify(this%pm_flow)
   if (associated(this%model)) then
     call this%model%Destroy()
     deallocate(this%model)

@@ -93,6 +93,9 @@ module RT_DAE_Model_class
     PetscReal, allocatable :: sorb_work(:,:)    ! (naqcomp,naqcomp)
     ! dS/dVF of the equilibrium sorbed totals on each kinetic mineral
     PetscReal, allocatable :: sorb_dvf(:,:)     ! (naqcomp,nmnrl)
+    ! coupled with soil compressibility: the sorbed totals on rock sites,
+    ! whose density follows the solid fraction 1 - phi(P)
+    PetscReal, allocatable :: sorb_rock(:,:)    ! (naqcomp,ngmax)
     PetscInt :: nlmax = 0
     PetscInt :: ngmax = 0
     ! transport phases (liquid only)
@@ -1426,6 +1429,7 @@ subroutine RTDAEAccumulation(this,ghosted_id,A,gross,dA_dc,dA_dk)
   ! Date: 09/22/26
   !
   use Reaction_module, only : RTAccumulation
+  use Reaction_Surface_Complexation_Aux_module, only : ROCK_SURFACE
 
   implicit none
 
@@ -1473,6 +1477,7 @@ subroutine RTDAEAccumulation(this,ghosted_id,A,gross,dA_dc,dA_dk)
 
   ! equilibrium surface complexation: the sorbed totals S [mol/m^3 bulk]
   if (this%nmnrl > 0) this%sorb_dvf = 0.d0
+  if (allocated(this%sorb_rock)) this%sorb_rock(:,ghosted_id) = 0.d0
   if (this%eq_srfcplx) then
     this%scratch%total_sorb_eq = 0.d0
     this%scratch%dtotal_sorb_eq = 0.d0
@@ -1483,6 +1488,11 @@ subroutine RTDAEAccumulation(this,ghosted_id,A,gross,dA_dc,dA_dk)
                                     imnrl)
       this%scratch%total_sorb_eq = this%scratch%total_sorb_eq + S
       this%scratch%dtotal_sorb_eq = this%scratch%dtotal_sorb_eq + dS_dm
+      if (allocated(this%sorb_rock)) then
+        if (this%reaction%surface_complexation% &
+              srfcplxrxn_surf_type(irxn) == ROCK_SURFACE) &
+          this%sorb_rock(:,ghosted_id) = this%sorb_rock(:,ghosted_id) + S
+      endif
       gross(1:this%naqcomp) = gross(1:this%naqcomp) + volume*abs(S)
       if (present(dA_dc)) then
         if (this%log_formulation) then

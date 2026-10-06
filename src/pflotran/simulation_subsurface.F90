@@ -927,6 +927,9 @@ subroutine SimSubsurfWriteRegression(this)
     if (associated(this%tran_process_model_coupler)) then
       tran_timestepper => this%tran_process_model_coupler%timestepper
     endif
+    ! flow and transport as one model have one coupler: both sections give
+    ! its counts and the residual norm of the coupled solve, each with the
+    ! solution norm of its own field
     call RegressionOutputSolution(OUTPUT_UNIT,this%regression, &
                                   this%realization, &
                                   flow_timestepper,tran_timestepper)
