@@ -1,7 +1,7 @@
 module Regression_module
 
-#include "petsc/finclude/petscvec.h"
-  use petscvec
+#include "petsc/finclude/petscts.h"
+  use petscts
   use Output_Aux_module
   use PFLOTRAN_Constants_module
 
@@ -774,6 +774,7 @@ subroutine RegressionOutputSolution(fid_out,regression,realization, &
   use Timestepper_SNES_class
   use Timestepper_KSP_class
   use Option_module
+  use Solver_module
 
   implicit none
 
@@ -786,6 +787,8 @@ subroutine RegressionOutputSolution(fid_out,regression,realization, &
 
   type(option_type), pointer :: option
   PetscReal :: r_norm, x_norm
+  SNES :: snes
+  Vec :: residual_vec
   PetscErrorCode :: ierr
 
   if (.not.associated(regression)) return
@@ -815,10 +818,13 @@ subroutine RegressionOutputSolution(fid_out,regression,realization, &
           write(fid_out,'(''   Residual 2-Norm: '',es21.13)') r_norm
         endif
       class is(timestepper_TS_type)
+        ! the residual of the last Newton solve (the SNES's)
+        call TSGetSNES(flow_stepper%solver%ts,snes,ierr);CHKERRQ(ierr)
+        call SNESGetFunction(snes,residual_vec,PETSC_NULL_FUNCTION, &
+                             PETSC_NULL_INTEGER,ierr);CHKERRQ(ierr)
         call VecNorm(realization%field%flow_xx,NORM_2,x_norm, &
                      ierr);CHKERRQ(ierr)
-        call VecNorm(realization%field%flow_r,NORM_2,r_norm, &
-                     ierr);CHKERRQ(ierr)
+        call VecNorm(residual_vec,NORM_2,r_norm,ierr);CHKERRQ(ierr)
         if (OptionIsIORank(option)) then
           write(fid_out,'(''-- SOLUTION: Flow --'')')
           write(fid_out,'(''   Time (seconds): '',es21.13)') &
@@ -861,6 +867,28 @@ subroutine RegressionOutputSolution(fid_out,regression,realization, &
                      ierr);CHKERRQ(ierr)
         call VecNorm(realization%field%tran_r,NORM_2,r_norm, &
                      ierr);CHKERRQ(ierr)
+        if (OptionIsIORank(option)) then
+          write(fid_out,'(''-- SOLUTION: Transport --'')')
+          write(fid_out,'(''   Time (seconds): '',es21.13)') &
+            tran_stepper%cumulative_solver_time
+          write(fid_out,'(''   Time Steps: '',i12)') tran_stepper%steps
+          write(fid_out,'(''   Newton Iterations: '',i12)') &
+            tran_stepper%cumulative_newton_iterations
+          write(fid_out,'(''   Linear Solver Iterations: '',i12)') &
+            tran_stepper%cumulative_linear_iterations
+          write(fid_out,'(''   Time Step Cuts: '',i12)') &
+            tran_stepper%cumulative_time_step_cuts
+          write(fid_out,'(''   Solution 2-Norm: '',es21.13)') x_norm
+          write(fid_out,'(''   Residual 2-Norm: '',es21.13)') r_norm
+        endif
+      class is(timestepper_TS_type)
+        ! the residual of the last Newton solve (the SNES's)
+        call TSGetSNES(tran_stepper%solver%ts,snes,ierr);CHKERRQ(ierr)
+        call SNESGetFunction(snes,residual_vec,PETSC_NULL_FUNCTION, &
+                             PETSC_NULL_INTEGER,ierr);CHKERRQ(ierr)
+        call VecNorm(realization%field%tran_xx,NORM_2,x_norm, &
+                     ierr);CHKERRQ(ierr)
+        call VecNorm(residual_vec,NORM_2,r_norm,ierr);CHKERRQ(ierr)
         if (OptionIsIORank(option)) then
           write(fid_out,'(''-- SOLUTION: Transport --'')')
           write(fid_out,'(''   Time (seconds): '',es21.13)') &

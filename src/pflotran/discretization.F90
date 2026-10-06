@@ -29,11 +29,12 @@ module Discretization_module
     type(dm_ptr_type), pointer :: dmc_nflowdof(:), dmc_ntrandof(:)
       ! Arrays containing hierarchy of coarsened DMs, for use with Galerkin
       ! multigrid.  Element i of each array is a *finer* DM than element i-1.
-    PetscInt :: dm_index_to_ndof(7) ! mapping between a dm_ptr to the number of degrees of freedom
+    PetscInt :: dm_index_to_ndof(8) ! mapping between a dm_ptr to the number of degrees of freedom
     type(dm_ptr_type), pointer :: dm_1dof
     type(dm_ptr_type), pointer :: dm_nflowdof
     type(dm_ptr_type), pointer :: dm_ntrandof
     type(dm_ptr_type), pointer :: dm_geopdof
+    type(dm_ptr_type), pointer :: dm_ndaedof
     type(dm_ptr_type), pointer :: dm_n_stress_strain_dof
     VecScatter :: tvd_ghost_scatter
 
@@ -97,16 +98,19 @@ function DiscretizationCreate()
   allocate(discretization%dm_nflowdof)
   allocate(discretization%dm_ntrandof)
   allocate(discretization%dm_geopdof)
+  allocate(discretization%dm_ndaedof)
   allocate(discretization%dm_n_stress_strain_dof)
   PetscObjectNullify(discretization%dm_1dof%dm)
   PetscObjectNullify(discretization%dm_nflowdof%dm)
   PetscObjectNullify(discretization%dm_ntrandof%dm)
   PetscObjectNullify(discretization%dm_geopdof%dm)
+  PetscObjectNullify(discretization%dm_ndaedof%dm)
   PetscObjectNullify(discretization%dm_n_stress_strain_dof%dm)
   nullify(discretization%dm_1dof%ugdm)
   nullify(discretization%dm_nflowdof%ugdm)
   nullify(discretization%dm_ntrandof%ugdm)
   nullify(discretization%dm_geopdof%ugdm)
+  nullify(discretization%dm_ndaedof%ugdm)
   nullify(discretization%dm_n_stress_strain_dof%ugdm)
 
   nullify(discretization%grid)
@@ -907,6 +911,8 @@ function DiscretizationGetDMPtrFromIndex(discretization,dm_index)
       DiscretizationGetDMPtrFromIndex => discretization%dm_ntrandof
     case(NGEOPDOF)
       DiscretizationGetDMPtrFromIndex => discretization%dm_geopdof
+    case(NDAEDOF)
+      DiscretizationGetDMPtrFromIndex => discretization%dm_ndaedof
     case(NGEODOF)
       DiscretizationGetDMPtrFromIndex => discretization%dm_n_stress_strain_dof
   end select
@@ -1506,6 +1512,7 @@ subroutine DiscretizationDestroy(discretization)
       call PUDMDestroy(discretization%dm_nflowdof%dm)
       call PUDMDestroy(discretization%dm_ntrandof%dm)
       call PUDMDestroy(discretization%dm_geopdof%dm)
+      call PUDMDestroy(discretization%dm_ndaedof%dm)
       call PUDMDestroy(discretization%dm_n_stress_strain_dof%dm)
       if (associated(discretization%dmc_nflowdof)) then
         do i=1,size(discretization%dmc_nflowdof)
@@ -1530,6 +1537,8 @@ subroutine DiscretizationDestroy(discretization)
         call UGridDMDestroy(discretization%dm_ntrandof%ugdm)
       if (associated(discretization%dm_geopdof%ugdm)) &
         call UGridDMDestroy(discretization%dm_geopdof%ugdm)
+      if (associated(discretization%dm_ndaedof%ugdm)) &
+        call UGridDMDestroy(discretization%dm_ndaedof%ugdm)
       if (associated(discretization%dm_n_stress_strain_dof%ugdm)) &
         call UGridDMDestroy(discretization%dm_n_stress_strain_dof%ugdm)
   end select
@@ -1545,6 +1554,9 @@ subroutine DiscretizationDestroy(discretization)
   if (associated(discretization%dm_geopdof)) &
     deallocate(discretization%dm_geopdof)
   nullify(discretization%dm_geopdof)
+  if (associated(discretization%dm_ndaedof)) &
+    deallocate(discretization%dm_ndaedof)
+  nullify(discretization%dm_ndaedof)
   if (associated(discretization%dm_n_stress_strain_dof)) &
     deallocate(discretization%dm_n_stress_strain_dof)
   nullify(discretization%dm_n_stress_strain_dof)

@@ -61,6 +61,8 @@ module PFLOTRAN_Constants_module
   PetscInt, parameter, public :: EXIT_SUCCESS = 0
   PetscInt, parameter, public :: EXIT_USER_ERROR = 87
   PetscInt, parameter, public :: EXIT_FAILURE = 88
+  ! a forward run without the adjoint its input asks for
+  PetscInt, parameter, public :: EXIT_ADJOINT_SKIPPED = 89
 
   ! formula weights
   PetscReal, parameter, public :: FMWNACL = 58.44277d0
@@ -157,6 +159,7 @@ module PFLOTRAN_Constants_module
   PetscInt, parameter, public :: NTRANDOF = 5
   PetscInt, parameter, public :: NGEOPDOF = 6
   PetscInt, parameter, public :: NGEODOF = 7
+  PetscInt, parameter, public :: NDAEDOF = 8
 
   PetscInt, parameter, public :: GLOBAL = 1
   PetscInt, parameter, public :: LOCAL = 2

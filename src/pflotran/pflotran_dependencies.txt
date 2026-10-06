@@ -3048,6 +3048,22 @@ pmc_third_party.o : \
   string.o \
   timestepper_base.o \
   utility.o
+pmc_ts_driver.o : \
+  discretization.o \
+  input_aux.o \
+  option.o \
+  output_aux.o \
+  petsc_utility.o \
+  pflotran_constants.o \
+  pm_base.o \
+  pmc_subsurface.o \
+  solver.o \
+  timestepper_TS.o \
+  timestepper_base.o \
+  ts_adjoint.o \
+  ts_model.o \
+  ts_model_checks.o \
+  waypoint.o
 pnf.o : \
   characteristic_curves.o \
   connection.o \
@@ -3698,6 +3714,7 @@ regression.o : \
   petsc_utility.o \
   pflotran_constants.o \
   realization_subsurface.o \
+  solver.o \
   string.o \
   timestepper_KSP.o \
   timestepper_SNES.o \
@@ -3968,6 +3985,7 @@ simulation_subsurface.o : \
   pmc_geomechanics.o \
   pmc_geophysics.o \
   pmc_subsurface.o \
+  pmc_ts_driver.o \
   reaction_aux.o \
   reaction_clm.o \
   reaction_sandbox.o \
@@ -4349,6 +4367,17 @@ transport_np.o : \
   pflotran_constants.o \
   reaction_aux.o \
   reactive_transport_aux.o
+ts_adjoint.o : \
+  option.o \
+  petsc_utility.o \
+  pflotran_constants.o \
+  ts_model.o
+ts_model.o : \
+  pflotran_constants.o
+ts_model_checks.o : \
+  option.o \
+  pflotran_constants.o \
+  ts_model.o
 ugdm_pointer.o : \
   petsc_utility.o
 units.o : \

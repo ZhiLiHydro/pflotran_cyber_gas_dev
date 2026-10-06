@@ -1,3 +1,5 @@
+import os
+
 def get_source_file_roots():
     source_file_roots = []
     # Obtain list of source files
@@ -7,6 +9,9 @@ def get_source_file_roots():
         w = line.split('}')
         if len(w) == 2:
             w2 = w[1].split('.o')
+            # skip C sources (petsc_fortran_interop.c)
+            if os.path.isfile(w2[0]+'.c'):
+                continue
             source_file_roots.append(w2[0])
     source_file_roots.append('pflotran')
     source_file_roots.append('pflotran_rxn')

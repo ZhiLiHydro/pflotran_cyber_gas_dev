@@ -884,6 +884,7 @@ subroutine SimSubsurfWriteRegression(this)
   use Option_module
   use Timestepper_Base_class
   use Timestepper_KSP_class
+  use PMC_TS_Driver_class
 
   implicit none
 
@@ -936,6 +937,14 @@ subroutine SimSubsurfWriteRegression(this)
                             this%geomech%realization, &
                             TimestepperKSPCast(this%geomech% &
                                     process_model_coupler%timestepper))
+    endif
+    ! the costs and gradients of a discrete adjoint
+    if (associated(this%tran_process_model_coupler)) then
+      select type(pmc => this%tran_process_model_coupler)
+        class is(pmc_ts_driver_type)
+          if (associated(pmc%adjoint)) &
+            call pmc%adjoint%RegressionOutput(OUTPUT_UNIT)
+      end select
     endif
     if (OptionIsIORank(this%option)) then
       close(OUTPUT_UNIT)

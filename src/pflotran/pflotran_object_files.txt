@@ -104,6 +104,7 @@ mode_obj = \
 	${common_src}mphase.o \
 	${common_src}nw_transport.o \
 	${common_src}nw_transport_equilibrium.o \
+	${common_src}petsc_fortran_interop.o \
 	${common_src}pnf.o \
 	${common_src}reactive_transport.o \
 	${common_src}richards.o \
@@ -115,6 +116,9 @@ mode_obj = \
 	${common_src}th_well.o \
 	${common_src}thc.o \
 	${common_src}thc_common.o \
+	${common_src}ts_adjoint.o \
+	${common_src}ts_model.o \
+	${common_src}ts_model_checks.o \
 	${common_src}wipp_flow.o \
 	${common_src}wipp_flow_common.o \
 	${common_src}wipp_well.o \
@@ -301,6 +305,7 @@ misc_obj = \
 	${common_src}pmc_subsurface.o \
 	${common_src}pmc_subsurface_osrt.o \
 	${common_src}pmc_third_party.o \
+	${common_src}pmc_ts_driver.o \
 	${common_src}realization_base.o \
 	${common_src}realization_common.o \
 	${common_src}realization_subsurface.o \
