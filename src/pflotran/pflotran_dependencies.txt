@@ -3797,6 +3797,8 @@ rt_dae_chem.o : \
   reaction.o \
   reaction_aux.o \
   reactive_transport_aux.o
+rt_dae_linear.o : \
+  pflotran_constants.o
 saturation_function.o : \
   input_aux.o \
   option.o \

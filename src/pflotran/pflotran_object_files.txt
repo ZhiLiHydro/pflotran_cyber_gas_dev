@@ -111,6 +111,7 @@ mode_obj = \
 	${common_src}richards_aniso.o \
 	${common_src}richards_common.o \
 	${common_src}rt_dae_chem.o \
+	${common_src}rt_dae_linear.o \
 	${common_src}sco2.o \
 	${common_src}sco2_common.o \
 	${common_src}th.o \
