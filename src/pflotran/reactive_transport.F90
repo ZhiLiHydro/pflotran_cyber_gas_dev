@@ -3793,7 +3793,7 @@ subroutine RTJacobianEquilibrateCO2(J,realization)
   ! add the equilibration
 
   jacobian_entry = 1.d0
-  jco2 = reaction%species_idx%pri_co2_id
+  jco2 = reaction%species_idx%co2_aq_id
   zero_count = 0
   zero_rows = 0
   ghosted_rows = 0
