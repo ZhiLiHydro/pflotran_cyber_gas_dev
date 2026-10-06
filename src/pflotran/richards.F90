@@ -3211,16 +3211,13 @@ subroutine RichardsJacobianSourceSink(A,realization,pm_well,debug,ierr)
       select case(source_sink%flow_condition%itype(1))
         case(MASS_RATE_SS,SCALED_MASS_RATE_SS,HET_MASS_RATE_SS)
         case(VOLUMETRIC_RATE_SS)  ! assume local density for now
-          Jup(1,1) = -qsrc*rich_auxvars(ghosted_id)%dden_dp* &
-                     richards_density_kmol_to_kg
+          Jup(1,1) = -qsrc*rich_auxvars(ghosted_id)%dden_dp
         case(SCALED_VOLUMETRIC_RATE_SS)  ! assume local density for now
           Jup(1,1) = -qsrc*rich_auxvars(ghosted_id)%dden_dp* &
-                     richards_density_kmol_to_kg* &
                      source_sink%flow_aux_real_var(ONE_INTEGER,iconn)
         case(HET_VOL_RATE_SS)
           Jup(1,1) = -source_sink%flow_aux_real_var(ONE_INTEGER,iconn)* &
-                     rich_auxvars(ghosted_id)%dden_dp* &
-                     richards_density_kmol_to_kg
+                     rich_auxvars(ghosted_id)%dden_dp
         case(PRES_REG_MASS_RATE_SS)
           threshold_pressure = source_sink%flow_condition%rate%aux_real(1)
           inhibit_flow_above_pressure = (threshold_pressure > 0.d0)

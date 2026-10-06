@@ -701,6 +701,8 @@ subroutine RichardsBCFluxDerivative(ibndtype,auxvars, &
         v_darcy = auxvars(RICHARDS_PRESSURE_DOF)
         if (v_darcy > 0.d0) then
           density_ave = global_auxvar_up%den(1)
+          ! the boundary state is at the cell pressure
+          dden_ave_dp_dn = rich_auxvar_up%dden_dp
         else
           density_ave = global_auxvar_dn%den(1)
           dden_ave_dp_dn = rich_auxvar_dn%dden_dp
