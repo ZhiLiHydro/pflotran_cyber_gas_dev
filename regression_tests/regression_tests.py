@@ -64,6 +64,19 @@ _TIMEOUT_ERROR = 10
 _NAN_OR_INF_ERROR = 11
 _PLANNED_ERROR_NOT_CAUGHT = 12
 
+
+def _fortran_float(text):
+    """float() that also reads Fortran's exponent without the letter E,
+    which ES formats print for three-digit exponents (7.6-271)."""
+    try:
+        return float(text)
+    except ValueError:
+        match = re.match(r"([+-]?[0-9.]+)([+-][0-9]{3})$", text)
+        if match is None:
+            raise
+        return float(match.group(1) + "e" + match.group(2))
+
+
 class TestStatus(object):
     """
     Simple class to hold status info.
@@ -1499,7 +1512,7 @@ class RegressionTest(object):
                                 if report[3]:
                                     section_nan_or_inf_present = True
                             except Exception as error:
-                                section_status += 1
+                                section_num_error += 1
                                 print("ERROR: {0} : {1}.\n  {2}".format(
                                     self.name(), k, str(error)), file=testlog)
 
@@ -1535,8 +1548,8 @@ class RegressionTest(object):
             key == self._DISPLACEMENT or
             key == self._STRAIN or
             key == self._STRESS):
-            previous = float(previous)
-            current = float(current)
+            previous = _fortran_float(previous)
+            current = _fortran_float(current)
             tol = self._tolerance[key]
         elif key.lower() == self._SOLUTION:
             previous, current, tol = \
@@ -2148,7 +2161,8 @@ class RegressionTestManager(object):
                 print("I", end='', file=sys.stdout)
             elif status.error == _PRE_PROCESS_ERROR:
                 print("B", end='', file=sys.stdout)
-            elif status.error == _POST_PROCESS_ERROR:
+            elif status.error in (_POST_PROCESS_ERROR,
+                                  _PYTHON_POST_PROCESS_ERROR):
                 print("A", end='', file=sys.stdout)
             elif status.error == _TIMEOUT_ERROR:
                 print("T", end='', file=sys.stdout)
@@ -2157,8 +2171,8 @@ class RegressionTestManager(object):
             elif status.error == _PLANNED_ERROR_NOT_CAUGHT:
                 print("P", end='', file=sys.stdout)
             else:
+                print("?", end='', file=sys.stdout)
                 print("Unknown error type in regression.py", file=testlog)
-                sys.exit(0)
             print("{0}... errored.".format(name), file=testlog)
         elif status.fail != _NULL_FAILURE:
             if status.fail == _MINOR_FAILURE:
