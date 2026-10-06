@@ -628,6 +628,7 @@ factory_subsurface_linkage.o : \
   pm_richards.o \
   pm_richards_ts.o \
   pm_rt.o \
+  pm_rt_dae.o \
   pm_sco2.o \
   pm_subsurface_flow.o \
   pm_th.o \
@@ -647,6 +648,7 @@ factory_subsurface_linkage.o : \
   pmc_subsurface.o \
   pmc_subsurface_osrt.o \
   pmc_third_party.o \
+  pmc_ts_driver.o \
   realization_subsurface.o \
   simulation_subsurface.o \
   strata.o \
@@ -706,6 +708,7 @@ factory_subsurface_read.o : \
   pm_richards.o \
   pm_richards_ts.o \
   pm_rt.o \
+  pm_rt_dae.o \
   pm_sco2.o \
   pm_th.o \
   pm_th_ts.o \
@@ -2549,6 +2552,14 @@ pm_rt.o : \
   string.o \
   utility.o \
   variables.o
+pm_rt_dae.o : \
+  option.o \
+  pflotran_constants.o \
+  pm_base.o \
+  pm_rt.o \
+  realization_subsurface.o \
+  rt_dae_model.o \
+  ts_model.o
 pm_sco2.o : \
   characteristic_curves.o \
   characteristic_curves_common.o \
@@ -3797,8 +3808,59 @@ rt_dae_chem.o : \
   reaction.o \
   reaction_aux.o \
   reactive_transport_aux.o
+rt_dae_forcing.o : \
+  condition.o \
+  coupler.o \
+  global_aux.o \
+  grid.o \
+  material_aux.o \
+  option.o \
+  patch.o \
+  pflotran_constants.o \
+  reaction_aux.o \
+  reactive_transport.o \
+  reactive_transport_aux.o \
+  realization_subsurface.o \
+  rt_dae_chem.o \
+  transport_constraint_rt.o \
+  ts_connections.o \
+  ts_flow_state.o
 rt_dae_linear.o : \
   pflotran_constants.o
+rt_dae_model.o : \
+  carbon_sandbox.o \
+  coupler.o \
+  discretization.o \
+  field.o \
+  global_aux.o \
+  grid.o \
+  material_aux.o \
+  option.o \
+  patch.o \
+  petsc_utility.o \
+  pflotran_constants.o \
+  reaction.o \
+  reaction_aux.o \
+  reaction_clm.o \
+  reaction_immobile.o \
+  reaction_microbial.o \
+  reaction_microbial_aux.o \
+  reaction_mineral.o \
+  reaction_mineral_aux.o \
+  reaction_sandbox.o \
+  reaction_surf_complex.o \
+  reaction_surf_complex_aux.o \
+  reactive_transport.o \
+  reactive_transport_aux.o \
+  realization_subsurface.o \
+  rt_dae_chem.o \
+  rt_dae_forcing.o \
+  rt_dae_linear.o \
+  time_storage.o \
+  transport.o \
+  ts_connections.o \
+  ts_flow_state.o \
+  ts_model.o
 saturation_function.o : \
   input_aux.o \
   option.o \
@@ -4381,6 +4443,13 @@ ts_adjoint.o : \
   petsc_utility.o \
   pflotran_constants.o \
   ts_model.o
+ts_connections.o : \
+  connection.o \
+  coupler.o \
+  grid.o \
+  patch.o \
+  pflotran_constants.o
+ts_flow_state.o :
 ts_model.o : \
   pflotran_constants.o
 ts_model_checks.o : \

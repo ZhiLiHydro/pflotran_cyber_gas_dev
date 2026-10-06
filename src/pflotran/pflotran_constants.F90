@@ -185,6 +185,7 @@ module PFLOTRAN_Constants_module
   ! transport modes
   PetscInt, parameter, public :: RT_MODE = 1
   PetscInt, parameter, public :: NWT_MODE = 2
+  PetscInt, parameter, public :: RT_TS_MODE = 3
   PetscInt, parameter, public :: EXPLICIT_ADVECTION = 10
 
   ! geophysics modes

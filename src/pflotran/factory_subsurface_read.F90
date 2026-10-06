@@ -156,6 +156,7 @@ subroutine FactorySubsurfReadTransportPM(input,option,pm)
   use PM_NWT_class
   use PM_OSRT_class
   use PM_RT_class
+  use PM_RT_DAE_class
 
   implicit none
 
@@ -189,6 +190,11 @@ subroutine FactorySubsurfReadTransportPM(input,option,pm)
             pm => PMRTCreate()
             option%itranmode = RT_MODE
             option%tranmode = 'gi reactive transport'
+            option%transport%reaction_coupling = GLOBAL_IMPLICIT
+          case('GIRT_DAE')
+            pm => PMRTDAECreate()
+            option%itranmode = RT_TS_MODE
+            option%tranmode = 'gi reactive transport dae'
             option%transport%reaction_coupling = GLOBAL_IMPLICIT
           case('OSRT')
             pm => PMOSRTCreate()
@@ -834,7 +840,8 @@ subroutine FactorySubsurfReadRequiredCards(simulation,input)
 !....................
       case('CHEMISTRY')
         call InputPushCard(input,card,option)
-        if (option%itranmode /= RT_MODE) then
+        if (option%itranmode /= RT_MODE .and. &
+            option%itranmode /= RT_TS_MODE) then
           option%io_buffer = 'CHEMISTRY card is included, but &
             &SUBSURFACE_TRANSPORT MODE GIRT/OSRT was not specified in the &
             &SIMULATION block.'
@@ -1257,7 +1264,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
 !....................
       case('CONSTRAINT')
         select case(option%itranmode)
-          case(RT_MODE)
+          case(RT_MODE,RT_TS_MODE)
             tran_constraint => TranConstraintRTCreate(option)
           case(NWT_MODE)
             tran_constraint => TranConstraintNWTCreate(option)

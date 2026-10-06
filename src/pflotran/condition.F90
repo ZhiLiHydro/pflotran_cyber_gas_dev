@@ -4003,7 +4003,7 @@ subroutine TranConditionRead(condition,constraint_list, &
           if (InputCheckExit(input,option)) exit
 
           select case(option%itranmode)
-            case(RT_MODE)
+            case(RT_MODE,RT_TS_MODE)
               constraint_coupler => TranConstraintCouplerRTCreate(option)
             case(NWT_MODE)
               constraint_coupler => TranConstraintCouplerNWTCreate(option)
@@ -4047,7 +4047,7 @@ subroutine TranConditionRead(condition,constraint_list, &
 
       case('CONSTRAINT')
         select case(option%itranmode)
-          case(RT_MODE)
+          case(RT_MODE, RT_TS_MODE)
             constraint_coupler => TranConstraintCouplerRTCreate(option)
             constraint => TranConstraintRTCreate(option)
           case(NWT_MODE)
@@ -4086,7 +4086,7 @@ subroutine TranConditionRead(condition,constraint_list, &
           call PrintErrMsg(option)
         endif
         select case(option%itranmode)
-          case(RT_MODE)
+          case(RT_MODE, RT_TS_MODE)
             sec_constraint_coupler => TranConstraintCouplerRTCreate(option)
           case(NWT_MODE)
             option%io_buffer = 'MULTIPLE_CONTINUUM is not compatible with &

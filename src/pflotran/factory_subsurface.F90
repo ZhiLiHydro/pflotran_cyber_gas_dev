@@ -523,10 +523,13 @@ subroutine FactorySubsurfSetupRealization(simulation)
   call RealProcessMatPropAndSatFunc(realization)
 
   select case(option%itranmode)
-    case(RT_MODE)
-      select type(pm=>simulation%tran_process_model_coupler%pm_list)
+    case(RT_MODE,RT_TS_MODE)
+      select type(pm=>simulation%tran_process_model_coupler%pm_ptr%pm)
         class is(pm_rt_type)
             pm_rt => pm
+        class default
+          option%io_buffer = 'Unrecognized reactive transport process model.'
+          call PrintErrMsg(option)
       end select
       ! map temperature dependence flags
       select case(pm_rt%transport_temperature_dependence)

@@ -77,6 +77,7 @@ mode_process_model_obj = \
 	${common_src}pm_richards.o \
 	${common_src}pm_richards_ts.o \
 	${common_src}pm_rt.o \
+	${common_src}pm_rt_dae.o \
 	${common_src}pm_sco2.o \
 	${common_src}pm_subsurface_flow.o \
 	${common_src}pm_th.o \
@@ -111,7 +112,9 @@ mode_obj = \
 	${common_src}richards_aniso.o \
 	${common_src}richards_common.o \
 	${common_src}rt_dae_chem.o \
+	${common_src}rt_dae_forcing.o \
 	${common_src}rt_dae_linear.o \
+	${common_src}rt_dae_model.o \
 	${common_src}sco2.o \
 	${common_src}sco2_common.o \
 	${common_src}th.o \
@@ -119,6 +122,8 @@ mode_obj = \
 	${common_src}thc.o \
 	${common_src}thc_common.o \
 	${common_src}ts_adjoint.o \
+	${common_src}ts_connections.o \
+	${common_src}ts_flow_state.o \
 	${common_src}ts_model.o \
 	${common_src}ts_model_checks.o \
 	${common_src}wipp_flow.o \

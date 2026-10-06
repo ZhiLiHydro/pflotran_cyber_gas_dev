@@ -268,6 +268,7 @@ subroutine FactSubLinkSetupPMCLinkages(simulation,pm_flow,pm_tran, &
   realization => simulation%realization
   option => realization%option
 
+  call FactSubLinkCheckDAE(simulation,pm_flow,pm_tran)
   if (associated(pm_flow)) then
     call FactSubLinkAddPMCSubsurfFlow(simulation,pm_flow,'PMCSubsurfaceFlow')
   endif
@@ -369,6 +370,35 @@ end subroutine FactSubLinkSetupPMCLinkages
 
 ! ************************************************************************** !
 
+subroutine FactSubLinkCheckDAE(simulation,pm_flow,pm_tran)
+  !
+  ! MODE GIRT_DAE runs without flow: flow as forcing, lagged by a flow
+  ! step, would cap the transport integrator at first order.
+  !
+  ! Author: Hansol Suh
+  ! Date: 09/23/26
+  !
+  use PM_Base_class
+  use PM_Subsurface_Flow_class
+  use PM_RT_DAE_class
+  use Option_module
+
+  implicit none
+
+  class(simulation_subsurface_type) :: simulation
+  class(pm_subsurface_flow_type), pointer :: pm_flow
+  class(pm_base_type), pointer :: pm_tran
+
+  if (.not.(associated(pm_flow) .and. associated(pm_tran))) return
+  select type(pm_tran)
+    class is(pm_rt_dae_type)
+      call PrintErrMsg(simulation%option,'MODE GIRT_DAE runs without flow.')
+  end select
+
+end subroutine FactSubLinkCheckDAE
+
+! ************************************************************************** !
+
 subroutine FactSubLinkAddPMCSubsurfFlow(simulation,pm_flow,pmc_name)
   !
   ! Adds a subsurface flow PMC
@@ -466,11 +496,14 @@ subroutine FactSubLinkAddPMCSubsurfTran(simulation,pm_base,pmc_name)
   use PM_Base_class
   use PM_RT_class
   use PM_NWT_class
+  use PM_RT_DAE_class
   use PMC_Subsurface_class
   use PMC_Subsurface_OSRT_class
+  use PMC_TS_Driver_class
   use Timestepper_SNES_class
   use Timestepper_KSP_class
   use Timestepper_Steady_class
+  use Timestepper_TS_class
   use Realization_Subsurface_class
   use Option_module
   use Logging_module
@@ -482,6 +515,7 @@ subroutine FactSubLinkAddPMCSubsurfTran(simulation,pm_base,pmc_name)
   character(len=*) :: pmc_name
 
   class(pmc_subsurface_type), pointer :: pmc_subsurface
+  class(pmc_ts_driver_type), pointer :: pmc_ts_driver
   character(len=MAXSTRINGLENGTH) :: string
   class(pmc_base_type), pointer :: pmc_dummy
   class(realization_subsurface_type), pointer :: realization
@@ -493,6 +527,10 @@ subroutine FactSubLinkAddPMCSubsurfTran(simulation,pm_base,pmc_name)
   nullify(pmc_dummy)
 
   select type(pm=>pm_base)
+    class is(pm_rt_dae_type)
+      pmc_ts_driver => PMCTSDriverCreate()
+      pmc_ts_driver%GetModel => PMRTDAEGetModel
+      pmc_subsurface => pmc_ts_driver
     class is(pm_rt_type)
       if (pm%operator_split) then
         pmc_subsurface => PMCSubsurfaceOSRTCreate()
@@ -515,6 +553,8 @@ subroutine FactSubLinkAddPMCSubsurfTran(simulation,pm_base,pmc_name)
     pmc_subsurface%timestepper => TimestepperSteadyCreate()
   else
     select type(pm=>pm_base)
+      class is(pm_rt_dae_type)
+        pmc_subsurface%timestepper => TimestepperTSCreate()
       class is(pm_rt_type)
         if (pm%operator_split) then
           pmc_subsurface%timestepper => TimestepperKSPCreate()
@@ -592,7 +632,8 @@ subroutine FactSubLinkAddPMCWasteForm(simulation,pm_waste_form,pmc_name,&
   call InputFindStringErrorMsg(input,option,string)
   call pm_waste_form%ReadPMBlock(input)
 
-  if (option%itranmode /= RT_MODE .and. option%itranmode /= NWT_MODE) then
+  if (option%itranmode /= RT_MODE .and. option%itranmode /= RT_TS_MODE .and. &
+      option%itranmode /= NWT_MODE) then
      option%io_buffer = 'The Waste Form process model requires &
           &a transport process model (GIRT/OSRT or NWT).'
      call PrintErrMsg(option)
@@ -669,7 +710,8 @@ subroutine FactSubLinkAddPMCUFDDecay(simulation,pm_ufd_decay,pmc_name,input)
   call InputFindStringErrorMsg(input,option,string)
   call pm_ufd_decay%ReadPMBlock(input)
 
-  if (option%itranmode /= RT_MODE .and. option%itranmode /= NWT_MODE) then
+  if (option%itranmode /= RT_MODE .and. option%itranmode /= RT_TS_MODE .and. &
+      option%itranmode /= NWT_MODE) then
      option%io_buffer = 'The UFD_DECAY process model requires a transport &
           &process model (GIRT/OSRT or NWT).'
      call PrintErrMsg(option)
@@ -735,7 +777,9 @@ subroutine FactSubLinkAddPMCUFDBiosphere(simulation,pm_ufd_biosphere, &
   call InputFindStringInFile(input,option,string)
   call InputFindStringErrorMsg(input,option,string)
   call pm_ufd_biosphere%ReadPMBlock(input)
-  if (option%itranmode /= RT_MODE .and. option%itranmode /= NWT_MODE) then
+  if (option%itranmode /= RT_MODE .and. &
+      option%itranmode /= RT_TS_MODE .and. &
+      option%itranmode /= NWT_MODE) then
      option%io_buffer = 'The UFD_BIOSPHERE process model requires reactive &
           &transport.'
      call PrintErrMsg(option)
@@ -877,7 +921,8 @@ subroutine FactSubLinkAddPMCSalinity(simulation,pm_auxiliary,pmc_name)
 
   string = 'salinity'
   if (StringCompareIgnoreCase(pm_auxiliary%ctype,string)) then
-    if (option%itranmode == RT_MODE) then
+    if (option%itranmode == RT_MODE .or. &
+        option%itranmode == RT_TS_MODE) then
       pmc_general => PMCGeneralCreate(pmc_name,pm_auxiliary%CastToBase())
       call PMCBaseSetChildPeerPtr(pmc_general%CastToBase(),PM_PEER, &
              simulation%tran_process_model_coupler%CastToBase(), &
