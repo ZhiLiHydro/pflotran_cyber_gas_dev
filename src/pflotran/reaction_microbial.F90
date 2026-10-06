@@ -272,7 +272,7 @@ subroutine ReactionMicrobRate(Res,Jac,compute_derivative,rt_auxvar, &
   PetscReal :: biomass_term
   PetscReal :: monod(MAX_NUM_MONOD_TERMS)
   PetscReal :: inhibition(MAX_NUM_INHIBITION_TERMS)
-  PetscReal :: biomass_conc, yield, dbiomass_conc_dconc
+  PetscReal :: biomass_conc, yield, dbiomass_term_dconc
   PetscReal :: denominator, dR_dX, dX_dconc, dR_dc, dR_dbiomass
   PetscReal :: tempreal
   PetscReal, parameter :: TREF = 25.d0
@@ -315,7 +315,7 @@ subroutine ReactionMicrobRate(Res,Jac,compute_derivative,rt_auxvar, &
     endif
     yield = 0.d0
     biomass_conc = 0.d0
-    dbiomass_conc_dconc = 0.d0
+    dbiomass_term_dconc = 0.d0
 
     ! monod expressions
     monod_terms = 1.d0
@@ -362,7 +362,8 @@ subroutine ReactionMicrobRate(Res,Jac,compute_derivative,rt_auxvar, &
         biomass_conc = concentration(ibiomass)
         biomass_term = biomass_term*biomass_conc*L_water
         ! after: [mol/sec]
-        dbiomass_conc_dconc = dconcentration_dmolal(ibiomass)
+        ! d(biomass_term)/d(molality) [kg water]
+        dbiomass_term_dconc = dconcentration_dmolal(ibiomass)*L_water
       else
         ibiomass = -ibiomass
         ! immobile biomass [mol biomass/m^3 bulk]
@@ -371,7 +372,8 @@ subroutine ReactionMicrobRate(Res,Jac,compute_derivative,rt_auxvar, &
         ibiomass = reaction%offset_immobile + ibiomass
         biomass_term = biomass_term*biomass_conc*material_auxvar%volume
         ! after: [mol/sec]
-        dbiomass_conc_dconc = 1.d0
+        ! d(biomass_term)/d(immobile concentration) [m^3 bulk]
+        dbiomass_term_dconc = material_auxvar%volume
       endif
       yield = microbial%biomass_yield(irxn)
     else
@@ -480,7 +482,7 @@ subroutine ReactionMicrobRate(Res,Jac,compute_derivative,rt_auxvar, &
       dR_dbiomass = effective_rate_constant* &
                     monod_terms* &
                     inhibition_terms
-      dR_dbiomass = -1.d0* dR_dbiomass * dbiomass_conc_dconc
+      dR_dbiomass = -1.d0* dR_dbiomass * dbiomass_term_dconc
       do i = 1, ncomp
         icomp = microbial%specid(i,irxn)
         ! units = (mol/sec)*(kg water/mol) = kg water/sec (mobile)
