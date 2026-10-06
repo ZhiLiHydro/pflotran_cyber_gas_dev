@@ -75,6 +75,7 @@ mode_process_model_obj = \
 	${common_src}pm_pnf.o \
 	${common_src}pm_ponded_water.o \
 	${common_src}pm_richards.o \
+	${common_src}pm_richards_dae.o \
 	${common_src}pm_richards_ts.o \
 	${common_src}pm_rt.o \
 	${common_src}pm_rt_dae.o \
@@ -111,6 +112,7 @@ mode_obj = \
 	${common_src}richards.o \
 	${common_src}richards_aniso.o \
 	${common_src}richards_common.o \
+	${common_src}richards_dae_model.o \
 	${common_src}rt_dae_chem.o \
 	${common_src}rt_dae_forcing.o \
 	${common_src}rt_dae_linear.o \

@@ -626,6 +626,7 @@ factory_subsurface_linkage.o : \
   pm_pnf.o \
   pm_ponded_water.o \
   pm_richards.o \
+  pm_richards_dae.o \
   pm_richards_ts.o \
   pm_rt.o \
   pm_rt_dae.o \
@@ -706,6 +707,7 @@ factory_subsurface_read.o : \
   pm_osrt.o \
   pm_pnf.o \
   pm_richards.o \
+  pm_richards_dae.o \
   pm_richards_ts.o \
   pm_rt.o \
   pm_rt_dae.o \
@@ -2500,6 +2502,14 @@ pm_richards.o : \
   richards_aux.o \
   string.o \
   utility.o
+pm_richards_dae.o : \
+  option.o \
+  pflotran_constants.o \
+  pm_base.o \
+  pm_richards.o \
+  realization_subsurface.o \
+  richards_dae_model.o \
+  ts_model.o
 pm_richards_ts.o : \
   discretization.o \
   field.o \
@@ -3801,6 +3811,31 @@ richards_common.o : \
   richards_aniso.o \
   richards_aux.o \
   utility.o
+richards_dae_model.o : \
+  condition.o \
+  connection.o \
+  coupler.o \
+  dataset_base.o \
+  discretization.o \
+  field.o \
+  global_aux.o \
+  grid.o \
+  grid_unstructured_aux.o \
+  material_aux.o \
+  option.o \
+  patch.o \
+  petsc_utility.o \
+  pflotran_constants.o \
+  realization_subsurface.o \
+  richards_aniso.o \
+  richards_aux.o \
+  richards_common.o \
+  srcsink_sandbox.o \
+  time_storage.o \
+  ts_connections.o \
+  ts_flow_state.o \
+  ts_model.o \
+  ugdm_pointer.o
 rt_dae_chem.o : \
   global_aux.o \
   option.o \

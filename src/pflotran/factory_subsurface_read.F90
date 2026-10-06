@@ -43,6 +43,7 @@ subroutine FactorySubsurfReadFlowPM(input,option,pm)
   use PM_Richards_class
   use PM_TH_class
   use PM_Richards_TS_class
+  use PM_Richards_DAE_class
   use PM_TH_TS_class
   use PM_ZFlow_class
   use PM_THC_class
@@ -103,6 +104,8 @@ subroutine FactorySubsurfReadFlowPM(input,option,pm)
             pm => PMTHCreate()
           case ('RICHARDS_TS')
             pm => PMRichardsTSCreate()
+          case ('RICHARDS_DAE')
+            pm => PMRichardsDAECreate()
           case ('TH_TS')
             pm => PMTHTSCreate()
           case ('ZFLOW')

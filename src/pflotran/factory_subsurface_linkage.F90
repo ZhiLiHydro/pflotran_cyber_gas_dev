@@ -372,8 +372,10 @@ end subroutine FactSubLinkSetupPMCLinkages
 
 subroutine FactSubLinkCheckDAE(simulation,pm_flow,pm_tran)
   !
-  ! MODE GIRT_DAE runs without flow: flow as forcing, lagged by a flow
-  ! step, would cap the transport integrator at first order.
+  ! The TS models run alone: GIRT_DAE without flow (flow as forcing,
+  ! lagged by a flow step, would cap the transport integrator at first
+  ! order), RICHARDS_DAE without transport (its flow state lives in its TS
+  ! solution, which the transport modes do not read).
   !
   ! Author: Hansol Suh
   ! Date: 09/23/26
@@ -381,6 +383,7 @@ subroutine FactSubLinkCheckDAE(simulation,pm_flow,pm_tran)
   use PM_Base_class
   use PM_Subsurface_Flow_class
   use PM_RT_DAE_class
+  use PM_Richards_DAE_class
   use Option_module
 
   implicit none
@@ -393,6 +396,11 @@ subroutine FactSubLinkCheckDAE(simulation,pm_flow,pm_tran)
   select type(pm_tran)
     class is(pm_rt_dae_type)
       call PrintErrMsg(simulation%option,'MODE GIRT_DAE runs without flow.')
+  end select
+  select type(pm_flow)
+    class is(pm_richards_dae_type)
+      call PrintErrMsg(simulation%option,'MODE RICHARDS_DAE runs without &
+        &transport.')
   end select
 
 end subroutine FactSubLinkCheckDAE
@@ -416,6 +424,8 @@ subroutine FactSubLinkAddPMCSubsurfFlow(simulation,pm_flow,pmc_name)
   use Timestepper_Steady_class
   use PM_TH_TS_class
   use PM_Richards_TS_class
+  use PM_Richards_DAE_class
+  use PMC_TS_Driver_class
   use PM_PNF_class
   use Realization_Subsurface_class
   use Option_module
@@ -428,6 +438,7 @@ subroutine FactSubLinkAddPMCSubsurfFlow(simulation,pm_flow,pmc_name)
   character(len=*) :: pmc_name
 
   class(pmc_subsurface_type), pointer :: pmc_subsurface
+  class(pmc_ts_driver_type), pointer :: pmc_ts_driver
   character(len=MAXSTRINGLENGTH) :: string
   class(realization_subsurface_type), pointer :: realization
   type(option_type), pointer :: option
@@ -438,6 +449,10 @@ subroutine FactSubLinkAddPMCSubsurfFlow(simulation,pm_flow,pmc_name)
   select type(pm_flow)
     class is(pm_pnf_type)
       pmc_subsurface => PMCLinearCreate()
+    class is(pm_richards_dae_type)
+      pmc_ts_driver => PMCTSDriverCreate()
+      pmc_ts_driver%GetModel => PMRichardsDAEGetModel
+      pmc_subsurface => pmc_ts_driver
     class default
       pmc_subsurface => PMCSubsurfaceCreate()
   end select
@@ -457,6 +472,8 @@ subroutine FactSubLinkAddPMCSubsurfFlow(simulation,pm_flow,pmc_name)
   else
     select type(pm_flow)
       class is(pm_richards_ts_type)
+        pmc_subsurface%timestepper => TimestepperTSCreate()
+      class is(pm_richards_dae_type)
         pmc_subsurface%timestepper => TimestepperTSCreate()
       class is(pm_th_ts_type)
         pmc_subsurface%timestepper => TimestepperTSCreate()
