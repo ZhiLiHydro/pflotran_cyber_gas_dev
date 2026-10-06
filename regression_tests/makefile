@@ -60,6 +60,7 @@ STANDARD_CFG = \
 	ascem/1d/1d-calcite/1d-calcite.cfg \
 	co2/sco2.cfg \
 	default/543/543.cfg \
+	default/adjoint/adjoint.cfg \
 	default/anisothermal/anisothermal.cfg \
 	default/anisotropic_perm/aniso_perm1.cfg \
 	default/batch/batch.cfg \
@@ -78,6 +79,7 @@ STANDARD_CFG = \
 	default/discretization/discretization.cfg \
 	default/dispersion/dispersion.cfg \
 	default/eos/eos.cfg \
+	default/girt_dae/girt_dae.cfg \
 	default/infiltrometer/infiltrometer.cfg \
 	default/infiltration1d/infiltration1d.cfg \
 	default/input_format/input_format.cfg \
@@ -99,6 +101,7 @@ STANDARD_CFG = \
 	default/regions/cell_mapping/cell_mapping.cfg \
 	default/regions/planar_patch/planar_patch.cfg \
 	default/regions/regions.cfg \
+	default/richards_dae/richards_dae.cfg \
 	default/salinity/salinity.cfg \
 	default/scco2/mphase/mphase.cfg \
 	default/srcsink_sandbox/srcsink_sandbox.cfg \
@@ -280,6 +283,25 @@ check :
 	-$(PYTHON) $(TEST_MANAGER) -e $(PFLOTRAN) $(TEST_OPTIONS) \
 		--suite standard standard_parallel \
 		--config-files $(CHECK_CFG)
+
+# Behavioral checks of MODE GIRT_DAE (model contract, conservation, orders
+# of accuracy, equivalence with classic GIRT) and finite-difference checks of
+# its discrete adjoint. They take minutes, so test does not run them.
+verify : girt_dae_verify adjoint_verify
+
+# the parallel check needs MPIEXEC (PETSc's by default)
+GIRT_DAE_VERIFY_OPTIONS = --remove-on-success
+ifneq ($(strip $(MPIEXEC)),)
+	GIRT_DAE_VERIFY_OPTIONS += --mpiexec $(MPIEXEC)
+endif
+
+girt_dae_verify :
+	$(PYTHON) default/girt_dae/verify_girt_dae.py $(PFLOTRAN) \
+		$(GIRT_DAE_VERIFY_OPTIONS)
+
+adjoint_verify :
+	$(PYTHON) $(TEST_MANAGER) -e $(PFLOTRAN) $(TEST_OPTIONS) \
+		--config-files default/adjoint/adjoint_verify.cfg
 
 unstructured :
 	-$(PYTHON) $(TEST_MANAGER) -e $(PFLOTRAN) $(TEST_OPTIONS) \

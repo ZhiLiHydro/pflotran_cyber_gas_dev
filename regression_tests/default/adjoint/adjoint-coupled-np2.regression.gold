@@ -1,0 +1,68 @@
+-- PRESSURE: Liquid Pressure --
+      Max:   1.0655601970567E+05
+      Min:   7.9790774537143E+04
+     Mean:   8.7415194915034E+04
+        1:   1.0655601970567E+05
+-- SATURATION: Liquid Saturation --
+      Max:   1.0000000000000E+00
+      Min:   4.7906150599698E-01
+     Mean:   6.3442457283837E-01
+        1:   1.0000000000000E+00
+-- GENERIC: pH --
+      Max:   7.2662224713402E+00
+      Min:   6.1137074591784E+00
+     Mean:   6.4706347954864E+00
+        1:   7.2662224713402E+00
+-- CONCENTRATION: Total H+ --
+      Max:   1.2908316172947E-03
+      Min:   1.7880773776458E-04
+     Mean:   8.9210045963737E-04
+        1:   1.7880773776458E-04
+-- CONCENTRATION: Total HCO3- --
+      Max:   2.0715746731227E-03
+      Min:   1.7073809902191E-03
+     Mean:   1.9481388605407E-03
+        1:   1.7073809902191E-03
+-- CONCENTRATION: Total Ca++ --
+      Max:   4.7322775301270E-04
+      Min:   1.7676843155283E-04
+     Mean:   2.9027309822870E-04
+        1:   4.7322775301270E-04
+-- VOLUME_FRACTION: Calcite VF --
+      Max:   9.9996040966704E-03
+      Min:   9.9994185434251E-03
+     Mean:   9.9994573376721E-03
+        1:   9.9996040966704E-03
+-- RATE: Calcite Rate --
+      Max:  -8.1503117344210E-09
+      Min:  -9.9760117177774E-09
+     Mean:  -9.6517500243450E-09
+        1:  -8.1503117344210E-09
+-- DISCRETE: Material ID --
+      Max:         2
+      Min:         1
+     Mean:   1.4000000000000E+00
+        1:         1
+-- SOLUTION: Flow --
+   Time (seconds):   5.8228971569997E+00
+   Time Steps:           10
+   Newton Iterations:           92
+   Linear Solver Iterations:          654
+   Time Step Cuts:            0
+   Solution 2-Norm:   3.9210333516189E+05
+   Residual 2-Norm:   3.7479733666124E-16
+-- SOLUTION: Transport --
+   Time (seconds):   5.8228971569997E+00
+   Time Steps:           10
+   Newton Iterations:           92
+   Linear Solver Iterations:          654
+   Time Step Cuts:            0
+   Solution 2-Norm:   5.0657149246497E-03
+   Residual 2-Norm:   3.7479733666124E-16
+-- GENERIC: Adjoint --
+   J_1:   1.9565906120518E-04
+   dJ_1/dp_1:   2.1479139729593E+06
+   dJ_1/dp_2:   7.7612968749369E+03
+   max |dJ_1/du_phys(0)|:   2.6249948568546E+01
+   max |dJ_1/dK(0)|:   0.0000000000000E+00
+   max |dJ_1/dP(0)|:   2.2422682167653E-10

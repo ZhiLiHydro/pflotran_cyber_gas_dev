@@ -1,0 +1,38 @@
+-- CONCENTRATION: Free O2(aq) --
+      Max:   1.4353362575512E-03
+      Min:   1.4353362575512E-03
+     Mean:   1.4353362575512E-03
+        1:   1.4353362575512E-03
+-- CONCENTRATION: Free CH2O(aq) --
+      Max:   1.9353362575512E-03
+      Min:   1.9353362575512E-03
+     Mean:   1.9353362575512E-03
+        1:   1.9353362575512E-03
+-- CONCENTRATION: Free CO2(aq) --
+      Max:   6.4663842448777E-05
+      Min:   6.4663842448777E-05
+     Mean:   6.4663842448777E-05
+        1:   6.4663842448777E-05
+-- CONCENTRATION: Biomass --
+      Max:   1.0461676126875E-04
+      Min:   1.0461676126875E-04
+     Mean:   1.0461676126875E-04
+        1:   1.0461676126875E-04
+-- DISCRETE: Material ID --
+      Max:         1
+      Min:         1
+     Mean:   1.0000000000000E+00
+        1:         1
+-- SOLUTION: Transport --
+   Time (seconds):   1.7021018400010E-01
+   Time Steps:            5
+   Newton Iterations:           15
+   Linear Solver Iterations:           31
+   Time Step Cuts:            0
+   Solution 2-Norm:   4.8252845227166E-03
+   Residual 2-Norm:   1.1014034264450E-19
+-- GENERIC: Adjoint --
+   J_1:   6.4663842448777E-05
+   dJ_1/dp_1:  -4.0277365798698E-02
+   dJ_1/dp_2:   1.6728138970911E-03
+   max |dJ_1/du_phys(0)|:   9.9996400116637E-01

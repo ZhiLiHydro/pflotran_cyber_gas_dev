@@ -1,0 +1,278 @@
+#Description: Radial (cylindrical) 5-cell aquifer with a mass-rate injection
+#             well whose inlet chemistry drops at 0.5 y, and a biozone:
+#             microbial A + 2 B -> 1.5 C with Monod inhibition; RICHARDS_DAE
+#             flow and GIRT_DAE transport as one model. J = C(aq) at
+#             r = 50 m; p = the microbial rate constant and the permeability
+#             of soil1.
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE RICHARDS_DAE
+    /
+    SUBSURFACE_TRANSPORT transport
+      MODE GIRT_DAE
+    /
+  /
+END
+
+SUBSURFACE
+
+NUMERICAL_METHODS TRANSPORT
+  LINEAR_SOLVER
+    SOLVER DIRECT
+  /
+END
+
+#=========================== chemistry ========================================
+CHEMISTRY
+  PRIMARY_SPECIES
+    A(aq)
+    B(aq)
+    C(aq)
+  /
+  IMMOBILE_SPECIES
+    D(im)
+  /
+  MICROBIAL_REACTION
+    REACTION A(aq) + 2 B(aq) <-> 1.5 C(aq)
+    RATE_CONSTANT 1.d-6
+    MONOD
+      SPECIES_NAME A(aq)
+      HALF_SATURATION_CONSTANT 1.d-5
+      THRESHOLD_CONCENTRATION 1.d-20
+    /
+    MONOD
+      SPECIES_NAME B(aq)
+      HALF_SATURATION_CONSTANT 1.d-4
+      THRESHOLD_CONCENTRATION 1.d-11
+    /
+    INHIBITION
+      SPECIES_NAME C(aq)
+      TYPE MONOD
+      INHIBIT_BELOW_THRESHOLD
+      THRESHOLD_CONCENTRATION 6.d-4
+    /
+    BIOMASS
+      SPECIES_NAME D(im)
+      YIELD 0.01d0
+    /
+    CONCENTRATION_UNITS ACTIVITY
+  /
+  IMMOBILE_DECAY_REACTION
+    SPECIES_NAME D(im)
+    RATE_CONSTANT 1.d-9
+  /
+  ACTIVITY_COEFFICIENTS OFF
+  OUTPUT
+    ALL
+    TOTAL
+  /
+END
+
+#=========================== discretization ===================================
+GRID
+  TYPE STRUCTURED CYLINDRICAL
+  NXYZ 5 1 1
+  BOUNDS
+    0.d0 0.d0
+    100.d0 1.d0
+  /
+END
+
+#=========================== fluid properties =================================
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.d-9
+END
+
+#=========================== material properties ==============================
+MATERIAL_PROPERTY soil1
+  ID 1
+  POROSITY 0.25d0
+  TORTUOSITY 1.d0
+  PERMEABILITY
+    PERM_ISO 1.d-12
+  /
+  CHARACTERISTIC_CURVES default
+END
+
+CHARACTERISTIC_CURVES default
+  SATURATION_FUNCTION BROOKS_COREY
+    ALPHA 1.d-4
+    LAMBDA 0.3d0
+    LIQUID_RESIDUAL_SATURATION 0.1d0
+    SMOOTH
+  /
+  PERMEABILITY_FUNCTION MUALEM_BC_LIQ
+    LAMBDA 0.3d0
+    LIQUID_RESIDUAL_SATURATION 0.1d0
+  /
+END
+
+#=========================== output options ===================================
+OUTPUT
+END
+
+#=========================== times ============================================
+TIME
+  FINAL_TIME 1.d0 y
+  INITIAL_TIMESTEP_SIZE 0.05d0 y
+  MAXIMUM_TIMESTEP_SIZE 0.05d0 y
+END
+
+#=========================== regions ==========================================
+REGION all
+  COORDINATES
+    -1.d20 -1.d20 -1.d20
+    1.d20 1.d20 1.d20
+  /
+END
+
+REGION injection_region
+  COORDINATE 10.d0 0.5d0 0.5d0
+END
+
+REGION biozone
+  COORDINATES
+    20.d0 0.d0 0.d0
+    80.d0 1.d0 1.d0
+  /
+END
+
+REGION east
+  FACE EAST
+  COORDINATES
+    100.d0 0.d0 0.d0
+    100.d0 1.d0 1.d0
+  /
+END
+
+REGION pt
+  COORDINATE 50.d0 0.5d0 0.5d0
+END
+
+#=========================== flow conditions ==================================
+FLOW_CONDITION initial
+  TYPE
+    LIQUID_PRESSURE HYDROSTATIC
+  /
+  DATUM 0. 0. 10.
+  LIQUID_PRESSURE 101325d0
+END
+
+FLOW_CONDITION well
+  TYPE
+    RATE mass_rate
+  /
+  RATE 314.d3 kg/yr
+END
+
+#=========================== transport conditions =============================
+TRANSPORT_CONDITION initial
+  TYPE ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 initial
+  /
+END
+
+TRANSPORT_CONDITION biozone
+  TYPE ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 initial_biozone
+  /
+END
+
+TRANSPORT_CONDITION inlet
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 inlet
+    0.5d0 y inlet_low
+  /
+END
+
+#=========================== constraints ======================================
+CONSTRAINT initial
+  CONCENTRATIONS
+    A(aq) 1.d-7  T
+    B(aq) 1.d-7  T
+    C(aq) 1.d-7  T
+  /
+  IMMOBILE
+    D(im) 1.d-7
+  /
+END
+
+CONSTRAINT initial_biozone
+  CONCENTRATIONS
+    A(aq) 1.d-7  T
+    B(aq) 1.d-7  T
+    C(aq) 1.d-7  T
+  /
+  IMMOBILE
+    D(im) 1.d-3
+  /
+END
+
+CONSTRAINT inlet
+  CONCENTRATIONS
+    A(aq) 1.d-4  T
+    B(aq) 1.d-3  T
+    C(aq) 1.d-7  T
+  /
+END
+
+CONSTRAINT inlet_low
+  CONCENTRATIONS
+    A(aq) 2.d-5  T
+    B(aq) 2.d-4  T
+    C(aq) 1.d-7  T
+  /
+END
+
+#=========================== condition couplers ===============================
+INITIAL_CONDITION
+  FLOW_CONDITION initial
+  TRANSPORT_CONDITION initial
+  REGION all
+END
+
+INITIAL_CONDITION
+  FLOW_CONDITION initial
+  TRANSPORT_CONDITION biozone
+  REGION biozone
+END
+
+BOUNDARY_CONDITION outlet
+  FLOW_CONDITION initial
+  TRANSPORT_CONDITION initial
+  REGION east
+END
+
+SOURCE_SINK inlet
+  FLOW_CONDITION well
+  TRANSPORT_CONDITION inlet
+  REGION injection_region
+END
+
+#=========================== stratigraphy couplers ============================
+STRATA
+  REGION all
+  MATERIAL soil1
+END
+
+#=========================== adjoint sensitivity ==============================
+ADJOINT
+  COST_FUNCTION TERMINAL_SPECIES_CONCENTRATION
+    SPECIES_NAME C(aq)
+    REGION pt
+  /
+  PARAMETER RATE_CONSTANT
+    KINETICS MICROBIAL
+    REACTION_INDEX 1
+  /
+  PARAMETER PERMEABILITY
+    MATERIAL soil1
+  /
+END
+
+END_SUBSURFACE

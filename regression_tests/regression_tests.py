@@ -493,10 +493,15 @@ class RegressionTest(object):
             post_process_script_stdout = \
                 open(post_process_script_stdout_filename, 'w')
             start = time.time()
+            post_process_env = os.environ.copy()
+            post_process_env["PFLOTRAN_TEST_EXECUTABLE"] = os.path.abspath(executable)
+            post_process_env["PFLOTRAN_TEST_MPIEXEC"] = mpiexec or ""
+            post_process_env["PFLOTRAN_TEST_NAME"] = test_name
             proc = subprocess.Popen(command,
                                     shell=False,
                                     stdout=post_process_script_stdout,
-                                    stderr=subprocess.STDOUT)
+                                    stderr=subprocess.STDOUT,
+                                    env=post_process_env)
             while proc.poll() is None:
                 time.sleep(0.01)
                 if time.time() - start > self._timeout:

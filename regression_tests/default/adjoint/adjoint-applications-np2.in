@@ -1,0 +1,217 @@
+#Description: 20 x 20 vertical (xz) section, 400 cells: a tracer blob carried
+#             upward by flow between two hydrostatic pressure boundaries;
+#             RICHARDS_DAE flow and GIRT_DAE transport as one model, 5 d.
+#             J = the tracer above the blob; p = the permeability of soil1.
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE RICHARDS_DAE
+    /
+    SUBSURFACE_TRANSPORT transport
+      MODE GIRT_DAE
+    /
+  /
+END
+
+SUBSURFACE
+
+REGRESSION
+  CELL_IDS
+    1
+  /
+END
+
+#=========================== numerical methods ================================
+
+NUMERICAL_METHODS TRANSPORT
+  LINEAR_SOLVER
+    SOLVER ITERATIVE      # DIRECT needs MUMPS in parallel
+  /
+END
+
+#=========================== chemistry ========================================
+CHEMISTRY
+  ACTIVITY_COEFFICIENTS OFF
+  PRIMARY_SPECIES
+    Tracer
+  /
+  OUTPUT
+    ALL
+    TOTAL
+  /
+END
+
+#=========================== discretization ===================================
+GRID
+  TYPE STRUCTURED
+  ORIGIN 0.d0 0.d0 0.d0
+  NXYZ 20 1 20
+  BOUNDS
+    0.d0 0.d0 0.d0
+    20.d0 1.d0 20.d0
+  /
+END
+
+#=========================== fluid properties =================================
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.d-9
+END
+
+#=========================== material properties ==============================
+MATERIAL_PROPERTY soil1
+  ID 1
+  POROSITY 0.25d0
+  TORTUOSITY 1.d0
+  CHARACTERISTIC_CURVES sf1
+  PERMEABILITY
+    PERM_ISO 1.d-12
+  /
+END
+
+CHARACTERISTIC_CURVES sf1
+  SATURATION_FUNCTION VAN_GENUCHTEN
+    M 0.5d0
+    ALPHA 1.d-4
+    LIQUID_RESIDUAL_SATURATION 0.1d0
+  /
+  PERMEABILITY_FUNCTION MUALEM_VG_LIQ
+    M 0.5d0
+    LIQUID_RESIDUAL_SATURATION 0.1d0
+  /
+END
+
+#=========================== output options ===================================
+OUTPUT
+END
+
+#=========================== times ============================================
+TIME
+  FINAL_TIME 5.d0 d
+  INITIAL_TIMESTEP_SIZE 5.d-1 d
+  MAXIMUM_TIMESTEP_SIZE 1.d0 d
+END
+
+#=========================== regions ==========================================
+REGION all
+  COORDINATES
+    -1.d20 -1.d20 -1.d20
+    1.d20 1.d20 1.d20
+  /
+END
+
+REGION top
+  FACE TOP
+  COORDINATES
+    -1.d20 -1.d20 20.d0
+    1.d20 1.d20 20.d0
+  /
+END
+
+# Two head boundaries maintain a measurable permeability-dependent flow.
+REGION bottom
+  FACE BOTTOM
+  COORDINATES
+    -1.d20 -1.d20 0.d0
+    1.d20 1.d20 0.d0
+  /
+END
+
+REGION saline
+  COORDINATES
+    9.d0 0.d0 9.d0
+    11.d0 1.d0 11.d0
+  /
+END
+
+# Cost cell above the saline blob, in the upward flow path.
+REGION cost_pt
+  COORDINATE 10.5d0 0.5d0 12.5d0
+END
+
+#=========================== flow conditions ==================================
+FLOW_CONDITION initial
+  TYPE
+    LIQUID_PRESSURE HYDROSTATIC
+  /
+  DATUM 0.d0 0.d0 35.d0
+  LIQUID_PRESSURE 101325
+END
+
+FLOW_CONDITION shift
+  TYPE
+    LIQUID_PRESSURE HYDROSTATIC
+  /
+  DATUM 0.d0 0.d0 30.d0
+  LIQUID_PRESSURE 101325
+END
+
+#=========================== transport conditions =============================
+TRANSPORT_CONDITION initial
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 initial
+  /
+END
+
+TRANSPORT_CONDITION saline
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 saline
+  /
+END
+
+CONSTRAINT initial
+  CONCENTRATIONS
+    Tracer 1.d-5  T
+  /
+END
+
+CONSTRAINT saline
+  CONCENTRATIONS
+    Tracer 5.d-1  T
+  /
+END
+
+#=========================== condition couplers ===============================
+INITIAL_CONDITION
+  FLOW_CONDITION initial
+  TRANSPORT_CONDITION initial
+  REGION all
+END
+
+INITIAL_CONDITION
+  FLOW_CONDITION initial
+  TRANSPORT_CONDITION saline
+  REGION saline
+END
+
+BOUNDARY_CONDITION bottom
+  FLOW_CONDITION initial
+  TRANSPORT_CONDITION initial
+  REGION bottom
+END
+
+BOUNDARY_CONDITION top
+  FLOW_CONDITION shift
+  TRANSPORT_CONDITION initial
+  REGION top
+END
+
+STRATA
+  MATERIAL soil1
+  REGION all
+END
+
+#=========================== adjoint sensitivity ==============================
+ADJOINT
+  COST_FUNCTION TERMINAL_SPECIES_CONCENTRATION
+    SPECIES_NAME Tracer
+    REGION cost_pt
+  /
+  PARAMETER PERMEABILITY
+    MATERIAL soil1
+  /
+END
+
+END_SUBSURFACE

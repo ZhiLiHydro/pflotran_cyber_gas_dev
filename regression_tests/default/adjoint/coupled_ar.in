@@ -1,0 +1,270 @@
+#Description: 1D variably saturated column, aerobic respiration with
+#             immobile biomass (molarity rates); RICHARDS_DAE flow and
+#             GIRT_DAE transport as one model; water density varies with
+#             pressure in the saturated lower half. J = CO2(aq) at one cell;
+#             p = the permeability of soil1 and the microbial rate constant.
+
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE RICHARDS_DAE
+    /
+    SUBSURFACE_TRANSPORT transport
+      MODE GIRT_DAE
+    /
+  /
+END
+
+SUBSURFACE
+
+NUMERICAL_METHODS TRANSPORT
+  LINEAR_SOLVER
+    SOLVER DIRECT
+  /
+END
+
+CHEMISTRY
+  PRIMARY_SPECIES
+    O2(aq)
+    CH2O(aq)
+    CO2(aq)
+  /
+  IMMOBILE_SPECIES
+    Biomass
+  /
+  MICROBIAL_REACTION
+    REACTION O2(aq) + CH2O(aq) <-> CO2(aq) + H2O
+    RATE_CONSTANT 4.d-2
+    MONOD
+      SPECIES_NAME O2(aq)
+      HALF_SATURATION_CONSTANT 2.d-4
+    /
+    MONOD
+      SPECIES_NAME CH2O(aq)
+      HALF_SATURATION_CONSTANT 1.25d-5
+    /
+    BIOMASS
+      SPECIES_NAME Biomass
+      YIELD 1.d-4
+    /
+  /
+  IMMOBILE_DECAY_REACTION
+    SPECIES_NAME Biomass
+    RATE_CONSTANT 1.d-6
+  /
+  DATABASE ../../../shortcourse/exercises/0D_aerobic_respiration/aerobic_respiration.dat
+  ACTIVITY_COEFFICIENTS OFF
+  OUTPUT
+    FREE_ION
+    ALL
+  /
+END
+
+GRID
+  TYPE STRUCTURED
+  NXYZ 1 1 20
+  BOUNDS
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 10.d0
+  /
+END
+
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.d-9
+END
+
+MATERIAL_PROPERTY soil1
+  ID 1
+  POROSITY 0.3d0
+  TORTUOSITY 1.d0
+  LONGITUDINAL_DISPERSIVITY 0.1d0
+  PERMEABILITY
+    PERM_ISO 1.d-12
+  /
+  CHARACTERISTIC_CURVES cc1
+END
+
+CHARACTERISTIC_CURVES cc1
+  SATURATION_FUNCTION VAN_GENUCHTEN
+    ALPHA  1.d-4
+    M 0.5d0
+    LIQUID_RESIDUAL_SATURATION 0.1d0
+    MAX_CAPILLARY_PRESSURE 1.d8
+  /
+  PERMEABILITY_FUNCTION MUALEM_VG_LIQ
+    M 0.5d0
+    LIQUID_RESIDUAL_SATURATION 0.1d0
+  /
+END
+
+OUTPUT
+END
+
+TIME
+  FINAL_TIME 1.d0 d
+  INITIAL_TIMESTEP_SIZE 1.d-1 d
+  MAXIMUM_TIMESTEP_SIZE 1.d-1 d
+END
+
+REGION all
+  COORDINATES
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 10.d0
+  /
+END
+
+REGION lower
+  COORDINATES
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 5.d0
+  /
+END
+
+REGION upper
+  COORDINATES
+    0.d0 0.d0 7.d0
+    1.d0 1.d0 10.d0
+  /
+END
+
+REGION probe
+  COORDINATE 0.5d0 0.5d0 5.25d0
+END
+
+REGION top
+  FACE TOP
+  COORDINATES
+    0.d0 0.d0 10.d0
+    1.d0 1.d0 10.d0
+  /
+END
+
+REGION bottom
+  FACE BOTTOM
+  COORDINATES
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 0.d0
+  /
+END
+
+FLOW_CONDITION unsaturated
+  TYPE
+    LIQUID_PRESSURE DIRICHLET
+  /
+  LIQUID_PRESSURE 99000.d0
+END
+
+FLOW_CONDITION saturated
+  TYPE
+    LIQUID_PRESSURE DIRICHLET
+  /
+  LIQUID_PRESSURE 106000.d0
+END
+
+FLOW_CONDITION bottom_pressure
+  TYPE
+    LIQUID_PRESSURE DIRICHLET
+  /
+  LIQUID_PRESSURE 110000.d0
+END
+
+FLOW_CONDITION recharge
+  TYPE
+    LIQUID_FLUX NEUMANN
+  /
+  LIQUID_FLUX 20 cm/y
+END
+
+TRANSPORT_CONDITION initial
+  TYPE ZERO_GRADIENT
+  CONSTRAINT initial
+    CONCENTRATIONS
+      O2(aq)    1.5d-3   F
+      CH2O(aq)  2.d-3    F
+      CO2(aq)   1.d-10   F
+    /
+    IMMOBILE
+      Biomass   1.d-4
+    /
+  /
+END
+
+TRANSPORT_CONDITION upper
+  TYPE ZERO_GRADIENT
+  CONSTRAINT upper
+    CONCENTRATIONS
+      O2(aq)    2.d-4    F
+      CH2O(aq)  5.d-4    F
+      CO2(aq)   1.d-5    F
+    /
+    IMMOBILE
+      Biomass   5.d-5
+    /
+  /
+END
+
+TRANSPORT_CONDITION inlet
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT inlet
+    CONCENTRATIONS
+      O2(aq)    2.5d-4   F
+      CH2O(aq)  5.d-3    F
+      CO2(aq)   1.d-6    F
+    /
+    IMMOBILE
+      Biomass   1.d-4
+    /
+  /
+END
+
+INITIAL_CONDITION
+  FLOW_CONDITION unsaturated
+  TRANSPORT_CONDITION initial
+  REGION all
+END
+
+INITIAL_CONDITION lower_ic
+  FLOW_CONDITION saturated
+  TRANSPORT_CONDITION initial
+  REGION lower
+END
+
+INITIAL_CONDITION upper_ic
+  FLOW_CONDITION unsaturated
+  TRANSPORT_CONDITION upper
+  REGION upper
+END
+
+BOUNDARY_CONDITION outlet
+  FLOW_CONDITION bottom_pressure
+  TRANSPORT_CONDITION initial
+  REGION bottom
+END
+
+BOUNDARY_CONDITION inlet
+  FLOW_CONDITION recharge
+  TRANSPORT_CONDITION inlet
+  REGION top
+END
+
+STRATA
+  REGION all
+  MATERIAL soil1
+END
+
+ADJOINT
+  COST_FUNCTION TERMINAL_SPECIES_CONCENTRATION
+    SPECIES_NAME CO2(aq)
+    REGION probe
+  /
+  PARAMETER PERMEABILITY
+    MATERIAL soil1
+  /
+  PARAMETER RATE_CONSTANT
+    KINETICS MICROBIAL
+    REACTION_INDEX 1
+  /
+END
+
+END_SUBSURFACE

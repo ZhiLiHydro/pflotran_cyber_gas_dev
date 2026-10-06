@@ -1,0 +1,154 @@
+#Description: Charged-species microbial reaction with constant-area gypsum.
+#             Base of the kinetic mineral gradient and regime transition
+#             checks.
+
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_TRANSPORT transport
+      MODE GIRT_DAE
+    /
+  /
+END
+
+SUBSURFACE
+
+#=========================== numerical methods ================================
+NUMERICAL_METHODS TRANSPORT
+  LINEAR_SOLVER
+    SOLVER DIRECT
+  /
+
+END
+
+#=========================== discretization ===================================
+GRID
+  TYPE STRUCTURED
+  NXYZ 1 1 1
+  BOUNDS
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 1.d0
+  /
+END
+
+#=========================== fluid properties =================================
+REFERENCE_LIQUID_DENSITY 1000.d0
+
+#=========================== chemistry ========================================
+CHEMISTRY
+  PRIMARY_SPECIES
+    SO4--
+    Cl-
+    Ca++
+  /
+  MINERALS
+    Gypsum
+  /
+  MINERAL_KINETICS
+    Gypsum
+      RATE_CONSTANT 1.d-6 mol/m^2-sec
+    /
+  /
+  IMMOBILE_SPECIES
+    Biomass
+  /
+  MICROBIAL_REACTION
+    REACTION SO4-- <-> Cl-
+    RATE_CONSTANT 5.d-1
+    MONOD
+      SPECIES_NAME SO4--
+      HALF_SATURATION_CONSTANT 5.d-3
+    /
+    BIOMASS
+      SPECIES_NAME Biomass
+      YIELD 1.d-4
+    /
+  /
+  DATABASE ../../../database/hanford.dat
+  FORCE_READ_OF_REACTION_DATABASE
+  ACTIVITY_COEFFICIENTS OFF
+  OUTPUT
+    FREE_ION
+    ALL
+  /
+END
+
+#=========================== material properties ==============================
+MATERIAL_PROPERTY soil1
+  ID 1
+  POROSITY 1.d0
+END
+
+#=========================== regions ==========================================
+REGION all
+  COORDINATES
+    -1.d20 -1.d20 -1.d20
+    1.d20 1.d20 1.d20
+  /
+END
+
+REGION middle
+  COORDINATE 0.5d0 0.5d0 0.5d0
+END
+
+#=========================== observation points ===============================
+OBSERVATION
+  REGION middle
+END
+
+#=========================== output options ===================================
+OUTPUT
+  PERIODIC_OBSERVATION TIMESTEP 1
+  TIME_UNITS d
+END
+
+#=========================== times ============================================
+TIME
+  FINAL_TIME 20.d0 h
+  INITIAL_TIMESTEP_SIZE 0.25d0 h
+  MAXIMUM_TIMESTEP_SIZE 0.25d0 h
+END
+
+#=========================== transport conditions =============================
+TRANSPORT_CONDITION initial
+  TYPE ZERO_GRADIENT
+  CONSTRAINT initial
+    CONCENTRATIONS
+      SO4--  5.d-3 F
+      Cl-    1.d-8 F
+      Ca++   5.d-3 F
+    /
+    MINERALS
+      Gypsum 1.d-2 100.d0 m^2/m^3
+    /
+    IMMOBILE    # [mol/m^3 bulk]
+      Biomass   1.d-4
+    /
+  /
+END
+
+#=========================== condition couplers ===============================
+INITIAL_CONDITION
+  TRANSPORT_CONDITION initial
+  REGION all
+END
+
+#=========================== stratigraphy couplers ============================
+STRATA
+  REGION all
+  MATERIAL soil1
+END
+
+#=========================== adjoint sensitivity ==============================
+ADJOINT
+  COST_FUNCTION TERMINAL_SPECIES_CONCENTRATION
+    SPECIES_NAME Cl-
+    REGION middle
+  /
+  PARAMETER RATE_CONSTANT
+    KINETICS MICROBIAL
+    REACTION_INDEX 1
+  /
+END
+
+END_SUBSURFACE

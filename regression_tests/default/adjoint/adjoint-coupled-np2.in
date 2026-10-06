@@ -1,0 +1,317 @@
+#Description: 1D variably saturated column, calcite dissolution by acidic
+#             recharge; RICHARDS_DAE flow and GIRT_DAE transport as one
+#             model. Two materials, longitudinal dispersion, a mass-rate
+#             source, alternating cell sizes. J = Ca++ at one cell; p = the
+#             permeability of soil1 and the calcite rate constant.
+
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_FLOW flow
+      MODE RICHARDS_DAE
+    /
+    SUBSURFACE_TRANSPORT transport
+      MODE GIRT_DAE
+    /
+  /
+END
+
+SUBSURFACE
+
+REGRESSION
+  CELL_IDS
+    1
+  /
+END
+
+NUMERICAL_METHODS TRANSPORT
+  LINEAR_SOLVER
+    SOLVER ITERATIVE      # DIRECT needs MUMPS in parallel
+  /
+END
+
+CHEMISTRY
+  PRIMARY_SPECIES
+    H+
+    HCO3-
+    Ca++
+  /
+  SECONDARY_SPECIES
+    OH-
+    CO3--
+    CO2(aq)
+    CaCO3(aq)
+    CaHCO3+
+    CaOH+
+  /
+  PASSIVE_GAS_SPECIES
+    CO2(g)
+  /
+  MINERALS
+    Calcite
+  /
+  MINERAL_KINETICS
+    Calcite
+      RATE_CONSTANT 1.d-8 mol/m^2-sec
+    /
+  /
+  DATABASE ../../../database/hanford.dat
+  LOG_FORMULATION
+  ACTIVITY_COEFFICIENTS OFF
+  OUTPUT
+    PH
+    TOTAL
+    ALL
+  /
+END
+
+GRID
+  TYPE STRUCTURED
+  NXYZ 1 1 20
+  DXYZ
+    1.d0
+    1.d0
+    0.3d0 0.7d0 0.3d0 0.7d0 0.3d0 0.7d0 0.3d0 0.7d0 0.3d0 0.7d0 0.3d0 0.7d0 0.3d0 0.7d0 0.3d0 0.7d0 0.3d0 0.7d0 0.3d0 0.7d0
+  /
+END
+
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.d-9
+END
+
+MATERIAL_PROPERTY soil1
+  ID 1
+  POROSITY 0.25d0
+  TORTUOSITY 1.d0
+  LONGITUDINAL_DISPERSIVITY 0.2d0
+  PERMEABILITY
+    PERM_ISO 1.d-12
+  /
+  CHARACTERISTIC_CURVES cc1
+END
+
+MATERIAL_PROPERTY soil2
+  ID 2
+  POROSITY 0.3d0
+  TORTUOSITY 0.5d0
+  LONGITUDINAL_DISPERSIVITY 0.5d0
+  PERMEABILITY
+    PERM_ISO 4.d-13
+  /
+  CHARACTERISTIC_CURVES cc1
+END
+
+CHARACTERISTIC_CURVES cc1
+  SATURATION_FUNCTION VAN_GENUCHTEN
+    ALPHA  1.d-4
+    M 0.5d0
+    LIQUID_RESIDUAL_SATURATION 0.1d0
+    MAX_CAPILLARY_PRESSURE 1.d8
+  /
+  PERMEABILITY_FUNCTION MUALEM_VG_LIQ
+    M 0.5d0
+    LIQUID_RESIDUAL_SATURATION 0.1d0
+  /
+END
+
+OUTPUT
+END
+
+TIME
+  FINAL_TIME 5.d-2 y
+  INITIAL_TIMESTEP_SIZE 5.d-3 y
+  MAXIMUM_TIMESTEP_SIZE 5.d-3 y
+END
+
+REGION all
+  COORDINATES
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 10.d0
+  /
+END
+
+REGION lower
+  COORDINATES
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 4.d0
+  /
+END
+
+REGION upper
+  COORDINATES
+    0.d0 0.d0 6.d0
+    1.d0 1.d0 10.d0
+  /
+END
+
+REGION probe
+  COORDINATE 0.5d0 0.5d0 6.25d0
+END
+
+REGION well
+  COORDINATE 0.5d0 0.5d0 3.25d0
+END
+
+REGION top
+  FACE TOP
+  COORDINATES
+    0.d0 0.d0 10.d0
+    1.d0 1.d0 10.d0
+  /
+END
+
+REGION bottom
+  FACE BOTTOM
+  COORDINATES
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 0.d0
+  /
+END
+
+FLOW_CONDITION unsaturated
+  TYPE
+    LIQUID_PRESSURE DIRICHLET
+  /
+  LIQUID_PRESSURE 99000.d0
+END
+
+FLOW_CONDITION saturated
+  TYPE
+    LIQUID_PRESSURE DIRICHLET
+  /
+  LIQUID_PRESSURE 105000.d0
+END
+
+FLOW_CONDITION bottom_pressure
+  TYPE
+    LIQUID_PRESSURE DIRICHLET
+  /
+  LIQUID_PRESSURE 108000.d0
+END
+
+FLOW_CONDITION recharge
+  TYPE
+    LIQUID_FLUX NEUMANN
+  /
+  LIQUID_FLUX 10 cm/y
+END
+
+FLOW_CONDITION injection
+  TYPE
+    RATE MASS_RATE
+  /
+  RATE 1.d-6 kg/s
+END
+
+TRANSPORT_CONDITION background_conc
+  TYPE ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 initial_constraint
+  /
+END
+
+TRANSPORT_CONDITION inlet_conc
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 inlet_constraint
+  /
+END
+
+TRANSPORT_CONDITION upper_conc
+  TYPE ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 upper_constraint
+  /
+END
+
+CONSTRAINT initial_constraint
+  CONCENTRATIONS
+    H+     1.d-8      F
+    HCO3-  1.d-3      G  CO2(g)
+    Ca++   5.d-4      M  Calcite
+  /
+  MINERALS
+    Calcite 1.d-2 1.d0 m^2/m^3
+  /
+END
+
+CONSTRAINT upper_constraint
+  CONCENTRATIONS
+    H+     6.         P
+    HCO3-  2.d-3      T
+    Ca++   1.d-4      T
+  /
+  MINERALS
+    Calcite 1.d-2 1.d0 m^2/m^3
+  /
+END
+
+CONSTRAINT inlet_constraint
+  CONCENTRATIONS
+    H+     5.         P
+    HCO3-  1.d-3      T
+    Ca++   1.d-6      Z
+  /
+END
+
+INITIAL_CONDITION
+  FLOW_CONDITION unsaturated
+  TRANSPORT_CONDITION background_conc
+  REGION all
+END
+
+INITIAL_CONDITION lower_ic
+  FLOW_CONDITION saturated
+  TRANSPORT_CONDITION background_conc
+  REGION lower
+END
+
+INITIAL_CONDITION upper_ic
+  FLOW_CONDITION unsaturated
+  TRANSPORT_CONDITION upper_conc
+  REGION upper
+END
+
+BOUNDARY_CONDITION outlet
+  FLOW_CONDITION bottom_pressure
+  TRANSPORT_CONDITION background_conc
+  REGION bottom
+END
+
+BOUNDARY_CONDITION inlet
+  FLOW_CONDITION recharge
+  TRANSPORT_CONDITION inlet_conc
+  REGION top
+END
+
+SOURCE_SINK well
+  FLOW_CONDITION injection
+  TRANSPORT_CONDITION inlet_conc
+  REGION well
+END
+
+STRATA
+  REGION all
+  MATERIAL soil1
+END
+
+STRATA
+  REGION upper
+  MATERIAL soil2
+END
+
+ADJOINT
+  COST_FUNCTION TERMINAL_SPECIES_CONCENTRATION
+    SPECIES_NAME Ca++
+    REGION probe
+  /
+  PARAMETER PERMEABILITY
+    MATERIAL soil1
+  /
+  PARAMETER RATE_CONSTANT
+    KINETICS MINERAL
+    MINERAL_NAME Calcite
+  /
+END
+
+END_SUBSURFACE

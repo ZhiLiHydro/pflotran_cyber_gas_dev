@@ -1,0 +1,150 @@
+# Discrete adjoint of MODE GIRT_DAE
+
+A deck's `ADJOINT` block (costs and parameters) runs PETSc's
+`TSAdjointSolve` after the forward run of `MODE GIRT_DAE`, alone or with
+`MODE RICHARDS_DAE` flow as one model, and prints
+
+```
+=== ADJOINT SUMMARY ===
+Cost J_1 = TerminalConc_CO2(aq)
+  J_1(T)              = ...
+  dJ_1/dp_1 [MICROBIAL_RATE_CONSTANT[1]] = ...
+  max |dJ_1/du_phys(0)| = ...     initial primary concentrations
+  max |dJ_1/dK(0)| = ...          initial kinetic inventories (if any)
+  max |dJ_1/dP(0)| = ...          initial pressures (with flow)
+=== END ADJOINT ===
+```
+
+The initial concentrations and kinetic inventories are independent: dJ/du0
+holds the inventories fixed, also where the input initializes them from
+the concentrations. Both pull dJ/dY(0) back through the initial state;
+verify_girt_dae.py Taylor-tests dJ/dY(0), kinetic and multirate entries
+included (a deck's initial volume fraction also sets the reference of the
+surface area, so finite differences in it are not dJ/dK(0)).
+`OUTPUT FULL_FIELD` in the block also writes
+`<prefix>-adjoint-dJ<i>-du0.bin` (PETSc binary Vec, entry
+`(natural cell id-1)*ncomp + species-1`) and, with flow,
+`<prefix>-adjoint-dJ<i>-dP0.bin` (entry `natural cell id-1`).
+
+## Scope
+
+- Costs: `TERMINAL_SPECIES_CONCENTRATION`, `MISFIT_LEAST_SQUARES` (final
+  observation at the final time), of a primary or an immobile species.
+- Parameters: `RATE_CONSTANT` (`KINETICS MICROBIAL` with `REACTION_INDEX`,
+  or `KINETICS MINERAL` with `MINERAL_NAME` and a single rate constant),
+  `HALF_SATURATION_CONSTANT`, `INHIBITION_CONSTANT`, `SMOOTHSTEP_INTERVAL`,
+  `YIELD`, `DECAY_RATE_CONSTANT`, and, with flow in the model,
+  `PERMEABILITY` (`MATERIAL <name>`: scales the isotropic permeability of
+  the material's cells; no permeability datasets). Each parameter is the
+  positive value PFLOTRAN holds (internal units): `INHIBITION_CONSTANT` is
+  the
+  `THRESHOLD_CONCENTRATION` as given, also with `INHIBIT_ABOVE_THRESHOLD`
+  (stored as its negative), `SMOOTHSTEP_INTERVAL` the log10 interval,
+  `PERMEABILITY` the material's permeability [m^2].
+- Everything the GIRT_DAE model supports is differentiated, including
+  activity coefficients (converged in every evaluation), kinetic minerals
+  with volume-fraction-dependent surface area, multirate and equilibrium
+  surface complexation, transient Richards flow and transient velocity
+  datasets (the backward sweep replays each waypoint interval's recorded
+  forcing).
+- dJ/dP(0) holds the initial molarity of the aqueous primaries fixed, as the
+  initial condition does. A constraint re-equilibrated in each cell against
+  its flow state (activity, mineral or gas constraints) can depend on the
+  initial pressure in ways dJ/dP(0) omits.
+- Integrator: the block switches the forward run from BDF to backward
+  Euler, the integrator PETSc's adjoint supports. Its step sizes may adapt:
+  the gradient is that of the steps taken, without their dependence on the
+  parameters (the finite-difference checks use fixed steps).
+- Trajectory: the default (basic, on disk) or `-ts_trajectory_type memory`
+  (keeps every step, including the one that ends each waypoint interval's
+  `TSSolve`).
+
+Rejected:
+
+- integrators other than backward Euler (BDF has no PETSc adjoint), other
+  trajectory types, `-ts_trajectory_solution_only`, and with the memory
+  trajectory checkpoint limits (`-ts_trajectory_max_cps_*`,
+  `-ts_trajectory_max_units_*`);
+- `PERMEABILITY` without flow in the model (GIRT_DAE alone has no flow);
+- `PERMEABILITY` with a source/sink scaled by permeability
+  (`SCALED_MASS_RATE`/`SCALED_VOLUMETRIC_RATE` but by `VOLUME`): dF/dk omits
+  the scaling's derivative;
+- every configuration the models themselves reject.
+
+The adjoint is skipped, with exit code 89 (input errors exit with 87),
+after a forward run with mineral regime transitions (depletion, dissolution
+resuming) or one that stops before the final time
+(`MAXIMUM_NUMBER_OF_TIMESTEPS`, `WALLCLOCK_STOP`).
+
+## Flow and transport as one model
+
+With `MODE RICHARDS_DAE` flow and `MODE GIRT_DAE` transport, one PETSc TS
+integrates both (`Flow_RT_DAE_Model_class`, state `[P; W]` and `[c; N; K]`
+per cell); transport reads saturation, porosity, water density, Darcy
+fluxes and source rates from the flow part. On the steps of the classic
+sequential scheme (RICHARDS, then GIRT), backward Euler solves the same
+equations.
+
+- Solver input: `NUMERICAL_METHODS TRANSPORT` (read as for GIRT_DAE) and the
+  `-tran_` options; `-flow_ksp_*`/`-flow_pc_*` configure the flow block of
+  the preconditioner; `-ts_model_flow_atol` is the flow's absolute error
+  tolerance.
+- Newton holds the transport update while the flow update exceeds the
+  flow's error tolerance, so transport linearizes about a settled flow
+  state as in the sequential scheme; `-ts_model_flow_first 0` takes full
+  coupled steps.
+- Rejected with flow: transverse dispersion, radioactive decay, a specified
+  velocity dataset, gas transport, and what RICHARDS_DAE and GIRT_DAE reject
+  alone.
+
+## Regression tests and checks
+
+`adjoint.cfg`, part of `make test`: each registered deck runs once, and its
+regression file (the forward solution, and the Adjoint section with the
+costs, the gradients and the largest initial-state sensitivities) is
+compared with its gold.
+
+`adjoint_verify.cfg`, run by `make adjoint_verify` (or `make verify`, with
+the GIRT_DAE checks) because it takes minutes: each case runs its deck, then
+a post-processor that checks the gradients against central differences
+(mostly at two step sizes) on fixed backward Euler steps.
+
+- `check_adjoint.py` (`adjoint`, `adjoint-np2`) and `check_extensions.py`
+  (`adjoint-extensions`, `adjoint-extensions-np2`): the GIRT_DAE adjoint,
+  selectors, output, restoration of the final state, the memory trajectory,
+  a failed stage (`-rt_dae_fail_closure`: the gradient of the steps taken),
+  parallel runs and the rejections.
+- `check_coupled.py` (`adjoint-coupled`, `adjoint-coupled-np2`): the
+  coupled model's gradients, and that it reproduces the sequential scheme
+  and its Jacobian entry by entry, also on an unstructured grid.
+- `check_applications.py` (`adjoint-applications`,
+  `adjoint-applications-np2`): a microbial batch (`abcd_batch.in`), a radial
+  aquifer with flow in the model (`cylindrical_coupled.in`), and a 400-cell
+  vertical section with gravity-driven flow (`adjoint-applications.in`). The
+  radial permeability gradient uses Richardson-extrapolated central differences:
+  the injection sets the flow, so the permeability acts only through the
+  water density.
+
+Run one directly (parallel runs need `PFLOTRAN_TEST_MPIEXEC` or `mpiexec`
+on the path):
+
+```
+python3 check_<name>.py --executable ../../../src/pflotran/pflotran [--np 2]
+```
+
+Debug options:
+
+- `-adjoint_debug_jacobianp`: checks dF/dp against central differences at
+  the first evaluation of the backward sweep (`-adjoint_debug_jacobianp_eps`,
+  default 1e-6, relative to the parameter).
+- `-rt_dae_fail_closure <n>`: the n-th preparation of the GIRT_DAE model
+  (its closures at a new state) fails every local cell, a domain error (a
+  test of the recovery; Newton's step guard keeps the decks' iterates in
+  the domain).
+- `-ts_model_contract_test`, `-ts_model_column_check`,
+  `-ts_model_adjoint_test`: check the model contract, its Jacobian entry by
+  entry, and the initial-state gradient. The column check cannot resolve
+  terms below 1e-4 of an entry, such as those of water compressibility.
+  At hydrostatic equilibrium every face has zero flux, where the upwinded
+  fluxes are not differentiable: central differences then disagree with
+  the (one-sided) Jacobian, so check such states off equilibrium.

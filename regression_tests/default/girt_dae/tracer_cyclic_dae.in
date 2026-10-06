@@ -1,0 +1,154 @@
+#Description: 1D tracer under a CYCLIC uniform velocity (period 1 d, run 4 d) as
+#a TS equation model (MODE GIRT_DAE); every cycle's knots must be waypoints,
+#so this matches the same dataset unrolled over the 4 cycles
+
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_TRANSPORT transport
+      MODE GIRT_DAE
+    /
+  /
+END
+
+SUBSURFACE
+
+NUMERICAL_METHODS TRANSPORT
+  LINEAR_SOLVER
+    SOLVER DIRECT
+  /
+END
+
+REGRESSION
+  CELL_IDS
+    2
+    4
+    6
+    8
+    10
+    12
+    14
+    16
+    18
+    20
+  /
+END
+
+SPECIFIED_VELOCITY
+  UNIFORM? YES
+  DATASET LIST
+    CYCLIC
+    TIME_UNITS d
+    DATA_UNITS m/d m/d m/d
+    INTERPOLATION STEP
+    0.d0 0.5d0 0.d0 0.d0
+    0.5d0 0.1d0 0.d0 0.d0
+    1.d0 0.5d0 0.d0 0.d0
+  /
+END
+
+CHEMISTRY
+  PRIMARY_SPECIES
+    Tracer
+  /
+  OUTPUT
+    ALL
+    TOTAL
+  /
+END
+
+GRID
+  TYPE STRUCTURED
+  NXYZ 20 1 1
+  BOUNDS
+    0.d0 0.d0 0.d0
+    10.d0 1.d0 1.d0
+  /
+END
+
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.d-9
+END
+
+MATERIAL_PROPERTY soil1
+  ID 1
+  POROSITY 0.25d0
+  TORTUOSITY 1.d0
+END
+
+TIME
+  FINAL_TIME 4.d0 d
+  INITIAL_TIMESTEP_SIZE 1.d-3 d
+  MAXIMUM_TIMESTEP_SIZE 2.d-2 d
+END
+
+REGION all
+  COORDINATES
+    0.d0 0.d0 0.d0
+    10.d0 1.d0 1.d0
+  /
+END
+
+REGION west
+  FACE WEST
+  COORDINATES
+    0.d0 0.d0 0.d0
+    0.d0 1.d0 1.d0
+  /
+END
+
+REGION east
+  FACE EAST
+  COORDINATES
+    10.d0 0.d0 0.d0
+    10.d0 1.d0 1.d0
+  /
+END
+
+TRANSPORT_CONDITION initial
+  TYPE ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 initial
+  /
+END
+
+TRANSPORT_CONDITION inlet
+  TYPE DIRICHLET_ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 inlet
+  /
+END
+
+CONSTRAINT initial
+  CONCENTRATIONS
+    Tracer 1.d-7 T
+  /
+END
+
+CONSTRAINT inlet
+  CONCENTRATIONS
+    Tracer 1.d-3 T
+  /
+END
+
+INITIAL_CONDITION
+  TRANSPORT_CONDITION initial
+  REGION all
+END
+
+BOUNDARY_CONDITION outlet
+  TRANSPORT_CONDITION initial
+  REGION east
+END
+
+BOUNDARY_CONDITION inlet
+  TRANSPORT_CONDITION inlet
+  REGION west
+END
+
+STRATA
+  REGION all
+  MATERIAL soil1
+END
+
+END_SUBSURFACE

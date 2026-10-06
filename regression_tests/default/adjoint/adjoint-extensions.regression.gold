@@ -1,0 +1,23 @@
+-- CONCENTRATION: Free O2(aq) --
+        1:   1.4353362575512E-03
+-- CONCENTRATION: Free CH2O(aq) --
+        1:   1.9353362575512E-03
+-- CONCENTRATION: Free CO2(aq) --
+        1:   6.4663842448777E-05
+-- CONCENTRATION: Biomass --
+        1:   1.0461676126875E-04
+-- DISCRETE: Material ID --
+        1:         1
+-- SOLUTION: Transport --
+   Time (seconds):   1.3198503999774E-02
+   Time Steps:            5
+   Newton Iterations:           15
+   Linear Solver Iterations:           15
+   Time Step Cuts:            0
+   Solution 2-Norm:   2.4126422613583E-03
+   Residual 2-Norm:   5.5070171322248E-20
+-- GENERIC: Adjoint --
+   J_1:   6.4663842448777E-05
+   dJ_1/dp_1:  -4.0277365798972E-02
+   dJ_1/dp_2:   1.6728138971026E-03
+   max |dJ_1/du_phys(0)|:   1.0000000000000E+00

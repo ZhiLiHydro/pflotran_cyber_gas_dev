@@ -1,0 +1,26 @@
+-- CONCENTRATION: Total B(aq) --
+      Max:   1.0010000000000E-04
+      Min:   1.3057778324521E-05
+     Mean:   9.3197205609090E-05
+        1:   1.3057778324521E-05
+        5:   6.4307702868940E-05
+       10:   1.0009999998210E-04
+       25:   1.0010000000000E-04
+       50:   1.0010000000000E-04
+-- DISCRETE: Material ID --
+      Max:         1
+      Min:         1
+     Mean:   1.0000000000000E+00
+        1:         1
+        5:         1
+       10:         1
+       25:         1
+       50:         1
+-- SOLUTION: Transport --
+   Time (seconds):   9.9050769099995E-01
+   Time Steps:         1111
+   Newton Iterations:         4022
+   Linear Solver Iterations:         4022
+   Time Step Cuts:          300
+   Solution 2-Norm:   6.9058848711285E-04
+   Residual 2-Norm:   2.3100444570517E-17
