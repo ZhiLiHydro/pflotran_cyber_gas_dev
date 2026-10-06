@@ -15,6 +15,8 @@ module Transport_module
 
   public :: TDispersion, &
             TDispersionBC, &
+            TDispersionDerivative, &
+            TDispersionBCDerivative, &
             TFlux, &
             TFluxDerivative, &
             TFluxCoef, &
@@ -62,6 +64,7 @@ subroutine TDispersion(global_auxvar_up,material_auxvar_up, &
   !   (saturation * porosity *
   !   (mechanical_dispersion + tortuosity * molecular_diffusion) /
   !    distance [between cell centers] through a harmonic average
+  ! TDispersionDerivative differentiates it (GIRT_DAE): keep them in step.
   !
   ! Author: Glenn Hammond
   ! Date: 08/31/16
@@ -69,7 +72,6 @@ subroutine TDispersion(global_auxvar_up,material_auxvar_up, &
 
   use Option_module
   use Connection_module
-  use Utility_module, only : Arrhenius
 
   implicit none
 
@@ -86,7 +88,7 @@ subroutine TDispersion(global_auxvar_up,material_auxvar_up, &
   PetscReal :: harmonic_tran_coefs_over_dist(rt_parameter%ndiffcoef, &
                                              rt_parameter%nphase)
 
-  PetscInt :: iphase, nphase, idiffcoef
+  PetscInt :: iphase, nphase
   PetscReal :: abs_dist(3)
   PetscReal :: dist_up, dist_dn
   PetscReal :: sat_up, sat_dn
@@ -108,12 +110,7 @@ subroutine TDispersion(global_auxvar_up,material_auxvar_up, &
   PetscReal :: v_up, v_dn
   PetscReal :: vi2_over_v_up, vj2_over_v_up, vk2_over_v_up
   PetscReal :: vi2_over_v_dn, vj2_over_v_dn, vk2_over_v_dn
-  PetscReal :: activation_energy
-  PetscReal, parameter :: PREF = 101325.d0
-  PetscReal, parameter :: TREF = 25.d0
-
-  PetscReal, parameter :: s_pow = 7.d0/3.d0
-  PetscReal, parameter :: por_pow = 1.d0/3.d0
+  PetscReal :: s_exp, p_exp
 
   nphase = rt_parameter%nphase
 
@@ -128,51 +125,12 @@ subroutine TDispersion(global_auxvar_up,material_auxvar_up, &
     sat_dn = global_auxvar_dn%sat(iphase)
     ! skip phase if it does not exist on either side of the connection
     if (sat_up < rt_min_saturation .or. sat_dn < rt_min_saturation) cycle
-    molecular_diffusion_up(:) = rt_parameter%diffusion_coefficient(:,iphase)
-    molecular_diffusion_dn(:) = rt_parameter%diffusion_coefficient(:,iphase)
-    if (rt_parameter%temperature_dependent_diffusion) then
-      select case(iphase)
-        case(LIQUID_PHASE)
-          do idiffcoef = 1, rt_parameter%ndiffcoef
-            activation_energy = &
-              rt_parameter%diffusion_activation_energy(idiffcoef,iphase)
-            molecular_diffusion_up(idiffcoef) = &
-              molecular_diffusion_up(idiffcoef) * &
-              Arrhenius(activation_energy,global_auxvar_up%temp,TREF)
-            molecular_diffusion_dn(idiffcoef) = &
-              molecular_diffusion_dn(idiffcoef) * &
-              Arrhenius(activation_energy,global_auxvar_dn%temp,TREF)
-          enddo
-        case(GAS_PHASE)
-          ! if gas phase exists, gas pressure %pres(GAS_PHASE) should be total
-          ! pressure
-          molecular_diffusion_up(:) = &
-            molecular_diffusion_up(:) * &
-            ((((global_auxvar_up%temp+T273K)/T273K)**1.8d0) * &
-             (PREF/global_auxvar_up%pres(GAS_PHASE)))
-          molecular_diffusion_dn(:) = &
-            molecular_diffusion_dn(:) * &
-            ((((global_auxvar_dn%temp+T273K)/T273K)**1.8d0) * &
-             (PREF/global_auxvar_dn%pres(GAS_PHASE)))
-      end select
-    endif
-    if (rt_parameter%millington_quirk_tortuosity) then
-      molecular_diffusion_up(:) = &
-            molecular_diffusion_up(:) * &
-            sat_up**s_pow * &
-            material_auxvar_up%porosity**por_pow
-      molecular_diffusion_dn(:) = &
-            molecular_diffusion_dn(:) * &
-            sat_dn**s_pow * &
-            material_auxvar_dn%porosity**por_pow
-    endif
-    if (rt_parameter%anisotropic_tortuosity) then
-      tort_up = TortuosityTensorToScalar(material_auxvar_up,dist)
-      tort_dn = TortuosityTensorToScalar(material_auxvar_dn,dist)
-    else
-      tort_up = material_auxvar_up%tortuosity
-      tort_dn = material_auxvar_dn%tortuosity
-    endif
+    call TDispersionDiffusion(global_auxvar_up,sat_up,material_auxvar_up, &
+                              dist,rt_parameter,iphase, &
+                              molecular_diffusion_up,tort_up,s_exp,p_exp)
+    call TDispersionDiffusion(global_auxvar_dn,sat_dn,material_auxvar_dn, &
+                              dist,rt_parameter,iphase, &
+                              molecular_diffusion_dn,tort_dn,s_exp,p_exp)
     q = qdarcy(iphase)
     if (rt_parameter%calculate_transverse_dispersion) then
       velocity_up = q*abs_dist(1:3) + (1.d0-abs_dist(1:3))* &
@@ -266,6 +224,7 @@ subroutine TDispersionBC(ibndtype, &
   !   (saturation * porosity *
   !   (mechanical_dispersion + tortuosity * molecular_diffusion) /
   !    distance [between cell centers]
+  ! TDispersionBCDerivative differentiates it (GIRT_DAE): keep them in step.
   !
   ! Author: Glenn Hammond
   ! Date: 08/31/16
@@ -273,7 +232,6 @@ subroutine TDispersionBC(ibndtype, &
 
   use Option_module
   use Connection_module
-  use Utility_module, only : Arrhenius
 
   implicit none
 
@@ -289,7 +247,7 @@ subroutine TDispersionBC(ibndtype, &
   type(reactive_transport_param_type) :: rt_parameter
   PetscReal :: tran_coefs_over_dist(rt_parameter%ndiffcoef,rt_parameter%nphase)
 
-  PetscInt :: iphase, nphase, idiffcoef
+  PetscInt :: iphase, nphase
   PetscReal :: sat_up, sat_dn
   PetscReal :: abs_dist_dn(3)
   PetscReal :: velocity_dn(3)
@@ -304,11 +262,7 @@ subroutine TDispersionBC(ibndtype, &
   PetscReal :: tort_dn
   PetscReal :: v_dn
   PetscReal :: vi2_over_v_dn, vj2_over_v_dn, vk2_over_v_dn
-  PetscReal, parameter :: PREF = 101325.d0
-  PetscReal, parameter :: TREF = 25.d0
-
-  PetscReal, parameter :: s_pow = 7.d0/3.d0
-  PetscReal, parameter :: por_pow = 1.d0/3.d0
+  PetscReal :: s_exp, p_exp
 
   nphase = rt_parameter%nphase
 
@@ -320,37 +274,11 @@ subroutine TDispersionBC(ibndtype, &
     sat_up = global_auxvar_up%sat(iphase)
     sat_dn = global_auxvar_dn%sat(iphase)
     if (sat_up < rt_min_saturation .or. sat_dn < rt_min_saturation) cycle
-    molecular_diffusion(:) = rt_parameter%diffusion_coefficient(:,iphase)
-    if (rt_parameter%temperature_dependent_diffusion) then
-      select case(iphase)
-        case(LIQUID_PHASE)
-          do idiffcoef = 1, rt_parameter%ndiffcoef ! 1 or naqcomp
-            molecular_diffusion(idiffcoef) = &
-              molecular_diffusion(idiffcoef) * &
-              Arrhenius(rt_parameter% &
-                          diffusion_activation_energy(idiffcoef,iphase), &
-                        global_auxvar_up%temp,TREF)
-          enddo
-        case(GAS_PHASE)
-          ! if gas phase exists, gas pressure %pres(GAS_PHASE) should be total
-          ! pressure
-          molecular_diffusion(:) = &
-            rt_parameter%diffusion_coefficient(:,iphase) * &
-            ((((global_auxvar_up%temp+T273K)/T273K)**1.8d0) * &
-             (PREF/global_auxvar_up%pres(GAS_PHASE)))
-      end select
-    endif
-    if (rt_parameter%millington_quirk_tortuosity) then
-      molecular_diffusion(:) = &
-            molecular_diffusion(:) * &
-            sat_dn**s_pow * &
-            material_auxvar_dn%porosity**por_pow
-    endif
-    if (rt_parameter%anisotropic_tortuosity) then
-      tort_dn = TortuosityTensorToScalar(material_auxvar_dn,dist_dn)
-    else
-      tort_dn = material_auxvar_dn%tortuosity
-    endif
+    ! at the boundary's temperature (and gas pressure), the cell's
+    ! saturation and material
+    call TDispersionDiffusion(global_auxvar_up,sat_dn,material_auxvar_dn, &
+                              dist_dn,rt_parameter,iphase, &
+                              molecular_diffusion,tort_dn,s_exp,p_exp)
     q = qdarcy(iphase)
     if (rt_parameter%calculate_transverse_dispersion) then
       velocity_dn = q*abs_dist_dn(1:3) + (1.d0-abs_dist_dn(1:3))* &
@@ -399,6 +327,259 @@ subroutine TDispersionBC(ibndtype, &
   enddo
 
 end subroutine TDispersionBC
+
+! ************************************************************************** !
+
+subroutine TDispersionDerivative(global_auxvar_up,material_auxvar_up, &
+                                 dispersivity_up, &
+                                 global_auxvar_dn,material_auxvar_dn, &
+                                 dispersivity_dn, &
+                                 dist,rt_parameter,option,qdarcy, &
+                                 dH_dsat_up,dH_dpor_up,dH_dsat_dn, &
+                                 dH_dpor_dn,dH_dq)
+  !
+  ! Derivatives of TDispersion's liquid harmonic_tran_coefs_over_dist
+  ! w.r.t. both cells' liquid saturation and porosity and the liquid Darcy
+  ! flux; longitudinal dispersion only, no secondary continuum. Zero where
+  ! TDispersion clips the coefficient or skips the connection.
+  !
+  ! Author: Hansol Suh
+  ! Date: 09/23/26
+  !
+  use Option_module
+  use Connection_module
+
+  implicit none
+
+  type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
+  type(material_auxvar_type) :: material_auxvar_up, material_auxvar_dn
+  PetscReal :: dispersivity_up(3), dispersivity_dn(3)
+  PetscReal :: dist(-1:3)
+  type(reactive_transport_param_type) :: rt_parameter
+  type(option_type) :: option
+  PetscReal :: qdarcy(*)
+  PetscReal :: dH_dsat_up(rt_parameter%ndiffcoef)
+  PetscReal :: dH_dpor_up(rt_parameter%ndiffcoef)
+  PetscReal :: dH_dsat_dn(rt_parameter%ndiffcoef)
+  PetscReal :: dH_dpor_dn(rt_parameter%ndiffcoef)
+  PetscReal :: dH_dq(rt_parameter%ndiffcoef)
+
+  PetscReal :: dist_up, dist_dn, distance_gravity, upwind_weight
+  PetscReal :: sat_up, sat_dn, por_up, por_dn, tort_up, tort_dn, q, sgn
+  PetscReal :: s_exp, p_exp
+  PetscReal :: molecular_up(rt_parameter%ndiffcoef)
+  PetscReal :: molecular_dn(rt_parameter%ndiffcoef)
+  PetscReal :: hydro_up(rt_parameter%ndiffcoef)
+  PetscReal :: hydro_dn(rt_parameter%ndiffcoef)
+  PetscReal :: dhu_ds(rt_parameter%ndiffcoef), dhu_dp(rt_parameter%ndiffcoef)
+  PetscReal :: dhd_ds(rt_parameter%ndiffcoef), dhd_dp(rt_parameter%ndiffcoef)
+  PetscReal :: dhu_dq(rt_parameter%ndiffcoef), dhd_dq(rt_parameter%ndiffcoef)
+  PetscReal :: denom(rt_parameter%ndiffcoef)
+  PetscReal :: dH_dhu(rt_parameter%ndiffcoef), dH_dhd(rt_parameter%ndiffcoef)
+
+  dH_dsat_up = 0.d0
+  dH_dpor_up = 0.d0
+  dH_dsat_dn = 0.d0
+  dH_dpor_dn = 0.d0
+  dH_dq = 0.d0
+
+  sat_up = global_auxvar_up%sat(LIQUID_PHASE)
+  sat_dn = global_auxvar_dn%sat(LIQUID_PHASE)
+  if (sat_up < rt_min_saturation .or. sat_dn < rt_min_saturation) return
+  por_up = material_auxvar_up%porosity
+  por_dn = material_auxvar_dn%porosity
+  call ConnectionCalculateDistances(dist,option%gravity,dist_up, &
+                                    dist_dn,distance_gravity, &
+                                    upwind_weight)
+  ! the effective diffusion coefficient is s^(1+s_exp) phi^(1+p_exp)
+  ! times a constant
+  call TDispersionDiffusion(global_auxvar_up,sat_up,material_auxvar_up, &
+                            dist,rt_parameter,LIQUID_PHASE,molecular_up, &
+                            tort_up,s_exp,p_exp)
+  call TDispersionDiffusion(global_auxvar_dn,sat_dn,material_auxvar_dn, &
+                            dist,rt_parameter,LIQUID_PHASE,molecular_dn, &
+                            tort_dn,s_exp,p_exp)
+  q = qdarcy(LIQUID_PHASE)
+  sgn = 0.d0
+  if (q > 0.d0) sgn = 1.d0
+  if (q < 0.d0) sgn = -1.d0
+
+  hydro_up(:) = dispersivity_up(1)*dabs(q) + &
+                sat_up*por_up*tort_up*molecular_up(:)
+  hydro_dn(:) = dispersivity_dn(1)*dabs(q) + &
+                sat_dn*por_dn*tort_dn*molecular_dn(:)
+  dhu_ds(:) = (1.d0+s_exp)*por_up*tort_up*molecular_up(:)
+  dhu_dp(:) = (1.d0+p_exp)*sat_up*tort_up*molecular_up(:)
+  dhd_ds(:) = (1.d0+s_exp)*por_dn*tort_dn*molecular_dn(:)
+  dhd_dp(:) = (1.d0+p_exp)*sat_dn*tort_dn*molecular_dn(:)
+  dhu_dq(:) = dispersivity_up(1)*sgn
+  dhd_dq(:) = dispersivity_dn(1)*sgn
+  ! TDispersion clips at 1e-40
+  where (hydro_up <= 1.d-40)
+    hydro_up = 1.d-40
+    dhu_ds = 0.d0
+    dhu_dp = 0.d0
+    dhu_dq = 0.d0
+  end where
+  where (hydro_dn <= 1.d-40)
+    hydro_dn = 1.d-40
+    dhd_ds = 0.d0
+    dhd_dp = 0.d0
+    dhd_dq = 0.d0
+  end where
+  ! H = hu*hd/(hu*dist_dn + hd*dist_up)
+  denom(:) = hydro_up(:)*dist_dn + hydro_dn(:)*dist_up
+  dH_dhu(:) = hydro_dn(:)**2*dist_up/denom(:)**2
+  dH_dhd(:) = hydro_up(:)**2*dist_dn/denom(:)**2
+  dH_dsat_up(:) = dH_dhu(:)*dhu_ds(:)
+  dH_dpor_up(:) = dH_dhu(:)*dhu_dp(:)
+  dH_dsat_dn(:) = dH_dhd(:)*dhd_ds(:)
+  dH_dpor_dn(:) = dH_dhd(:)*dhd_dp(:)
+  dH_dq(:) = dH_dhu(:)*dhu_dq(:) + dH_dhd(:)*dhd_dq(:)
+
+end subroutine TDispersionDerivative
+
+! ************************************************************************** !
+
+subroutine TDispersionBCDerivative(ibndtype,global_auxvar_up, &
+                                   global_auxvar_dn,material_auxvar_dn, &
+                                   dispersivity_dn,dist_dn,rt_parameter, &
+                                   qdarcy,dH_dsat_up,dH_dsat_dn,dH_dpor_dn, &
+                                   dH_dq)
+  !
+  ! Derivatives of TDispersionBC's liquid tran_coefs_over_dist w.r.t. the
+  ! boundary (up) and cell (dn) liquid saturations, the cell porosity and
+  ! the liquid Darcy flux; longitudinal dispersion only, no secondary
+  ! continuum. Zero where TDispersionBC clips the coefficient or skips the
+  ! connection.
+  !
+  ! Author: Hansol Suh
+  ! Date: 09/23/26
+  !
+  implicit none
+
+  PetscInt :: ibndtype
+  type(global_auxvar_type) :: global_auxvar_up, global_auxvar_dn
+  type(material_auxvar_type) :: material_auxvar_dn
+  PetscReal :: dispersivity_dn(3)
+  PetscReal :: dist_dn(-1:3)
+  type(reactive_transport_param_type) :: rt_parameter
+  PetscReal :: qdarcy(*)
+  PetscReal :: dH_dsat_up(rt_parameter%ndiffcoef)
+  PetscReal :: dH_dsat_dn(rt_parameter%ndiffcoef)
+  PetscReal :: dH_dpor_dn(rt_parameter%ndiffcoef)
+  PetscReal :: dH_dq(rt_parameter%ndiffcoef)
+
+  PetscReal :: sat_up, sat_dn, por_dn, tort_dn, q, sgn, s_exp, p_exp
+  PetscReal :: molecular(rt_parameter%ndiffcoef)
+  PetscReal :: hydro(rt_parameter%ndiffcoef)
+
+  dH_dsat_up = 0.d0
+  dH_dsat_dn = 0.d0
+  dH_dpor_dn = 0.d0
+  dH_dq = 0.d0
+
+  q = qdarcy(LIQUID_PHASE)
+  select case(ibndtype)
+    case(DIRICHLET_BC,DIRICHLET_ZERO_GRADIENT_BC)
+      if (ibndtype == DIRICHLET_ZERO_GRADIENT_BC .and. q < 0.d0) return
+    case default
+      return
+  end select
+  sat_up = global_auxvar_up%sat(LIQUID_PHASE)
+  sat_dn = global_auxvar_dn%sat(LIQUID_PHASE)
+  if (sat_up < rt_min_saturation .or. sat_dn < rt_min_saturation) return
+  por_dn = material_auxvar_dn%porosity
+  ! at the boundary's temperature and the cell's saturation and material
+  call TDispersionDiffusion(global_auxvar_up,sat_dn,material_auxvar_dn, &
+                            dist_dn,rt_parameter,LIQUID_PHASE,molecular, &
+                            tort_dn,s_exp,p_exp)
+  sgn = 0.d0
+  if (q > 0.d0) sgn = 1.d0
+  if (q < 0.d0) sgn = -1.d0
+  hydro(:) = dispersivity_dn(1)*dabs(q) + &
+             sat_up*por_dn*tort_dn*molecular(:)
+  ! the boundary saturation multiplies the cell's Millington-Quirk factor
+  dH_dsat_up(:) = por_dn*tort_dn*molecular(:)/dist_dn(0)
+  if (s_exp > 0.d0) &
+    dH_dsat_dn(:) = s_exp*sat_up*por_dn*tort_dn*molecular(:)/sat_dn/dist_dn(0)
+  dH_dpor_dn(:) = (1.d0+p_exp)*sat_up*tort_dn*molecular(:)/dist_dn(0)
+  dH_dq(:) = dispersivity_dn(1)*sgn/dist_dn(0)
+  where (hydro <= 1.d-40)
+    dH_dsat_up = 0.d0
+    dH_dsat_dn = 0.d0
+    dH_dpor_dn = 0.d0
+    dH_dq = 0.d0
+  end where
+
+end subroutine TDispersionBCDerivative
+
+! ************************************************************************** !
+
+subroutine TDispersionDiffusion(global_auxvar,sat,material_auxvar,dist, &
+                                rt_parameter,iphase,molecular,tort, &
+                                s_exp,p_exp)
+  !
+  ! Molecular diffusion coefficients and tortuosity of phase iphase, for
+  ! TDispersion, TDispersionBC and their derivatives. Temperature
+  ! dependence uses global_auxvar: Arrhenius (liquid), (T/T0)^1.8*P0/P
+  ! (gas). Millington-Quirk multiplies by sat^s_exp*phi^p_exp; s_exp =
+  ! p_exp = 0 without it.
+  !
+  ! Author: Hansol Suh
+  ! Date: 09/23/26
+  !
+  use Utility_module, only : Arrhenius
+
+  implicit none
+
+  type(global_auxvar_type) :: global_auxvar
+  PetscReal :: sat
+  type(material_auxvar_type) :: material_auxvar
+  PetscReal :: dist(-1:3)
+  type(reactive_transport_param_type) :: rt_parameter
+  PetscInt :: iphase
+  PetscReal :: molecular(rt_parameter%ndiffcoef)
+  PetscReal :: tort
+  PetscReal :: s_exp, p_exp
+
+  PetscInt :: idiffcoef
+  PetscReal, parameter :: PREF = 101325.d0
+  PetscReal, parameter :: TREF = 25.d0
+  PetscReal, parameter :: s_pow = 7.d0/3.d0
+  PetscReal, parameter :: por_pow = 1.d0/3.d0
+
+  molecular(:) = rt_parameter%diffusion_coefficient(:,iphase)
+  if (rt_parameter%temperature_dependent_diffusion) then
+    select case(iphase)
+      case(LIQUID_PHASE)
+        do idiffcoef = 1, rt_parameter%ndiffcoef
+          molecular(idiffcoef) = molecular(idiffcoef) * &
+            Arrhenius(rt_parameter%diffusion_activation_energy( &
+                        idiffcoef,iphase),global_auxvar%temp,TREF)
+        enddo
+      case(GAS_PHASE)
+        ! if gas phase exists, gas pressure %pres(GAS_PHASE) should be total
+        ! pressure
+        molecular(:) = molecular(:) * &
+          ((((global_auxvar%temp+T273K)/T273K)**1.8d0) * &
+           (PREF/global_auxvar%pres(GAS_PHASE)))
+    end select
+  endif
+  s_exp = 0.d0
+  p_exp = 0.d0
+  if (rt_parameter%millington_quirk_tortuosity) then
+    molecular(:) = molecular(:)*sat**s_pow*material_auxvar%porosity**por_pow
+    s_exp = s_pow
+    p_exp = por_pow
+  endif
+  if (rt_parameter%anisotropic_tortuosity) then
+    tort = TortuosityTensorToScalar(material_auxvar,dist)
+  else
+    tort = material_auxvar%tortuosity
+  endif
+
+end subroutine TDispersionDiffusion
 
 ! ************************************************************************** !
 

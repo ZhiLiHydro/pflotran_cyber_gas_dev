@@ -3763,6 +3763,7 @@ richards_aux.o : \
 richards_common.o : \
   characteristic_curves.o \
   connection.o \
+  coupler.o \
   eos_water.o \
   global_aux.o \
   material_aux.o \

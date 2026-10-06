@@ -948,20 +948,13 @@ subroutine RichardsUpdateAuxVarsPatch(realization,pm_well)
 
       if (patch%imat(ghosted_id) <= 0) cycle
 
-      select case(boundary_condition%flow_condition% &
-                    itype(RICHARDS_PRESSURE_DOF))
-        case(DIRICHLET_BC, DIRICHLET_SEEPAGE_BC,DIRICHLET_CONDUCTANCE_BC, &
-             HYDROSTATIC_BC,HYDROSTATIC_SEEPAGE_BC,HYDROSTATIC_CONDUCTANCE_BC, &
-             HET_SURF_HYDROSTATIC_SEEPAGE_BC, &
-             HET_DIRICHLET_BC,HET_HYDROSTATIC_SEEPAGE_BC, &
-             HET_HYDROSTATIC_CONDUCTANCE_BC, &
-             SURFACE_DIRICHLET,SURFACE_SPILLOVER)
-          xxbc(1) = boundary_condition% &
-                      flow_aux_real_var(RICHARDS_PRESSURE_DOF,iconn)
-        case(NEUMANN_BC,ZERO_GRADIENT_BC,UNIT_GRADIENT_BC, &
-             SURFACE_ZERO_GRADHEIGHT)
-          xxbc(1) = xx_loc_p(istart)
-      end select
+      if (RichardsBCPressureFollowsCell(boundary_condition%flow_condition% &
+                                        itype(RICHARDS_PRESSURE_DOF))) then
+        xxbc(1) = xx_loc_p(istart)
+      else
+        xxbc(1) = boundary_condition% &
+                    flow_aux_real_var(RICHARDS_PRESSURE_DOF,iconn)
+      endif
 
       option%iflag = RICHARDS_UPDATE_FOR_BOUNDARY
 
@@ -2000,6 +1993,7 @@ subroutine RichardsResidualSourceSink(r,realization,pm_well,ierr)
   PetscReal, pointer :: qflx_pf_p(:)
 #endif
   PetscReal :: qsrc, qsrc_mol
+  PetscReal :: rate, scale
   PetscReal, pointer :: r_p(:)  ! [kmol/s]
   PetscReal, pointer :: mmsrc(:)
   PetscReal :: well_status
@@ -2099,27 +2093,13 @@ subroutine RichardsResidualSourceSink(r,realization,pm_well,ierr)
         qsrc = source_sink%flow_condition%rate%dataset%rarray(1)
 
       select case(source_sink%flow_condition%itype(1))
-        case(MASS_RATE_SS)
-          qsrc_mol = qsrc/richards_density_kmol_to_kg ! kg/sec -> kmol/sec
-        case(SCALED_MASS_RATE_SS)
-          qsrc_mol = qsrc/richards_density_kmol_to_kg* & ! kg/sec -> kmol/sec
-            source_sink%flow_aux_real_var(ONE_INTEGER,iconn)
-        case(VOLUMETRIC_RATE_SS)  ! assume local density for now
-          ! qsrc1 = m^3/sec
-          qsrc_mol = qsrc*global_auxvars(ghosted_id)%den(1) ! den = kmol/m^3
-        case(SCALED_VOLUMETRIC_RATE_SS)  ! assume local density for now
-          ! qsrc1 = m^3/sec
-          qsrc_mol = qsrc*global_auxvars(ghosted_id)%den(1)* & ! den = kmol/m^3
-            source_sink%flow_aux_real_var(ONE_INTEGER,iconn)
-        case(HET_VOL_RATE_SS)
-          ! qsrc1 = m^3/sec
-                                 ! flow = m^3/s
-          qsrc_mol = source_sink%flow_aux_real_var(ONE_INTEGER,iconn)* &
-                     global_auxvars(ghosted_id)%den(1)    ! den  = kmol/m^3
-        case(HET_MASS_RATE_SS)
-                                                           ! kg/sec -> kmol/sec
-          qsrc_mol = source_sink%flow_aux_real_var(ONE_INTEGER,iconn)/ &
-                     richards_density_kmol_to_kg
+        case(MASS_RATE_SS,VOLUMETRIC_RATE_SS,SCALED_MASS_RATE_SS, &
+             SCALED_VOLUMETRIC_RATE_SS,HET_VOL_RATE_SS,HET_MASS_RATE_SS)
+          call RichardsSrcSinkRate(source_sink,iconn,rate,scale)
+          call RichardsSrcSinkMolarRate(source_sink%flow_condition%itype(1), &
+                                        rate,scale, &
+                                        global_auxvars(ghosted_id)%den(1), &
+                                        qsrc_mol)
 
         case(PRES_REG_MASS_RATE_SS)
           threshold_pressure = source_sink%flow_condition%rate%aux_real(1)
@@ -3144,7 +3124,8 @@ subroutine RichardsJacobianSourceSink(A,realization,pm_well,debug,ierr)
 
   PetscErrorCode :: ierr
 
-  PetscReal :: qsrc
+  PetscReal :: qsrc, qsrc_mol
+  PetscReal :: rate, scale
   PetscInt :: local_id, ghosted_id
   PetscInt :: istart
 
@@ -3209,15 +3190,16 @@ subroutine RichardsJacobianSourceSink(A,realization,pm_well,debug,ierr)
 
       Jup = 0.d0
       select case(source_sink%flow_condition%itype(1))
-        case(MASS_RATE_SS,SCALED_MASS_RATE_SS,HET_MASS_RATE_SS)
-        case(VOLUMETRIC_RATE_SS)  ! assume local density for now
-          Jup(1,1) = -qsrc*rich_auxvars(ghosted_id)%dden_dp
-        case(SCALED_VOLUMETRIC_RATE_SS)  ! assume local density for now
-          Jup(1,1) = -qsrc*rich_auxvars(ghosted_id)%dden_dp* &
-                     source_sink%flow_aux_real_var(ONE_INTEGER,iconn)
-        case(HET_VOL_RATE_SS)
-          Jup(1,1) = -source_sink%flow_aux_real_var(ONE_INTEGER,iconn)* &
-                     rich_auxvars(ghosted_id)%dden_dp
+        case(MASS_RATE_SS,VOLUMETRIC_RATE_SS,SCALED_MASS_RATE_SS, &
+             SCALED_VOLUMETRIC_RATE_SS,HET_VOL_RATE_SS,HET_MASS_RATE_SS)
+          call RichardsSrcSinkRate(source_sink,iconn,rate,scale)
+          call RichardsSrcSinkMolarRate(source_sink%flow_condition%itype(1), &
+                                        rate,scale, &
+                                        global_auxvars(ghosted_id)%den(1), &
+                                        qsrc_mol, &
+                                        rich_auxvars(ghosted_id)%dden_dp, &
+                                        Jup(1,1))
+          Jup(1,1) = -Jup(1,1)
         case(PRES_REG_MASS_RATE_SS)
           threshold_pressure = source_sink%flow_condition%rate%aux_real(1)
           inhibit_flow_above_pressure = (threshold_pressure > 0.d0)

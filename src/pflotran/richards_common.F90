@@ -19,6 +19,11 @@ module Richards_Common_module
 
   public RichardsAccumulation, &
          RichardsAccumDerivative, &
+         RichardsWaterMass, &
+         RichardsWaterMassDerivative, &
+         RichardsBCPressureFollowsCell, &
+         RichardsSrcSinkRate, &
+         RichardsSrcSinkMolarRate, &
          RichardsFlux, &
          RichardsFluxDerivative, &
          RichardsBCFlux, &
@@ -75,12 +80,7 @@ subroutine RichardsAccumDerivative(rich_auxvar,global_auxvar, &
   material_auxvar%porosity = rich_auxvar%effective_porosity
 
   ! accumulation term units = dkmol/dp
-  J(1,1) = (material_auxvar%dporosity_dp*global_auxvar%sat(1)* &
-            global_auxvar%den(1) + &
-            (global_auxvar%sat(1)*rich_auxvar%dden_dp + &
-             rich_auxvar%dsat_dp*global_auxvar%den(1)) * &
-            material_auxvar%porosity) * &
-            vol_over_dt
+  J(1,1) = RichardsWaterMassDerivative(rich_auxvar,global_auxvar,vol_over_dt)
 
   if (option%flow%numerical_derivatives) then
     call GlobalAuxVarInit(global_auxvar_pert,option)
@@ -139,16 +139,155 @@ subroutine RichardsAccumulation(rich_auxvar,global_auxvar,material_auxvar, &
   PetscReal :: Res(1:option%nflowdof)
 
   PetscReal :: vol_over_dt
-  PetscReal :: por
 
   vol_over_dt = material_auxvar%volume/option%flow_dt
-  por = rich_auxvar%effective_porosity
 
   ! accumulation term units = kmol/s
-  Res(1) = global_auxvar%sat(1) * global_auxvar%den(1) * &
-           por * vol_over_dt
+  Res(1) = RichardsWaterMass(rich_auxvar,global_auxvar,vol_over_dt)
 
 end subroutine RichardsAccumulation
+
+! ************************************************************************** !
+
+function RichardsWaterMass(rich_auxvar,global_auxvar,scale)
+  !
+  ! Water per bulk volume, effective porosity * saturation * density
+  ! [kmol/m^3 bulk], times scale: the volume for a cell's inventory, the
+  ! volume over the step size for the accumulation term
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/05/26
+  !
+  implicit none
+
+  type(richards_auxvar_type) :: rich_auxvar
+  type(global_auxvar_type) :: global_auxvar
+  PetscReal :: scale
+  PetscReal :: RichardsWaterMass
+
+  RichardsWaterMass = global_auxvar%sat(1) * global_auxvar%den(1) * &
+                      rich_auxvar%effective_porosity * scale
+
+end function RichardsWaterMass
+
+! ************************************************************************** !
+
+function RichardsWaterMassDerivative(rich_auxvar,global_auxvar,scale)
+  !
+  ! Pressure derivative of RichardsWaterMass
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/05/26
+  !
+  implicit none
+
+  type(richards_auxvar_type) :: rich_auxvar
+  type(global_auxvar_type) :: global_auxvar
+  PetscReal :: scale
+  PetscReal :: RichardsWaterMassDerivative
+
+  RichardsWaterMassDerivative = &
+    (rich_auxvar%dpor_dp*global_auxvar%sat(1)*global_auxvar%den(1) + &
+     (global_auxvar%sat(1)*rich_auxvar%dden_dp + &
+      rich_auxvar%dsat_dp*global_auxvar%den(1)) * &
+     rich_auxvar%effective_porosity) * scale
+
+end function RichardsWaterMassDerivative
+
+! ************************************************************************** !
+
+function RichardsBCPressureFollowsCell(itype)
+  !
+  ! Whether a boundary of pressure type itype takes the pressure of its
+  ! cell (the type prescribes a flux or a gradient, not a pressure)
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/05/26
+  !
+  implicit none
+
+  PetscInt :: itype
+  PetscBool :: RichardsBCPressureFollowsCell
+
+  select case(itype)
+    case(NEUMANN_BC,ZERO_GRADIENT_BC,UNIT_GRADIENT_BC, &
+         SURFACE_ZERO_GRADHEIGHT)
+      RichardsBCPressureFollowsCell = PETSC_TRUE
+    case default
+      RichardsBCPressureFollowsCell = PETSC_FALSE
+  end select
+
+end function RichardsBCPressureFollowsCell
+
+! ************************************************************************** !
+
+subroutine RichardsSrcSinkRate(coupler,iconn,rate,scale)
+  !
+  ! Rate [kg/sec or m^3/sec] and scale of connection iconn of a mass or
+  ! volumetric rate source coupler, as RichardsSrcSinkMolarRate takes them;
+  ! zero rate for other source types.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/06/26
+  !
+  use Coupler_module
+
+  implicit none
+
+  type(coupler_type) :: coupler
+  PetscInt :: iconn
+  PetscReal :: rate
+  PetscReal :: scale
+
+  rate = 0.d0
+  scale = 1.d0
+  select case(coupler%flow_condition%itype(1))
+    case(MASS_RATE_SS,VOLUMETRIC_RATE_SS)
+      rate = coupler%flow_condition%rate%dataset%rarray(1)
+    case(SCALED_MASS_RATE_SS,SCALED_VOLUMETRIC_RATE_SS)
+      rate = coupler%flow_condition%rate%dataset%rarray(1)
+      scale = coupler%flow_aux_real_var(ONE_INTEGER,iconn)
+    case(HET_VOL_RATE_SS,HET_MASS_RATE_SS)
+      ! per connection, from the coupler
+      rate = coupler%flow_aux_real_var(ONE_INTEGER,iconn)
+  end select
+
+end subroutine RichardsSrcSinkRate
+
+! ************************************************************************** !
+
+subroutine RichardsSrcSinkMolarRate(itype,rate,scale,den,q,dden_dp,dq_dp)
+  !
+  ! Water rate q [kmol/sec, or kg/sec when RICHARDS uses kg] of a mass
+  ! [kg/sec] or volumetric [m^3/sec] source, times scale; zero for other
+  ! source types. With dden_dp, also dq_dp = dq/dP.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/05/26
+  !
+  implicit none
+
+  PetscInt :: itype
+  PetscReal :: rate
+  PetscReal :: scale
+  PetscReal :: den
+  PetscReal :: q
+  PetscReal, optional :: dden_dp
+  PetscReal, optional :: dq_dp
+
+  q = 0.d0
+  if (present(dden_dp)) dq_dp = 0.d0
+  select case(itype)
+    case(MASS_RATE_SS,SCALED_MASS_RATE_SS,HET_MASS_RATE_SS)
+      ! kg/sec -> kmol/sec
+      q = rate/richards_density_kmol_to_kg*scale
+    case(VOLUMETRIC_RATE_SS,SCALED_VOLUMETRIC_RATE_SS,HET_VOL_RATE_SS)
+      ! at the cell's density
+      q = rate*den*scale
+      if (present(dden_dp)) dq_dp = rate*dden_dp*scale
+  end select
+
+end subroutine RichardsSrcSinkMolarRate
 
 ! ************************************************************************** !
 
@@ -162,10 +301,11 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
                                   option, &
                                   characteristic_curves_up, &
                                   characteristic_curves_dn, &
-                                  Jup,Jdn)
+                                  Jup,Jdn,dv_dp_up,dv_dp_dn)
   !
   ! Computes the derivatives of the internal flux terms
-  ! for the Jacobian
+  ! for the Jacobian; optionally the Darcy velocity's derivatives with
+  ! respect to the up and down pressures (without RichardsFluxAniso's terms)
   !
   ! Author: Glenn Hammond
   ! Date: 12/13/07
@@ -189,6 +329,7 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
 
   PetscReal :: Jup(option%nflowdof,option%nflowdof)
   PetscReal :: Jdn(option%nflowdof,option%nflowdof)
+  PetscReal, optional :: dv_dp_up, dv_dp_dn
 
   PetscReal :: q
   PetscReal :: ukvr,Dq
@@ -240,6 +381,8 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
   dukvr_dp_dn = 0.d0
   dq_dp_up = 0.d0
   dq_dp_dn = 0.d0
+  if (present(dv_dp_up)) dv_dp_up = 0.d0
+  if (present(dv_dp_dn)) dv_dp_dn = 0.d0
 
   call ConnectionCalculateDistances(dist,option%gravity,dd_up,dd_dn, &
                                     dist_gravity,upweight)
@@ -298,6 +441,8 @@ subroutine RichardsFluxDerivative(rich_auxvar_up,global_auxvar_up, &
 
       dv_darcy_dp_up = Dq*(dukvr_dp_up*dphi+ukvr*dphi_dp_up)
       dv_darcy_dp_dn = Dq*(dukvr_dp_dn*dphi+ukvr*dphi_dp_dn)
+      if (present(dv_dp_up)) dv_dp_up = dv_darcy_dp_up
+      if (present(dv_dp_dn)) dv_dp_dn = dv_darcy_dp_dn
 
       q = v_darcy * area
 
@@ -551,10 +696,11 @@ subroutine RichardsBCFluxDerivative(ibndtype,auxvars, &
                                     richards_parameter, &
                                     area,dist,option, &
                                     characteristic_curves_dn, &
-                                    Jdn)
+                                    Jdn,dv_dp_dn)
   !
   ! Computes the derivatives of the boundary flux
-  ! terms for the Jacobian
+  ! terms for the Jacobian; optionally the derivative of the Darcy
+  ! velocity with respect to the cell (dn) pressure
   !
   ! Author: Glenn Hammond
   ! Date: 12/13/07
@@ -582,6 +728,7 @@ subroutine RichardsBCFluxDerivative(ibndtype,auxvars, &
   PetscReal :: dist(-1:3)
   class(characteristic_curves_type) :: characteristic_curves_dn
   PetscReal :: Jdn(option%nflowdof,option%nflowdof)
+  PetscReal, optional :: dv_dp_dn
 
   PetscReal :: dist_gravity  ! distance along gravity vector
   PetscReal :: perm_dn
@@ -595,6 +742,7 @@ subroutine RichardsBCFluxDerivative(ibndtype,auxvars, &
   PetscReal :: dgravity_dden_dn
   PetscReal :: dphi_dp_dn
   PetscReal :: dukvr_dp_dn
+  PetscReal :: dv_darcy_dp_dn
   PetscReal :: dq_dp_dn
   PetscInt :: pressure_bc_type
 
@@ -617,6 +765,7 @@ subroutine RichardsBCFluxDerivative(ibndtype,auxvars, &
   dgravity_dden_dn = 0.d0
   dphi_dp_dn = 0.d0
   dukvr_dp_dn = 0.d0
+  dv_darcy_dp_dn = 0.d0
   dq_dp_dn = 0.d0
 
   call PermeabilityTensorToScalar(material_auxvar_dn,dist,perm_dn)
@@ -691,7 +840,8 @@ subroutine RichardsBCFluxDerivative(ibndtype,auxvars, &
         if (ukvr*Dq>floweps) then
           v_darcy = Dq * ukvr * dphi
           q = v_darcy * area
-          dq_dp_dn = Dq*(dukvr_dp_dn*dphi + ukvr*dphi_dp_dn)*area
+          dv_darcy_dp_dn = Dq*(dukvr_dp_dn*dphi + ukvr*dphi_dp_dn)
+          dq_dp_dn = dv_darcy_dp_dn*area
         endif
 
       endif
@@ -702,6 +852,7 @@ subroutine RichardsBCFluxDerivative(ibndtype,auxvars, &
         if (v_darcy > 0.d0) then
           density_ave = global_auxvar_up%den(1)
           ! the boundary state is at the cell pressure
+          ! (RichardsBCPressureFollowsCell)
           dden_ave_dp_dn = rich_auxvar_up%dden_dp
         else
           density_ave = global_auxvar_dn%den(1)
@@ -728,7 +879,8 @@ subroutine RichardsBCFluxDerivative(ibndtype,auxvars, &
         if (ukvr*perm_dn>floweps) then
           v_darcy = perm_dn * ukvr * dphi
           q = v_darcy*area
-          dq_dp_dn = perm_dn*(dukvr_dp_dn*dphi+ukvr*dphi_dp_dn)*area
+          dv_darcy_dp_dn = perm_dn*(dukvr_dp_dn*dphi+ukvr*dphi_dp_dn)
+          dq_dp_dn = dv_darcy_dp_dn*area
         endif
 
       endif
@@ -736,6 +888,7 @@ subroutine RichardsBCFluxDerivative(ibndtype,auxvars, &
   end select
 
   Jdn(1,1) = (dq_dp_dn*density_ave+q*dden_ave_dp_dn)
+  if (present(dv_dp_dn)) dv_dp_dn = dv_darcy_dp_dn
 
   if (option%flow%numerical_derivatives) then
     call GlobalAuxVarInit(global_auxvar_pert_up,option)

@@ -32,6 +32,8 @@ module Reactive_Transport_module
             RTComputeMassBalance, &
             RTDestroy, &
             RTUpdateTransportCoefs, &
+            RTGhostedCellCenteredVelocities, &
+            RTComputeTransportCoefs, &
             RTUpdateActivityCoefficients, &
             RTCalculateRHS_t1, &
             RTCalculateTransportMatrix, &
@@ -1411,26 +1413,138 @@ subroutine RTUpdateTransportCoefs(realization)
   !
 
   use Realization_Subsurface_class
-  use Discretization_module
   use Patch_module
-  use Connection_module
-  use Coupler_module
-  use Option_module
-  use Field_module
-  use Grid_module
-  use Secondary_Continuum_Aux_module
 
   implicit none
 
   class(realization_subsurface_type) :: realization
 
+  type(patch_type), pointer :: patch
+  PetscReal, pointer :: cell_centered_Darcy_velocities_ghosted(:,:,:)
+
+  patch => realization%patch
+  nullify(cell_centered_Darcy_velocities_ghosted)
+  if (patch%aux%RT%rt_parameter%calculate_transverse_dispersion) then
+    call RTGhostedCellCenteredVelocities(realization, &
+                                         cell_centered_Darcy_velocities_ghosted)
+  endif
+
+  call RTComputeTransportCoefs(patch,realization%option, &
+                               patch%aux%Global%auxvars, &
+                               patch%aux%Global%auxvars_bc, &
+                               patch%aux%Material%auxvars, &
+                               patch%internal_velocities, &
+                               patch%boundary_velocities, &
+                               cell_centered_Darcy_velocities_ghosted, &
+                               patch%internal_tran_coefs, &
+                               patch%boundary_tran_coefs)
+
+  if (associated(cell_centered_Darcy_velocities_ghosted)) &
+    deallocate(cell_centered_Darcy_velocities_ghosted)
+
+end subroutine RTUpdateTransportCoefs
+
+! ************************************************************************** !
+
+subroutine RTGhostedCellCenteredVelocities(realization, &
+                                   cell_centered_Darcy_velocities_ghosted)
+  !
+  ! Allocates and fills the cell-centered Darcy velocities of every
+  ! transport phase at the ghosted cells, (3,nphase,ngmax), from the
+  ! patch's face velocities.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/24/10
+  !
+
+  use Realization_Subsurface_class
+  use Discretization_module
+  use Patch_module
+  use Field_module
+
+  implicit none
+
+  class(realization_subsurface_type) :: realization
+  PetscReal, pointer :: cell_centered_Darcy_velocities_ghosted(:,:,:)
+
+  type(patch_type), pointer :: patch
+  type(field_type), pointer :: field
+  type(reactive_transport_param_type), pointer :: rt_parameter
+  PetscReal, allocatable :: cell_centered_Darcy_velocities(:,:)
+  PetscReal, pointer :: vec_ptr(:)
+  PetscInt :: i
+  PetscInt :: iphase
+  PetscInt :: nphase
+  PetscErrorCode :: ierr
+
+  field => realization%field
+  patch => realization%patch
+  rt_parameter => patch%aux%RT%rt_parameter
+  nphase = rt_parameter%nphase
+
+  allocate(cell_centered_Darcy_velocities_ghosted(3,nphase, &
+                                                  patch%grid%ngmax))
+  cell_centered_Darcy_velocities_ghosted = 0.d0
+  allocate(cell_centered_Darcy_velocities(3,patch%grid%nlmax))
+  do iphase = 1, nphase
+    call PatchGetCellCenteredVelocities(patch,iphase, &
+                                        cell_centered_Darcy_velocities)
+    ! at this point, velocities are at local cell centers; we need
+    ! ghosted too.
+    do i=1,3
+      call VecGetArray(field%work,vec_ptr,ierr);CHKERRQ(ierr)
+      vec_ptr(:) = cell_centered_Darcy_velocities(i,:)
+      call VecRestoreArray(field%work,vec_ptr,ierr);CHKERRQ(ierr)
+      call DiscretizationGlobalToLocal(realization%discretization, &
+                                       field%work, &
+                                       field%work_loc,ONEDOF)
+      call VecGetArray(field%work_loc,vec_ptr,ierr);CHKERRQ(ierr)
+      cell_centered_Darcy_velocities_ghosted(i,iphase,:) = vec_ptr(:)
+      call VecRestoreArray(field%work_loc,vec_ptr,ierr);CHKERRQ(ierr)
+    enddo
+  enddo
+  deallocate(cell_centered_Darcy_velocities)
+
+end subroutine RTGhostedCellCenteredVelocities
+
+! ************************************************************************** !
+
+subroutine RTComputeTransportCoefs(patch,option,global_auxvars, &
+                                   global_auxvars_bc,material_auxvars, &
+                                   internal_velocities,boundary_velocities, &
+                                   cell_centered_Darcy_velocities_ghosted, &
+                                   internal_tran_coefs,boundary_tran_coefs)
+  !
+  ! Dispersion coefficients over distance of the internal and boundary
+  ! connections of patch from the given flow state and Darcy fluxes.
+  ! cell_centered_Darcy_velocities_ghosted (3,nphase,ngmax) is needed only
+  ! for transverse dispersion and may be null otherwise.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/24/10
+  !
+
+  use Patch_module
+  use Connection_module
+  use Coupler_module
+  use Option_module
+  use Grid_module
+  use Secondary_Continuum_Aux_module
+
+  implicit none
+
+  type(patch_type), pointer :: patch
+  type(option_type) :: option
   type(global_auxvar_type), pointer :: global_auxvars(:)
   type(global_auxvar_type), pointer :: global_auxvars_bc(:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
-  type(option_type), pointer :: option
-  type(patch_type), pointer :: patch
+  PetscReal, pointer :: internal_velocities(:,:)
+  PetscReal, pointer :: boundary_velocities(:,:)
+  PetscReal, pointer :: cell_centered_Darcy_velocities_ghosted(:,:,:)
+  PetscReal, pointer :: internal_tran_coefs(:,:,:)
+  PetscReal, pointer :: boundary_tran_coefs(:,:,:)
+
   type(grid_type), pointer :: grid
-  type(field_type), pointer :: field
   type(reactive_transport_param_type), pointer :: rt_parameter
   PetscInt :: local_id, ghosted_id
 
@@ -1439,24 +1553,12 @@ subroutine RTUpdateTransportCoefs(realization)
   type(connection_set_type), pointer :: cur_connection_set
   PetscInt :: sum_connection, iconn, num_connections
   PetscInt :: ghosted_id_up, ghosted_id_dn, local_id_up, local_id_dn
-  PetscReal, allocatable :: cell_centered_Darcy_velocities(:,:)
-  PetscReal, allocatable :: cell_centered_Darcy_velocities_ghosted(:,:,:)
   type(sec_transport_type), pointer :: rt_sec_transport_vars(:)
   PetscReal ::  local_Darcy_velocities_up(3,2)
   PetscReal ::  local_Darcy_velocities_dn(3,2)
-  PetscReal, pointer :: vec_ptr(:)
-  PetscInt :: i
-  PetscInt :: iphase
   PetscInt :: nphase
   PetscReal :: epsilon_up, epsilon_dn
-  PetscErrorCode :: ierr
 
-  option => realization%option
-  field => realization%field
-  patch => realization%patch
-  global_auxvars => patch%aux%Global%auxvars
-  global_auxvars_bc => patch%aux%Global%auxvars_bc
-  material_auxvars => patch%aux%Material%auxvars
   grid => patch%grid
   rt_parameter => patch%aux%RT%rt_parameter
   nphase = rt_parameter%nphase
@@ -1469,31 +1571,6 @@ subroutine RTUpdateTransportCoefs(realization)
 
   local_Darcy_velocities_up = UNINITIALIZED_DOUBLE
   local_Darcy_velocities_dn = UNINITIALIZED_DOUBLE
-
-  if (rt_parameter%calculate_transverse_dispersion) then
-    allocate(cell_centered_Darcy_velocities_ghosted(3,nphase, &
-                                                    patch%grid%ngmax))
-    cell_centered_Darcy_velocities_ghosted = 0.d0
-    allocate(cell_centered_Darcy_velocities(3,patch%grid%nlmax))
-    do iphase = 1, nphase
-      call PatchGetCellCenteredVelocities(patch,iphase, &
-                                          cell_centered_Darcy_velocities)
-      ! at this point, velocities are at local cell centers; we need
-      ! ghosted too.
-      do i=1,3
-        call VecGetArray(field%work,vec_ptr,ierr);CHKERRQ(ierr)
-        vec_ptr(:) = cell_centered_Darcy_velocities(i,:)
-        call VecRestoreArray(field%work,vec_ptr,ierr);CHKERRQ(ierr)
-        call DiscretizationGlobalToLocal(realization%discretization, &
-                                         field%work, &
-                                         field%work_loc,ONEDOF)
-        call VecGetArray(field%work_loc,vec_ptr,ierr);CHKERRQ(ierr)
-        cell_centered_Darcy_velocities_ghosted(i,iphase,:) = vec_ptr(:)
-        call VecRestoreArray(field%work_loc,vec_ptr,ierr);CHKERRQ(ierr)
-      enddo
-    enddo
-    deallocate(cell_centered_Darcy_velocities)
-  endif
 
   ! Interior Flux Terms -----------------------------------
   connection_set_list => grid%internal_connection_set_list
@@ -1513,9 +1590,9 @@ subroutine RTUpdateTransportCoefs(realization)
       if (patch%imat(ghosted_id_up) <= 0 .or.  &
           patch%imat(ghosted_id_dn) <= 0) cycle
 
-      ! have to use temporary array since unallocated arrays cannot be
+      ! have to use temporary array since a null pointer cannot be
       ! indexed in call to subroutine.
-      if (allocated(cell_centered_Darcy_velocities_ghosted)) then
+      if (associated(cell_centered_Darcy_velocities_ghosted)) then
         local_Darcy_velocities_up(:,1:nphase) = &
           cell_centered_Darcy_velocities_ghosted(:,1:nphase,ghosted_id_up)
         local_Darcy_velocities_dn(:,1:nphase) = &
@@ -1541,8 +1618,8 @@ subroutine RTUpdateTransportCoefs(realization)
                       epsilon_dn, &
                       cur_connection_set%dist(:,iconn), &
                       rt_parameter,option, &
-                      patch%internal_velocities(:,sum_connection), &
-                      patch%internal_tran_coefs(:,:,sum_connection))
+                      internal_velocities(:,sum_connection), &
+                      internal_tran_coefs(:,:,sum_connection))
 
     enddo
     cur_connection_set => cur_connection_set%next
@@ -1563,7 +1640,7 @@ subroutine RTUpdateTransportCoefs(realization)
       ghosted_id = grid%nL2G(local_id)
       if (patch%imat(ghosted_id) <= 0) cycle
 
-      if (allocated(cell_centered_Darcy_velocities_ghosted)) then
+      if (associated(cell_centered_Darcy_velocities_ghosted)) then
         local_Darcy_velocities_up(:,1:nphase) = &
           cell_centered_Darcy_velocities_ghosted(:,1:nphase,ghosted_id)
       endif
@@ -1582,16 +1659,13 @@ subroutine RTUpdateTransportCoefs(realization)
                         epsilon_dn, &
                         cur_connection_set%dist(:,iconn), &
                         rt_parameter,option, &
-                        patch%boundary_velocities(:,sum_connection), &
-                        patch%boundary_tran_coefs(:,:,sum_connection))
+                        boundary_velocities(:,sum_connection), &
+                        boundary_tran_coefs(:,:,sum_connection))
     enddo
     boundary_condition => boundary_condition%next
   enddo
 
-  if (allocated(cell_centered_Darcy_velocities_ghosted)) &
-    deallocate(cell_centered_Darcy_velocities_ghosted)
-
-end subroutine RTUpdateTransportCoefs
+end subroutine RTComputeTransportCoefs
 
 ! ************************************************************************** !
 
