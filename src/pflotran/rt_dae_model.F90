@@ -181,6 +181,8 @@ module RT_DAE_Model_class
     PetscReal, allocatable :: dacc_dk(:,:,:)    ! (ncomp,nkin,nlmax)
     ! discrete state of the mineral regimes and its transition record
     PetscInt, allocatable :: mnrl_regime(:,:)   ! (nmnrl,nlmax)
+    ! the regimes InitialState set, for ResetToInitial
+    PetscInt, allocatable :: mnrl_regime0(:,:)  ! (nmnrl,nlmax)
     PetscReal, allocatable :: mnrl_scale(:,:)   ! (nmnrl,nlmax) [mol]
     PetscInt :: num_depletions = 0
     PetscInt :: num_reappearances = 0
@@ -216,6 +218,7 @@ module RT_DAE_Model_class
     procedure, public :: StoreRecord => RTDAEStoreRecord
     procedure, public :: RestoreRecord => RTDAERestoreRecord
     procedure, public :: InvalidateCache => RTDAEInvalidateCache
+    procedure, public :: ResetToInitial => RTDAEResetToInitial
     procedure, public :: Destroy => RTDAEDestroy
   end type rt_dae_model_type
 
@@ -936,6 +939,32 @@ subroutine RTDAEInvalidateCache(this)
   this%prepared = PETSC_FALSE
 
 end subroutine RTDAEInvalidateCache
+
+! ************************************************************************** !
+
+subroutine RTDAEResetToInitial(this)
+  !
+  ! The mineral regimes and transition counts of InitialState, and no
+  ! preparations yet (-rt_dae_fail_closure), for a rerun.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/07/26
+  !
+  implicit none
+
+  class(rt_dae_model_type) :: this
+
+  if (allocated(this%mnrl_regime0)) this%mnrl_regime = this%mnrl_regime0
+  this%num_depletions = 0
+  this%num_reappearances = 0
+  this%num_preparations = 0
+  this%depletion_residual = 0.d0
+  this%forcing%forcing_time = -MAX_DOUBLE
+  this%forcing%forcing_segment = -1
+  this%forcing%forcing_flow_id = -1
+  call this%InvalidateCache()
+
+end subroutine RTDAEResetToInitial
 
 ! ************************************************************************** !
 
@@ -2172,6 +2201,7 @@ subroutine RTDAEInitialState(this,time,Y)
   enddo
   call VecRestoreArrayRead(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
   call VecRestoreArray(Y,y_p,ierr);CHKERRQ(ierr)
+  this%mnrl_regime0 = this%mnrl_regime
 
 end subroutine RTDAEInitialState
 

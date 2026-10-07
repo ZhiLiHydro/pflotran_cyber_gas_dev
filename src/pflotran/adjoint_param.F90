@@ -662,11 +662,10 @@ end subroutine AdjParamSelectTerm
 
 subroutine AdjParamSetValue(this,realization,val)
   !
-  ! Sets the parameter in the reaction or material data the model reads
-  ! (for a finite-difference check; the caller restores it). A
-  ! permeability scales the material's cell permeabilities, ghosts
-  ! included, from their Setup values; the model rereads them in
-  ! InvalidateCache.
+  ! Sets value and the parameter in the reaction or material data the
+  ! model reads; the caller invalidates the model's cache. A permeability
+  ! scales the material's cell permeabilities, ghosts included, from their
+  ! Setup values; the model rereads them in InvalidateCache.
   !
   ! Author: Hansol Suh
   ! Date: 05/27/26
@@ -713,8 +712,8 @@ subroutine AdjParamSetValue(this,realization,val)
         patch%aux%Material%auxvars(ghosted_id)%permeability = &
           (val/this%value0)*this%perm0(:,ghosted_id)
       enddo
-      this%value = val
   end select
+  this%value = val
 
 end subroutine AdjParamSetValue
 

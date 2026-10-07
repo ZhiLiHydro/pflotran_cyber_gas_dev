@@ -27,8 +27,8 @@ import sys
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from adjoint_verify import deck, require, set_value
-from adjoint_verify import (load_deck, parse_summary, run_deck,
-                            read_sensitivities, cleanup_run)
+from adjoint_verify import (load_deck, parse_summary, parse_rerun_check,
+                            run_deck, read_sensitivities, cleanup_run)
 
 KAPPA = ("-ts_model_newton_kappa", "1e-4")
 PARALLEL = ("-tran_ksp_type", "gmres", "-tran_ksp_rtol", "1e-13")
@@ -224,6 +224,25 @@ def gradients():
              [(PERMEABILITY, 1e-12), (MICROBIAL_RATE, 4e-2)], "biomass")
 
 
+def rerun(np):
+    """-ts_model_rerun_check on the coupled model: reruns reproduce the run
+    bit for bit at the deck's permeability and calcite rate constant, and
+    at 1.1 times them give the cost and gradients of a run of the deck at
+    those values, bit for bit."""
+    text = deck("adjoint-coupled")
+    parameters, costs, gradients = parse_rerun_check(
+        run(text, "rerun", np=np, args=("-ts_model_rerun_check",)))
+    scaled = set_value(set_value(text, PERMEABILITY, parameters[1]),
+                       CALCITE_RATE, parameters[2])
+    standalone = parse_summary(run(scaled, "rerun", np=np))
+    require(standalone == (costs, gradients),
+            f"the rerun at 1.1 p0 gives {costs} {gradients}, a run of the "
+            f"deck {standalone}")
+    cleanup_run("rerun")
+    print(f"PASS coupled reruns reproduce the run and a run of the deck "
+          f"({np} ranks)", flush=True)
+
+
 def compressible_gradients():
     """dJ/dk and dJ/dP0 with soil compressibility; the saturated-zone
     response is nonlinear, hence a small step and a tight Newton tolerance."""
@@ -381,6 +400,7 @@ def main():
         initial_pressures()
         compressible_gradients()
         calculated_porosity()
+        rerun(np)
         rejections()
     else:
         # the parallel gradients equal the serial ones
@@ -391,6 +411,7 @@ def main():
             close(value, parallel_gradients[key], rtol=1e-9)
         cleanup_run("parallel")
         print(f"PASS {np} ranks match one", flush=True)
+        rerun(np)
     print("PASS coupled flow and transport adjoint suite", flush=True)
 
 

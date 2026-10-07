@@ -94,6 +94,7 @@ module Flow_RT_DAE_Model_class
     procedure, public :: BeginReplay => FlowRTDAEBeginReplay
     procedure, public :: EndReplay => FlowRTDAEEndReplay
     procedure, public :: InvalidateCache => FlowRTDAEInvalidateCache
+    procedure, public :: ResetToInitial => FlowRTDAEResetToInitial
     procedure, public :: Destroy => FlowRTDAEDestroy
   end type flow_rt_dae_model_type
 
@@ -1209,6 +1210,27 @@ subroutine FlowRTDAEInvalidateCache(this)
   this%fs%id = -1
 
 end subroutine FlowRTDAEInvalidateCache
+
+! ************************************************************************** !
+
+subroutine FlowRTDAEResetToInitial(this)
+  !
+  ! Both models, and the flow-first Newton state, for a rerun.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/07/26
+  !
+  implicit none
+
+  class(flow_rt_dae_model_type) :: this
+
+  call this%flow%ResetToInitial()
+  call this%rt%ResetToInitial()
+  this%transport_held = PETSC_FALSE
+  this%flow_first_iterations = 0
+  this%fs%id = -1
+
+end subroutine FlowRTDAEResetToInitial
 
 ! ************************************************************************** !
 

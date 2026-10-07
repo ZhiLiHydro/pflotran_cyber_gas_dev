@@ -5,6 +5,8 @@ module PMC_TS_Driver_class
   ! forcing segment; the TS history restarts where the forcing jumps. The
   ! driver never writes the TS solution between steps. With an adjoint
   ! (TS_Adjoint_class) the backward sweep runs at the final time.
+  ! TSDriverRerun repeats the run from its initial state with new
+  ! parameters, an optimizer's evaluation (-ts_model_rerun_check checks it).
   !
   ! RunToTime replaces PMCBaseRunToTime: changes to that loop do not reach
   ! this one. TSAdapt chooses the steps; of TIMESTEPPER only MAX_STEPS,
@@ -74,7 +76,19 @@ module PMC_TS_Driver_class
     ! fraction of the local error tolerance left to the Newton iteration,
     ! see TSDriverSNESConverged
     PetscReal :: newton_kappa = 0.1d0
+    ! no output or progress messages (a rerun)
+    PetscBool :: quiet = PETSC_FALSE
   end type ts_driver_ctx_type
+
+  ! the run's statistics, which reruns must leave as they were
+  type :: ts_driver_stats_type
+    PetscInt :: steps = 0
+    PetscInt :: cuts = 0
+    PetscInt :: newton = 0
+    PetscInt :: linear = 0
+    PetscReal :: solver_time = 0.d0
+    PetscLogDouble :: time = 0.d0
+  end type ts_driver_stats_type
 
   type, public, extends(pmc_subsurface_type) :: pmc_ts_driver_type
     procedure(TSDriverGetModelInterface), nopass, pointer :: &
@@ -93,6 +107,19 @@ module PMC_TS_Driver_class
     PetscBool :: model_jacobian = PETSC_FALSE
     ! the preconditioner the input deck asks for
     PCType :: deck_pc_type = ''
+    ! the run's initial time and step size, and its waypoint intervals:
+    ! their end times and whether the forcing jumped at their start
+    PetscReal :: t0 = 0.d0
+    PetscReal :: dt0 = 0.d0
+    PetscInt :: num_intervals = 0
+    PetscReal, allocatable :: interval_end(:)
+    PetscBool, allocatable :: interval_discontinuous(:)
+    ! a rerun is in progress, and the interval it is in
+    PetscBool :: evaluating = PETSC_FALSE
+    PetscInt :: rerun_interval = 0
+    ! status of the last adjoint sweep (TS_Adjoint_class)
+    PetscInt :: adjoint_status = TS_ADJ_OK
+    PetscBool :: rerun_check = PETSC_FALSE
   contains
     procedure, public :: ReadNumericalMethods => PMCTSDriverReadNumMethods
     procedure, public :: SetupSolvers => PMCTSDriverSetupSolvers
@@ -407,6 +434,13 @@ subroutine PMCTSDriverSetupSolvers(this)
   call PetscOptionsHasName(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER, &
                            '-ts_model_column_check',flag,ierr);CHKERRQ(ierr)
   this%column_check = flag
+  call PetscOptionsHasName(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER, &
+                           '-ts_model_rerun_check',flag,ierr);CHKERRQ(ierr)
+  this%rerun_check = flag
+  if (this%rerun_check .and. .not.associated(this%adjoint)) then
+    call PrintErrMsg(option,'-ts_model_rerun_check requires an ADJOINT &
+      &block: a rerun replays the forcing recorded for the adjoint.')
+  endif
 
   call PrintMsg(option,'  Finished setting up ' // trim(this%model%name) // &
                 ' TS driver')
@@ -530,15 +564,27 @@ recursive subroutine PMCTSDriverRunToTime(this,sync_time,stop_flag)
       dt_max = waypoint%dt_max
     endif
 
-    ! forcing segment of this interval; a redo keeps the interval's
+    ! forcing segment of this interval; a redo keeps the interval's, a
+    ! rerun replays the recorded one of the same interval
     if (redo) then
       discontinuous = PETSC_FALSE
       redo = PETSC_FALSE
+    else if (this%evaluating) then
+      this%rerun_interval = this%rerun_interval + 1
+      if (.not.TSDriverIntervalRecorded(this,this%rerun_interval, &
+                                        end_time)) then
+        stop_flag = TS_STOP_FAILURE
+        exit
+      endif
+      discontinuous = this%interval_discontinuous(this%rerun_interval)
     else
       call this%model%BeginSegment(time,end_time,discontinuous)
+      call TSDriverRecordInterval(this,end_time,discontinuous)
     endif
     if (.not.this%ts_initialized) then
       call this%model%InitialState(time,this%solution)
+      this%t0 = time
+      this%dt0 = timestepper%dt
       call TSSetTime(solver%ts,time,ierr);CHKERRQ(ierr)
       call TSSetTimeStep(solver%ts,timestepper%dt,ierr);CHKERRQ(ierr)
       call TSSetStepNumber(solver%ts,timestepper%steps,ierr);CHKERRQ(ierr)
@@ -646,16 +692,19 @@ recursive subroutine PMCTSDriverRunToTime(this,sync_time,stop_flag)
       this%ctx%order_lowered = 0
     endif
     stop_flag = TS_CONTINUE
-    write(option%io_buffer, &
-      '("== ",a," TS: ",i8," steps, t=",es12.5," next dt=",es12.5)') &
-      trim(this%model%name),steps_after-steps_before,time,next_dt
-    call PrintMsg(option)
+    if (.not.this%ctx%quiet) then
+      write(option%io_buffer, &
+        '("== ",a," TS: ",i8," steps, t=",es12.5," next dt=",es12.5)') &
+        trim(this%model%name),steps_after-steps_before,time,next_dt
+      call PrintMsg(option)
+    endif
 
     ! output at the waypoint, together with that of the interval's last
     ! step (see TSDriverStepOutput)
     at_waypoint = PETSC_FALSE
     if (associated(waypoint)) at_waypoint = (time >= waypoint%time-tolerance)
-    if (at_waypoint .or. this%ctx%output_due) then
+    if ((at_waypoint .or. this%ctx%output_due) .and. &
+        .not.this%ctx%quiet) then
       call this%model%Publish(time,this%solution)
       if (associated(this%Output)) then
         ! Output() clears its flag arguments; pass copies
@@ -703,7 +752,11 @@ recursive subroutine PMCTSDriverRunToTime(this,sync_time,stop_flag)
   if (associated(this%adjoint)) then
     if (stop_flag == TS_STOP_END_SIMULATION) then
       call this%adjoint%Solve(solver%ts,this%model,this%solution, &
-                              this%ctx%events)
+                              this%ctx%events,this%adjoint_status)
+      if (this%rerun_check .and. .not.this%evaluating) &
+        call TSDriverRerunCheck(this)
+    else if (stop_flag /= TS_CONTINUE .and. this%evaluating) then
+      this%adjoint_status = TS_ADJ_FORWARD_FAILED
     else if (stop_flag /= TS_CONTINUE) then
       write(option%io_buffer,'(a,i0,a)') 'ADJOINT: forward run stopped &
         &before completion (stop_flag = ',stop_flag,'); adjoint solve &
@@ -718,7 +771,7 @@ recursive subroutine PMCTSDriverRunToTime(this,sync_time,stop_flag)
 
   ! publish for the parent's output at sync_time
   call this%model%Publish(time,this%solution)
-  if (stop_flag /= TS_CONTINUE) then
+  if (stop_flag /= TS_CONTINUE .and. .not.this%ctx%quiet) then
     ! events and domain errors are counted per process
     counts(1) = this%ctx%events
     counts(2) = this%ctx%domain_errors
@@ -742,6 +795,392 @@ recursive subroutine PMCTSDriverRunToTime(this,sync_time,stop_flag)
   endif
 
 end subroutine PMCTSDriverRunToTime
+
+! ************************************************************************** !
+
+subroutine TSDriverRecordInterval(this,t_end,discontinuous)
+  !
+  ! Records a waypoint interval of the run, for a rerun.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/07/26
+  !
+  implicit none
+
+  class(pmc_ts_driver_type) :: this
+  PetscReal :: t_end
+  PetscBool :: discontinuous
+
+  PetscReal, allocatable :: t_grown(:)
+  PetscBool, allocatable :: d_grown(:)
+  PetscInt :: n
+
+  n = this%num_intervals
+  if (.not.allocated(this%interval_end)) then
+    allocate(this%interval_end(16))
+    allocate(this%interval_discontinuous(16))
+  else if (n == size(this%interval_end)) then
+    allocate(t_grown(2*n))
+    allocate(d_grown(2*n))
+    t_grown(1:n) = this%interval_end(1:n)
+    d_grown(1:n) = this%interval_discontinuous(1:n)
+    call move_alloc(t_grown,this%interval_end)
+    call move_alloc(d_grown,this%interval_discontinuous)
+  endif
+  this%num_intervals = n + 1
+  this%interval_end(n+1) = t_end
+  this%interval_discontinuous(n+1) = discontinuous
+
+end subroutine TSDriverRecordInterval
+
+! ************************************************************************** !
+
+function TSDriverIntervalRecorded(this,k,t_end)
+  !
+  ! Whether a rerun's k-th waypoint interval, ending at t_end, is the
+  ! run's; reports a mismatch.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/07/26
+  !
+  implicit none
+
+  class(pmc_ts_driver_type) :: this
+  PetscInt :: k
+  PetscReal :: t_end
+  PetscBool :: TSDriverIntervalRecorded
+
+  TSDriverIntervalRecorded = PETSC_FALSE
+  if (k <= this%num_intervals) then
+    TSDriverIntervalRecorded = &
+      abs(this%interval_end(k)-t_end) <= &
+      64.d0*epsilon(1.d0)*max(1.d0,abs(t_end))
+  endif
+  if (TSDriverIntervalRecorded) return
+  write(this%option%io_buffer,'(a,i0,a,es12.5,a,i0,a)') ' ' // &
+    trim(this%model%name) // ' TS rerun: waypoint interval ',k, &
+    ' ends at t = ',t_end,', not as in the run (',this%num_intervals, &
+    ' intervals)'
+  call PrintMsg(this%option)
+
+end function TSDriverIntervalRecorded
+
+! ************************************************************************** !
+
+subroutine TSDriverRerun(this,status)
+  !
+  ! Integrates the run again from its initial state with the current
+  ! parameters, replaying the forcing recorded for the adjoint over the
+  ! same waypoint intervals, then runs the adjoint sweep; outputs nothing
+  ! and prints only a failure. InitialState and BeginSegment are not
+  ! called: the
+  ! first reads the output fields, which Publish has overwritten, and
+  ! conditions only move forward in time. Requires a completed run with
+  ! an adjoint; leaves the TS and model at the rerun's final state, and
+  ! adds to the run's statistics (callers restore them, TSDriverSaveStats).
+  ! status: that of the sweep (TS_Adjoint_class), or TS_ADJ_FORWARD_FAILED.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/07/26
+  !
+  use Timestepper_Base_class
+  use Timestepper_TS_class
+  use Waypoint_module, only : WaypointListGetFinalTime
+
+  implicit none
+
+  class(pmc_ts_driver_type) :: this
+  PetscInt :: status
+
+  class(timestepper_TS_type), pointer :: timestepper
+  type(ts_driver_ctx_type), pointer :: ctx
+  TS :: ts
+  PetscReal :: final_time
+  PetscInt :: stop_flag
+  PetscBool :: quiet
+  PetscErrorCode :: ierr
+
+  select type(stepper => this%timestepper)
+    class is(timestepper_TS_type)
+      timestepper => stepper
+  end select
+  ts = timestepper%solver%ts
+  ctx => this%ctx
+  final_time = WaypointListGetFinalTime(this%waypoint_list)
+
+  call VecCopy(this%adjoint%Y0,this%solution,ierr);CHKERRQ(ierr)
+  call TSSetTime(ts,this%t0,ierr);CHKERRQ(ierr)
+  call TSSetStepNumber(ts,ZERO_INTEGER,ierr);CHKERRQ(ierr)
+  call TSSetTimeStep(ts,this%dt0,ierr);CHKERRQ(ierr)
+  call TSSetConvergedReason(ts,TS_CONVERGED_ITERATING,ierr);CHKERRQ(ierr)
+  call TSRestartStep(ts,ierr);CHKERRQ(ierr)
+  call this%model%ResetToInitial()
+  call this%model%BeginReplay()
+  call this%adjoint%BeginRerun(ts)
+
+  timestepper%target_time = this%t0
+  timestepper%dt = this%dt0
+  this%option%time = this%t0
+  ctx%stage_time = this%t0
+  ctx%output_due = PETSC_FALSE
+  ctx%output_flags = PETSC_FALSE
+  ctx%unmatched_dt = 0.d0
+  ctx%dt_accepted = 0.d0
+  ctx%domain_errors = 0
+  ctx%events = 0
+  ctx%order_fallbacks = 0
+  ctx%order_lowered = 0
+  ctx%order_lowerings = 0
+  ctx%interval_start_snes_failures = 0
+  ctx%interval_start_domain_errors = 0
+  this%rerun_interval = 0
+  this%adjoint_status = TS_ADJ_FORWARD_FAILED
+
+  quiet = ctx%quiet
+  this%evaluating = PETSC_TRUE
+  ctx%quiet = PETSC_TRUE
+  this%adjoint%quiet = PETSC_TRUE
+  stop_flag = TS_CONTINUE
+  call this%RunToTime(final_time,stop_flag)
+  this%evaluating = PETSC_FALSE
+  ctx%quiet = quiet
+  this%adjoint%quiet = PETSC_FALSE
+  call this%model%EndReplay()
+
+  status = this%adjoint_status
+  if (stop_flag /= TS_STOP_END_SIMULATION .or. &
+      this%rerun_interval /= this%num_intervals) &
+    status = TS_ADJ_FORWARD_FAILED
+
+end subroutine TSDriverRerun
+
+! ************************************************************************** !
+
+subroutine TSDriverRerunCheck(this)
+  !
+  ! -ts_model_rerun_check, after the run's adjoint sweep: reruns at the
+  ! deck's parameters p0, at 1.1 p0 and at p0 again. Both reruns at p0
+  ! must reproduce the run's costs, gradients, adjoint initial state and
+  ! final state bit for bit; the costs and gradients at 1.1 p0 are
+  ! printed, for comparison with a run of a deck at those values (a regime
+  ! transition there is allowed). Restores the run's final state,
+  ! statistics (the times include the reruns) and kept results.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/07/26
+  !
+  use Timestepper_TS_class
+
+  implicit none
+
+  class(pmc_ts_driver_type) :: this
+
+  type(option_type), pointer :: option
+  class(timestepper_TS_type), pointer :: timestepper
+  class(ts_adjoint_type), pointer :: adjoint
+  TS :: ts
+  Vec :: Y_ref, work
+  Vec, allocatable :: lambda_ref(:)
+  PetscReal, allocatable :: p0(:), cost0(:), grad0(:,:), cost(:)
+  PetscReal, allocatable :: grad(:,:)
+  type(ts_driver_stats_type) :: stats
+  PetscReal :: final_time, final_dt, target_time, dt, time, option_dt
+  PetscReal :: flow_dt, tran_dt, diff(4), value
+  PetscInt :: final_step, events, errors
+  PetscInt :: fallbacks, lowerings, status, pass, i, j, ncosts, nparams
+  PetscBool :: passed
+  character(len=*), parameter :: label(3) = &
+    [character(len=10) :: 'p0', '1.1 p0', 'p0 again']
+  PetscErrorCode :: ierr
+
+  option => this%option
+  adjoint => this%adjoint
+  select type(stepper => this%timestepper)
+    class is(timestepper_TS_type)
+      timestepper => stepper
+  end select
+  ts = timestepper%solver%ts
+  if (this%adjoint_status /= TS_ADJ_OK) then
+    call PrintErrMsg(option,'-ts_model_rerun_check requires a run whose &
+      &adjoint sweep completes.')
+  endif
+  call PrintMsg(option,' TS model rerun check: rerunning at p0, 1.1 p0 and &
+    &p0')
+
+  ncosts = adjoint%ncosts
+  nparams = adjoint%nparams
+  allocate(p0(nparams),cost0(ncosts),cost(ncosts))
+  allocate(grad0(nparams,ncosts),grad(nparams,ncosts))
+  call adjoint%GetParameters(p0)
+  call adjoint%GetCostValues(cost0)
+  call adjoint%GetCostGradients(grad0)
+  call VecDuplicate(this%solution,Y_ref,ierr);CHKERRQ(ierr)
+  call VecCopy(this%solution,Y_ref,ierr);CHKERRQ(ierr)
+  call VecDuplicate(this%solution,work,ierr);CHKERRQ(ierr)
+  allocate(lambda_ref(ncosts))
+  do i = 1, ncosts
+    call VecDuplicate(adjoint%lambda(i),lambda_ref(i),ierr);CHKERRQ(ierr)
+    call VecCopy(adjoint%lambda(i),lambda_ref(i),ierr);CHKERRQ(ierr)
+  enddo
+  ! the run's state and statistics
+  call TSGetTime(ts,final_time,ierr);CHKERRQ(ierr)
+  call TSGetStepNumber(ts,final_step,ierr);CHKERRQ(ierr)
+  call TSGetTimeStep(ts,final_dt,ierr);CHKERRQ(ierr)
+  target_time = timestepper%target_time
+  dt = timestepper%dt
+  call TSDriverSaveStats(this,stats)
+  time = option%time
+  option_dt = option%dt
+  flow_dt = option%flow_dt
+  tran_dt = option%tran_dt
+  events = this%ctx%events
+  errors = this%ctx%domain_errors
+  fallbacks = this%ctx%order_fallbacks
+  lowerings = this%ctx%order_lowerings
+
+  passed = PETSC_TRUE
+  do pass = 1, 3
+    if (pass == 2) then
+      call adjoint%SetParameters(this%model,1.1d0*p0)
+    else
+      call adjoint%SetParameters(this%model,p0)
+    endif
+    call TSDriverRerun(this,status)
+    if (status /= TS_ADJ_OK) then
+      write(option%io_buffer,'(a,a,a,i0)') ' TS model rerun check at ', &
+        trim(label(pass)),': no gradient, status ',status
+      call PrintMsg(option)
+      ! a regime transition at 1.1 p0 skips its sweep; the rerun at p0
+      ! after it checks that the run's regimes are restored
+      if (pass /= 2 .or. status /= TS_ADJ_SKIPPED_EVENTS) &
+        passed = PETSC_FALSE
+      cycle
+    endif
+    call adjoint%GetCostValues(cost)
+    call adjoint%GetCostGradients(grad)
+    if (pass == 2) then
+      do j = 1, nparams
+        write(option%io_buffer,'(a,i0,a,es24.16)') &
+          ' TS model rerun check at 1.1 p0: p_',j,' = ',1.1d0*p0(j)
+        call PrintMsg(option)
+      enddo
+      do i = 1, ncosts
+        write(option%io_buffer,'(a,i0,a,es24.16)') &
+          ' TS model rerun check at 1.1 p0: J_',i,' = ',cost(i)
+        call PrintMsg(option)
+        do j = 1, nparams
+          write(option%io_buffer,'(a,i0,a,i0,a,es24.16)') &
+            ' TS model rerun check at 1.1 p0: dJ_',i,'/dp_',j,' = ',grad(j,i)
+          call PrintMsg(option)
+        enddo
+      enddo
+      cycle
+    endif
+    diff(1) = maxval(abs(cost-cost0))
+    diff(2) = maxval(abs(grad-grad0))
+    diff(3) = 0.d0
+    do i = 1, ncosts
+      call VecWAXPY(work,-1.d0,lambda_ref(i),adjoint%lambda(i), &
+                    ierr);CHKERRQ(ierr)
+      call VecNorm(work,NORM_INFINITY,value,ierr);CHKERRQ(ierr)
+      diff(3) = max(diff(3),value)
+    enddo
+    call VecWAXPY(work,-1.d0,Y_ref,this%solution,ierr);CHKERRQ(ierr)
+    call VecNorm(work,NORM_INFINITY,diff(4),ierr);CHKERRQ(ierr)
+    write(option%io_buffer,'(a,a,a,4(a,es10.3))') ' TS model rerun check &
+      &at ',trim(label(pass)),':',' max |dJ| ',diff(1),', max |d(dJ/dp)| ', &
+      diff(2),', max |d lambda(t0)| ',diff(3),', max |dY(T)| ',diff(4)
+    call PrintMsg(option)
+    if (any(diff /= 0.d0)) passed = PETSC_FALSE
+  enddo
+
+  ! back to the run
+  call adjoint%SetParameters(this%model,p0)
+  call VecCopy(Y_ref,this%solution,ierr);CHKERRQ(ierr)
+  call TSSetTime(ts,final_time,ierr);CHKERRQ(ierr)
+  call TSSetStepNumber(ts,final_step,ierr);CHKERRQ(ierr)
+  call TSSetTimeStep(ts,final_dt,ierr);CHKERRQ(ierr)
+  timestepper%target_time = target_time
+  timestepper%dt = dt
+  call TSDriverRestoreStats(this,stats)
+  option%time = time
+  option%dt = option_dt
+  option%flow_dt = flow_dt
+  option%tran_dt = tran_dt
+  this%ctx%events = events
+  this%ctx%domain_errors = errors
+  this%ctx%order_fallbacks = fallbacks
+  this%ctx%order_lowerings = lowerings
+  adjoint%cost_value = cost0
+  do i = 1, ncosts
+    call VecDestroy(lambda_ref(i),ierr);CHKERRQ(ierr)
+  enddo
+  call VecDestroy(Y_ref,ierr);CHKERRQ(ierr)
+  call VecDestroy(work,ierr);CHKERRQ(ierr)
+
+  if (.not.passed) then
+    call PrintErrMsg(option,'TS model rerun check FAILED: a rerun does not &
+      &reproduce the run.')
+  endif
+  call PrintMsg(option,' TS model rerun check: PASSED')
+
+end subroutine TSDriverRerunCheck
+
+! ************************************************************************** !
+
+subroutine TSDriverSaveStats(this,stats)
+  !
+  ! The run's statistics, before reruns: steps, cuts, Newton and linear
+  ! iterations and times (the coupler's RunToTime counts a nested rerun's
+  ! time in its own).
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/11/26
+  !
+  use Timestepper_TS_class
+
+  implicit none
+
+  class(pmc_ts_driver_type) :: this
+  type(ts_driver_stats_type) :: stats
+
+  stats%steps = this%timestepper%steps
+  stats%cuts = this%timestepper%cumulative_time_step_cuts
+  select type(stepper => this%timestepper)
+    class is(timestepper_TS_type)
+      stats%newton = stepper%cumulative_newton_iterations
+      stats%linear = stepper%cumulative_linear_iterations
+  end select
+  stats%solver_time = this%timestepper%cumulative_solver_time
+  stats%time = this%cumulative_time
+
+end subroutine TSDriverSaveStats
+
+! ************************************************************************** !
+
+subroutine TSDriverRestoreStats(this,stats)
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/11/26
+  !
+  use Timestepper_TS_class
+
+  implicit none
+
+  class(pmc_ts_driver_type) :: this
+  type(ts_driver_stats_type) :: stats
+
+  this%timestepper%steps = stats%steps
+  this%timestepper%cumulative_time_step_cuts = stats%cuts
+  select type(stepper => this%timestepper)
+    class is(timestepper_TS_type)
+      stepper%cumulative_newton_iterations = stats%newton
+      stepper%cumulative_linear_iterations = stats%linear
+  end select
+  this%timestepper%cumulative_solver_time = stats%solver_time
+  this%cumulative_time = stats%time
+
+end subroutine TSDriverRestoreStats
 
 ! ************************************************************************** !
 
@@ -1072,6 +1511,7 @@ subroutine TSDriverStepOutput(ctx,time,Y,steps,interval_end)
   pmc => ctx%pmc
   if (.not.associated(pmc)) return
   if (.not.associated(pmc%Output)) return
+  if (ctx%quiet) return
   output_option => pmc%pm_list%output_option
   flags(1) = mod(steps,output_option%periodic_snap_output_ts_imod) == 0
   flags(2) = mod(steps,output_option%periodic_obs_output_ts_imod) == 0

@@ -144,6 +144,7 @@ module Richards_DAE_Model_class
     procedure, public :: StoreRecord => RichardsDAEStoreRecord
     procedure, public :: RestoreRecord => RichardsDAERestoreRecord
     procedure, public :: InvalidateCache => RichardsDAEInvalidateCache
+    procedure, public :: ResetToInitial => RichardsDAEResetToInitial
     procedure, public :: Destroy => RichardsDAEDestroy
   end type richards_dae_model_type
 
@@ -1852,6 +1853,25 @@ subroutine RichardsDAEInvalidateCache(this)
   this%prepared = PETSC_FALSE
 
 end subroutine RichardsDAEInvalidateCache
+
+! ************************************************************************** !
+
+subroutine RichardsDAEResetToInitial(this)
+  !
+  ! The forcing and flow-state caches expire, for a rerun.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/07/26
+  !
+  implicit none
+
+  class(richards_dae_model_type) :: this
+
+  this%forcing_time = -MAX_DOUBLE
+  this%forcing_segment = -1
+  call this%InvalidateCache()
+
+end subroutine RichardsDAEResetToInitial
 
 ! ************************************************************************** !
 

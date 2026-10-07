@@ -27,7 +27,13 @@ module TS_Model_class
   !     BeginReplay and EndReplay (an adjoint's backward sweep) an
   !     evaluation at any time of the run uses that time's recorded segment.
   !     A model holding forcing ends BeginSegment with RecordSegment and
-  !     calls ReplayAt before reading its forcing.
+  !     calls ReplayAt before reading its forcing. A forward run can also
+  !     be replayed: the driver's rerun integrates the run again from its
+  !     initial state, replaying the recorded segments without calling
+  !     InitialState or BeginSegment.
+  !   - ResetToInitial restores what the model keeps between evaluations
+  !     (caches, discrete regimes, counters) to its state right after
+  !     InitialState, for such a rerun.
   !
   ! ConvergenceTest and PreCheck play the roles of PM_Base's
   ! CheckConvergence and CheckUpdatePre: a model must work without a
@@ -107,6 +113,7 @@ module TS_Model_class
     procedure, public :: StoreRecord => TSModelStoreRecord
     procedure, public :: RestoreRecord => TSModelRestoreRecord
     procedure, public :: InvalidateCache => TSModelInvalidateCache
+    procedure, public :: ResetToInitial => TSModelResetToInitial
     procedure, public :: Destroy => TSModelDestroy
   end type ts_model_type
 
@@ -631,6 +638,25 @@ subroutine TSModelInvalidateCache(this)
   class(ts_model_type) :: this
 
 end subroutine TSModelInvalidateCache
+
+! ************************************************************************** !
+
+subroutine TSModelResetToInitial(this)
+  !
+  ! Back to the state right after InitialState, for a rerun of the run
+  ! (see the module contract). The default suits a model whose only
+  ! state between evaluations is a cache.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/07/26
+  !
+  implicit none
+
+  class(ts_model_type) :: this
+
+  call this%InvalidateCache()
+
+end subroutine TSModelResetToInitial
 
 ! ************************************************************************** !
 

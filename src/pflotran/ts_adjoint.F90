@@ -6,8 +6,11 @@ module TS_Adjoint_class
   ! recorded forcing, so the sweep linearizes the forward steps.
   !
   ! A concrete adjoint binds costs and parameters to one kind of model
-  ! (Setup, TerminalGradients, ParameterJacobian, Report). Report keeps the
-  ! values it prints (KeepResult) for the regression file.
+  ! (Setup, TerminalGradients, ParameterJacobian, Report, Get/SetParameters).
+  ! Report keeps the values it prints (KeepResult) for the regression file.
+  ! Solve returns a status; quiet (a rerun of the forward run, see
+  ! PMC_TS_Driver_class) only returns it, with the costs and gradients
+  ! (GetCostValues, GetCostGradients), and prints or keeps nothing.
   !
   ! Only backward Euler (PETSc has no BDF adjoint) and the basic (disk) or
   ! memory trajectory are supported. Runs with regime transitions (TSEvent)
@@ -34,6 +37,14 @@ module TS_Adjoint_class
 
   private
 
+  ! Solve: a gradient, or why there is none
+  PetscInt, parameter, public :: TS_ADJ_OK = 0
+  PetscInt, parameter, public :: TS_ADJ_SKIPPED_EVENTS = 1
+  PetscInt, parameter, public :: TS_ADJ_SKIPPED_TERMINAL_TIME = 2
+  PetscInt, parameter, public :: TS_ADJ_INCOMPLETE = 3
+  ! the forward run did not complete (set by the driver)
+  PetscInt, parameter, public :: TS_ADJ_FORWARD_FAILED = 4
+
   ! what PETSc hands the parameter Jacobian callback
   type, public :: ts_adjoint_ctx_type
     class(ts_adjoint_type), pointer :: adjoint => null()
@@ -44,6 +55,10 @@ module TS_Adjoint_class
     type(option_type), pointer :: option => null()
     PetscInt :: ncosts = 0
     PetscInt :: nparams = 0
+    ! J_i at the final time of the last sweep (TerminalGradients)
+    PetscReal, allocatable :: cost_value(:)
+    ! a rerun: Solve prints, reports and keeps nothing
+    PetscBool :: quiet = PETSC_FALSE
     ! dJ_i/dY, laid out as the TS solution, and dJ_i/dp
     Vec, allocatable :: lambda(:)
     Vec, allocatable :: mu(:)
@@ -66,11 +81,17 @@ module TS_Adjoint_class
     procedure(TSAdjTerminalGradientsIface), deferred :: TerminalGradients
     procedure(TSAdjParameterJacobianIface), deferred :: ParameterJacobian
     procedure(TSAdjReportIface), deferred :: Report
+    procedure(TSAdjGetParametersIface), deferred :: GetParameters
+    procedure(TSAdjSetParametersIface), deferred :: SetParameters
     procedure, public :: Configure => TSAdjConfigure
     procedure, public :: CheckMethod => TSAdjCheckMethod
     procedure, public :: RecordInitialState => TSAdjRecordInitialState
     procedure, public :: EndInterval => TSAdjEndInterval
     procedure, public :: Solve => TSAdjSolveBackward
+    procedure, public :: BeginRerun => TSAdjBeginRerun
+    procedure, public :: GetCostValues => TSAdjGetCostValues
+    procedure, public :: GetCostGradients => TSAdjGetCostGradients
+    procedure, public, non_overridable :: ResetResults => TSAdjResetResults
     procedure, public, non_overridable :: KeepResult => TSAdjKeepResult
     procedure, public :: RegressionOutput => TSAdjRegressionOutput
     procedure, public :: Destroy => TSAdjDestroy
@@ -136,6 +157,27 @@ module TS_Adjoint_class
       Vec :: Y0
     end subroutine TSAdjReportIface
 
+    subroutine TSAdjGetParametersIface(this,p)
+      ! p(j): the current value of parameter j (deck order), on every
+      ! process.
+      use petscts
+      import :: ts_adjoint_type
+      implicit none
+      class(ts_adjoint_type) :: this
+      PetscReal :: p(:)
+    end subroutine TSAdjGetParametersIface
+
+    subroutine TSAdjSetParametersIface(this,model,p)
+      ! Sets parameter j to p(j) in the data model reads, and expires the
+      ! model's cache.
+      use petscts
+      import :: ts_adjoint_type, ts_model_type
+      implicit none
+      class(ts_adjoint_type) :: this
+      class(ts_model_type) :: model
+      PetscReal :: p(:)
+    end subroutine TSAdjSetParametersIface
+
   end interface
 
   public :: TSAdjInit, &
@@ -186,6 +228,8 @@ subroutine TSAdjConfigure(this,ts,model,Y,final_time)
 
   call this%Setup(model,final_time)
   this%final_time = final_time
+  allocate(this%cost_value(this%ncosts))
+  this%cost_value = 0.d0
 
   allocate(this%ctx)
   this%ctx%adjoint => this
@@ -278,9 +322,11 @@ subroutine TSAdjCheckMethod(this,ts)
           &' // trim(limits(i)) // ' (checkpointing) is not supported.')
       endif
     enddo
-    ! EndInterval sets a step a second time; the sweep reads stages only
-    call TSTrajectorySetUseHistory(trajectory,PETSC_FALSE,ierr);CHKERRQ(ierr)
   endif
+  ! TSHistory rejects a step set twice (EndInterval sets a step again, a
+  ! rerun every step; the basic trajectory rewrites their files); the
+  ! sweep reads stages only
+  call TSTrajectorySetUseHistory(trajectory,PETSC_FALSE,ierr);CHKERRQ(ierr)
 
 end subroutine TSAdjCheckMethod
 
@@ -350,12 +396,13 @@ end subroutine TSAdjEndInterval
 
 ! ************************************************************************** !
 
-subroutine TSAdjSolveBackward(this,ts,model,Y,num_events)
+subroutine TSAdjSolveBackward(this,ts,model,Y,num_events,status)
   !
   ! Backward sweep and report after a complete forward run with final
   ! state Y; leaves the TS and model at that state. num_events: this
-  ! process's regime transitions; any on any process skips the sweep
-  ! (EXIT_ADJOINT_SKIPPED).
+  ! process's regime transitions; any on any process skips the sweep.
+  ! status: TS_ADJ_OK, or why there is no gradient. Unless quiet, a skip
+  ! sets EXIT_ADJOINT_SKIPPED and an incomplete sweep stops the run.
   !
   ! Author: Hansol Suh
   ! Date: 09/23/26
@@ -367,6 +414,7 @@ subroutine TSAdjSolveBackward(this,ts,model,Y,num_events)
   class(ts_model_type), target :: model
   Vec :: Y
   PetscInt :: num_events
+  PetscInt :: status
 
   type(option_type), pointer :: option
   TSConvergedReason :: reason
@@ -377,10 +425,13 @@ subroutine TSAdjSolveBackward(this,ts,model,Y,num_events)
   PetscErrorCode :: ierr
 
   option => this%option
+  status = TS_ADJ_OK
   ! collective: the backward sweep is
   call MPI_Allreduce(num_events,events,ONE_INTEGER_MPI,MPIU_INTEGER, &
                      MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
   if (events > 0) then
+    status = TS_ADJ_SKIPPED_EVENTS
+    if (this%quiet) return
     write(option%io_buffer,'(a,i0,a)') 'ADJOINT cannot run after ', &
       events,' regime transition(s) (TSEvent): the adjoint does not &
       &include their jump maps and event-time sensitivities.'
@@ -392,6 +443,8 @@ subroutine TSAdjSolveBackward(this,ts,model,Y,num_events)
   call TSGetTime(ts,final_time,ierr);CHKERRQ(ierr)
   call this%CheckTerminalTime(final_time,valid)
   if (.not.valid) then
+    status = TS_ADJ_SKIPPED_TERMINAL_TIME
+    if (this%quiet) return
     call PrintMsg(option,'ADJOINT: a cost is not defined at the final time &
       &of the run; forward solve completed; adjoint skipped.')
     option%driver%exit_code = EXIT_ADJOINT_SKIPPED
@@ -413,19 +466,27 @@ subroutine TSAdjSolveBackward(this,ts,model,Y,num_events)
                           ierr);CHKERRQ(ierr)
 
   call model%BeginReplay()
-  call PrintMsg(option,'=== TSAdjointSolve: running backward ===')
+  if (.not.this%quiet) &
+    call PrintMsg(option,'=== TSAdjointSolve: running backward ===')
   ! CHKERRA: CHKERRQ would return silently and the run would report success
   call TSAdjointSolve(ts,ierr);CHKERRA(ierr)
   call TSGetConvergedReason(ts,reason,ierr);CHKERRQ(ierr)
   call TSGetStepNumber(ts,step,ierr);CHKERRQ(ierr)
   if (reason%v <= 0 .or. step /= 0) then
-    write(option%io_buffer,'(a,i0,a,i0,a)') &
-      'ADJOINT incomplete: backward solve stopped at step ',step, &
-      ' with TSConvergedReason ',reason%v,'; no gradient will be reported.'
-    call PrintErrMsg(option)
+    status = TS_ADJ_INCOMPLETE
+    if (.not.this%quiet) then
+      write(option%io_buffer,'(a,i0,a,i0,a)') &
+        'ADJOINT incomplete: backward solve stopped at step ',step, &
+        ' with TSConvergedReason ',reason%v,'; no gradient will be &
+        &reported.'
+      call PrintErrMsg(option)
+    endif
   endif
 
-  call this%Report(model,this%t0,this%Y0)
+  if (.not.this%quiet) then
+    call this%ResetResults()
+    call this%Report(model,this%t0,this%Y0)
+  endif
   call model%EndReplay()
 
   ! the final forward state, for output and the regression file
@@ -436,6 +497,92 @@ subroutine TSAdjSolveBackward(this,ts,model,Y,num_events)
   call TSSetTimeStep(ts,final_dt,ierr);CHKERRQ(ierr)
 
 end subroutine TSAdjSolveBackward
+
+! ************************************************************************** !
+
+subroutine TSAdjBeginRerun(this,ts)
+  !
+  ! Before a rerun of the forward run: forgets the last sweep's costs and
+  ! the trajectory's steps. The memory trajectory is created again: set up
+  ! a second time (TSTrajectoryReset), it keeps the container its stack
+  ! grew to but sizes it for the first waypoint interval, and loses
+  ! elements (PETSc 3.24.5). The basic one (on disk) rewrites the files of
+  ! the steps the rerun sets; it cannot be set up again in its directory.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/07/26
+  !
+  implicit none
+
+  class(ts_adjoint_type) :: this
+  TS :: ts
+
+  TSTrajectory :: trajectory
+  PetscErrorCode :: ierr
+
+  this%interval_end_step = -1
+  if (allocated(this%cost_value)) this%cost_value = 0.d0
+  if (this%memory_trajectory) then
+    call TSResetTrajectory(ts,ierr);CHKERRQ(ierr)
+    call TSGetTrajectory(ts,trajectory,ierr);CHKERRQ(ierr)
+    call TSTrajectorySetType(trajectory,ts,TSTRAJECTORYMEMORY, &
+                             ierr);CHKERRQ(ierr)
+    call TSTrajectorySetFromOptions(trajectory,ts,ierr);CHKERRQ(ierr)
+    call TSTrajectorySetUseHistory(trajectory,PETSC_FALSE,ierr);CHKERRQ(ierr)
+  endif
+
+end subroutine TSAdjBeginRerun
+
+! ************************************************************************** !
+
+subroutine TSAdjGetCostValues(this,J)
+  !
+  ! J(i) = J_i of the last sweep, on every process.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/07/26
+  !
+  implicit none
+
+  class(ts_adjoint_type) :: this
+  PetscReal :: J(:)
+
+  J = this%cost_value
+
+end subroutine TSAdjGetCostValues
+
+! ************************************************************************** !
+
+subroutine TSAdjGetCostGradients(this,dJ_dp)
+  !
+  ! dJ_dp(j,i) = dJ_i/dp_j of the last sweep, on every process.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/07/26
+  !
+  implicit none
+
+  class(ts_adjoint_type) :: this
+  PetscReal :: dJ_dp(:,:)
+
+  PetscReal, pointer :: mu_p(:)
+  PetscInt :: i, j, col_start, col_end
+  PetscErrorCode :: ierr
+
+  dJ_dp = 0.d0
+  do i = 1, this%ncosts
+    call VecGetOwnershipRange(this%mu(i),col_start,col_end, &
+                              ierr);CHKERRQ(ierr)
+    call VecGetArrayRead(this%mu(i),mu_p,ierr);CHKERRQ(ierr)
+    do j = col_start+1, col_end
+      dJ_dp(j,i) = mu_p(j-col_start)
+    enddo
+    call VecRestoreArrayRead(this%mu(i),mu_p,ierr);CHKERRQ(ierr)
+  enddo
+  call MPI_Allreduce(MPI_IN_PLACE,dJ_dp,size(dJ_dp),MPI_DOUBLE_PRECISION, &
+                     MPI_SUM,this%option%mycomm,ierr);CHKERRQ(ierr)
+
+end subroutine TSAdjGetCostGradients
 
 ! ************************************************************************** !
 
@@ -490,6 +637,24 @@ subroutine TSAdjKeepResult(this,name,value)
   this%result_value = [this%result_value, value]
 
 end subroutine TSAdjKeepResult
+
+! ************************************************************************** !
+
+subroutine TSAdjResetResults(this)
+  !
+  ! Forgets the kept values.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/07/26
+  !
+  implicit none
+
+  class(ts_adjoint_type) :: this
+
+  if (allocated(this%result_name)) deallocate(this%result_name)
+  if (allocated(this%result_value)) deallocate(this%result_value)
+
+end subroutine TSAdjResetResults
 
 ! ************************************************************************** !
 
@@ -558,8 +723,8 @@ subroutine TSAdjDestroy(this)
     deallocate(this%ctx)
     nullify(this%ctx)
   endif
-  if (allocated(this%result_name)) deallocate(this%result_name)
-  if (allocated(this%result_value)) deallocate(this%result_value)
+  call this%ResetResults()
+  if (allocated(this%cost_value)) deallocate(this%cost_value)
 
 end subroutine TSAdjDestroy
 

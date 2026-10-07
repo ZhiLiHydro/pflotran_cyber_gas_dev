@@ -41,6 +41,25 @@ def parse_summary(path):
     return costs, gradients
 
 
+def parse_rerun_check(path):
+    """-ts_model_rerun_check: requires that both reruns at the deck's
+    parameters p0 reproduced the run bit for bit; returns the parameters,
+    costs and gradients of the rerun at 1.1 p0 (keys as parse_summary's)."""
+    text = Path(path).read_text()
+    if "TS model rerun check: PASSED" not in text:
+        raise RuntimeError(f"the rerun check did not pass: {path}")
+    prefix = r"TS model rerun check at 1\.1 p0: "
+    parameters = {int(j): finite(v) for j, v in
+                  re.findall(prefix + r"p_(\d+) = +(\S+)", text)}
+    costs = {int(i): finite(v) for i, v in
+             re.findall(prefix + r"J_(\d+) = +(\S+)", text)}
+    gradients = {(int(i), int(j)): finite(v) for i, j, v in re.findall(
+        prefix + r"dJ_(\d+)/dp_(\d+) = +(\S+)", text)}
+    if not parameters or not costs or not gradients:
+        raise RuntimeError(f"missing rerun values at 1.1 p0: {path}")
+    return parameters, costs, gradients
+
+
 def require(condition, message):
     if not condition:
         raise RuntimeError(message)

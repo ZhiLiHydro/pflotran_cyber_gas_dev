@@ -57,6 +57,8 @@ module Adjoint_RT_DAE_class
     procedure, public :: TerminalGradients => AdjRTDAETerminalGradients
     procedure, public :: ParameterJacobian => AdjRTDAEParameterJacobian
     procedure, public :: Report => AdjRTDAEReport
+    procedure, public :: GetParameters => AdjRTDAEGetParameters
+    procedure, public :: SetParameters => AdjRTDAESetParameters
     procedure, public :: Destroy => AdjRTDAEDestroy
   end type adjoint_rt_dae_type
 
@@ -321,6 +323,7 @@ subroutine AdjRTDAETerminalGradients(this,model,time,Y)
     else
       call cur_cost%FillTerminalLambda(Y,this%lambda(i),rt%ndof,this%option)
     endif
+    this%cost_value(i) = cur_cost%J_value
     cur_cost => cur_cost%next
   enddo
   if (associated(coupled)) call FlowRTDAERestoreParts(coupled,Y,Y_f,Y_t)
@@ -935,6 +938,62 @@ subroutine AdjRTDAEReport(this,model,time0,Y0)
   deallocate(dJ_dc,dJ_dK,dJ_dP)
 
 end subroutine AdjRTDAEReport
+
+! ************************************************************************** !
+
+subroutine AdjRTDAEGetParameters(this,p)
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/07/26
+  !
+  use Adjoint_Param_module, only : adj_param_list
+
+  implicit none
+
+  class(adjoint_rt_dae_type) :: this
+  PetscReal :: p(:)
+
+  type(adjoint_param_type), pointer :: cur_param
+  PetscInt :: j
+
+  j = 0
+  cur_param => adj_param_list
+  do while (associated(cur_param))
+    j = j + 1
+    p(j) = cur_param%value
+    cur_param => cur_param%next
+  enddo
+
+end subroutine AdjRTDAEGetParameters
+
+! ************************************************************************** !
+
+subroutine AdjRTDAESetParameters(this,model,p)
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/07/26
+  !
+  use Adjoint_Param_module, only : adj_param_list
+
+  implicit none
+
+  class(adjoint_rt_dae_type) :: this
+  class(ts_model_type) :: model
+  PetscReal :: p(:)
+
+  type(adjoint_param_type), pointer :: cur_param
+  PetscInt :: j
+
+  j = 0
+  cur_param => adj_param_list
+  do while (associated(cur_param))
+    j = j + 1
+    call cur_param%SetValue(this%realization,p(j))
+    cur_param => cur_param%next
+  enddo
+  call model%InvalidateCache()
+
+end subroutine AdjRTDAESetParameters
 
 ! ************************************************************************** !
 

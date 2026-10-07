@@ -19,8 +19,8 @@ import sys
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from adjoint_verify import deck, require, set_value
-from adjoint_verify import (parse_summary, run_deck,
-                            read_sensitivities, cleanup_run)
+from adjoint_verify import (parse_summary, parse_rerun_check,
+                            run_deck, read_sensitivities, cleanup_run)
 
 # parallel runs: an iterative solve accurate enough for finite differences
 PARALLEL = ("-tran_ksp_type", "gmres", "-tran_pc_type", "bjacobi",
@@ -228,6 +228,61 @@ def memory_trajectory(np):
           f"({np} ranks)", flush=True)
 
 
+def rerun(np):
+    """-ts_model_rerun_check: reruns from the recorded initial state, with
+    the recorded forcing replayed, reproduce the run bit for bit at the
+    deck's parameter, and at 1.1 times it give the cost and gradient of a
+    run of the deck at that value, bit for bit; also with STEP velocity
+    datasets, the memory trajectory, LOG_FORMULATION and adaptive steps.
+    The check leaves the run's results as they were; a regime transition
+    at 1.1 p0 leaves none behind."""
+    cases = [("ar_1d4", ()), ("dynamic_velocity", ()),
+             ("dynamic_velocity", ("-ts_trajectory_type", "memory"))]
+    if np == 1:
+        # one cell: not on two ranks
+        cases += [("ar_log", ()),
+                  ("ar_short", ("-tran_ts_adapt_type", "basic"))]
+    for name, args in cases:
+        text = deck(name)
+        parameters, costs, gradients = parse_rerun_check(
+            run(text, "rerun", np=np, args=args + ("-ts_model_rerun_check",)))
+        standalone = parse_summary(run(
+            set_value(text, MICROBIAL_RATE, parameters[1]), "rerun", np=np,
+            args=args))
+        require(standalone == (costs, gradients),
+                f"{name} {args}: the rerun at 1.1 p0 gives {costs} "
+                f"{gradients}, a run of the deck {standalone}")
+    if np == 1:
+        text = deck("ar_1d4").replace(
+            "\nSUBSURFACE\n",
+            "\nSUBSURFACE\nREGRESSION\n  CELL_IDS\n    1\n    4\n  /\nEND\n", 1)
+        require("REGRESSION" in text, "missing SUBSURFACE")
+
+        def results(output):
+            return [line for line in Path(output).with_suffix(
+                ".regression").read_text().splitlines()
+                if "Time (seconds)" not in line]
+        require(results(run(text, "rerun", args=("-ts_model_rerun_check",)))
+                == results(run(text, "rerun")),
+                "-ts_model_rerun_check changed the run's regression file")
+        # gypsum depletes at 1.1 p0 (no gradient) but not at p0
+        depleting = with_parameter(deck("mineral"), MINERAL_PARAMETER).replace(
+            "Gypsum 1.d-2 100.d0", "Gypsum 1.5d-4 100.d0", 1)
+        require("Gypsum 1.5d-4" in depleting, "missing gypsum")
+        log = Path(run(depleting, "rerun",
+                       args=("-ts_model_rerun_check",))).read_text()
+        require("TS model rerun check at 1.1 p0: no gradient, status 1" in log
+                and "TS model rerun check: PASSED" in log,
+                "rerun check with a regime transition at 1.1 p0")
+        no_adjoint = re.sub(r"(?ms)^ADJOINT\n.*?^END\n", "", deck("ar_short"))
+        run(no_adjoint, "rerun", args=("-ts_model_rerun_check",),
+            expected_error="-ts_model_rerun_check requires an ADJOINT block",
+            timeout=30)
+    cleanup_run("rerun")
+    print(f"PASS reruns reproduce the run and runs of the deck ({np} ranks)",
+          flush=True)
+
+
 def regime_transitions(np):
     """A mineral regime transition (depletion, dissolution resuming) is a
     TSEvent the adjoint does not differentiate: the forward run and its
@@ -401,6 +456,7 @@ def main():
     selector_and_output(np)
     final_state(np)
     memory_trajectory(np)
+    rerun(np)
     regime_transitions(np)
     if np == 1:
         failed_stage()
