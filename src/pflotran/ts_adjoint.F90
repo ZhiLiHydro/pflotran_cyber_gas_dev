@@ -43,8 +43,10 @@ module TS_Adjoint_class
   PetscInt, parameter, public :: TS_ADJ_SKIPPED_EVENTS = 1
   PetscInt, parameter, public :: TS_ADJ_SKIPPED_TERMINAL_TIME = 2
   PetscInt, parameter, public :: TS_ADJ_INCOMPLETE = 3
-  ! the forward run did not complete (set by the driver)
+  ! set by the driver: the forward run did not complete, or stopped at the
+  ! wall-clock limit
   PetscInt, parameter, public :: TS_ADJ_FORWARD_FAILED = 4
+  PetscInt, parameter, public :: TS_ADJ_WALLCLOCK = 5
 
   ! what PETSc hands the parameter Jacobian callback
   type, public :: ts_adjoint_ctx_type
@@ -60,6 +62,9 @@ module TS_Adjoint_class
     PetscReal, allocatable :: cost_value(:)
     ! a rerun: Solve prints, reports and keeps nothing
     PetscBool :: quiet = PETSC_FALSE
+    ! dF/dp could not be evaluated at a state of the sweep (quiet only,
+    ! else the run stops)
+    PetscBool :: jacp_failed = PETSC_FALSE
     ! dJ_i/dY, laid out as the TS solution, and dJ_i/dp
     Vec, allocatable :: lambda(:)
     Vec, allocatable :: mu(:)
@@ -483,11 +488,12 @@ subroutine TSAdjSolveBackward(this,ts,model,Y,num_events,status)
   call model%BeginReplay()
   if (.not.this%quiet) &
     call PrintMsg(option,'=== TSAdjointSolve: running backward ===')
+  this%jacp_failed = PETSC_FALSE
   ! CHKERRA: CHKERRQ would return silently and the run would report success
   call TSAdjointSolve(ts,ierr);CHKERRA(ierr)
   call TSGetConvergedReason(ts,reason,ierr);CHKERRQ(ierr)
   call TSGetStepNumber(ts,step,ierr);CHKERRQ(ierr)
-  if (reason%v <= 0 .or. step /= 0) then
+  if (reason%v <= 0 .or. step /= 0 .or. this%jacp_failed) then
     status = TS_ADJ_INCOMPLETE
     if (.not.this%quiet) then
       write(option%io_buffer,'(a,i0,a,i0,a)') &
@@ -603,7 +609,8 @@ end subroutine TSAdjGetCostGradients
 
 subroutine TSAdjIJacobianP(ts,time,Y,Ydot,shift,Jacp,ctx,ierr)
   !
-  ! dF/dp for TSAdjointSolve; dF/dp does not depend on the shift.
+  ! dF/dp for TSAdjointSolve; dF/dp does not depend on the shift. Where it
+  ! cannot be evaluated a quiet sweep goes on with zero and is incomplete.
   !
   ! Author: Hansol Suh
   ! Date: 09/23/26
@@ -622,8 +629,12 @@ subroutine TSAdjIJacobianP(ts,time,Y,Ydot,shift,Jacp,ctx,ierr)
 
   call ctx%adjoint%ParameterJacobian(ctx%model,time,Y,Ydot,Jacp,status)
   if (status /= TS_MODEL_OK) then
-    call PrintErrMsg(ctx%adjoint%option,'ADJOINT: the parameter Jacobian &
-      &could not be evaluated at a state of the forward run.')
+    if (.not.ctx%adjoint%quiet) then
+      call PrintErrMsg(ctx%adjoint%option,'ADJOINT: the parameter Jacobian &
+        &could not be evaluated at a state of the forward run.')
+    endif
+    ctx%adjoint%jacp_failed = PETSC_TRUE
+    call MatZeroEntries(Jacp,ierr);CHKERRQ(ierr)
   endif
   ierr = 0
 

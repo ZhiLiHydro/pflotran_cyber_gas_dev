@@ -59,6 +59,8 @@ MINERAL_PARAMETER = ("  PARAMETER RATE_CONSTANT\n    KINETICS MINERAL\n"
                      "    MINERAL_NAME Gypsum\n  /\n")
 RATE_PARAMETER = ("  PARAMETER RATE_CONSTANT\n    KINETICS MICROBIAL\n"
                   "    REACTION_INDEX 1\n  /\n")
+SMOOTHSTEP_PARAMETER = ("  PARAMETER SMOOTHSTEP_INTERVAL\n    KINETICS MICROBIAL\n"
+                        "    REACTION_INDEX 1\n    SPECIES_NAME O2(aq)\n  /\n")
 
 
 def fd_check(text, value, tag, np=1, pattern=MICROBIAL_RATE, scale=1.,
@@ -314,6 +316,23 @@ def optimum(output):
     return float(value[-1]), summary[-1] == "converged"
 
 
+def optimization_log(output):
+    """The rows of <prefix>-optimization.log: (number, status, f, p_1,
+    df/dp_1) for the deck's one parameter."""
+    rows = []
+    for line in Path(output).with_name("case-optimization.log").read_text(
+            ).splitlines():
+        if line.startswith("#"):
+            continue
+        fields = line.split()
+        require(len(fields) == 6, f"optimization log row: {line}")
+        rows.append((int(fields[0]), int(fields[1]), float(fields[2]),
+                     float(fields[4]), float(fields[5])))
+    require(rows and [row[0] for row in rows] == list(range(1, len(rows)+1)),
+            "optimization log: missing evaluations")
+    return rows
+
+
 def statistics(output):
     """steps, Newton and linear iterations and cuts the run reports."""
     found = re.findall(r"PETSc TS steps = (\d+) newton = (\d+) linear = "
@@ -322,12 +341,82 @@ def statistics(output):
     return found[-1]
 
 
+def smoothstep_optimization(base, block, directory):
+    """A SMOOTHSTEP inhibition's width must stay positive: from 10x the
+    twin's width TAO's first steps cross zero, and those points are not
+    run (a negative width inverts the inhibition, a zero one is a step
+    function); the width is recovered."""
+    def with_width(width):
+        inhibition = ("    INHIBITION\n      SPECIES_NAME O2(aq)\n"
+                      "      TYPE SMOOTHSTEP\n"
+                      "      THRESHOLD_CONCENTRATION 1.46d-3\n"
+                      "      INHIBIT_BELOW_THRESHOLD\n"
+                      f"      SMOOTHSTEP_INTERVAL {width}\n    /\n")
+        text = base.replace("    BIOMASS\n", inhibition + "    BIOMASS\n", 1)
+        require(text != base, "no BIOMASS block")
+        return text
+    observed = parse_summary(run(with_width("5.d-2"), "optimization"))[0][1]
+    output = run(optimization_deck(
+        with_parameter(with_width("5.d-1"), SMOOTHSTEP_PARAMETER), observed,
+        0.04, block, directory), "optimization")
+    rows = optimization_log(output)
+    require(any(row[3] <= 0 for row in rows) and
+            all((row[1] == -2) == (row[3] <= 0) for row in rows),
+            f"widths that are not positive must not be run: {rows}")
+    value = re.findall(r"OPTIMIZATION: SS_INT\[1,O2\(aq\)\] = +(\S+)",
+                       Path(output).read_text())
+    require(value, f"no OPTIMIZATION result: {output}")
+    close(float(value[-1]), 0.05, rtol=1e-8)
+
+
+def optimization_failures(base, observed, block, directory, np):
+    """A failed evaluation (a step failure in the middle of the rerun) is
+    a step out of the domain: TAO shortens the step and still recovers the
+    rate constant, and the evaluation after it equals a run of the deck at
+    its parameter bit for bit (the failed rerun leaves nothing behind). The
+    wall-clock limit inside an evaluation ends the optimization without a
+    rerun at the solution."""
+    text = optimization_deck(base, observed, 0.12, block, directory)
+    for failed in ((2, 5) if np == 1 else (3,)):
+        output = run(text, "optimization", np=np,
+                     args=("-adj_opt_fail_eval", str(failed)))
+        value, converged = optimum(output)
+        require(converged, f"TAO did not recover from evaluation {failed}")
+        close(value, 0.04, rtol=1e-8)
+        rows = optimization_log(output)
+        require(rows[failed-1][1] > 0 and
+                all(row[1] == 0 for row in rows if row[0] != failed),
+                f"optimization log statuses: {rows}")
+        number, status, f, p, g = rows[failed]
+        standalone = parse_summary(run(
+            optimization_deck(base, observed, p, "", directory),
+            "optimization", np=np))
+        require(standalone == ({1: f}, {(1, 1): g}),
+                f"evaluation {number} after the failure: {f!r} {g!r}, a run "
+                f"of the deck at p = {p!r}: {standalone}")
+    if np == 1:
+        output = run(text, "optimization", require_summary=False,
+                     args=("-adj_opt_wallclock_eval", "4"))
+        log = Path(output).read_text()
+        require("OPTIMIZATION stopped at the wall-clock limit (evaluation 4)"
+                in log and "rerunning at the solution" not in log,
+                "the wall-clock limit did not end the optimization")
+        rows = optimization_log(output)
+        require(len(rows) == 4 and rows[-1][1] == -1,
+                f"optimization log at the wall-clock limit: {rows}")
+        value = optimum(output)[0]
+        require(any(row[1] == 0 and abs(row[3]-value) <= 1e-12*abs(value)
+                    for row in rows),
+                f"the reported parameter {value} was not evaluated: {rows}")
+
+
 def optimization(np):
     """ADJOINT OPTIMIZATION (TAO through reruns) recovers the rate constant
     of a twin experiment, the CO2(aq) its run produces, from 3x and 0.3x,
-    and reports the statistics of the run (not of its reruns); TAO's
-    finite-difference test agrees with the gradient; Nelder-Mead (objective
-    only) gets close; a bound above the solution stops it; bad settings are
+    also through failed evaluations, and reports the statistics of the run
+    (not of its reruns); TAO's finite-difference test agrees with the
+    gradient; Nelder-Mead (objective only) gets close; a bound above the
+    solution stops it; a smoothstep width stays positive; bad settings are
     rejected."""
     base = deck("ar_1d4")
     observed = parse_summary(run(base, "optimization", np=np))[0][1]
@@ -345,6 +434,7 @@ def optimization(np):
             require(statistics(output) == statistics(single),
                     f"statistics {statistics(output)}, of the run "
                     f"{statistics(single)}")
+        optimization_failures(base, observed, block, directory, np)
         if np == 1:
             text = optimization_deck(base, observed, 0.12, block, directory)
             output = run(text, "optimization", args=("-adj_tao_test_gradient",))
@@ -361,6 +451,7 @@ def optimization(np):
                     "  /\n", "    PARAMETER 1\n      BOUNDS 5.d-2 1.d0\n"
                     "    /\n  /\n"), directory)
             close(optimum(run(bounded, "optimization"))[0], 0.05, rtol=1e-12)
+            smoothstep_optimization(base, block, directory)
             for settings, diagnostic in (
                     ("    MAXIMUM_ITERATIONS 0\n",
                      "MAXIMUM_ITERATIONS must be positive"),

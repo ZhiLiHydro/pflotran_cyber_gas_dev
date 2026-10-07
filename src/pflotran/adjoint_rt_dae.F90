@@ -445,6 +445,9 @@ subroutine AdjRTDAEParameterJacobian(this,model,time,Y,Ydot,Jacp,status)
   do while (associated(cur_param))
     col = col + 1
     if (invalid(col)) then
+      ! a rerun (an optimizer's evaluation) has no gradient
+      status = TS_MODEL_DOMAIN_ERROR
+      if (this%quiet) exit
       this%option%io_buffer = 'ADJOINT: the derivative with respect to ' // &
         trim(cur_param%name) // ' is not defined at a state of the forward &
         &run (HALF_SATURATION_CONSTANT requires K + concentration - &

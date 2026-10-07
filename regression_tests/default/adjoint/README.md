@@ -48,18 +48,31 @@ ADJOINT
 END
 ```
 
-The forward run is quiet and is TAO's first evaluation. Each further
+All parameters must be positive: a point where one is not (or where
+10**q underflows or overflows) is not run and returns +Inf. The forward run
+is quiet and is TAO's first evaluation. Each further
 evaluation reruns the run in place from its recorded initial state with the
 recorded forcing replayed (no input is read again), and its adjoint sweep;
 a last rerun at the solution writes the output, the adjoint summary and a
 `-- GENERIC: Optimization --` section of the regression file (iterations,
 converged reason, objective, parameters). An evaluation without a gradient
-(a failed forward run, a mineral regime transition) returns +Inf, which
-ends TAO's default line search; at the initial parameters it stops the run
-(run the deck without OPTIMIZATION to see why). The run's statistics
-(steps, iterations, cuts) are those of the forward run; its times include
-the optimization. TAO's options take the prefix `adj_`
-(`-adj_tao_type nm`, `-adj_tao_test_gradient`, `-adj_tao_monitor`).
+(a failed forward run, a mineral regime transition, a parameter Jacobian
+that cannot be evaluated) returns +Inf, a step out of the domain; at the
+initial parameters it stops the run (run the deck without OPTIMIZATION to
+see why). The line search is Armijo's unless `-adj_tao_ls_type` sets one:
+it backtracks from +Inf, while TAO's More-Thuente stops there; the
+trust-region methods (`bqnktr`, `bqnktl`) do not handle it either. The
+wall-clock limit (`WALLCLOCK_STOP`) inside an evaluation ends the
+optimization at TAO's last accepted point, without a rerun at it (no
+output is written); inside the rerun at the solution it
+stops the run as well (the output is incomplete), and a failure there fails
+the run. The run's statistics (steps, iterations, cuts) are those of the
+forward run; its times include the optimization. Every evaluation is a row
+of
+`<prefix>-optimization.log` (number, status: 0 a value, -1 stopped, -2 not
+run, outside the parameters' domain, else none; f, |df/dp|, the parameters
+and df/dp); the screen shows f and |df/dp|. TAO's options take the prefix
+`adj_` (`-adj_tao_type nm`, `-adj_tao_test_gradient`, `-adj_tao_monitor`).
 The gradient is that of the steps taken, so with adaptive steps the
 objective has small jumps where the step sequence changes; fixed steps
 (`-tran_ts_adapt_type none`) avoid them.
@@ -155,8 +168,9 @@ a post-processor that checks the gradients against central differences
   selectors, output, restoration of the final state, the memory trajectory,
   a failed stage (`-rt_dae_fail_closure`: the gradient of the steps taken),
   reruns (`-ts_model_rerun_check`), optimization of a twin experiment
-  (from 3x and 0.3x the rate constant; TAO's gradient test, Nelder-Mead,
-  bounds), parallel runs and the rejections.
+  (from 3x and 0.3x the rate constant, through failed evaluations and the
+  wall-clock limit; TAO's gradient test, Nelder-Mead, bounds), parallel
+  runs and the rejections.
 - `check_coupled.py` (`adjoint-coupled`, `adjoint-coupled-np2`): the
   coupled model's gradients, and that it reproduces the sequential scheme
   and its Jacobian entry by entry, also on an unstructured grid; reruns,
@@ -185,6 +199,10 @@ Debug options:
   (its closures at a new state) fails every local cell, a domain error (a
   test of the recovery; Newton's step guard keeps the decks' iterates in
   the domain).
+- `-adj_opt_fail_eval <n>`, `-adj_opt_wallclock_eval <n>`: the rerun of
+  optimization evaluation n fails at its second step, or reaches the
+  wall-clock limit after its first waypoint interval (tests of the failure
+  paths).
 - `-ts_model_rerun_check`: after the run's sweep, reruns at the deck's
   parameters p0, at 1.1 p0 and at p0 again; both reruns at p0 must
   reproduce the run's costs, gradients, adjoint initial state and final

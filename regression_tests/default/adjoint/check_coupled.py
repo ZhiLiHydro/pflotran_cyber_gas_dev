@@ -268,17 +268,36 @@ def optimization(np):
         twin = base.replace(probe, misfits)
         twin = set_value(set_value(twin, PERMEABILITY, 3e-12),
                          CALCITE_RATE, 3e-9)
-        twin = twin.replace("ADJOINT\n", "ADJOINT\n  OPTIMIZATION\n"
-                            "    MAXIMUM_ITERATIONS 60\n  /\n", 1)
-        text = Path(run(twin, "optimization", np=np)).read_text()
-    require(re.search(r"OPTIMIZATION: \d+ iterations, \d+ evaluations "
-                      r"\(\d+ failed\); converged", text),
-            "TAO did not converge")
-    for name, value in (("PERMEABILITY\\[soil1\\]", 1e-12),
-                        ("MINERAL_RATE_CONSTANT\\[Calcite\\]", 1e-8)):
-        found = re.findall(rf"OPTIMIZATION: {name} = +(\S+)", text)
-        require(found, f"no optimum of {name}")
-        close(float(found[-1]), value, rtol=1e-8)
+        optimized = twin.replace("ADJOINT\n", "ADJOINT\n  OPTIMIZATION\n"
+                                 "    MAXIMUM_ITERATIONS 60\n  /\n", 1)
+        # serially, also through a failed evaluation: the one after it
+        # equals a run of the deck at its parameters bit for bit
+        for args in ((), ("-adj_opt_fail_eval", "3"))[:2 if np == 1 else 1]:
+            output = run(optimized, "optimization", np=np, args=args)
+            text = Path(output).read_text()
+            require(re.search(r"OPTIMIZATION: \d+ iterations, \d+ "
+                              r"evaluations \(\d+ failed\); converged", text),
+                    f"TAO did not converge {args}")
+            for name, value in (("PERMEABILITY\\[soil1\\]", 1e-12),
+                                ("MINERAL_RATE_CONSTANT\\[Calcite\\]", 1e-8)):
+                found = re.findall(rf"OPTIMIZATION: {name} = +(\S+)", text)
+                require(found, f"no optimum of {name}")
+                close(float(found[-1]), value, rtol=1e-8)
+            if not args:
+                continue
+            rows = [line.split() for line in Path(output).with_name(
+                "case-optimization.log").read_text().splitlines()
+                if not line.startswith("#")]
+            require(int(rows[2][1]) > 0, "evaluation 3 did not fail")
+            f, p1, p2, g1, g2 = (float(rows[3][i]) for i in (2, 4, 5, 6, 7))
+            costs, gradients = parse_summary(run(
+                set_value(set_value(twin, PERMEABILITY, p1), CALCITE_RATE, p2),
+                "optimization", np=np))
+            require(costs[1] + costs[2] == f and
+                    gradients[1, 1] + gradients[2, 1] == g1 and
+                    gradients[1, 2] + gradients[2, 2] == g2,
+                    f"evaluation 4 after the failure: {rows[3]}, a run of the "
+                    f"deck: {costs} {gradients}")
     cleanup_run("optimization")
     print(f"PASS coupled optimization recovers permeability and calcite rate "
           f"({np} ranks)", flush=True)

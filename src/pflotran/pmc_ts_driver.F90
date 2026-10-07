@@ -27,6 +27,8 @@ module PMC_TS_Driver_class
   use TS_Model_class
   use TS_Adjoint_class
   use TS_Optimizer_class
+  use Timestepper_Base_class, only : TS_CONTINUE, TS_STOP_FAILURE, &
+                                     TS_STOP_WALLCLOCK_EXCEEDED
   use Option_module
 
   implicit none
@@ -81,6 +83,8 @@ module PMC_TS_Driver_class
     PetscReal :: newton_kappa = 0.1d0
     ! no output or progress messages (a rerun)
     PetscBool :: quiet = PETSC_FALSE
+    ! -adj_opt_fail_eval (a test): the step that fails, 0 for none
+    PetscInt :: fail_at_step = 0
   end type ts_driver_ctx_type
 
   ! the run's statistics, which reruns must leave as they were
@@ -125,6 +129,14 @@ module PMC_TS_Driver_class
     ! status of the last adjoint sweep (TS_Adjoint_class)
     PetscInt :: adjoint_status = TS_ADJ_OK
     PetscBool :: rerun_check = PETSC_FALSE
+    ! tests of the optimizer's failure paths: the evaluation whose rerun
+    ! fails (-adj_opt_fail_eval) or reaches the wall-clock limit
+    ! (-adj_opt_wallclock_eval)
+    PetscInt :: fail_eval = 0
+    PetscInt :: wallclock_eval = 0
+    ! the run's stop flag if the optimization or its rerun at the solution
+    ! did not complete
+    PetscInt :: optimization_stop_flag = TS_CONTINUE
   contains
     procedure, public :: ReadNumericalMethods => PMCTSDriverReadNumMethods
     procedure, public :: SetupSolvers => PMCTSDriverSetupSolvers
@@ -774,8 +786,11 @@ recursive subroutine PMCTSDriverRunToTime(this,sync_time,stop_flag)
                               this%ctx%events,this%adjoint_status)
       if (this%rerun_check .and. .not.this%evaluating) &
         call TSDriverRerunCheck(this)
-      if (associated(this%optimizer) .and. .not.this%evaluating) &
+      if (associated(this%optimizer) .and. .not.this%evaluating) then
         call TSDriverOptimize(this)
+        if (this%optimization_stop_flag /= TS_CONTINUE) &
+          stop_flag = this%optimization_stop_flag
+      endif
     else if (stop_flag /= TS_CONTINUE .and. this%evaluating) then
       this%adjoint_status = TS_ADJ_FORWARD_FAILED
     else if (stop_flag /= TS_CONTINUE) then
@@ -899,7 +914,8 @@ subroutine TSDriverRerun(this,status,quiet)
   ! conditions only move forward in time. Requires a completed run with
   ! an adjoint; leaves the TS and model at the rerun's final state, and
   ! adds to the run's statistics (callers restore them, TSDriverSaveStats).
-  ! status: that of the sweep (TS_Adjoint_class), or TS_ADJ_FORWARD_FAILED.
+  ! status: that of the sweep (TS_Adjoint_class), TS_ADJ_FORWARD_FAILED or
+  ! TS_ADJ_WALLCLOCK.
   !
   ! Author: Hansol Suh
   ! Date: 10/07/26
@@ -971,9 +987,12 @@ subroutine TSDriverRerun(this,status,quiet)
   call this%model%EndReplay()
 
   status = this%adjoint_status
-  if (stop_flag /= TS_STOP_END_SIMULATION .or. &
-      this%rerun_interval /= this%num_intervals) &
+  if (stop_flag == TS_STOP_WALLCLOCK_EXCEEDED) then
+    status = TS_ADJ_WALLCLOCK
+  else if (stop_flag /= TS_STOP_END_SIMULATION .or. &
+           this%rerun_interval /= this%num_intervals) then
     status = TS_ADJ_FORWARD_FAILED
+  endif
 
 end subroutine TSDriverRerun
 
@@ -1222,7 +1241,9 @@ subroutine TSDriverSetupOptimizer(this)
   character(len=MAXSTRINGLENGTH), allocatable :: name(:)
   PetscReal, allocatable :: p0(:)
   PetscBool, allocatable :: positive(:), log_scale(:)
+  PetscBool :: flag
   PetscInt :: j, n
+  PetscErrorCode :: ierr
 
   n = this%adjoint%nparams
   allocate(name(n),p0(n),positive(n),log_scale(n))
@@ -1233,6 +1254,12 @@ subroutine TSDriverSetupOptimizer(this)
   call this%optimizer%Setup(this%option,name,positive,log_scale,p0)
   this%ctx%quiet = PETSC_TRUE
   this%adjoint%quiet = PETSC_TRUE
+  call PetscOptionsGetInt(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER, &
+                          '-adj_opt_fail_eval',this%fail_eval,flag, &
+                          ierr);CHKERRQ(ierr)
+  call PetscOptionsGetInt(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER, &
+                          '-adj_opt_wallclock_eval',this%wallclock_eval, &
+                          flag,ierr);CHKERRQ(ierr)
 
 end subroutine TSDriverSetupOptimizer
 
@@ -1280,13 +1307,29 @@ subroutine TSDriverEvaluate(this,p,f,g,status)
   PetscInt :: status
 
   class(pmc_ts_driver_type), pointer :: pmc
+  PetscInt :: evaluation
 
   pmc => this%pmc
+  ! the tests of the failure paths: a step failure in the middle of the
+  ! run, or the wall-clock check after the first interval
+  evaluation = pmc%optimizer%num_evaluations + 1
+  if (evaluation == pmc%fail_eval) pmc%ctx%fail_at_step = 2
+  if (evaluation == pmc%wallclock_eval) then
+    pmc%option%wallclock_stop_flag = PETSC_TRUE
+    pmc%option%wallclock_stop_time = 0.d0
+  endif
   call pmc%adjoint%SetParameters(pmc%model,p)
   call TSDriverRerun(pmc,status,PETSC_TRUE)
+  pmc%ctx%fail_at_step = 0
   f = 0.d0
   g = 0.d0
-  if (status == TS_ADJ_OK) call TSDriverObjective(pmc,f,g)
+  select case(status)
+    case(TS_ADJ_OK)
+      call TSDriverObjective(pmc,f,g)
+      status = TS_OPT_EVAL_OK
+    case(TS_ADJ_WALLCLOCK)
+      status = TS_OPT_EVAL_STOP
+  end select
 
 end subroutine TSDriverEvaluate
 
@@ -1297,7 +1340,8 @@ subroutine TSDriverOptimize(this)
   ! ADJOINT OPTIMIZATION, after the run's sweep: TAO from the run's
   ! objective and gradient, then a rerun at its solution with output (and
   ! the adjoint's report of it). The run must have a gradient. The
-  ! statistics stay the run's.
+  ! statistics stay the run's; a stop at the wall-clock limit or a failed
+  ! rerun at the solution sets optimization_stop_flag.
   !
   ! Author: Hansol Suh
   ! Date: 10/07/26
@@ -1324,17 +1368,38 @@ subroutine TSDriverOptimize(this)
   call TSDriverSaveStats(this,stats)
   evaluator%pmc => this
   call this%optimizer%Solve(evaluator)
+  ! at the wall-clock limit: no rerun at the solution (the fields are those
+  ! of the interrupted evaluation)
+  if (this%optimizer%stopped) then
+    this%optimization_stop_flag = TS_STOP_WALLCLOCK_EXCEEDED
+    call TSDriverRestoreStats(this,stats)
+    return
+  endif
 
   call PrintMsg(this%option,' OPTIMIZATION: rerunning at the solution &
     &with output')
   call this%adjoint%SetParameters(this%model,this%optimizer%p_opt)
   call TSDriverRerun(this,status,PETSC_FALSE)
   call TSDriverRestoreStats(this,stats)
-  if (status /= TS_ADJ_OK) then
-    write(this%option%io_buffer,'(a,i0,a)') 'ADJOINT OPTIMIZATION: the &
-      &rerun at the solution has no gradient (status ',status,').'
-    call PrintWrnMsg(this%option)
-  endif
+  select case(status)
+    case(TS_ADJ_OK)
+    case(TS_ADJ_WALLCLOCK)
+      ! the output stops where the rerun did
+      call PrintWrnMsg(this%option,'ADJOINT OPTIMIZATION: the rerun at the &
+        &solution stopped at the wall-clock limit; its output is &
+        &incomplete.')
+      this%optimization_stop_flag = TS_STOP_WALLCLOCK_EXCEEDED
+    case(TS_ADJ_FORWARD_FAILED)
+      ! TAO evaluated this point: its rerun failing is not deterministic
+      call PrintWrnMsg(this%option,'ADJOINT OPTIMIZATION: the rerun at the &
+        &solution failed; its output is incomplete.')
+      this%optimization_stop_flag = TS_STOP_FAILURE
+    case default
+      ! the output is complete, the adjoint's report of it is not
+      write(this%option%io_buffer,'(a,i0,a)') 'ADJOINT OPTIMIZATION: the &
+        &rerun at the solution has no gradient (status ',status,').'
+      call PrintWrnMsg(this%option)
+  end select
 
 end subroutine TSDriverOptimize
 
@@ -1635,6 +1700,11 @@ subroutine TSDriverPostStep(ts,ierr)
   call TSGetStepNumber(ts,steps,ierr);CHKERRQ(ierr)
   interval_end = (time >= max_time-64.d0*epsilon(1.d0)*max(1.d0,abs(max_time)))
   call TSDriverStepOutput(ctx,time,Y,steps,interval_end)
+
+  ! -adj_opt_fail_eval: a step failure, as from the solver
+  if (ctx%fail_at_step > 0 .and. steps >= ctx%fail_at_step) then
+    call TSSetConvergedReason(ts,TS_DIVERGED_STEP_REJECTED,ierr);CHKERRQ(ierr)
+  endif
 
 end subroutine TSDriverPostStep
 
