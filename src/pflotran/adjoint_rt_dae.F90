@@ -59,6 +59,7 @@ module Adjoint_RT_DAE_class
     procedure, public :: Report => AdjRTDAEReport
     procedure, public :: GetParameters => AdjRTDAEGetParameters
     procedure, public :: SetParameters => AdjRTDAESetParameters
+    procedure, public :: ParameterInfo => AdjRTDAEParameterInfo
     procedure, public :: Destroy => AdjRTDAEDestroy
   end type adjoint_rt_dae_type
 
@@ -994,6 +995,41 @@ subroutine AdjRTDAESetParameters(this,model,p)
   call model%InvalidateCache()
 
 end subroutine AdjRTDAESetParameters
+
+! ************************************************************************** !
+
+subroutine AdjRTDAEParameterInfo(this,j,name,positive,log_scale)
+  !
+  ! All must be positive. All but a smoothstep interval, the width of an
+  ! interval of log10 concentration, are optimized as their log10 by
+  ! default: from a deck's width, steps in log10 of the width approach
+  ! zero width, a step function that takes ever smaller time steps.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/07/26
+  !
+  use Adjoint_Param_module, only : adj_param_list
+
+  implicit none
+
+  class(adjoint_rt_dae_type) :: this
+  PetscInt :: j
+  character(len=MAXSTRINGLENGTH) :: name
+  PetscBool :: positive
+  PetscBool :: log_scale
+
+  type(adjoint_param_type), pointer :: cur_param
+  PetscInt :: i
+
+  cur_param => adj_param_list
+  do i = 2, j
+    cur_param => cur_param%next
+  enddo
+  name = cur_param%name
+  positive = PETSC_TRUE
+  log_scale = (cur_param%kind /= ADJ_PARAM_SMOOTHSTEP_INTERVAL)
+
+end subroutine AdjRTDAEParameterInfo
 
 ! ************************************************************************** !
 

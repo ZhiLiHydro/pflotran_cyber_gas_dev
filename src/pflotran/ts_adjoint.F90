@@ -6,7 +6,8 @@ module TS_Adjoint_class
   ! recorded forcing, so the sweep linearizes the forward steps.
   !
   ! A concrete adjoint binds costs and parameters to one kind of model
-  ! (Setup, TerminalGradients, ParameterJacobian, Report, Get/SetParameters).
+  ! (Setup, TerminalGradients, ParameterJacobian, Report, Get/SetParameters,
+  ! ParameterInfo).
   ! Report keeps the values it prints (KeepResult) for the regression file.
   ! Solve returns a status; quiet (a rerun of the forward run, see
   ! PMC_TS_Driver_class) only returns it, with the costs and gradients
@@ -83,6 +84,7 @@ module TS_Adjoint_class
     procedure(TSAdjReportIface), deferred :: Report
     procedure(TSAdjGetParametersIface), deferred :: GetParameters
     procedure(TSAdjSetParametersIface), deferred :: SetParameters
+    procedure(TSAdjParameterInfoIface), deferred :: ParameterInfo
     procedure, public :: Configure => TSAdjConfigure
     procedure, public :: CheckMethod => TSAdjCheckMethod
     procedure, public :: RecordInitialState => TSAdjRecordInitialState
@@ -177,6 +179,19 @@ module TS_Adjoint_class
       class(ts_model_type) :: model
       PetscReal :: p(:)
     end subroutine TSAdjSetParametersIface
+
+    subroutine TSAdjParameterInfoIface(this,j,name,positive,log_scale)
+      ! The name of parameter j, whether it must be positive, and whether
+      ! it is optimized as its log10 by default.
+      use petscsys
+      import :: ts_adjoint_type, MAXSTRINGLENGTH
+      implicit none
+      class(ts_adjoint_type) :: this
+      PetscInt :: j
+      character(len=MAXSTRINGLENGTH) :: name
+      PetscBool :: positive
+      PetscBool :: log_scale
+    end subroutine TSAdjParameterInfoIface
 
   end interface
 

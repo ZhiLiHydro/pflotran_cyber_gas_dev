@@ -382,7 +382,7 @@ subroutine FactSubLinkAttachAdjoint(simulation)
   ! Author: Hansol Suh
   ! Date: 09/23/26
   !
-  use Adjoint_module, only : AdjointIsActive
+  use Adjoint_module, only : AdjointIsActive, adjoint_optimizer
   use Adjoint_RT_DAE_class, only : AdjointRTDAECreate
   use PMC_TS_Driver_class
   use PM_RT_DAE_class
@@ -402,6 +402,9 @@ subroutine FactSubLinkAttachAdjoint(simulation)
         select type(pm => pmc%pm_ptr%pm)
           class is (pm_rt_dae_type)
             pmc%adjoint => AdjointRTDAECreate(option)
+            ! ADJOINT OPTIMIZATION: the driver owns the optimizer
+            pmc%optimizer => adjoint_optimizer
+            nullify(adjoint_optimizer)
         end select
     end select
   endif

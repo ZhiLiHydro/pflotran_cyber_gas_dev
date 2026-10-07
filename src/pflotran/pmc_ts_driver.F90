@@ -7,6 +7,8 @@ module PMC_TS_Driver_class
   ! (TS_Adjoint_class) the backward sweep runs at the final time.
   ! TSDriverRerun repeats the run from its initial state with new
   ! parameters, an optimizer's evaluation (-ts_model_rerun_check checks it).
+  ! With ADJOINT OPTIMIZATION (TS_Optimizer_class) TAO's evaluations are
+  ! reruns, and a last one at the optimum writes the output.
   !
   ! RunToTime replaces PMCBaseRunToTime: changes to that loop do not reach
   ! this one. TSAdapt chooses the steps; of TIMESTEPPER only MAX_STEPS,
@@ -24,6 +26,7 @@ module PMC_TS_Driver_class
   use PM_Base_class
   use TS_Model_class
   use TS_Adjoint_class
+  use TS_Optimizer_class
   use Option_module
 
   implicit none
@@ -95,8 +98,10 @@ module PMC_TS_Driver_class
       GetModel => null()
     class(ts_model_type), pointer :: model => null()
     type(ts_driver_ctx_type), pointer :: ctx => null()
-    ! the discrete adjoint of the run, if the deck asks for one
+    ! the discrete adjoint of the run, if the deck asks for one, and the
+    ! calibration of its parameters
     class(ts_adjoint_type), pointer :: adjoint => null()
+    type(ts_optimizer_type), pointer :: optimizer => null()
     Vec :: solution
     Vec :: residual
     PetscBool :: ts_initialized = PETSC_FALSE
@@ -126,6 +131,13 @@ module PMC_TS_Driver_class
     procedure, public :: RunToTime => PMCTSDriverRunToTime
     procedure, public :: Destroy => PMCTSDriverDestroy
   end type pmc_ts_driver_type
+
+  ! an optimizer's evaluation: a rerun at given parameters
+  type, extends(ts_evaluator_type) :: ts_driver_evaluator_type
+    class(pmc_ts_driver_type), pointer :: pmc => null()
+  contains
+    procedure, public :: Evaluate => TSDriverEvaluate
+  end type ts_driver_evaluator_type
 
   ! the C wrappers of petsc_fortran_interop.c: PETSc has no Fortran binding
   ! for TSSetEventHandler or SNESSetComputeInitialGuess
@@ -441,6 +453,13 @@ subroutine PMCTSDriverSetupSolvers(this)
     call PrintErrMsg(option,'-ts_model_rerun_check requires an ADJOINT &
       &block: a rerun replays the forcing recorded for the adjoint.')
   endif
+  if (associated(this%optimizer)) then
+    if (this%rerun_check) then
+      call PrintErrMsg(option,'-ts_model_rerun_check does not run with &
+        &ADJOINT OPTIMIZATION.')
+    endif
+    call TSDriverSetupOptimizer(this)
+  endif
 
   call PrintMsg(option,'  Finished setting up ' // trim(this%model%name) // &
                 ' TS driver')
@@ -755,6 +774,8 @@ recursive subroutine PMCTSDriverRunToTime(this,sync_time,stop_flag)
                               this%ctx%events,this%adjoint_status)
       if (this%rerun_check .and. .not.this%evaluating) &
         call TSDriverRerunCheck(this)
+      if (associated(this%optimizer) .and. .not.this%evaluating) &
+        call TSDriverOptimize(this)
     else if (stop_flag /= TS_CONTINUE .and. this%evaluating) then
       this%adjoint_status = TS_ADJ_FORWARD_FAILED
     else if (stop_flag /= TS_CONTINUE) then
@@ -867,13 +888,13 @@ end function TSDriverIntervalRecorded
 
 ! ************************************************************************** !
 
-subroutine TSDriverRerun(this,status)
+subroutine TSDriverRerun(this,status,quiet)
   !
   ! Integrates the run again from its initial state with the current
   ! parameters, replaying the forcing recorded for the adjoint over the
-  ! same waypoint intervals, then runs the adjoint sweep; outputs nothing
-  ! and prints only a failure. InitialState and BeginSegment are not
-  ! called: the
+  ! same waypoint intervals, then runs the adjoint sweep; quiet: outputs
+  ! nothing and prints only a failure. InitialState and BeginSegment are
+  ! not called: the
   ! first reads the output fields, which Publish has overwritten, and
   ! conditions only move forward in time. Requires a completed run with
   ! an adjoint; leaves the TS and model at the rerun's final state, and
@@ -891,13 +912,14 @@ subroutine TSDriverRerun(this,status)
 
   class(pmc_ts_driver_type) :: this
   PetscInt :: status
+  PetscBool :: quiet
 
   class(timestepper_TS_type), pointer :: timestepper
   type(ts_driver_ctx_type), pointer :: ctx
   TS :: ts
   PetscReal :: final_time
   PetscInt :: stop_flag
-  PetscBool :: quiet
+  PetscBool :: ctx_quiet, adjoint_quiet
   PetscErrorCode :: ierr
 
   select type(stepper => this%timestepper)
@@ -936,15 +958,16 @@ subroutine TSDriverRerun(this,status)
   this%rerun_interval = 0
   this%adjoint_status = TS_ADJ_FORWARD_FAILED
 
-  quiet = ctx%quiet
+  ctx_quiet = ctx%quiet
+  adjoint_quiet = this%adjoint%quiet
   this%evaluating = PETSC_TRUE
-  ctx%quiet = PETSC_TRUE
-  this%adjoint%quiet = PETSC_TRUE
+  ctx%quiet = quiet
+  this%adjoint%quiet = quiet
   stop_flag = TS_CONTINUE
   call this%RunToTime(final_time,stop_flag)
   this%evaluating = PETSC_FALSE
-  ctx%quiet = quiet
-  this%adjoint%quiet = PETSC_FALSE
+  ctx%quiet = ctx_quiet
+  this%adjoint%quiet = adjoint_quiet
   call this%model%EndReplay()
 
   status = this%adjoint_status
@@ -1045,7 +1068,7 @@ subroutine TSDriverRerunCheck(this)
     else
       call adjoint%SetParameters(this%model,p0)
     endif
-    call TSDriverRerun(this,status)
+    call TSDriverRerun(this,status,PETSC_TRUE)
     if (status /= TS_ADJ_OK) then
       write(option%io_buffer,'(a,a,a,i0)') ' TS model rerun check at ', &
         trim(label(pass)),': no gradient, status ',status
@@ -1181,6 +1204,139 @@ subroutine TSDriverRestoreStats(this,stats)
   this%cumulative_time = stats%time
 
 end subroutine TSDriverRestoreStats
+
+! ************************************************************************** !
+
+subroutine TSDriverSetupOptimizer(this)
+  !
+  ! The optimizer's parameters, from the adjoint; the run is quiet: its
+  ! output is that of the last rerun, at the optimum.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/07/26
+  !
+  implicit none
+
+  class(pmc_ts_driver_type) :: this
+
+  character(len=MAXSTRINGLENGTH), allocatable :: name(:)
+  PetscReal, allocatable :: p0(:)
+  PetscBool, allocatable :: positive(:), log_scale(:)
+  PetscInt :: j, n
+
+  n = this%adjoint%nparams
+  allocate(name(n),p0(n),positive(n),log_scale(n))
+  call this%adjoint%GetParameters(p0)
+  do j = 1, n
+    call this%adjoint%ParameterInfo(j,name(j),positive(j),log_scale(j))
+  enddo
+  call this%optimizer%Setup(this%option,name,positive,log_scale,p0)
+  this%ctx%quiet = PETSC_TRUE
+  this%adjoint%quiet = PETSC_TRUE
+
+end subroutine TSDriverSetupOptimizer
+
+! ************************************************************************** !
+
+subroutine TSDriverObjective(this,f,g)
+  !
+  ! The optimizer's objective, the sum of the costs of the last sweep, and
+  ! its gradient.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/07/26
+  !
+  implicit none
+
+  class(pmc_ts_driver_type) :: this
+  PetscReal :: f
+  PetscReal :: g(:)
+
+  PetscReal :: cost(this%adjoint%ncosts)
+  PetscReal :: grad(this%adjoint%nparams,this%adjoint%ncosts)
+
+  call this%adjoint%GetCostValues(cost)
+  call this%adjoint%GetCostGradients(grad)
+  f = sum(cost)
+  g = sum(grad,dim=2)
+
+end subroutine TSDriverObjective
+
+! ************************************************************************** !
+
+subroutine TSDriverEvaluate(this,p,f,g,status)
+  !
+  ! The objective and its gradient at parameters p: a rerun.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/07/26
+  !
+  implicit none
+
+  class(ts_driver_evaluator_type) :: this
+  PetscReal :: p(:)
+  PetscReal :: f
+  PetscReal :: g(:)
+  PetscInt :: status
+
+  class(pmc_ts_driver_type), pointer :: pmc
+
+  pmc => this%pmc
+  call pmc%adjoint%SetParameters(pmc%model,p)
+  call TSDriverRerun(pmc,status,PETSC_TRUE)
+  f = 0.d0
+  g = 0.d0
+  if (status == TS_ADJ_OK) call TSDriverObjective(pmc,f,g)
+
+end subroutine TSDriverEvaluate
+
+! ************************************************************************** !
+
+subroutine TSDriverOptimize(this)
+  !
+  ! ADJOINT OPTIMIZATION, after the run's sweep: TAO from the run's
+  ! objective and gradient, then a rerun at its solution with output (and
+  ! the adjoint's report of it). The run must have a gradient. The
+  ! statistics stay the run's.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/07/26
+  !
+  implicit none
+
+  class(pmc_ts_driver_type), target :: this
+
+  type(ts_driver_evaluator_type), target :: evaluator
+  type(ts_driver_stats_type) :: stats
+  PetscReal :: f
+  PetscReal :: g(this%adjoint%nparams)
+  PetscInt :: status
+
+  if (this%adjoint_status /= TS_ADJ_OK) then
+    write(this%option%io_buffer,'(a,i0,a)') 'ADJOINT OPTIMIZATION: the &
+      &run at the initial parameters has no gradient (adjoint status ', &
+      this%adjoint_status,'; 1: mineral regime transitions, 2: no &
+      &observation at the final time, 3: incomplete backward solve).'
+    call PrintErrMsg(this%option)
+  endif
+  call TSDriverObjective(this,f,g)
+  call this%optimizer%SetInitialEvaluation(f,g)
+  call TSDriverSaveStats(this,stats)
+  evaluator%pmc => this
+  call this%optimizer%Solve(evaluator)
+
+  call PrintMsg(this%option,' OPTIMIZATION: rerunning at the solution &
+    &with output')
+  call this%adjoint%SetParameters(this%model,this%optimizer%p_opt)
+  call TSDriverRerun(this,status,PETSC_FALSE)
+  call TSDriverRestoreStats(this,stats)
+  if (status /= TS_ADJ_OK) then
+    write(this%option%io_buffer,'(a,i0,a)') 'ADJOINT OPTIMIZATION: the &
+      &rerun at the solution has no gradient (status ',status,').'
+    call PrintWrnMsg(this%option)
+  endif
+
+end subroutine TSDriverOptimize
 
 ! ************************************************************************** !
 
@@ -1760,6 +1916,11 @@ recursive subroutine PMCTSDriverDestroy(this)
   class(pmc_ts_driver_type) :: this
 
   call this%pmc_subsurface_type%Destroy()
+  if (associated(this%optimizer)) then
+    call this%optimizer%Destroy()
+    deallocate(this%optimizer)
+    nullify(this%optimizer)
+  endif
   if (associated(this%adjoint)) then
     call this%adjoint%Destroy()
     deallocate(this%adjoint)

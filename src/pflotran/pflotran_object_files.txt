@@ -130,6 +130,7 @@ mode_obj = \
 	${common_src}ts_flow_state.o \
 	${common_src}ts_model.o \
 	${common_src}ts_model_checks.o \
+	${common_src}ts_optimizer.o \
 	${common_src}wipp_flow.o \
 	${common_src}wipp_flow_common.o \
 	${common_src}wipp_well.o \

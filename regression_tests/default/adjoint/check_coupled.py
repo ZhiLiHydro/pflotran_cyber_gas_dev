@@ -23,6 +23,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import tempfile
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -243,6 +244,46 @@ def rerun(np):
           f"({np} ranks)", flush=True)
 
 
+def optimization(np):
+    """ADJOINT OPTIMIZATION of the coupled model recovers the permeability
+    and the calcite rate constant of a twin experiment, Ca++ at two cells
+    at the final time, from 3x and 0.3x their values."""
+    base = deck("adjoint-coupled")
+    probe = ("  COST_FUNCTION TERMINAL_SPECIES_CONCENTRATION\n"
+             "    SPECIES_NAME Ca++\n    REGION probe\n  /\n")
+    require(probe in base, "adjoint-coupled: no probe cost")
+    two = base.replace(probe, probe + probe.replace("probe", "well"))
+    observed = parse_summary(run(two, "optimization", np=np))[0]
+    with tempfile.TemporaryDirectory(
+            prefix="pflotran-adjoint-optimization-") as directory:
+        misfits = ""
+        for i, region in ((1, "probe"), (2, "well")):
+            observations = Path(directory) / f"observations{i}.dat"
+            observations.write_text("TIME_UNITS y\nDATA_UNITS mol/kg\n0 0\n"
+                                    f"5.d-2 {observed[i]:.17e}\n")
+            misfits += ("  COST_FUNCTION MISFIT_LEAST_SQUARES\n"
+                        f"    SPECIES_NAME Ca++\n    REGION {region}\n"
+                        f"    OBSERVATION_FILE {observations}\n"
+                        "    SIGMA 1.d-6\n  /\n")
+        twin = base.replace(probe, misfits)
+        twin = set_value(set_value(twin, PERMEABILITY, 3e-12),
+                         CALCITE_RATE, 3e-9)
+        twin = twin.replace("ADJOINT\n", "ADJOINT\n  OPTIMIZATION\n"
+                            "    MAXIMUM_ITERATIONS 60\n  /\n", 1)
+        text = Path(run(twin, "optimization", np=np)).read_text()
+    require(re.search(r"OPTIMIZATION: \d+ iterations, \d+ evaluations "
+                      r"\(\d+ failed\); converged", text),
+            "TAO did not converge")
+    for name, value in (("PERMEABILITY\\[soil1\\]", 1e-12),
+                        ("MINERAL_RATE_CONSTANT\\[Calcite\\]", 1e-8)):
+        found = re.findall(rf"OPTIMIZATION: {name} = +(\S+)", text)
+        require(found, f"no optimum of {name}")
+        close(float(found[-1]), value, rtol=1e-8)
+    cleanup_run("optimization")
+    print(f"PASS coupled optimization recovers permeability and calcite rate "
+          f"({np} ranks)", flush=True)
+
+
 def compressible_gradients():
     """dJ/dk and dJ/dP0 with soil compressibility; the saturated-zone
     response is nonlinear, hence a small step and a tight Newton tolerance."""
@@ -401,6 +442,7 @@ def main():
         compressible_gradients()
         calculated_porosity()
         rerun(np)
+        optimization(np)
         rejections()
     else:
         # the parallel gradients equal the serial ones
@@ -412,6 +454,7 @@ def main():
         cleanup_run("parallel")
         print(f"PASS {np} ranks match one", flush=True)
         rerun(np)
+        optimization(np)
     print("PASS coupled flow and transport adjoint suite", flush=True)
 
 

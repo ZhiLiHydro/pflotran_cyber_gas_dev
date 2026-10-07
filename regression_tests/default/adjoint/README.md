@@ -26,6 +26,44 @@ surface area, so finite differences in it are not dJ/dK(0)).
 `(natural cell id-1)*ncomp + species-1`) and, with flow,
 `<prefix>-adjoint-dJ<i>-dP0.bin` (entry `natural cell id-1`).
 
+## Optimization
+
+An `OPTIMIZATION` sub-block of `ADJOINT` minimizes the sum of the costs
+over the parameters with PETSc TAO, from the parameters' deck values:
+
+```
+ADJOINT
+  COST_FUNCTION MISFIT_LEAST_SQUARES ... /
+  PARAMETER RATE_CONSTANT ... /
+  OPTIMIZATION
+    TYPE BQNLS                       # default; a first-order TAO type
+    MAXIMUM_ITERATIONS 50            # > 0; TAO's default otherwise
+    GRADIENT_TOLERANCE 1.d-8 1.d-8   # absolute, relative >= 0 (TAO's defaults)
+    PARAMETER 1                      # deck order of the PARAMETERs
+      TRANSFORM LOG10                # default but for SMOOTHSTEP_INTERVAL
+                                     # (NONE), already a log10 width
+      BOUNDS 1.d-3 1.d0              # in the parameter's units
+    /
+  /
+END
+```
+
+The forward run is quiet and is TAO's first evaluation. Each further
+evaluation reruns the run in place from its recorded initial state with the
+recorded forcing replayed (no input is read again), and its adjoint sweep;
+a last rerun at the solution writes the output, the adjoint summary and a
+`-- GENERIC: Optimization --` section of the regression file (iterations,
+converged reason, objective, parameters). An evaluation without a gradient
+(a failed forward run, a mineral regime transition) returns +Inf, which
+ends TAO's default line search; at the initial parameters it stops the run
+(run the deck without OPTIMIZATION to see why). The run's statistics
+(steps, iterations, cuts) are those of the forward run; its times include
+the optimization. TAO's options take the prefix `adj_`
+(`-adj_tao_type nm`, `-adj_tao_test_gradient`, `-adj_tao_monitor`).
+The gradient is that of the steps taken, so with adaptive steps the
+objective has small jumps where the step sequence changes; fixed steps
+(`-tran_ts_adapt_type none`) avoid them.
+
 ## Scope
 
 - Costs: `TERMINAL_SPECIES_CONCENTRATION`, `MISFIT_LEAST_SQUARES` (final
@@ -102,7 +140,10 @@ equations.
 `adjoint.cfg`, part of `make test`: each registered deck runs once, and its
 regression file (the forward solution, and the Adjoint section with the
 costs, the gradients and the largest initial-state sensitivities) is
-compared with its gold.
+compared with its gold. `adjoint-optimization` recovers a microbial rate
+constant (the Optimization section too); at the optimum the costs and
+gradients are round-off and only the rate constant and TAO's counts are
+compared.
 
 `adjoint_verify.cfg`, run by `make adjoint_verify` (or `make verify`, with
 the GIRT_DAE checks) because it takes minutes: each case runs its deck, then
@@ -113,10 +154,13 @@ a post-processor that checks the gradients against central differences
   (`adjoint-extensions`, `adjoint-extensions-np2`): the GIRT_DAE adjoint,
   selectors, output, restoration of the final state, the memory trajectory,
   a failed stage (`-rt_dae_fail_closure`: the gradient of the steps taken),
-  parallel runs and the rejections.
+  reruns (`-ts_model_rerun_check`), optimization of a twin experiment
+  (from 3x and 0.3x the rate constant; TAO's gradient test, Nelder-Mead,
+  bounds), parallel runs and the rejections.
 - `check_coupled.py` (`adjoint-coupled`, `adjoint-coupled-np2`): the
   coupled model's gradients, and that it reproduces the sequential scheme
-  and its Jacobian entry by entry, also on an unstructured grid.
+  and its Jacobian entry by entry, also on an unstructured grid; reruns,
+  and optimization of permeability and calcite rate constant.
 - `check_applications.py` (`adjoint-applications`,
   `adjoint-applications-np2`): a microbial batch (`abcd_batch.in`), a radial
   aquifer with flow in the model (`cylindrical_coupled.in`), and a 400-cell
@@ -141,6 +185,10 @@ Debug options:
   (its closures at a new state) fails every local cell, a domain error (a
   test of the recovery; Newton's step guard keeps the decks' iterates in
   the domain).
+- `-ts_model_rerun_check`: after the run's sweep, reruns at the deck's
+  parameters p0, at 1.1 p0 and at p0 again; both reruns at p0 must
+  reproduce the run's costs, gradients, adjoint initial state and final
+  state bit for bit; prints the values at 1.1 p0.
 - `-ts_model_contract_test`, `-ts_model_column_check`,
   `-ts_model_adjoint_test`: check the model contract, its Jacobian entry by
   entry, and the initial-state gradient. The column check cannot resolve

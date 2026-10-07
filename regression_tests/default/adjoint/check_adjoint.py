@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import tempfile
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -283,6 +284,108 @@ def rerun(np):
           flush=True)
 
 
+def optimization_deck(text, observed, start, block, directory):
+    """text with its terminal cost made a misfit of the value observed at
+    the final time (5 h), the rate constant at start, and block."""
+    observations = Path(directory) / "observations.dat"
+    observations.write_text("TIME_UNITS h\nDATA_UNITS mol/kg\n0 0\n"
+                            f"5 {observed:.17e}\n")
+    text = text.replace("COST_FUNCTION TERMINAL_SPECIES_CONCENTRATION",
+                        "COST_FUNCTION MISFIT_LEAST_SQUARES", 1)
+    text = text.replace("    SPECIES_NAME CO2(aq)\n",
+                        "    SPECIES_NAME CO2(aq)\n"
+                        f"    OBSERVATION_FILE {observations}\n"
+                        "    SIGMA 1.d-6\n", 1)
+    text = set_value(text, MICROBIAL_RATE, start)
+    text, count = re.subn(r"(?m)^ADJOINT\n", "ADJOINT\n" + block, text,
+                          count=1)
+    require(count == 1 and "MISFIT" in text, "no optimization deck")
+    return text
+
+
+def optimum(output):
+    """The rate constant OPTIMIZATION found, and whether TAO converged."""
+    text = Path(output).read_text()
+    summary = re.findall(r"OPTIMIZATION: \d+ iterations, \d+ evaluations "
+                         r"\(\d+ failed\); (\w+)", text)
+    value = re.findall(r"OPTIMIZATION: MICROBIAL_RATE_CONSTANT\[1\] = +(\S+)",
+                       text)
+    require(summary and value, f"no OPTIMIZATION result: {output}")
+    return float(value[-1]), summary[-1] == "converged"
+
+
+def statistics(output):
+    """steps, Newton and linear iterations and cuts the run reports."""
+    found = re.findall(r"PETSc TS steps = (\d+) newton = (\d+) linear = "
+                       r"(\d+) cuts = (\d+)", Path(output).read_text())
+    require(found, f"no TS statistics: {output}")
+    return found[-1]
+
+
+def optimization(np):
+    """ADJOINT OPTIMIZATION (TAO through reruns) recovers the rate constant
+    of a twin experiment, the CO2(aq) its run produces, from 3x and 0.3x,
+    and reports the statistics of the run (not of its reruns); TAO's
+    finite-difference test agrees with the gradient; Nelder-Mead (objective
+    only) gets close; a bound above the solution stops it; bad settings are
+    rejected."""
+    base = deck("ar_1d4")
+    observed = parse_summary(run(base, "optimization", np=np))[0][1]
+    block = "  OPTIMIZATION\n    MAXIMUM_ITERATIONS 40\n  /\n"
+    with tempfile.TemporaryDirectory(
+            prefix="pflotran-adjoint-optimization-") as directory:
+        for start in ((0.12, 0.012) if np == 1 else (0.12,)):
+            text = optimization_deck(base, observed, start, block, directory)
+            output = run(text, "optimization", np=np)
+            value, converged = optimum(output)
+            require(converged, f"TAO did not converge from {start}")
+            close(value, 0.04, rtol=1e-8)
+            single = run(optimization_deck(base, observed, start, "",
+                                           directory), "optimization", np=np)
+            require(statistics(output) == statistics(single),
+                    f"statistics {statistics(output)}, of the run "
+                    f"{statistics(single)}")
+        if np == 1:
+            text = optimization_deck(base, observed, 0.12, block, directory)
+            output = run(text, "optimization", args=("-adj_tao_test_gradient",))
+            ratios = [float(v) for v in re.findall(
+                r"2-norm \|\|G - Gfd\|\|/\|\|G\|\| = (\S+),",
+                Path(output).with_suffix(".stdout").read_text())]
+            # at the start: near the optimum the gradient is round-off
+            require(ratios and ratios[0] < 1e-6, f"TAO gradient test: {ratios}")
+            value = optimum(run(text, "optimization",
+                                args=("-adj_tao_type", "nm")))[0]
+            close(value, 0.04, rtol=1e-4)
+            bounded = optimization_deck(
+                base, observed, 0.12, block.replace(
+                    "  /\n", "    PARAMETER 1\n      BOUNDS 5.d-2 1.d0\n"
+                    "    /\n  /\n"), directory)
+            close(optimum(run(bounded, "optimization"))[0], 0.05, rtol=1e-12)
+            for settings, diagnostic in (
+                    ("    MAXIMUM_ITERATIONS 0\n",
+                     "MAXIMUM_ITERATIONS must be positive"),
+                    ("    GRADIENT_TOLERANCE -1.d0 0.d0\n",
+                     "GRADIENT_TOLERANCE must not be negative"),
+                    ("    PARAMETER 2\n    /\n", "PARAMETER 2 does not exist"),
+                    ("    PARAMETER 1\n      BOUNDS 1.d-3 1.d-2\n    /\n",
+                     "is not inside its BOUNDS"),
+                    ("    PARAMETER 1\n      TRANSFORM LINEAR\n    /\n",
+                     'Keyword "LINEAR" not recognized in SUBSURFACE,ADJOINT,'
+                     'OPTIMIZATION,PARAMETER,TRANSFORM'),
+                    ("    PARAMETER 1\n    /\n    PARAMETER 1\n    /\n",
+                     "PARAMETER 1 is given twice")):
+                run(optimization_deck(base, observed, 0.12,
+                                      "  OPTIMIZATION\n" + settings + "  /\n",
+                                      directory),
+                    "optimization", expected_error=diagnostic, timeout=30)
+            run(text, "optimization", args=("-ts_model_rerun_check",),
+                expected_error="does not run with ADJOINT OPTIMIZATION",
+                timeout=30)
+    cleanup_run("optimization")
+    print(f"PASS optimization recovers the twin's rate constant ({np} ranks)",
+          flush=True)
+
+
 def regime_transitions(np):
     """A mineral regime transition (depletion, dissolution resuming) is a
     TSEvent the adjoint does not differentiate: the forward run and its
@@ -457,6 +560,7 @@ def main():
     final_state(np)
     memory_trajectory(np)
     rerun(np)
+    optimization(np)
     regime_transitions(np)
     if np == 1:
         failed_stage()

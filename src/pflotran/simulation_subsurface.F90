@@ -947,6 +947,8 @@ subroutine SimSubsurfWriteRegression(this)
         class is(pmc_ts_driver_type)
           if (associated(pmc%adjoint)) &
             call pmc%adjoint%RegressionOutput(OUTPUT_UNIT)
+          if (associated(pmc%optimizer)) &
+            call pmc%optimizer%RegressionOutput(OUTPUT_UNIT)
       end select
     endif
     if (OptionIsIORank(this%option)) then

@@ -4,7 +4,8 @@ adjoint.o : \
   input_aux.o \
   option.o \
   pflotran_constants.o \
-  string.o
+  string.o \
+  ts_optimizer.o
 adjoint_cost.o : \
   dataset_ascii.o \
   geometry.o \
@@ -3155,6 +3156,7 @@ pmc_ts_driver.o : \
   ts_adjoint.o \
   ts_model.o \
   ts_model_checks.o \
+  ts_optimizer.o \
   waypoint.o
 pnf.o : \
   characteristic_curves.o \
@@ -4576,6 +4578,9 @@ ts_model_checks.o : \
   option.o \
   pflotran_constants.o \
   ts_model.o
+ts_optimizer.o : \
+  option.o \
+  pflotran_constants.o
 ugdm_pointer.o : \
   petsc_utility.o
 units.o : \
