@@ -57,6 +57,19 @@ module Geomechanics_Field_module
 
     Mat :: A ! stores the matrix of the linear system
 
+    ! Stiffness before MatZeroRowsLocal. Needed to recover a rigid-plate
+    ! reaction after those rows have been replaced by the identity.
+    Mat :: A_original
+    Vec :: rigid_plate_u_unit
+    Vec :: rigid_plate_u0
+    Vec :: rigid_plate_f
+    Vec :: rigid_plate_work
+    PetscReal :: rigid_plate_Ku
+    PetscBool :: rigid_plate_active
+    PetscInt :: rigid_plate_n
+    ! Ghosted ids of owned plate nodes. Owned ghosted_id equals local_id.
+    PetscInt, pointer :: rigid_plate_ghosted_ids(:)
+
   end type geomech_field_type
 
   public :: GeomechFieldCreate, &
@@ -130,6 +143,15 @@ function GeomechFieldCreate()
   PetscObjectNullify(geomech_field%fluid_density_init_loc)
 
   PetscObjectNullify(geomech_field%A)
+  PetscObjectNullify(geomech_field%A_original)
+  PetscObjectNullify(geomech_field%rigid_plate_u_unit)
+  PetscObjectNullify(geomech_field%rigid_plate_u0)
+  PetscObjectNullify(geomech_field%rigid_plate_f)
+  PetscObjectNullify(geomech_field%rigid_plate_work)
+  geomech_field%rigid_plate_Ku = 0.d0
+  geomech_field%rigid_plate_active = PETSC_FALSE
+  geomech_field%rigid_plate_n = 0
+  nullify(geomech_field%rigid_plate_ghosted_ids)
 
   GeomechFieldCreate => geomech_field
 
@@ -192,7 +214,17 @@ subroutine GeomechFieldDestroy(geomech_field)
   call PUVecDestroy(geomech_field%fluid_density_loc)
   call PUVecDestroy(geomech_field%fluid_density_init_loc)
 
+  ! A is the solver matrix. A_original is a duplicate owned here.
   PetscObjectNullify(geomech_field%A)
+  call PUMatDestroy(geomech_field%A_original)
+  call PUVecDestroy(geomech_field%rigid_plate_u_unit)
+  call PUVecDestroy(geomech_field%rigid_plate_u0)
+  call PUVecDestroy(geomech_field%rigid_plate_f)
+  call PUVecDestroy(geomech_field%rigid_plate_work)
+  if (associated(geomech_field%rigid_plate_ghosted_ids)) then
+    deallocate(geomech_field%rigid_plate_ghosted_ids)
+  endif
+  nullify(geomech_field%rigid_plate_ghosted_ids)
 
   if (associated(geomech_field)) deallocate(geomech_field)
   nullify(geomech_field)

@@ -17,6 +17,8 @@ module PM_Geomechanics_Force_class
     class(realization_geomech_type), pointer :: geomech_realization
     class(realization_subsurface_type), pointer :: subsurf_realization
     class(communicator_type), pointer :: comm1
+    ! Unit plate solve runs once, after the KSP and the stored matrix exist.
+    PetscBool :: rigid_plate_unit_solved
   contains
     procedure, public :: ReadSimulationOptionsBlock => &
                            PMGeomechReadSimOptionsBlock
@@ -67,6 +69,7 @@ function PMGeomechForceCreate()
   nullify(geomech_force_pm%comm1)
 
   call PMBaseInit(geomech_force_pm)
+  geomech_force_pm%rigid_plate_unit_solved = PETSC_FALSE
 
   geomech_force_pm%header = 'GEOMECHANICS'
 
@@ -304,7 +307,8 @@ subroutine PMGeomechForceSetupLinearSystem(this,A,solution,right_hand_side,ierr)
   ! Date: 06/04/2025
   !
 
-  use Geomechanics_Force_module, only : GeomechForceSetupLinearSystem
+  use Geomechanics_Force_module, only : GeomechForceSetupLinearSystem, &
+                                        GeomechForceRigidPlateUnitSolve
 
   implicit none
 
@@ -318,8 +322,18 @@ subroutine PMGeomechForceSetupLinearSystem(this,A,solution,right_hand_side,ierr)
   call PrintMsg(this%option,'PMGeomechForce%SetupLinearSystem()')
 #endif
 
+  ! Assembly (and A_original) is finished before the first linear solve.
+  ! The KSP exists here; it does not exist inside AssembleCoeffMatrix's
+  ! caller until SetupSolvers, and the unit problem needs both.
+  if (.not.this%rigid_plate_unit_solved) then
+    call GeomechForceRigidPlateUnitSolve(this%solver%ksp, &
+                                         this%geomech_realization,ierr)
+    this%rigid_plate_unit_solved = PETSC_TRUE
+  endif
+
   call GeomechForceSetupLinearSystem(A,solution,right_hand_side, &
-                                     this%geomech_realization,ierr)
+                                     this%geomech_realization, &
+                                     this%solver%ksp,ierr)
 
 end subroutine PMGeomechForceSetupLinearSystem
 

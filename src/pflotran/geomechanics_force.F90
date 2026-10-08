@@ -29,6 +29,7 @@ module Geomechanics_Force_module
             GeomechForceSetupLinearSystem, &
             GeomechForceAssembleCoeffMatrix, &
             GeomechForceEffectiveStress, &
+            GeomechForceRigidPlateUnitSolve, &
             GeomechMapMaterialIdsToFlow
 
 contains
@@ -862,7 +863,7 @@ end subroutine GeomechForceApplyTractionBCtoRHS
 ! ************************************************************************** !
 
 subroutine GeomechForceSetupLinearSystem(A,solution,rhs,geomech_realization, &
-                                         ierr)
+                                         ksp,ierr)
   !
   ! Computes the Coefficient matrix and the right hand side of the system
   !
@@ -888,6 +889,7 @@ subroutine GeomechForceSetupLinearSystem(A,solution,rhs,geomech_realization, &
   Vec :: rhs
   Mat :: A
   class(realization_geomech_type) :: geomech_realization
+  KSP :: ksp
   PetscErrorCode :: ierr
 
   type(geomech_discretization_type), pointer :: geomech_discretization
@@ -1290,6 +1292,12 @@ subroutine GeomechForceSetupLinearSystem(A,solution,rhs,geomech_realization, &
   call VecAssemblyBegin(rhs,ierr);CHKERRQ(ierr)
   call VecAssemblyEnd(rhs,ierr);CHKERRQ(ierr)
 
+  ! External force, before Dirichlet values overwrite plate and support rows.
+  if (field%rigid_plate_active) then
+    call GeomechForceRigidPlateEnsureVecs(field,ierr)
+    call VecCopy(rhs,field%rigid_plate_f,ierr);CHKERRQ(ierr)
+  endif
+
   ! Find the boundary nodes with dirichlet and set the residual at those nodes
   ! to zero, later set the Jacobian to 1
 
@@ -1362,10 +1370,19 @@ subroutine GeomechForceSetupLinearSystem(A,solution,rhs,geomech_realization, &
     boundary_condition => boundary_condition%next
   enddo
 
+  ! Plate uz = 0 for the unloaded-plate solve. U is inserted after R0.
+  if (field%rigid_plate_active) then
+    call GeomechForceRigidPlateSetZ(rhs,0.d0,geomech_realization,ierr)
+  endif
+
   ! Need to assemby here since one cannot mix INSERT_VALUES
   ! and ADD_VALUES
   call VecAssemblyBegin(rhs,ierr);CHKERRQ(ierr)
   call VecAssemblyEnd(rhs,ierr);CHKERRQ(ierr)
+
+  if (field%rigid_plate_active) then
+    call GeomechForceRigidPlateApply(ksp,rhs,geomech_realization,ierr)
+  endif
 
 end subroutine GeomechForceSetupLinearSystem
 
@@ -1814,6 +1831,17 @@ subroutine GeomechForceAssembleCoeffMatrix(A,geomech_realization)
   call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
   call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
 
+  ! Duplicate before MatZeroRowsLocal. The plate reaction is read from this
+  ! copy; the solve matrix keeps identity rows for the plate uz dofs.
+  call GeomechForceRigidPlateBuildDofList(geomech_realization)
+  if (field%rigid_plate_active) then
+    if (.not.PetscObjectIsNull(field%A_original)) then
+      call MatDestroy(field%A_original,ierr);CHKERRQ(ierr)
+      PetscObjectNullify(field%A_original)
+    endif
+    call MatDuplicate(A,MAT_COPY_VALUES,field%A_original,ierr);CHKERRQ(ierr)
+  endif
+
   ! Find the boundary nodes with dirichlet and set the residual at those nodes
   ! to zero, later set the Jacobian to 1
 
@@ -1827,7 +1855,9 @@ subroutine GeomechForceAssembleCoeffMatrix(A,geomech_realization)
     boundary_condition => boundary_condition%next
   enddo
 
-  allocate(rows(vertex_count*option%ngeomechdof))
+  ! Plate nodes on a sideset are not in region%num_verts. One extra
+  ! slot per owned plate node holds the uz row.
+  allocate(rows(vertex_count*option%ngeomechdof + field%rigid_plate_n))
   count = 0
 
   boundary_condition => patch%geomech_boundary_condition_list%first
@@ -1882,6 +1912,21 @@ subroutine GeomechForceAssembleCoeffMatrix(A,geomech_realization)
     boundary_condition => boundary_condition%next
   enddo
 
+  ! Plate uz rows are Dirichlet rows. The prescribed value is chosen later
+  ! so the summed reaction equals RIGID_PLATE_FORCE_Z.
+  if (field%rigid_plate_active) then
+    do ivertex = 1, field%rigid_plate_n
+      count = count + 1
+      if (count > size(rows)) then
+        call GeomechForceError( &
+          'Rigid plate Dirichlet row list exceeded allocation.',option)
+      endif
+      ghosted_id = field%rigid_plate_ghosted_ids(ivertex)
+      rows(count) = (ghosted_id-1)*option%ngeomechdof + &
+        GEOMECH_DISP_Z_DOF - 1
+    enddo
+  endif
+
   ! rows may list the same node more than once when Dirichlet regions
   ! overlap. That is safe only while MAT_NO_OFF_PROC_ZERO_ROWS is off.
   ! GeomechDiscretizationCreateMatrix does not set that option. Do not
@@ -1896,6 +1941,423 @@ subroutine GeomechForceAssembleCoeffMatrix(A,geomech_realization)
   deallocate(rows)
 
 end subroutine GeomechForceAssembleCoeffMatrix
+
+! ************************************************************************** !
+
+subroutine GeomechForceRigidPlateBuildDofList(geomech_realization)
+  !
+  ! Owned plate nodes, one each, and whether a rigid plate is active.
+  ! ghosted_id equals local_id for nodes this rank owns.
+  !
+  ! Author: Jumanah Al Kubaisy
+  ! Date: 10/08/26
+  !
+
+  use Geomechanics_Realization_class
+  use Geomechanics_Field_module
+  use Geomechanics_Patch_module
+  use Geomechanics_Grid_Aux_module
+  use Geomechanics_Coupler_module
+  use Geomechanics_Region_module
+  use Option_module
+
+  implicit none
+
+  class(realization_geomech_type) :: geomech_realization
+
+  type(geomech_field_type), pointer :: field
+  type(geomech_patch_type), pointer :: patch
+  type(geomech_grid_type), pointer :: grid
+  type(option_type), pointer :: option
+  type(geomech_coupler_type), pointer :: boundary_condition
+  type(gm_region_type), pointer :: region
+  PetscInt, allocatable :: plate_ids(:)
+  PetscBool, allocatable :: seen(:)
+  PetscInt :: ncond, ncond_max, nverts, nplate, nplate_global
+  PetscInt :: local_id, ghosted_id, ivertex, iface, nvert_face
+  PetscErrorCode :: ierr
+
+  field => geomech_realization%geomech_field
+  patch => geomech_realization%geomech_patch
+  grid => patch%geomech_grid
+  option => geomech_realization%option
+
+  ncond = 0
+  boundary_condition => patch%geomech_boundary_condition_list%first
+  do
+    if (.not.associated(boundary_condition)) exit
+    if (associated(boundary_condition%geomech_condition%rigid_plate_force_z)) &
+      ncond = ncond + 1
+    boundary_condition => boundary_condition%next
+  enddo
+  call MPI_Allreduce(ncond,ncond_max,ONE_INTEGER_MPI,MPIU_INTEGER,MPI_MAX, &
+                     option%mycomm,ierr);CHKERRQ(ierr)
+  if (ncond_max > 1) then
+    call GeomechForceError( &
+      'Only one RIGID_PLATE_Z boundary condition is supported.',option)
+  endif
+  if (ncond_max >= 1) then
+    field%rigid_plate_active = PETSC_TRUE
+  else
+    field%rigid_plate_active = PETSC_FALSE
+  endif
+
+  if (associated(field%rigid_plate_ghosted_ids)) then
+    deallocate(field%rigid_plate_ghosted_ids)
+    nullify(field%rigid_plate_ghosted_ids)
+  endif
+  field%rigid_plate_n = 0
+  if (.not.field%rigid_plate_active) return
+
+  ! A .vset region stores owned local ids in vertex_ids. A .ss region
+  ! does not: GeomechGridLocalizeRegFromSideSet leaves num_verts at 0
+  ! and stores ghosted node ids in sideset%face_vertices. top.ss is the
+  ! second kind. Count an upper bound, then keep each owned node once.
+  nverts = 0
+  boundary_condition => patch%geomech_boundary_condition_list%first
+  do
+    if (.not.associated(boundary_condition)) exit
+    if (associated(boundary_condition%geomech_condition%rigid_plate_force_z)) then
+      region => boundary_condition%region
+      if (region%num_verts > 0) then
+        nverts = nverts + region%num_verts
+      else if (associated(region%sideset)) then
+        if (associated(region%sideset%face_vertices)) then
+          nverts = nverts + region%sideset%nfaces * &
+                   size(region%sideset%face_vertices,1)
+        endif
+      else
+        call GeomechForceError( &
+          'Rigid plate region has no vertices or sideset.',option)
+      endif
+    endif
+    boundary_condition => boundary_condition%next
+  enddo
+
+  allocate(seen(grid%nlmax_node))
+  seen = PETSC_FALSE
+  allocate(plate_ids(max(nverts,1)))
+  nplate = 0
+  boundary_condition => patch%geomech_boundary_condition_list%first
+  do
+    if (.not.associated(boundary_condition)) exit
+    if (associated(boundary_condition%geomech_condition%rigid_plate_force_z)) then
+      region => boundary_condition%region
+      if (region%num_verts > 0) then
+        do ivertex = 1, region%num_verts
+          local_id = region%vertex_ids(ivertex)
+          ghosted_id = grid%nL2G(local_id)
+          if (associated(patch%imat)) then
+            if (patch%imat(ghosted_id) <= 0) cycle
+          endif
+          if (seen(local_id)) cycle
+          seen(local_id) = PETSC_TRUE
+          nplate = nplate + 1
+          plate_ids(nplate) = ghosted_id
+        enddo
+      else if (associated(region%sideset)) then
+        if (associated(region%sideset%face_vertices)) then
+          nvert_face = size(region%sideset%face_vertices,1)
+          do iface = 1, region%sideset%nfaces
+            do ivertex = 1, nvert_face
+              ghosted_id = region%sideset%face_vertices(ivertex,iface)
+              if (ghosted_id < 1 .or. ghosted_id > grid%ngmax_node) cycle
+              local_id = grid%nG2L(ghosted_id)
+              if (local_id < 1) cycle
+              if (associated(patch%imat)) then
+                if (patch%imat(ghosted_id) <= 0) cycle
+              endif
+              if (seen(local_id)) cycle
+              seen(local_id) = PETSC_TRUE
+              nplate = nplate + 1
+              plate_ids(nplate) = ghosted_id
+            enddo
+          enddo
+        endif
+      endif
+    endif
+    boundary_condition => boundary_condition%next
+  enddo
+
+  call MPI_Allreduce(nplate,nplate_global,ONE_INTEGER_MPI,MPIU_INTEGER, &
+                     MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
+  if (nplate_global < 1) then
+    call GeomechForceError( &
+      'Rigid plate boundary has no owned nodes.',option)
+  endif
+
+  field%rigid_plate_n = nplate
+  if (nplate > 0) then
+    allocate(field%rigid_plate_ghosted_ids(nplate))
+    field%rigid_plate_ghosted_ids = plate_ids(1:nplate)
+  endif
+  deallocate(seen)
+  deallocate(plate_ids)
+
+end subroutine GeomechForceRigidPlateBuildDofList
+
+! ************************************************************************** !
+
+subroutine GeomechForceRigidPlateEnsureVecs(field,ierr)
+  !
+  ! Work vectors for the unit plate solution and the per-step reaction.
+  !
+  ! Author: Jumanah Al Kubaisy
+  ! Date: 10/08/26
+  !
+
+  use Geomechanics_Field_module
+
+  implicit none
+
+  type(geomech_field_type) :: field
+  PetscErrorCode :: ierr
+
+  if (.not.PetscObjectIsNull(field%rigid_plate_u_unit)) return
+
+  call VecDuplicate(field%disp_xx,field%rigid_plate_u_unit,ierr);CHKERRQ(ierr)
+  call VecDuplicate(field%disp_xx,field%rigid_plate_u0,ierr);CHKERRQ(ierr)
+  call VecDuplicate(field%disp_xx,field%rigid_plate_f,ierr);CHKERRQ(ierr)
+  call VecDuplicate(field%disp_xx,field%rigid_plate_work,ierr);CHKERRQ(ierr)
+
+end subroutine GeomechForceRigidPlateEnsureVecs
+
+! ************************************************************************** !
+
+subroutine GeomechForceRigidPlateSetZ(vec,value,geomech_realization,ierr)
+  !
+  ! Insert one value on every owned plate uz dof.
+  !
+  ! Author: Jumanah Al Kubaisy
+  ! Date: 10/08/26
+  !
+
+  use Geomechanics_Realization_class
+  use Geomechanics_Field_module
+  use Geomechanics_Patch_module
+  use Geomechanics_Grid_Aux_module
+  use Option_module
+
+  implicit none
+
+  Vec :: vec
+  PetscReal :: value
+  class(realization_geomech_type) :: geomech_realization
+  PetscErrorCode :: ierr
+
+  type(geomech_field_type), pointer :: field
+  type(geomech_grid_type), pointer :: grid
+  type(option_type), pointer :: option
+  PetscInt :: i, ghosted_id, petsc_id
+
+  field => geomech_realization%geomech_field
+  if (field%rigid_plate_n <= 0) return
+
+  grid => geomech_realization%geomech_patch%geomech_grid
+  option => geomech_realization%option
+  do i = 1, field%rigid_plate_n
+    ghosted_id = field%rigid_plate_ghosted_ids(i)
+    petsc_id = grid%node_ids_ghosted_petsc(ghosted_id)
+    call VecSetValue(vec,(petsc_id-1)*option%ngeomechdof + &
+                     GEOMECH_DISP_Z_DOF-1,value,INSERT_VALUES,ierr)
+    CHKERRQ(ierr)
+  enddo
+
+end subroutine GeomechForceRigidPlateSetZ
+
+! ************************************************************************** !
+
+subroutine GeomechForceRigidPlateSumZ(vec,geomech_realization,sum_z,ierr)
+  !
+  ! Sum the z entries of a global vector on owned plate nodes.
+  !
+  ! Author: Jumanah Al Kubaisy
+  ! Date: 10/08/26
+  !
+
+  use Geomechanics_Realization_class
+  use Geomechanics_Field_module
+  use Option_module
+
+  implicit none
+
+  Vec :: vec
+  class(realization_geomech_type) :: geomech_realization
+  PetscReal :: sum_z
+  PetscErrorCode :: ierr
+
+  type(geomech_field_type), pointer :: field
+  type(option_type), pointer :: option
+  PetscReal, pointer :: arr(:)
+  PetscReal :: local_sum
+  PetscInt :: i, ghosted_id
+
+  field => geomech_realization%geomech_field
+  option => geomech_realization%option
+  local_sum = 0.d0
+  call VecGetArray(vec,arr,ierr);CHKERRQ(ierr)
+  do i = 1, field%rigid_plate_n
+    ghosted_id = field%rigid_plate_ghosted_ids(i)
+    local_sum = local_sum + &
+      arr((ghosted_id-1)*option%ngeomechdof + GEOMECH_DISP_Z_DOF)
+  enddo
+  call VecRestoreArray(vec,arr,ierr);CHKERRQ(ierr)
+  call MPI_Allreduce(local_sum,sum_z,ONE_INTEGER_MPI,MPI_DOUBLE_PRECISION, &
+                     MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
+
+end subroutine GeomechForceRigidPlateSumZ
+
+! ************************************************************************** !
+
+subroutine GeomechForceRigidPlateUnitSolve(ksp,geomech_realization,ierr)
+  !
+  ! One solve with plate uz = 1. Ku is the summed z reaction.
+  !
+  ! Author: Jumanah Al Kubaisy
+  ! Date: 10/08/26
+  !
+
+  use Geomechanics_Realization_class
+  use Geomechanics_Field_module
+  use Option_module
+
+  implicit none
+
+  KSP :: ksp
+  class(realization_geomech_type) :: geomech_realization
+  PetscErrorCode :: ierr
+
+  type(geomech_field_type), pointer :: field
+  type(option_type), pointer :: option
+  KSPConvergedReason :: ksp_reason
+  PetscReal :: plate_sum
+
+  field => geomech_realization%geomech_field
+  option => geomech_realization%option
+  if (.not.field%rigid_plate_active) return
+
+  if (PetscObjectIsNull(field%A_original)) then
+    call GeomechForceError('Rigid plate stiffness was not stored.',option)
+  endif
+  call GeomechForceRigidPlateEnsureVecs(field,ierr)
+
+  ! Other Dirichlet values on this deck are homogeneous, so a zero vector
+  ! with plate uz = 1 is the unit problem.
+  call VecZeroEntries(field%rhs,ierr);CHKERRQ(ierr)
+  call GeomechForceRigidPlateSetZ(field%rhs,1.d0,geomech_realization,ierr)
+  call VecAssemblyBegin(field%rhs,ierr);CHKERRQ(ierr)
+  call VecAssemblyEnd(field%rhs,ierr);CHKERRQ(ierr)
+  call KSPSetOperators(ksp,field%A,field%A,ierr);CHKERRQ(ierr)
+  call KSPSolve(ksp,field%rhs,field%rigid_plate_u_unit,ierr);CHKERRQ(ierr)
+  call KSPGetConvergedReason(ksp,ksp_reason,ierr);CHKERRQ(ierr)
+  if (ksp_reason%v <= 0) then
+    call GeomechForceError('Rigid plate unit solve failed to converge.', &
+                           option)
+  endif
+
+  call MatMult(field%A_original,field%rigid_plate_u_unit, &
+               field%rigid_plate_work,ierr);CHKERRQ(ierr)
+  call GeomechForceRigidPlateSumZ(field%rigid_plate_work,geomech_realization, &
+                                  plate_sum,ierr)
+  field%rigid_plate_Ku = plate_sum
+  write(option%io_buffer,'(a,es13.6,a,i8)') &
+    ' Rigid plate stiffness Ku = ',field%rigid_plate_Ku, &
+    ' N/m, local nodes ',field%rigid_plate_n
+  if (field%rigid_plate_Ku <= 0.d0) then
+    call GeomechForceError(trim(option%io_buffer),option)
+  endif
+  call PrintMsg(option)
+
+end subroutine GeomechForceRigidPlateUnitSolve
+
+! ************************************************************************** !
+
+subroutine GeomechForceRigidPlateApply(ksp,rhs,geomech_realization,ierr)
+  !
+  ! Choose the shared plate settlement U = (F - R0) / Ku and write it
+  ! onto the plate rows of the right-hand side about to be solved.
+  !
+  ! Author: Jumanah Al Kubaisy
+  ! Date: 10/08/26
+  !
+
+  use Geomechanics_Realization_class
+  use Geomechanics_Field_module
+  use Geomechanics_Patch_module
+  use Geomechanics_Coupler_module
+  use Option_module
+  use Dataset_module
+
+  implicit none
+
+  KSP :: ksp
+  Vec :: rhs
+  class(realization_geomech_type) :: geomech_realization
+  PetscErrorCode :: ierr
+
+  type(geomech_field_type), pointer :: field
+  type(geomech_patch_type), pointer :: patch
+  type(option_type), pointer :: option
+  type(geomech_coupler_type), pointer :: boundary_condition
+  KSPConvergedReason :: ksp_reason
+  PetscReal :: r0, force, plate_u, recovered
+  PetscBool :: found
+
+  field => geomech_realization%geomech_field
+  patch => geomech_realization%geomech_patch
+  option => geomech_realization%option
+  if (field%rigid_plate_Ku <= 0.d0) then
+    call GeomechForceError('Rigid plate unit solve did not run.',option)
+  endif
+
+  call KSPSetOperators(ksp,field%A,field%A,ierr);CHKERRQ(ierr)
+  call KSPSolve(ksp,rhs,field%rigid_plate_u0,ierr);CHKERRQ(ierr)
+  call KSPGetConvergedReason(ksp,ksp_reason,ierr);CHKERRQ(ierr)
+  if (ksp_reason%v <= 0) then
+    call GeomechForceError('Rigid plate load solve failed to converge.', &
+                           option)
+  endif
+
+  ! R0 = sum (A_original * u0 - f)_z. f was copied before Dirichlet inserts.
+  call MatMult(field%A_original,field%rigid_plate_u0,field%rigid_plate_work, &
+               ierr);CHKERRQ(ierr)
+  call VecAXPY(field%rigid_plate_work,-1.d0,field%rigid_plate_f,ierr)
+  CHKERRQ(ierr)
+  call GeomechForceRigidPlateSumZ(field%rigid_plate_work,geomech_realization, &
+                                  r0,ierr)
+
+  found = PETSC_FALSE
+  force = 0.d0
+  boundary_condition => patch%geomech_boundary_condition_list%first
+  do
+    if (.not.associated(boundary_condition)) exit
+    if (associated( &
+        boundary_condition%geomech_condition%rigid_plate_force_z)) then
+      call DatasetUpdate(boundary_condition%geomech_condition% &
+                         rigid_plate_force_z%dataset,option)
+      force = boundary_condition%geomech_condition% &
+              rigid_plate_force_z%dataset%rarray(1)
+      found = PETSC_TRUE
+      exit
+    endif
+    boundary_condition => boundary_condition%next
+  enddo
+  if (.not.found) then
+    call GeomechForceError('Rigid plate condition was not found.',option)
+  endif
+
+  plate_u = (force - r0) / field%rigid_plate_Ku
+  call GeomechForceRigidPlateSetZ(rhs,plate_u,geomech_realization,ierr)
+  call VecAssemblyBegin(rhs,ierr);CHKERRQ(ierr)
+  call VecAssemblyEnd(rhs,ierr);CHKERRQ(ierr)
+
+  recovered = r0 + field%rigid_plate_Ku*plate_u
+  write(option%io_buffer, &
+    '(" Rigid plate: time=",es12.4," F=",es12.4," R0=",es12.4,' // &
+    '" U=",es12.4," R=",es12.4)') option%time,force,r0,plate_u,recovered
+  call PrintMsg(option)
+
+end subroutine GeomechForceRigidPlateApply
 
 ! ************************************************************************** !
 

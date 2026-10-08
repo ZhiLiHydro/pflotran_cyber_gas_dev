@@ -407,7 +407,8 @@ subroutine GeomechPatchInitCouplerAuxVars(coupler_list,patch,option)
             associated(coupler%geomech_condition%displacement_z) .or. &
             associated(coupler%geomech_condition%force_x) .or. &
             associated(coupler%geomech_condition%force_y) .or. &
-            associated(coupler%geomech_condition%force_z)) then
+            associated(coupler%geomech_condition%force_z) .or. &
+            associated(coupler%geomech_condition%rigid_plate_force_z)) then
           ! allocate arrays that match the number of boundary vertices
           allocate(coupler%geomech_aux_real_var(option%ngeomechdof,num_verts))
           allocate(coupler%geomech_aux_int_var(1,num_verts))
@@ -554,6 +555,21 @@ subroutine GeomechPatchUpdateCouplerAuxVars(patch,coupler_list, &
             case default
               option%io_buffer = 'FORCE_Z sub-condition must use ' // &
                 'DIRICHLET type in geomechanics condition "' // &
+                trim(geomech_condition%name) // '".'
+              call PrintErrMsg(option)
+          end select
+        endif
+        if (associated(geomech_condition%rigid_plate_force_z)) then
+          select case(geomech_condition%rigid_plate_force_z%itype)
+            case(NEUMANN_BC)
+              ! One resultant, stored on every vertex the way a transient
+              ! displacement is. The solve reads the dataset, not the sum.
+              coupler%geomech_aux_real_var(GEOMECH_DISP_Z_DOF, &
+                                           1:num_verts) = &
+                geomech_condition%rigid_plate_force_z%dataset%rarray(1)
+            case default
+              option%io_buffer = 'RIGID_PLATE_Z must be NEUMANN in ' // &
+                'geomechanics condition "' // &
                 trim(geomech_condition%name) // '".'
               call PrintErrMsg(option)
           end select
