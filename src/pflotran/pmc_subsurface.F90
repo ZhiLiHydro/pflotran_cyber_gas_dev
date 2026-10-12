@@ -18,6 +18,8 @@ module PMC_Subsurface_class
     procedure, public :: SetupSolvers => PMCSubsurfaceSetupSolvers
     procedure, public :: GetAuxData => PMCSubsurfaceGetAuxData
     procedure, public :: SetAuxData => PMCSubsurfaceSetAuxData
+    procedure, public :: ReportResidualAfterGeomech => &
+                           PMCSubsurfaceReportResidualAfterGeomech
     procedure, public :: FinalizeRun => PMCSubsurfaceFinalizeRun
     procedure, public :: Destroy => PMCSubsurfaceDestroy
   end type pmc_subsurface_type
@@ -944,6 +946,197 @@ subroutine PMCSubsurfaceSetAuxDataForGeomech(this)
   endif
 
 end subroutine PMCSubsurfaceSetAuxDataForGeomech
+
+! ************************************************************************** !
+
+subroutine PMCSubsurfaceReportResidualAfterGeomech(this)
+  !
+  ! After a Richards or TH step and its geomechanics solve, evaluate the
+  ! flow residual and print the L2 norm. The flow unknown is not solved
+  ! again, and aux state written by the residual evaluation is restored.
+  !
+  ! Author: Jumanah Al Kubaisy
+  ! Date: 10/11/26
+  !
+
+  use PM_Base_class
+  use PMC_Geomechanics_class
+  use Grid_module
+  use Global_Aux_module
+  use Material_Aux_module
+  use Richards_Aux_module
+  use TH_Aux_module
+  use Parameter_module
+  use Option_module
+  use Field_module
+
+  implicit none
+
+  class(pmc_subsurface_type) :: this
+
+  class(pm_base_type), pointer :: pm
+  type(grid_type), pointer :: grid
+  type(global_auxvar_type), pointer :: global_auxvars(:)
+  type(material_auxvar_type), pointer :: material_auxvars(:)
+  type(richards_auxvar_type), pointer :: rich_auxvars(:)
+  type(th_auxvar_type), pointer :: th_auxvars(:)
+  type(field_type), pointer :: field
+  character(len=MAXWORDLENGTH) :: mode_name
+  PetscInt :: ghosted_id
+  PetscInt :: flow_porosity_id
+  PetscInt :: saved_iflag
+  PetscReal :: rnorm
+  PetscReal, allocatable :: saved_por(:)
+  PetscReal, allocatable :: saved_dporosity_dp(:)
+  PetscReal, allocatable :: saved_eff_por(:)
+  PetscReal, allocatable :: saved_dpor_dp(:)
+  PetscReal, allocatable :: saved_dpor_dT(:)
+  PetscReal, allocatable :: saved_flow_por(:)
+  PetscBool :: is_richards
+  PetscBool :: saved_aux_up_to_date
+  PetscBool :: saved_press_up_to_date
+  PetscBool :: saved_mass_balance
+  Vec :: saved_accum
+  PetscErrorCode :: ierr
+
+  if (this%option%iflowmode /= RICHARDS_MODE .and. &
+      this%option%iflowmode /= TH_MODE) return
+  if (.not. associated(this%child)) return
+  if (.not. associated(this%realization)) return
+
+  select type(child => this%child)
+    class is(pmc_geomechanics_type)
+    class default
+      return
+  end select
+
+  pm => this%pm_list
+  if (.not. associated(pm)) return
+  if (.not. associated(pm%solver)) return
+
+  is_richards = this%option%iflowmode == RICHARDS_MODE
+  if (is_richards) then
+    mode_name = 'Richards'
+  else
+    mode_name = 'TH'
+  endif
+
+  grid => this%realization%patch%grid
+  global_auxvars => this%realization%patch%aux%Global%auxvars
+  material_auxvars => this%realization%patch%aux%Material%auxvars
+  field => this%realization%field
+  nullify(rich_auxvars)
+  nullify(th_auxvars)
+  if (.not. associated(grid)) return
+  if (grid%ngmax < 1) return
+  if (is_richards) then
+    if (.not. associated(this%realization%patch%aux%Richards)) return
+    rich_auxvars => this%realization%patch%aux%Richards%auxvars
+    if (.not. associated(rich_auxvars)) return
+  else
+    if (.not. associated(this%realization%patch%aux%TH)) return
+    th_auxvars => this%realization%patch%aux%TH%auxvars
+    if (.not. associated(th_auxvars)) return
+  endif
+
+  flow_porosity_id = 0
+  if (this%option%geomechanics%flow_coupling == &
+      GEOMECH_TWO_WAY_COUPLED .and. &
+      this%option%geomechanics%split_scheme == &
+      GEOMECH_FIXED_STRESS_SPLIT) then
+    flow_porosity_id = ParameterGetIDFromName('flow_porosity',this%option)
+  endif
+
+  allocate(saved_por(grid%ngmax))
+  allocate(saved_dporosity_dp(grid%ngmax))
+  allocate(saved_eff_por(grid%ngmax))
+  allocate(saved_dpor_dp(grid%ngmax))
+  allocate(saved_dpor_dT(grid%ngmax))
+  allocate(saved_flow_por(grid%ngmax))
+  saved_flow_por = 0.d0
+  saved_dpor_dT = 0.d0
+  do ghosted_id = 1, grid%ngmax
+    saved_por(ghosted_id) = material_auxvars(ghosted_id)%porosity
+    saved_dporosity_dp(ghosted_id) = &
+      material_auxvars(ghosted_id)%dporosity_dp
+    if (is_richards) then
+      saved_eff_por(ghosted_id) = rich_auxvars(ghosted_id)%effective_porosity
+      saved_dpor_dp(ghosted_id) = rich_auxvars(ghosted_id)%dpor_dp
+    else
+      saved_eff_por(ghosted_id) = th_auxvars(ghosted_id)%effective_porosity
+      saved_dpor_dp(ghosted_id) = th_auxvars(ghosted_id)%dpor_dp
+      saved_dpor_dT(ghosted_id) = th_auxvars(ghosted_id)%dpor_dT
+    endif
+    if (flow_porosity_id > 0) then
+      if (associated(global_auxvars(ghosted_id)%parameters)) then
+        saved_flow_por(ghosted_id) = &
+          global_auxvars(ghosted_id)%parameters(flow_porosity_id)
+      endif
+    endif
+  enddo
+
+  if (is_richards) then
+    saved_aux_up_to_date = &
+      this%realization%patch%aux%Richards%auxvars_up_to_date
+    saved_press_up_to_date = &
+      this%realization%patch%aux%Richards%auxvars_cell_pressures_up_to_date
+  else
+    saved_aux_up_to_date = &
+      this%realization%patch%aux%TH%auxvars_up_to_date
+    saved_press_up_to_date = PETSC_FALSE
+  endif
+  saved_iflag = this%option%iflag
+  saved_mass_balance = this%option%compute_mass_balance_new
+  ! The residual evaluation would otherwise zero and then re-accumulate
+  ! the mass-balance totals for a solution that is not a new Newton iterate.
+  this%option%compute_mass_balance_new = PETSC_FALSE
+
+  call VecDuplicate(field%flow_accum_tpdt,saved_accum,ierr);CHKERRQ(ierr)
+  call VecCopy(field%flow_accum_tpdt,saved_accum,ierr);CHKERRQ(ierr)
+
+  call SNESComputeFunction(pm%solver%snes,pm%solution_vec, &
+                           pm%residual_vec,ierr);CHKERRQ(ierr)
+  call VecNorm(pm%residual_vec,NORM_2,rnorm,ierr);CHKERRQ(ierr)
+
+  call VecCopy(saved_accum,field%flow_accum_tpdt,ierr);CHKERRQ(ierr)
+  call VecDestroy(saved_accum,ierr);CHKERRQ(ierr)
+
+  do ghosted_id = 1, grid%ngmax
+    material_auxvars(ghosted_id)%porosity = saved_por(ghosted_id)
+    material_auxvars(ghosted_id)%dporosity_dp = &
+      saved_dporosity_dp(ghosted_id)
+    if (is_richards) then
+      rich_auxvars(ghosted_id)%effective_porosity = saved_eff_por(ghosted_id)
+      rich_auxvars(ghosted_id)%dpor_dp = saved_dpor_dp(ghosted_id)
+    else
+      th_auxvars(ghosted_id)%effective_porosity = saved_eff_por(ghosted_id)
+      th_auxvars(ghosted_id)%dpor_dp = saved_dpor_dp(ghosted_id)
+      th_auxvars(ghosted_id)%dpor_dT = saved_dpor_dT(ghosted_id)
+    endif
+    if (flow_porosity_id > 0) then
+      if (associated(global_auxvars(ghosted_id)%parameters)) then
+        global_auxvars(ghosted_id)%parameters(flow_porosity_id) = &
+          saved_flow_por(ghosted_id)
+      endif
+    endif
+  enddo
+  if (is_richards) then
+    this%realization%patch%aux%Richards%auxvars_up_to_date = &
+      saved_aux_up_to_date
+    this%realization%patch%aux%Richards%auxvars_cell_pressures_up_to_date = &
+      saved_press_up_to_date
+  else
+    this%realization%patch%aux%TH%auxvars_up_to_date = saved_aux_up_to_date
+  endif
+  this%option%iflag = saved_iflag
+  this%option%compute_mass_balance_new = saved_mass_balance
+
+  write(this%option%io_buffer, &
+    '("  --> ",a," residual after geomechanics, step ",i6, &
+     &" ||R||_2 = ",es12.4)') trim(mode_name), this%timestepper%steps, rnorm
+  call PrintMsg(this%option)
+
+end subroutine PMCSubsurfaceReportResidualAfterGeomech
 
 ! ************************************************************************** !
 
