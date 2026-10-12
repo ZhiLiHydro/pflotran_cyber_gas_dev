@@ -62,6 +62,8 @@ module PMC_Base_class
     procedure, public :: AccumulateAuxData
     procedure, public :: GetAuxData
     procedure, public :: SetAuxData
+    procedure, public :: ReportResidualAfterGeomech => &
+                           PMCBaseReportResidualAfterGeomech
     procedure, public :: CheckNullPM => PMCBaseCheckNullPM
     procedure, public :: SetName
     procedure, public :: SetOption
@@ -659,6 +661,11 @@ recursive subroutine PMCBaseRunToTime(this,sync_time,stop_flag)
       call this%child%RunToTime(this%timestepper%target_time,local_stop_flag)
       ! Get data from other process-models
       call this%GetAuxData()
+      ! The last step of a run sets a stop flag other than failure.
+      ! Still report that step. Skip only a failed mechanics solve.
+      if (local_stop_flag /= TS_STOP_FAILURE) then
+        call this%ReportResidualAfterGeomech()
+      endif
     endif
 
     ! output at time step flags
@@ -844,6 +851,23 @@ recursive subroutine PMCBaseUpdateSolution(this)
   enddo
 
 end subroutine PMCBaseUpdateSolution
+
+! ************************************************************************** !
+
+subroutine PMCBaseReportResidualAfterGeomech(this)
+  !
+  ! Default: no residual report. Overridden where a flow process model
+  ! wants the residual after its geomechanics child has run.
+  !
+  ! Author: Jumanah Al Kubaisy
+  ! Date: 10/11/26
+  !
+
+  implicit none
+
+  class(pmc_base_type) :: this
+
+end subroutine PMCBaseReportResidualAfterGeomech
 
 ! ************************************************************************** !
 
