@@ -1,6 +1,7 @@
 #Description: Batch aerobic respiration, 5 h. ADJOINT OPTIMIZATION
-#             recovers the microbial rate constant (4.d-2) from the CO2(aq)
-#             it produces (adjoint-optimization-obs.dat), from 1.2d-1.
+#             recovers the microbial rate constant (4.d-2) from 20
+#             OBSERVATIONS of the CO2(aq) it produces, every 15 min
+#             (adjoint-optimization-obs.dat), from 1.2d-1.
 
 SIMULATION
   SIMULATION_TYPE SUBSURFACE
@@ -143,11 +144,13 @@ END
 
 #=========================== adjoint sensitivity ==============================
 ADJOINT
-  COST_FUNCTION MISFIT_LEAST_SQUARES
-    SPECIES_NAME CO2(aq)
-    REGION middle
-    OBSERVATION_FILE adjoint-optimization-obs.dat
-    SIGMA 1.d-6
+  OBSERVATIONS
+    TIME_SERIES
+      CELL_ID 1
+      OBSERVED_VARIABLE FREE_ION CO2(aq)
+      STANDARD_DEVIATION 1.d-6
+      FILE adjoint-optimization-obs.dat
+    /
   /
   PARAMETER RATE_CONSTANT
     KINETICS MICROBIAL

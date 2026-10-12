@@ -1,5 +1,6 @@
 adjoint.o : \
   adjoint_cost.o \
+  adjoint_observation.o \
   adjoint_param.o \
   input_aux.o \
   option.o \
@@ -7,7 +8,6 @@ adjoint.o : \
   string.o \
   ts_optimizer.o
 adjoint_cost.o : \
-  dataset_ascii.o \
   geometry.o \
   grid.o \
   input_aux.o \
@@ -19,6 +19,18 @@ adjoint_cost.o : \
   region.o \
   string.o \
   utility.o
+adjoint_observation.o : \
+  adjoint_cost.o \
+  geometry.o \
+  grid.o \
+  input_aux.o \
+  option.o \
+  pflotran_constants.o \
+  reaction_aux.o \
+  reaction_immobile_aux.o \
+  realization_subsurface.o \
+  string.o \
+  units.o
 adjoint_param.o : \
   input_aux.o \
   material.o \
@@ -33,6 +45,7 @@ adjoint_param.o : \
 adjoint_rt_dae.o : \
   adjoint.o \
   adjoint_cost.o \
+  adjoint_observation.o \
   adjoint_param.o \
   condition.o \
   coupler.o \

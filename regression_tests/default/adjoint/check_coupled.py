@@ -246,8 +246,8 @@ def rerun(np):
 
 def optimization(np):
     """ADJOINT OPTIMIZATION of the coupled model recovers the permeability
-    and the calcite rate constant of a twin experiment, Ca++ at two cells
-    at the final time, from 3x and 0.3x their values."""
+    and the calcite rate constant of a twin experiment, OBSERVATIONS of
+    Ca++ at two cells at the final time, from 3x and 0.3x their values."""
     base = deck("adjoint-coupled")
     probe = ("  COST_FUNCTION TERMINAL_SPECIES_CONCENTRATION\n"
              "    SPECIES_NAME Ca++\n    REGION probe\n  /\n")
@@ -256,16 +256,17 @@ def optimization(np):
     observed = parse_summary(run(two, "optimization", np=np))[0]
     with tempfile.TemporaryDirectory(
             prefix="pflotran-adjoint-optimization-") as directory:
-        misfits = ""
-        for i, region in ((1, "probe"), (2, "well")):
+        misfits = "  OBSERVATIONS\n"
+        for i, z in ((1, "6.25d0"), (2, "3.25d0")):
             observations = Path(directory) / f"observations{i}.dat"
-            observations.write_text("TIME_UNITS y\nDATA_UNITS mol/kg\n0 0\n"
+            observations.write_text("TIME_UNITS y\nDATA_UNITS mol/kg\n"
                                     f"5.d-2 {observed[i]:.17e}\n")
-            misfits += ("  COST_FUNCTION MISFIT_LEAST_SQUARES\n"
-                        f"    SPECIES_NAME Ca++\n    REGION {region}\n"
-                        f"    OBSERVATION_FILE {observations}\n"
-                        "    SIGMA 1.d-6\n  /\n")
-        twin = base.replace(probe, misfits)
+            misfits += ("    TIME_SERIES\n"
+                        f"      COORDINATE 0.5d0 0.5d0 {z}\n"
+                        "      OBSERVED_VARIABLE FREE_ION Ca++\n"
+                        "      STANDARD_DEVIATION 1.d-6\n"
+                        f"      FILE {observations}\n    /\n")
+        twin = base.replace(probe, misfits + "  /\n")
         twin = set_value(set_value(twin, PERMEABILITY, 3e-12),
                          CALCITE_RATE, 3e-9)
         optimized = twin.replace("ADJOINT\n", "ADJOINT\n  OPTIMIZATION\n"
@@ -293,9 +294,8 @@ def optimization(np):
             costs, gradients = parse_summary(run(
                 set_value(set_value(twin, PERMEABILITY, p1), CALCITE_RATE, p2),
                 "optimization", np=np))
-            require(costs[1] + costs[2] == f and
-                    gradients[1, 1] + gradients[2, 1] == g1 and
-                    gradients[1, 2] + gradients[2, 2] == g2,
+            require(costs[1] == f and gradients[1, 1] == g1 and
+                    gradients[1, 2] == g2,
                     f"evaluation 4 after the failure: {rows[3]}, a run of the "
                     f"deck: {costs} {gradients}")
     cleanup_run("optimization")

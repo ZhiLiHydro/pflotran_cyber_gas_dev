@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Finite-difference checks of the MODE GIRT_DAE adjoint for several
 microbial reactions, Monod, inhibition, yield and decay parameters, and the
-least-squares misfit cost. Post-processor of adjoint-extensions and
+OBSERVATIONS objective. Post-processor of adjoint-extensions and
 adjoint-extensions-np2; see check_adjoint.py for direct use."""
 
 import argparse
@@ -12,6 +12,7 @@ import tempfile
 
 from check_adjoint import (close, deck, parse_summary,
                            require, cleanup_run, read_sensitivities)
+from adjoint_verify import parse_rerun_check
 from check_adjoint import run as run_adjoint
 
 
@@ -201,83 +202,236 @@ def yield_decay(np):
         print('PASS zero yield and decay derivatives, plus invalid selections', flush=True)
 
 
-def misfit(np):
-    # the terminal concentration cost is the reference for J and for
-    # dJmisfit/dp = 2*w*(C-obs)/sigma**2 * dC/dp
+def observation_block(*entries):
+    """OBSERVATIONS of TIME_SERIES (cell, variable, species, error, file)."""
+    text = '  OBSERVATIONS\n'
+    for cell, variable, species, error, path in entries:
+        text += (f'    TIME_SERIES\n      CELL_ID {cell}\n'
+                 f'      OBSERVED_VARIABLE {variable} {species}\n'
+                 f'      {error}\n      FILE {path}\n    /\n')
+    return text + '  /\n'
+
+
+def with_observations(text, block):
+    text, count = re.subn(r'(?m)^ADJOINT\n', 'ADJOINT\n' + block, text, count=1)
+    require(count == 1, 'no ADJOINT block')
+    return text
+
+
+def write_series(path, rows, time_units='h', data_units='mol/kg'):
+    path.write_text(f'TIME_UNITS {time_units}\nDATA_UNITS {data_units}\n' +
+                    ''.join(f'{t:.17g} {v:.17e}\n' for t, v in rows))
+
+
+def observed(output):
+    """(time [s], simulated, sigma, residual) of each row of the
+    observations file."""
+    rows = []
+    path = Path(output).with_name('case-observations.dat')
+    for line in path.read_text().splitlines():
+        if not line.startswith('#'):
+            fields = line.split()
+            rows.append(tuple(float(fields[k]) for k in (1, 6, 7, 8)))
+    return rows
+
+
+def run_to(text, final, times):
+    """text run to final [h], with waypoints at times [h] before it."""
+    text, count = re.subn(r'(?m)^(\s*FINAL_TIME\s+)\S+\s+\S+',
+                          lambda m: m.group(1) + f'{final:.17g} h', text, count=1)
+    require(count == 1, 'no FINAL_TIME')
+    earlier = [t for t in times if t < final]
+    if earlier:
+        text, count = re.subn(r'(?m)^OUTPUT\n', 'OUTPUT\n  TIMES h ' +
+                              ' '.join(f'{t:.17g}' for t in earlier) + '\n', text, count=1)
+        require(count == 1, 'no OUTPUT block')
+    return text
+
+
+def observations(np):
+    """OBSERVATIONS: at the final time the objective is the terminal
+    concentration's 1/2((C-d)/sigma)^2, also with LOG_FORMULATION and in the
+    initial-state sensitivities; a twin over time series at three cells
+    (free ion and immobile) matches finite
+    differences and the sum of terminal costs at each time (one sweep for
+    the M runs it replaces); the sweep in segments, the memory trajectory
+    and reruns reproduce it bit for bit; units, a COORDINATE and bad input
+    (also a COORDINATE between processes) are checked."""
     base = example('1d4')
     terminal = re.search(r'  COST_FUNCTION TERMINAL_SPECIES_CONCENTRATION\n.*?  /\n',
                          base, re.S).group(0)
     with tempfile.TemporaryDirectory(prefix='pflotran-adjoint-observations-') as directory:
-        observations = Path(directory) / 'observations.dat'
-        observations.write_text('TIME_UNITS h\nDATA_UNITS mol/kg\n0 0\n5 5.d-5\n')
-        misfit_cost = terminal.replace('TERMINAL_SPECIES_CONCENTRATION',
-                                       'MISFIT_LEAST_SQUARES').replace(
-            '    SPECIES_NAME', f'    OBSERVATION_FILE {observations}\n'
-            '    SIGMA 1.d-4\n    WEIGHT 2.d0\n    SPECIES_NAME')
-        deck = base.replace(terminal, terminal + misfit_cost)
+        directory = Path(directory)
+        final = directory / 'final.dat'
+        write_series(final, [(5, 5e-5)])
+        one = observation_block((2, 'FREE_ION', 'CO2(aq)', 'STANDARD_DEVIATION 1.d-4', final))
+        deck = with_observations(base, one)
         reference = None
         for log in (False, True):
             text = log_formulation(deck) if log else deck
-            costs, gradients = gradient_check(text, [(RATE, 0, .04)], 'misfit', np)
-            factor = 4*(costs[1]-5e-5)/1e-8
-            close(costs[2], 2*((costs[1]-5e-5)/1e-4)**2, rtol=1e-10)
+            costs, gradients = gradient_check(text, [(RATE, 0, .04)], 'observations', np)
+            factor = (costs[1]-5e-5)/1e-8
+            close(costs[2], 0.5*((costs[1]-5e-5)/1e-4)**2, rtol=1e-10)
             close(gradients[2, 1], factor*gradients[1, 1], rtol=1e-8)
-            output = run(text, 'misfit_output', np=np, full_field=True)
+            output = run(text, 'observations_output', np=np, full_field=True)
             first = read_sensitivities(output, 4, cost=1)
             second = read_sensitivities(output, 4, cost=2)
-            require(first.keys() == second.keys(), 'misfit sensitivity layout differs')
+            require(first.keys() == second.keys(), 'sensitivity layout differs')
             for key in first:
                 close(second[key], factor*first[key], rtol=1e-8)
-            cleanup_run('misfit_output')
-            default = run(text, 'misfit_output', np=np)
-            require(not list(Path(default).parent.glob('*-du0.bin')),
-                    'misfit wrote FULL_FIELD by default')
-            cleanup_run('misfit_output')
+            cleanup_run('observations_output')
             if reference:
                 for cost in costs:
                     close(costs[cost], reference[0][cost], rtol=1e-7)
                     close(gradients[cost, 1], reference[1][cost, 1], rtol=1e-7)
             reference = costs, gradients
-        # four identical cells, summed across ranks: 4x the one-cell misfit
-        all_cells = deck.replace(misfit_cost, misfit_cost.replace('REGION cell2', 'REGION all'))
-        aggregate = parse_summary(run(all_cells, 'misfit_cells', np=np))
-        close(aggregate[0][2], 4*reference[0][2], rtol=1e-7)
-        close(aggregate[1][2, 1], 4*reference[1][2, 1], rtol=1e-7)
-        cleanup_run('misfit_cells')
-        # the same observation in s and mol/g gives the same cost
-        observations.write_text('TIME_UNITS sec\nDATA_UNITS mol/g\n0 0\n18000 5.d-8\n')
-        converted = parse_summary(run(deck, 'misfit_units', np=np))
-        close(converted[0][2], reference[0][2], rtol=1e-7)
-        cleanup_run('misfit_units')
-        observations.write_text('TIME_UNITS h\n4 5.d-5\n')
-        rejected = Path(run(deck, 'misfit_time_rejection', np=np,
-                            expected_error='final observation time must',
-                            expected_exit=87, timeout=30))
-        require(not list(rejected.parent.glob('TS-data-*')),
-                'early observation-time rejection leaked a trajectory')
-        require('Finished Initialization' not in rejected.read_text(),
-                'observation-time rejection ran the forward solve')
-        cleanup_run('misfit_time_rejection')
+        plain = parse_summary(run(deck, 'observations_forms', np=np))
+        # the same observation in sec and mol/g (sigma in the data's units),
+        # and as a MEASUREMENT
+        write_series(final, [(18000, 5e-8)], 'sec', 'mol/g')
+        in_grams = deck.replace('STANDARD_DEVIATION 1.d-4', 'STANDARD_DEVIATION 1.d-7')
+        close(parse_summary(run(in_grams, 'observations_forms', np=np))[0][2], plain[0][2],
+              rtol=1e-12)
+        write_series(final, [(5, 5e-5)])
+        measurement = deck.replace(one, '  OBSERVATIONS\n    MEASUREMENT\n      TIME 5 h\n'
+                                   '      CELL_ID 2\n      OBSERVED_VARIABLE FREE_ION CO2(aq)\n'
+                                   '      VALUE 5.d-5 mol/kg\n      STANDARD_DEVIATION 1.d-4\n'
+                                   '    /\n  /\n')
+        require(parse_summary(run(measurement, 'observations_forms', np=np)) == plain,
+                'a MEASUREMENT differs from the same TIME_SERIES row')
+        # the file's keywords in any case, and the cell at a COORDINATE
+        final.write_text('time_units h\ndata_units mol/kg\n5 5.d-5\n')
+        require(parse_summary(run(deck, 'observations_forms', np=np)) == plain,
+                'lowercase TIME_UNITS and DATA_UNITS change the objective')
+        write_series(final, [(5, 5e-5)])
+        at_point = deck.replace('      CELL_ID 2\n', '      COORDINATE 1.5d0 0.5d0 0.5d0\n')
+        require(parse_summary(run(at_point, 'observations_forms', np=np)) == plain,
+                'a COORDINATE in cell 2 differs from CELL_ID 2')
+        cleanup_run('observations_forms')
+
+        # a twin: data from a run at the true rate constant, fitted at 0.06
+        series = {
+            'co2': (2, 'FREE_ION', 'CO2(aq)', 'STANDARD_DEVIATION 1.d-6', [1, 2, 2.5, 4, 5]),
+            'o2': (3, 'FREE_ION', 'O2(aq)', 'ERROR ABSOLUTE 1.d-6 RELATIVE 1.d-2', [1.5, 3]),
+            'biomass': (4, 'IMMOBILE', 'Biomass', 'ERROR ABSOLUTE 1.d-6 RELATIVE 1.d-2', [3, 5]),
+        }
+        units = {'co2': 'mol/kg', 'o2': 'mol/kg', 'biomass': 'mol/m^3'}
+        for name, (_, _, _, _, times) in series.items():
+            write_series(directory / f'{name}.dat', [(t, 1e-4) for t in times],
+                         data_units=units[name])
+        block = observation_block(*[(cell, variable, species, error, directory / f'{name}.dat')
+                                    for name, (cell, variable, species, error, _)
+                                    in series.items()])
+        twin = with_observations(base, block)
+        rows = iter(observed(run(twin, 'observations_twin', np=np)))
+        for name, (_, _, _, _, times) in series.items():
+            write_series(directory / f'{name}.dat', [(t, next(rows)[1]) for t in times],
+                         data_units=units[name])
+        require(parse_summary(run(twin, 'observations_twin', np=np))[0][2] == 0.,
+                'the twin does not fit its own data')
+        fitted = replace_nth(twin, RATE, '6.d-2')
+        costs, gradients = gradient_check(fitted, [(RATE, 0, .06)], 'observations_twin', np)
+        require(costs[2] > 0., 'the fitted twin has no misfit')
+        whole = (costs, gradients)
+        for args in (('-adjoint_debug_split',), ('-ts_trajectory_type', 'memory')):
+            require(parse_summary(run(fitted, 'observations_twin', np=np, args=args)) == whole,
+                    f'{args} changes the objective or its gradient')
+        parse_rerun_check(run(fitted, 'observations_twin', np=np,
+                              args=('-ts_model_rerun_check',)))
+        # one sweep = the sum over observations of r/sigma times the terminal
+        # concentration's gradient in a run to its time
+        output = run(fitted, 'observations_twin', np=np)
+        all_times = sorted({t for *_, times in series.values() for t in times})
+        total = 0.
+        rows = iter(observed(output))
+        for cell, variable, species, _, times in series.values():
+            for t in times:
+                _, _, sigma, r = next(rows)
+                cost = (f'  COST_FUNCTION TERMINAL_SPECIES_CONCENTRATION\n'
+                        f'    SPECIES_NAME {species}\n    CELL_IDS {cell}\n  /\n')
+                short = run_to(replace_nth(base, RATE, '6.d-2').replace(terminal, cost),
+                               t, all_times)
+                total += r/sigma*parse_summary(run(short, 'observations_sum', np=np))[1][1, 1]
+        close(total, gradients[2, 1], rtol=1e-10)
+        cleanup_run('observations_twin')
+        cleanup_run('observations_sum')
+
+        if np > 1:
+            # a COORDINATE on the face between the cells of two processes,
+            # of an unstructured grid (a structured one shifts it into one)
+            grid = directory / 'line.ugi'
+            grid.write_text('4 20\n' + ''.join(
+                f'H {i+1} {i+2} {i+7} {i+6} {i+11} {i+12} {i+17} {i+16}\n'
+                for i in range(4)) + ''.join(
+                f'{x}. {y}. {z}.\n' for z in (0, 1) for y in (0, 1) for x in range(5)))
+            unstructured, count = re.subn(r'(?ms)^GRID\n.*?^END\n',
+                                          f'GRID\n  TYPE UNSTRUCTURED {grid}\nEND\n',
+                                          deck, count=1)
+            require(count == 1, 'no GRID block')
+            run(unstructured.replace('      CELL_ID 2\n', '      COORDINATE 2.d0 0.5d0 0.5d0\n'),
+                'observations_face', np=np, expected_error='is in cells of 2 processes')
+            cleanup_run('observations_face')
+
         if np == 1:
+            write_series(final, [(5, 5e-5)])
             for content, error in (
-                ('TIME_UNITS h\nDATA_UNITS M\n5 5.d-5\n', 'Units'),
-                ('TIME_UNITS h\n4 5.d-5\n', 'final observation time must'),
-                ('TIME_UNITS h\n5 5.d-5\n4 5.d-5\n', 'observation times must increase'),
-                ('TIME_UNITS h\n5 nan\n', 'While reading "column data"'),
-                ('TIME_UNITS h\n5 5.d-5 6.d-5\n', 'exactly one data column'),
-                ('CYCLIC\nTIME_UNITS h\n0 0\n5 5.d-5\n', 'does not support CYCLIC'),
-            ):
-                observations.write_text(content)
-                run(deck, 'misfit_rejections', expected_error=error)
-            observations.write_text('TIME_UNITS h\n5 5.d-5\n')
-            run(deck.replace('SIGMA 1.d-4', 'SIGMA 0.d0'), 'misfit_rejections',
-                expected_error='SIGMA must be finite and positive')
-            run(deck.replace('WEIGHT 2.d0', 'WEIGHT -1.d0'), 'misfit_rejections',
-                expected_error='requires finite, nonnegative WEIGHT')
-            run(deck.replace(str(observations), str(observations)+'-missing'),
-                'misfit_rejections', expected_error='not found.')
-            cleanup_run('misfit_rejections')
-    print(f'PASS terminal misfit formula, units, LOG and distributed output ({np} ranks)', flush=True)
+                    ('TIME_UNITS h\nDATA_UNITS M\n5 5.d-5\n', 'Units'),
+                    ('DATA_UNITS mol/kg\n5 5.d-5\n', 'requires TIME_UNITS'),
+                    ('TIME_UNITS h\n5 5.d-5\n', 'requires DATA_UNITS'),
+                    ('TIME_UNITS h\nDATA_UNITS mol/kg\n', 'has no data'),
+                    ('TIME_UNITS h\nDATA_UNITS mol/kg\n5 5.d-5\n4 5.d-5\n',
+                     'times must increase'),
+                    ('TIME_UNITS h\nDATA_UNITS mol/kg\n0 5.d-5\n', 'is not after the start'),
+                    ('TIME_UNITS h\nDATA_UNITS mol/kg\n6 5.d-5\n', 'is after the final time'),
+                    ('TIME_UNITS h\nDATA_UNITS mol/kg\n5 5.d-5 1.d-6\n',
+                     'a row is a time and one value'),
+                    ('TIME_UNITS h\nDATA_UNITS mol/kg\n5 inf\n', 'is not finite')):
+                (directory / 'bad.dat').write_text(content)
+                bad = deck.replace(str(final), str(directory / 'bad.dat'))
+                run(bad, 'observations_rejections', expected_error=error)
+            for old, new, error in (
+                    ('      CELL_ID 2\n', '', 'requires CELL_ID or COORDINATE'),
+                    ('      CELL_ID 2\n', '      REGION cell2\n', 'is at one cell'),
+                    ('      CELL_ID 2\n', '      CELL_ID 9\n', 'not a cell of the grid'),
+                    ('FREE_ION CO2(aq)', 'TOTAL CO2(aq)', 'TOTAL is not supported yet'),
+                    ('FREE_ION CO2(aq)', 'FREE_ION Biomass', 'is not a primary species'),
+                    ('      OBSERVED_VARIABLE FREE_ION CO2(aq)\n', '',
+                     'requires OBSERVED_VARIABLE'),
+                    ('      STANDARD_DEVIATION 1.d-4\n', '',
+                     'requires ERROR or STANDARD_DEVIATION'),
+                    ('      STANDARD_DEVIATION 1.d-4\n',
+                     '      STANDARD_DEVIATION 1.d-4\n      ERROR ABSOLUTE 0 RELATIVE 0\n',
+                     'gives the error twice'),
+                    ('STANDARD_DEVIATION 1.d-4', 'STANDARD_DEVIATION Infinity',
+                     'STANDARD_DEVIATION must be positive and finite'),
+                    ('STANDARD_DEVIATION 1.d-4', 'STANDARD_DEVIATION -1.d-4',
+                     'STANDARD_DEVIATION must be positive and finite'),
+                    ('STANDARD_DEVIATION 1.d-4', 'ERROR ABSOLUTE Inf RELATIVE 0',
+                     'ERROR must be finite and not negative'),
+                    (f'      FILE {final}\n', '', 'requires FILE'),
+                    (str(final), str(final) + '-missing', 'not found'),
+                    ('  OBSERVATIONS\n', '  OBSERVATIONS\n  /\n  OBSERVATIONS\n',
+                     'has no TIME_SERIES or MEASUREMENT'),
+                    (one, one + one, 'takes one OBSERVATIONS block')):
+                require(old in deck, f'missing {old!r}')
+                run(deck.replace(old, new, 1), 'observations_rejections', expected_error=error)
+            zero = deck.replace('STANDARD_DEVIATION 1.d-4', 'ERROR ABSOLUTE 0 RELATIVE 1.d-2')
+            write_series(final, [(5, 0.)])
+            run(zero, 'observations_rejections', expected_error='is zero')
+            write_series(final, [(5, 5e-5)])
+            for old, new, error in (
+                    ('      VALUE 5.d-5 mol/kg\n', '      VALUE 5.d-5\n', 'VALUE units'),
+                    ('      TIME 5 h\n', '', 'requires TIME'),
+                    ('      TIME 5 h\n', '      TIME 5\n', 'TIME units'),
+                    ('FREE_ION CO2(aq)', 'IMMOBILE CO2(aq)', 'Units of [volume] were expected')):
+                run(measurement.replace(old, new), 'observations_rejections',
+                    expected_error=error)
+            run(measurement.replace('FREE_ION CO2(aq)', 'IMMOBILE CO2(aq)').replace(
+                'mol/kg', 'mol/m^3'), 'observations_rejections',
+                expected_error='is not an immobile species')
+            cleanup_run('observations_rejections')
+    print(f'PASS observations: final-time formula, time series vs FD and terminal sums, '
+          f'segments, units and rejections ({np} ranks)', flush=True)
 
 
 def nonunit_example(volume=2.0):
@@ -431,7 +585,8 @@ def main():
     parser.add_argument('--np', type=int, default=1)
     parser.add_argument('--executable')
     parser.add_argument('--feature', default='all',
-                        choices=('all', 'multireaction', 'inhibition', 'yield_decay', 'misfit',
+                        choices=('all', 'multireaction', 'inhibition', 'yield_decay',
+                                 'observations',
                                  'geometry', 'selection', 'branches'))
     args = parser.parse_args()
     if args.executable:
@@ -444,8 +599,8 @@ def main():
         inhibition(np)
     if args.feature in ('all', 'yield_decay'):
         yield_decay(np)
-    if args.feature in ('all', 'misfit'):
-        misfit(np)
+    if args.feature in ('all', 'observations'):
+        observations(np)
     if args.feature in ('all', 'geometry'):
         biomass_geometry(np)
     if args.feature in ('all', 'selection'):

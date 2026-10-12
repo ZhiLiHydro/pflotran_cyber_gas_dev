@@ -1,6 +1,6 @@
 # Discrete adjoint of MODE GIRT_DAE
 
-A deck's `ADJOINT` block (costs and parameters) runs PETSc's
+A deck's `ADJOINT` block (costs, observations and parameters) runs PETSc's
 `TSAdjointSolve` after the forward run of `MODE GIRT_DAE`, alone or with
 `MODE RICHARDS_DAE` flow as one model, and prints
 
@@ -26,14 +26,63 @@ surface area, so finite differences in it are not dJ/dK(0)).
 `(natural cell id-1)*ncomp + species-1`) and, with flow,
 `<prefix>-adjoint-dJ<i>-dP0.bin` (entry `natural cell id-1`).
 
-## Optimization
+## Observations
 
-An `OPTIMIZATION` sub-block of `ADJOINT` minimizes the sum of the costs
-over the parameters with PETSc TAO, from the parameters' deck values:
+An `OBSERVATIONS` sub-block of `ADJOINT` holds data at any time of the run
+and makes one more cost, their misfit
+phi = 1/2 sum_i ((H_i - d_i)/sigma_i)^2, with H_i the simulated value:
 
 ```
 ADJOINT
-  COST_FUNCTION MISFIT_LEAST_SQUARES ... /
+  OBSERVATIONS
+    TIME_SERIES
+      CELL_ID 1                          # or COORDINATE x y z
+      OBSERVED_VARIABLE FREE_ION CO2(aq) # or IMMOBILE <species>
+      STANDARD_DEVIATION 1.d-6           # or ERROR ABSOLUTE a RELATIVE r
+      FILE co2.dat                       # TIME_UNITS, DATA_UNITS, then
+    /                                    #   rows: time value
+    MEASUREMENT
+      TIME 3 h
+      CELL_ID 1
+      OBSERVED_VARIABLE FREE_ION O2(aq)
+      VALUE 1.2d-3 mol/kg
+      STANDARD_DEVIATION 1.d-5
+    /
+  /
+  ...
+END
+```
+
+Nothing has a default: every `TIME_SERIES` and `MEASUREMENT` gives its
+cell, variable, error and times with units; sigma = a + r|d| is in the
+data's units (mol/kg aqueous, mol/m^3 bulk immobile). An observation is
+at one cell (a `REGION` is rejected: it would need an operator such as a
+volume average); a `COORDINATE` on a face between cells of two processes
+(unstructured grids) is rejected too. `TOTAL` concentrations are not
+supported yet; for a species without aqueous complexes the free ion is the
+total. Times are after the start and at most the final time.
+
+Observation times are waypoints (they shorten the run's steps), so the
+run has a step state at each;
+the forward run records the simulated values there, and the backward sweep
+runs in segments between those steps, adding (H_i - d_i)/sigma_i^2 dH_i/dY
+to the objective's lambda at each: one sweep for all times. The summary
+prints the objective as the last cost J_k, with chi^2/n = 2 J_k/n;
+`<prefix>-observations.dat` lists every observation (time, cell, observed,
+simulated, sigma, residual) and `<prefix>-adjoint-gradient.dat` the
+objective and its gradient (parameter name, value, derivative).
+`-adjoint_debug_split` runs the sweep in segments at every waypoint
+interval (a test: the result is the same bit for bit).
+
+## Optimization
+
+An `OPTIMIZATION` sub-block of `ADJOINT` minimizes the misfit of the
+`OBSERVATIONS` (required) over the parameters with PETSc TAO, from the
+parameters' deck values:
+
+```
+ADJOINT
+  OBSERVATIONS ... /
   PARAMETER RATE_CONSTANT ... /
   OPTIMIZATION
     TYPE BQNLS                       # default; a first-order TAO type
@@ -79,8 +128,9 @@ objective has small jumps where the step sequence changes; fixed steps
 
 ## Scope
 
-- Costs: `TERMINAL_SPECIES_CONCENTRATION`, `MISFIT_LEAST_SQUARES` (final
-  observation at the final time), of a primary or an immobile species.
+- Costs: `TERMINAL_SPECIES_CONCENTRATION` of a primary or an immobile
+  species (a sensitivity at the final time), and the misfit of
+  `OBSERVATIONS` at any times (free ion or immobile species at a cell).
 - Parameters: `RATE_CONSTANT` (`KINETICS MICROBIAL` with `REACTION_INDEX`,
   or `KINETICS MINERAL` with `MINERAL_NAME` and a single rate constant),
   `HALF_SATURATION_CONSTANT`, `INHIBITION_CONSTANT`, `SMOOTHSTEP_INTERVAL`,

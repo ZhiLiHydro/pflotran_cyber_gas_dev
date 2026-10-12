@@ -264,6 +264,7 @@ srcsink_obj = \
 adjoint_obj = \
 	${common_src}adjoint.o \
 	${common_src}adjoint_cost.o \
+	${common_src}adjoint_observation.o \
 	${common_src}adjoint_param.o \
 	${common_src}adjoint_rt_dae.o
 

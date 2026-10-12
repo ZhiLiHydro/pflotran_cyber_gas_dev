@@ -2,7 +2,7 @@ module Adjoint_RT_DAE_class
   !
   ! Discrete adjoint of MODE GIRT_DAE (RT_DAE_Model_class), alone or with
   ! RICHARDS_DAE flow (Flow_RT_DAE_Model_class), for the ADJOINT block's
-  ! costs (functions of the final state) and parameters.
+  ! terminal costs, observations and parameters.
   !
   ! A reaction parameter's cell derivatives, at the model's converged
   ! chemistry, go into the model's rows:
@@ -13,12 +13,17 @@ module Adjoint_RT_DAE_class
   ! The gradient at the initial state is pulled back to the physical
   ! initial data and, with flow, the initial pressures.
   !
-  ! Output (.out file; FULL_FIELD also writes binary Vecs):
+  ! Output (.out file; FULL_FIELD also writes binary Vecs; OBSERVATIONS
+  ! <prefix>-observations.dat and <prefix>-adjoint-gradient.dat):
   !   === ADJOINT SUMMARY ===
-  !   Cost J_i = <name>
+  !   Cost J_i = <name>                       (a terminal cost)
   !     J_i(T)              = <value>
+  !   Cost J_k = misfit of <n> OBSERVATIONS   (the objective, last)
+  !     J_k                 = <value>
+  !     chi^2/n = 2 J_k/n   = <value>
+  !   and for each cost
   !     dJ_i/dp_j [<name>] = <value>
-  !     max |dJ_i/du_phys(0)| = <value>     (primary species)
+  !     max |dJ_i/du_phys(0)| = <value>     (primary and immobile species)
   !     max |dJ_i/dK(0)| = <value>          (kinetic inventories, if any)
   !     max |dJ_i/dP(0)| = <value>          (initial pressures, with flow)
   !   === END ADJOINT ===
@@ -53,13 +58,17 @@ module Adjoint_RT_DAE_class
     PetscBool :: debug_done = PETSC_FALSE
   contains
     procedure, public :: Setup => AdjRTDAESetup
-    procedure, public :: CheckTerminalTime => AdjRTDAECheckTerminalTime
     procedure, public :: TerminalGradients => AdjRTDAETerminalGradients
     procedure, public :: ParameterJacobian => AdjRTDAEParameterJacobian
     procedure, public :: Report => AdjRTDAEReport
     procedure, public :: GetParameters => AdjRTDAEGetParameters
     procedure, public :: SetParameters => AdjRTDAESetParameters
     procedure, public :: ParameterInfo => AdjRTDAEParameterInfo
+    procedure, public :: ObservationTimes => AdjRTDAEObservationTimes
+    procedure, public :: RecordObservations => AdjRTDAERecordObservations
+    procedure, public :: Kick => AdjRTDAEKick
+    procedure, public :: Objective => AdjRTDAEObjective
+    procedure, public :: BeginRerun => AdjRTDAEBeginRerun
     procedure, public :: Destroy => AdjRTDAEDestroy
   end type adjoint_rt_dae_type
 
@@ -139,12 +148,14 @@ end function AdjRTDAECoupled
 
 subroutine AdjRTDAESetup(this,model,final_time)
   !
-  ! Resolves the costs and parameters; the model rejects unsupported physics.
+  ! Resolves the costs, observations and parameters; the model rejects
+  ! unsupported physics.
   !
   ! Author: Hansol Suh
   ! Date: 09/23/26
   !
   use Adjoint_Cost_module, only : adj_cost_list, AdjCostCount
+  use Adjoint_Observation_module, only : AdjObsCount, AdjObsSetup
   use Adjoint_Param_module, only : adj_param_list, AdjParamCount
 
   implicit none
@@ -157,7 +168,7 @@ subroutine AdjRTDAESetup(this,model,final_time)
   type(adjoint_cost_type), pointer :: cur_cost
   type(adjoint_param_type), pointer :: cur_param
   type(option_type), pointer :: option
-  PetscBool :: flag, valid
+  PetscBool :: flag
   PetscErrorCode :: ierr
 
   option => this%option
@@ -186,14 +197,9 @@ subroutine AdjRTDAESetup(this,model,final_time)
   cur_cost => adj_cost_list
   do while (associated(cur_cost))
     call cur_cost%Setup(this%realization,option)
-    call cur_cost%ValidateTime(final_time,valid)
-    if (.not.valid) then
-      call PrintErrMsg(option,'MISFIT_LEAST_SQUARES final observation time &
-        &must match the simulation final time; multi-time objectives are not &
-        &supported.')
-    endif
     cur_cost => cur_cost%next
   enddo
+  if (AdjObsCount() > 0) call AdjObsSetup(this%realization,final_time,option)
   cur_param => adj_param_list
   do while (associated(cur_param))
     if (cur_param%kind == ADJ_PARAM_PERMEABILITY .and. &
@@ -208,6 +214,10 @@ subroutine AdjRTDAESetup(this,model,final_time)
     cur_param => cur_param%next
   enddo
   this%ncosts = AdjCostCount()
+  if (AdjObsCount() > 0) then
+    this%ncosts = this%ncosts + 1
+    this%iobjective = this%ncosts
+  endif
   this%nparams = AdjParamCount()
 
   ! the parameter Jacobian reads the chemistry of the model's last closure
@@ -257,35 +267,6 @@ end subroutine AdjRTDAECheckScaledSources
 
 ! ************************************************************************** !
 
-subroutine AdjRTDAECheckTerminalTime(this,time,valid)
-  !
-  ! Author: Hansol Suh
-  ! Date: 09/23/26
-  !
-
-  use Adjoint_Cost_module, only : adj_cost_list
-
-  implicit none
-
-  class(adjoint_rt_dae_type) :: this
-  PetscReal :: time
-  PetscBool :: valid
-
-  type(adjoint_cost_type), pointer :: cur_cost
-  PetscBool :: cost_valid
-
-  valid = PETSC_TRUE
-  cur_cost => adj_cost_list
-  do while (associated(cur_cost))
-    call cur_cost%ValidateTime(time,cost_valid)
-    valid = valid .and. cost_valid
-    cur_cost => cur_cost%next
-  enddo
-
-end subroutine AdjRTDAECheckTerminalTime
-
-! ************************************************************************** !
-
 subroutine AdjRTDAETerminalGradients(this,model,time,Y)
   !
   ! Author: Hansol Suh
@@ -330,6 +311,136 @@ subroutine AdjRTDAETerminalGradients(this,model,time,Y)
   if (associated(coupled)) call FlowRTDAERestoreParts(coupled,Y,Y_f,Y_t)
 
 end subroutine AdjRTDAETerminalGradients
+
+! ************************************************************************** !
+
+subroutine AdjRTDAEObservationTimes(this,times)
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/12/26
+  !
+  use Adjoint_Observation_module, only : AdjObsTimes
+
+  implicit none
+
+  class(adjoint_rt_dae_type) :: this
+  PetscReal, allocatable :: times(:)
+
+  call AdjObsTimes(times)
+
+end subroutine AdjRTDAEObservationTimes
+
+! ************************************************************************** !
+
+subroutine AdjRTDAERecordObservations(this,model,time,step,Y,recorded)
+  !
+  ! The observations are functions of the transport state.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/12/26
+  !
+  use Adjoint_Observation_module, only : AdjObsRecord
+
+  implicit none
+
+  class(adjoint_rt_dae_type) :: this
+  class(ts_model_type), target :: model
+  PetscReal :: time
+  PetscInt :: step
+  Vec :: Y
+  PetscBool :: recorded
+
+  class(rt_dae_model_type), pointer :: rt
+  class(flow_rt_dae_model_type), pointer :: coupled
+  Vec :: Y_f, Y_t
+
+  recorded = PETSC_FALSE
+  if (this%iobjective == 0) return
+  rt => AdjRTDAEModel(this,model)
+  coupled => AdjRTDAECoupled(model)
+  if (associated(coupled)) then
+    call FlowRTDAEGetParts(coupled,Y,Y_f,Y_t)
+    call AdjObsRecord(Y_t,rt%ndof,rt%reaction%use_log_formulation,time, &
+                      step,this%option,recorded)
+    call FlowRTDAERestoreParts(coupled,Y,Y_f,Y_t)
+  else
+    call AdjObsRecord(Y,rt%ndof,rt%reaction%use_log_formulation,time,step, &
+                      this%option,recorded)
+  endif
+
+end subroutine AdjRTDAERecordObservations
+
+! ************************************************************************** !
+
+subroutine AdjRTDAEKick(this,model,step,lambda)
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/12/26
+  !
+  use Adjoint_Observation_module, only : AdjObsKick
+
+  implicit none
+
+  class(adjoint_rt_dae_type) :: this
+  class(ts_model_type), target :: model
+  PetscInt :: step
+  Vec :: lambda
+
+  class(rt_dae_model_type), pointer :: rt
+  class(flow_rt_dae_model_type), pointer :: coupled
+  Vec :: lam_f, lam_t
+
+  rt => AdjRTDAEModel(this,model)
+  coupled => AdjRTDAECoupled(model)
+  if (associated(coupled)) then
+    call FlowRTDAEGetParts(coupled,lambda,lam_f,lam_t)
+    call AdjObsKick(lam_t,rt%ndof,step)
+    call FlowRTDAERestoreParts(coupled,lambda,lam_f,lam_t)
+  else
+    call AdjObsKick(lambda,rt%ndof,step)
+  endif
+
+end subroutine AdjRTDAEKick
+
+! ************************************************************************** !
+
+subroutine AdjRTDAEObjective(this,phi,complete)
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/12/26
+  !
+  use Adjoint_Observation_module, only : AdjObsObjective
+
+  implicit none
+
+  class(adjoint_rt_dae_type) :: this
+  PetscReal :: phi
+  PetscBool :: complete
+
+  call AdjObsObjective(phi,complete)
+
+end subroutine AdjRTDAEObjective
+
+! ************************************************************************** !
+
+subroutine AdjRTDAEBeginRerun(this,ts)
+  !
+  ! Also forgets the observations the last run recorded.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/13/26
+  !
+  use Adjoint_Observation_module, only : AdjObsReset
+
+  implicit none
+
+  class(adjoint_rt_dae_type) :: this
+  TS :: ts
+
+  call TSAdjBeginRerun(this,ts)
+  call AdjObsReset()
+
+end subroutine AdjRTDAEBeginRerun
 
 ! ************************************************************************** !
 
@@ -775,6 +886,7 @@ subroutine AdjRTDAEReport(this,model,time0,Y0)
   use Adjoint_module, only : adjoint_output_full_field
   use Adjoint_Cost_module, only : adj_cost_list
   use Adjoint_Param_module, only : adj_param_list
+  use Adjoint_Observation_module, only : AdjObsCount, AdjObsWrite
   use Grid_module
 
   implicit none
@@ -794,6 +906,8 @@ subroutine AdjRTDAEReport(this,model,time0,Y0)
   PetscReal, pointer :: mu_p(:)
   PetscReal :: mu_value, max_c, max_K
   PetscInt :: icost, iparam, col_start, col_end, nc, nk, local_id, i, status
+  PetscInt :: nobs
+  PetscReal, allocatable :: gradient(:)
   Vec :: Y0_f, Y0_t, lam_f, lam_t
   Vec :: field
   PetscViewer :: viewer
@@ -816,18 +930,31 @@ subroutine AdjRTDAEReport(this,model,time0,Y0)
   endif
 
   call PrintMsg(option,'=== ADJOINT SUMMARY ===')
-  icost = 0
+  nobs = AdjObsCount()
+  allocate(gradient(this%nparams))
   cur_cost => adj_cost_list
-  do while (associated(cur_cost))
-    icost = icost + 1
-    write(option%io_buffer,'("Cost J_",i0," = ",a)') cur_cost%id, &
-      trim(cur_cost%name)
-    call PrintMsg(option)
-    write(option%io_buffer,'("  J_",i0,"(T)              = ",es24.16)') &
-      cur_cost%id,cur_cost%J_value
-    call PrintMsg(option)
-    write(name,'("J_",i0)') cur_cost%id
-    call this%KeepResult(name,cur_cost%J_value)
+  do icost = 1, this%ncosts
+    if (icost == this%iobjective) then
+      write(option%io_buffer,'("Cost J_",i0," = misfit of ",i0, &
+        &" OBSERVATIONS")') icost,nobs
+      call PrintMsg(option)
+      write(option%io_buffer,'("  J_",i0,"                 = ",es24.16)') &
+        icost,this%cost_value(icost)
+      call PrintMsg(option)
+      write(option%io_buffer,'("  chi^2/n = 2 J_",i0,"/n  = ",es24.16)') &
+        icost,2.d0*this%cost_value(icost)/dble(nobs)
+      call PrintMsg(option)
+    else
+      write(option%io_buffer,'("Cost J_",i0," = ",a)') icost, &
+        trim(cur_cost%name)
+      call PrintMsg(option)
+      write(option%io_buffer,'("  J_",i0,"(T)              = ",es24.16)') &
+        icost,this%cost_value(icost)
+      call PrintMsg(option)
+      cur_cost => cur_cost%next
+    endif
+    write(name,'("J_",i0)') icost
+    call this%KeepResult(name,this%cost_value(icost))
 
     ! mu is distributed like the columns of Jacp
     call VecGetOwnershipRange(this%mu(icost),col_start,col_end, &
@@ -844,10 +971,11 @@ subroutine AdjRTDAEReport(this,model,time0,Y0)
                          MPI_DOUBLE_PRECISION,MPI_SUM,option%mycomm, &
                          ierr);CHKERRQ(ierr)
       write(option%io_buffer,'("  dJ_",i0,"/dp_",i0," [",a,"] = ",es24.16)') &
-        cur_cost%id,iparam,trim(cur_param%name),mu_value
+        icost,iparam,trim(cur_param%name),mu_value
       call PrintMsg(option)
-      write(name,'("dJ_",i0,"/dp_",i0)') cur_cost%id,iparam
+      write(name,'("dJ_",i0,"/dp_",i0)') icost,iparam
       call this%KeepResult(name,mu_value)
+      gradient(iparam) = mu_value
       cur_param => cur_param%next
     enddo
     call VecRestoreArrayRead(this%mu(icost),mu_p,ierr);CHKERRQ(ierr)
@@ -867,9 +995,9 @@ subroutine AdjRTDAEReport(this,model,time0,Y0)
                        MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm, &
                        ierr);CHKERRQ(ierr)
     write(option%io_buffer,'("  max |dJ_",i0,"/du_phys(0)| = ",es24.16)') &
-      cur_cost%id,max_c
+      icost,max_c
     call PrintMsg(option)
-    write(name,'("max |dJ_",i0,"/du_phys(0)|")') cur_cost%id
+    write(name,'("max |dJ_",i0,"/du_phys(0)|")') icost
     call this%KeepResult(name,max_c)
     if (nk > 0) then
       max_K = maxval(abs(dJ_dK(1:nk,:)))
@@ -877,9 +1005,9 @@ subroutine AdjRTDAEReport(this,model,time0,Y0)
                          MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm, &
                          ierr);CHKERRQ(ierr)
       write(option%io_buffer,'("  max |dJ_",i0,"/dK(0)| = ",es24.16)') &
-        cur_cost%id,max_K
+        icost,max_K
       call PrintMsg(option)
-      write(name,'("max |dJ_",i0,"/dK(0)|")') cur_cost%id
+      write(name,'("max |dJ_",i0,"/dK(0)|")') icost
       call this%KeepResult(name,max_K)
     endif
     if (associated(coupled)) then
@@ -888,9 +1016,9 @@ subroutine AdjRTDAEReport(this,model,time0,Y0)
                          MPI_DOUBLE_PRECISION,MPI_MAX,option%mycomm, &
                          ierr);CHKERRQ(ierr)
       write(option%io_buffer,'("  max |dJ_",i0,"/dP(0)| = ",es24.16)') &
-        cur_cost%id,max_c
+        icost,max_c
       call PrintMsg(option)
-      write(name,'("max |dJ_",i0,"/dP(0)|")') cur_cost%id
+      write(name,'("max |dJ_",i0,"/dP(0)|")') icost
       call this%KeepResult(name,max_c)
     endif
 
@@ -907,7 +1035,7 @@ subroutine AdjRTDAEReport(this,model,time0,Y0)
       call VecAssemblyBegin(field,ierr);CHKERRQ(ierr)
       call VecAssemblyEnd(field,ierr);CHKERRQ(ierr)
       write(filename,'(a,a,a,i0,a)') trim(option%global_prefix), &
-        trim(option%group_prefix),'-adjoint-dJ',cur_cost%id,'-du0.bin'
+        trim(option%group_prefix),'-adjoint-dJ',icost,'-du0.bin'
       call PetscViewerBinaryOpen(option%mycomm,filename,FILE_MODE_WRITE, &
                                  viewer,ierr);CHKERRQ(ierr)
       call VecView(field,viewer,ierr);CHKERRQ(ierr)
@@ -925,7 +1053,7 @@ subroutine AdjRTDAEReport(this,model,time0,Y0)
         call VecAssemblyBegin(field,ierr);CHKERRQ(ierr)
         call VecAssemblyEnd(field,ierr);CHKERRQ(ierr)
         write(filename,'(a,a,a,i0,a)') trim(option%global_prefix), &
-          trim(option%group_prefix),'-adjoint-dJ',cur_cost%id,'-dP0.bin'
+          trim(option%group_prefix),'-adjoint-dJ',icost,'-dP0.bin'
         call PetscViewerBinaryOpen(option%mycomm,filename,FILE_MODE_WRITE, &
                                    viewer,ierr);CHKERRQ(ierr)
         call VecView(field,viewer,ierr);CHKERRQ(ierr)
@@ -935,13 +1063,53 @@ subroutine AdjRTDAEReport(this,model,time0,Y0)
                       trim(filename))
       endif
     endif
-    cur_cost => cur_cost%next
+    if (icost == this%iobjective) call AdjRTDAEWriteGradient(this,gradient)
   enddo
   call PrintMsg(option,'=== END ADJOINT ===')
   if (associated(coupled)) call FlowRTDAERestoreParts(coupled,Y0,Y0_f,Y0_t)
-  deallocate(dJ_dc,dJ_dK,dJ_dP)
+  if (nobs > 0) call AdjObsWrite(option)
+  deallocate(dJ_dc,dJ_dK,dJ_dP,gradient)
 
 end subroutine AdjRTDAEReport
+
+! ************************************************************************** !
+
+subroutine AdjRTDAEWriteGradient(this,gradient)
+  !
+  ! <prefix>-adjoint-gradient.dat: the observations' objective, and each
+  ! parameter's name, value and derivative.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/12/26
+  !
+  use Adjoint_Param_module, only : adj_param_list
+
+  implicit none
+
+  class(adjoint_rt_dae_type) :: this
+  PetscReal :: gradient(:)
+
+  type(adjoint_param_type), pointer :: cur_param
+  character(len=MAXSTRINGLENGTH) :: filename
+  PetscReal :: p(this%nparams)
+  PetscInt :: unit, j
+
+  call this%GetParameters(p)
+  if (.not.OptionIsIORank(this%option)) return
+  filename = trim(this%option%global_prefix) // &
+             trim(this%option%group_prefix) // '-adjoint-gradient.dat'
+  open(newunit=unit,file=filename,action='write',status='replace')
+  write(unit,'(a)') '# ADJOINT objective of the OBSERVATIONS (phi = 1/2 &
+    &sum r^2) and its gradient: name, value, dphi/dp'
+  write(unit,'(a,1x,es24.16)') 'phi',this%cost_value(this%iobjective)
+  cur_param => adj_param_list
+  do j = 1, this%nparams
+    write(unit,'(a,2(1x,es24.16))') trim(cur_param%name),p(j),gradient(j)
+    cur_param => cur_param%next
+  enddo
+  close(unit)
+
+end subroutine AdjRTDAEWriteGradient
 
 ! ************************************************************************** !
 

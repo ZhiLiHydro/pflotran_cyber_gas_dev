@@ -4,6 +4,7 @@ module Adjoint_module
   use petscsys
 
   use Adjoint_Cost_module
+  use Adjoint_Observation_module
   use Adjoint_Param_module
   use TS_Optimizer_class
   use PFLOTRAN_Constants_module
@@ -12,19 +13,23 @@ module Adjoint_module
   ! factory_subsurface_read).
   !
   !   ADJOINT
-  !     COST_FUNCTION <class>
+  !     COST_FUNCTION <class>                [sensitivity of a final state]
+  !       ...
+  !     /
+  !     OBSERVATIONS                         [data at any time, one misfit]
   !       ...
   !     /
   !     PARAMETER <class>
   !       ...
   !     /
-  !     OPTIMIZATION                         [optional]
+  !     OPTIMIZATION                         [needs OBSERVATIONS]
   !       ...
   !     /
   !   /
   !
-  ! COST_FUNCTION and PARAMETER may be repeated. OPTIMIZATION minimizes the
-  ! sum of the costs over the parameters (see AdjointReadOptimization).
+  ! COST_FUNCTION and PARAMETER may be repeated; OBSERVATIONS are read by
+  ! Adjoint_Observation_module. OPTIMIZATION minimizes the observations'
+  ! misfit over the parameters (see AdjointReadOptimization).
   !
   ! Author: Hansol Suh
   ! Date: 2026-05-27
@@ -56,6 +61,7 @@ subroutine AdjointInit()
   implicit none
 
   call AdjCostInit()
+  call AdjObsDestroy()
   call AdjParamInit()
   adjoint_output_full_field = PETSC_FALSE
   call AdjointDestroyOptimizer()
@@ -100,6 +106,8 @@ subroutine AdjointReadInput(input,option)
     select case(trim(keyword))
       case('COST_FUNCTION')
         call AdjCostRead(input,option)
+      case('OBSERVATIONS')
+        call AdjObsRead(input,option)
       case('PARAMETER')
         call AdjParamRead(input,option)
       case('OUTPUT')
@@ -112,10 +120,14 @@ subroutine AdjointReadInput(input,option)
   enddo
   call InputPopBlock(input,option)
 
-  if (AdjCostCount() == 0) then
-    option%io_buffer = 'ADJOINT requires at least one COST_FUNCTION; ' // &
-      'there is no objective to differentiate.'
+  if (AdjCostCount() == 0 .and. AdjObsCount() == 0) then
+    option%io_buffer = 'ADJOINT requires a COST_FUNCTION or OBSERVATIONS; &
+      &there is nothing to differentiate.'
     call PrintErrMsg(option)
+  endif
+  if (associated(adjoint_optimizer) .and. AdjObsCount() == 0) then
+    call PrintErrMsg(option,'ADJOINT OPTIMIZATION requires OBSERVATIONS: it &
+      &minimizes their misfit.')
   endif
   if (AdjParamCount() == 0) then
     option%io_buffer = 'ADJOINT requires at least one PARAMETER because ' // &
@@ -129,7 +141,7 @@ end subroutine AdjointReadInput
 
 function AdjointIsActive()
   !
-  ! True when the deck registered at least one cost and one parameter.
+  ! True when the deck registered a cost or observations, and a parameter.
   !
   ! Author: Hansol Suh
   ! Date: 05/27/26
@@ -138,8 +150,8 @@ function AdjointIsActive()
 
   PetscBool :: AdjointIsActive
 
-  AdjointIsActive = associated(adj_cost_list) .and. &
-                    associated(adj_param_list)
+  AdjointIsActive = (associated(adj_cost_list) .or. AdjObsCount() > 0) &
+                    .and. associated(adj_param_list)
 
 end function AdjointIsActive
 
@@ -192,6 +204,7 @@ subroutine AdjointDestroy()
   implicit none
 
   call AdjCostDestroyList()
+  call AdjObsDestroy()
   call AdjParamDestroyList()
   adjoint_output_full_field = PETSC_FALSE
   call AdjointDestroyOptimizer()
@@ -202,8 +215,8 @@ end subroutine AdjointDestroy
 
 subroutine AdjointReadOptimization(input,option)
   !
-  ! Reads the OPTIMIZATION block, which minimizes the sum of the costs over
-  ! the parameters with PETSc TAO from their deck values:
+  ! Reads the OPTIMIZATION block, which minimizes the misfit of the
+  ! OBSERVATIONS over the parameters with PETSc TAO from their deck values:
   !   OPTIMIZATION
   !     TYPE <TAO type>                     [default BQNLS]
   !     MAXIMUM_ITERATIONS <int > 0>        [TAO's default]

@@ -5,9 +5,15 @@ module TS_Adjoint_class
   ! final time, Solve runs the backward sweep while the model replays its
   ! recorded forcing, so the sweep linearizes the forward steps.
   !
-  ! A concrete adjoint binds costs and parameters to one kind of model
-  ! (Setup, TerminalGradients, ParameterJacobian, Report, Get/SetParameters,
-  ! ParameterInfo).
+  ! A concrete adjoint binds costs, observations and parameters to one kind
+  ! of model (Setup, TerminalGradients, ParameterJacobian, Report,
+  ! Get/SetParameters, ParameterInfo, the observation hooks).
+  !
+  ! Observations at any time make one more cost, the objective (index
+  ! iobjective): the forward run records them at the ends of the waypoint
+  ! intervals at their times (RecordObservations), and the sweep runs in
+  ! segments between those steps, adding their kicks to the objective's
+  ! lambda at each (Kick), one TSAdjointSolve per segment.
   ! Report keeps the values it prints (KeepResult) for the regression file.
   ! Solve returns a status; quiet (a rerun of the forward run, see
   ! PMC_TS_Driver_class) only returns it, with the costs and gradients
@@ -41,7 +47,8 @@ module TS_Adjoint_class
   ! Solve: a gradient, or why there is none
   PetscInt, parameter, public :: TS_ADJ_OK = 0
   PetscInt, parameter, public :: TS_ADJ_SKIPPED_EVENTS = 1
-  PetscInt, parameter, public :: TS_ADJ_SKIPPED_TERMINAL_TIME = 2
+  ! an observation was not recorded
+  PetscInt, parameter, public :: TS_ADJ_UNOBSERVED = 2
   PetscInt, parameter, public :: TS_ADJ_INCOMPLETE = 3
   ! set by the driver: the forward run did not complete, or stopped at the
   ! wall-clock limit
@@ -58,7 +65,10 @@ module TS_Adjoint_class
     type(option_type), pointer :: option => null()
     PetscInt :: ncosts = 0
     PetscInt :: nparams = 0
-    ! J_i at the final time of the last sweep (TerminalGradients)
+    ! the cost that is the observations' objective (the last), or 0
+    PetscInt :: iobjective = 0
+    ! J_i of the last sweep: terminal costs at the final time
+    ! (TerminalGradients), the objective's from Objective
     PetscReal, allocatable :: cost_value(:)
     ! a rerun: Solve prints, reports and keeps nothing
     PetscBool :: quiet = PETSC_FALSE
@@ -74,22 +84,32 @@ module TS_Adjoint_class
     Vec :: Y0
     PetscReal :: t0 = 0.d0
     PetscReal :: final_time = 0.d0
-    ! -ts_trajectory_type memory, and the last step EndInterval stored
+    ! -ts_trajectory_type memory
     PetscBool :: memory_trajectory = PETSC_FALSE
+    ! the last step EndInterval stored
     PetscInt :: interval_end_step = -1
+    ! the steps the backward sweep stops at, stop_step(1:num_stops):
+    ! observations', and with -adjoint_debug_split (a test) every waypoint
+    ! interval's end
+    PetscBool :: debug_split = PETSC_FALSE
+    PetscInt :: num_stops = 0
+    PetscInt, allocatable :: stop_step(:)
     type(ts_adjoint_ctx_type), pointer :: ctx => null()
     ! the reported costs and gradients, for the regression file
     character(len=MAXWORDLENGTH), allocatable :: result_name(:)
     PetscReal, allocatable :: result_value(:)
   contains
     procedure(TSAdjSetupIface), deferred :: Setup
-    procedure(TSAdjTerminalTimeIface), deferred :: CheckTerminalTime
     procedure(TSAdjTerminalGradientsIface), deferred :: TerminalGradients
     procedure(TSAdjParameterJacobianIface), deferred :: ParameterJacobian
     procedure(TSAdjReportIface), deferred :: Report
     procedure(TSAdjGetParametersIface), deferred :: GetParameters
     procedure(TSAdjSetParametersIface), deferred :: SetParameters
     procedure(TSAdjParameterInfoIface), deferred :: ParameterInfo
+    procedure(TSAdjObservationTimesIface), deferred :: ObservationTimes
+    procedure(TSAdjRecordObservationsIface), deferred :: RecordObservations
+    procedure(TSAdjKickIface), deferred :: Kick
+    procedure(TSAdjObjectiveIface), deferred :: Objective
     procedure, public :: Configure => TSAdjConfigure
     procedure, public :: CheckMethod => TSAdjCheckMethod
     procedure, public :: RecordInitialState => TSAdjRecordInitialState
@@ -107,8 +127,9 @@ module TS_Adjoint_class
   abstract interface
 
     subroutine TSAdjSetupIface(this,model,final_time)
-      ! Resolves the costs and parameters for model and sets ncosts and
-      ! nparams; rejects configurations the adjoint does not support.
+      ! Resolves the costs, observations and parameters for model and sets
+      ! ncosts, iobjective and nparams; rejects configurations the adjoint
+      ! does not support.
       use petscts
       import :: ts_adjoint_type, ts_model_type
       implicit none
@@ -117,18 +138,8 @@ module TS_Adjoint_class
       PetscReal :: final_time
     end subroutine TSAdjSetupIface
 
-    subroutine TSAdjTerminalTimeIface(this,time,valid)
-      ! Whether the costs are defined at the final time of the run.
-      use petscts
-      import :: ts_adjoint_type
-      implicit none
-      class(ts_adjoint_type) :: this
-      PetscReal :: time
-      PetscBool :: valid
-    end subroutine TSAdjTerminalTimeIface
-
     subroutine TSAdjTerminalGradientsIface(this,model,time,Y)
-      ! lambda(i) = dJ_i/dY at the final state Y.
+      ! lambda(i) = dJ_i/dY at the final state Y, except the objective's.
       use petscts
       import :: ts_adjoint_type, ts_model_type
       implicit none
@@ -198,9 +209,55 @@ module TS_Adjoint_class
       PetscBool :: log_scale
     end subroutine TSAdjParameterInfoIface
 
+    subroutine TSAdjObservationTimesIface(this,times)
+      ! The observations' times, for waypoints; none without observations.
+      use petscts
+      import :: ts_adjoint_type
+      implicit none
+      class(ts_adjoint_type) :: this
+      PetscReal, allocatable :: times(:)
+    end subroutine TSAdjObservationTimesIface
+
+    subroutine TSAdjRecordObservationsIface(this,model,time,step,Y,recorded)
+      ! At the end of a waypoint interval (step, state Y): records the
+      ! observations at time, replacing an earlier run's; recorded: any.
+      use petscts
+      import :: ts_adjoint_type, ts_model_type
+      implicit none
+      class(ts_adjoint_type) :: this
+      class(ts_model_type), target :: model
+      PetscReal :: time
+      PetscInt :: step
+      Vec :: Y
+      PetscBool :: recorded
+    end subroutine TSAdjRecordObservationsIface
+
+    subroutine TSAdjKickIface(this,model,step,lambda)
+      ! Adds the kicks of the observations recorded at step to lambda.
+      use petscts
+      import :: ts_adjoint_type, ts_model_type
+      implicit none
+      class(ts_adjoint_type) :: this
+      class(ts_model_type), target :: model
+      PetscInt :: step
+      Vec :: lambda
+    end subroutine TSAdjKickIface
+
+    subroutine TSAdjObjectiveIface(this,phi,complete)
+      ! The observations' objective of the last forward run; complete: every
+      ! observation was recorded.
+      use petscts
+      import :: ts_adjoint_type
+      implicit none
+      class(ts_adjoint_type) :: this
+      PetscReal :: phi
+      PetscBool :: complete
+    end subroutine TSAdjObjectiveIface
+
   end interface
 
   public :: TSAdjInit, &
+            TSAdjBeginRerun, &
             TSAdjDestroy
 
 contains
@@ -276,6 +333,10 @@ subroutine TSAdjConfigure(this,ts,model,Y,final_time)
   call TSSetType(ts,TSBEULER,ierr);CHKERRQ(ierr)
   call TSSetSaveTrajectory(ts,ierr);CHKERRQ(ierr)
   call model%RecordForcing()
+
+  call PetscOptionsHasName(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER, &
+                           '-adjoint_debug_split',this%debug_split, &
+                           ierr);CHKERRQ(ierr)
 
   call PrintMsg(this%option,'  TSAdjoint: backward Euler, saved trajectory, &
     &parameter Jacobian and recorded forcing')
@@ -377,11 +438,13 @@ end subroutine TSAdjRecordInitialState
 
 ! ************************************************************************** !
 
-subroutine TSAdjEndInterval(this,ts,Y)
+subroutine TSAdjEndInterval(this,ts,model,Y)
   !
-  ! After a successful TSSolve of a waypoint interval. The memory
-  ! trajectory skips the step that ends a TSSolve, taking it for the end of
-  ! the run; store it here for intervals that end before the final time.
+  ! After a successful TSSolve of a waypoint interval, at its final state
+  ! Y: the observations at its end and the steps the backward sweep stops
+  ! at. The memory trajectory skips the step that ends a TSSolve, taking
+  ! it for the end of the run; store it here for intervals that end before
+  ! the final time.
   !
   ! Author: Hansol Suh
   ! Date: 09/23/26
@@ -390,22 +453,27 @@ subroutine TSAdjEndInterval(this,ts,Y)
 
   class(ts_adjoint_type) :: this
   TS :: ts
+  class(ts_model_type), target :: model
   Vec :: Y
 
   TSTrajectory :: trajectory
   TSConvergedReason :: reason
   PetscReal :: time
   PetscInt :: step
+  PetscBool :: recorded
   PetscErrorCode :: ierr
 
-  if (.not.this%memory_trajectory) return
   call TSGetTime(ts,time,ierr);CHKERRQ(ierr)
-  if (time >= this%final_time - &
-      64.d0*epsilon(1.d0)*max(1.d0,abs(this%final_time))) return
   call TSGetStepNumber(ts,step,ierr);CHKERRQ(ierr)
   ! an interval that took no step
   if (step == this%interval_end_step .or. step == 0) return
   this%interval_end_step = step
+  call this%RecordObservations(model,time,step,Y,recorded)
+  if (recorded .or. this%debug_split) call TSAdjAddStop(this,step)
+
+  if (.not.this%memory_trajectory) return
+  if (time >= this%final_time - &
+      64.d0*epsilon(1.d0)*max(1.d0,abs(this%final_time))) return
   call TSGetTrajectory(ts,trajectory,ierr);CHKERRQ(ierr)
   call TSGetConvergedReason(ts,reason,ierr);CHKERRQ(ierr)
   call TSSetConvergedReason(ts,TS_CONVERGED_ITERATING,ierr);CHKERRQ(ierr)
@@ -416,13 +484,41 @@ end subroutine TSAdjEndInterval
 
 ! ************************************************************************** !
 
+subroutine TSAdjAddStop(this,step)
+  !
+  ! A step the backward sweep stops at.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/12/26
+  !
+  implicit none
+
+  class(ts_adjoint_type) :: this
+  PetscInt :: step
+
+  PetscInt, allocatable :: grown(:)
+
+  if (.not.allocated(this%stop_step)) allocate(this%stop_step(16))
+  if (this%num_stops == size(this%stop_step)) then
+    allocate(grown(2*this%num_stops))
+    grown(1:this%num_stops) = this%stop_step(1:this%num_stops)
+    call move_alloc(grown,this%stop_step)
+  endif
+  this%num_stops = this%num_stops + 1
+  this%stop_step(this%num_stops) = step
+
+end subroutine TSAdjAddStop
+
+! ************************************************************************** !
+
 subroutine TSAdjSolveBackward(this,ts,model,Y,num_events,status)
   !
   ! Backward sweep and report after a complete forward run with final
   ! state Y; leaves the TS and model at that state. num_events: this
   ! process's regime transitions; any on any process skips the sweep.
   ! status: TS_ADJ_OK, or why there is no gradient. Unless quiet, a skip
-  ! sets EXIT_ADJOINT_SKIPPED and an incomplete sweep stops the run.
+  ! sets EXIT_ADJOINT_SKIPPED, and an unrecorded observation or an
+  ! incomplete sweep stops the run.
   !
   ! Author: Hansol Suh
   ! Date: 09/23/26
@@ -439,9 +535,9 @@ subroutine TSAdjSolveBackward(this,ts,model,Y,num_events,status)
   type(option_type), pointer :: option
   TSConvergedReason :: reason
   Vec :: Y_final
-  PetscReal :: final_time, final_dt
-  PetscInt :: final_step, step, i, events
-  PetscBool :: valid
+  PetscReal :: final_time, final_dt, phi
+  PetscInt :: final_step, step, i, events, current, next
+  PetscBool :: complete
   PetscErrorCode :: ierr
 
   option => this%option
@@ -461,14 +557,15 @@ subroutine TSAdjSolveBackward(this,ts,model,Y,num_events,status)
     return
   endif
   call TSGetTime(ts,final_time,ierr);CHKERRQ(ierr)
-  call this%CheckTerminalTime(final_time,valid)
-  if (.not.valid) then
-    status = TS_ADJ_SKIPPED_TERMINAL_TIME
-    if (this%quiet) return
-    call PrintMsg(option,'ADJOINT: a cost is not defined at the final time &
-      &of the run; forward solve completed; adjoint skipped.')
-    option%driver%exit_code = EXIT_ADJOINT_SKIPPED
-    return
+  if (this%iobjective > 0) then
+    call this%Objective(phi,complete)
+    if (.not.complete) then
+      ! the observation times are waypoints of a completed run
+      status = TS_ADJ_UNOBSERVED
+      if (this%quiet) return
+      call PrintErrMsg(option,'ADJOINT: an observation was not recorded &
+        &although the run completed.')
+    endif
   endif
 
   ! the sweep rewinds the TS to t0
@@ -478,6 +575,11 @@ subroutine TSAdjSolveBackward(this,ts,model,Y,num_events,status)
   call TSGetTimeStep(ts,final_dt,ierr);CHKERRQ(ierr)
 
   call this%TerminalGradients(model,final_time,Y)
+  if (this%iobjective > 0) then
+    this%cost_value(this%iobjective) = phi
+    call VecZeroEntries(this%lambda(this%iobjective),ierr);CHKERRQ(ierr)
+    call this%Kick(model,final_step,this%lambda(this%iobjective))
+  endif
   ! TSAdjointSolve accumulates into mu; dJ/dp(T) = 0 for a terminal cost
   do i = 1, this%ncosts
     call VecZeroEntries(this%mu(i),ierr);CHKERRQ(ierr)
@@ -489,11 +591,27 @@ subroutine TSAdjSolveBackward(this,ts,model,Y,num_events,status)
   if (.not.this%quiet) &
     call PrintMsg(option,'=== TSAdjointSolve: running backward ===')
   this%jacp_failed = PETSC_FALSE
-  ! CHKERRA: CHKERRQ would return silently and the run would report success
-  call TSAdjointSolve(ts,ierr);CHKERRA(ierr)
-  call TSGetConvergedReason(ts,reason,ierr);CHKERRQ(ierr)
-  call TSGetStepNumber(ts,step,ierr);CHKERRQ(ierr)
-  if (reason%v <= 0 .or. step /= 0 .or. this%jacp_failed) then
+  ! one TSAdjointSolve per segment between stops, last to first; each
+  ! resets the converged reason, and 0 steps would mean all of them
+  current = final_step
+  complete = PETSC_TRUE
+  do while (complete .and. current > 0)
+    next = 0
+    do i = 1, this%num_stops
+      if (this%stop_step(i) < current) next = max(next,this%stop_step(i))
+    enddo
+    call TSAdjointSetSteps(ts,current-next,ierr);CHKERRQ(ierr)
+    ! CHKERRA: CHKERRQ would return silently and the run would report
+    ! success
+    call TSAdjointSolve(ts,ierr);CHKERRA(ierr)
+    call TSGetConvergedReason(ts,reason,ierr);CHKERRQ(ierr)
+    call TSGetStepNumber(ts,step,ierr);CHKERRQ(ierr)
+    complete = reason%v > 0 .and. step == next .and. .not.this%jacp_failed
+    if (complete .and. next > 0 .and. this%iobjective > 0) &
+      call this%Kick(model,next,this%lambda(this%iobjective))
+    current = next
+  enddo
+  if (.not.complete) then
     status = TS_ADJ_INCOMPLETE
     if (.not.this%quiet) then
       write(option%io_buffer,'(a,i0,a,i0,a)') &
@@ -542,6 +660,7 @@ subroutine TSAdjBeginRerun(this,ts)
   PetscErrorCode :: ierr
 
   this%interval_end_step = -1
+  this%num_stops = 0
   if (allocated(this%cost_value)) this%cost_value = 0.d0
   if (this%memory_trajectory) then
     call TSResetTrajectory(ts,ierr);CHKERRQ(ierr)
@@ -743,6 +862,7 @@ subroutine TSAdjDestroy(this)
     call MatDestroy(this%Jacp,ierr);CHKERRQ(ierr)
   endif
   call PUVecDestroy(this%Y0)
+  if (allocated(this%stop_step)) deallocate(this%stop_step)
   if (associated(this%ctx)) then
     nullify(this%ctx%adjoint)
     nullify(this%ctx%model)

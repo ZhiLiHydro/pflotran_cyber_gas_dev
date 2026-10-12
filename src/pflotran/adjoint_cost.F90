@@ -2,21 +2,18 @@ module Adjoint_Cost_module
 
 #include "petsc/finclude/petscts.h"
   use petscts
-  use, intrinsic :: ieee_arithmetic, only : ieee_is_finite
 
   use Geometry_module
   use Realization_Subsurface_class
   use PFLOTRAN_Constants_module
 
   ! The ADJOINT block's cost functions of the final state, in deck order:
-  !   J = WEIGHT * sum over the selected cells of f(C),
+  !   TERMINAL_SPECIES_CONCENTRATION  J = WEIGHT * sum over the selected
+  !                                       cells of C,
   ! C the final free-ion molality (aqueous) or concentration [mol/m^3
-  ! bulk] (immobile) of a primary species, and
-  !   TERMINAL_SPECIES_CONCENTRATION  f = C
-  !   MISFIT_LEAST_SQUARES            f = ((C - observation)/SIGMA)**2,
-  ! the observation being the last row of OBSERVATION_FILE, which must be
-  ! at the simulation's final time. Cells are selected by COORDINATE,
-  ! REGION or CELL_IDS, as in SrcSink_Sandbox_Base_class.
+  ! bulk] (immobile) of a primary species. Cells are selected by
+  ! COORDINATE, REGION or CELL_IDS, as in SrcSink_Sandbox_Base_class.
+  ! Misfits of data are OBSERVATIONS (Adjoint_Observation_module).
   !
   ! Author: Hansol Suh
   ! Date: 05/27/26
@@ -25,12 +22,8 @@ module Adjoint_Cost_module
 
   private
 
-  PetscInt, parameter :: ADJ_COST_TERMINAL_SPECIES = 1
-  PetscInt, parameter :: ADJ_COST_MISFIT = 2
-
   type, public :: adjoint_cost_type
     PetscInt :: id = UNINITIALIZED_INTEGER        ! position in list
-    PetscInt :: kind = UNINITIALIZED_INTEGER
     character(len=MAXWORDLENGTH) :: name = ''     ! label for output
     PetscReal :: weight = 1.d0
     character(len=MAXWORDLENGTH) :: species_name = ''
@@ -40,18 +33,12 @@ module Adjoint_Cost_module
     PetscInt, pointer :: natural_cell_ids(:) => null()
     type(point3d_type) :: coordinate
     character(len=MAXWORDLENGTH) :: region_name = ''
-    ! MISFIT_LEAST_SQUARES
-    character(len=MAXSTRINGLENGTH) :: obs_filename = ''
-    PetscReal :: sigma = 1.d0
-    PetscReal :: observation_time = UNINITIALIZED_DOUBLE
-    PetscReal :: observation_value = UNINITIALIZED_DOUBLE
     PetscReal :: J_value = 0.d0                   ! J(T) (FillTerminalLambda)
     class(realization_subsurface_type), pointer :: realization => null()
     type(adjoint_cost_type), pointer :: next => null()
   contains
     procedure, public :: Setup => AdjCostSetup
     procedure, public :: FillTerminalLambda => AdjCostFillTerminalLambda
-    procedure, public :: ValidateTime => AdjCostValidateTime
   end type adjoint_cost_type
 
   type(adjoint_cost_type), pointer, public :: adj_cost_list => null()
@@ -59,6 +46,7 @@ module Adjoint_Cost_module
   public :: AdjCostInit, &
             AdjCostRead, &
             AdjCostCount, &
+            AdjCostLocateCell, &
             AdjCostDestroyList
 
 contains
@@ -86,12 +74,10 @@ end subroutine AdjCostInit
 subroutine AdjCostRead(input,option)
   !
   ! Reads one COST_FUNCTION <class> block and appends the cost to the list:
-  !   COST_FUNCTION TERMINAL_SPECIES_CONCENTRATION | MISFIT_LEAST_SQUARES
+  !   COST_FUNCTION TERMINAL_SPECIES_CONCENTRATION
   !     SPECIES_NAME <string>              [required]
   !     COORDINATE x y z | CELL_IDS i [j ...] | REGION <name>   [one]
   !     WEIGHT <double>                    [optional, default 1]
-  !     OBSERVATION_FILE <path>            [MISFIT_LEAST_SQUARES, required]
-  !     SIGMA <double>                     [MISFIT_LEAST_SQUARES, default 1]
   !   /
   !
   ! Author: Hansol Suh
@@ -108,7 +94,7 @@ subroutine AdjCostRead(input,option)
   type(option_type) :: option
 
   character(len=MAXWORDLENGTH) :: class_keyword, keyword
-  character(len=MAXSTRINGLENGTH) :: error_string, label
+  character(len=MAXSTRINGLENGTH) :: error_string
   type(adjoint_cost_type), pointer :: new_cost, cur_cost
   PetscBool :: has_location
 
@@ -124,10 +110,7 @@ subroutine AdjCostRead(input,option)
   new_cost%coordinate%y = UNINITIALIZED_DOUBLE
   new_cost%coordinate%z = UNINITIALIZED_DOUBLE
   select case(trim(class_keyword))
-    case('MISFIT_LEAST_SQUARES')
-      new_cost%kind = ADJ_COST_MISFIT
     case('TERMINAL_SPECIES_CONCENTRATION')
-      new_cost%kind = ADJ_COST_TERMINAL_SPECIES
     case default
       deallocate(new_cost)
       call InputKeywordUnrecognized(input,class_keyword,error_string,option)
@@ -174,15 +157,6 @@ subroutine AdjCostRead(input,option)
       case('WEIGHT')
         call InputReadDouble(input,option,new_cost%weight)
         call InputErrorMsg(input,option,keyword,'ADJOINT,COST_FUNCTION')
-      case('OBSERVATION_FILE','SIGMA')
-        if (new_cost%kind /= ADJ_COST_MISFIT) &
-          call InputKeywordUnrecognized(input,keyword,error_string,option)
-        if (trim(keyword) == 'SIGMA') then
-          call InputReadDouble(input,option,new_cost%sigma)
-        else
-          call InputReadFilename(input,option,new_cost%obs_filename)
-        endif
-        call InputErrorMsg(input,option,keyword,error_string)
       case default
         call InputKeywordUnrecognized(input,keyword,error_string,option)
     end select
@@ -194,33 +168,11 @@ subroutine AdjCostRead(input,option)
       trim(class_keyword) // ' cost function.'
     call PrintErrMsg(option)
   endif
-  select case(new_cost%kind)
-    case(ADJ_COST_TERMINAL_SPECIES)
-      ! TODO: name holds MAXWORDLENGTH characters, so a species name longer
-      ! than 19 characters stops this write ("End of record"); give name
-      ! MAXSTRINGLENGTH (and drop the truncation below) if that matters
-      write(new_cost%name,'(a,"_",a)') 'TerminalConc', &
-        trim(new_cost%species_name)
-    case(ADJ_COST_MISFIT)
-      if (len_trim(new_cost%obs_filename) == 0) then
-        option%io_buffer = 'OBSERVATION_FILE must be specified for &
-          &MISFIT_LEAST_SQUARES cost function.'
-        call PrintErrMsg(option)
-      endif
-      if (.not.ieee_is_finite(new_cost%sigma) .or. &
-          new_cost%sigma <= 0.d0) then
-        option%io_buffer = 'SIGMA must be finite and positive for &
-          &MISFIT_LEAST_SQUARES cost function.'
-        call PrintErrMsg(option)
-      endif
-      if (.not.ieee_is_finite(new_cost%weight) .or. &
-          new_cost%weight < 0.d0) then
-        call PrintErrMsg(option,'MISFIT_LEAST_SQUARES requires finite, &
-          &nonnegative WEIGHT.')
-      endif
-      label = 'Misfit_' // trim(new_cost%species_name)
-      new_cost%name = label(1:len(new_cost%name))
-  end select
+  ! TODO: name holds MAXWORDLENGTH characters, so a species name longer
+  ! than 19 characters stops this write ("End of record"); give name
+  ! MAXSTRINGLENGTH if that matters
+  write(new_cost%name,'(a,"_",a)') 'TerminalConc', &
+    trim(new_cost%species_name)
 
   if (.not.associated(adj_cost_list)) then
     adj_cost_list => new_cost
@@ -241,10 +193,7 @@ end subroutine AdjCostRead
 
 subroutine AdjCostSetup(this,realization,option)
   !
-  ! Resolves the species and the cell selector; for MISFIT_LEAST_SQUARES
-  ! reads the observations: DATA_UNITS default to mol/kg (mol/m^3 for an
-  ! immobile species); molarity (needs a density) is rejected. Only the
-  ! last row enters the cost; earlier rows are only validated.
+  ! Resolves the species and the cell selector.
   !
   ! Author: Hansol Suh
   ! Date: 05/27/26
@@ -252,7 +201,6 @@ subroutine AdjCostSetup(this,realization,option)
   use Option_module
   use Reaction_Aux_module
   use Reaction_Immobile_Aux_module, only : ReactionImGetSpeciesIDFromName
-  use Dataset_Ascii_class
 
   implicit none
 
@@ -261,9 +209,6 @@ subroutine AdjCostSetup(this,realization,option)
   type(option_type) :: option
 
   character(len=MAXWORDLENGTH) :: word
-  character(len=MAXSTRINGLENGTH) :: error_string, data_ext_units
-  class(dataset_ascii_type), pointer :: ds
-  PetscInt :: nobs
 
   ! a primary species, or an immobile one (after them in the state)
   word = this%species_name
@@ -285,52 +230,6 @@ subroutine AdjCostSetup(this,realization,option)
   call AdjCostResolveCells(this,realization,option)
 
   this%realization => realization
-
-  if (this%kind /= ADJ_COST_MISFIT) return
-
-  ds => DatasetAsciiCreate()
-  error_string = &
-    'SUBSURFACE,ADJOINT,COST_FUNCTION,MISFIT_LEAST_SQUARES,OBSERVATION_FILE'
-  data_ext_units = ''
-  if (this%species_id > realization%reaction%naqcomp) then
-    call DatasetAsciiReadFile(ds,this%obs_filename,data_ext_units, &
-                              'mol/m^3',error_string,option)
-  else
-    call DatasetAsciiReadFile(ds,this%obs_filename,data_ext_units, &
-                              'mol/kg',error_string,option)
-  endif
-  if (ds%array_width /= 1) then
-    option%io_buffer = 'OBSERVATION_FILE for MISFIT_LEAST_SQUARES must &
-      &contain exactly one data column (time + single value per row).'
-    call PrintErrMsg(option)
-  endif
-  nobs = ds%time_storage%max_time_index
-  if (nobs < 1) then
-    call PrintErrMsg(option,'MISFIT_LEAST_SQUARES requires an observation.')
-  endif
-  if (ds%time_storage%is_cyclic) then
-    call PrintErrMsg(option,'MISFIT_LEAST_SQUARES does not support CYCLIC &
-      &observations.')
-  endif
-  if (.not.all(ieee_is_finite(ds%time_storage%times(1:nobs))) .or. &
-      .not.all(ieee_is_finite(ds%rbuffer(1:nobs)))) then
-    call PrintErrMsg(option,'MISFIT_LEAST_SQUARES observations must be &
-      &finite.')
-  endif
-  if (any(ds%time_storage%times(1:nobs) < 0.d0)) then
-    call PrintErrMsg(option,'MISFIT_LEAST_SQUARES observation times must &
-      &be nonnegative.')
-  endif
-  if (nobs > 1) then
-    if (any(ds%time_storage%times(2:nobs) <= &
-            ds%time_storage%times(1:nobs-1))) then
-      call PrintErrMsg(option,'MISFIT_LEAST_SQUARES observation times must &
-        &increase.')
-    endif
-  endif
-  this%observation_time = ds%time_storage%times(nobs)
-  this%observation_value = ds%rbuffer(nobs)
-  call DatasetAsciiDestroy(ds)
 
 end subroutine AdjCostSetup
 
@@ -367,8 +266,8 @@ subroutine AdjCostResolveCells(this,realization,option)
   num_local = 0
   num_global = 0
   if (Initialized(this%coordinate%x)) then
-    call GridGetLocalIDFromCoordinate(grid,this%coordinate,option,local_id)
-    ! local_id is negative on ranks that do not own the cell
+    call AdjCostLocateCell(grid,ZERO_INTEGER,this%coordinate, &
+                           'ADJOINT COST_FUNCTION COORDINATE',option,local_id)
     if (local_id > 0) then
       num_local = 1
       allocate(local_cell_ids(num_local))
@@ -451,6 +350,68 @@ end subroutine AdjCostResolveCells
 
 ! ************************************************************************** !
 
+subroutine AdjCostLocateCell(grid,natural_id,coordinate,error_string, &
+                             option,local_id)
+  !
+  ! The cell of a natural id (natural_id > 0) or else of a coordinate: its
+  ! local id on the process that has it, 0 on the others. Stops unless one
+  ! process has it: a coordinate on a face between two processes' cells of
+  ! an unstructured grid is in both, as for a REGION's.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/12/26
+  !
+  use Option_module
+  use Grid_module
+
+  implicit none
+
+  type(grid_type) :: grid
+  PetscInt :: natural_id
+  type(point3d_type) :: coordinate
+  character(len=*) :: error_string
+  type(option_type) :: option
+  PetscInt :: local_id
+
+  PetscInt :: id, count
+  PetscErrorCode :: ierr
+
+  local_id = 0
+  if (natural_id > 0) then
+    do id = 1, grid%nlmax
+      if (grid%nG2A(grid%nL2G(id)) == natural_id) then
+        local_id = id
+        exit
+      endif
+    enddo
+  else
+    ! negative on the processes that do not have it
+    call GridGetLocalIDFromCoordinate(grid,coordinate,option,id)
+    if (id > 0) local_id = id
+  endif
+  count = 0
+  if (local_id > 0) count = 1
+  call MPI_Allreduce(MPI_IN_PLACE,count,ONE_INTEGER_MPI,MPIU_INTEGER, &
+                     MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
+  if (count == 0) then
+    if (natural_id > 0) then
+      call PrintErrMsg(option,trim(error_string) // ': CELL_ID is not a &
+        &cell of the grid.')
+    else
+      call PrintErrMsg(option,trim(error_string) // ': its COORDINATE is &
+        &not in the grid.')
+    endif
+  else if (count > 1) then
+    write(option%io_buffer,'(a,i0,a)') trim(error_string) // ': its &
+      &COORDINATE is in cells of ',count,' processes (on a face between &
+      &them); move it into one cell.'
+    call PrintErrMsg(option)
+  endif
+
+end subroutine AdjCostLocateCell
+
+! ************************************************************************** !
+
 subroutine AdjCostFillTerminalLambda(this,Y,lambda,ndof,option)
   !
   ! Adds lambda(T) = dJ/dY(T) at the final transport state Y (ndof entries
@@ -474,7 +435,7 @@ subroutine AdjCostFillTerminalLambda(this,Y,lambda,ndof,option)
   PetscErrorCode :: ierr
   PetscScalar, pointer :: lam_p(:), y_p(:)
   PetscInt :: i, local_id, ghosted_id, offset
-  PetscReal :: local_J, global_J, c_val, cell_J, dJ_dC, scaled_diff
+  PetscReal :: local_J, global_J, c_val, cell_J, dJ_dC
   PetscBool :: use_log
 
   use_log = this%realization%reaction%use_log_formulation
@@ -494,15 +455,8 @@ subroutine AdjCostFillTerminalLambda(this,Y,lambda,ndof,option)
       else
         c_val = y_p(offset)
       endif
-      select case(this%kind)
-        case(ADJ_COST_TERMINAL_SPECIES)
-          cell_J = this%weight * c_val
-          dJ_dC = this%weight
-        case(ADJ_COST_MISFIT)
-          scaled_diff = (c_val-this%observation_value)/this%sigma
-          cell_J = this%weight * scaled_diff**2
-          dJ_dC = 2.d0 * this%weight * scaled_diff/this%sigma
-      end select
+      cell_J = this%weight * c_val
+      dJ_dC = this%weight
       if (use_log) dJ_dC = dJ_dC * c_val
       lam_p(offset) = lam_p(offset) + dJ_dC
       local_J = local_J + cell_J
@@ -517,28 +471,6 @@ subroutine AdjCostFillTerminalLambda(this,Y,lambda,ndof,option)
   this%J_value = global_J
 
 end subroutine AdjCostFillTerminalLambda
-
-! ************************************************************************** !
-
-subroutine AdjCostValidateTime(this,time,valid)
-  !
-  ! Whether time may be the terminal time: any for a terminal cost, the
-  ! observation time for a misfit.
-  !
-  ! Author: Hansol Suh
-  ! Date: 06/23/26
-  !
-  implicit none
-
-  class(adjoint_cost_type) :: this
-  PetscReal :: time
-  PetscBool :: valid
-
-  valid = PETSC_TRUE
-  if (this%kind == ADJ_COST_MISFIT) &
-    valid = abs(this%observation_time-time) <= 1.d-9*max(1.d0,abs(time))
-
-end subroutine AdjCostValidateTime
 
 ! ************************************************************************** !
 

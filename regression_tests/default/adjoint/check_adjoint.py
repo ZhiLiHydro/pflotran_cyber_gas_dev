@@ -287,21 +287,24 @@ def rerun(np):
 
 
 def optimization_deck(text, observed, start, block, directory):
-    """text with its terminal cost made a misfit of the value observed at
-    the final time (5 h), the rate constant at start, and block."""
+    """text (ar_1d4) with its terminal cost replaced by an observation of
+    CO2(aq) at its cell (cell2, natural id 2) at the final time (5 h), the
+    rate constant at start, and block."""
     observations = Path(directory) / "observations.dat"
-    observations.write_text("TIME_UNITS h\nDATA_UNITS mol/kg\n0 0\n"
+    observations.write_text("TIME_UNITS h\nDATA_UNITS mol/kg\n"
                             f"5 {observed:.17e}\n")
-    text = text.replace("COST_FUNCTION TERMINAL_SPECIES_CONCENTRATION",
-                        "COST_FUNCTION MISFIT_LEAST_SQUARES", 1)
-    text = text.replace("    SPECIES_NAME CO2(aq)\n",
-                        "    SPECIES_NAME CO2(aq)\n"
-                        f"    OBSERVATION_FILE {observations}\n"
-                        "    SIGMA 1.d-6\n", 1)
+    terminal = ("  COST_FUNCTION TERMINAL_SPECIES_CONCENTRATION\n"
+                "    SPECIES_NAME CO2(aq)\n    REGION cell2\n  /\n")
+    require(terminal in text, "no terminal CO2(aq) cost at cell2")
+    text = text.replace(terminal, "  OBSERVATIONS\n    TIME_SERIES\n"
+                        "      CELL_ID 2\n"
+                        "      OBSERVED_VARIABLE FREE_ION CO2(aq)\n"
+                        "      STANDARD_DEVIATION 1.d-6\n"
+                        f"      FILE {observations}\n    /\n  /\n", 1)
     text = set_value(text, MICROBIAL_RATE, start)
     text, count = re.subn(r"(?m)^ADJOINT\n", "ADJOINT\n" + block, text,
                           count=1)
-    require(count == 1 and "MISFIT" in text, "no optimization deck")
+    require(count == 1, "no optimization deck")
     return text
 
 
@@ -472,6 +475,9 @@ def optimization(np):
             run(text, "optimization", args=("-ts_model_rerun_check",),
                 expected_error="does not run with ADJOINT OPTIMIZATION",
                 timeout=30)
+            run(base.replace("ADJOINT\n", "ADJOINT\n" + block, 1),
+                "optimization", expected_error="OPTIMIZATION requires "
+                "OBSERVATIONS", timeout=30)
     cleanup_run("optimization")
     print(f"PASS optimization recovers the twin's rate constant ({np} ranks)",
           flush=True)

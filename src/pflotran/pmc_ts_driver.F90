@@ -359,10 +359,12 @@ subroutine PMCTSDriverSetupSolvers(this)
 
   call TSDriverAddForcingWaypoints(this)
 
-  ! backward Euler, a saved trajectory, dF/dp and recorded forcing
+  ! backward Euler, a saved trajectory, dF/dp and recorded forcing; the
+  ! observation times are interval ends
   if (associated(this%adjoint)) then
     call this%adjoint%Configure(solver%ts,this%model,this%solution, &
                                 WaypointListGetFinalTime(this%waypoint_list))
+    call TSDriverAddObservationWaypoints(this)
   endif
 
   call this%model%DefaultTolerances(atol,rtol)
@@ -516,6 +518,36 @@ end subroutine TSDriverAddForcingWaypoints
 
 ! ************************************************************************** !
 
+subroutine TSDriverAddObservationWaypoints(this)
+  !
+  ! Makes each observation time of the adjoint a waypoint, so that the run
+  ! has a step state there.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/12/26
+  !
+  use Waypoint_module
+
+  implicit none
+
+  class(pmc_ts_driver_type) :: this
+
+  type(waypoint_type), pointer :: waypoint
+  PetscReal, allocatable :: times(:)
+  PetscInt :: i
+
+  call this%adjoint%ObservationTimes(times)
+  do i = 1, size(times)
+    waypoint => WaypointCreate()
+    waypoint%time = times(i)
+    call WaypointInsertInList(waypoint,this%waypoint_list,this%option)
+  enddo
+  deallocate(times)
+
+end subroutine TSDriverAddObservationWaypoints
+
+! ************************************************************************** !
+
 recursive subroutine PMCTSDriverRunToTime(this,sync_time,stop_flag)
   !
   ! Integrates to sync_time, one TSSolve per waypoint interval, keeping
@@ -663,7 +695,7 @@ recursive subroutine PMCTSDriverRunToTime(this,sync_time,stop_flag)
     call TSGetStepRejections(solver%ts,rejected_after,ierr);CHKERRQ(ierr)
     ! the adjoint's trajectory must keep the interval's last step
     if (associated(this%adjoint) .and. reason%v > 0) &
-      call this%adjoint%EndInterval(solver%ts,this%solution)
+      call this%adjoint%EndInterval(solver%ts,this%model,this%solution)
 
     ! resume from the step size used before MATCHSTEP shortened the last
     ! step(s), unless TSAdapt asked for a reduction
@@ -1245,6 +1277,10 @@ subroutine TSDriverSetupOptimizer(this)
   PetscInt :: j, n
   PetscErrorCode :: ierr
 
+  if (this%adjoint%iobjective == 0) then
+    call PrintErrMsg(this%option,'ADJOINT OPTIMIZATION requires &
+      &OBSERVATIONS: it minimizes their misfit.')
+  endif
   n = this%adjoint%nparams
   allocate(name(n),p0(n),positive(n),log_scale(n))
   call this%adjoint%GetParameters(p0)
@@ -1267,8 +1303,8 @@ end subroutine TSDriverSetupOptimizer
 
 subroutine TSDriverObjective(this,f,g)
   !
-  ! The optimizer's objective, the sum of the costs of the last sweep, and
-  ! its gradient.
+  ! The optimizer's objective, the observations' misfit of the last sweep,
+  ! and its gradient.
   !
   ! Author: Hansol Suh
   ! Date: 10/07/26
@@ -1284,8 +1320,8 @@ subroutine TSDriverObjective(this,f,g)
 
   call this%adjoint%GetCostValues(cost)
   call this%adjoint%GetCostGradients(grad)
-  f = sum(cost)
-  g = sum(grad,dim=2)
+  f = cost(this%adjoint%iobjective)
+  g = grad(:,this%adjoint%iobjective)
 
 end subroutine TSDriverObjective
 
@@ -1359,8 +1395,8 @@ subroutine TSDriverOptimize(this)
   if (this%adjoint_status /= TS_ADJ_OK) then
     write(this%option%io_buffer,'(a,i0,a)') 'ADJOINT OPTIMIZATION: the &
       &run at the initial parameters has no gradient (adjoint status ', &
-      this%adjoint_status,'; 1: mineral regime transitions, 2: no &
-      &observation at the final time, 3: incomplete backward solve).'
+      this%adjoint_status,'; 1: mineral regime transitions, 2: an &
+      &observation not recorded, 3: incomplete backward solve).'
     call PrintErrMsg(this%option)
   endif
   call TSDriverObjective(this,f,g)

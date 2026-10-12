@@ -31,7 +31,7 @@ def parse_summary(path):
         raise RuntimeError(f"missing complete adjoint summary: {path}")
     summary = match.group(1)
     costs = {int(i): finite(v) for i, v in
-             re.findall(r"J_(\d+)\(T\)\s*=\s*(\S+)", summary)}
+             re.findall(r"(?m)^\s+J_(\d+)(?:\(T\))?\s+=\s*(\S+)", summary)}
     gradients = {(int(i), int(j)): finite(v) for i, j, v in re.findall(
         r"dJ_(\d+)/dp_(\d+)\s*\[.*?\]\s*=\s*(\S+)", summary)}
     if not costs or not gradients:
