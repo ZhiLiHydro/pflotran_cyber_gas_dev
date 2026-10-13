@@ -2064,6 +2064,8 @@ subroutine ReactionMnrlUpdateSpecSurfArea(reaction,rt_auxvar, &
           if (mnrl_volfrac0 > 0.d0) then
             volfrac_scale = (mnrl_volfrac/mnrl_volfrac0)** &
                             mineral%kinmnrl_surf_area_vol_frac_pwr(imnrl)
+          else
+            volfrac_scale = 1.d0
           endif
         endif
 
