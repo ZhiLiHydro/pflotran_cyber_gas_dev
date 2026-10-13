@@ -669,6 +669,7 @@ subroutine ReactionSrfCplxTotalSorbEq1(rt_auxvar,global_auxvar, &
   PetscInt :: i, j, k, icplx, icomp, jcomp, ncomp, ncplx
   PetscReal :: srfcplx_conc(reaction%surface_complexation%nsrfcplx)
   PetscReal :: dSx_dmi(reaction%naqcomp)
+  PetscReal :: dSk_dmj(reaction%naqcomp)
   PetscReal :: nui_Si_over_Sx
   PetscReal :: ln_free_site
   PetscReal :: lnQK, tempreal, total
@@ -874,24 +875,26 @@ subroutine ReactionSrfCplxTotalSorbEq1(rt_auxvar,global_auxvar, &
                         srfcplx_conc(icplx)/ &
                         free_site_conc
 
+      ! dS_k/dm_j: through the free sites for every species of the
+      ! reaction's complexes, directly for the species of complex k
+      dSk_dmj = nui_Si_over_Sx*dSx_dmi
       do j = 1, ncomp
         jcomp = surface_complexation%srfcplxspecid(j,icplx)
-        tempreal = surface_complexation%srfcplxstoich(j,icplx)* &
-                   srfcplx_conc(icplx) / &
-                   rt_auxvar%pri_molal(jcomp)+ &
-                   nui_Si_over_Sx*dSx_dmi(jcomp)
-        if (isite == 1) then ! immobile sites
-          do i = 1, ncomp
-            icomp = surface_complexation%srfcplxspecid(i,icplx)
-            external_dtotal_sorb(icomp,jcomp) = &
-                                external_dtotal_sorb(icomp,jcomp) + &
-                                surface_complexation%srfcplxstoich(i,icplx)* &
-                                tempreal
-          enddo ! i
-        else ! mobile sites
-          ! colloids removed
-        endif
+        dSk_dmj(jcomp) = dSk_dmj(jcomp) + &
+                         surface_complexation%srfcplxstoich(j,icplx)* &
+                         srfcplx_conc(icplx) / &
+                         rt_auxvar%pri_molal(jcomp)
       enddo ! j
+      if (isite == 1) then ! immobile sites
+        do i = 1, ncomp
+          icomp = surface_complexation%srfcplxspecid(i,icplx)
+          external_dtotal_sorb(icomp,:) = external_dtotal_sorb(icomp,:) + &
+                              surface_complexation%srfcplxstoich(i,icplx)* &
+                              dSk_dmj
+        enddo ! i
+      else ! mobile sites
+        ! colloids removed
+      endif
     enddo ! k
   enddo ! isite
 
