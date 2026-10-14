@@ -70,6 +70,11 @@ subroutine UGridRead(unstructured_grid,filename,option)
   PetscInt :: num_vertices_local_save
   PetscInt :: num_vertices_local
   PetscInt :: num_to_read
+  PetscInt :: offset, nchunk
+  ! One message per rank fails once a slice is larger than about 28 MB.
+  ! 200000 items is 6.4 MB for cell vertices (8 integers) and 4.8 MB for
+  ! vertex coordinates (3 doubles). A fixed tag stays below MPI_TAG_UB.
+  PetscInt, parameter :: max_items_per_message = 200000
   PetscInt, allocatable :: temp_int_array(:,:)
   PetscReal, allocatable :: temp_real_array(:,:)
   PetscReal, allocatable :: vertex_coordinates(:,:)
@@ -196,9 +201,14 @@ subroutine UGridRead(unstructured_grid,filename,option)
                  trim(adjustl(word))
         print *, trim(string)
 #endif
-        int_mpi = num_to_read*unstructured_grid%max_nvert_per_cell
-        call MPI_Send(temp_int_array,int_mpi,MPIU_INTEGER,irank,num_to_read, &
-                      option%mycomm,ierr);CHKERRQ(ierr)
+        offset = 0
+        do while (offset < num_to_read)
+          nchunk = min(max_items_per_message,num_to_read-offset)
+          int_mpi = nchunk*unstructured_grid%max_nvert_per_cell
+          call MPI_Send(temp_int_array(1,offset+1),int_mpi,MPIU_INTEGER, &
+                        irank,1,option%mycomm,ierr);CHKERRQ(ierr)
+          offset = offset + nchunk
+        enddo
       endif
     enddo
     deallocate(temp_int_array)
@@ -211,10 +221,15 @@ subroutine UGridRead(unstructured_grid,filename,option)
                  trim(adjustl(word))
         print *, trim(string)
 #endif
-    int_mpi = num_cells_local*unstructured_grid%max_nvert_per_cell
-    call MPI_Recv(unstructured_grid%cell_vertices,int_mpi,MPIU_INTEGER, &
-                  option%comm%io_rank,MPI_ANY_TAG,option%mycomm,status_mpi, &
-                  ierr);CHKERRQ(ierr)
+    offset = 0
+    do while (offset < num_cells_local)
+      nchunk = min(max_items_per_message,num_cells_local-offset)
+      int_mpi = nchunk*unstructured_grid%max_nvert_per_cell
+      call MPI_Recv(unstructured_grid%cell_vertices(1,offset+1),int_mpi, &
+                    MPIU_INTEGER,option%comm%io_rank,1,option%mycomm, &
+                    status_mpi,ierr);CHKERRQ(ierr)
+      offset = offset + nchunk
+    enddo
   endif
   call OptionSetBlocking(option,PETSC_TRUE)
   call OptionCheckNonBlockingError(option)
@@ -253,17 +268,28 @@ subroutine UGridRead(unstructured_grid,filename,option)
         vertex_coordinates(:,1:num_vertices_local) = &
           temp_real_array(:,1:num_vertices_local)
       else
-        int_mpi = num_to_read*3
-        call MPI_Send(temp_real_array,int_mpi,MPI_DOUBLE_PRECISION,irank, &
-                      num_to_read,option%mycomm,ierr);CHKERRQ(ierr)
+        offset = 0
+        do while (offset < num_to_read)
+          nchunk = min(max_items_per_message,num_to_read-offset)
+          int_mpi = nchunk*3
+          call MPI_Send(temp_real_array(1,offset+1),int_mpi, &
+                        MPI_DOUBLE_PRECISION,irank,2,option%mycomm, &
+                        ierr);CHKERRQ(ierr)
+          offset = offset + nchunk
+        enddo
       endif
     enddo
     deallocate(temp_real_array)
   else
-    int_mpi = num_vertices_local*3
-    call MPI_Recv(vertex_coordinates,int_mpi,MPI_DOUBLE_PRECISION, &
-                  option%comm%io_rank,MPI_ANY_TAG,option%mycomm,status_mpi, &
-                  ierr);CHKERRQ(ierr)
+    offset = 0
+    do while (offset < num_vertices_local)
+      nchunk = min(max_items_per_message,num_vertices_local-offset)
+      int_mpi = nchunk*3
+      call MPI_Recv(vertex_coordinates(1,offset+1),int_mpi, &
+                    MPI_DOUBLE_PRECISION,option%comm%io_rank,2, &
+                    option%mycomm,status_mpi,ierr);CHKERRQ(ierr)
+      offset = offset + nchunk
+    enddo
   endif
   call OptionSetBlocking(option,PETSC_TRUE)
   call OptionCheckNonBlockingError(option)
