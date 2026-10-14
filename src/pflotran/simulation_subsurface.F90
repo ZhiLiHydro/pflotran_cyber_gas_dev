@@ -969,6 +969,8 @@ subroutine SimSubsurfFinalizeRun(this)
   class(simulation_subsurface_type) :: this
 
   character(MAXSTRINGLENGTH) :: string
+  PetscBool :: log_view
+  PetscViewer :: viewer
   PetscErrorCode :: ierr
 
   if (this%stop_flag /= TS_STOP_END_SIMULATION) then
@@ -1019,8 +1021,22 @@ subroutine SimSubsurfFinalizeRun(this)
     call SimulationBaseWriteTimes(this,this%option%fid_out)
   endif
 
-  ! close output files
+  ! PetscFinalize prints -log_view after this simulation is destroyed.
+  ! Ranks 1-8 bus-error in that shutdown, and piped stdout never receives
+  ! the stage table. Print and flush it here instead.
   call PetscLogStagePop(ierr);CHKERRQ(ierr)
+  log_view = PETSC_FALSE
+  call PetscOptionsHasName(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER, &
+                           '-log_view',log_view,ierr);CHKERRQ(ierr)
+  if (log_view) then
+    call PetscViewerASCIIGetStdout(this%option%mycomm,viewer,ierr);CHKERRQ(ierr)
+    call PetscLogView(viewer,ierr);CHKERRQ(ierr)
+    call PetscViewerFlush(viewer,ierr);CHKERRQ(ierr)
+    flush(OUTPUT_UNIT)
+    call PetscOptionsClearValue(PETSC_NULL_OPTIONS,'-log_view',ierr);CHKERRQ(ierr)
+  endif
+
+  ! close output files
   if (OptionPrintToFile(this%option)) then
     close(this%option%fid_out)
     call OutputEKGFinalize()
