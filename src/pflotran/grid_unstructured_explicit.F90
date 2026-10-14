@@ -50,6 +50,11 @@ subroutine UGridExplicitRead(unstructured_grid,filename,option)
   character(len=MAXSTRINGLENGTH) :: hint
   character(len=MAXWORDLENGTH) :: word, card
   PetscInt :: fileid, icell, iconn, irank, remainder, temp_int, num_to_read
+  PetscInt :: offset, nchunk
+  ! One message per rank fails once a slice is larger than about 28 MB.
+  ! 200000 items is 8 MB for cells (5 doubles) and 9.6 MB for connections
+  ! (6 doubles). A fixed tag stays below MPI_TAG_UB.
+  PetscInt, parameter :: max_items_per_message = 200000
 
   PetscInt :: num_cells, num_connections, num_elems
   PetscInt :: num_cells_local, num_cells_local_save
@@ -189,9 +194,15 @@ subroutine UGridExplicitRead(unstructured_grid,filename,option)
                  trim(adjustl(word))
         print *, trim(string)
 #endif
-        int_mpi = num_to_read*5
-        call MPI_Send(temp_real_array,int_mpi,MPI_DOUBLE_PRECISION,irank, &
-                      num_to_read,option%mycomm,ierr);CHKERRQ(ierr)
+        offset = 0
+        do while (offset < num_to_read)
+          nchunk = min(max_items_per_message,num_to_read-offset)
+          int_mpi = nchunk*5
+          call MPI_Send(temp_real_array(1,offset+1),int_mpi, &
+                        MPI_DOUBLE_PRECISION,irank,1,option%mycomm, &
+                        ierr);CHKERRQ(ierr)
+          offset = offset + nchunk
+        enddo
       endif
     enddo
   else
@@ -204,10 +215,15 @@ subroutine UGridExplicitRead(unstructured_grid,filename,option)
     print *, trim(string)
 #endif
     allocate(temp_real_array(5,num_cells_local))
-    int_mpi = num_cells_local*5
-    call MPI_Recv(temp_real_array,int_mpi,MPI_DOUBLE_PRECISION, &
-                  option%comm%io_rank,MPI_ANY_TAG,option%mycomm,status_mpi, &
-                  ierr);CHKERRQ(ierr)
+    offset = 0
+    do while (offset < num_cells_local)
+      nchunk = min(max_items_per_message,num_cells_local-offset)
+      int_mpi = nchunk*5
+      call MPI_Recv(temp_real_array(1,offset+1),int_mpi, &
+                    MPI_DOUBLE_PRECISION,option%comm%io_rank,1, &
+                    option%mycomm,status_mpi,ierr);CHKERRQ(ierr)
+      offset = offset + nchunk
+    enddo
     do icell = 1, num_cells_local
       explicit_grid%cell_ids(icell) = int(temp_real_array(1,icell))
       explicit_grid%cell_centroids(icell)%x = temp_real_array(2,icell)
@@ -318,9 +334,15 @@ subroutine UGridExplicitRead(unstructured_grid,filename,option)
                  trim(adjustl(word))
         print *, trim(string)
 #endif
-        int_mpi = num_to_read*6
-        call MPI_Send(temp_real_array,int_mpi,MPI_DOUBLE_PRECISION,irank, &
-                      num_to_read,option%mycomm,ierr);CHKERRQ(ierr)
+        offset = 0
+        do while (offset < num_to_read)
+          nchunk = min(max_items_per_message,num_to_read-offset)
+          int_mpi = nchunk*6
+          call MPI_Send(temp_real_array(1,offset+1),int_mpi, &
+                        MPI_DOUBLE_PRECISION,irank,2,option%mycomm, &
+                        ierr);CHKERRQ(ierr)
+          offset = offset + nchunk
+        enddo
       endif
     enddo
   else
@@ -333,10 +355,15 @@ subroutine UGridExplicitRead(unstructured_grid,filename,option)
     print *, trim(string)
 #endif
     allocate(temp_real_array(6,num_connections_local))
-    int_mpi = num_connections_local*6
-    call MPI_Recv(temp_real_array,int_mpi,MPI_DOUBLE_PRECISION, &
-                  option%comm%io_rank,MPI_ANY_TAG,option%mycomm,status_mpi, &
-                  ierr);CHKERRQ(ierr)
+    offset = 0
+    do while (offset < num_connections_local)
+      nchunk = min(max_items_per_message,num_connections_local-offset)
+      int_mpi = nchunk*6
+      call MPI_Recv(temp_real_array(1,offset+1),int_mpi, &
+                    MPI_DOUBLE_PRECISION,option%comm%io_rank,2, &
+                    option%mycomm,status_mpi,ierr);CHKERRQ(ierr)
+      offset = offset + nchunk
+    enddo
     do iconn = 1, num_connections_local
       explicit_grid%connections(1,iconn) = int(temp_real_array(1,iconn))
       explicit_grid%connections(2,iconn) = int(temp_real_array(2,iconn))
