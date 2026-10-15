@@ -1024,15 +1024,17 @@ subroutine SimSubsurfFinalizeRun(this)
   ! PetscFinalize prints -log_view after this simulation is destroyed.
   ! Ranks 1-8 bus-error in that shutdown, and piped stdout never receives
   ! the stage table. Print and flush it here instead.
+  ! Flush the screen unit. OUTPUT_UNIT (18) is a data file; the regression
+  ! write has already closed it, and gfortran aborts on FLUSH of that unit.
   call PetscLogStagePop(ierr);CHKERRQ(ierr)
   log_view = PETSC_FALSE
   call PetscOptionsHasName(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER, &
                            '-log_view',log_view,ierr);CHKERRQ(ierr)
   if (log_view) then
+    flush(STDOUT_UNIT)
     call PetscViewerASCIIGetStdout(this%option%mycomm,viewer,ierr);CHKERRQ(ierr)
     call PetscLogView(viewer,ierr);CHKERRQ(ierr)
     call PetscViewerFlush(viewer,ierr);CHKERRQ(ierr)
-    flush(OUTPUT_UNIT)
     call PetscOptionsClearValue(PETSC_NULL_OPTIONS,'-log_view',ierr);CHKERRQ(ierr)
   endif
 
