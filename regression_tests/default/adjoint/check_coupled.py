@@ -225,6 +225,31 @@ def gradients():
              [(PERMEABILITY, 1e-12), (MICROBIAL_RATE, 4e-2)], "biomass")
 
 
+def chemistry_observations():
+    """OBSERVATIONS of TOTAL and PH in the coupled model (evaluated at the
+    flow state of the recorded step): the objective's gradient in
+    permeability and calcite rate constant against central differences."""
+    base = deck("adjoint-coupled")
+    probe = ("  COST_FUNCTION TERMINAL_SPECIES_CONCENTRATION\n"
+             "    SPECIES_NAME Ca++\n    REGION probe\n  /\n")
+    require(probe in base, "adjoint-coupled: no probe cost")
+    block = "  OBSERVATIONS\n"
+    for z, variable, value, error in (
+            ("6.25d0", "TOTAL HCO3-", "2.d-3 mol/kg", "1.d-5"),
+            ("3.25d0", "TOTAL Ca++", "1.d-3 mol/kg", "1.d-5"),
+            ("6.25d0", "PH", "7.5d0", "1.d-2")):
+        for time in ("2.d-2", "5.d-2"):
+            block += ("    MEASUREMENT\n"
+                      f"      TIME {time} y\n"
+                      f"      COORDINATE 0.5d0 0.5d0 {z}\n"
+                      f"      OBSERVED_VARIABLE {variable}\n"
+                      f"      VALUE {value}\n"
+                      f"      STANDARD_DEVIATION {error}\n    /\n")
+    fd_check(base.replace(probe, block + "  /\n"),
+             [(PERMEABILITY, 1e-12), (CALCITE_RATE, 1e-8)],
+             "coupled_chemistry")
+
+
 def rerun(np):
     """-ts_model_rerun_check on the coupled model: reruns reproduce the run
     bit for bit at the deck's permeability and calcite rate constant, and
@@ -457,6 +482,7 @@ def main():
         model_checks()
         unstructured_grid()
         gradients()
+        chemistry_observations()
         initial_pressures()
         compressible_gradients()
         calculated_porosity()

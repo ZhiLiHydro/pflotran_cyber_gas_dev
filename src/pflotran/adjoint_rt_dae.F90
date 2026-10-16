@@ -42,6 +42,7 @@ module Adjoint_RT_DAE_class
   use Flow_RT_DAE_Model_class
   use Richards_DAE_Model_class
   use Adjoint_Cost_module, only : adjoint_cost_type
+  use Adjoint_Observation_module, only : adj_obs_chemistry_type
   use Adjoint_Param_module
   use Realization_Subsurface_class
   use Option_module
@@ -49,6 +50,15 @@ module Adjoint_RT_DAE_class
   implicit none
 
   private
+
+  ! the observations of a cell's chemistry (TOTAL, PH), at the time of the
+  ! state being recorded
+  type, extends(adj_obs_chemistry_type) :: adj_rt_dae_chemistry_type
+    class(rt_dae_model_type), pointer :: rt => null()
+    PetscReal :: time = 0.d0
+  contains
+    procedure, public :: Evaluate => AdjRTDAEObsChemistry
+  end type adj_rt_dae_chemistry_type
 
   type, public, extends(ts_adjoint_type) :: adjoint_rt_dae_type
     class(realization_subsurface_type), pointer :: realization => null()
@@ -334,7 +344,8 @@ end subroutine AdjRTDAEObservationTimes
 
 subroutine AdjRTDAERecordObservations(this,model,time,step,Y,recorded)
   !
-  ! The observations are functions of the transport state.
+  ! The observations are functions of the transport state (TOTAL and PH
+  ! through the cell's chemistry, coupled at the flow state of Y).
   !
   ! Author: Hansol Suh
   ! Date: 10/12/26
@@ -352,23 +363,77 @@ subroutine AdjRTDAERecordObservations(this,model,time,step,Y,recorded)
 
   class(rt_dae_model_type), pointer :: rt
   class(flow_rt_dae_model_type), pointer :: coupled
+  type(adj_rt_dae_chemistry_type) :: chemistry
   Vec :: Y_f, Y_t
+  PetscInt :: status
 
   recorded = PETSC_FALSE
   if (this%iobjective == 0) return
   rt => AdjRTDAEModel(this,model)
   coupled => AdjRTDAECoupled(model)
+  chemistry%rt => rt
+  chemistry%time = time
   if (associated(coupled)) then
     call FlowRTDAEGetParts(coupled,Y,Y_f,Y_t)
+    call FlowRTDAESetFlowState(coupled,time,Y_f,status)
     call AdjObsRecord(Y_t,rt%ndof,rt%reaction%use_log_formulation,time, &
-                      step,this%option,recorded)
+                      step,chemistry,this%option,recorded)
     call FlowRTDAERestoreParts(coupled,Y,Y_f,Y_t)
   else
     call AdjObsRecord(Y,rt%ndof,rt%reaction%use_log_formulation,time,step, &
-                      this%option,recorded)
+                      chemistry,this%option,recorded)
   endif
 
 end subroutine AdjRTDAERecordObservations
+
+! ************************************************************************** !
+
+subroutine AdjRTDAEObsChemistry(this,local_id,variable,component,y_c,H, &
+                                dH_dyc)
+  !
+  ! TOTAL of a component [mol/kg] or PH at a cell, by the model's closure
+  ! (RTDAECellObservables). The state was converged, so the closure
+  ! succeeds; the cell's cached chemistry it overwrites is that state's.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/16/26
+  !
+  use Adjoint_Observation_module, only : ADJ_OBS_TOTAL
+
+  implicit none
+
+  class(adj_rt_dae_chemistry_type) :: this
+  PetscInt :: local_id
+  PetscInt :: variable
+  PetscInt :: component
+  PetscReal :: y_c(:)
+  PetscReal :: H
+  PetscReal :: dH_dyc(:)
+
+  class(rt_dae_model_type), pointer :: rt
+  PetscReal :: total(this%rt%naqcomp), dtotal(this%rt%naqcomp,this%rt%ncomp)
+  PetscReal :: ph, dph(this%rt%ncomp)
+  PetscInt :: status
+
+  rt => this%rt
+  call RTDAECellObservables(rt,this%time,local_id,y_c,total,dtotal,ph,dph, &
+                            status)
+  if (status /= TS_MODEL_OK) then
+    write(rt%option%io_buffer,'(a,i0,a)') 'ADJOINT OBSERVATIONS: the &
+      &chemistry of cell ',rt%realization%patch%grid%nG2A( &
+      rt%realization%patch%grid%nL2G(local_id)),' could not be evaluated &
+      &at an observation time.'
+    call PrintErrMsgByRank(rt%option)
+  endif
+  if (variable == ADJ_OBS_TOTAL) then
+    H = total(component)
+    dH_dyc = dtotal(component,:)
+  else
+    H = ph
+    dH_dyc = dph
+  endif
+
+end subroutine AdjRTDAEObsChemistry
 
 ! ************************************************************************** !
 

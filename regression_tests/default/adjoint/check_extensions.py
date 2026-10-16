@@ -393,7 +393,7 @@ def observations(np):
                     ('      CELL_ID 2\n', '', 'requires CELL_ID or COORDINATE'),
                     ('      CELL_ID 2\n', '      REGION cell2\n', 'is at one cell'),
                     ('      CELL_ID 2\n', '      CELL_ID 9\n', 'not a cell of the grid'),
-                    ('FREE_ION CO2(aq)', 'TOTAL CO2(aq)', 'TOTAL is not supported yet'),
+                    ('FREE_ION CO2(aq)', 'TOTAL Biomass', 'TOTAL "Biomass" is not a primary'),
                     ('FREE_ION CO2(aq)', 'FREE_ION Biomass', 'is not a primary species'),
                     ('      OBSERVED_VARIABLE FREE_ION CO2(aq)\n', '',
                      'requires OBSERVED_VARIABLE'),
@@ -429,9 +429,149 @@ def observations(np):
             run(measurement.replace('FREE_ION CO2(aq)', 'IMMOBILE CO2(aq)').replace(
                 'mol/kg', 'mol/m^3'), 'observations_rejections',
                 expected_error='is not an immobile species')
+            run(measurement.replace('FREE_ION CO2(aq)', 'PH').replace(
+                'VALUE 5.d-5 mol/kg', 'VALUE 7.d0'), 'observations_rejections',
+                expected_error='PH requires H+ as a primary species')
             cleanup_run('observations_rejections')
     print(f'PASS observations: final-time formula, time series vs FD and terminal sums, '
           f'segments, units and rejections ({np} ranks)', flush=True)
+
+
+CALCITE_RATE = r'^      RATE_CONSTANT (\S+) mol/m\^2-sec'
+
+
+def chemistry_observations(np):
+    """TOTAL and PH observations (ar_carbonate: carbonate speciation with
+    activity coefficients): the objective's gradient against finite
+    differences, also with LOG_FORMULATION; the simulated values against
+    PFLOTRAN's Total [mol/L] (over the density) and pH output at the same
+    times; recording them leaves the forward run as it is; segments, the
+    memory trajectory and reruns reproduce it; without complexes TOTAL is
+    FREE_ION; bad input."""
+    base = example('carbonate')
+    with tempfile.TemporaryDirectory(prefix='pflotran-adjoint-chemistry-') as directory:
+        directory = Path(directory)
+        dic, ph = directory / 'dic.dat', directory / 'ph.dat'
+        write_series(dic, [(36, 1.5e-3), (72, 1.8e-3), (120, 2.e-3)])
+        ph.write_text('TIME_UNITS d\n2.5 6.3\n5 6.6\n')
+        block = ('  OBSERVATIONS\n'
+                 '    TIME_SERIES\n      CELL_ID 1\n      OBSERVED_VARIABLE TOTAL HCO3-\n'
+                 f'      ERROR ABSOLUTE 1.d-5 RELATIVE 2.d-2\n      FILE {dic}\n    /\n'
+                 '    TIME_SERIES\n      CELL_ID 4\n      OBSERVED_VARIABLE PH\n'
+                 f'      STANDARD_DEVIATION 5.d-2\n      FILE {ph}\n    /\n'
+                 '    MEASUREMENT\n      TIME 2 d\n      CELL_ID 2\n      OBSERVED_VARIABLE PH\n'
+                 '      VALUE 7.d0\n      STANDARD_DEVIATION 5.d-2\n    /\n'
+                 '    MEASUREMENT\n      TIME 5 d\n      CELL_ID 3\n'
+                 '      OBSERVED_VARIABLE TOTAL Ca++\n      VALUE 4.d-4 mol/kg\n'
+                 '      STANDARD_DEVIATION 1.d-5\n    /\n'
+                 '  /\n')
+        deck = with_observations(base, block)
+        reference = None
+        for log in (False, True):
+            if log and np > 1:
+                break
+            text = log_formulation(deck) if log else deck
+            tag = f'chemistry_observations_{log}'
+            costs, gradients = gradient_check(text, [(CALCITE_RATE, 0, 1e-7)], tag, np,
+                                              tolerance=1e-7)
+            require(costs[2] > 0. and abs(gradients[2, 1]) > 1., 'no misfit gradient')
+            if reference:
+                for key in gradients:
+                    close(gradients[key], reference[1][key], rtol=1e-6)
+            reference = costs, gradients
+
+        # the simulated values are PFLOTRAN's (mol/L at 1.2 kg/L for TOTAL)
+        points = ''.join(f'OBSERVATION\n  REGION cell{i}\nEND\n\n' for i in (1, 2))
+        heavy = deck.replace('FLUID_PROPERTY\n', 'REFERENCE_LIQUID_DENSITY 1200.d0\n\n'
+                             'FLUID_PROPERTY\n').replace('STRATA\n', points + 'STRATA\n')
+        heavy = heavy.replace('OUTPUT\n  TIME_UNITS d\n',
+                              'OUTPUT\n  TIME_UNITS d\n  PERIODIC_OBSERVATION TIMESTEP 1\n')
+        heavy = heavy.replace('REGION cell2\n  COORDINATE 1.5d0 0.5d0 0.5d0\nEND\n',
+                              'REGION cell2\n  COORDINATE 1.5d0 0.5d0 0.5d0\nEND\n\n'
+                              'REGION cell3\n  COORDINATE 2.5d0 0.5d0 0.5d0\nEND\n\n'
+                              'REGION cell4\n  COORDINATE 3.5d0 0.5d0 0.5d0\nEND\n')
+        heavy = heavy.replace('OBSERVATION\n  REGION cell2\nEND\n\n',
+                              'OBSERVATION\n  REGION cell2\nEND\n\n'
+                              'OBSERVATION\n  REGION cell3\nEND\n\n'
+                              'OBSERVATION\n  REGION cell4\nEND\n\n')
+        output = Path(run(heavy, 'chemistry_values', np=np))
+        # the observation points' output, one file per process with points
+        columns = {}
+        for path in sorted(output.parent.glob('case-obs-*.pft')):
+            lines = path.read_text().splitlines()
+            header = [c.strip().strip('"') for c in lines[0].split(',')]
+            table = [[float(v) for v in line.split()] for line in lines[1:]]
+            for i, name in enumerate(header[1:], 1):
+                columns[name] = [(row[0], row[i]) for row in table]
+        compared = 0
+        for line in output.with_name('case-observations.dat').read_text().splitlines():
+            if line.startswith('#'):
+                continue
+            fields = line.split()
+            time, cell, variable, species, simulated = (float(fields[1])/86400.,
+                                                        int(fields[2]), fields[3],
+                                                        fields[4], float(fields[6]))
+            name = 'pH' if variable == 'PH' else f'Total {species} [M]'
+            matches = [c for c in columns if c.startswith(name) and f'cell{cell} ' in c]
+            require(len(matches) == 1, f'missing output column {name} cell{cell}')
+            at, value = min(columns[matches[0]], key=lambda r: abs(r[0]-time))
+            require(abs(at-time) < 1e-9, f'no output at {time} d')
+            if variable == 'PH':
+                close(simulated, value, rtol=0., atol=2e-6)
+            else:
+                close(1.2*simulated, value, rtol=2e-6)
+            compared += 1
+        require(compared == 7, 'not every observation was compared with the output')
+        cleanup_run('chemistry_values')
+
+        # TOTAL and PH evaluate the chemistry at the recorded state: the
+        # forward run and the terminal cost are those with FREE_ION at the
+        # same cells and times (the same waypoints)
+        free = block.replace('TOTAL HCO3-', 'FREE_ION HCO3-').replace(
+            'OBSERVED_VARIABLE PH\n', 'OBSERVED_VARIABLE FREE_ION H+\n').replace(
+            'TOTAL Ca++', 'FREE_ION Ca++').replace('      VALUE 7.d0\n',
+                                                   '      VALUE 1.d-7 mol/kg\n')
+        ph.write_text('TIME_UNITS d\nDATA_UNITS mol/kg\n2.5 1.d-6\n5 1.d-6\n')
+        plain = parse_summary(run(with_observations(base, free), 'chemistry_forms', np=np))
+        ph.write_text('TIME_UNITS d\n2.5 6.3\n5 6.6\n')
+        whole = parse_summary(run(deck, 'chemistry_forms', np=np))
+        require(whole[0][1] == plain[0][1] and whole[1][1, 1] == plain[1][1, 1],
+                'recording TOTAL or PH changed the forward run')
+        for args in (('-adjoint_debug_split',), ('-ts_trajectory_type', 'memory')):
+            require(parse_summary(run(deck, 'chemistry_forms', np=np, args=args)) == whole,
+                    f'{args} changes the objective or its gradient')
+        parse_rerun_check(run(deck, 'chemistry_forms', np=np,
+                              args=('-ts_model_rerun_check',)))
+        cleanup_run('chemistry_forms')
+
+        # without aqueous complexes the total is the free ion
+        ar = example('1d4')
+        final = directory / 'final.dat'
+        write_series(final, [(2, 4.e-4), (5, 1.e-3)])
+        one = observation_block((2, 'FREE_ION', 'CO2(aq)', 'STANDARD_DEVIATION 1.d-4', final))
+        free_ion = parse_summary(run(with_observations(ar, one), 'chemistry_free', np=np))
+        total = parse_summary(run(with_observations(ar, one.replace('FREE_ION', 'TOTAL')),
+                                  'chemistry_free', np=np))
+        close(total[0][2], free_ion[0][2], rtol=1e-13)
+        close(total[1][2, 1], free_ion[1][2, 1], rtol=1e-12)
+        cleanup_run('chemistry_free')
+
+        if np == 1:
+            for old, new, error in (
+                    ('      VALUE 7.d0\n', '      VALUE 7.d0 mol/kg\n', 'PH is dimensionless'),
+                    ('      VALUE 4.d-4 mol/kg\n', '      VALUE 4.d-4\n', 'VALUE units are missing'),
+                    ('OBSERVED_VARIABLE TOTAL Ca++', 'OBSERVED_VARIABLE TOTAL Calcite',
+                     'TOTAL "Calcite" is not a primary species')):
+                require(old in deck, f'missing {old!r}')
+                run(deck.replace(old, new, 1), 'chemistry_rejections', expected_error=error)
+            ph.write_text('TIME_UNITS d\nDATA_UNITS mol/kg\n2.5 6.3\n5 6.6\n')
+            run(deck, 'chemistry_rejections', expected_error='PH is dimensionless')
+            ph.write_text('TIME_UNITS d\n2.5 6.3\n5 6.6\n')
+            dic.write_text('TIME_UNITS h\n36 1.5d-3\n')
+            run(deck, 'chemistry_rejections', expected_error='requires DATA_UNITS')
+            cleanup_run('chemistry_rejections')
+    print(f'PASS TOTAL and PH observations: FD, output values, forward run unchanged, '
+          f'segments, reruns, free ion and rejections ({np} ranks)', flush=True)
 
 
 def nonunit_example(volume=2.0):
@@ -586,7 +726,7 @@ def main():
     parser.add_argument('--executable')
     parser.add_argument('--feature', default='all',
                         choices=('all', 'multireaction', 'inhibition', 'yield_decay',
-                                 'observations',
+                                 'observations', 'chemistry_observations',
                                  'geometry', 'selection', 'branches'))
     args = parser.parse_args()
     if args.executable:
@@ -601,6 +741,8 @@ def main():
         yield_decay(np)
     if args.feature in ('all', 'observations'):
         observations(np)
+    if args.feature in ('all', 'chemistry_observations'):
+        chemistry_observations(np)
     if args.feature in ('all', 'geometry'):
         biomass_geometry(np)
     if args.feature in ('all', 'selection'):

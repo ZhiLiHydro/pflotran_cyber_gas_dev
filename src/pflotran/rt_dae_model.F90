@@ -227,7 +227,8 @@ module RT_DAE_Model_class
             RTDAELoadCell, &
             RTDAELoadCellRates, &
             RTDAEPoreLiters, &
-            RTDAEInitialSensitivity
+            RTDAEInitialSensitivity, &
+            RTDAECellObservables
 
 contains
 
@@ -3063,6 +3064,67 @@ subroutine RTDAEInitialSensitivity(this,time,Y,lambda,dJ_dc,dJ_dK)
   call VecRestoreArrayRead(lambda,lam_p,ierr);CHKERRQ(ierr)
 
 end subroutine RTDAEInitialSensitivity
+
+! ************************************************************************** !
+
+subroutine RTDAECellObservables(this,time,local_id,y_c,total,dtotal,ph, &
+                                dph,status)
+  !
+  ! At active local cell local_id with c coordinates y_c, under the forcing
+  ! at time (coupled: of the flow state set): each aqueous component's
+  ! total in solution [mol/kg] and, with H+ primary, the pH, -log10 of its
+  ! activity (else 0), and their derivatives with respect to y_c (log
+  ! chain applied), activity-coefficient sensitivity included. status:
+  ! TS_MODEL_OK, or TS_MODEL_DOMAIN_ERROR where the closure fails.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/16/26
+  !
+  implicit none
+
+  class(rt_dae_model_type) :: this
+  PetscReal :: time
+  PetscInt :: local_id
+  PetscReal :: y_c(:)
+  PetscReal :: total(:)
+  PetscReal :: dtotal(:,:)
+  PetscReal :: ph
+  PetscReal :: dph(:)
+  PetscInt :: status
+
+  PetscReal :: den_kg_per_L, m
+  PetscReal :: J(1,this%naqcomp)
+  PetscInt :: ghosted_id, ih, naq
+
+  naq = this%naqcomp
+  ghosted_id = this%realization%patch%grid%nL2G(local_id)
+  call RTDAEForcingAt(this,time)
+  call RTDAECellChemistry(this,ghosted_id,y_c,PETSC_TRUE,status)
+  if (status /= RT_DAE_CHEM_OK) then
+    status = TS_MODEL_DOMAIN_ERROR
+    return
+  endif
+  status = TS_MODEL_OK
+  ! the closure's totals are per liter at this density
+  den_kg_per_L = this%forcing%gaux(ghosted_id)%den_kg(1)*1.d-3
+  total = this%tot(:,ghosted_id)/den_kg_per_L
+  dtotal = 0.d0
+  dtotal(:,1:naq) = this%dtot(:,:,ghosted_id)/den_kg_per_L
+  ph = 0.d0
+  dph = 0.d0
+  ih = this%reaction%species_idx%h_ion_id
+  if (ih <= 0) return
+  m = this%scratch%pri_molal(ih)
+  ph = -log10(this%scratch%pri_act_coef(ih)*m)
+  ! at fixed activity coefficients, then their sensitivity
+  J = 0.d0
+  J(1,ih) = -1.d0/(log(10.d0)*m)
+  call RTDAEGammaChain(J,1,naq,this%scratch%pri_molal,this%gam)
+  dph(1:naq) = J(1,:)
+  if (this%log_formulation) &
+    dph(1:naq) = dph(1:naq)*this%scratch%pri_molal(1:naq)
+
+end subroutine RTDAECellObservables
 
 ! ************************************************************************** !
 

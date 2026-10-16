@@ -12,7 +12,8 @@ module Adjoint_Observation_module
   !     TIME_SERIES
   !       CELL_ID <natural id> | COORDINATE <x> <y> <z>
   !       OBSERVED_VARIABLE FREE_ION <primary species> |
-  !                         IMMOBILE <immobile species>
+  !                         TOTAL <primary species> |
+  !                         IMMOBILE <immobile species> | PH
   !       ERROR ABSOLUTE <a> RELATIVE <r> | STANDARD_DEVIATION <sigma>
   !       FILE <path>   ! TIME_UNITS and DATA_UNITS lines, then: time value
   !     /
@@ -26,8 +27,13 @@ module Adjoint_Observation_module
   !   /
   !
   ! Nothing has a default. sigma = a + r|d|, a and STANDARD_DEVIATION in
-  ! the data units (mol/kg aqueous, mol/m^3 bulk immobile). Times are after
-  ! the start and at most the final time.
+  ! the data units: mol/kg for FREE_ION and TOTAL (the component's total in
+  ! solution, free ion and aqueous complexes; PFLOTRAN's Total output in
+  ! mol/L is it times the density in kg/L), mol/m^3 bulk for IMMOBILE, none
+  ! for PH (-log10 of the H+ activity: VALUE takes no units and a FILE no
+  ! DATA_UNITS). Times are after the start and at most the final time.
+  ! TOTAL and PH are functions of the cell's chemistry, which the model
+  ! evaluates (adj_obs_chemistry_type).
   !
   ! Author: Hansol Suh
   ! Date: 10/12/26
@@ -46,6 +52,8 @@ module Adjoint_Observation_module
 
   PetscInt, parameter :: ADJ_OBS_FREE_ION = 1
   PetscInt, parameter :: ADJ_OBS_IMMOBILE = 2
+  PetscInt, parameter, public :: ADJ_OBS_TOTAL = 3
+  PetscInt, parameter, public :: ADJ_OBS_PH = 4
 
   type, public :: adjoint_observations_type
     PetscInt :: n = 0
@@ -60,17 +68,41 @@ module Adjoint_Observation_module
     type(point3d_type), allocatable :: coordinate(:)
     ! the first observation of its TIME_SERIES or MEASUREMENT
     PetscInt, allocatable :: first(:)
-    ! resolved at Setup: the entry in a cell's block of the transport state,
-    ! the local cell (0 on other processes) and the cell's natural id
+    ! resolved at Setup: the entry in a cell's c coordinates (FREE_ION,
+    ! IMMOBILE) or the component (TOTAL, PH: H+), the local cell (0 on
+    ! other processes) and the cell's natural id
     PetscInt, allocatable :: species_id(:)
     PetscInt, allocatable :: local_id(:)
     PetscInt, allocatable :: cell(:)
     ! of the last forward run: the step at time(i) (-1: not reached), H_i,
-    ! and dH_i/dY on the owning process
+    ! and dH_i/dc (the cell's ncomp c coordinates) on the owning process
     PetscInt, allocatable :: step(:)
     PetscReal, allocatable :: simulated(:)
-    PetscReal, allocatable :: dH_dY(:)
+    PetscReal, allocatable :: dH_dY(:,:)
   end type adjoint_observations_type
+
+  ! Evaluates an observation that is a function of a cell's chemistry
+  ! (TOTAL, PH) at the cell's c coordinates y_c: H and dH/dy_c.
+  type, public, abstract :: adj_obs_chemistry_type
+  contains
+    procedure(AdjObsChemistryIface), deferred :: Evaluate
+  end type adj_obs_chemistry_type
+
+  abstract interface
+    subroutine AdjObsChemistryIface(this,local_id,variable,component,y_c, &
+                                    H,dH_dyc)
+      use petscvec
+      import :: adj_obs_chemistry_type
+      implicit none
+      class(adj_obs_chemistry_type) :: this
+      PetscInt :: local_id
+      PetscInt :: variable
+      PetscInt :: component
+      PetscReal :: y_c(:)
+      PetscReal :: H
+      PetscReal :: dH_dyc(:)
+    end subroutine AdjObsChemistryIface
+  end interface
 
   type(adjoint_observations_type), pointer, public :: adj_observations => &
     null()
@@ -189,6 +221,7 @@ subroutine AdjObsReadEntry(input,option,kind,block_string)
   PetscReal, allocatable :: times(:), values(:), sigmas(:)
   PetscInt :: natural_id, variable, i
   PetscBool :: has_location, has_error, has_time, has_value, has_file
+  PetscBool :: dimensionless
 
   error_string = trim(block_string) // ',' // trim(kind)
   natural_id = 0
@@ -245,16 +278,19 @@ subroutine AdjObsReadEntry(input,option,kind,block_string)
           case('IMMOBILE')
             variable = ADJ_OBS_IMMOBILE
           case('TOTAL')
-            call PrintErrMsg(option,trim(error_string) // ',OBSERVED_VARIABLE &
-              &TOTAL is not supported yet; use FREE_ION (equal to the total &
-              &for a species without aqueous complexes).')
+            variable = ADJ_OBS_TOTAL
+          case('PH')
+            variable = ADJ_OBS_PH
           case default
             call InputKeywordUnrecognized(input,word, &
               trim(error_string) // ',OBSERVED_VARIABLE',option)
         end select
-        call InputReadWord(input,option,species,PETSC_TRUE)
-        call InputErrorMsg(input,option,'species name', &
-                           trim(error_string) // ',OBSERVED_VARIABLE')
+        ! PH: of H+, which Setup names
+        if (variable /= ADJ_OBS_PH) then
+          call InputReadWord(input,option,species,PETSC_TRUE)
+          call InputErrorMsg(input,option,'species name', &
+                             trim(error_string) // ',OBSERVED_VARIABLE')
+        endif
       case('ERROR')
         if (has_error) call AdjObsTwice(option,error_string,'error')
         do i = 1, 2
@@ -307,8 +343,12 @@ subroutine AdjObsReadEntry(input,option,kind,block_string)
           if (has_value) call AdjObsTwice(option,error_string,keyword)
           call InputReadDouble(input,option,value)
           call InputErrorMsg(input,option,keyword,error_string)
+          ! required but for PH, checked below
           call InputReadWord(input,option,data_units,PETSC_TRUE)
-          call InputErrorMsg(input,option,'VALUE units',error_string)
+          if (InputError(input)) then
+            data_units = ''
+            input%ierr = INPUT_ERROR_NONE
+          endif
           has_value = PETSC_TRUE
         endif
       case('FILE')
@@ -332,24 +372,37 @@ subroutine AdjObsReadEntry(input,option,kind,block_string)
   if (trim(kind) == 'MEASUREMENT') then
     if (.not.has_time) call AdjObsMissing(option,error_string,'TIME')
     if (.not.has_value) call AdjObsMissing(option,error_string,'VALUE')
+    if (variable /= ADJ_OBS_PH .and. len_trim(data_units) == 0) then
+      call PrintErrMsg(option,trim(error_string) // ': VALUE units are &
+        &missing.')
+    endif
     allocate(times(1),values(1))
     times(1) = time
     values(1) = value
   else
     if (.not.has_file) call AdjObsMissing(option,error_string,'FILE')
-    call AdjObsReadFile(filename,option,error_string,time_units,data_units, &
-                        times,values)
+    dimensionless = (variable == ADJ_OBS_PH)
+    call AdjObsReadFile(filename,option,error_string,dimensionless, &
+                        time_units,data_units,times,values)
   endif
 
   internal_units = 'sec'
   time_conversion = UnitsConvertToInternal(time_units,internal_units, &
                                            trim(error_string) // &
                                            ',time units',option)
-  internal_units = 'mol/kg'
-  if (variable == ADJ_OBS_IMMOBILE) internal_units = 'mol/m^3'
-  data_conversion = UnitsConvertToInternal(data_units,internal_units, &
-                                           trim(error_string) // &
-                                           ',data units',option)
+  if (variable == ADJ_OBS_PH) then
+    if (len_trim(data_units) > 0) then
+      call PrintErrMsg(option,trim(error_string) // ': PH is dimensionless; &
+        &give its VALUE without units and its FILE without DATA_UNITS.')
+    endif
+    data_conversion = 1.d0
+  else
+    internal_units = 'mol/kg'
+    if (variable == ADJ_OBS_IMMOBILE) internal_units = 'mol/m^3'
+    data_conversion = UnitsConvertToInternal(data_units,internal_units, &
+                                             trim(error_string) // &
+                                             ',data units',option)
+  endif
   allocate(sigmas(size(times)))
   do i = 1, size(times)
     if (.not.ieee_is_finite(values(i))) then
@@ -376,11 +429,12 @@ end subroutine AdjObsReadEntry
 
 ! ************************************************************************** !
 
-subroutine AdjObsReadFile(filename,option,error_string,time_units, &
-                          data_units,times,values)
+subroutine AdjObsReadFile(filename,option,error_string,dimensionless, &
+                          time_units,data_units,times,values)
   !
-  ! A TIME_SERIES file: TIME_UNITS and DATA_UNITS lines (both required),
-  ! then rows of time and value with increasing times.
+  ! A TIME_SERIES file: TIME_UNITS and DATA_UNITS lines (both required,
+  ! DATA_UNITS but for dimensionless data), then rows of time and value
+  ! with increasing times.
   !
   ! Author: Hansol Suh
   ! Date: 10/12/26
@@ -393,6 +447,7 @@ subroutine AdjObsReadFile(filename,option,error_string,time_units, &
   character(len=MAXSTRINGLENGTH) :: filename
   type(option_type) :: option
   character(len=*) :: error_string
+  PetscBool :: dimensionless
   character(len=MAXWORDLENGTH) :: time_units
   character(len=MAXWORDLENGTH) :: data_units
   PetscReal, allocatable :: times(:)
@@ -462,8 +517,8 @@ subroutine AdjObsReadFile(filename,option,error_string,time_units, &
 
   if (len_trim(time_units) == 0) call AdjObsMissing(option,file_string, &
                                                     'TIME_UNITS')
-  if (len_trim(data_units) == 0) call AdjObsMissing(option,file_string, &
-                                                    'DATA_UNITS')
+  if (len_trim(data_units) == 0 .and. .not.dimensionless) &
+    call AdjObsMissing(option,file_string,'DATA_UNITS')
   if (n == 0) call PrintErrMsg(option,trim(file_string) // ' has no data.')
   times = times(1:n)
   values = values(1:n)
@@ -574,7 +629,8 @@ subroutine AdjObsSetup(realization,final_time,option)
   obs => adj_observations
   grid => realization%patch%grid
   allocate(obs%species_id(obs%n),obs%local_id(obs%n),obs%cell(obs%n))
-  allocate(obs%step(obs%n),obs%simulated(obs%n),obs%dH_dY(obs%n))
+  allocate(obs%step(obs%n),obs%simulated(obs%n))
+  allocate(obs%dH_dY(realization%reaction%ncomp,obs%n))
   obs%local_id = 0
   obs%dH_dY = 0.d0
   call AdjObsReset()
@@ -593,6 +649,7 @@ subroutine AdjObsSetup(realization,final_time,option)
     ! the rows of a TIME_SERIES share the first's species and cell
     j = obs%first(i)
     if (j < i) then
+      obs%species_name(i) = obs%species_name(j)
       obs%species_id(i) = obs%species_id(j)
       obs%local_id(i) = obs%local_id(j)
       obs%cell(i) = obs%cell(j)
@@ -600,13 +657,24 @@ subroutine AdjObsSetup(realization,final_time,option)
     endif
     word = obs%species_name(i)
     select case(obs%variable(i))
-      case(ADJ_OBS_FREE_ION)
+      case(ADJ_OBS_FREE_ION,ADJ_OBS_TOTAL)
         id = ReactionAuxGetPriSpecIDFromName(word,realization%reaction, &
                                              PETSC_FALSE,option)
         if (id <= 0) then
+          if (obs%variable(i) == ADJ_OBS_TOTAL) then
+            call PrintErrMsg(option,trim(error_string) // ': TOTAL "' // &
+              trim(word) // '" is not a primary species.')
+          endif
           call PrintErrMsg(option,trim(error_string) // ': FREE_ION "' // &
             trim(word) // '" is not a primary species.')
         endif
+      case(ADJ_OBS_PH)
+        id = realization%reaction%species_idx%h_ion_id
+        if (id <= 0) then
+          call PrintErrMsg(option,trim(error_string) // ': PH requires H+ &
+            &as a primary species.')
+        endif
+        obs%species_name(i) = realization%reaction%primary_species_names(id)
       case(ADJ_OBS_IMMOBILE)
         id = ReactionImGetSpeciesIDFromName(word,realization%reaction% &
                                             immobile,PETSC_FALSE,option)
@@ -680,10 +748,11 @@ end subroutine AdjObsReset
 
 ! ************************************************************************** !
 
-subroutine AdjObsRecord(Y,ndof,use_log,time,step,option,recorded)
+subroutine AdjObsRecord(Y,ndof,use_log,time,step,chemistry,option,recorded)
   !
   ! At the end of a waypoint interval, state Y (transport, ndof entries per
-  ! local cell): the observations at this time take H_i and dH_i/dY.
+  ! local cell, the ncomp c coordinates first): the observations at this
+  ! time take H_i and dH_i/dc, chemistry evaluating TOTAL and PH.
   ! recorded: any did.
   !
   ! Author: Hansol Suh
@@ -696,6 +765,7 @@ subroutine AdjObsRecord(Y,ndof,use_log,time,step,option,recorded)
   PetscBool :: use_log
   PetscReal :: time
   PetscInt :: step
+  class(adj_obs_chemistry_type) :: chemistry
   type(option_type) :: option
   PetscBool :: recorded
 
@@ -703,7 +773,7 @@ subroutine AdjObsRecord(Y,ndof,use_log,time,step,option,recorded)
   PetscReal, pointer :: y_p(:)
   PetscReal, allocatable :: values(:)
   PetscInt, allocatable :: list(:)
-  PetscInt :: i, k, n, offset
+  PetscInt :: i, k, n, offset, nc
   PetscErrorCode :: ierr
 
   recorded = PETSC_FALSE
@@ -720,18 +790,27 @@ subroutine AdjObsRecord(Y,ndof,use_log,time,step,option,recorded)
   if (n == 0) return
 
   values = 0.d0
+  nc = size(obs%dH_dY,1)
   call VecGetArrayRead(Y,y_p,ierr);CHKERRQ(ierr)
   do k = 1, n
     i = list(k)
     if (obs%local_id(i) == 0) cycle
-    offset = (obs%local_id(i)-1)*ndof + obs%species_id(i)
-    if (use_log) then
-      values(k) = exp(y_p(offset))
-      obs%dH_dY(i) = values(k)
-    else
-      values(k) = y_p(offset)
-      obs%dH_dY(i) = 1.d0
-    endif
+    offset = (obs%local_id(i)-1)*ndof
+    obs%dH_dY(:,i) = 0.d0
+    select case(obs%variable(i))
+      case(ADJ_OBS_FREE_ION,ADJ_OBS_IMMOBILE)
+        if (use_log) then
+          values(k) = exp(y_p(offset+obs%species_id(i)))
+          obs%dH_dY(obs%species_id(i),i) = values(k)
+        else
+          values(k) = y_p(offset+obs%species_id(i))
+          obs%dH_dY(obs%species_id(i),i) = 1.d0
+        endif
+      case default
+        call chemistry%Evaluate(obs%local_id(i),obs%variable(i), &
+                                obs%species_id(i),y_p(offset+1:offset+nc), &
+                                values(k),obs%dH_dY(:,i))
+    end select
   enddo
   call VecRestoreArrayRead(Y,y_p,ierr);CHKERRQ(ierr)
   call MPI_Allreduce(MPI_IN_PLACE,values,n,MPI_DOUBLE_PRECISION,MPI_SUM, &
@@ -762,17 +841,18 @@ subroutine AdjObsKick(lambda,ndof,step)
 
   type(adjoint_observations_type), pointer :: obs
   PetscReal, pointer :: lam_p(:)
-  PetscInt :: i, offset
+  PetscInt :: i, offset, nc
   PetscErrorCode :: ierr
 
   obs => adj_observations
   if (.not.associated(obs)) return
+  nc = size(obs%dH_dY,1)
   call VecGetArray(lambda,lam_p,ierr);CHKERRQ(ierr)
   do i = 1, obs%n
     if (obs%step(i) /= step .or. obs%local_id(i) == 0) cycle
-    offset = (obs%local_id(i)-1)*ndof + obs%species_id(i)
-    lam_p(offset) = lam_p(offset) + &
-      (obs%simulated(i)-obs%value(i))/obs%sigma(i)**2*obs%dH_dY(i)
+    offset = (obs%local_id(i)-1)*ndof
+    lam_p(offset+1:offset+nc) = lam_p(offset+1:offset+nc) + &
+      (obs%simulated(i)-obs%value(i))/obs%sigma(i)**2*obs%dH_dY(:,i)
   enddo
   call VecRestoreArray(lambda,lam_p,ierr);CHKERRQ(ierr)
 
@@ -832,13 +912,17 @@ subroutine AdjObsWrite(option)
   write(unit,'(a)') '# ADJOINT OBSERVATIONS of the last forward run: id, &
     &time [s], cell (natural id), variable, species, observed, simulated, &
     &sigma, residual (simulated - observed)/sigma; concentrations in mol/kg &
-    &(FREE_ION) or mol/m^3 bulk (IMMOBILE)'
+    &(FREE_ION, TOTAL) or mol/m^3 bulk (IMMOBILE), PH dimensionless'
   do i = 1, obs%n
     select case(obs%variable(i))
       case(ADJ_OBS_FREE_ION)
         variable = 'FREE_ION'
       case(ADJ_OBS_IMMOBILE)
         variable = 'IMMOBILE'
+      case(ADJ_OBS_TOTAL)
+        variable = 'TOTAL'
+      case(ADJ_OBS_PH)
+        variable = 'PH'
     end select
     write(unit,'(i8,1x,es24.16,1x,i10,1x,a,1x,a,4(1x,es24.16))') i, &
       obs%time(i),obs%cell(i),trim(variable),trim(obs%species_name(i)), &

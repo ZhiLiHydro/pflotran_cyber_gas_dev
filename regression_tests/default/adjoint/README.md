@@ -37,7 +37,8 @@ ADJOINT
   OBSERVATIONS
     TIME_SERIES
       CELL_ID 1                          # or COORDINATE x y z
-      OBSERVED_VARIABLE FREE_ION CO2(aq) # or IMMOBILE <species>
+      OBSERVED_VARIABLE FREE_ION CO2(aq) # or TOTAL <primary species>,
+                                         #   IMMOBILE <species>, PH
       STANDARD_DEVIATION 1.d-6           # or ERROR ABSOLUTE a RELATIVE r
       FILE co2.dat                       # TIME_UNITS, DATA_UNITS, then
     /                                    #   rows: time value
@@ -55,12 +56,18 @@ END
 
 Nothing has a default: every `TIME_SERIES` and `MEASUREMENT` gives its
 cell, variable, error and times with units; sigma = a + r|d| is in the
-data's units (mol/kg aqueous, mol/m^3 bulk immobile). An observation is
+data's units (mol/kg aqueous, mol/m^3 bulk immobile). `TOTAL` is the
+component's total in solution, free ion and aqueous complexes, in mol/kg
+(PFLOTRAN's Total output in mol/L is it times the density in kg/L; DIC is
+the total of the carbonate primary species, e.g. `TOTAL HCO3-`). `PH` is
+-log10 of the H+ activity (H+ a primary species), dimensionless: its
+`VALUE` takes no units and its `FILE` no `DATA_UNITS`. Both are evaluated
+by the model's chemistry at the recorded state, activity coefficients and
+their sensitivity included. An observation is
 at one cell (a `REGION` is rejected: it would need an operator such as a
 volume average); a `COORDINATE` on a face between cells of two processes
-(unstructured grids) is rejected too. `TOTAL` concentrations are not
-supported yet; for a species without aqueous complexes the free ion is the
-total. Times are after the start and at most the final time.
+(unstructured grids) is rejected too. Times are after the start and at
+most the final time.
 
 Observation times are waypoints (they shorten the run's steps), so the
 run has a step state at each;
@@ -130,7 +137,8 @@ objective has small jumps where the step sequence changes; fixed steps
 
 - Costs: `TERMINAL_SPECIES_CONCENTRATION` of a primary or an immobile
   species (a sensitivity at the final time), and the misfit of
-  `OBSERVATIONS` at any times (free ion or immobile species at a cell).
+  `OBSERVATIONS` at any times (free ion, total, immobile species or pH at
+  a cell).
 - Parameters: `RATE_CONSTANT` (`KINETICS MICROBIAL` with `REACTION_INDEX`,
   or `KINETICS MINERAL` with `MINERAL_NAME` and a single rate constant),
   `HALF_SATURATION_CONSTANT`, `INHIBITION_CONSTANT`, `SMOOTHSTEP_INTERVAL`,
@@ -220,11 +228,14 @@ a post-processor that checks the gradients against central differences
   reruns (`-ts_model_rerun_check`), optimization of a twin experiment
   (from 3x and 0.3x the rate constant, through failed evaluations and the
   wall-clock limit; TAO's gradient test, Nelder-Mead, bounds), parallel
-  runs and the rejections.
+  runs and the rejections; `TOTAL` and `PH` observations of carbonate
+  speciation with activity coefficients (`ar_carbonate.in`) against central
+  differences and PFLOTRAN's Total and pH output.
 - `check_coupled.py` (`adjoint-coupled`, `adjoint-coupled-np2`): the
-  coupled model's gradients, and that it reproduces the sequential scheme
-  and its Jacobian entry by entry, also on an unstructured grid; reruns,
-  and optimization of permeability and calcite rate constant.
+  coupled model's gradients (also of `TOTAL` and `PH` observations), and
+  that it reproduces the sequential scheme and its Jacobian entry by
+  entry, also on an unstructured grid; reruns, and optimization of
+  permeability and calcite rate constant.
 - `check_applications.py` (`adjoint-applications`,
   `adjoint-applications-np2`): a microbial batch (`abcd_batch.in`), a radial
   aquifer with flow in the model (`cylindrical_coupled.in`), and a 400-cell

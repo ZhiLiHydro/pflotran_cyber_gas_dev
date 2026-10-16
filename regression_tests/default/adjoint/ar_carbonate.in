@@ -1,0 +1,161 @@
+#Description: 4 cells, calcite dissolving into undersaturated NaCl water,
+#             carbonate speciation with activity coefficients; cell 1 is
+#             more acidic and diffusion couples the cells. J = Ca++ at
+#             cell 2. For the TOTAL and PH observations
+#             (check_extensions.py).
+
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_TRANSPORT transport
+      MODE GIRT_DAE
+    /
+  /
+END
+
+SUBSURFACE
+
+NUMERICAL_METHODS TRANSPORT
+  LINEAR_SOLVER
+    SOLVER DIRECT
+  /
+END
+
+GRID
+  TYPE STRUCTURED
+  NXYZ 4 1 1
+  BOUNDS
+    0.d0 0.d0 0.d0
+    4.d0 1.d0 1.d0
+  /
+END
+
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.d-6
+END
+
+CHEMISTRY
+  PRIMARY_SPECIES
+    H+
+    HCO3-
+    Ca++
+    Na+
+    Cl-
+  /
+  SECONDARY_SPECIES
+    OH-
+    CO3--
+    CO2(aq)
+    CaCO3(aq)
+    CaHCO3+
+    CaOH+
+  /
+  MINERALS
+    Calcite
+  /
+  MINERAL_KINETICS
+    Calcite
+      RATE_CONSTANT 1.d-7 mol/m^2-sec
+    /
+  /
+  DATABASE ../../../database/hanford.dat
+  ACTIVITY_COEFFICIENTS TIMESTEP
+  OUTPUT
+    PH
+    TOTAL
+    FREE_ION
+    ALL
+  /
+END
+
+MATERIAL_PROPERTY soil1
+  ID 1
+  POROSITY 0.25d0
+  TORTUOSITY 1.d0
+END
+
+REGION all
+  COORDINATES
+    -1.d20 -1.d20 -1.d20
+    1.d20 1.d20 1.d20
+  /
+END
+
+REGION cell1
+  COORDINATE 0.5d0 0.5d0 0.5d0
+END
+
+# cell 2 (natural id 2) sits at x in [1, 2], centroid 1.5
+REGION cell2
+  COORDINATE 1.5d0 0.5d0 0.5d0
+END
+
+OUTPUT
+  TIME_UNITS d
+END
+
+TIME
+  FINAL_TIME 5.d0 d
+  INITIAL_TIMESTEP_SIZE 0.5d0 d
+  MAXIMUM_TIMESTEP_SIZE 0.5d0 d
+END
+
+TRANSPORT_CONDITION initial
+  TYPE ZERO_GRADIENT
+  CONSTRAINT initial
+    CONCENTRATIONS
+      H+     6.d0     P
+      HCO3-  2.d-3    T
+      Ca++   1.d-4    T
+      Na+    5.d-2    T
+      Cl-    5.d-2    Z
+    /
+    MINERALS
+      Calcite 1.d-2 1.d0 m^2/m^3
+    /
+  /
+END
+
+TRANSPORT_CONDITION acidic
+  TYPE ZERO_GRADIENT
+  CONSTRAINT acidic
+    CONCENTRATIONS
+      H+     5.d0     P
+      HCO3-  1.d-3    T
+      Ca++   1.d-4    T
+      Na+    5.d-2    T
+      Cl-    5.d-2    Z
+    /
+    MINERALS
+      Calcite 1.d-2 1.d0 m^2/m^3
+    /
+  /
+END
+
+INITIAL_CONDITION
+  TRANSPORT_CONDITION initial
+  REGION all
+END
+
+INITIAL_CONDITION
+  TRANSPORT_CONDITION acidic
+  REGION cell1
+END
+
+STRATA
+  REGION all
+  MATERIAL soil1
+END
+
+ADJOINT
+  COST_FUNCTION TERMINAL_SPECIES_CONCENTRATION
+    SPECIES_NAME Ca++
+    REGION cell2
+  /
+  PARAMETER RATE_CONSTANT
+    KINETICS MINERAL
+    MINERAL_NAME Calcite
+  /
+END
+
+END_SUBSURFACE
