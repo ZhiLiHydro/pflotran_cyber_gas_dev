@@ -66,10 +66,14 @@ module Adjoint_RT_DAE_class
     PetscBool :: debug_jacobianp = PETSC_FALSE
     PetscReal :: debug_eps = 1.d-6
     PetscBool :: debug_done = PETSC_FALSE
+    ! the run's initial state, from which INITIAL_CONCENTRATION parameters
+    ! set Y0
+    Vec :: Y0_deck
   contains
     procedure, public :: Setup => AdjRTDAESetup
     procedure, public :: TerminalGradients => AdjRTDAETerminalGradients
     procedure, public :: ParameterJacobian => AdjRTDAEParameterJacobian
+    procedure, public :: InitialGradients => AdjRTDAEInitialGradients
     procedure, public :: Report => AdjRTDAEReport
     procedure, public :: GetParameters => AdjRTDAEGetParameters
     procedure, public :: SetParameters => AdjRTDAESetParameters
@@ -101,6 +105,7 @@ function AdjointRTDAECreate(option)
 
   allocate(AdjointRTDAECreate)
   call TSAdjInit(AdjointRTDAECreate,option)
+  PetscObjectNullify(AdjointRTDAECreate%Y0_deck)
 
 end function AdjointRTDAECreate
 
@@ -223,6 +228,7 @@ subroutine AdjRTDAESetup(this,model,final_time)
     call cur_param%Setup(this%realization,option)
     cur_param => cur_param%next
   enddo
+  call AdjRTDAECheckInitialOverlap(this%realization,option)
   this%ncosts = AdjCostCount()
   if (AdjObsCount() > 0) then
     this%ncosts = this%ncosts + 1
@@ -274,6 +280,51 @@ subroutine AdjRTDAECheckScaledSources(patch,option)
   enddo
 
 end subroutine AdjRTDAECheckScaledSources
+
+! ************************************************************************** !
+
+subroutine AdjRTDAECheckInitialOverlap(realization,option)
+  !
+  ! Stops where two INITIAL_CONCENTRATION parameters set one species in a
+  ! cell: only one of their values would reach the initial state.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/16/26
+  !
+  use Adjoint_Param_module, only : adj_param_list
+
+  implicit none
+
+  class(realization_subsurface_type) :: realization
+  type(option_type) :: option
+
+  type(adjoint_param_type), pointer :: cur_param
+  PetscBool, allocatable :: set(:,:)
+  PetscBool :: overlap
+  PetscInt :: i
+  PetscErrorCode :: ierr
+
+  allocate(set(realization%reaction%ncomp,realization%patch%grid%nlmax))
+  set = PETSC_FALSE
+  overlap = PETSC_FALSE
+  cur_param => adj_param_list
+  do while (associated(cur_param))
+    if (cur_param%kind == ADJ_PARAM_INITIAL_CONCENTRATION) then
+      do i = 1, size(cur_param%cells)
+        if (set(cur_param%component,cur_param%cells(i))) overlap = PETSC_TRUE
+        set(cur_param%component,cur_param%cells(i)) = PETSC_TRUE
+      enddo
+    endif
+    cur_param => cur_param%next
+  enddo
+  call MPI_Allreduce(MPI_IN_PLACE,overlap,ONE_INTEGER_MPI,MPI_C_BOOL, &
+                     MPI_LOR,option%mycomm,ierr);CHKERRQ(ierr)
+  if (overlap) then
+    call PrintErrMsg(option,'Two PARAMETER INITIAL_CONCENTRATION set one &
+      &species in a cell (their regions overlap).')
+  endif
+
+end subroutine AdjRTDAECheckInitialOverlap
 
 ! ************************************************************************** !
 
@@ -580,8 +631,10 @@ subroutine AdjRTDAEParameterJacobian(this,model,time,Y,Ydot,Jacp,status)
     col = 0
     cur_param => adj_param_list
     do while (associated(cur_param))
-      ! a permeability is a flux parameter, below
-      if (cur_param%kind /= ADJ_PARAM_PERMEABILITY) then
+      ! a permeability is a flux parameter, below; an initial
+      ! concentration's column is zero (InitialGradients)
+      if (cur_param%kind /= ADJ_PARAM_PERMEABILITY .and. &
+          cur_param%kind /= ADJ_PARAM_INITIAL_CONCENTRATION) then
         dR(1:nc) = 0.d0
         dj(1:max(nk,1)) = 0.d0
         call AdjRTDAECellDerivative(rt,cur_param,local_id,dR(1:nc), &
@@ -1139,6 +1192,88 @@ end subroutine AdjRTDAEReport
 
 ! ************************************************************************** !
 
+subroutine AdjRTDAEInitialGradients(this,model,time0,Y0)
+  !
+  ! Into mu(i), dJ_i/dp of each INITIAL_CONCENTRATION parameter: the sum
+  ! over its cells of dJ_i/dc0 of its species (RTDAEInitialSensitivity),
+  ! at the flow state of Y0 if coupled. Collective.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/16/26
+  !
+  use Adjoint_Param_module, only : adj_param_list
+
+  implicit none
+
+  class(adjoint_rt_dae_type) :: this
+  class(ts_model_type), target :: model
+  PetscReal :: time0
+  Vec :: Y0
+
+  class(rt_dae_model_type), pointer :: rt
+  class(flow_rt_dae_model_type), pointer :: coupled
+  type(adjoint_param_type), pointer :: cur_param
+  PetscReal, allocatable :: dJ_dc(:,:), dJ_dK(:,:)
+  PetscReal :: g
+  PetscInt :: icost, j, i, status
+  PetscBool :: initial
+  Vec :: Y0_f, Y0_t, lam_f, lam_t
+  PetscErrorCode :: ierr
+
+  initial = PETSC_FALSE
+  cur_param => adj_param_list
+  do while (associated(cur_param))
+    if (cur_param%kind == ADJ_PARAM_INITIAL_CONCENTRATION) &
+      initial = PETSC_TRUE
+    cur_param => cur_param%next
+  enddo
+  if (.not.initial) return
+
+  rt => AdjRTDAEModel(this,model)
+  coupled => AdjRTDAECoupled(model)
+  allocate(dJ_dc(rt%ncomp,rt%realization%patch%grid%nlmax))
+  allocate(dJ_dK(max(rt%nkin,1),rt%realization%patch%grid%nlmax))
+  if (associated(coupled)) then
+    call FlowRTDAEGetParts(coupled,Y0,Y0_f,Y0_t)
+    call FlowRTDAESetFlowState(coupled,time0,Y0_f,status)
+  endif
+  do icost = 1, this%ncosts
+    if (associated(coupled)) then
+      call FlowRTDAEGetParts(coupled,this%lambda(icost),lam_f,lam_t)
+      call RTDAEInitialSensitivity(rt,time0,Y0_t,lam_t,dJ_dc,dJ_dK)
+      call FlowRTDAERestoreParts(coupled,this%lambda(icost),lam_f,lam_t)
+    else
+      call RTDAEInitialSensitivity(rt,time0,Y0,this%lambda(icost),dJ_dc, &
+                                   dJ_dK)
+    endif
+    j = 0
+    cur_param => adj_param_list
+    do while (associated(cur_param))
+      j = j + 1
+      if (cur_param%kind == ADJ_PARAM_INITIAL_CONCENTRATION) then
+        g = 0.d0
+        do i = 1, size(cur_param%cells)
+          g = g + dJ_dc(cur_param%component,cur_param%cells(i))
+        enddo
+        call MPI_Allreduce(MPI_IN_PLACE,g,ONE_INTEGER_MPI, &
+                           MPI_DOUBLE_PRECISION,MPI_SUM,this%option%mycomm, &
+                           ierr);CHKERRQ(ierr)
+        if (OptionIsIORank(this%option)) then
+          call VecSetValue(this%mu(icost),j-1,g,ADD_VALUES,ierr);CHKERRQ(ierr)
+        endif
+      endif
+      cur_param => cur_param%next
+    enddo
+    call VecAssemblyBegin(this%mu(icost),ierr);CHKERRQ(ierr)
+    call VecAssemblyEnd(this%mu(icost),ierr);CHKERRQ(ierr)
+  enddo
+  if (associated(coupled)) call FlowRTDAERestoreParts(coupled,Y0,Y0_f,Y0_t)
+  deallocate(dJ_dc,dJ_dK)
+
+end subroutine AdjRTDAEInitialGradients
+
+! ************************************************************************** !
+
 subroutine AdjRTDAEWriteGradient(this,gradient)
   !
   ! <prefix>-adjoint-gradient.dat: the observations' objective, and each
@@ -1207,6 +1342,10 @@ end subroutine AdjRTDAEGetParameters
 
 subroutine AdjRTDAESetParameters(this,model,p)
   !
+  ! With INITIAL_CONCENTRATION parameters, also the run's initial state
+  ! Y0 (a rerun starts from it), from the one the run recorded, under the
+  ! forcing recorded at t0 (AdjRTDAEInitialState).
+  !
   ! Author: Hansol Suh
   ! Date: 10/07/26
   !
@@ -1219,18 +1358,110 @@ subroutine AdjRTDAESetParameters(this,model,p)
   PetscReal :: p(:)
 
   type(adjoint_param_type), pointer :: cur_param
-  PetscInt :: j
+  Vec :: Y0_f, Y0_t, Yd_f, Yd_t
+  PetscInt :: j, status
+  PetscBool :: initial
+  PetscErrorCode :: ierr
 
   j = 0
+  initial = PETSC_FALSE
   cur_param => adj_param_list
   do while (associated(cur_param))
     j = j + 1
     call cur_param%SetValue(this%realization,p(j))
+    if (cur_param%kind == ADJ_PARAM_INITIAL_CONCENTRATION) &
+      initial = PETSC_TRUE
     cur_param => cur_param%next
   enddo
+  if (initial) then
+    if (PetscObjectIsNull(this%Y0)) then
+      call PrintErrMsg(this%option,'ADJOINT: an INITIAL_CONCENTRATION was &
+        &set before the run recorded its initial state.')
+    endif
+    if (PetscObjectIsNull(this%Y0_deck)) then
+      call VecDuplicate(this%Y0,this%Y0_deck,ierr);CHKERRQ(ierr)
+      call VecCopy(this%Y0,this%Y0_deck,ierr);CHKERRQ(ierr)
+    endif
+    call model%BeginReplay()
+    select type(model)
+      class is(rt_dae_model_type)
+        call AdjRTDAEInitialState(this,model,this%Y0_deck,this%Y0)
+      class is(flow_rt_dae_model_type)
+        call FlowRTDAEGetParts(model,this%Y0_deck,Yd_f,Yd_t)
+        call FlowRTDAEGetParts(model,this%Y0,Y0_f,Y0_t)
+        call FlowRTDAESetFlowState(model,this%t0,Yd_f,status)
+        call AdjRTDAEInitialState(this,model%rt,Yd_t,Y0_t)
+        call FlowRTDAERestoreParts(model,this%Y0,Y0_f,Y0_t)
+        call FlowRTDAERestoreParts(model,this%Y0_deck,Yd_f,Yd_t)
+    end select
+    call model%EndReplay()
+  endif
   call model%InvalidateCache()
 
 end subroutine AdjRTDAESetParameters
+
+! ************************************************************************** !
+
+subroutine AdjRTDAEInitialState(this,rt,Y_deck,Y0)
+  !
+  ! Y0 (transport) = the recorded initial state Y_deck with each
+  ! INITIAL_CONCENTRATION parameter's value in its cells, their inventories
+  ! following (RTDAEInitialCellState); where the closure fails the rerun
+  ! from Y0 fails. Collective.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/16/26
+  !
+  use Adjoint_Param_module, only : adj_param_list
+
+  implicit none
+
+  class(adjoint_rt_dae_type) :: this
+  class(rt_dae_model_type) :: rt
+  Vec :: Y_deck
+  Vec :: Y0
+
+  type(adjoint_param_type), pointer :: cur_param
+  PetscReal, pointer :: yd_p(:), y0_p(:)
+  PetscReal, allocatable :: c(:,:)
+  PetscBool, allocatable :: set(:)
+  PetscInt :: nlmax, local_id, offset, i, status
+  PetscErrorCode :: ierr
+
+  nlmax = rt%realization%patch%grid%nlmax
+  allocate(c(rt%ncomp,nlmax),set(nlmax))
+  set = PETSC_FALSE
+  call VecCopy(Y_deck,Y0,ierr);CHKERRQ(ierr)
+  call VecGetArrayRead(Y_deck,yd_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(Y0,y0_p,ierr);CHKERRQ(ierr)
+  cur_param => adj_param_list
+  do while (associated(cur_param))
+    if (cur_param%kind == ADJ_PARAM_INITIAL_CONCENTRATION) then
+      do i = 1, size(cur_param%cells)
+        local_id = cur_param%cells(i)
+        if (.not.set(local_id)) then
+          offset = (local_id-1)*rt%ndof
+          c(:,local_id) = yd_p(offset+1:offset+rt%ncomp)
+          if (rt%log_formulation) c(:,local_id) = exp(c(:,local_id))
+          set(local_id) = PETSC_TRUE
+        endif
+        c(cur_param%component,local_id) = cur_param%value
+      enddo
+    endif
+    cur_param => cur_param%next
+  enddo
+  do local_id = 1, nlmax
+    if (.not.set(local_id)) cycle
+    offset = (local_id-1)*rt%ndof
+    call RTDAEInitialCellState(rt,this%t0,local_id, &
+                               yd_p(offset+1:offset+rt%ndof),c(:,local_id), &
+                               y0_p(offset+1:offset+rt%ndof),status)
+  enddo
+  call VecRestoreArray(Y0,y0_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArrayRead(Y_deck,yd_p,ierr);CHKERRQ(ierr)
+  deallocate(c,set)
+
+end subroutine AdjRTDAEInitialState
 
 ! ************************************************************************** !
 
@@ -1277,13 +1508,16 @@ subroutine AdjRTDAEPressureSensitivity(coupled,Y0_t,lam_f,lam_t,dJ_dc,dJ_dP)
   ! RTDAEInitialSensitivity:
   !   dJ/dP0 = lambda_P + dM/dP lambda_W + (dA/dP)^T lambda_N
   !            - sum_aq dJ/dc0 c0 drho/dP / rho,
-  ! at the last Prepare (the initial state). Zero in inactive cells.
+  ! at the last Prepare (the initial state), the sum without the free
+  ! molalities INITIAL_CONCENTRATION parameters set. Zero in inactive
+  ! cells.
   !
   ! Author: Hansol Suh
   ! Date: 09/23/26
   !
   use Patch_module
   use Grid_module
+  use Adjoint_Param_module, only : adj_param_list
 
   implicit none
 
@@ -1297,9 +1531,11 @@ subroutine AdjRTDAEPressureSensitivity(coupled,Y0_t,lam_f,lam_t,dJ_dc,dJ_dP)
   class(rt_dae_model_type), pointer :: rt
   type(patch_type), pointer :: patch
   type(grid_type), pointer :: grid
+  type(adjoint_param_type), pointer :: cur_param
   PetscReal, pointer :: lf_p(:), lt_p(:), y_p(:)
   PetscReal :: dA_dP(coupled%rt%ncomp), c0(coupled%rt%naqcomp)
-  PetscInt :: local_id, ghosted_id, off_f, off_t, nc, naq
+  PetscBool, allocatable :: molarity(:,:)
+  PetscInt :: local_id, ghosted_id, off_f, off_t, nc, naq, i
   PetscErrorCode :: ierr
 
   rt => coupled%rt
@@ -1308,6 +1544,19 @@ subroutine AdjRTDAEPressureSensitivity(coupled,Y0_t,lam_f,lam_t,dJ_dc,dJ_dP)
   nc = rt%ncomp
   naq = rt%naqcomp
   dJ_dP = 0.d0
+  ! the c0 that follow the constraint's molarity
+  allocate(molarity(naq,grid%nlmax))
+  molarity = PETSC_TRUE
+  cur_param => adj_param_list
+  do while (associated(cur_param))
+    if (cur_param%kind == ADJ_PARAM_INITIAL_CONCENTRATION .and. &
+        cur_param%component <= naq) then
+      do i = 1, size(cur_param%cells)
+        molarity(cur_param%component,cur_param%cells(i)) = PETSC_FALSE
+      enddo
+    endif
+    cur_param => cur_param%next
+  enddo
   call VecGetArrayRead(lam_f,lf_p,ierr);CHKERRQ(ierr)
   call VecGetArrayRead(lam_t,lt_p,ierr);CHKERRQ(ierr)
   call VecGetArrayRead(Y0_t,y_p,ierr);CHKERRQ(ierr)
@@ -1323,13 +1572,15 @@ subroutine AdjRTDAEPressureSensitivity(coupled,Y0_t,lam_f,lam_t,dJ_dc,dJ_dP)
     dJ_dP(local_id) = lf_p(off_f+1) + &
                       coupled%flow%dacc_dp(local_id)*lf_p(off_f+2) + &
                       dot_product(dA_dP,lt_p(off_t+nc+1:off_t+2*nc)) - &
-                      dot_product(dJ_dc(1:naq,local_id),c0)* &
+                      dot_product(merge(dJ_dc(1:naq,local_id),0.d0, &
+                                        molarity(:,local_id)),c0)* &
                       coupled%fs%dden_kg_dp(ghosted_id)/ &
                       coupled%fs%den_kg(ghosted_id)
   enddo
   call VecRestoreArrayRead(Y0_t,y_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayRead(lam_t,lt_p,ierr);CHKERRQ(ierr)
   call VecRestoreArrayRead(lam_f,lf_p,ierr);CHKERRQ(ierr)
+  deallocate(molarity)
 
 end subroutine AdjRTDAEPressureSensitivity
 
@@ -1343,12 +1594,14 @@ subroutine AdjRTDAEDestroy(this)
   ! Date: 09/23/26
   !
   use Adjoint_module, only : AdjointDestroy
+  use Petsc_Utility_module, only : PUVecDestroy
 
   implicit none
 
   class(adjoint_rt_dae_type) :: this
 
   nullify(this%realization)
+  call PUVecDestroy(this%Y0_deck)
   call AdjointDestroy()
   call TSAdjDestroy(this)
 

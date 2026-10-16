@@ -7,7 +7,8 @@ module TS_Adjoint_class
   !
   ! A concrete adjoint binds costs, observations and parameters to one kind
   ! of model (Setup, TerminalGradients, ParameterJacobian, Report,
-  ! Get/SetParameters, ParameterInfo, the observation hooks).
+  ! Get/SetParameters, ParameterInfo, the observation hooks, and
+  ! InitialGradients for parameters of the initial state).
   !
   ! Observations at any time make one more cost, the objective (index
   ! iobjective): the forward run records them at the ends of the waypoint
@@ -115,6 +116,7 @@ module TS_Adjoint_class
     procedure, public :: RecordInitialState => TSAdjRecordInitialState
     procedure, public :: EndInterval => TSAdjEndInterval
     procedure, public :: Solve => TSAdjSolveBackward
+    procedure, public :: InitialGradients => TSAdjInitialGradients
     procedure, public :: BeginRerun => TSAdjBeginRerun
     procedure, public :: GetCostValues => TSAdjGetCostValues
     procedure, public :: GetCostGradients => TSAdjGetCostGradients
@@ -620,6 +622,8 @@ subroutine TSAdjSolveBackward(this,ts,model,Y,num_events,status)
         &reported.'
       call PrintErrMsg(option)
     endif
+  else
+    call this%InitialGradients(model,this%t0,this%Y0)
   endif
 
   if (.not.this%quiet) then
@@ -636,6 +640,26 @@ subroutine TSAdjSolveBackward(this,ts,model,Y,num_events,status)
   call TSSetTimeStep(ts,final_dt,ierr);CHKERRQ(ierr)
 
 end subroutine TSAdjSolveBackward
+
+! ************************************************************************** !
+
+subroutine TSAdjInitialGradients(this,model,time0,Y0)
+  !
+  ! After a complete sweep, lambda(i) = dJ_i/dY(t0): adds to mu(i) the
+  ! dJ_i/dp of parameters that set the initial state Y0 (none here; a
+  ! concrete adjoint with such parameters overrides it).
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/16/26
+  !
+  implicit none
+
+  class(ts_adjoint_type) :: this
+  class(ts_model_type), target :: model
+  PetscReal :: time0
+  Vec :: Y0
+
+end subroutine TSAdjInitialGradients
 
 ! ************************************************************************** !
 

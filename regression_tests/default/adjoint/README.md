@@ -142,14 +142,25 @@ objective has small jumps where the step sequence changes; fixed steps
 - Parameters: `RATE_CONSTANT` (`KINETICS MICROBIAL` with `REACTION_INDEX`,
   or `KINETICS MINERAL` with `MINERAL_NAME` and a single rate constant),
   `HALF_SATURATION_CONSTANT`, `INHIBITION_CONSTANT`, `SMOOTHSTEP_INTERVAL`,
-  `YIELD`, `DECAY_RATE_CONSTANT`, and, with flow in the model,
+  `YIELD`, `DECAY_RATE_CONSTANT`, `INITIAL_CONCENTRATION` (`SPECIES_NAME`,
+  `REGION`) and, with flow in the model,
   `PERMEABILITY` (`MATERIAL <name>`: scales the isotropic permeability of
   the material's cells; no permeability datasets). Each parameter is the
   positive value PFLOTRAN holds (internal units): `INHIBITION_CONSTANT` is
   the
   `THRESHOLD_CONCENTRATION` as given, also with `INHIBIT_ABOVE_THRESHOLD`
   (stored as its negative), `SMOOTHSTEP_INTERVAL` the log10 interval,
-  `PERMEABILITY` the material's permeability [m^2].
+  `PERMEABILITY` the material's permeability [m^2], `INITIAL_CONCENTRATION`
+  the initial free molality [mol/kg] of a primary species or concentration
+  [mol/m^3 bulk] of an immobile one in the region's active cells.
+- `INITIAL_CONCENTRATION` takes its value from the initial condition, one
+  value in the region (a constraint's total in mol/L gives the free
+  molality through speciation and the density: total*1000/rho without
+  complexes); its gradient is the sum of dJ/du0 over the region's cells,
+  the other species' initial free molalities held fixed. Reruns
+  (optimization) start from the initial state it sets, the inventories
+  recomputed by the model's closure. Two such parameters may not set one
+  species in a cell.
 - Everything the GIRT_DAE model supports is differentiated, including
   activity coefficients (converged in every evaluation), kinetic minerals
   with volume-fraction-dependent surface area, multirate and equilibrium
@@ -157,7 +168,8 @@ objective has small jumps where the step sequence changes; fixed steps
   datasets (the backward sweep replays each waypoint interval's recorded
   forcing).
 - dJ/dP(0) holds the initial molarity of the aqueous primaries fixed, as the
-  initial condition does. A constraint re-equilibrated in each cell against
+  initial condition does (an `INITIAL_CONCENTRATION` holds its free
+  molality fixed instead). A constraint re-equilibrated in each cell against
   its flow state (activity, mineral or gas constraints) can depend on the
   initial pressure in ways dJ/dP(0) omits.
 - Integrator: the block switches the forward run from BDF to backward
@@ -230,9 +242,12 @@ a post-processor that checks the gradients against central differences
   wall-clock limit; TAO's gradient test, Nelder-Mead, bounds), parallel
   runs and the rejections; `TOTAL` and `PH` observations of carbonate
   speciation with activity coefficients (`ar_carbonate.in`) against central
-  differences and PFLOTRAN's Total and pH output.
+  differences and PFLOTRAN's Total and pH output; `INITIAL_CONCENTRATION`
+  against differences of the deck's initial values, reruns and TAO's
+  gradient test.
 - `check_coupled.py` (`adjoint-coupled`, `adjoint-coupled-np2`): the
-  coupled model's gradients (also of `TOTAL` and `PH` observations), and
+  coupled model's gradients (also of `TOTAL` and `PH` observations, and
+  of `INITIAL_CONCENTRATION` by TAO's gradient test), and
   that it reproduces the sequential scheme and its Jacobian entry by
   entry, also on an unstructured grid; reruns, and optimization of
   permeability and calcite rate constant.

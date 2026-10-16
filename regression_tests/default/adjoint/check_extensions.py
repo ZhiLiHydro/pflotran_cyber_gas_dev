@@ -574,6 +574,130 @@ def chemistry_observations(np):
           f'segments, reruns, free ion and rejections ({np} ranks)', flush=True)
 
 
+BIOMASS = r'^      Biomass\s+(\S+)'
+CH2O = r'^      CH2O\(aq\)\s+(\S+)'
+O2 = r'^      O2\(aq\)\s+(\S+)'
+
+
+def initial_parameter(species, region):
+    return (f'  PARAMETER INITIAL_CONCENTRATION\n    SPECIES_NAME {species}\n'
+            f'    REGION {region}\n  /\n')
+
+
+def with_cell2_constraint(text, ch2o):
+    """ar_1d4 with cell2 initialized by a copy of the initial constraint
+    with CH2O(aq) at ch2o."""
+    initial = re.search(r'TRANSPORT_CONDITION initial\n.*?\nEND\n', text, re.S).group(0)
+    second = initial.replace('initial', 'second').replace('CH2O(aq)  2.d-3', f'CH2O(aq)  {ch2o}')
+    require(second.count(ch2o) == 1, 'no CH2O(aq) in the initial constraint')
+    coupler = 'INITIAL_CONDITION\n  TRANSPORT_CONDITION initial\n  REGION all\nEND\n'
+    require(coupler in text, 'no initial condition coupler')
+    return text.replace(coupler, coupler + '\n' + second + '\nINITIAL_CONDITION\n'
+                        '  TRANSPORT_CONDITION second\n  REGION cell2\nEND\n')
+
+
+def initial_fd(text, gradients, column, pattern, occurrences, value, tag, np, scale=1.):
+    """dJ/dp of an INITIAL_CONCENTRATION against central differences of the
+    deck values it is (every occurrence), scale = dc0/d(deck value)."""
+    for relative in (1e-4, 1e-5):
+        h = value*relative
+        jp, jm = text, text
+        for occurrence in occurrences:
+            jp = replace_nth(jp, pattern, f'{value+h:.17e}', occurrence)
+            jm = replace_nth(jm, pattern, f'{value-h:.17e}', occurrence)
+        plus = parse_summary(run(jp, tag, np=np))[0]
+        minus = parse_summary(run(jm, tag, np=np))[0]
+        for cost in plus:
+            close((plus[cost]-minus[cost])/(2*h)/scale, gradients[cost, column],
+                  rtol=1e-6, atol=1e-13)
+
+
+def initial_concentrations(np):
+    """PARAMETER INITIAL_CONCENTRATION: immobile biomass in all cells and
+    the free CH2O(aq) of cell2 (its own constraint) against central
+    differences of the deck's values, also with LOG_FORMULATION; a total
+    at density 1.2 kg/L is 1.2 times the free molality; reruns at 1.1 p0
+    equal a run of the deck there, bit for bit; TAO's gradient test (through
+    the reruns' initial states); the objective of OBSERVATIONS; bad input."""
+    text = with_cell2_constraint(example('1d4'), '3.d-3')
+    text = text.replace('  PARAMETER RATE_CONSTANT\n',
+                        initial_parameter('Biomass', 'all') +
+                        initial_parameter('CH2O(aq)', 'cell2') +
+                        '  PARAMETER RATE_CONSTANT\n', 1)
+    for log in (False, True):
+        if log and np > 1:
+            break
+        deck = log_formulation(text) if log else text
+        tag = f'initial_{log}'
+        output = run(deck, tag, np=np)
+        costs, gradients = parse_summary(output)
+        names = re.findall(r'dJ_1/dp_\d+ \[(\S+)\] =', Path(output).read_text())
+        require(names == ['INITIAL_CONCENTRATION[Biomass,all]',
+                          'INITIAL_CONCENTRATION[CH2O(aq),cell2]',
+                          'MICROBIAL_RATE_CONSTANT[1]'], f'parameters {names}')
+        # the biomass is in both constraints, the CH2O(aq) of cell2 second
+        initial_fd(deck, gradients, 1, BIOMASS, (0, 1), 1e-4, tag, np)
+        initial_fd(deck, gradients, 2, CH2O, (1,), 3e-3, tag, np)
+        cleanup_run(tag)
+
+    # the parameter is the free molality: a total at 1.2 kg/L is 1.2 times it
+    dense = text.replace('REFERENCE_LIQUID_DENSITY 1000.d0', 'REFERENCE_LIQUID_DENSITY 1200.d0')
+    dense = dense.replace('O2(aq)    1.5d-3   F', 'O2(aq)    1.5d-3   T').replace(
+        initial_parameter('Biomass', 'all') + initial_parameter('CH2O(aq)', 'cell2'),
+        initial_parameter('O2(aq)', 'all'))
+    gradients = parse_summary(run(dense, 'initial_dense', np=np))[1]
+    initial_fd(dense, gradients, 1, O2, (0, 1), 1.5e-3, 'initial_dense', np, scale=1/1.2)
+    cleanup_run('initial_dense')
+
+    # reruns set the initial state: at 1.1 p0 a run of the deck there
+    parameters, costs, gradients = parse_rerun_check(
+        run(text, 'initial_rerun', np=np, args=('-ts_model_rerun_check',)))
+    scaled = replace_nth(replace_nth(text, BIOMASS, f'{parameters[1]:.17e}', 0),
+                         BIOMASS, f'{parameters[1]:.17e}', 1)
+    scaled = replace_nth(scaled, CH2O, f'{parameters[2]:.17e}', 1)
+    scaled = replace_nth(scaled, RATE, f'{parameters[3]:.17e}', 0)
+    require(parse_summary(run(scaled, 'initial_rerun', np=np)) == (costs, gradients),
+            'a rerun at 1.1 p0 differs from a run of the deck there')
+    cleanup_run('initial_rerun')
+
+    with tempfile.TemporaryDirectory(prefix='pflotran-adjoint-initial-') as directory:
+        series = Path(directory) / 'co2.dat'
+        write_series(series, [(3, 1.e-3), (5, 1.5e-3)])
+        terminal = re.search(r'  COST_FUNCTION TERMINAL_SPECIES_CONCENTRATION\n.*?  /\n',
+                             text, re.S).group(0)
+        fitted = with_observations(text.replace(terminal, ''), observation_block(
+            (2, 'FREE_ION', 'CO2(aq)', 'STANDARD_DEVIATION 1.d-5', series)))
+        costs, gradients = parse_summary(run(fitted, 'initial_observations', np=np))
+        initial_fd(fitted, gradients, 1, BIOMASS, (0, 1), 1e-4, 'initial_observations', np)
+        if np == 1:
+            # at the start; TAO's first step reaches a flat region
+            optimized = fitted.replace('ADJOINT\n', 'ADJOINT\n  OPTIMIZATION\n'
+                                       '    MAXIMUM_ITERATIONS 1\n  /\n', 1)
+            output = run(optimized, 'initial_observations', args=('-adj_tao_test_gradient',))
+            ratios = [float(v) for v in re.findall(
+                r'2-norm \|\|G - Gfd\|\|/\|\|G\|\| = (\S+),',
+                Path(output).with_suffix('.stdout').read_text())]
+            require(ratios and ratios[0] < 1e-6, f'TAO gradient test: {ratios}')
+        cleanup_run('initial_observations')
+
+    if np == 1:
+        block = initial_parameter('Biomass', 'all')
+        for old, new, error in (
+                (block, block.replace('    REGION all\n', ''), 'requires SPECIES_NAME and REGION'),
+                (block, block.replace('Biomass', 'Calcite'), 'is not a primary or immobile'),
+                (block, block.replace('REGION all', 'REGION nowhere'), 'region "nowhere" not found'),
+                (block, block.replace('    REGION all\n', '    REGION all\n    KINETICS MICROBIAL\n'),
+                 'Keyword "KINETICS" not recognized'),
+                (block, block + initial_parameter('Biomass', 'cell2'), 'their regions overlap'),
+                (initial_parameter('CH2O(aq)', 'cell2'), initial_parameter('CH2O(aq)', 'all'),
+                 'the parameter is one value')):
+            require(old in text, f'missing {old!r}')
+            run(text.replace(old, new, 1), 'initial_rejections', expected_error=error)
+        cleanup_run('initial_rejections')
+    print(f'PASS initial concentrations: FD of the deck values, free molality at a density, '
+          f'reruns, TAO gradient test, observations and rejections ({np} ranks)', flush=True)
+
+
 def nonunit_example(volume=2.0):
     text = example('1d4')
     for old, new in (('4.d0 1.d0 1.d0', f'{4*volume} 1.d0 1.d0'),
@@ -727,6 +851,7 @@ def main():
     parser.add_argument('--feature', default='all',
                         choices=('all', 'multireaction', 'inhibition', 'yield_decay',
                                  'observations', 'chemistry_observations',
+                                 'initial_concentrations',
                                  'geometry', 'selection', 'branches'))
     args = parser.parse_args()
     if args.executable:
@@ -743,6 +868,8 @@ def main():
         observations(np)
     if args.feature in ('all', 'chemistry_observations'):
         chemistry_observations(np)
+    if args.feature in ('all', 'initial_concentrations'):
+        initial_concentrations(np)
     if args.feature in ('all', 'geometry'):
         biomass_geometry(np)
     if args.feature in ('all', 'selection'):

@@ -228,7 +228,8 @@ module RT_DAE_Model_class
             RTDAELoadCellRates, &
             RTDAEPoreLiters, &
             RTDAEInitialSensitivity, &
-            RTDAECellObservables
+            RTDAECellObservables, &
+            RTDAEInitialCellState
 
 contains
 
@@ -3125,6 +3126,76 @@ subroutine RTDAECellObservables(this,time,local_id,y_c,total,dtotal,ph, &
     dph(1:naq) = dph(1:naq)*this%scratch%pri_molal(1:naq)
 
 end subroutine RTDAECellObservables
+
+! ************************************************************************** !
+
+subroutine RTDAEInitialCellState(this,time,local_id,y_ref,c,y,status)
+  !
+  ! Block y of active local cell local_id of an initial state, from block
+  ! y_ref of InitialState's with the physical c coordinates c: K0 stays,
+  ! N0 = N0_ref + A(c,K0) - A(c_ref,K0) with A as in InitialState, so
+  ! N0 = N0_ref where c = c_ref (also with the inventory of a mineral
+  ! absent at the start), under the forcing at time (coupled: of the flow
+  ! state set). status: TS_MODEL_OK, or TS_MODEL_DOMAIN_ERROR where the
+  ! closure fails (y is then y_ref with c).
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/16/26
+  !
+  implicit none
+
+  class(rt_dae_model_type) :: this
+  PetscReal :: time
+  PetscInt :: local_id
+  PetscReal :: y_ref(:)
+  PetscReal :: c(:)
+  PetscReal :: y(:)
+  PetscInt :: status
+
+  PetscReal :: A_ref(this%ncomp), A(this%ncomp), gross(this%ncomp)
+  PetscReal :: yc(this%ncomp)
+  PetscInt :: ghosted_id, nc
+
+  nc = this%ncomp
+  ghosted_id = this%realization%patch%grid%nL2G(local_id)
+  if (this%log_formulation) then
+    yc = log(c)
+  else
+    yc = c
+  endif
+  y = y_ref
+  y(1:nc) = yc
+  call RTDAEForcingAt(this,time)
+  call CellInventory(y_ref(1:nc),A_ref)
+  if (status == RT_DAE_CHEM_OK) call CellInventory(yc,A)
+  if (status /= RT_DAE_CHEM_OK) then
+    status = TS_MODEL_DOMAIN_ERROR
+    return
+  endif
+  y(nc+1:2*nc) = y_ref(nc+1:2*nc) + (A - A_ref)
+  status = TS_MODEL_OK
+
+contains
+
+subroutine CellInventory(y_c,inventory)
+
+  PetscReal :: y_c(:)
+  PetscReal :: inventory(:)
+
+  PetscInt :: imnrl
+
+  call RTDAECellChemistry(this,ghosted_id,y_c,PETSC_FALSE,status)
+  if (status /= RT_DAE_CHEM_OK) return
+  do imnrl = 1, this%nmnrl
+    this%scratch%mnrl_volfrac(imnrl) = &
+      RTDAEMineralVolFrac(this,imnrl,y_ref(2*nc+imnrl), &
+                          this%maux(ghosted_id)%volume)
+  enddo
+  call RTDAEAccumulation(this,ghosted_id,inventory,gross)
+
+end subroutine CellInventory
+
+end subroutine RTDAEInitialCellState
 
 ! ************************************************************************** !
 

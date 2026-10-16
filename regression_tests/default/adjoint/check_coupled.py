@@ -250,6 +250,52 @@ def chemistry_observations():
              "coupled_chemistry")
 
 
+def initial_concentrations(np):
+    """PARAMETER INITIAL_CONCENTRATION in the coupled model (H+ in the
+    saturated lower part, Ca++ in the unsaturated upper part, both set
+    under the flow state at the start): reruns reproduce the run bit for
+    bit, and TAO's gradient test, through reruns from the initial states
+    the parameters set, agrees with the adjoint at every point it tests.
+    Their free molalities have no deck value (the constraints equilibrate
+    the other species with them), hence no deck differences."""
+    base = deck("adjoint-coupled")
+    probe = ("  COST_FUNCTION TERMINAL_SPECIES_CONCENTRATION\n"
+             "    SPECIES_NAME Ca++\n    REGION probe\n  /\n")
+    require(probe in base, "adjoint-coupled: no probe cost")
+    with tempfile.TemporaryDirectory(
+            prefix="pflotran-adjoint-initial-") as directory:
+        block = "  OBSERVATIONS\n"
+        for i, z in ((1, "6.25d0"), (2, "3.25d0")):
+            series = Path(directory) / f"calcium{i}.dat"
+            series.write_text("TIME_UNITS y\nDATA_UNITS mol/kg\n"
+                              "2.d-2 3.d-4\n5.d-2 4.d-4\n")
+            block += ("    TIME_SERIES\n"
+                      f"      COORDINATE 0.5d0 0.5d0 {z}\n"
+                      "      OBSERVED_VARIABLE TOTAL Ca++\n"
+                      "      STANDARD_DEVIATION 1.d-5\n"
+                      f"      FILE {series}\n    /\n")
+        block += "  /\n"
+        for species, region in (("H+", "lower"), ("Ca++", "upper")):
+            block += ("  PARAMETER INITIAL_CONCENTRATION\n"
+                      f"    SPECIES_NAME {species}\n    REGION {region}\n  /\n")
+        text = base.replace(probe, block)
+        parse_rerun_check(run(text, "initial", np=np,
+                              args=("-ts_model_rerun_check",)))
+        if np == 1:
+            optimized = text.replace("ADJOINT\n", "ADJOINT\n  OPTIMIZATION\n"
+                                     "    MAXIMUM_ITERATIONS 1\n  /\n", 1)
+            output = run(optimized, "initial",
+                         args=("-adj_tao_test_gradient",))
+            ratios = [float(v) for v in re.findall(
+                r"2-norm \|\|G - Gfd\|\|/\|\|G\|\| = (\S+),",
+                Path(output).with_suffix(".stdout").read_text())]
+            require(ratios and max(ratios) < 1e-6,
+                    f"TAO gradient test: {ratios}")
+    cleanup_run("initial")
+    print(f"PASS coupled initial concentrations: reruns and TAO's gradient "
+          f"test ({np} ranks)", flush=True)
+
+
 def rerun(np):
     """-ts_model_rerun_check on the coupled model: reruns reproduce the run
     bit for bit at the deck's permeability and calcite rate constant, and
@@ -487,6 +533,7 @@ def main():
         compressible_gradients()
         calculated_porosity()
         rerun(np)
+        initial_concentrations(np)
         optimization(np)
         rejections()
     else:
@@ -499,6 +546,7 @@ def main():
         cleanup_run("parallel")
         print(f"PASS {np} ranks match one", flush=True)
         rerun(np)
+        initial_concentrations(np)
         optimization(np)
     print("PASS coupled flow and transport adjoint suite", flush=True)
 

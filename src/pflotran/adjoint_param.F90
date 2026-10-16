@@ -1,7 +1,7 @@
 module Adjoint_Param_module
 
-#include "petsc/finclude/petscsys.h"
-  use petscsys
+#include "petsc/finclude/petscvec.h"
+  use petscvec
   use, intrinsic :: ieee_arithmetic, only : ieee_is_finite
 
   use PFLOTRAN_Constants_module
@@ -25,6 +25,13 @@ module Adjoint_Param_module
   !                                      IMMOBILE_DECAY_REACTION blocks)
   !   PARAMETER PERMEABILITY             MATERIAL (isotropic; scales the
   !                                      material's cell permeabilities)
+  !   PARAMETER INITIAL_CONCENTRATION    SPECIES_NAME, REGION: the initial
+  !                                      free molality [mol/kg] of a primary
+  !                                      species, or concentration
+  !                                      [mol/m^3 bulk] of an immobile one,
+  !                                      in the region's cells (one value);
+  !                                      not a model parameter: the adjoint
+  !                                      sets its initial state
   !
   ! Author: Hansol Suh
   ! Date: 05/27/26
@@ -40,6 +47,7 @@ module Adjoint_Param_module
   PetscInt, parameter, public :: ADJ_PARAM_YIELD = 5
   PetscInt, parameter, public :: ADJ_PARAM_DECAY_RATE = 6
   PetscInt, parameter, public :: ADJ_PARAM_PERMEABILITY = 7
+  PetscInt, parameter, public :: ADJ_PARAM_INITIAL_CONCENTRATION = 8
 
   PetscInt, parameter, public :: ADJ_KINETICS_MICROBIAL = 1
   PetscInt, parameter, public :: ADJ_KINETICS_MINERAL = 2
@@ -66,6 +74,11 @@ module Adjoint_Param_module
     PetscInt :: material_id = UNINITIALIZED_INTEGER
     PetscReal :: value0 = 0.d0
     PetscReal, allocatable :: perm0(:,:)
+    ! INITIAL_CONCENTRATION: the region, the species' entry in a cell's c
+    ! coordinates, and the region's active local cells (at Setup)
+    character(len=MAXWORDLENGTH) :: region_name = ''
+    PetscInt :: component = 0
+    PetscInt, allocatable :: cells(:)
     type(adjoint_param_type), pointer :: next => null()
   contains
     procedure, public :: Setup => AdjParamSetup
@@ -145,6 +158,8 @@ subroutine AdjParamRead(input,option)
       new_param%kind = ADJ_PARAM_DECAY_RATE
     case('PERMEABILITY')
       new_param%kind = ADJ_PARAM_PERMEABILITY
+    case('INITIAL_CONCENTRATION')
+      new_param%kind = ADJ_PARAM_INITIAL_CONCENTRATION
     case default
       deallocate(new_param)
       call InputKeywordUnrecognized(input,class_keyword,error_string,option)
@@ -167,17 +182,22 @@ subroutine AdjParamRead(input,option)
     select case(trim(keyword))
       case('KINETICS')
         allowed = new_param%kind /= ADJ_PARAM_DECAY_RATE .and. &
-                  new_param%kind /= ADJ_PARAM_PERMEABILITY
+                  new_param%kind /= ADJ_PARAM_PERMEABILITY .and. &
+                  new_param%kind /= ADJ_PARAM_INITIAL_CONCENTRATION
       case('REACTION_INDEX')
-        allowed = new_param%kind /= ADJ_PARAM_PERMEABILITY
+        allowed = new_param%kind /= ADJ_PARAM_PERMEABILITY .and. &
+                  new_param%kind /= ADJ_PARAM_INITIAL_CONCENTRATION
       case('SPECIES_NAME')
         allowed = new_param%kind == ADJ_PARAM_HALF_SATURATION .or. &
                   new_param%kind == ADJ_PARAM_INHIBITION_CONSTANT .or. &
-                  new_param%kind == ADJ_PARAM_SMOOTHSTEP_INTERVAL
+                  new_param%kind == ADJ_PARAM_SMOOTHSTEP_INTERVAL .or. &
+                  new_param%kind == ADJ_PARAM_INITIAL_CONCENTRATION
       case('MINERAL_NAME')
         allowed = new_param%kind == ADJ_PARAM_RATE_CONSTANT
       case('MATERIAL')
         allowed = new_param%kind == ADJ_PARAM_PERMEABILITY
+      case('REGION')
+        allowed = new_param%kind == ADJ_PARAM_INITIAL_CONCENTRATION
       case default
         allowed = PETSC_FALSE
     end select
@@ -227,6 +247,9 @@ subroutine AdjParamRead(input,option)
         call InputErrorMsg(input,option,keyword,error_string)
       case('MATERIAL')
         call InputReadWord(input,option,new_param%material_name,PETSC_TRUE)
+        call InputErrorMsg(input,option,keyword,error_string)
+      case('REGION')
+        call InputReadWord(input,option,new_param%region_name,PETSC_TRUE)
         call InputErrorMsg(input,option,keyword,error_string)
     end select
   enddo
@@ -320,6 +343,15 @@ subroutine AdjParamRead(input,option)
         call PrintErrMsg(option,'PARAMETER PERMEABILITY requires MATERIAL.')
       endif
       new_param%name = 'PERMEABILITY[' // trim(new_param%material_name) // ']'
+    case(ADJ_PARAM_INITIAL_CONCENTRATION)
+      if (len_trim(new_param%species_name) == 0 .or. &
+          len_trim(new_param%region_name) == 0) then
+        call PrintErrMsg(option,'PARAMETER INITIAL_CONCENTRATION requires &
+          &SPECIES_NAME and REGION.')
+      endif
+      new_param%name = 'INITIAL_CONCENTRATION[' // &
+        trim(new_param%species_name) // ',' // &
+        trim(new_param%region_name) // ']'
   end select
 
   if (.not.associated(adj_param_list)) then
@@ -363,6 +395,11 @@ subroutine AdjParamSetup(this,realization,option)
   use Material_module, only : material_property_type, &
                               MaterialPropGetPtrFromList
   use Patch_module
+  use Field_module
+  use Region_module, only : region_type, RegionGetPtrFromList
+  use Reaction_Aux_module, only : reaction_rt_type, &
+                                  ReactionAuxGetPriSpecIDFromName
+  use Reaction_Immobile_Aux_module, only : ReactionImGetSpeciesIDFromName
 
   implicit none
 
@@ -375,8 +412,12 @@ subroutine AdjParamSetup(this,realization,option)
   type(microbial_type), pointer :: microbial
   type(material_property_type), pointer :: mat
   type(patch_type), pointer :: patch
-  PetscReal :: interval, threshold
-  PetscInt :: local_id, ncells
+  type(region_type), pointer :: region
+  class(reaction_rt_type), pointer :: reaction
+  PetscReal, pointer :: xx_p(:)
+  PetscReal :: interval, threshold, extremes(2)
+  PetscInt, allocatable :: cells(:)
+  PetscInt :: local_id, ncells, i, id
   PetscErrorCode :: ierr
 
   select case(this%kind)
@@ -575,6 +616,69 @@ subroutine AdjParamSetup(this,realization,option)
         call PrintErrMsg(option,'PARAMETER PERMEABILITY: no active cell is &
           &of material "' // trim(this%material_name) // '".')
       endif
+    case(ADJ_PARAM_INITIAL_CONCENTRATION)
+      reaction => realization%reaction
+      id = ReactionAuxGetPriSpecIDFromName(this%species_name,reaction, &
+                                           PETSC_FALSE,option)
+      if (id > 0) then
+        this%component = id
+      else
+        id = ReactionImGetSpeciesIDFromName(this%species_name, &
+                                            reaction%immobile,PETSC_FALSE, &
+                                            option)
+        if (id <= 0) then
+          call PrintErrMsg(option,'PARAMETER INITIAL_CONCENTRATION: "' // &
+            trim(this%species_name) // '" is not a primary or immobile &
+            &species.')
+        endif
+        this%component = reaction%offset_immobile + id
+      endif
+      patch => realization%patch
+      region => RegionGetPtrFromList(this%region_name,patch%region_list)
+      if (.not.associated(region)) then
+        call PrintErrMsg(option,'PARAMETER INITIAL_CONCENTRATION: region "' &
+          // trim(this%region_name) // '" not found.')
+      endif
+      ! the region's active cells here, and their initial value in the
+      ! transport solution (free molality, immobile concentration)
+      allocate(cells(region%num_cells))
+      ncells = 0
+      extremes = [huge(1.d0),huge(1.d0)]
+      call VecGetArrayRead(realization%field%tran_xx,xx_p, &
+                           ierr);CHKERRQ(ierr)
+      do i = 1, region%num_cells
+        local_id = region%cell_ids(i)
+        if (patch%imat(patch%grid%nL2G(local_id)) <= 0) cycle
+        ncells = ncells + 1
+        cells(ncells) = local_id
+        this%value = xx_p((local_id-1)*reaction%ncomp+this%component)
+        ! min and -max
+        extremes = min(extremes,[this%value,-this%value])
+      enddo
+      call VecRestoreArrayRead(realization%field%tran_xx,xx_p, &
+                               ierr);CHKERRQ(ierr)
+      this%cells = cells(1:ncells)
+      call MPI_Allreduce(MPI_IN_PLACE,ncells,ONE_INTEGER_MPI,MPIU_INTEGER, &
+                         MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
+      call MPI_Allreduce(MPI_IN_PLACE,extremes,TWO_INTEGER_MPI, &
+                         MPI_DOUBLE_PRECISION,MPI_MIN,option%mycomm, &
+                         ierr);CHKERRQ(ierr)
+      if (ncells == 0) then
+        call PrintErrMsg(option,'PARAMETER INITIAL_CONCENTRATION: region "' &
+          // trim(this%region_name) // '" has no active cell.')
+      endif
+      this%value = -extremes(2)
+      if (.not.(extremes(1) > 0.d0 .and. ieee_is_finite(this%value))) then
+        call PrintErrMsg(option,'PARAMETER ' // trim(this%name) // &
+          ' requires a positive, finite initial concentration.')
+      endif
+      if (this%value > extremes(1)*(1.d0+1.d-12)) then
+        write(option%io_buffer,'(a,es12.5,a,es12.5,a)') 'PARAMETER ' // &
+          trim(this%name) // ': the initial concentrations in the region &
+          &range from ',extremes(1),' to ',this%value,'; the parameter is &
+          &one value.'
+        call PrintErrMsg(option)
+      endif
   end select
 
 end subroutine AdjParamSetup
@@ -665,7 +769,8 @@ subroutine AdjParamSetValue(this,realization,val)
   ! Sets value and the parameter in the reaction or material data the
   ! model reads; the caller invalidates the model's cache. A permeability
   ! scales the material's cell permeabilities, ghosts included, from their
-  ! Setup values; the model rereads them in InvalidateCache.
+  ! Setup values; the model rereads them in InvalidateCache. An initial
+  ! concentration is only the value: the adjoint sets the initial state.
   !
   ! Author: Hansol Suh
   ! Date: 05/27/26
