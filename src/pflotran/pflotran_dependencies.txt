@@ -3951,13 +3951,17 @@ rt_dae_flow_coupling.o : \
 rt_dae_forcing.o : \
   condition.o \
   coupler.o \
+  dataset.o \
+  dataset_base.o \
   global_aux.o \
   grid.o \
   material_aux.o \
   option.o \
   patch.o \
   pflotran_constants.o \
+  reaction.o \
   reaction_aux.o \
+  reaction_database.o \
   reactive_transport.o \
   reactive_transport_aux.o \
   realization_subsurface.o \
@@ -3970,6 +3974,7 @@ rt_dae_linear.o : \
 rt_dae_model.o : \
   carbon_sandbox.o \
   coupler.o \
+  dataset_base.o \
   discretization.o \
   field.o \
   global_aux.o \

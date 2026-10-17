@@ -26,8 +26,8 @@ module RT_DAE_Model_class
   !
   ! Evaluation reads the realization only for configuration (geometry,
   ! connectivity, material and reaction parameters); the forcing
-  ! (RT_DAE_Forcing_module) copies each segment's flow state, fluxes and
-  ! boundary and source chemistry from it.
+  ! (RT_DAE_Forcing_module) copies each segment's flow state, fluxes,
+  ! boundary and source chemistry and specified temperature from it.
   !
   ! Author: Hansol Suh
   ! Date: 09/22/26
@@ -832,9 +832,11 @@ subroutine RTDAECheckCapabilities(this,flow_coupled)
       call TSModelListAdd(unsupported,'mineral rate laws with prefactors, &
         &Temkin constants, activation energies, thresholds or rate limiters')
   endif
-  if (.not.option%transport%isothermal_reaction) &
+  ! reaction coefficients follow the cells' uniform temperature
+  ! (RTDAEForcingAt), which the flow state does not carry
+  if (.not.option%transport%isothermal_reaction .and. flow_coupled) &
     call TSModelListAdd(unsupported,'temperature-dependent reaction &
-                                    &coefficients')
+                                    &coefficients with MODE RICHARDS_DAE')
   if (option%use_sc) call TSModelListAdd(unsupported,'SECONDARY_CONTINUUM')
   if (option%transport%use_np) &
     call TSModelListAdd(unsupported,'Nernst-Planck transport')
@@ -972,8 +974,11 @@ end subroutine RTDAEResetToInitial
 
 subroutine RTDAEForcingAt(this,time)
   !
-  ! The forcing at time, from the segment or, coupled, from fs, and the
-  ! transport coefficients, recomputed only when the forcing changes.
+  ! The forcing at time, from the segment or, coupled, from fs, the
+  ! transport coefficients and, anisothermal, the reaction's
+  ! temperature-dependent coefficients, recomputed only when the forcing
+  ! changes. The reaction holds one set for all cells: the temperature is
+  ! uniform.
   !
   ! Author: Hansol Suh
   ! Date: 09/22/26
@@ -995,6 +1000,8 @@ subroutine RTDAEForcingAt(this,time)
   endif
   if (.not.changed) return
 
+  call RTDAEReactionAtTemperature(this%reaction,this%forcing%gaux(1), &
+                                  this%option)
   call RTComputeTransportCoefs(this%realization%patch,this%option, &
                                this%forcing%gaux,this%forcing%gaux_bc, &
                                this%maux,this%forcing%vel_int, &
@@ -1561,7 +1568,9 @@ subroutine RTDAEPrepare(this,time,Y,derivatives,status)
   ! Reused while (time, Y) is unchanged within a segment and mineral
   ! regime: Newton linearizes and tests convergence at the state it just
   ! evaluated. The key compares the values of Y: SNES copies its trial
-  ! vector into the iterate. Collective (ghost update).
+  ! vector into the iterate. The forcing is set at time either way: the
+  ! fluxes and the rate kernels after RTDAELoadCell read it. Collective
+  ! (ghost update).
   !
   ! Author: Hansol Suh
   ! Date: 09/22/26
@@ -1586,7 +1595,7 @@ subroutine RTDAEPrepare(this,time,Y,derivatives,status)
   PetscBool :: same
   PetscErrorCode :: ierr
 
-  call this%ReplayAt(time)
+  call RTDAEForcingAt(this,time)
   ! every rank takes the same branch: VecEqual is collective
   same = PETSC_TRUE
   if (associated(this%fs)) same = (this%prepared_flow_id == this%fs%id)
@@ -1607,7 +1616,6 @@ subroutine RTDAEPrepare(this,time,Y,derivatives,status)
   status = TS_MODEL_OK
   this%num_preparations = this%num_preparations + 1
 
-  call RTDAEForcingAt(this,time)
   call DiscretizationGlobalToLocal(this%realization%discretization,Y, &
                                    this%Y_loc,NDAEDOF)
   call VecGetArrayRead(this%Y_loc,yl_p,ierr);CHKERRQ(ierr)
@@ -2557,7 +2565,7 @@ subroutine RTDAEPublish(this,time,Y)
   type(reactive_transport_auxvar_type), pointer :: rt_auxvars(:)
   PetscReal, pointer :: yl_p(:), xx_p(:)
   PetscReal :: c(this%ncomp)
-  PetscInt :: local_id, ghosted_id, off, nc, status, imnrl
+  PetscInt :: local_id, ghosted_id, off, nc, status, imnrl, iconn
   PetscInt :: ikinmr, irate, iq
   PetscErrorCode :: ierr
 
@@ -2568,17 +2576,26 @@ subroutine RTDAEPublish(this,time,Y)
   nc = this%ncomp
 
   call RTDAEPrepare(this,time,Y,PETSC_FALSE,status)
-  ! uncoupled, the face fluxes at time, for output: BeginSegment leaves the
-  ! segment end's in the patch for a LINEAR velocity dataset (coupled, the
-  ! flow model publishes them)
+  ! uncoupled, the face fluxes and temperature at time, for output:
+  ! BeginSegment leaves the segment end's velocities in the patch for a
+  ! LINEAR velocity dataset (coupled, the flow model publishes them)
   if (.not.associated(this%fs)) then
-    call RTDAEForcingAt(this,time)
     if (this%conn%nconn_int > 0) &
       patch%internal_velocities(1:this%nphase,1:this%conn%nconn_int) = &
         this%forcing%vel_int(:,1:this%conn%nconn_int)
     if (this%conn%nconn_bc > 0) &
       patch%boundary_velocities(1:this%nphase,1:this%conn%nconn_bc) = &
         this%forcing%vel_bc(:,1:this%conn%nconn_bc)
+    if (this%forcing%specified_temperature) then
+      do ghosted_id = 1, this%ngmax
+        patch%aux%Global%auxvars(ghosted_id)%temp = &
+          this%forcing%gaux(ghosted_id)%temp
+      enddo
+      do iconn = 1, this%conn%nconn_bc
+        patch%aux%Global%auxvars_bc(iconn)%temp = &
+          this%forcing%gaux_bc(iconn)%temp
+      enddo
+    endif
   endif
   call VecGetArrayRead(this%Y_loc,yl_p,ierr);CHKERRQ(ierr)
   call VecGetArray(field%tran_xx,xx_p,ierr);CHKERRQ(ierr)
@@ -2881,13 +2898,15 @@ end subroutine RTDAEPrintSummary
 
 subroutine RTDAEForcingTimes(this,final_time,times)
   !
-  ! Knots up to final_time of the uniform velocity dataset, every cycle of
-  ! a CYCLIC one (PFLOTRAN makes waypoints of the first cycle only).
+  ! Knots up to final_time of the uniform velocity and temperature
+  ! datasets, every cycle of a CYCLIC one (PFLOTRAN makes waypoints of the
+  ! first cycle only).
   !
   ! Author: Hansol Suh
   ! Date: 10/06/26
   !
   use Time_Storage_module
+  use Dataset_Base_class
 
   implicit none
 
@@ -2895,17 +2914,23 @@ subroutine RTDAEForcingTimes(this,final_time,times)
   PetscReal :: final_time
   PetscReal, allocatable :: times(:)
 
-  PetscReal, pointer :: knots(:)
-
   allocate(times(0))
-  if (.not.associated(this%realization%uniform_velocity_dataset)) return
-  if (.not.associated(this%realization%uniform_velocity_dataset% &
-                      time_storage)) return
-  call TimeStorageGetTimes(this%realization%uniform_velocity_dataset% &
-                             time_storage,this%option,final_time,knots)
-  if (.not.associated(knots)) return
-  times = knots
-  deallocate(knots)
+  call AddKnots(this%realization%uniform_velocity_dataset)
+  call AddKnots(this%realization%uniform_temperature_dataset)
+
+contains
+
+  subroutine AddKnots(dataset)
+    class(dataset_base_type), pointer :: dataset
+    PetscReal, pointer :: knots(:)
+    if (.not.associated(dataset)) return
+    if (.not.associated(dataset%time_storage)) return
+    call TimeStorageGetTimes(dataset%time_storage,this%option,final_time, &
+                             knots)
+    if (.not.associated(knots)) return
+    times = [times,knots]
+    deallocate(knots)
+  end subroutine AddKnots
 
 end subroutine RTDAEForcingTimes
 

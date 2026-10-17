@@ -489,6 +489,17 @@ def rejections():
         "rejections", expected_error="does not support transverse dispersion")
     run(ar.replace("    MATERIAL soil1", "    MATERIAL soil9"), "rejections",
         expected_error='material "soil9" not found')
+    # the flow state carries no temperature
+    run(ar.replace("      MODE GIRT_DAE\n",
+                   "      MODE GIRT_DAE\n      OPTIONS\n"
+                   "        REACTION_TEMPERATURE_DEPENDENCE ANISOTHERMAL\n      /\n",
+                   1), "rejections",
+        expected_error="temperature-dependent reaction coefficients with MODE "
+        "RICHARDS_DAE")
+    run(ar.replace("\nCHEMISTRY\n",
+                   "\nSPECIFIED_TEMPERATURE\n  DATASET 30.d0\nEND\n\nCHEMISTRY\n", 1),
+        "rejections", expected_error="SPECIFIED_TEMPERATURE requires MODE "
+        "GIRT_DAE in SUBSURFACE_TRANSPORT and no SUBSURFACE_FLOW mode")
     # GIRT_DAE alone has no flow: no permeability derivative
     short = deck("ar_short").replace(
         "  PARAMETER RATE_CONSTANT",
@@ -507,8 +518,8 @@ def rejections():
     cleanup_run("rejections")
     print("PASS rejections (transport mode, flow mode, steady flow, flow "
           "solver block, classic solver options, transverse dispersion, "
-          "material, permeability without flow, permeability-scaled "
-          "source)", flush=True)
+          "material, temperature-dependent reactions, specified temperature, "
+          "permeability without flow, permeability-scaled source)", flush=True)
 
 
 def main():

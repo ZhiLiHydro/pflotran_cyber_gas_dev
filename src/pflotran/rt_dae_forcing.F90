@@ -3,7 +3,8 @@ module RT_DAE_Forcing_module
   ! Forcing of the GIRT_DAE model (RT_DAE_Model_class): what an evaluation
   ! at a time reads besides the state. It is captured from the realization
   ! one waypoint interval (segment) at a time: the cells' flow state and
-  ! porosity, face and source fluxes, and boundary and source chemistry.
+  ! porosity, face and source fluxes, boundary and source chemistry, and a
+  ! SPECIFIED_TEMPERATURE.
   ! The records of the segments serve an adjoint's replay (TS_Model_class).
   ! Coupled to MODE RICHARDS_DAE, the flow state comes from the flow model
   ! (RTDAEForcingFromFlowState) and only the chemistry is forcing. The only
@@ -23,6 +24,7 @@ module RT_DAE_Forcing_module
   use Reactive_Transport_Aux_module
   use Global_Aux_module
   use Material_Aux_module
+  use Dataset_Base_class
   use RT_DAE_Chem_module
   use TS_Flow_State_module
   use TS_Connections_module
@@ -53,6 +55,11 @@ module RT_DAE_Forcing_module
     ! ghosted cell-centered Darcy velocities, for transverse dispersion only
     PetscReal, allocatable :: ccv(:,:,:)      ! (3,nphase,ngmax)
     PetscReal, allocatable :: ccv_end(:,:,:)
+    ! the specified temperature [C] at t_start and t_end, linear in between
+    ! (exact as for the velocities)
+    PetscBool :: transient_temperature = PETSC_FALSE
+    PetscReal :: temp = 0.d0
+    PetscReal :: temp_end = 0.d0
   end type rt_dae_segment_type
 
   type, public :: rt_dae_forcing_type
@@ -64,6 +71,9 @@ module RT_DAE_Forcing_module
     PetscInt :: ngmax = 0
     PetscInt :: naqcomp = 0
     PetscInt :: nphase = 0
+    ! SPECIFIED_TEMPERATURE: the temperature of the cells and boundaries
+    ! is forcing
+    PetscBool :: specified_temperature = PETSC_FALSE
     ! the segment (during a replay, the record in use) and the records
     type(rt_dae_segment_type) :: seg
     type(rt_dae_segment_type), allocatable :: records(:)
@@ -88,6 +98,7 @@ module RT_DAE_Forcing_module
 
   public :: RTDAEForcingInit, &
             RTDAEForcingBegin, &
+            RTDAEReactionAtTemperature, &
             RTDAEForcingStore, &
             RTDAEForcingRestore, &
             RTDAEForcingInterpolate, &
@@ -117,7 +128,8 @@ subroutine RTDAEForcingInit(this,realization,conn)
 
   type(option_type), pointer :: option
   type(patch_type), pointer :: patch
-  PetscInt :: ghosted_id, iconn
+  PetscInt :: ghosted_id, iconn, nconn
+  PetscErrorCode :: ierr
 
   this%realization => realization
   option => realization%option
@@ -155,6 +167,22 @@ subroutine RTDAEForcingInit(this,realization,conn)
   call RTAuxVarInit(this%scratch,this%reaction,PETSC_FALSE,option)
   call RTDAEGammaInit(this%gam,this%reaction)
 
+  this%specified_temperature = &
+    associated(realization%uniform_temperature_dataset)
+  ! boundary and source chemistry is that of a segment's start
+  if (RTDAELinearDataset(realization%uniform_temperature_dataset)) then
+    nconn = conn%nconn_bc + conn%nconn_ss
+    call MPI_Allreduce(MPI_IN_PLACE,nconn,ONE_INTEGER_MPI,MPIU_INTEGER, &
+                       MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
+    if (nconn > 0) then
+      option%io_buffer = 'MODE GIRT_DAE does not yet support a LINEAR &
+        &SPECIFIED_TEMPERATURE with transport boundary or source/sink &
+        &conditions: their chemistry would stay at the temperature of each &
+        &waypoint interval''s start. Use INTERPOLATION STEP.'
+      call PrintErrMsg(option)
+    endif
+  endif
+
 end subroutine RTDAEForcingInit
 
 ! ************************************************************************** !
@@ -164,11 +192,11 @@ subroutine RTDAEForcingBegin(this,coupled,t_start,t_end,discontinuous)
   ! Captures the forcing on [t_start, t_end] into a new segment;
   ! discontinuous: it jumps from the previous one (the integrator history
   ! must restart). Reads the realization at t_start, then at t_end for a
-  ! LINEAR uniform velocity dataset (TimeStorageUpdate cannot go back).
-  ! Restores option%time; leaves the realization's transport conditions and
-  ! boundary chemistry at t_start and its uniform velocities at the last
-  ! time read. coupled: the flow state is not forcing (see
-  ! RTDAEForcingFromFlowState).
+  ! LINEAR uniform velocity or temperature dataset (TimeStorageUpdate
+  ! cannot go back). Restores option%time; leaves the realization's
+  ! transport conditions, temperature and boundary chemistry at t_start and
+  ! its uniform velocities at the last time read. coupled: the flow state
+  ! is not forcing (see RTDAEForcingFromFlowState).
   !
   ! Author: Hansol Suh
   ! Date: 09/22/26
@@ -197,6 +225,8 @@ subroutine RTDAEForcingBegin(this,coupled,t_start,t_end,discontinuous)
   if (associated(this%realization%uniform_velocity_dataset)) then
     call RealizUpdateUniformVelocity(this%realization)
   endif
+  ! first: the flow state and boundary chemistry are at its temperature
+  call RTDAECaptureTemperature(this,new)
   call RTDAECaptureFlow(this,new)
   call RTDAECaptureBoundaries(this,new)
   call RTDAECaptureSources(this,new)
@@ -287,7 +317,8 @@ subroutine RTDAECaptureFluxes(this,seg)
   endif
   ! a STEP dataset is constant inside a segment (its knots are waypoints);
   ! evaluated at t_end it would already give the next piece
-  if (RTDAELinearVelocityDataset(this) .and. seg%t_end > seg%t_start) then
+  if (RTDAELinearDataset(this%realization%uniform_velocity_dataset) .and. &
+      seg%t_end > seg%t_start) then
     this%option%time = seg%t_end
     call RealizUpdateUniformVelocity(this%realization)
     call CaptureVelocities(seg%vel_int_end,seg%vel_bc_end)
@@ -317,27 +348,101 @@ end subroutine RTDAECaptureFluxes
 
 ! ************************************************************************** !
 
-function RTDAELinearVelocityDataset(this)
+function RTDAELinearDataset(dataset)
   !
-  ! Whether the uniform velocity varies linearly in time between its knots.
+  ! Whether a uniform dataset varies linearly in time between its knots.
   !
   ! Author: Hansol Suh
   ! Date: 09/22/26
   !
   implicit none
 
+  class(dataset_base_type), pointer :: dataset
+  PetscBool :: RTDAELinearDataset
+
+  RTDAELinearDataset = PETSC_FALSE
+  if (.not.associated(dataset)) return
+  if (.not.associated(dataset%time_storage)) return
+  RTDAELinearDataset = dataset%time_storage%time_interpolation_method == &
+                       INTERPOLATION_LINEAR
+
+end function RTDAELinearDataset
+
+! ************************************************************************** !
+
+subroutine RTDAECaptureTemperature(this,seg)
+  !
+  ! The specified temperature at the segment start and, for a LINEAR
+  ! dataset, at its end; the realization's cells and boundaries take the
+  ! start's, at which the flow state is copied and the boundary
+  ! constraints are equilibrated. Leaves option%time at t_start.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/16/26
+  !
+  use Patch_module
+  use Dataset_module, only : DatasetUpdate
+
+  implicit none
+
   type(rt_dae_forcing_type) :: this
-  PetscBool :: RTDAELinearVelocityDataset
+  type(rt_dae_segment_type) :: seg
 
-  RTDAELinearVelocityDataset = PETSC_FALSE
-  if (.not.associated(this%realization%uniform_velocity_dataset)) return
-  if (.not.associated(this%realization%uniform_velocity_dataset% &
-                      time_storage)) return
-  RTDAELinearVelocityDataset = &
-    this%realization%uniform_velocity_dataset%time_storage% &
-      time_interpolation_method == INTERPOLATION_LINEAR
+  type(patch_type), pointer :: patch
+  class(dataset_base_type), pointer :: dataset
+  PetscInt :: ghosted_id, iconn
 
-end function RTDAELinearVelocityDataset
+  if (.not.this%specified_temperature) return
+  patch => this%realization%patch
+  dataset => this%realization%uniform_temperature_dataset
+  call DatasetUpdate(dataset,this%option)
+  seg%temp = dataset%rarray(1)
+  seg%temp_end = seg%temp
+  ! as for the velocities, a STEP dataset is constant inside a segment
+  if (RTDAELinearDataset(dataset) .and. seg%t_end > seg%t_start) then
+    this%option%time = seg%t_end
+    call DatasetUpdate(dataset,this%option)
+    seg%temp_end = dataset%rarray(1)
+    this%option%time = seg%t_start
+  endif
+  seg%transient_temperature = seg%temp_end /= seg%temp
+  do ghosted_id = 1, this%ngmax
+    patch%aux%Global%auxvars(ghosted_id)%temp = seg%temp
+  enddo
+  do iconn = 1, this%conn%nconn_bc
+    patch%aux%Global%auxvars_bc(iconn)%temp = seg%temp
+  enddo
+  call RTDAEReactionAtTemperature(this%reaction,patch%aux%Global%auxvars(1), &
+                                  this%option)
+
+end subroutine RTDAECaptureTemperature
+
+! ************************************************************************** !
+
+subroutine RTDAEReactionAtTemperature(reaction,global_auxvar,option)
+  !
+  ! Anisothermal: the reaction's temperature-dependent coefficients at the
+  ! uniform temperature of global_auxvar, the equilibrium constants and the
+  ! Debye-Huckel parameters (PFLOTRAN's own update keeps those of the
+  ! reference temperature).
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/16/26
+  !
+  use Reaction_module, only : RUpdateTempDependentCoefs
+  use Reaction_Database_module, only : ReactionDBDebyeHuckel
+
+  implicit none
+
+  class(reaction_rt_type) :: reaction
+  type(global_auxvar_type) :: global_auxvar
+  type(option_type) :: option
+
+  if (option%transport%isothermal_reaction) return
+  call RUpdateTempDependentCoefs(global_auxvar,reaction,PETSC_FALSE,option)
+  call ReactionDBDebyeHuckel(reaction,global_auxvar%temp)
+
+end subroutine RTDAEReactionAtTemperature
 
 ! ************************************************************************** !
 
@@ -468,9 +573,11 @@ end subroutine RTDAECheckForcing
 function RTDAESegmentJumps(old,new,flow_coupled,option)
   !
   ! Whether the forcing jumps where segment new meets old: the boundary and
-  ! source chemistry and, uncoupled, the face fluxes (the flow state is
-  ! constant). Changes within round-off (a boundary's molarity is rebuilt
-  ! from its molality at the current boundary density) are not jumps.
+  ! source chemistry, the temperature and, uncoupled, the face fluxes (the
+  ! flow state is constant). Changes within round-off (a boundary's
+  ! molarity is rebuilt from its molality at the current boundary density)
+  ! are not jumps; a temperature has none, as the dataset is evaluated at
+  ! the same time on both sides.
   !
   ! Author: Hansol Suh
   ! Date: 09/22/26
@@ -487,7 +594,8 @@ function RTDAESegmentJumps(old,new,flow_coupled,option)
 
   RTDAESegmentJumps = &
     Differ(new%total_bc,old%total_bc) .or. &
-    Differ(new%total_ss,old%total_ss)
+    Differ(new%total_ss,old%total_ss) .or. &
+    new%temp /= old%temp_end
   if (.not.flow_coupled) RTDAESegmentJumps = RTDAESegmentJumps .or. &
     Differ(new%vel_int,old%vel_int_end) .or. &
     Differ(new%vel_bc,old%vel_bc_end)
@@ -555,9 +663,9 @@ end subroutine RTDAEForcingRestore
 
 subroutine RTDAEForcingInterpolate(this,time,maux,changed)
   !
-  ! Uncoupled: the porosity (into maux) and face fluxes at time. A pure
-  ! function of (segment, time), recomputed only when either changes;
-  ! changed: they were.
+  ! Uncoupled: the porosity (into maux), face fluxes and specified
+  ! temperature at time. A pure function of (segment, time), recomputed
+  ! only when either changes; changed: they were.
   !
   ! Author: Hansol Suh
   ! Date: 09/22/26
@@ -569,12 +677,13 @@ subroutine RTDAEForcingInterpolate(this,time,maux,changed)
   type(material_auxvar_type) :: maux(:)
   PetscBool :: changed
 
-  PetscInt :: ghosted_id
-  PetscReal :: wv
+  PetscInt :: ghosted_id, iconn
+  PetscReal :: w, wv, wt, temp
 
   changed = PETSC_FALSE
   if (this%forcing_segment == this%seg%id) then
-    if (.not.this%seg%transient_velocity) return
+    if (.not.(this%seg%transient_velocity .or. &
+              this%seg%transient_temperature)) return
     if (time == this%forcing_time) return
   endif
   changed = PETSC_TRUE
@@ -584,15 +693,26 @@ subroutine RTDAEForcingInterpolate(this,time,maux,changed)
   do ghosted_id = 1, this%ngmax
     maux(ghosted_id)%porosity = this%seg%por(ghosted_id)
   enddo
-  wv = 0.d0
-  if (this%seg%transient_velocity) then
-    wv = (time-this%seg%t_start)/(this%seg%t_end-this%seg%t_start)
-    wv = max(0.d0,min(1.d0,wv))
+  w = 0.d0
+  if (this%seg%transient_velocity .or. this%seg%transient_temperature) then
+    w = (time-this%seg%t_start)/(this%seg%t_end-this%seg%t_start)
+    w = max(0.d0,min(1.d0,w))
   endif
+  wv = merge(w,0.d0,this%seg%transient_velocity)
   this%vel_int = (1.d0-wv)*this%seg%vel_int + wv*this%seg%vel_int_end
   this%vel_bc = (1.d0-wv)*this%seg%vel_bc + wv*this%seg%vel_bc_end
   if (associated(this%ccv)) &
     this%ccv = (1.d0-wv)*this%seg%ccv + wv*this%seg%ccv_end
+  if (this%specified_temperature) then
+    wt = merge(w,0.d0,this%seg%transient_temperature)
+    temp = (1.d0-wt)*this%seg%temp + wt*this%seg%temp_end
+    do ghosted_id = 1, this%ngmax
+      this%gaux(ghosted_id)%temp = temp
+    enddo
+    do iconn = 1, this%conn%nconn_bc
+      this%gaux_bc(iconn)%temp = temp
+    enddo
+  endif
 
 end subroutine RTDAEForcingInterpolate
 

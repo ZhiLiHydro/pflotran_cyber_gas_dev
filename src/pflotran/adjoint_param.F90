@@ -21,6 +21,9 @@ module Adjoint_Param_module
   !                                      interval
   !   PARAMETER YIELD                    KINETICS MICROBIAL, REACTION_INDEX
   !                                      (a reaction with a BIOMASS block)
+  !   PARAMETER ACTIVATION_ENERGY        KINETICS MICROBIAL, REACTION_INDEX
+  !                                      (a reaction with a positive
+  !                                      ACTIVATION_ENERGY) [J/mol]
   !   PARAMETER DECAY_RATE_CONSTANT      REACTION_INDEX (of the
   !                                      IMMOBILE_DECAY_REACTION blocks)
   !   PARAMETER PERMEABILITY             MATERIAL (isotropic; scales the
@@ -48,6 +51,7 @@ module Adjoint_Param_module
   PetscInt, parameter, public :: ADJ_PARAM_DECAY_RATE = 6
   PetscInt, parameter, public :: ADJ_PARAM_PERMEABILITY = 7
   PetscInt, parameter, public :: ADJ_PARAM_INITIAL_CONCENTRATION = 8
+  PetscInt, parameter, public :: ADJ_PARAM_ACTIVATION_ENERGY = 9
 
   PetscInt, parameter, public :: ADJ_KINETICS_MICROBIAL = 1
   PetscInt, parameter, public :: ADJ_KINETICS_MINERAL = 2
@@ -160,6 +164,8 @@ subroutine AdjParamRead(input,option)
       new_param%kind = ADJ_PARAM_PERMEABILITY
     case('INITIAL_CONCENTRATION')
       new_param%kind = ADJ_PARAM_INITIAL_CONCENTRATION
+    case('ACTIVATION_ENERGY')
+      new_param%kind = ADJ_PARAM_ACTIVATION_ENERGY
     case default
       deallocate(new_param)
       call InputKeywordUnrecognized(input,class_keyword,error_string,option)
@@ -318,18 +324,19 @@ subroutine AdjParamRead(input,option)
       write(label,'(a,"[",i0,",",a,"]")') &
             trim(word), new_param%reaction_index, trim(new_param%species_name)
       new_param%name = label(1:len(new_param%name))
-    case(ADJ_PARAM_YIELD)
+    case(ADJ_PARAM_YIELD,ADJ_PARAM_ACTIVATION_ENERGY)
       if (Uninitialized(new_param%kinetics)) then
-        option%io_buffer = 'KINETICS must be specified for YIELD parameter.'
+        option%io_buffer = 'KINETICS must be specified for ' // &
+          trim(class_keyword) // ' parameter.'
         call PrintErrMsg(option)
       endif
       if (Uninitialized(new_param%reaction_index)) then
-        option%io_buffer = 'REACTION_INDEX must be specified for &
-          &YIELD KINETICS MICROBIAL.'
+        option%io_buffer = 'REACTION_INDEX must be specified for ' // &
+          trim(class_keyword) // ' KINETICS MICROBIAL.'
         call PrintErrMsg(option)
       endif
-      write(new_param%name,'(a,"[",i0,"]")') &
-            'MICROBIAL_YIELD', new_param%reaction_index
+      write(new_param%name,'(a,"_",a,"[",i0,"]")') 'MICROBIAL', &
+            trim(class_keyword), new_param%reaction_index
     case(ADJ_PARAM_DECAY_RATE)
       if (Uninitialized(new_param%reaction_index)) then
         option%io_buffer = 'REACTION_INDEX must be specified for &
@@ -550,6 +557,28 @@ subroutine AdjParamSetup(this,realization,option)
       if (.not.ieee_is_finite(this%value) .or. this%value < 0.d0) then
         call PrintErrMsg(option,'YIELD adjoint requires a finite, &
           &nonnegative parameter.')
+      endif
+    case(ADJ_PARAM_ACTIVATION_ENERGY)
+      microbial => realization%reaction%microbial
+      if (microbial%nrxn == 0) then
+        option%io_buffer = 'ACTIVATION_ENERGY KINETICS MICROBIAL specified, &
+          &but the chemistry deck contains no MICROBIAL_REACTION block.'
+        call PrintErrMsg(option)
+      endif
+      if (this%reaction_index < 1 .or. this%reaction_index > microbial%nrxn) &
+        then
+        option%io_buffer = 'REACTION_INDEX out of range for &
+          &ACTIVATION_ENERGY KINETICS MICROBIAL.'
+        call PrintErrMsg(option)
+      endif
+      ! the array exists when some reaction has one
+      this%value = 0.d0
+      if (associated(microbial%activation_energy)) &
+        this%value = microbial%activation_energy(this%reaction_index)
+      if (.not.ieee_is_finite(this%value) .or. this%value <= 0.d0) then
+        call PrintErrMsg(option,'PARAMETER ACTIVATION_ENERGY requires a &
+          &finite, positive ACTIVATION_ENERGY in the reaction''s &
+          &MICROBIAL_REACTION block.')
       endif
     case(ADJ_PARAM_DECAY_RATE)
       if (realization%reaction%immobile%ndecay_rxn == 0) then
@@ -807,6 +836,9 @@ subroutine AdjParamSetValue(this,realization,val)
       realization%reaction%microbial%inhibition_C2(this%term) = val
     case(ADJ_PARAM_YIELD)
       realization%reaction%microbial%biomass_yield(this%reaction_index) = val
+    case(ADJ_PARAM_ACTIVATION_ENERGY)
+      realization%reaction%microbial% &
+        activation_energy(this%reaction_index) = val
     case(ADJ_PARAM_DECAY_RATE)
       realization%reaction%immobile% &
         decay_rate_constant(this%reaction_index) = val

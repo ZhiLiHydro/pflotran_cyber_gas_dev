@@ -142,15 +142,18 @@ objective has small jumps where the step sequence changes; fixed steps
 - Parameters: `RATE_CONSTANT` (`KINETICS MICROBIAL` with `REACTION_INDEX`,
   or `KINETICS MINERAL` with `MINERAL_NAME` and a single rate constant),
   `HALF_SATURATION_CONSTANT`, `INHIBITION_CONSTANT`, `SMOOTHSTEP_INTERVAL`,
-  `YIELD`, `DECAY_RATE_CONSTANT`, `INITIAL_CONCENTRATION` (`SPECIES_NAME`,
-  `REGION`) and, with flow in the model,
+  `YIELD`, `ACTIVATION_ENERGY` (`KINETICS MICROBIAL`, `REACTION_INDEX`: a
+  reaction with a positive `ACTIVATION_ENERGY`), `DECAY_RATE_CONSTANT`,
+  `INITIAL_CONCENTRATION` (`SPECIES_NAME`, `REGION`) and, with flow in the
+  model,
   `PERMEABILITY` (`MATERIAL <name>`: scales the isotropic permeability of
   the material's cells; no permeability datasets). Each parameter is the
   positive value PFLOTRAN holds (internal units): `INHIBITION_CONSTANT` is
   the
   `THRESHOLD_CONCENTRATION` as given, also with `INHIBIT_ABOVE_THRESHOLD`
   (stored as its negative), `SMOOTHSTEP_INTERVAL` the log10 interval,
-  `PERMEABILITY` the material's permeability [m^2], `INITIAL_CONCENTRATION`
+  `PERMEABILITY` the material's permeability [m^2], `ACTIVATION_ENERGY` in
+  J/mol (the rate constant is that at 25 C), `INITIAL_CONCENTRATION`
   the initial free molality [mol/kg] of a primary species or concentration
   [mol/m^3 bulk] of an immobile one in the region's active cells.
 - `INITIAL_CONCENTRATION` takes its value from the initial condition, one
@@ -164,9 +167,9 @@ objective has small jumps where the step sequence changes; fixed steps
 - Everything the GIRT_DAE model supports is differentiated, including
   activity coefficients (converged in every evaluation), kinetic minerals
   with volume-fraction-dependent surface area, multirate and equilibrium
-  surface complexation, transient Richards flow and transient velocity
-  datasets (the backward sweep replays each waypoint interval's recorded
-  forcing).
+  surface complexation, transient Richards flow, transient velocity
+  datasets and `SPECIFIED_TEMPERATURE` (the backward sweep replays each
+  waypoint interval's recorded forcing).
 - dJ/dP(0) holds the initial molarity of the aqueous primaries fixed, as the
   initial condition does (an `INITIAL_CONCENTRATION` holds its free
   molality fixed instead). A constraint re-equilibrated in each cell against
@@ -196,6 +199,42 @@ The adjoint is skipped, with exit code 89 (input errors exit with 87),
 after a forward run with mineral regime transitions (depletion, dissolution
 resuming) or one that stops before the final time
 (`MAXIMUM_NUMBER_OF_TIMESTEPS`, `WALLCLOCK_STOP`).
+
+## Temperature
+
+`SPECIFIED_TEMPERATURE` (SUBSURFACE block; GIRT_DAE without flow) sets the
+temperature [C] of every cell in time:
+
+```
+SPECIFIED_TEMPERATURE
+  DATASET LIST                       # or DATASET <value>, DATASET FILE <name>
+    TIME_UNITS h
+    DATA_UNITS C
+    INTERPOLATION LINEAR             # or STEP
+    0.d0  24.5d0
+    6.d0  27.0d0
+  /
+END
+```
+
+- Microbial rates follow it through their `ACTIVATION_ENERGY` (Arrhenius,
+  reference 25 C); equilibrium constants (the database's temperature fit;
+  every species then needs log K at all database temperatures) and the
+  Debye-Huckel parameters follow it unless `REACTION_TEMPERATURE_DEPENDENCE
+  ISOTHERMAL`; diffusion follows it with `TRANSPORT_TEMPERATURE_DEPENDENCE
+  ANISOTHERMAL`. (PFLOTRAN's own anisothermal runs keep the Debye-Huckel
+  parameters of the reference temperature.)
+- Its value at time zero is the reference temperature: the initial
+  constraints are equilibrated at it, and without `REFERENCE_LIQUID_DENSITY`
+  the water density is that of water at it. The density then stays (no
+  thermal expansion). `REFERENCE_TEMPERATURE` is rejected with it.
+- The dataset's knots are waypoints: within a waypoint interval a STEP
+  temperature is constant and a LINEAR one linear, exactly; a step restarts
+  the integrator. Boundary and source/sink chemistry is evaluated at each
+  interval's start, so a LINEAR dataset is rejected with transport boundary
+  or source/sink conditions.
+- The temperature is forcing: the adjoint replays it, and has no derivative
+  with respect to it. The output's temperature is the dataset's.
 
 ## Flow and transport as one model
 
@@ -244,7 +283,12 @@ a post-processor that checks the gradients against central differences
   speciation with activity coefficients (`ar_carbonate.in`) against central
   differences and PFLOTRAN's Total and pH output; `INITIAL_CONCENTRATION`
   against differences of the deck's initial values, reruns and TAO's
-  gradient test.
+  gradient test; `SPECIFIED_TEMPERATURE` against the exact backward Euler
+  solution of a zero-order rate (costs, `RATE_CONSTANT` and
+  `ACTIVATION_ENERGY` gradients), central differences (also with
+  boundaries, a velocity dataset, observations, and carbonate speciation
+  with calcite), reruns and the sweep variants, and a step in temperature
+  against constant-temperature runs on each side.
 - `check_coupled.py` (`adjoint-coupled`, `adjoint-coupled-np2`): the
   coupled model's gradients (also of `TOTAL` and `PH` observations, and
   of `INITIAL_CONCENTRATION` by TAO's gradient test), and

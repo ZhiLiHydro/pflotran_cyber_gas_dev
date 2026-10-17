@@ -547,7 +547,9 @@ subroutine FactorySubsurfSetupRealization(simulation)
       select case(pm_rt%reaction_temperature_dependence)
         case(RT_TEMPERATURE_FOLLOW_FLOW)
           if (option%iflowmode == NULL_MODE) then
-            option%transport%isothermal_reaction = PETSC_TRUE
+            ! without flow, reactions follow a SPECIFIED_TEMPERATURE
+            option%transport%isothermal_reaction = &
+              .not.associated(realization%uniform_temperature_dataset)
           else
             option%transport%isothermal_reaction = option%flow%isothermal
           endif
@@ -560,6 +562,12 @@ subroutine FactorySubsurfSetupRealization(simulation)
         option%transport%reference_temperature = &
           option%flow%reference_temperature
       else
+        if (associated(realization%uniform_temperature_dataset)) then
+          option%io_buffer = 'REFERENCE_TEMPERATURE may not be combined &
+            &with SPECIFIED_TEMPERATURE, whose value at time zero is the &
+            &reference.'
+          call PrintErrMsg(option)
+        endif
         option%transport%reference_temperature = pm_rt%reference_temperature
       endif
 

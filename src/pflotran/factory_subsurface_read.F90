@@ -970,9 +970,8 @@ subroutine FactorySubsurfReadInput(simulation,input)
 
   character(len=MAXWORDLENGTH) :: word
   character(len=MAXWORDLENGTH) :: card
-  character(len=MAXSTRINGLENGTH) :: string, temp_string
+  character(len=MAXSTRINGLENGTH) :: string
   character(len=MAXWORDLENGTH) :: internal_units
-  character(len=MAXSTRINGLENGTH) :: error_string
 
   character(len=1) :: backslash
   PetscReal :: temp_real, temp_real2
@@ -990,6 +989,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
 
   PetscInt :: flag1
   PetscInt :: n_adjoint_blocks
+  PetscBool :: reference_temperature_read
 
   type(region_type), pointer :: region
   type(flow_condition_type), pointer :: flow_condition
@@ -1046,6 +1046,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
   nullify(waypoint_list_time_card)
   nullify(cur_well)
   n_adjoint_blocks = 0
+  reference_temperature_read = PETSC_FALSE
 
   realization => simulation%realization
   output_option => simulation%output_option
@@ -1133,55 +1134,11 @@ subroutine FactorySubsurfReadInput(simulation,input)
                 call PrintErrMsg(option)
               endif
               if (flag1 == STRING_YES) then
-                error_string = 'SPECIFIED_VELOCITY,UNIFORM,DATASET'
-                dataset_ascii => DatasetAsciiCreate()
-                dataset_ascii%data_type = DATASET_REAL
-                dataset_ascii%array_width = 3 * &
-                  max(option%nphase,option%transport%nphase)
+                call FactorySubsurfReadUniformDataset(input,option, &
+                       3*max(option%nphase,option%transport%nphase), &
+                       internal_units,'SPECIFIED_VELOCITY,UNIFORM,DATASET', &
+                       dataset_ascii)
                 realization%uniform_velocity_dataset => dataset_ascii
-
-                string = input%buf
-                call InputReadDouble(input,option,temp_real)
-                if (.not.InputError(input)) then
-                  input%buf = string
-                  call DatasetAsciiReadSingle(dataset_ascii,input, &
-                                              temp_string,internal_units, &
-                                              error_string,option)
-                else
-                  input%buf = string
-                  input%ierr = INPUT_ERROR_NONE
-                  call InputReadCard(input,option,word)
-                  call InputErrorMsg(input,option,'keyword',error_string)
-                  call StringToUpper(word)
-                  select case(word)
-                    case('FILE')
-                      error_string = trim(error_string) // ',FILE'
-                      call InputReadNChars(input,option,string, &
-                                           MAXSTRINGLENGTH,PETSC_TRUE)
-                      call InputErrorMsg(input,option,'filename',error_string)
-                      call DatasetAsciiReadFile(dataset_ascii,string, &
-                                                temp_string,internal_units, &
-                                                error_string,option)
-                    case('LIST')
-                      error_string = trim(error_string) // ',LIST'
-                      call DatasetAsciiReadList(dataset_ascii,input, &
-                                                temp_string,internal_units, &
-                                                error_string,option)
-                    case default
-                      call InputKeywordUnrecognized(input,word, &
-                                                    error_string,option)
-                  end select
-                  if (dataset_ascii%time_storage%time_interpolation_method == &
-                      INTERPOLATION_NULL) then
-                    option%io_buffer = 'An INTERPOLATION method (LINEAR or &
-                      &STEP) must be specified for: ' // trim(error_string)
-                    call PrintErrMsg(option)
-                  endif
-                endif
-                string = 'SPECIFIED_VELOCITY,UNIFORM,DATASET'
-                ! have to pass in dataset_base_type
-                dataset => dataset_ascii
-                call DatasetVerify(dataset,default_time_storage,string,option)
               else
 ! Add interface for non-uniform dataset
                 call InputReadFilename(input,option, &
@@ -1192,6 +1149,48 @@ subroutine FactorySubsurfReadInput(simulation,input)
           end select
         enddo
         call InputPopBlock(input,option)
+
+!....................
+      case ('SPECIFIED_TEMPERATURE')
+        ! the temperature of every cell, uniform; GIRT_DAE's forcing
+        if (option%itranmode /= RT_TS_MODE .or. option%nflowdof > 0) then
+          option%io_buffer = 'SPECIFIED_TEMPERATURE requires MODE GIRT_DAE &
+            &in SUBSURFACE_TRANSPORT and no SUBSURFACE_FLOW mode.'
+          call PrintErrMsg(option)
+        endif
+        if (associated(realization%uniform_temperature_dataset)) then
+          option%io_buffer = 'More than one SPECIFIED_TEMPERATURE block or &
+            &DATASET.'
+          call PrintErrMsg(option)
+        endif
+        call InputPushBlock(input,option)
+        do
+          call InputReadPflotranString(input,option)
+          call InputReadStringErrorMsg(input,option,card)
+          if (InputCheckExit(input,option)) exit
+          call InputReadCard(input,option,word)
+          call InputErrorMsg(input,option,'keyword','SPECIFIED_TEMPERATURE')
+          call StringToUpper(word)
+          select case(trim(word))
+            case('DATASET')
+              if (associated(realization%uniform_temperature_dataset)) then
+                option%io_buffer = 'More than one SPECIFIED_TEMPERATURE &
+                  &block or DATASET.'
+                call PrintErrMsg(option)
+              endif
+              call FactorySubsurfReadUniformDataset(input,option,ONE_INTEGER, &
+                     'C','SPECIFIED_TEMPERATURE,DATASET',dataset_ascii)
+              realization%uniform_temperature_dataset => dataset_ascii
+            case default
+              call InputKeywordUnrecognized(input,word, &
+                                            'SPECIFIED_TEMPERATURE',option)
+          end select
+        enddo
+        call InputPopBlock(input,option)
+        if (.not.associated(realization%uniform_temperature_dataset)) then
+          option%io_buffer = 'SPECIFIED_TEMPERATURE requires a DATASET.'
+          call PrintErrMsg(option)
+        endif
 
 !....................
       case ('DEBUG')
@@ -1445,6 +1444,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
         call InputReadStringErrorMsg(input,option,card)
         call InputReadDouble(input,option,option%flow%reference_temperature)
         call InputErrorMsg(input,option,'Reference Temperature','value')
+        reference_temperature_read = PETSC_TRUE
 
 !......................
 
@@ -2663,6 +2663,18 @@ subroutine FactorySubsurfReadInput(simulation,input)
   enddo
   call InputPopBlock(input,option) ! SUBSURFACE
 
+  ! the specified temperature at time zero is the reference: the initial
+  ! equilibration and the water density are at it
+  if (associated(realization%uniform_temperature_dataset)) then
+    if (reference_temperature_read) then
+      option%io_buffer = 'REFERENCE_TEMPERATURE may not be combined with &
+        &SPECIFIED_TEMPERATURE, whose value at time zero is the reference.'
+      call PrintErrMsg(option)
+    endif
+    option%flow%reference_temperature = &
+      realization%uniform_temperature_dataset%rarray(1)
+  endif
+
   call PrintInitFlags(option%print_flags,option%driver%print_flags)
 
   if (associated(simulation%flow_process_model_coupler)) then
@@ -2710,5 +2722,86 @@ subroutine FactorySubsurfReadInput(simulation,input)
   nullify(cur_well)
 
 end subroutine FactorySubsurfReadInput
+
+! ************************************************************************** !
+
+subroutine FactorySubsurfReadUniformDataset(input,option,array_width, &
+                                            internal_units,name,dataset)
+  !
+  ! Reads the DATASET of SPECIFIED_VELOCITY UNIFORM or
+  ! SPECIFIED_TEMPERATURE: one value of each of array_width entries, or a
+  ! FILE or LIST time series with an INTERPOLATION method.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/16/26
+  !
+  use Option_module
+  use Input_Aux_module
+  use String_module
+  use Dataset_Base_class
+  use Dataset_Ascii_class
+  use Dataset_module
+  use Time_Storage_module
+
+  implicit none
+
+  type(input_type), pointer :: input
+  type(option_type) :: option
+  PetscInt :: array_width
+  character(len=*) :: internal_units
+  character(len=*) :: name
+  class(dataset_ascii_type), pointer :: dataset
+
+  class(dataset_base_type), pointer :: dataset_base
+  type(time_storage_type), pointer :: default_time_storage
+  character(len=MAXSTRINGLENGTH) :: string, external_units, error_string
+  character(len=MAXWORDLENGTH) :: word
+  PetscReal :: value
+
+  nullify(default_time_storage)
+  error_string = name
+  dataset => DatasetAsciiCreate()
+  dataset%data_type = DATASET_REAL
+  dataset%array_width = array_width
+
+  string = input%buf
+  call InputReadDouble(input,option,value)
+  if (.not.InputError(input)) then
+    input%buf = string
+    call DatasetAsciiReadSingle(dataset,input,external_units,internal_units, &
+                                error_string,option)
+  else
+    input%buf = string
+    input%ierr = INPUT_ERROR_NONE
+    call InputReadCard(input,option,word)
+    call InputErrorMsg(input,option,'keyword',error_string)
+    call StringToUpper(word)
+    select case(word)
+      case('FILE')
+        error_string = trim(error_string) // ',FILE'
+        call InputReadNChars(input,option,string,MAXSTRINGLENGTH,PETSC_TRUE)
+        call InputErrorMsg(input,option,'filename',error_string)
+        call DatasetAsciiReadFile(dataset,string,external_units, &
+                                  internal_units,error_string,option)
+      case('LIST')
+        error_string = trim(error_string) // ',LIST'
+        call DatasetAsciiReadList(dataset,input,external_units, &
+                                  internal_units,error_string,option)
+      case default
+        call InputKeywordUnrecognized(input,word,error_string,option)
+    end select
+    if (dataset%time_storage%time_interpolation_method == &
+        INTERPOLATION_NULL) then
+      option%io_buffer = 'An INTERPOLATION method (LINEAR or &
+        &STEP) must be specified for: ' // trim(error_string)
+      call PrintErrMsg(option)
+    endif
+  endif
+  ! have to pass in dataset_base_type
+  dataset_base => dataset
+  error_string = name
+  call DatasetVerify(dataset_base,default_time_storage,error_string,option)
+
+end subroutine FactorySubsurfReadUniformDataset
 
 end module Factory_Subsurface_Read_module

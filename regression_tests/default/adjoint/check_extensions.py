@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Finite-difference checks of the MODE GIRT_DAE adjoint for several
-microbial reactions, Monod, inhibition, yield and decay parameters, and the
-OBSERVATIONS objective. Post-processor of adjoint-extensions and
-adjoint-extensions-np2; see check_adjoint.py for direct use."""
+microbial reactions, Monod, inhibition, yield and decay parameters, the
+OBSERVATIONS objective and SPECIFIED_TEMPERATURE. Post-processor of
+adjoint-extensions and adjoint-extensions-np2; see check_adjoint.py for
+direct use."""
 
 import argparse
+import math
 import os
 from pathlib import Path
 import re
@@ -844,6 +846,287 @@ def extra_branches(np):
     print(f'PASS Monod threshold, Arrhenius and zero rate constant ({np} ranks)', flush=True)
 
 
+ACTIVATION = r'^    ACTIVATION_ENERGY (\S+)'
+# PFLOTRAN's IDEAL_GAS_CONSTANT [J/mol-K] and 0 C [K]
+GAS_CONSTANT, T273 = 8.31446, 273.15
+
+
+def temperature_dataset(rows, interpolation):
+    """SPECIFIED_TEMPERATURE of (time [h], temperature [C]) rows."""
+    return ('SPECIFIED_TEMPERATURE\n  DATASET LIST\n    TIME_UNITS h\n'
+            f'    DATA_UNITS C\n    INTERPOLATION {interpolation}\n' +
+            ''.join(f'    {t:.17g} {v:.17g}\n' for t, v in rows) + '  /\nEND\n\n')
+
+
+def with_temperature(text, block):
+    text, count = re.subn(r'(?m)^(REFERENCE_LIQUID_DENSITY|FLUID_PROPERTY)',
+                          lambda m: block + m.group(1), text, count=1)
+    require(count == 1, 'no place for SPECIFIED_TEMPERATURE')
+    return text
+
+
+def transport_options(text, *options):
+    text, count = re.subn(r'(?m)^      MODE GIRT_DAE\n',
+                          '      MODE GIRT_DAE\n      OPTIONS\n' +
+                          ''.join(f'        {o}\n' for o in options) + '      /\n',
+                          text, count=1)
+    require(count == 1, 'no MODE GIRT_DAE')
+    return text
+
+
+def arrhenius(temperature, energy):
+    return math.exp(energy/GAS_CONSTANT*(1/(25+T273) - 1/(temperature+T273)))
+
+
+def remove_block(text, start, end):
+    """text without its first block from start through end."""
+    i = text.index(start)
+    return text[:i] + text[text.index(end, i) + len(end):]
+
+
+def zero_order(block, rate=1e-8, energy=5e4):
+    """ar_short with a rate k*arrhenius(T) [mol/L-s] (no Monod or biomass
+    terms) and temperature block: each backward Euler step adds
+    dt*k*arrhenius(T) to CO2(aq) [mol/kg at 1 kg/L], T at the step's end."""
+    text = example('short')
+    start, end = text.index('    MONOD\n'), text.index('  IMMOBILE_DECAY_REACTION\n')
+    text = text[:start] + '  /\n' + text[end:]
+    for old, new in (('RATE_CONSTANT 4.d-2', f'RATE_CONSTANT {rate:.17e}\n'
+                      f'    ACTIVATION_ENERGY {energy:.17e}'),
+                     ('O2(aq)    1.5d-3   F', 'O2(aq)    1.d0     F'),
+                     ('CH2O(aq)  2.d-3    F', 'CH2O(aq)  1.d0     F'),
+                     ('OUTPUT\n  PERIODIC_OBSERVATION TIMESTEP 1\n',
+                      'OUTPUT\n  PERIODIC_OBSERVATION TIMESTEP 1\n  VARIABLES\n'
+                      '    TEMPERATURE\n  /\n')):
+        require(old in text, f'missing {old!r}')
+        text = text.replace(old, new, 1)
+    text = with_parameters(text, [parameter('RATE_CONSTANT'),
+                                  parameter('ACTIVATION_ENERGY')])
+    return with_temperature(text, block) if block else text
+
+
+def output_temperatures(output):
+    """The Temperature [C] column of the observation point's output."""
+    lines = next(Path(output).parent.glob('case-obs-*.pft')).read_text().splitlines()
+    header = [c.strip().strip('"') for c in lines[0].split(',')]
+    column = [i for i, name in enumerate(header) if name.startswith('Temperature')]
+    require(len(column) == 1, 'no temperature output')
+    return [float(line.split()[column[0]]) for line in lines[1:]]
+
+
+def carbonate_without(text, *names):
+    for name in names:
+        require(f'    {name}\n' in text, f'missing {name}')
+        text = text.replace(f'    {name}\n', '', 1)
+    return text
+
+
+def specified_temperature(np):
+    """SPECIFIED_TEMPERATURE: a zero-order rate gives J, dJ/dk and dJ/dEa as
+    sums of Arrhenius factors at each step's temperature (STEP, LINEAR,
+    constant = REFERENCE_TEMPERATURE), and the output temperature; with
+    Monod terms, boundaries, a velocity dataset and observations both
+    parameters against finite differences, reruns, the split sweep and the
+    memory trajectory; with carbonate speciation and calcite (database log K
+    and Debye-Huckel parameters at the temperature) a LINEAR temperature
+    against finite differences of TOTAL and PH observations, a temperature
+    step against constant-temperature runs on each side, and diffusion that
+    follows it; bad input."""
+    if np == 1:
+        energy, rate = 5e4, 1e-8
+        steps = {'STEP': [35.]*3 + [15.]*2,
+                 'LINEAR': [35-4*t for t in (1, 2)] + [27+t for t in (1, 2, 3)]}
+        for kind, rows in (('STEP', [(0, 35), (3, 15)]),
+                           ('LINEAR', [(0, 35), (2, 27), (5, 30)])):
+            output = run(zero_order(temperature_dataset(rows, kind)), 'temperature_sums')
+            costs, gradients = parse_summary(output)
+            factors = [arrhenius(t, energy) for t in steps[kind]]
+            increase = sum(3600.*rate*f for f in factors)
+            close(costs[1], 1e-10 + increase, rtol=1e-13)
+            close(gradients[1, 1], increase/rate, rtol=1e-13)
+            close(gradients[1, 2], sum(3600.*rate*f*(1/(25+T273) - 1/(t+T273))/GAS_CONSTANT
+                                       for f, t in zip(factors, steps[kind])),
+                  rtol=1e-12, atol=1e-20)
+            temperatures = output_temperatures(output)
+            expected = [35.] + steps[kind]
+            require(len(temperatures) == len(expected) and
+                    all(abs(a-b) < 1e-5 for a, b in zip(temperatures, expected)),
+                    f'{kind}: output temperatures {temperatures}')
+            # the same series from a FILE
+            with tempfile.TemporaryDirectory(prefix='pflotran-adjoint-temperature-') as d:
+                series = Path(d) / 'temperature.dat'
+                series.write_text(f'TIME_UNITS h\nDATA_UNITS C\nINTERPOLATION {kind}\n' +
+                                  ''.join(f'{t} {v}\n' for t, v in rows))
+                require(parse_summary(run(zero_order(
+                    f'SPECIFIED_TEMPERATURE\n  DATASET FILE {series}\nEND\n\n'),
+                    'temperature_sums')) == (costs, gradients), f'{kind}: FILE differs from LIST')
+        constant = parse_summary(run(zero_order(
+            'SPECIFIED_TEMPERATURE\n  DATASET 30.d0\nEND\n\n'), 'temperature_sums'))
+        reference = parse_summary(run(zero_order('REFERENCE_TEMPERATURE 30.d0\n'),
+                                      'temperature_sums'))
+        for a, b in zip(constant, reference):
+            for key in a:
+                close(a[key], b[key], rtol=1e-14)
+        close(constant[0][1], 1e-10 + 5*3600.*rate*arrhenius(30., energy), rtol=1e-13)
+        cleanup_run('temperature_sums')
+
+    # Monod terms, biomass, boundaries and a velocity step at 2 h: a STEP
+    # temperature (a LINEAR one is rejected with boundaries), observations
+    # on both sides of its step
+    with tempfile.TemporaryDirectory(prefix='pflotran-adjoint-temperature-') as directory:
+        series = Path(directory) / 'co2.dat'
+        write_series(series, [(2, 3.e-4), (4, 8.e-4), (5, 1.e-3)])
+        text = deck('dynamic_velocity').replace('    RATE_CONSTANT 4.d-2',
+                                                '    RATE_CONSTANT 4.d-2\n'
+                                                '    ACTIVATION_ENERGY 5.d4')
+        text = with_parameters(text, [parameter('RATE_CONSTANT'),
+                                      parameter('ACTIVATION_ENERGY')])
+        text = with_temperature(text, temperature_dataset([(0, 35), (3, 15)], 'STEP'))
+        text = with_observations(text, observation_block(
+            (2, 'FREE_ION', 'CO2(aq)', 'STANDARD_DEVIATION 1.d-4', series)))
+        base = gradient_check(text, [(RATE, 0, .04), (ACTIVATION, 0, 5e4)],
+                              'temperature_monod', np)
+        parameters, costs, gradients = parse_rerun_check(
+            run(text, 'temperature_rerun', np=np, args=('-ts_model_rerun_check',)))
+        scaled = replace_nth(replace_nth(text, RATE, f'{parameters[1]:.17e}'),
+                             ACTIVATION, f'{parameters[2]:.17e}')
+        require(parse_summary(run(scaled, 'temperature_rerun', np=np)) == (costs, gradients),
+                'a rerun at 1.1 p0 differs from a run of the deck')
+        for args in (('-adjoint_debug_split',), ('-ts_trajectory_type', 'memory')):
+            require(parse_summary(run(text, 'temperature_rerun', np=np, args=args)) == base,
+                    f'{args} changes the costs or gradients')
+        cleanup_run('temperature_rerun')
+
+    # carbonate: database log K (CaOH+ has one at 25 C only) and the
+    # Debye-Huckel parameters at the temperature; calcite kinetics
+    carbonate = carbonate_without(example('carbonate'), 'CaOH+')
+    with tempfile.TemporaryDirectory(prefix='pflotran-adjoint-temperature-') as directory:
+        directory = Path(directory)
+        dic, ph = directory / 'dic.dat', directory / 'ph.dat'
+        write_series(dic, [(36, 1.5e-3), (72, 1.8e-3), (120, 2.e-3)])
+        ph.write_text('TIME_UNITS d\n2.5 6.3\n5 6.6\n')
+        block = observation_block((1, 'TOTAL', 'HCO3-', 'STANDARD_DEVIATION 1.d-5', dic),
+                                  (4, 'PH', '', 'STANDARD_DEVIATION 5.d-2', ph))
+        linear = with_temperature(with_observations(carbonate, block),
+                                  temperature_dataset([(0, 25), (120, 45)], 'LINEAR'))
+        costs, gradients = gradient_check(linear, [(CALCITE_RATE, 0, 1e-7)],
+                                          'temperature_carbonate', np, tolerance=1e-7)
+        require(costs[2] > 0. and abs(gradients[2, 1]) > 1., 'no misfit gradient')
+
+    if np == 1:
+        # without calcite and with totals that no temperature changes (H+ a
+        # total, Cl- by charge balance), the speciation after a step from
+        # 25 to 50 C is that of a run at 50 C from the start
+        static = carbonate.replace('      H+     6.d0     P\n', '      H+     1.4d-3   T\n', 1)
+        static = remove_block(static, '  MINERALS\n    Calcite\n  /\n', '  MINERAL_KINETICS\n')
+        static = remove_block(static, '    Calcite\n      RATE_CONSTANT', '  /\n  /\n')
+        for _ in range(2):
+            static = remove_block(static, '    MINERALS\n      Calcite', '    /\n')
+        static = remove_block(static, 'INITIAL_CONDITION\n  TRANSPORT_CONDITION acidic\n', 'END\n')
+        static = static.replace('FLUID_PROPERTY\n', 'REFERENCE_LIQUID_DENSITY 1000.d0\n\n'
+                                'FLUID_PROPERTY\n', 1)
+        measurements = ''.join(
+            f'    MEASUREMENT\n      TIME {t} h\n      CELL_ID 2\n      OBSERVED_VARIABLE {v}\n'
+            f'      VALUE {value}\n      STANDARD_DEVIATION 1.d-2\n    /\n'
+            for t in (24, 72, 120) for v, value in (
+                ('PH', '7.d0'), ('FREE_ION HCO3-', '1.d-3 mol/kg'),
+                ('FREE_ION Ca++', '1.d-4 mol/kg'), ('TOTAL H+', '1.d-3 mol/kg')))
+        static = re.sub(r'(?ms)^ADJOINT\n.*?^END\n', lambda _: (
+            'ADJOINT\n  OBSERVATIONS\n' + measurements + '  /\n'
+            '  PARAMETER INITIAL_CONCENTRATION\n    SPECIES_NAME Na+\n    REGION all\n'
+            '  /\nEND\n'), static, count=1)
+        values = {}
+        for name, text in (
+                ('step', with_temperature(static, temperature_dataset([(0, 25), (48, 50)],
+                                                                       'STEP'))),
+                ('25', transport_options(static.replace(
+                    'REFERENCE_LIQUID_DENSITY', 'REFERENCE_TEMPERATURE 25.d0\n'
+                    'REFERENCE_LIQUID_DENSITY'), 'REACTION_TEMPERATURE_DEPENDENCE ANISOTHERMAL')),
+                ('50', transport_options(static.replace(
+                    'REFERENCE_LIQUID_DENSITY', 'REFERENCE_TEMPERATURE 50.d0\n'
+                    'REFERENCE_LIQUID_DENSITY'), 'REACTION_TEMPERATURE_DEPENDENCE ANISOTHERMAL')),
+                ('constant', with_temperature(static, 'SPECIFIED_TEMPERATURE\n'
+                                              '  DATASET 50.d0\nEND\n\n'))):
+            values[name] = observed(run(text, 'temperature_speciation'))
+        require(values['constant'] == values['50'],
+                'a constant SPECIFIED_TEMPERATURE differs from REFERENCE_TEMPERATURE')
+        for i, (time, simulated, _, _) in enumerate(values['step']):
+            reference = values['25' if time < 48*3600. else '50'][i]
+            close(simulated, reference[1], rtol=1e-12)
+        # the step is resolved: pH falls by 0.077, H+'s total stays
+        close(values['25'][0][1] - values['50'][0][1], 0.077, rtol=0.02)
+        close(values['step'][11][1], values['step'][3][1], rtol=1e-12)
+        cleanup_run('temperature_speciation')
+
+        # diffusion follows the temperature with
+        # TRANSPORT_TEMPERATURE_DEPENDENCE ANISOTHERMAL: at 25 C it is the
+        # isothermal one, after a step to 40 C 1.47 times faster (Ca++ at
+        # cell 2 then differs by 2e-4; calcite kinetics dominate)
+        transport = 'TRANSPORT_TEMPERATURE_DEPENDENCE ANISOTHERMAL'
+        diffusive = carbonate.replace('  DIFFUSION_COEFFICIENT 1.d-6\n',
+                                      '  DIFFUSION_COEFFICIENT 1.d-6\n'
+                                      '  DIFFUSION_ACTIVATION_ENERGY 2.d4\n', 1)
+        require(diffusive != carbonate, 'no DIFFUSION_COEFFICIENT')
+        diffusive = with_observations(diffusive, '  OBSERVATIONS\n' + ''.join(
+            f'    MEASUREMENT\n      TIME {t} h\n      CELL_ID 2\n'
+            '      OBSERVED_VARIABLE FREE_ION Ca++\n      VALUE 1.d-4 mol/kg\n'
+            '      STANDARD_DEVIATION 1.d-5\n    /\n' for t in (24, 96)) + '  /\n')
+        step = with_temperature(diffusive, temperature_dataset([(0, 25), (48, 40)], 'STEP'))
+        faster = observed(run(transport_options(step, transport), 'temperature_diffusion'))
+        isothermal = observed(run(step, 'temperature_diffusion'))
+        require(faster[0] == isothermal[0], 'diffusion at 25 C differs from the isothermal one')
+        require(abs(faster[1][1] - isothermal[1][1]) > 1e-5*abs(isothermal[1][1]),
+                'diffusion does not follow the temperature step')
+        constant = parse_summary(run(transport_options(with_temperature(
+            diffusive, 'SPECIFIED_TEMPERATURE\n  DATASET 40.d0\nEND\n\n'), transport),
+            'temperature_diffusion'))
+        reference = parse_summary(run(transport_options(diffusive.replace(
+            'FLUID_PROPERTY\n', 'REFERENCE_TEMPERATURE 40.d0\n\nFLUID_PROPERTY\n', 1),
+            transport, 'REACTION_TEMPERATURE_DEPENDENCE ANISOTHERMAL'), 'temperature_diffusion'))
+        require(constant == reference, 'a constant SPECIFIED_TEMPERATURE differs from '
+                'REFERENCE_TEMPERATURE with temperature-dependent diffusion')
+        cleanup_run('temperature_diffusion')
+
+        # bad input
+        short = zero_order(temperature_dataset([(0, 35), (3, 15)], 'STEP'))
+        for text, error in (
+                (with_temperature(deck('dynamic_velocity'),
+                                  temperature_dataset([(0, 35), (3, 15)], 'LINEAR')),
+                 'does not yet support a LINEAR SPECIFIED_TEMPERATURE with transport '
+                 'boundary'),
+                (short.replace('MODE GIRT_DAE', 'MODE GIRT'),
+                 'SPECIFIED_TEMPERATURE requires MODE GIRT_DAE'),
+                (short.replace('REFERENCE_LIQUID_DENSITY', 'REFERENCE_TEMPERATURE 25.d0\n'
+                               'REFERENCE_LIQUID_DENSITY'),
+                 'REFERENCE_TEMPERATURE may not be combined with SPECIFIED_TEMPERATURE'),
+                (transport_options(short, 'REFERENCE_TEMPERATURE 25.d0'),
+                 'REFERENCE_TEMPERATURE may not be combined with SPECIFIED_TEMPERATURE'),
+                (short.replace('    INTERPOLATION STEP\n', ''),
+                 'An INTERPOLATION method (LINEAR or STEP) must be specified for: '
+                 'SPECIFIED_TEMPERATURE,DATASET,LIST'),
+                (short.replace('  DATASET LIST\n', '  DATASET 20.d0\n  DATASET LIST\n'),
+                 'More than one SPECIFIED_TEMPERATURE block or DATASET'),
+                (with_temperature(short, 'SPECIFIED_TEMPERATURE\nEND\n\n'),
+                 'More than one SPECIFIED_TEMPERATURE block or DATASET'),
+                (with_temperature(zero_order(None), 'SPECIFIED_TEMPERATURE\nEND\n\n'),
+                 'SPECIFIED_TEMPERATURE requires a DATASET'),
+                (with_temperature(example('carbonate'),
+                                  temperature_dataset([(0, 25), (120, 45)], 'LINEAR')),
+                 'non-isothermal reactions are not possible due to missing logKs'),
+                (short.replace('    ACTIVATION_ENERGY 5.00000000000000000e+04\n', ''),
+                 'PARAMETER ACTIVATION_ENERGY requires a finite, positive ACTIVATION_ENERGY'),
+                (short.replace('  PARAMETER ACTIVATION_ENERGY\n    KINETICS MICROBIAL\n',
+                               '  PARAMETER ACTIVATION_ENERGY\n    KINETICS MINERAL\n'),
+                 'KINETICS must be MICROBIAL in SUBSURFACE,ADJOINT,PARAMETER,'
+                 'ACTIVATION_ENERGY')):
+            require(text != short, f'deck unchanged for {error!r}')
+            run(text, 'temperature_rejections', expected_error=error)
+        cleanup_run('temperature_rejections')
+    print(f'PASS SPECIFIED_TEMPERATURE: exact sums, output, FD of RATE_CONSTANT and '
+          f'ACTIVATION_ENERGY, reruns, split and memory sweeps, carbonate FD, '
+          f'speciation and diffusion across a step, rejections ({np} ranks)', flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--np', type=int, default=1)
@@ -851,7 +1134,7 @@ def main():
     parser.add_argument('--feature', default='all',
                         choices=('all', 'multireaction', 'inhibition', 'yield_decay',
                                  'observations', 'chemistry_observations',
-                                 'initial_concentrations',
+                                 'initial_concentrations', 'temperature',
                                  'geometry', 'selection', 'branches'))
     args = parser.parse_args()
     if args.executable:
@@ -870,6 +1153,8 @@ def main():
         chemistry_observations(np)
     if args.feature in ('all', 'initial_concentrations'):
         initial_concentrations(np)
+    if args.feature in ('all', 'temperature'):
+        specified_temperature(np)
     if args.feature in ('all', 'geometry'):
         biomass_geometry(np)
     if args.feature in ('all', 'selection'):

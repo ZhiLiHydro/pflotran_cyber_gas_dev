@@ -18,6 +18,9 @@ module Reaction_Microbial_Aux_module
   PetscInt, parameter, public :: MAX_NUM_INHIBITION_TERMS = 10
   PetscInt, parameter, public :: MAX_NUM_MONOD_TERMS = 10
 
+  ! temperature [C] of the rate constants (ACTIVATION_ENERGY)
+  PetscReal, parameter, public :: MICROBIAL_REFERENCE_TEMPERATURE = 25.d0
+
   type, public :: microbial_rxn_type
     PetscInt :: id
     PetscInt :: itype

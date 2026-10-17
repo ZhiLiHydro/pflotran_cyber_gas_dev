@@ -53,6 +53,8 @@ module Realization_Subsurface_class
 
     class(dataset_base_type), pointer :: uniform_velocity_dataset
     character(len=MAXSTRINGLENGTH) :: nonuniform_velocity_filename
+    ! SPECIFIED_TEMPERATURE: the temperature of every cell [C] in time
+    class(dataset_base_type), pointer :: uniform_temperature_dataset
 
     class(reaction_rt_type), pointer :: reaction
     class(reaction_nw_type), pointer :: reaction_nw
@@ -166,6 +168,7 @@ function RealizationCreate2(option)
   nullify(realization%material_transform)
   nullify(realization%datasets)
   nullify(realization%uniform_velocity_dataset)
+  nullify(realization%uniform_temperature_dataset)
   nullify(realization%reaction)
   nullify(realization%reaction_nw)
   nullify(realization%survey)
@@ -3309,6 +3312,7 @@ subroutine RealizationStrip(this)
   call DatasetDestroy(this%datasets)
 
   call DatasetDestroy(this%uniform_velocity_dataset)
+  call DatasetDestroy(this%uniform_temperature_dataset)
 
   ! nullify since they are pointers to reaction_base in realization_base
   nullify(this%reaction)

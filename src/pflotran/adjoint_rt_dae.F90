@@ -777,9 +777,10 @@ subroutine AdjRTDAEMicrobialDerivative(rt,param,ghosted_id,dR,status)
   ! then the result is scaled by that factor's derivative, so it stays
   ! defined where the factor is zero. A half-saturation constant instead
   ! scales the full rate by d ln(monod)/dK = -1/(K + C - C_th) (status = 1
-  ! where that denominator is nonpositive); a yield, the biomass row's
-  ! growth yield*rate, has the rate. The reaction data are read live, so
-  ! AdjParamSetValue is seen.
+  ! where that denominator is nonpositive); an activation energy, by
+  ! d ln(Arrhenius)/dEa = (1/T_ref - 1/T)/R at the cell's temperature; a
+  ! yield, the biomass row's growth yield*rate, has the rate. The reaction
+  ! data are read live, so AdjParamSetValue is seen.
   !
   ! Author: Hansol Suh
   ! Date: 06/23/26
@@ -815,6 +816,9 @@ subroutine AdjRTDAEMicrobialDerivative(rt,param,ghosted_id,dR,status)
   if (param%kind == ADJ_PARAM_INHIBITION_CONSTANT .or. &
       param%kind == ADJ_PARAM_SMOOTHSTEP_INTERVAL) omit = term
   scale = 1.d0
+  if (param%kind == ADJ_PARAM_ACTIVATION_ENERGY) &
+    scale = (1.d0/(MICROBIAL_REFERENCE_TEMPERATURE+T273K) - &
+             1.d0/(rt%forcing%gaux(ghosted_id)%temp+T273K))/IDEAL_GAS_CONSTANT
   if (param%kind == ADJ_PARAM_HALF_SATURATION .or. omit /= 0) then
     if (param%kind == ADJ_PARAM_HALF_SATURATION) then
       component = microbial%monod_specid(term)
