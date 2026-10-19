@@ -2759,10 +2759,10 @@ subroutine PatchUpdateCouplerAuxVarsG(patch,coupler,option)
       dof_count_local(4) = 1
     endif
     call MPI_Allreduce(dof_count_local,dof_count_global,FOUR_INTEGER_MPI, &
-                       MPI_INTEGER,MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
+                       MPIU_INTEGER,MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
   else
     call MPI_Allreduce(dof_count_local,dof_count_global,THREE_INTEGER_MPI, &
-                       MPI_INTEGER,MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
+                       MPIU_INTEGER,MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
   endif
   if (dof_count_global(1) > 0) dof1 = PETSC_TRUE
   if (dof_count_global(2) > 0) dof2 = PETSC_TRUE
@@ -4019,7 +4019,7 @@ subroutine PatchUpdateCouplerAuxVarsH(patch,coupler,option)
     end select
   endif
   if (associated(hydrate%energy_flux)) then
-    coupler%flow_bc_type(HYDRATE_ENERGY_EQUATION_INDEX + 1) = NEUMANN_BC
+    coupler%flow_bc_type(HYDRATE_ENERGY_EQUATION_INDEX) = NEUMANN_BC
     select type(selector => hydrate%energy_flux%dataset)
       class is(dataset_ascii_type)
         coupler%flow_aux_real_var(THREE_INTEGER,1:num_connections) = &
@@ -4070,7 +4070,7 @@ subroutine PatchUpdateCouplerAuxVarsH(patch,coupler,option)
   if (dof3) dof_count_local(3) = 1
   if (dof4) dof_count_local(4) = 1
   call MPI_Allreduce(dof_count_local,dof_count_global,FOUR_INTEGER_MPI, &
-                     MPI_INTEGER,MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
+                     MPIU_INTEGER,MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
   if (dof_count_global(1) > 0) dof1 = PETSC_TRUE
   if (dof_count_global(2) > 0) dof2 = PETSC_TRUE
   if (dof_count_global(3) > 0) dof3 = PETSC_TRUE
@@ -5968,11 +5968,11 @@ subroutine PatchUpdateCouplerAuxVarsSCO2(patch,coupler,option)
   if (sco2_thermal) then
     if (dof4) dof_count_local(4) = 1
     call MPI_Allreduce(dof_count_local,dof_count_global,FOUR_INTEGER_MPI, &
-           MPI_INTEGER,MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
+           MPIU_INTEGER,MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
     if (dof_count_global(4) > 0) dof4 = PETSC_TRUE
   else
     call MPI_Allreduce(dof_count_local,dof_count_global,THREE_INTEGER_MPI, &
-           MPI_INTEGER,MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
+           MPIU_INTEGER,MPI_SUM,option%mycomm,ierr);CHKERRQ(ierr)
   endif
 
   if (dof_count_global(1) > 0) dof1 = PETSC_TRUE
