@@ -696,6 +696,18 @@ subroutine HydrateAuxVarCompute(x,hyd_auxvar,global_auxvar,material_auxvar, &
   spid = option%saturation_pressure_id
 
   Tf_ice = 0.d0
+  xag = 0.d0
+  xwg = 0.d0
+  xal = 0.d0
+  xsl = 0.d0
+  xwl = 0.d0
+  xmolag = 0.d0
+  xmolwg = 0.d0
+  xmolal = 0.d0
+  xmolsl = 0.d0
+  xmolwl = 0.d0
+  pva = 0.d0
+  den_steam_kg = 0.d0
 
   hyd_auxvar%H = 0.d0
   hyd_auxvar%U = 0.d0
@@ -736,7 +748,7 @@ subroutine HydrateAuxVarCompute(x,hyd_auxvar,global_auxvar,material_auxvar, &
     hyd_auxvar%xmol(wid,hid) = 1.d0 - hyd_auxvar%xmol(acid,hid)
   endif
   hyd_auxvar%xmass(acid,hid) = hyd_auxvar%xmol(acid,hid) * &
-                hyd_auxvar%den(hid) / hyd_auxvar%den_kg(hid) / &
+                hyd_auxvar%den(hid) / hyd_auxvar%den_kg(hid) * &
                 hydrate_fmw_comp(acid)
   hyd_auxvar%xmass(wid,hid) = 1.d0 - hyd_auxvar%xmass(acid,hid)
 
@@ -1795,7 +1807,7 @@ subroutine HydrateAuxVarCompute(x,hyd_auxvar,global_auxvar,material_auxvar, &
                        ierr)
 
       hyd_auxvar%pres(vpid) = hyd_auxvar%pres(spid)
-      hyd_auxvar%pres(gid) = hyd_auxvar%pres(gid) - hyd_auxvar%pres(vpid)
+      hyd_auxvar%pres(apid) = hyd_auxvar%pres(gid) - hyd_auxvar%pres(vpid)
 
       call HydrateComputeSurfaceTension(hyd_auxvar%temp, &
                                      x_salt_dissolved, sigma)
@@ -1834,10 +1846,21 @@ subroutine HydrateAuxVarCompute(x,hyd_auxvar,global_auxvar,material_auxvar, &
 
   cell_pressure = max(hyd_auxvar%pres(lid),hyd_auxvar%pres(gid), &
                       hyd_auxvar%pres(spid))
-  hyd_auxvar%xmass(acid,gid) = xag
-  hyd_auxvar%xmass(wid,gid) = 1.d0 - xag
-  hyd_auxvar%xmol(acid,gid) = xmolag
-  hyd_auxvar%xmol(wid,gid) = 1.d0 - xmolag
+  select case(global_auxvar%istate)
+    case(L_STATE,G_STATE,GA_STATE,HG_STATE,HA_STATE,HGA_STATE)
+      hyd_auxvar%xmass(acid,gid) = xag
+      hyd_auxvar%xmass(wid,gid) = 1.d0 - xag
+      hyd_auxvar%xmol(acid,gid) = xmolag
+      hyd_auxvar%xmol(wid,gid) = 1.d0 - xmolag
+    case default
+      mw_mix = hyd_auxvar%xmol(wid,gid)*hydrate_fmw_comp(1) + &
+               hyd_auxvar%xmol(acid,gid)*hydrate_fmw_comp(2)
+      if (mw_mix > 0.d0) then
+        hyd_auxvar%xmass(acid,gid) = hyd_auxvar%xmol(acid,gid)* &
+                                     hydrate_fmw_comp(2)/mw_mix
+        hyd_auxvar%xmass(wid,gid) = 1.d0 - hyd_auxvar%xmass(acid,gid)
+      endif
+  end select
 
   ! calculate effective porosity as a function of pressure
   hyd_auxvar%effective_porosity = material_auxvar%porosity_base
