@@ -4019,7 +4019,7 @@ subroutine PatchUpdateCouplerAuxVarsH(patch,coupler,option)
     end select
   endif
   if (associated(hydrate%energy_flux)) then
-    coupler%flow_bc_type(HYDRATE_ENERGY_EQUATION_INDEX + 1) = NEUMANN_BC
+    coupler%flow_bc_type(HYDRATE_ENERGY_EQUATION_INDEX) = NEUMANN_BC
     select type(selector => hydrate%energy_flux%dataset)
       class is(dataset_ascii_type)
         coupler%flow_aux_real_var(THREE_INTEGER,1:num_connections) = &
