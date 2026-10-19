@@ -927,6 +927,7 @@ subroutine PMUFDBSetup(this)
   cur_ERB => this%ERB_list
   do
     if (.not.associated(cur_ERB)) exit
+    local = PETSC_FALSE
     if (associated(cur_ERB%region)) then
       if (cur_ERB%region%num_cells > 0) then
           local = PETSC_TRUE
@@ -998,11 +999,7 @@ subroutine PMUFDBSupportedRadCheckRT(this)
   option => this%option
 
   if (associated(this%realization%reaction)) then
-    allocate(pri_names(ReactionAuxGetPriSpeciesCount( &
-                         this%realization%reaction)))
     pri_names => ReactionAuxGetPriSpeciesNames(this%realization%reaction)
-    allocate(sec_names(ReactionAuxGetSecSpeciesCount( &
-                         this%realization%reaction)))
     sec_names => ReactionAuxGetSecSpeciesNames(this%realization%reaction)
   else
     option%io_buffer = 'The UFD_BIOSPHERE process model requires reactive &
@@ -1015,7 +1012,7 @@ subroutine PMUFDBSupportedRadCheckRT(this)
     if (.not.associated(cur_supp_rad)) exit
     rad_name = cur_supp_rad%name
     found = PETSC_FALSE
-    do i = 1,len(pri_names)
+    do i = 1,size(pri_names)
       if (adjustl(trim(rad_name)) == adjustl(trim(pri_names(i)))) then
         found = PETSC_TRUE
         cur_supp_rad%species_id = &
@@ -1025,7 +1022,7 @@ subroutine PMUFDBSupportedRadCheckRT(this)
       if (found) exit
     enddo
     if (.not.found) then
-      do i = 1,len(sec_names)
+      do i = 1,size(sec_names)
         if (adjustl(trim(rad_name)) == adjustl(trim(sec_names(i)))) then
           found = PETSC_TRUE
           cur_supp_rad%species_id = &
@@ -1079,8 +1076,6 @@ subroutine PMUFDBSupportedRadCheckNWT(this)
   option => this%option
 
   if (associated(this%realization%reaction_nw)) then
-    allocate(species_names(NWTAuxGetSpeciesCount( &
-                         this%realization%reaction_nw)))
     species_names => NWTAuxGetSpeciesNames(this%realization%reaction_nw)
   else
     option%io_buffer = 'The UFD_BIOSPHERE process model requires reactive &
@@ -1093,12 +1088,12 @@ subroutine PMUFDBSupportedRadCheckNWT(this)
     if (.not.associated(cur_supp_rad)) exit
     rad_name = cur_supp_rad%name
     found = PETSC_FALSE
-    do i = 1,len(species_names)
+    do i = 1,size(species_names)
       if (adjustl(trim(rad_name)) == adjustl(trim(species_names(i)))) then
         found = PETSC_TRUE
         cur_supp_rad%species_id = &
           NWTGetSpeciesIDFromName(rad_name,this%realization%reaction_nw, &
-                                          option)
+                                  option)
       endif
       if (found) exit
     enddo
@@ -1108,7 +1103,6 @@ subroutine PMUFDBSupportedRadCheckNWT(this)
         &CHEMISTRY block.'
       call PrintErrMsg(option)
     endif
-
     cur_supp_rad => cur_supp_rad%next
   enddo
 

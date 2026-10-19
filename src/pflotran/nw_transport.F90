@@ -783,7 +783,12 @@ subroutine NWTResidual(snes,xx,r,realization,pmwell_ptr,debug,ierr)
               ONE_INTEGER_MPI,MPI_C_BOOL,MPI_LOR,option%comm%communicator, &
               ierr);CHKERRQ(ierr)
 
-            if (pm_well%tran_soln%cut_ts_flag) return
+            if (pm_well%tran_soln%cut_ts_flag) then
+              call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
+              call PetscLogEventEnd(logging%event_nwt_residual, &
+                                    ierr);CHKERRQ(ierr)
+              return
+            endif
         endif
       class default
         option%io_buffer = 'NW Transport can only be used with a &
@@ -1315,7 +1320,7 @@ subroutine NWTResidualRx(nwt_auxvar,material_auxvar,reaction_nw,Res)
   PetscInt :: iphase, parent_id
   PetscReal :: vol
   type(species_type), pointer :: species
-  type(radioactive_decay_rxn_type), pointer :: rad_rxn
+  type(radioactive_decay_rxn_type), pointer :: rad_rxn, parent_rad_rxn
 
   iphase = LIQUID_PHASE
   Res = 0.d0
@@ -1357,13 +1362,13 @@ subroutine NWTResidualRx(nwt_auxvar,material_auxvar,reaction_nw,Res)
       if (rad_rxn%parent_id > 0.d0) then
         parent_id = rad_rxn%parent_id
         ! Find the reaction object associated with the parent species
-        rad_rxn => reaction_nw%rad_decay_rxn_list
+        parent_rad_rxn => reaction_nw%rad_decay_rxn_list
         do
-          if (.not.associated(rad_rxn)) exit
-          if (rad_rxn%species_id == parent_id) exit
-          rad_rxn => rad_rxn%next
+          if (.not.associated(parent_rad_rxn)) exit
+          if (parent_rad_rxn%species_id == parent_id) exit
+          parent_rad_rxn => parent_rad_rxn%next
         enddo
-        Res(species%id) = Res(species%id) + (rad_rxn%rate_constant * &
+        Res(species%id) = Res(species%id) + (parent_rad_rxn%rate_constant * &
                           nwt_auxvar%total_bulk_conc(parent_id))
         ! units are [mol-species/m^3-bulk/sec] right now
       endif
