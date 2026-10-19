@@ -6,16 +6,17 @@
    linearization, J(a)v against finite differences (a = 0, 1/dt), exact
    preconditioner and its transpose, same run from both operators;
    Jacobian entries of activity-unit and biomass microbial rates, of
-   equilibrium sorption on a mineral-hosted site density and of complexes
-   of different species on one site; the deck's Newton tolerances
-   converge without the model's Newton test.
+   equilibrium sorption on a mineral-hosted site density, of complexes
+   of different species on one site and of a CO2(g) headspace; the deck's
+   Newton tolerances converge without the model's Newton test.
 2. Discrete adjoint (backward Euler): dJ/dY0 passes a Taylor test,
-   including multirate and equilibrium surface complexation.
+   including multirate and equilibrium surface complexation and a gas
+   phase.
 3. Forcing is independent of the waypoint intervals; a STEP velocity
    holds until its knot; snapshots inside an interval report the face
    fluxes of their time. Fixed-step backward Euler reproduces classic
    GIRT (tracer; closed calcite without depletion or activity
-   coefficients).
+   coefficients, also under a CO2(g) headspace).
 4. A closed cell conserves calcium under BDF2; BDF1/BDF2 reach their
    orders in every reported quantity.
 5. Mineral depletion is a located transition with nonnegative volume
@@ -80,6 +81,17 @@ def closed_calcite(deck, final_time, activity):
     deck = replace_once(deck, "Calcite 1.d-5 1.d0 m^2/m^3", "Calcite 1.d-2 1.d0 m^2/m^3")
     deck = re.sub(r'BOUNDARY_CONDITION (outlet|inlet)\n.*?\nEND\n', '', deck, flags=re.S)
     return deck
+
+
+def headspace(deck):
+    """A closed cell (closed_calcite) whose pore space is half a headspace
+    of CO2(g) in equilibrium; two phases: no single-phase velocity."""
+    deck = replace_once(deck, "SPECIFIED_VELOCITY\n  UNIFORM? YES\n"
+                        "  DATASET 0.d0 0.d0 0.d0 m/yr\nEND\n", "")
+    deck = replace_once(deck, "  PASSIVE_GAS_SPECIES\n    CO2(g)\n  /\n",
+                        "  ACTIVE_GAS_SPECIES\n    GAS_TRANSPORT_IS_UNVETTED\n"
+                        "    CO2(g)\n  /\n")
+    return replace_once(deck, "\nSUBSURFACE\n", "\nSUBSURFACE\nREFERENCE_SATURATION 0.5d0\n")
 
 
 def inactive_outlet(deck):
@@ -169,9 +181,13 @@ def main():
                                "  RADIOACTIVE_DECAY_REACTION\n    REACTION UO2++ <-> Ca++\n"
                                "    RATE_CONSTANT 1.d-8\n  /\n  SORPTION\n")
 
+    # a closed calcite cell under a CO2(g) headspace, activity coefficients on
+    gas = headspace(closed_calcite(calcite, "1.d0", "TIMESTEP"))
+
     # 1. model contract, for the condensed operator (default; its exact
     #    preconditioner is an extra check) and for the assembled matrix
     for name, deck in (("contract_calcite", calcite), ("contract_calcite_log", calcite_log),
+                       ("contract_headspace", gas),
                        ("contract_microbial", microbial), ("contract_tracer", tracer),
                        ("contract_sorption_mr", sorption_mr),
                        ("contract_sorption_vf", sorption_vf),
@@ -222,7 +238,8 @@ def main():
                        ("columns_sorption_vf_eq", sorption_vf_eq),
                        ("columns_decay_sorbed", decay_vf_eq),
                        ("columns_sorption_mr", sorption_mr),
-                       ("columns_site_competition", srfcplx)):
+                       ("columns_site_competition", srfcplx),
+                       ("columns_headspace", gas)):
         deck = re.sub(r"FINAL_TIME [^\n]*", "FINAL_TIME 1.d-6 y", deck)
         _, out = run(name, deck, ["-ts_model_column_check"])
         match = re.search(r"column check:\s*(\d+) entries off", out)
@@ -232,19 +249,26 @@ def main():
         ["-ts_model_newton_kappa", "0"])
     print("PASS: Jacobian entry by entry (activity-unit and biomass microbial rates, "
           "equilibrium sorption on a mineral site, with a decaying sorbed parent, "
-          "multirate sorption, complexes competing for a site); "
+          "multirate sorption, complexes competing for a site, a CO2(g) headspace); "
           "deck Newton tolerances apply without the model test", flush=True)
 
     # 2. discrete adjoint on backward Euler
     # (sorption decks have 15 components; PETSc 3.24's transposed block size
     # 15 ILU solve is the forward one: the condensed operator must not use it)
-    for name, deck in (("adjoint_calcite", calcite), ("adjoint_calcite_log", calcite_log),
-                       ("adjoint_microbial", microbial), ("adjoint_sorption_mr", sorption_mr),
-                       ("adjoint_sorption_vf", sorption_vf),
-                       ("adjoint_sorption_vf_eq", sorption_vf_eq),
-                       ("adjoint_sorption_den", sorption_den)):
+    # (headspace: the H+ and carbonate inventories are mostly CO2, aqueous
+    # and gas; Newton's iterates cycle at the roundoff floor without meeting
+    # the test's default step tolerance, and its 10% perturbation of both
+    # moves the alkalinity enough that plain Newton crosses zero H+: no
+    # ratio at that eps)
+    for name, deck, options in (
+            ("adjoint_calcite", calcite, []), ("adjoint_calcite_log", calcite_log, []),
+            ("adjoint_microbial", microbial, []), ("adjoint_sorption_mr", sorption_mr, []),
+            ("adjoint_sorption_vf", sorption_vf, []),
+            ("adjoint_sorption_vf_eq", sorption_vf_eq, []),
+            ("adjoint_sorption_den", sorption_den, []),
+            ("adjoint_headspace", gas, ["-adjoint_test_snes_stol", "1.e-14"])):
         deck = re.sub(r"FINAL_TIME [^\n]*", "FINAL_TIME 1.d-6 y", deck)
-        _, out = run(name, deck, ["-ts_model_adjoint_test"])
+        _, out = run(name, deck, ["-ts_model_adjoint_test", *options])
         # eps = 1e-1 ... 1e-6: ratios near 100 until the remainder hits
         # roundoff; a wrong gradient gives ratios near 10
         ratios = [float(m) for m in re.findall(r"ratio =\s*([0-9.]+)", out)]
@@ -262,16 +286,18 @@ def main():
         if key[0] == "CONCENTRATION":
             assert abs(b[key] - value) <= 1.e-12 * peak, (key, value, b[key])
     closed = fixed_steps(closed_calcite(calcite, "0.2d0", "OFF"), "1.d-2")
-    girt, _ = run("closed_girt", replace_once(closed, "      MODE GIRT_DAE\n", "      MODE GIRT\n"))
-    dae, _ = run("closed_dae_be", closed, ["-tran_ts_type", "beuler", *FIXED])
-    a = physical_values(girt / "case.regression")
-    b = physical_values(dae / "case.regression")
-    for key, value in a.items():
-        if key[0] in ("CONCENTRATION", "VOLUME_FRACTION", "GENERIC"):
-            assert math.isclose(b[key], value, rel_tol=1.e-8, abs_tol=1.e-20), \
-                (key, value, b[key])
+    for name, deck in (("closed", closed), ("headspace", headspace(closed))):
+        girt, _ = run(f"{name}_girt",
+                      replace_once(deck, "      MODE GIRT_DAE\n", "      MODE GIRT\n"))
+        dae, _ = run(f"{name}_dae_be", deck, ["-tran_ts_type", "beuler", *FIXED])
+        a = physical_values(girt / "case.regression")
+        b = physical_values(dae / "case.regression")
+        for key, value in a.items():
+            if key[0] in ("CONCENTRATION", "VOLUME_FRACTION", "GENERIC"):
+                assert math.isclose(b[key], value, rel_tol=1.e-8, abs_tol=1.e-20), \
+                    (name, key, value, b[key])
     print("PASS: backward Euler reproduces classic GIRT (tracer; closed calcite, "
-          "activity coefficients off)", flush=True)
+          "activity coefficients off, also under a CO2(g) headspace)", flush=True)
 
     # 4. conservation and orders of accuracy in a closed cell
     molar_volume = 36.934e-6

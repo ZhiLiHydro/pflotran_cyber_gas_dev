@@ -13,7 +13,9 @@ module Adjoint_Observation_module
   !       CELL_ID <natural id> | COORDINATE <x> <y> <z>
   !       OBSERVED_VARIABLE FREE_ION <primary species> |
   !                         TOTAL <primary species> |
-  !                         IMMOBILE <immobile species> | PH
+  !                         IMMOBILE <immobile species> | PH |
+  !                         GAS_PARTIAL_PRESSURE <active gas> |
+  !                         GAS_AMOUNT <active gas>
   !       ERROR ABSOLUTE <a> RELATIVE <r> | STANDARD_DEVIATION <sigma>
   !       FILE <path>   ! TIME_UNITS and DATA_UNITS lines, then: time value
   !     /
@@ -31,9 +33,10 @@ module Adjoint_Observation_module
   ! solution, free ion and aqueous complexes; PFLOTRAN's Total output in
   ! mol/L is it times the density in kg/L), mol/m^3 bulk for IMMOBILE, none
   ! for PH (-log10 of the H+ activity: VALUE takes no units and a FILE no
-  ! DATA_UNITS). Times are after the start and at most the final time.
-  ! TOTAL and PH are functions of the cell's chemistry, which the model
-  ! evaluates (adj_obs_chemistry_type).
+  ! DATA_UNITS), Pa for GAS_PARTIAL_PRESSURE and mol for GAS_AMOUNT (in the
+  ! cell's gas phase). Times are after the start and at most the final
+  ! time. TOTAL, PH and the gas observations are functions of the cell's
+  ! chemistry, which the model evaluates (adj_obs_chemistry_type).
   !
   ! Author: Hansol Suh
   ! Date: 10/12/26
@@ -54,6 +57,8 @@ module Adjoint_Observation_module
   PetscInt, parameter :: ADJ_OBS_IMMOBILE = 2
   PetscInt, parameter, public :: ADJ_OBS_TOTAL = 3
   PetscInt, parameter, public :: ADJ_OBS_PH = 4
+  PetscInt, parameter, public :: ADJ_OBS_GAS_PARTIAL_PRESSURE = 5
+  PetscInt, parameter, public :: ADJ_OBS_GAS_AMOUNT = 6
 
   type, public :: adjoint_observations_type
     PetscInt :: n = 0
@@ -69,8 +74,8 @@ module Adjoint_Observation_module
     ! the first observation of its TIME_SERIES or MEASUREMENT
     PetscInt, allocatable :: first(:)
     ! resolved at Setup: the entry in a cell's c coordinates (FREE_ION,
-    ! IMMOBILE) or the component (TOTAL, PH: H+), the local cell (0 on
-    ! other processes) and the cell's natural id
+    ! IMMOBILE), the component (TOTAL, PH: H+) or the active gas, the local
+    ! cell (0 on other processes) and the cell's natural id
     PetscInt, allocatable :: species_id(:)
     PetscInt, allocatable :: local_id(:)
     PetscInt, allocatable :: cell(:)
@@ -82,7 +87,7 @@ module Adjoint_Observation_module
   end type adjoint_observations_type
 
   ! Evaluates an observation that is a function of a cell's chemistry
-  ! (TOTAL, PH) at the cell's c coordinates y_c: H and dH/dy_c.
+  ! (TOTAL, PH, gases) at the cell's c coordinates y_c: H and dH/dy_c.
   type, public, abstract :: adj_obs_chemistry_type
   contains
     procedure(AdjObsChemistryIface), deferred :: Evaluate
@@ -281,6 +286,10 @@ subroutine AdjObsReadEntry(input,option,kind,block_string)
             variable = ADJ_OBS_TOTAL
           case('PH')
             variable = ADJ_OBS_PH
+          case('GAS_PARTIAL_PRESSURE')
+            variable = ADJ_OBS_GAS_PARTIAL_PRESSURE
+          case('GAS_AMOUNT')
+            variable = ADJ_OBS_GAS_AMOUNT
           case default
             call InputKeywordUnrecognized(input,word, &
               trim(error_string) // ',OBSERVED_VARIABLE',option)
@@ -397,8 +406,16 @@ subroutine AdjObsReadEntry(input,option,kind,block_string)
     endif
     data_conversion = 1.d0
   else
-    internal_units = 'mol/kg'
-    if (variable == ADJ_OBS_IMMOBILE) internal_units = 'mol/m^3'
+    select case(variable)
+      case(ADJ_OBS_IMMOBILE)
+        internal_units = 'mol/m^3'
+      case(ADJ_OBS_GAS_PARTIAL_PRESSURE)
+        internal_units = 'Pa'
+      case(ADJ_OBS_GAS_AMOUNT)
+        internal_units = 'mol'
+      case default
+        internal_units = 'mol/kg'
+    end select
     data_conversion = UnitsConvertToInternal(data_units,internal_units, &
                                              trim(error_string) // &
                                              ',data units',option)
@@ -611,6 +628,7 @@ subroutine AdjObsSetup(realization,final_time,option)
   use Reaction_Aux_module
   use Reaction_Immobile_Aux_module, only : ReactionImGetSpeciesIDFromName
   use Grid_module
+  use String_module, only : StringCompare
   use Adjoint_Cost_module, only : AdjCostLocateCell
 
   implicit none
@@ -683,6 +701,16 @@ subroutine AdjObsSetup(realization,final_time,option)
             trim(word) // '" is not an immobile species.')
         endif
         id = realization%reaction%offset_immobile + id
+      case(ADJ_OBS_GAS_PARTIAL_PRESSURE,ADJ_OBS_GAS_AMOUNT)
+        id = 0
+        do j = 1, realization%reaction%gas%nactive_gas
+          if (StringCompare(word,realization%reaction%gas%active_names(j), &
+                            MAXWORDLENGTH)) id = j
+        enddo
+        if (id <= 0) then
+          call PrintErrMsg(option,trim(error_string) // ': "' // &
+            trim(word) // '" is not an ACTIVE_GAS_SPECIES.')
+        endif
     end select
     obs%species_id(i) = id
 
@@ -912,7 +940,8 @@ subroutine AdjObsWrite(option)
   write(unit,'(a)') '# ADJOINT OBSERVATIONS of the last forward run: id, &
     &time [s], cell (natural id), variable, species, observed, simulated, &
     &sigma, residual (simulated - observed)/sigma; concentrations in mol/kg &
-    &(FREE_ION, TOTAL) or mol/m^3 bulk (IMMOBILE), PH dimensionless'
+    &(FREE_ION, TOTAL) or mol/m^3 bulk (IMMOBILE), PH dimensionless, &
+    &GAS_PARTIAL_PRESSURE in Pa, GAS_AMOUNT in mol'
   do i = 1, obs%n
     select case(obs%variable(i))
       case(ADJ_OBS_FREE_ION)
@@ -923,6 +952,10 @@ subroutine AdjObsWrite(option)
         variable = 'TOTAL'
       case(ADJ_OBS_PH)
         variable = 'PH'
+      case(ADJ_OBS_GAS_PARTIAL_PRESSURE)
+        variable = 'GAS_PARTIAL_PRESSURE'
+      case(ADJ_OBS_GAS_AMOUNT)
+        variable = 'GAS_AMOUNT'
     end select
     write(unit,'(i8,1x,es24.16,1x,i10,1x,a,1x,a,4(1x,es24.16))') i, &
       obs%time(i),obs%cell(i),trim(variable),trim(obs%species_name(i)), &

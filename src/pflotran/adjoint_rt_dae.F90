@@ -442,14 +442,16 @@ end subroutine AdjRTDAERecordObservations
 subroutine AdjRTDAEObsChemistry(this,local_id,variable,component,y_c,H, &
                                 dH_dyc)
   !
-  ! TOTAL of a component [mol/kg] or PH at a cell, by the model's closure
+  ! TOTAL of a component [mol/kg], PH, or an active gas's partial pressure
+  ! [Pa] or amount [mol] at a cell, by the model's closure
   ! (RTDAECellObservables). The state was converged, so the closure
   ! succeeds; the cell's cached chemistry it overwrites is that state's.
   !
   ! Author: Hansol Suh
   ! Date: 10/16/26
   !
-  use Adjoint_Observation_module, only : ADJ_OBS_TOTAL
+  use Adjoint_Observation_module, only : ADJ_OBS_TOTAL, ADJ_OBS_PH, &
+                                         ADJ_OBS_GAS_PARTIAL_PRESSURE
 
   implicit none
 
@@ -464,11 +466,15 @@ subroutine AdjRTDAEObsChemistry(this,local_id,variable,component,y_c,H, &
   class(rt_dae_model_type), pointer :: rt
   PetscReal :: total(this%rt%naqcomp), dtotal(this%rt%naqcomp,this%rt%ncomp)
   PetscReal :: ph, dph(this%rt%ncomp)
+  PetscReal :: gas_pp(this%rt%reaction%gas%nactive_gas)
+  PetscReal :: dgas_pp(this%rt%reaction%gas%nactive_gas,this%rt%ncomp)
+  PetscReal :: gas_amount(this%rt%reaction%gas%nactive_gas)
+  PetscReal :: dgas_amount(this%rt%reaction%gas%nactive_gas,this%rt%ncomp)
   PetscInt :: status
 
   rt => this%rt
   call RTDAECellObservables(rt,this%time,local_id,y_c,total,dtotal,ph,dph, &
-                            status)
+                            gas_pp,dgas_pp,gas_amount,dgas_amount,status)
   if (status /= TS_MODEL_OK) then
     write(rt%option%io_buffer,'(a,i0,a)') 'ADJOINT OBSERVATIONS: the &
       &chemistry of cell ',rt%realization%patch%grid%nG2A( &
@@ -476,13 +482,20 @@ subroutine AdjRTDAEObsChemistry(this,local_id,variable,component,y_c,H, &
       &at an observation time.'
     call PrintErrMsgByRank(rt%option)
   endif
-  if (variable == ADJ_OBS_TOTAL) then
-    H = total(component)
-    dH_dyc = dtotal(component,:)
-  else
-    H = ph
-    dH_dyc = dph
-  endif
+  select case(variable)
+    case(ADJ_OBS_TOTAL)
+      H = total(component)
+      dH_dyc = dtotal(component,:)
+    case(ADJ_OBS_PH)
+      H = ph
+      dH_dyc = dph
+    case(ADJ_OBS_GAS_PARTIAL_PRESSURE)
+      H = gas_pp(component)
+      dH_dyc = dgas_pp(component,:)
+    case default
+      H = gas_amount(component)
+      dH_dyc = dgas_amount(component,:)
+  end select
 
 end subroutine AdjRTDAEObsChemistry
 

@@ -500,6 +500,16 @@ def rejections():
                    "\nSPECIFIED_TEMPERATURE\n  DATASET 30.d0\nEND\n\nCHEMISTRY\n", 1),
         "rejections", expected_error="SPECIFIED_TEMPERATURE requires MODE "
         "GIRT_DAE in SUBSURFACE_TRANSPORT and no SUBSURFACE_FLOW mode")
+    # nor a gas phase
+    gas = ar.replace("  IMMOBILE_SPECIES\n", "  ACTIVE_GAS_SPECIES\n"
+                     "    GAS_TRANSPORT_IS_UNVETTED\n    O2(g)\n  /\n"
+                     "  IMMOBILE_SPECIES\n", 1)
+    gas, count = re.subn(r"(?m)^  DATABASE .*$",
+                         lambda _: "  DATABASE " + str(HERE / "headspace.dat"), gas)
+    require(gas.count("ACTIVE_GAS_SPECIES") == 1 and count == 1,
+            "missing IMMOBILE_SPECIES or DATABASE")
+    run(gas, "rejections",
+        expected_error="ACTIVE_GAS_SPECIES with MODE RICHARDS_DAE")
     # GIRT_DAE alone has no flow: no permeability derivative
     short = deck("ar_short").replace(
         "  PARAMETER RATE_CONSTANT",
@@ -519,7 +529,8 @@ def rejections():
     print("PASS rejections (transport mode, flow mode, steady flow, flow "
           "solver block, classic solver options, transverse dispersion, "
           "material, temperature-dependent reactions, specified temperature, "
-          "permeability without flow, permeability-scaled source)", flush=True)
+          "gas phase, permeability without flow, permeability-scaled source)",
+          flush=True)
 
 
 def main():

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Finite-difference checks of the MODE GIRT_DAE adjoint for several
 microbial reactions, Monod, inhibition, yield and decay parameters, the
-OBSERVATIONS objective and SPECIFIED_TEMPERATURE. Post-processor of
-adjoint-extensions and adjoint-extensions-np2; see check_adjoint.py for
-direct use."""
+OBSERVATIONS objective, SPECIFIED_TEMPERATURE and ACTIVE_GAS_SPECIES.
+Post-processor of adjoint-extensions and adjoint-extensions-np2; see
+check_adjoint.py for direct use."""
 
 import argparse
 import math
@@ -1127,6 +1127,139 @@ def specified_temperature(np):
           f'speciation and diffusion across a step, rejections ({np} ranks)', flush=True)
 
 
+def measurements(cell, entries):
+    """MEASUREMENTs at cell of (time [h], variable, value with units,
+    standard deviation) entries."""
+    return ''.join(f'    MEASUREMENT\n      TIME {t:.17g} h\n      CELL_ID {cell}\n'
+                   f'      OBSERVED_VARIABLE {variable}\n      VALUE {value}\n'
+                   f'      STANDARD_DEVIATION {sigma}\n    /\n'
+                   for t, variable, value, sigma in entries)
+
+
+def with_measurements(text, *entries):
+    return with_observations(text, '  OBSERVATIONS\n' + ''.join(entries) + '  /\n')
+
+
+def headspace_carbonate():
+    """ar_carbonate's chemistry (activity coefficients, calcite) in one
+    closed cell whose pore space is 30% headspace with CO2(g)."""
+    text = example('carbonate')
+    for old, new in (('NXYZ 4 1 1', 'NXYZ 1 1 1'),
+                     ('    4.d0 1.d0 1.d0\n', '    1.d0 1.d0 1.d0\n'),
+                     ('INITIAL_CONDITION\n  TRANSPORT_CONDITION acidic\n  REGION cell1\nEND\n', ''),
+                     ('    SPECIES_NAME Ca++\n    REGION cell2\n',
+                      '    SPECIES_NAME Ca++\n    REGION cell1\n'),
+                     ('REGION cell2\n  COORDINATE 1.5d0 0.5d0 0.5d0\nEND\n', ''),
+                     ('\n  MINERALS\n    Calcite\n',
+                      '\n  ACTIVE_GAS_SPECIES\n    GAS_TRANSPORT_IS_UNVETTED\n'
+                      '    CO2(g)\n  /\n  MINERALS\n    Calcite\n'),
+                     ('FLUID_PROPERTY\n', 'REFERENCE_SATURATION 0.7d0\n\nFLUID_PROPERTY\n')):
+        require(text.count(old) == 1, f'carbonate: {old!r}')
+        text = text.replace(old, new)
+    return text
+
+
+def active_gas(np):
+    """ACTIVE_GAS_SPECIES: O2(g) and CO2(g) in the headspace of a bottle
+    (ar_headspace) follow Henry's law, their amount is p V_gas/(R T), and
+    O2 plus CO2 over solution and headspace is conserved; a headspace of
+    zero is no gas phase; RATE_CONSTANT and HALF_SATURATION_CONSTANT
+    against finite differences of GAS_PARTIAL_PRESSURE, GAS_AMOUNT and
+    FREE_ION observations, also with LOG_FORMULATION; reruns, the split
+    sweep and the memory trajectory; carbonate speciation with activity
+    coefficients and calcite under CO2(g) against finite differences of PH
+    and GAS_PARTIAL_PRESSURE; bad input. One cell: one process."""
+    if np > 1:
+        print('SKIP ACTIVE_GAS_SPECIES: one cell, checked on one process', flush=True)
+        return
+    base = example('headspace')
+    hours = (1, 2, 3, 4, 5)
+    probe = measurements(1, [(t, v, value, sigma) for t in hours for v, value, sigma in (
+        ('FREE_ION O2(aq)', '2.d-4 mol/kg', '1.d-5'),
+        ('FREE_ION CO2(aq)', '4.d-5 mol/kg', '1.d-5'),
+        ('GAS_PARTIAL_PRESSURE O2(g)', '2.d4 Pa', '1.d2'),
+        ('GAS_PARTIAL_PRESSURE CO2(g)', '1.d-3 Bar', '1.d-4'),
+        ('GAS_AMOUNT O2(g)', '1.6d0 mol', '1.d-2'),
+        ('GAS_AMOUNT CO2(g)', '1.d-2 mol', '1.d-3'))])
+    rows = observed(run(with_measurements(base, probe), 'gas_physics'))
+    require(len(rows) == 6*len(hours), 'missing gas observations')
+    # 1 m^3, porosity 1: 800 kg water at 1 kg/L, 0.2 m^3 gas at 25 C
+    water, gas_volume, rt = 800., 0.2, GAS_CONSTANT*(25+T273)
+    # bar per mol/kg, 10^-logK with PFLOTRAN's ln 10 (LOG_TO_LN)
+    henry = {'O2': math.exp(2.8983*2.30258509299), 'CO2': math.exp(1.468*2.30258509299)}
+    inventory = 0.
+    for name, m0 in (('O2', 2.5e-4), ('CO2', 1.e-5)):
+        inventory += water*m0 + 1.e5*henry[name]*m0*gas_volume/rt
+    for k in range(len(hours)):
+        o2, co2, p_o2, p_co2, n_o2, n_co2 = (r[1] for r in rows[6*k:6*k+6])
+        close(p_o2, 1.e5*henry['O2']*o2, rtol=1e-12)
+        close(p_co2, 1.e5*henry['CO2']*co2, rtol=1e-12)
+        close(n_o2, p_o2*gas_volume/rt, rtol=1e-12)
+        close(n_co2, p_co2*gas_volume/rt, rtol=1e-12)
+        # O2 + CH2O -> CO2: each O2 consumed is a CO2 produced
+        close(water*(o2 + co2) + n_o2 + n_co2, inventory, rtol=1e-10)
+    # the headspace slows the O2 decline 9-fold: 8x the dissolved O2 in it
+    require(rows[6*4+2][1] < 0.99*1.e5*henry['O2']*2.5e-4, 'no O2 consumed')
+    cleanup_run('gas_physics')
+
+    # no headspace: the gas phase is empty, as without gases
+    full = base.replace('REFERENCE_SATURATION 0.8d0', 'REFERENCE_SATURATION 1.d0')
+    without = remove_block(full, '  ACTIVE_GAS_SPECIES\n', '    CO2(g)\n  /\n')
+    require(parse_summary(run(full, 'gas_empty')) == parse_summary(run(without, 'gas_empty')),
+            'an empty headspace changes the run')
+    cleanup_run('gas_empty')
+
+    observe = measurements(1, [(2, 'GAS_PARTIAL_PRESSURE O2(g)', '1.9d4 Pa', '1.d2'),
+                               (4, 'GAS_PARTIAL_PRESSURE O2(g)', '1.9d4 Pa', '1.d2'),
+                               (3, 'GAS_AMOUNT CO2(g)', '1.d-2 mol', '1.d-3'),
+                               (5, 'GAS_AMOUNT CO2(g)', '1.d-2 mol', '1.d-3'),
+                               (5, 'FREE_ION O2(aq)', '2.d-4 mol/kg', '1.d-5')])
+    text = with_parameters(with_measurements(base, observe),
+                           [parameter('RATE_CONSTANT'),
+                            parameter('HALF_SATURATION_CONSTANT', species='O2(aq)')])
+    parameters = [(RATE, 0, .04), (HALF, 0, 2e-4)]
+    reference = gradient_check(text, parameters, 'gas_bottle', np)
+    require(reference[0][2] > 0., 'no misfit')
+    logged = gradient_check(log_formulation(text), parameters, 'gas_bottle_log', np)
+    for key in reference[1]:
+        close(logged[1][key], reference[1][key], rtol=1e-6)
+    p, c, g = parse_rerun_check(run(text, 'gas_rerun', args=('-ts_model_rerun_check',)))
+    scaled = replace_nth(replace_nth(text, RATE, f'{p[1]:.17e}'), HALF, f'{p[2]:.17e}')
+    require(parse_summary(run(scaled, 'gas_rerun')) == (c, g),
+            'a rerun at 1.1 p0 differs from a run of the deck')
+    for args in (('-adjoint_debug_split',), ('-ts_trajectory_type', 'memory')):
+        require(parse_summary(run(text, 'gas_rerun', args=args)) == reference,
+                f'{args} changes the costs or gradients')
+    cleanup_run('gas_rerun')
+
+    # activity coefficients: the partial pressure of CO2(g) = H+ + HCO3-
+    # (minus water) depends on charged activities
+    carbonate = with_measurements(headspace_carbonate(), measurements(1, [
+        (24, 'PH', '6.5d0', '5.d-2'), (72, 'PH', '7.d0', '5.d-2'),
+        (48, 'GAS_PARTIAL_PRESSURE CO2(g)', '1.d3 Pa', '1.d2'),
+        (120, 'GAS_PARTIAL_PRESSURE CO2(g)', '1.d3 Pa', '1.d2')]))
+    costs, gradients = gradient_check(carbonate, [(CALCITE_RATE, 0, 1e-7)],
+                                      'gas_carbonate', np, tolerance=1e-7)
+    require(costs[2] > 0. and abs(gradients[2, 1]) > 1., 'no misfit gradient')
+
+    for text, error in (
+            (base.replace('NXYZ 1 1 1', 'NXYZ 2 1 1'),
+             'ACTIVE_GAS_SPECIES in more than one cell or with boundary or '
+             'source/sink conditions'),
+            (with_measurements(base, measurements(1, [(2, 'GAS_AMOUNT O2(aq)', '1.d0 mol',
+                                                       '1.d-2')])),
+             '"O2(aq)" is not an ACTIVE_GAS_SPECIES'),
+            (with_measurements(base, measurements(1, [(2, 'GAS_AMOUNT O2(g)', '1.d0 Pa',
+                                                       '1.d-2')])),
+             'data units')):
+        require(text != base, f'deck unchanged for {error!r}')
+        run(text, 'gas_rejections', expected_error=error)
+    cleanup_run('gas_rejections')
+    print('PASS ACTIVE_GAS_SPECIES: Henry\'s law, gas amounts, conservation, empty '
+          'headspace, FD with gas observations (also LOG_FORMULATION), reruns, split and '
+          'memory sweeps, carbonate with activity coefficients, rejections', flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--np', type=int, default=1)
@@ -1134,7 +1267,7 @@ def main():
     parser.add_argument('--feature', default='all',
                         choices=('all', 'multireaction', 'inhibition', 'yield_decay',
                                  'observations', 'chemistry_observations',
-                                 'initial_concentrations', 'temperature',
+                                 'initial_concentrations', 'temperature', 'gas',
                                  'geometry', 'selection', 'branches'))
     args = parser.parse_args()
     if args.executable:
@@ -1155,6 +1288,8 @@ def main():
         initial_concentrations(np)
     if args.feature in ('all', 'temperature'):
         specified_temperature(np)
+    if args.feature in ('all', 'gas'):
+        active_gas(np)
     if args.feature in ('all', 'geometry'):
         biomass_geometry(np)
     if args.feature in ('all', 'selection'):

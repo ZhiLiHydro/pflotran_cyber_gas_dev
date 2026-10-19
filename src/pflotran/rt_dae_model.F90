@@ -14,7 +14,9 @@ module RT_DAE_Model_class
   !   F_N = dN/dt + sum_faces flux(t,c) + R(t,c,K) - Q(t,c)
   !   F_K = dK/dt - j(t,c,K)
   ! A: equilibrium inventory, V*(phi*s*1000*T(c) + S(c,K)) for aqueous
-  ! components (S: equilibrium sorbed) and V*c for immobile ones. R: reaction
+  ! components (S: equilibrium sorbed; with active gases also
+  ! V*phi*s_g*1000*T_g(c), the gas phase in equilibrium) and V*c for
+  ! immobile ones. R: reaction
   ! sink of the transported components (precipitation consumes). j: kinetic
   ! transfer rates, each distributed to both balances through its
   ! stoichiometry B, so N + B K is conserved for any integrator.
@@ -789,8 +791,17 @@ subroutine RTDAECheckCapabilities(this,flow_coupled)
   patch => this%realization%patch
   unsupported = ''
 
-  if (option%transport%nphase > 1 .or. reaction%gas%nactive_gas > 0) &
-    call TSModelListAdd(unsupported,'ACTIVE_GAS_SPECIES')
+  ! a gas phase stays in its cell: no gas transport
+  if (reaction%gas%nactive_gas > 0) then
+    if (flow_coupled) &
+      call TSModelListAdd(unsupported,'ACTIVE_GAS_SPECIES with MODE &
+                                      &RICHARDS_DAE')
+    if (patch%grid%nmax > 1 .or. &
+        associated(patch%boundary_condition_list%first) .or. &
+        associated(patch%source_sink_list%first)) &
+      call TSModelListAdd(unsupported,'ACTIVE_GAS_SPECIES in more than one &
+        &cell or with boundary or source/sink conditions (gas transport)')
+  endif
   if (option%transport%couple_co2) &
     call TSModelListAdd(unsupported,'CO2 coupling')
   if (reaction%neqionxrxn > 0) call TSModelListAdd(unsupported,'ion exchange')
@@ -1224,6 +1235,13 @@ subroutine RTDAECellChemistry(this,ghosted_id,y_c,derivatives,status)
   call RTDAEAqueousClosure(this%scratch,this%forcing%gaux(ghosted_id), &
                            this%reaction,this%option,this%gam,status)
   if (status /= RT_DAE_CHEM_OK) return
+  ! the gas phase's totals stay in scratch: only the cell's accumulation
+  ! reads them
+  if (this%reaction%gas%nactive_gas > 0) then
+    call RTDAEGasClosure(this%scratch,this%forcing%gaux(ghosted_id), &
+                         this%reaction,this%option,this%gam,status)
+    if (status /= RT_DAE_CHEM_OK) return
+  endif
   this%tot(:,ghosted_id) = this%scratch%total(:,1)
   if (allocated(this%pri_act_coef)) &
     this%pri_act_coef(:,ghosted_id) = this%scratch%pri_act_coef
@@ -1459,15 +1477,17 @@ subroutine RTDAEAccumulation(this,ghosted_id,A,gross,dA_dc,dA_dk)
   !
   ! Equilibrium inventory A [mol] of one cell, RTAccumulation's at the
   ! chemistry in scratch, whose sorbed totals and dS/dm this fills
-  ! (RRadioactiveDecay reads them too; dS/dVF goes to sorb_dvf); its gross
-  ! magnitude (species amounts summed with |nu|), and, when present, dA_dc
-  ! (log chain applied) and dA_dk.
+  ! (RRadioactiveDecay reads them too; dS/dVF goes to sorb_dvf) and whose
+  ! gas totals RTDAEGasClosure left; its gross magnitude (species amounts
+  ! summed with |nu|), and, when present, dA_dc (log chain applied) and
+  ! dA_dk.
   !
   ! Author: Hansol Suh
   ! Date: 09/22/26
   !
   use Reaction_module, only : RTAccumulation
   use Reaction_Surface_Complexation_Aux_module, only : ROCK_SURFACE
+  use Reaction_Gas_module, only : ReactionGasPartialPresToConc
 
   implicit none
 
@@ -1478,10 +1498,10 @@ subroutine RTDAEAccumulation(this,ghosted_id,A,gross,dA_dc,dA_dk)
   PetscReal, optional :: dA_dc(:,:)
   PetscReal, optional :: dA_dk(:,:)
 
-  PetscReal :: psv, volume, den_kg_per_L
+  PetscReal :: psv, psv_gas, volume, den_kg_per_L, conc
   PetscReal :: S(this%naqcomp), dS_dm(this%naqcomp,this%naqcomp)
   PetscReal :: dS_dvf(this%naqcomp)
-  PetscInt :: i, icplx, icomp, ieqrxn, irxn, imnrl
+  PetscInt :: i, icplx, icomp, ieqrxn, irxn, imnrl, igas
 
   volume = this%maux(ghosted_id)%volume
   ! L water per cell
@@ -1512,6 +1532,34 @@ subroutine RTDAEAccumulation(this,ghosted_id,A,gross,dA_dc,dA_dk)
     enddo
   endif
   if (present(dA_dk)) dA_dk = 0.d0
+
+  ! the gas phase: L gas per cell, concentrations [mol/L gas]
+  if (this%reaction%gas%nactive_gas > 0) then
+    psv_gas = RTDAEPoreLiters(this%maux(ghosted_id)%porosity* &
+                              this%forcing%gaux(ghosted_id)%sat(2),volume)
+    associate(gas => this%reaction%gas)
+      do igas = 1, gas%nactive_gas
+        conc = ReactionGasPartialPresToConc(this%scratch%gas_pp(igas), &
+                 this%forcing%gaux(ghosted_id)%temp)*1.d-3
+        do i = 1, gas%acteqspecid(0,igas)
+          icomp = gas%acteqspecid(i,igas)
+          gross(icomp) = gross(icomp) + &
+            psv_gas*abs(gas%acteqstoich(i,igas))*conc
+        enddo
+      enddo
+    end associate
+    if (present(dA_dc)) then
+      do i = 1, this%naqcomp
+        if (this%log_formulation) then
+          dA_dc(1:this%naqcomp,i) = dA_dc(1:this%naqcomp,i) + psv_gas* &
+            this%scratch%aqueous%dtotal(:,i,2)*this%scratch%pri_molal(i)
+        else
+          dA_dc(1:this%naqcomp,i) = dA_dc(1:this%naqcomp,i) + psv_gas* &
+            this%scratch%aqueous%dtotal(:,i,2)
+        endif
+      enddo
+    endif
+  endif
 
   ! equilibrium surface complexation: the sorbed totals S [mol/m^3 bulk]
   if (this%nmnrl > 0) this%sorb_dvf = 0.d0
@@ -2617,6 +2665,8 @@ subroutine RTDAEPublish(this,time,Y)
     rt_auxvars(ghosted_id)%pri_act_coef = this%scratch%pri_act_coef
     rt_auxvars(ghosted_id)%total = this%scratch%total
     rt_auxvars(ghosted_id)%aqueous%dtotal = this%scratch%aqueous%dtotal
+    if (this%reaction%gas%nactive_gas > 0) &
+      rt_auxvars(ghosted_id)%gas_pp = this%scratch%gas_pp
     if (this%reaction%neqcplx > 0) then
       rt_auxvars(ghosted_id)%sec_molal = this%scratch%sec_molal
       rt_auxvars(ghosted_id)%sec_act_coef = this%scratch%sec_act_coef
@@ -3094,18 +3144,22 @@ end subroutine RTDAEInitialSensitivity
 ! ************************************************************************** !
 
 subroutine RTDAECellObservables(this,time,local_id,y_c,total,dtotal,ph, &
-                                dph,status)
+                                dph,gas_pp,dgas_pp,gas_amount,dgas_amount, &
+                                status)
   !
   ! At active local cell local_id with c coordinates y_c, under the forcing
   ! at time (coupled: of the flow state set): each aqueous component's
-  ! total in solution [mol/kg] and, with H+ primary, the pH, -log10 of its
-  ! activity (else 0), and their derivatives with respect to y_c (log
-  ! chain applied), activity-coefficient sensitivity included. status:
-  ! TS_MODEL_OK, or TS_MODEL_DOMAIN_ERROR where the closure fails.
+  ! total in solution [mol/kg]; with H+ primary, the pH, -log10 of its
+  ! activity (else 0); each active gas's partial pressure [Pa] and amount
+  ! in the cell's gas phase [mol]; and their derivatives with respect to
+  ! y_c (log chain applied), activity-coefficient sensitivity included.
+  ! status: TS_MODEL_OK, or TS_MODEL_DOMAIN_ERROR where the closure fails.
   !
   ! Author: Hansol Suh
   ! Date: 10/16/26
   !
+  use Reaction_Gas_module, only : ReactionGasPartialPresToConc
+
   implicit none
 
   class(rt_dae_model_type) :: this
@@ -3116,11 +3170,15 @@ subroutine RTDAECellObservables(this,time,local_id,y_c,total,dtotal,ph, &
   PetscReal :: dtotal(:,:)
   PetscReal :: ph
   PetscReal :: dph(:)
+  PetscReal :: gas_pp(:)
+  PetscReal :: dgas_pp(:,:)
+  PetscReal :: gas_amount(:)
+  PetscReal :: dgas_amount(:,:)
   PetscInt :: status
 
-  PetscReal :: den_kg_per_L, m
+  PetscReal :: den_kg_per_L, m, mol_per_bar
   PetscReal :: J(1,this%naqcomp)
-  PetscInt :: ghosted_id, ih, naq
+  PetscInt :: ghosted_id, ih, naq, igas, i, icomp
 
   naq = this%naqcomp
   ghosted_id = this%realization%patch%grid%nL2G(local_id)
@@ -3139,16 +3197,44 @@ subroutine RTDAECellObservables(this,time,local_id,y_c,total,dtotal,ph, &
   ph = 0.d0
   dph = 0.d0
   ih = this%reaction%species_idx%h_ion_id
-  if (ih <= 0) return
-  m = this%scratch%pri_molal(ih)
-  ph = -log10(this%scratch%pri_act_coef(ih)*m)
-  ! at fixed activity coefficients, then their sensitivity
-  J = 0.d0
-  J(1,ih) = -1.d0/(log(10.d0)*m)
-  call RTDAEGammaChain(J,1,naq,this%scratch%pri_molal,this%gam)
-  dph(1:naq) = J(1,:)
-  if (this%log_formulation) &
-    dph(1:naq) = dph(1:naq)*this%scratch%pri_molal(1:naq)
+  if (ih > 0) then
+    m = this%scratch%pri_molal(ih)
+    ph = -log10(this%scratch%pri_act_coef(ih)*m)
+    ! at fixed activity coefficients, then their sensitivity
+    J = 0.d0
+    J(1,ih) = -1.d0/(log(10.d0)*m)
+    call RTDAEGammaChain(J,1,naq,this%scratch%pri_molal,this%gam)
+    dph(1:naq) = J(1,:)
+    if (this%log_formulation) &
+      dph(1:naq) = dph(1:naq)*this%scratch%pri_molal(1:naq)
+  endif
+
+  ! p = exp(-ln K + sum_i nu_i ln a_i) [bar]; the amount is p V_gas/(R T)
+  dgas_pp = 0.d0
+  dgas_amount = 0.d0
+  mol_per_bar = 0.d0
+  if (this%reaction%gas%nactive_gas > 0) &
+    mol_per_bar = ReactionGasPartialPresToConc(1.d0, &
+                    this%forcing%gaux(ghosted_id)%temp)*1.d-3* &
+                  RTDAEPoreLiters(this%maux(ghosted_id)%porosity* &
+                                  this%forcing%gaux(ghosted_id)%sat(2), &
+                                  this%maux(ghosted_id)%volume)
+  associate(gas => this%reaction%gas)
+    do igas = 1, gas%nactive_gas
+      J = 0.d0
+      do i = 1, gas%acteqspecid(0,igas)
+        icomp = gas%acteqspecid(i,igas)
+        J(1,icomp) = J(1,icomp) + gas%acteqstoich(i,igas)* &
+          this%scratch%gas_pp(igas)/this%scratch%pri_molal(icomp)
+      enddo
+      call RTDAEGammaChain(J,1,naq,this%scratch%pri_molal,this%gam)
+      if (this%log_formulation) J(1,:) = J(1,:)*this%scratch%pri_molal(1:naq)
+      gas_pp(igas) = 1.d5*this%scratch%gas_pp(igas)
+      dgas_pp(igas,1:naq) = 1.d5*J(1,:)
+      gas_amount(igas) = mol_per_bar*this%scratch%gas_pp(igas)
+      dgas_amount(igas,1:naq) = mol_per_bar*J(1,:)
+    enddo
+  end associate
 
 end subroutine RTDAECellObservables
 

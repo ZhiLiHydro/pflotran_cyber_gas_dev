@@ -17,6 +17,7 @@ module RT_DAE_Chem_module
   !
   ! enters every derivative as a rank-one correction. The iteration starts
   ! from I at gamma = 1, so the result is a deterministic function of m.
+  ! Active gases are in equilibrium with the solution (RTDAEGasClosure).
   !
   ! Author: Hansol Suh
   ! Date: 09/22/26
@@ -55,6 +56,7 @@ module RT_DAE_Chem_module
   public :: RTDAEGammaInit, &
             RTDAEGammaDestroy, &
             RTDAEAqueousClosure, &
+            RTDAEGasClosure, &
             RTDAEGammaChain
 
 contains
@@ -369,6 +371,48 @@ subroutine RTDAEAqueousClosure(rt_auxvar,global_auxvar,reaction,option, &
   if (.not.RTDAEAllFinite(rt_auxvar)) status = RT_DAE_CHEM_FAILED
 
 end subroutine RTDAEAqueousClosure
+
+! ************************************************************************** !
+
+subroutine RTDAEGasClosure(rt_auxvar,global_auxvar,reaction,option,gam, &
+                           status)
+  !
+  ! After RTDAEAqueousClosure: the active gases in equilibrium with the
+  ! solution (ReactionGasTotalGas), their partial pressures [bar] in
+  ! rt_auxvar%gas_pp, the gas-phase totals total(:,2) [mol/L gas] and in
+  ! aqueous%dtotal(:,:,2) the complete dT/dm [kg water/L gas]. A partial
+  ! pressure depends on the solution only through the primary activities,
+  ! so the activity-coefficient sensitivity is RTDAEGammaChain's.
+  !
+  ! Author: Hansol Suh
+  ! Date: 10/19/26
+  !
+  use Option_module
+  use Reaction_Gas_module, only : ReactionGasTotalGas
+
+  implicit none
+
+  type(reactive_transport_auxvar_type) :: rt_auxvar
+  type(global_auxvar_type) :: global_auxvar
+  class(reaction_rt_type) :: reaction
+  type(option_type) :: option
+  type(rt_dae_gamma_type) :: gam
+  PetscInt :: status
+
+  PetscInt, parameter :: iphase = 2
+
+  status = RT_DAE_CHEM_OK
+  call ReactionGasTotalGas(rt_auxvar,global_auxvar,reaction,option)
+  call RTDAEGammaChain(rt_auxvar%aqueous%dtotal(:,:,iphase), &
+                       reaction%naqcomp,reaction%naqcomp, &
+                       rt_auxvar%pri_molal,gam)
+  ! zero molality in a gas's reaction gives 0/0 in its derivative
+  if (.not.(all(abs(rt_auxvar%gas_pp) <= huge(1.d0)) .and. &
+            all(abs(rt_auxvar%total(:,iphase)) <= huge(1.d0)) .and. &
+            all(abs(rt_auxvar%aqueous%dtotal(:,:,iphase)) <= huge(1.d0)))) &
+    status = RT_DAE_CHEM_FAILED
+
+end subroutine RTDAEGasClosure
 
 ! ************************************************************************** !
 

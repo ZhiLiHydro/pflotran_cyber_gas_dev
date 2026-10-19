@@ -3933,6 +3933,7 @@ rt_dae_chem.o : \
   pflotran_constants.o \
   reaction.o \
   reaction_aux.o \
+  reaction_gas.o \
   reactive_transport_aux.o
 rt_dae_flow_coupling.o : \
   grid.o \
@@ -3987,6 +3988,7 @@ rt_dae_model.o : \
   reaction.o \
   reaction_aux.o \
   reaction_clm.o \
+  reaction_gas.o \
   reaction_immobile.o \
   reaction_microbial.o \
   reaction_microbial_aux.o \

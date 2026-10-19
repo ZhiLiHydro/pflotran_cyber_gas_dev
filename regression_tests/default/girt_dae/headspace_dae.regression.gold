@@ -1,0 +1,24 @@
+-- GENERIC: pH --
+        1:   6.6533315631792E+00
+-- CONCENTRATION: Total H+ --
+        1:   6.4899288771938E-04
+-- CONCENTRATION: Total HCO3- --
+        1:   2.0487110855067E-03
+-- CONCENTRATION: Total Ca++ --
+        1:   6.8411442844047E-04
+-- PRESSURE: Active Gas CO2(g) --
+        1:   1.9173460609558E-02
+-- VOLUME_FRACTION: Calcite VF --
+        1:   9.9968462314625E-03
+-- RATE: Calcite Rate --
+        1:  -9.5294001914956E-07
+-- DISCRETE: Material ID --
+        1:         1
+-- SOLUTION: Transport --
+   Time (seconds):   4.9232450000432E-03
+   Time Steps:           16
+   Newton Iterations:           44
+   Linear Solver Iterations:           44
+   Time Step Cuts:            0
+   Solution 2-Norm:   1.5496511354280E-03
+   Residual 2-Norm:   3.5575350227091E-16

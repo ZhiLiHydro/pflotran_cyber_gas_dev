@@ -38,7 +38,9 @@ ADJOINT
     TIME_SERIES
       CELL_ID 1                          # or COORDINATE x y z
       OBSERVED_VARIABLE FREE_ION CO2(aq) # or TOTAL <primary species>,
-                                         #   IMMOBILE <species>, PH
+                                         #   IMMOBILE <species>, PH,
+                                         #   GAS_PARTIAL_PRESSURE <gas>,
+                                         #   GAS_AMOUNT <gas>
       STANDARD_DEVIATION 1.d-6           # or ERROR ABSOLUTE a RELATIVE r
       FILE co2.dat                       # TIME_UNITS, DATA_UNITS, then
     /                                    #   rows: time value
@@ -61,9 +63,12 @@ component's total in solution, free ion and aqueous complexes, in mol/kg
 (PFLOTRAN's Total output in mol/L is it times the density in kg/L; DIC is
 the total of the carbonate primary species, e.g. `TOTAL HCO3-`). `PH` is
 -log10 of the H+ activity (H+ a primary species), dimensionless: its
-`VALUE` takes no units and its `FILE` no `DATA_UNITS`. Both are evaluated
-by the model's chemistry at the recorded state, activity coefficients and
-their sensitivity included. An observation is
+`VALUE` takes no units and its `FILE` no `DATA_UNITS`.
+`GAS_PARTIAL_PRESSURE` (Pa, or `Bar`, `kPa`, `atm`) and `GAS_AMOUNT` (mol
+in the cell's gas phase, the headspace) are of an `ACTIVE_GAS_SPECIES`
+(see Gas phase). These are evaluated by the model's chemistry at the
+recorded state, activity coefficients and their sensitivity included. An
+observation is
 at one cell (a `REGION` is rejected: it would need an operator such as a
 volume average); a `COORDINATE` on a face between cells of two processes
 (unstructured grids) is rejected too. Times are after the start and at
@@ -167,9 +172,9 @@ objective has small jumps where the step sequence changes; fixed steps
 - Everything the GIRT_DAE model supports is differentiated, including
   activity coefficients (converged in every evaluation), kinetic minerals
   with volume-fraction-dependent surface area, multirate and equilibrium
-  surface complexation, transient Richards flow, transient velocity
-  datasets and `SPECIFIED_TEMPERATURE` (the backward sweep replays each
-  waypoint interval's recorded forcing).
+  surface complexation, a gas phase, transient Richards flow, transient
+  velocity datasets and `SPECIFIED_TEMPERATURE` (the backward sweep replays
+  each waypoint interval's recorded forcing).
 - dJ/dP(0) holds the initial molarity of the aqueous primaries fixed, as the
   initial condition does (an `INITIAL_CONCENTRATION` holds its free
   molality fixed instead). A constraint re-equilibrated in each cell against
@@ -236,6 +241,34 @@ END
 - The temperature is forcing: the adjoint replays it, and has no derivative
   with respect to it. The output's temperature is the dataset's.
 
+## Gas phase
+
+`ACTIVE_GAS_SPECIES` give GIRT_DAE a gas phase in equilibrium with the
+solution: a closed bottle's headspace.
+
+```
+REFERENCE_SATURATION 0.833d0         # 200 mL solution, 40 mL headspace
+CHEMISTRY
+  ...
+  ACTIVE_GAS_SPECIES
+    GAS_TRANSPORT_IS_UNVETTED        # the reader requires it; nothing moves
+    CH4(g)
+    CO2(g)
+  /
+```
+
+- One cell without boundary or source/sink conditions (gas does not move
+  between cells yet), and not with MODE RICHARDS_DAE. The gas-filled pore
+  space is 1 - `REFERENCE_SATURATION` of it; with the cell the bottle
+  (porosity 1, the bottle's volume) `GAS_AMOUNT` is the headspace's moles.
+- A gas's partial pressure follows its database reaction (Henry's law for
+  `CH4(g) = CH4(aq)`, or charged species, e.g. `CO2(g) = H+ + HCO3- - H2O`),
+  and the ideal gas law at the cell's temperature gives its
+  concentration; the components' inventories include the headspace.
+- Derivatives include the activity coefficients' sensitivity, which
+  PFLOTRAN's own gas totals omit (harmless for Newton, not for the
+  adjoint).
+
 ## Flow and transport as one model
 
 With `MODE RICHARDS_DAE` flow and `MODE GIRT_DAE` transport, one PETSc TS
@@ -288,7 +321,10 @@ a post-processor that checks the gradients against central differences
   `ACTIVATION_ENERGY` gradients), central differences (also with
   boundaries, a velocity dataset, observations, and carbonate speciation
   with calcite), reruns and the sweep variants, and a step in temperature
-  against constant-temperature runs on each side.
+  against constant-temperature runs on each side; a headspace
+  (`ar_headspace.in`, `headspace.dat`) against Henry's law, the ideal gas
+  law and conservation, and its gas observations and a carbonate bottle
+  with activity coefficients against central differences.
 - `check_coupled.py` (`adjoint-coupled`, `adjoint-coupled-np2`): the
   coupled model's gradients (also of `TOTAL` and `PH` observations, and
   of `INITIAL_CONCENTRATION` by TAO's gradient test), and
