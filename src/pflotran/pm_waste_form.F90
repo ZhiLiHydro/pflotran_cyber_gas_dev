@@ -4470,6 +4470,7 @@ subroutine PMWFSolve(this,time,ierr)
       ! Use heat of criticality lookup table if applicable
       if (associated(cur_criticality%crit_heat_dataset) .and. &
           cur_criticality%crit_event%crit_flag) then
+        avg_temp_local = 0.d0
         do j = 1,cur_waste_form%region%num_cells
           ghosted_id = grid%nL2G(cur_waste_form%region%cell_ids(j))
           avg_temp_local = avg_temp_local + &  ! Celsius
@@ -4477,7 +4478,6 @@ subroutine PMWFSolve(this,time,ierr)
         enddo
         call CalcParallelSUM(option,cur_waste_form%rank_list,avg_temp_local, &
                              avg_temp_global)
-        avg_temp_global = avg_temp_global / size(cur_waste_form%rank_list)
         cur_criticality%temperature = avg_temp_global
         cur_criticality%crit_heat = cur_criticality%crit_heat_dataset% &
           Evaluate(cur_criticality%crit_event%crit_start, &
@@ -4487,6 +4487,7 @@ subroutine PMWFSolve(this,time,ierr)
       ! Criticality termination - water saturation
       if (Initialized(cur_criticality%sw) .and. &
           cur_criticality%crit_event%crit_flag) then
+        avg_sw_local = 0.d0
         do j = 1,cur_waste_form%region%num_cells
           ghosted_id = grid%nL2G(cur_waste_form%region%cell_ids(j))
           avg_sw_local = avg_sw_local + &  ! Liquid Saturation
@@ -4495,7 +4496,6 @@ subroutine PMWFSolve(this,time,ierr)
         enddo
         call CalcParallelSUM(option,cur_waste_form%rank_list,avg_sw_local, &
                              avg_sw_global)
-        avg_sw_global = avg_sw_global / size(cur_waste_form%rank_list)
         if (avg_sw_global < cur_criticality%sw) then
           cur_criticality%crit_event%crit_flag = PETSC_FALSE
         endif
@@ -4504,6 +4504,7 @@ subroutine PMWFSolve(this,time,ierr)
       ! Criticality termination - water density
       if (Initialized(cur_criticality%rho_w) .and. &
           cur_criticality%crit_event%crit_flag) then
+        avg_rho_w_local = 0.d0
         do j = 1,cur_waste_form%region%num_cells
           ghosted_id = grid%nL2G(cur_waste_form%region%cell_ids(j))
           avg_rho_w_local = avg_rho_w_local + &  ! Liquid Density
@@ -4512,7 +4513,6 @@ subroutine PMWFSolve(this,time,ierr)
         enddo
         call CalcParallelSUM(option,cur_waste_form%rank_list,avg_rho_w_local, &
                              avg_rho_w_global)
-        avg_rho_w_global = avg_rho_w_global / size(cur_waste_form%rank_list)
         if (avg_rho_w_global < cur_criticality%rho_w) then
           cur_criticality%crit_event%crit_flag = PETSC_FALSE
         endif
@@ -5877,8 +5877,12 @@ subroutine PMWFRestartHDF5(this,pm_grp_id)
     if (.not.associated(cur_waste_form)) exit
     num_species=cur_waste_form%mechanism%num_species
 
-    allocate(cur_waste_form%rad_mass_fraction(num_species))
-    allocate(cur_waste_form%cumulative_mass(num_species))
+    if (.not.associated(cur_waste_form%rad_mass_fraction)) then
+      allocate(cur_waste_form%rad_mass_fraction(num_species))
+    endif
+    if (.not.associated(cur_waste_form%cumulative_mass)) then
+      allocate(cur_waste_form%cumulative_mass(num_species))
+    endif
 
     cur_waste_form%canister_vitality=local_wf_array(i)
     cur_waste_form%volume=local_wf_array(i+1)
@@ -6176,8 +6180,12 @@ subroutine PMWFRestartBinary(this, viewer)
     if (.not.associated(cur_waste_form)) exit
     num_species=cur_waste_form%mechanism%num_species
 
-    allocate(cur_waste_form%rad_mass_fraction(num_species))
-    allocate(cur_waste_form%cumulative_mass(num_species))
+    if (.not.associated(cur_waste_form%rad_mass_fraction)) then
+      allocate(cur_waste_form%rad_mass_fraction(num_species))
+    endif
+    if (.not.associated(cur_waste_form%cumulative_mass)) then
+      allocate(cur_waste_form%cumulative_mass(num_species))
+    endif
 
     cur_waste_form%canister_vitality=local_wf_array(i)
     cur_waste_form%volume=local_wf_array(i+1)
