@@ -67,6 +67,10 @@ module Carbon_Sandbox_MEND_class
   end type carbon_sandbox_rxn_mend_type
 
   public :: CarbonMENDCreate, &
+            CarbonMENDInit, &
+            CarbonMENDReadSelectCase, &
+            CarbonMENDCheckCommonParams, &
+            CarbonMENDSetOptionalDefaults, &
             CarbonRxnMENDCreate
 
 contains
@@ -85,6 +89,22 @@ function CarbonMENDCreate()
   class(carbon_sandbox_mend_type), pointer :: this
 
   allocate(this)
+  call CarbonMENDInit(this)
+  CarbonMENDCreate => this
+
+end function CarbonMENDCreate
+
+! ************************************************************************** !
+
+subroutine CarbonMENDInit(this)
+  !
+  ! Initializes the members of a MEND-based carbon sandbox object
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/16/24
+  !
+  class(carbon_sandbox_mend_type) :: this
+
   call CarbonBaseInit(this)
   this%B_species_name = 'biomass'
   this%D_species_name = 'doc'
@@ -125,9 +145,7 @@ function CarbonMENDCreate()
   !this%fI_D = UNINITIALIZED_DOUBLE
   this%reference_temperature = UNINITIALIZED_DOUBLE
 
-  CarbonMENDCreate => this
-
-end function CarbonMENDCreate
+end subroutine CarbonMENDInit
 
 ! ************************************************************************** !
 
@@ -147,9 +165,7 @@ subroutine CarbonMENDReadInput(this,input,option)
   type(option_type) :: option
 
   character(len=MAXWORDLENGTH) :: keyword
-  character(len=MAXWORDLENGTH) :: internal_units
   character(len=MAXSTRINGLENGTH) :: err_string
-  PetscReal :: tempreal
   PetscBool :: found
 
   err_string = 'CHEMISTRY,CARBON_SANDBOX,MEND'
@@ -166,111 +182,142 @@ subroutine CarbonMENDReadInput(this,input,option)
     call CarbonBaseReadSelectCase(this,input,keyword,found,err_string,option)
     if (found) cycle
 
-    select case(keyword)
-      case('B_SPECIES_NAME')
-        call InputReadWord(input,option,this%B_species_name,PETSC_TRUE)
-        call InputErrorMsg(input,option,keyword,err_string)
-      case('D_SPECIES_NAME')
-        call InputReadWord(input,option,this%D_species_name,PETSC_TRUE)
-        call InputErrorMsg(input,option,keyword,err_string)
-      case('EM_SPECIES_NAME')
-        call InputReadWord(input,option,this%EM_species_name,PETSC_TRUE)
-        call InputErrorMsg(input,option,keyword,err_string)
-      case('EP_SPECIES_NAME')
-        call InputReadWord(input,option,this%EP_species_name,PETSC_TRUE)
-        call InputErrorMsg(input,option,keyword,err_string)
-      case('IC_SPECIES_NAME')
-        call InputReadWord(input,option,this%IC_species_name,PETSC_TRUE)
-        call InputErrorMsg(input,option,keyword,err_string)
-      case('M_SPECIES_NAME')
-        call InputReadWord(input,option,this%M_species_name,PETSC_TRUE)
-        call InputErrorMsg(input,option,keyword,err_string)
-      case('P_SPECIES_NAME')
-        call InputReadWord(input,option,this%P_species_name,PETSC_TRUE)
-        call InputErrorMsg(input,option,keyword,err_string)
-      case('Q_SPECIES_NAME')
-        call InputReadWord(input,option,this%Q_species_name,PETSC_TRUE)
-        call InputErrorMsg(input,option,keyword,err_string)
-      case('V_P','V_M','V_D','M_R','R_EP','R_EM','K_ADS','K_DES', &
-           'I_P','I_D')
-        call InputReadDouble(input,option,tempreal)
-        call InputErrorMsg(input,option,keyword,err_string)
-        internal_units = 'kg/kg-s'
-        call InputReadAndConvertUnits(input,tempreal,internal_units, &
-                                      keyword,option)
-        select case(keyword)
-          case('V_P')
-            this%V_P = tempreal
-          case('V_M')
-            this%V_M = tempreal
-          case('V_D')
-            this%V_D = tempreal
-          case('K_D')
-            this%K_D = tempreal
-          case('M_R')
-            this%M_R = tempreal
-          case('R_EP')
-            this%r_EP = tempreal
-          case('R_EM')
-            this%r_EM = tempreal
-          case('K_ADS')
-            this%K_ads = tempreal
-          case('K_DES')
-            this%K_des = tempreal
-          case('I_P')
-            this%I_P = tempreal
-          case('I_D')
-            this%I_D = tempreal
-        end select
-      case('K_P','K_M','K_D','Q_MAX')
-        call InputReadDouble(input,option,tempreal)
-        call InputErrorMsg(input,option,keyword,err_string)
-        ! these are compared directly against the state variables, which
-        ! CarbonMENDEvaluate carries in mg C/g soil
-        internal_units = 'mg/g'
-        call InputReadAndConvertUnits(input,tempreal,internal_units, &
-                                      keyword,option)
-        select case(keyword)
-          case('K_P')
-            this%K_P = tempreal
-          case('K_M')
-            this%K_M = tempreal
-          case('K_D')
-            this%K_D = tempreal
-          case('Q_MAX')
-            this%Q_max = tempreal
-        end select
-      case('K_BA')
-        call InputReadDouble(input,option,tempreal)
-        call InputErrorMsg(input,option,keyword,err_string)
-        internal_units = 'kg/kg'  ! these are inverted units
-        call InputReadAndConvertUnits(input,tempreal,internal_units, &
-                                      keyword,option)
-        this%K_BA = tempreal
-      case('E_C','F_D','G_D','P_EP','P_EM') ! unitless
-        call InputReadDouble(input,option,tempreal)
-        call InputErrorMsg(input,option,keyword,err_string)
-        select case(keyword)
-          case('E_C')
-            this%E_C = tempreal
-          case('F_D')
-            this%f_D = tempreal
-          case('G_D')
-            this%g_D = tempreal
-          case('P_EP')
-            this%p_EP = tempreal
-          case('P_EM')
-            this%p_EM = tempreal
-        end select
-      case('REFERENCE_TEMPERATURE')
-        call InputReadDouble(input,option,this%reference_temperature)
-        call InputErrorMsg(input,option,keyword,err_string)
-      case default
-        call InputKeywordUnrecognized(input,keyword,err_string,option)
-    end select
+    call CarbonMENDReadSelectCase(this,input,keyword,found,err_string,option)
+    if (found) cycle
+
+    call InputKeywordUnrecognized(input,keyword,err_string,option)
   enddo
 
 end subroutine CarbonMENDReadInput
+
+! ************************************************************************** !
+
+subroutine CarbonMENDReadSelectCase(this,input,keyword,found,err_string,option)
+  !
+  ! Reads the MEND parameters shared by all MEND-based carbon sandboxes
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/16/24
+  !
+  use Input_Aux_module
+  use Option_module
+  use String_module
+
+  class(carbon_sandbox_mend_type) :: this
+  type(input_type), pointer :: input
+  character(len=MAXWORDLENGTH) :: keyword
+  PetscBool :: found
+  character(len=MAXSTRINGLENGTH) :: err_string
+  type(option_type) :: option
+
+  character(len=MAXWORDLENGTH) :: internal_units
+  PetscReal :: tempreal
+
+  found = PETSC_TRUE
+  select case(keyword)
+    case('B_SPECIES_NAME')
+      call InputReadWord(input,option,this%B_species_name,PETSC_TRUE)
+      call InputErrorMsg(input,option,keyword,err_string)
+    case('D_SPECIES_NAME')
+      call InputReadWord(input,option,this%D_species_name,PETSC_TRUE)
+      call InputErrorMsg(input,option,keyword,err_string)
+    case('EM_SPECIES_NAME')
+      call InputReadWord(input,option,this%EM_species_name,PETSC_TRUE)
+      call InputErrorMsg(input,option,keyword,err_string)
+    case('EP_SPECIES_NAME')
+      call InputReadWord(input,option,this%EP_species_name,PETSC_TRUE)
+      call InputErrorMsg(input,option,keyword,err_string)
+    case('IC_SPECIES_NAME')
+      call InputReadWord(input,option,this%IC_species_name,PETSC_TRUE)
+      call InputErrorMsg(input,option,keyword,err_string)
+    case('M_SPECIES_NAME')
+      call InputReadWord(input,option,this%M_species_name,PETSC_TRUE)
+      call InputErrorMsg(input,option,keyword,err_string)
+    case('P_SPECIES_NAME')
+      call InputReadWord(input,option,this%P_species_name,PETSC_TRUE)
+      call InputErrorMsg(input,option,keyword,err_string)
+    case('Q_SPECIES_NAME')
+      call InputReadWord(input,option,this%Q_species_name,PETSC_TRUE)
+      call InputErrorMsg(input,option,keyword,err_string)
+    case('V_P','V_M','V_D','M_R','R_EP','R_EM','K_ADS','K_DES', &
+         'I_P','I_D')
+      call InputReadDouble(input,option,tempreal)
+      call InputErrorMsg(input,option,keyword,err_string)
+      internal_units = 'kg/kg-s'
+      call InputReadAndConvertUnits(input,tempreal,internal_units, &
+                                    keyword,option)
+      select case(keyword)
+        case('V_P')
+          this%V_P = tempreal
+        case('V_M')
+          this%V_M = tempreal
+        case('V_D')
+          this%V_D = tempreal
+        case('K_D')
+          this%K_D = tempreal
+        case('M_R')
+          this%M_R = tempreal
+        case('R_EP')
+          this%r_EP = tempreal
+        case('R_EM')
+          this%r_EM = tempreal
+        case('K_ADS')
+          this%K_ads = tempreal
+        case('K_DES')
+          this%K_des = tempreal
+        case('I_P')
+          this%I_P = tempreal
+        case('I_D')
+          this%I_D = tempreal
+      end select
+    case('K_P','K_M','K_D','Q_MAX')
+      call InputReadDouble(input,option,tempreal)
+      call InputErrorMsg(input,option,keyword,err_string)
+      ! these are compared directly against the state variables, which
+      ! CarbonMENDEvaluate carries in mg C/g soil
+      internal_units = 'mg/g'
+      call InputReadAndConvertUnits(input,tempreal,internal_units, &
+                                    keyword,option)
+      select case(keyword)
+        case('K_P')
+          this%K_P = tempreal
+        case('K_M')
+          this%K_M = tempreal
+        case('K_D')
+          this%K_D = tempreal
+        case('Q_MAX')
+          this%Q_max = tempreal
+      end select
+    case('K_BA')
+      call InputReadDouble(input,option,tempreal)
+      call InputErrorMsg(input,option,keyword,err_string)
+      internal_units = 'kg/kg'  ! these are inverted units
+      call InputReadAndConvertUnits(input,tempreal,internal_units, &
+                                    keyword,option)
+      this%K_BA = tempreal
+    case('E_C','F_D','G_D','P_EP','P_EM') ! unitless
+      call InputReadDouble(input,option,tempreal)
+      call InputErrorMsg(input,option,keyword,err_string)
+      select case(keyword)
+        case('E_C')
+          this%E_C = tempreal
+        case('F_D')
+          this%f_D = tempreal
+        case('G_D')
+          this%g_D = tempreal
+        case('P_EP')
+          this%p_EP = tempreal
+        case('P_EM')
+          this%p_EM = tempreal
+      end select
+    case('REFERENCE_TEMPERATURE')
+      call InputReadDouble(input,option,this%reference_temperature)
+      call InputErrorMsg(input,option,keyword,err_string)
+    case default
+      found = PETSC_FALSE
+  end select
+
+end subroutine CarbonMENDReadSelectCase
 
 ! ************************************************************************** !
 
@@ -324,6 +371,46 @@ subroutine CarbonMENDSetup(this,reaction,option)
       &must be an immobile species.'
     call PrintErrMsg(option)
   endif
+
+  call CarbonMENDCheckCommonParams(this,option)
+  if (Uninitialized(this%Q_max)) then
+    option%io_buffer = 'Q_max not defined in MEND carbon sandbox.'
+    call PrintErrMsg(option)
+  endif
+  if (Uninitialized(this%K_ads)) then
+    option%io_buffer = 'K_ads not defined in MEND carbon sandbox.'
+    call PrintErrMsg(option)
+  endif
+  if (Uninitialized(this%K_des)) then
+    option%io_buffer = 'K_des not defined in MEND carbon sandbox.'
+    call PrintErrMsg(option)
+  endif
+  if (Uninitialized(this%K_BA)) then
+    option%io_buffer = 'K_BA not defined in MEND carbon sandbox.'
+    call PrintErrMsg(option)
+  endif
+  if (Uninitialized(this%K_ads)) then
+    option%io_buffer = 'K_ads not defined in MEND carbon sandbox.'
+    call PrintErrMsg(option)
+  endif
+  call CarbonMENDSetOptionalDefaults(this,option)
+
+  call this%EnforceConcentrationUnits(CARBON_UNITS_MOLE_PER_KG_SOIL,option)
+
+end subroutine CarbonMENDSetup
+
+! ************************************************************************** !
+
+subroutine CarbonMENDCheckCommonParams(this,option)
+  !
+  ! Verifies that the MEND parameters common to all MEND-based carbon
+  ! sandboxes have been defined
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/16/24
+  !
+  class(carbon_sandbox_mend_type) :: this
+  type(option_type) :: option
 
   if (Uninitialized(this%V_P)) then
     option%io_buffer = 'V_P not defined in MEND carbon sandbox.'
@@ -381,26 +468,22 @@ subroutine CarbonMENDSetup(this,reaction,option)
     option%io_buffer = 'r_EM not defined in MEND carbon sandbox.'
     call PrintErrMsg(option)
   endif
-  if (Uninitialized(this%Q_max)) then
-    option%io_buffer = 'Q_max not defined in MEND carbon sandbox.'
-    call PrintErrMsg(option)
-  endif
-  if (Uninitialized(this%K_ads)) then
-    option%io_buffer = 'K_ads not defined in MEND carbon sandbox.'
-    call PrintErrMsg(option)
-  endif
-  if (Uninitialized(this%K_des)) then
-    option%io_buffer = 'K_des not defined in MEND carbon sandbox.'
-    call PrintErrMsg(option)
-  endif
-  if (Uninitialized(this%K_BA)) then
-    option%io_buffer = 'K_BA not defined in MEND carbon sandbox.'
-    call PrintErrMsg(option)
-  endif
-  if (Uninitialized(this%K_ads)) then
-    option%io_buffer = 'K_ads not defined in MEND carbon sandbox.'
-    call PrintErrMsg(option)
-  endif
+
+end subroutine CarbonMENDCheckCommonParams
+
+! ************************************************************************** !
+
+subroutine CarbonMENDSetOptionalDefaults(this,option)
+  !
+  ! Assigns defaults for the optional MEND parameters common to all
+  ! MEND-based carbon sandboxes
+  !
+  ! Author: Glenn Hammond
+  ! Date: 02/16/24
+  !
+  class(carbon_sandbox_mend_type) :: this
+  type(option_type) :: option
+
   if (Uninitialized(this%I_D)) then
     ! these source terms are not required
     this%I_D = 0.d0
@@ -413,9 +496,7 @@ subroutine CarbonMENDSetup(this,reaction,option)
     this%reference_temperature = option%flow%reference_temperature
   endif
 
-  call this%EnforceConcentrationUnits(CARBON_UNITS_MOLE_PER_KG_SOIL,option)
-
-end subroutine CarbonMENDSetup
+end subroutine CarbonMENDSetOptionalDefaults
 
 ! ************************************************************************** !
 
