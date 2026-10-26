@@ -472,28 +472,30 @@ subroutine CarbonMENDEvaluate(this,Residual,Jacobian,compute_derivative, &
   P = this%aux%conc(this%P_species_index)*conc_units_conversion
   Q = this%aux%conc(this%Q_species_index)*conc_units_conversion
 
-  V_P_adj = this%V_P*Arrhenius(53.d0,t,this%reference_temperature)
-  tempreal = Arrhenius(47.d0,t,this%reference_temperature)
+  ! activation energies are from Wang et al. (2013), Table 3, scaled from the
+  ! kJ/mol reported there to the J/mol expected by Arrhenius()
+  V_P_adj = this%V_P*Arrhenius(53.d3,t,this%reference_temperature)
+  tempreal = Arrhenius(47.d3,t,this%reference_temperature)
   V_M_adj = this%V_M*tempreal
   V_D_adj = this%V_D*tempreal
-  tempreal = Arrhenius(30.d0,t,this%reference_temperature)
+  tempreal = Arrhenius(30.d3,t,this%reference_temperature)
   K_P_adj = this%K_P*tempreal
   K_M_adj = this%K_M*tempreal
   K_D_adj = this%K_D*tempreal
-  m_R_adj = this%m_R*Arrhenius(20.d0,t,this%reference_temperature)
-  K_ads_adj = this%K_ads*Arrhenius(5.d0,t,this%reference_temperature)
-  K_des_adj = this%K_des*Arrhenius(20.d0,t,this%reference_temperature)
+  m_R_adj = this%m_R*Arrhenius(20.d3,t,this%reference_temperature)
+  K_ads_adj = this%K_ads*Arrhenius(5.d3,t,this%reference_temperature)
+  K_des_adj = this%K_des*Arrhenius(20.d3,t,this%reference_temperature)
   E_C_adj = &
     max(min(this%E_C - 0.012d0*(t-this%reference_temperature),1.d0),0.d0)
 
-  D_monod = D/(this%K_D+D)
-  M_monod = M/(this%K_M+M)
-  P_monod = P/(this%K_P+P)
+  D_monod = D/(K_D_adj+D)
+  M_monod = M/(K_M_adj+M)
+  P_monod = P/(K_P_adj+P)
   one_over_E_C = 1.d0 / E_C_adj
   F1 = one_over_E_C*(V_D_adj+m_R_adj)*B*D_monod
   F2 = V_P_adj*EP*P_monod
   F3 = V_M_adj*EM*M_monod
-  F4 = (one_over_E_C-1.d0)*V_D_adj*B
+  F4 = (one_over_E_C-1.d0)*V_D_adj*B*D_monod
   F5 = (one_over_E_C-1.d0)*m_R_adj*B*D_monod
   F6 = K_ads_adj*(1.d0-Q/this%Q_max)*D
   F7 = K_des_adj*Q/this%Q_max
