@@ -225,7 +225,9 @@ subroutine CarbonMENDReadInput(this,input,option)
       case('K_P','K_M','K_D','Q_MAX')
         call InputReadDouble(input,option,tempreal)
         call InputErrorMsg(input,option,keyword,err_string)
-        internal_units = 'kg/kg'
+        ! these are compared directly against the state variables, which
+        ! CarbonMENDEvaluate carries in mg C/g soil
+        internal_units = 'mg/g'
         call InputReadAndConvertUnits(input,tempreal,internal_units, &
                                       keyword,option)
         select case(keyword)
