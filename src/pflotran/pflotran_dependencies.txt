@@ -32,6 +32,7 @@ carbon_sandbox.o : \
   carbon_sandbox_base.o \
   carbon_sandbox_mend.o \
   carbon_sandbox_mend20.o \
+  carbon_sandbox_mend_nq.o \
   global_aux.o \
   input_aux.o \
   material_aux.o \
@@ -69,6 +70,20 @@ carbon_sandbox_mend.o : \
   utility.o
 carbon_sandbox_mend20.o : \
   carbon_sandbox_base.o \
+  global_aux.o \
+  input_aux.o \
+  material_aux.o \
+  option.o \
+  pflotran_constants.o \
+  reaction_aux.o \
+  reaction_immobile_aux.o \
+  reaction_inhibition_aux.o \
+  reactive_transport_aux.o \
+  string.o \
+  utility.o
+carbon_sandbox_mend_nq.o : \
+  carbon_sandbox_base.o \
+  carbon_sandbox_mend.o \
   global_aux.o \
   input_aux.o \
   material_aux.o \

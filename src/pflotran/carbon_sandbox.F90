@@ -6,6 +6,7 @@ module Carbon_Sandbox_module
   use Carbon_Sandbox_Base_class
   use Carbon_Sandbox_MEND_class
   use Carbon_Sandbox_MEND20_class
+  use Carbon_Sandbox_MEND_nQ_class
 
   use PFLOTRAN_Constants_module
 
@@ -115,6 +116,8 @@ subroutine CarbonSandboxRead2(local_sandbox_list,input,option)
       new_sandbox => CarbonMENDCreate()
     case('MEND20')
       new_sandbox => CarbonMEND20Create()
+    case('MEND_NQ')
+      new_sandbox => CarbonMENDnQCreate()
     case default
       call InputKeywordUnrecognized(input,keyword,err_string,option)
   end select

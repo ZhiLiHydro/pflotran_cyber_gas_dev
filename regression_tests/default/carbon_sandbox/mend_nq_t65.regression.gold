@@ -1,0 +1,28 @@
+-- CONCENTRATION: Total MICROBIAL_BIOMASS --
+        1:   2.2400243832917E-01
+-- CONCENTRATION: Total DISSOLVED --
+        1:   1.6323166497043E-02
+-- CONCENTRATION: Total PARTICULATE --
+        1:   9.3452671387246E-01
+-- CONCENTRATION: Total PARTICULATE_ENZYME --
+        1:   7.1290589335428E-04
+-- CONCENTRATION: Total MINERAL_ENZYME --
+        1:   7.1290589335428E-04
+-- CONCENTRATION: Total INORGANIC_CARBON --
+        1:   6.8771211722004E-01
+-- CONCENTRATION: MINERAL_ASSOCIATED --
+        1:   5.5354502789976E+02
+-- CONCENTRATION: ADSORBED_HIGH_SA --
+        1:   2.4467422243922E+02
+-- CONCENTRATION: ADSORBED_LOW_SA --
+        1:   3.3884893417276E+00
+-- DISCRETE: Material ID --
+        1:         1
+-- SOLUTION: Transport --
+   Time (seconds):   3.9687634600000E-01
+   Time Steps:          673
+   Newton Iterations:         1556
+   Linear Solver Iterations:         1556
+   Time Step Cuts:            0
+   Solution 2-Norm:   6.0521934294145E+02
+   Residual 2-Norm:   6.7589263381283E-18
