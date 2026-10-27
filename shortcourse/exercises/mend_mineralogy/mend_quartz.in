@@ -1,0 +1,243 @@
+# Description: MEND with n Q pools -- baseline quartz soil
+#
+# Reproduces the soil-mineralogy study of "Soil Mineralogy in MEND model"
+# (Iyer, MacFarlane, and Zavarin), slides 19-22 and 28-30, with the MEND_NQ
+# carbon sandbox. MEND's published sorption parameters describe a low-surface-
+# area soil like quartz; the study asks what a small mass fraction of a
+# high-surface-area mineral does. Compare mend_quartz.in,
+# mend_1pct_iron_oxide.in and mend_5pct_iron_oxide.in, which differ only in
+# their SORPTION_SITE blocks and the initial split of sorbed carbon.
+#
+# Baseline: a single quartz phase, total sorption capacity 1.83 mg C/g soil.
+#
+# PHYSICAL MINERAL PROPERTIES, from the slide 19 table:
+#
+#   mineral      rho (g/cc)   SA (m^2/g)   K_d (mL/g)
+#   iron oxide      3.96         76.14       1243.73
+#   quartz          2.65          1.91          7.04
+#
+# DEVIATIONS from the 0-D reference implementation:
+#
+#   Time. FINAL_TIME is 32500 y rather than the notebook's 500 y because the
+#   sandbox residual is short by conc_volume/30, making reaction slow relative
+#   to transport by about 60 here. The steady state is unaffected; this run
+#   reaches it. See mend_nq_t65.in.
+#
+#   Temperature. The notebook applies no Arrhenius correction. Setting the
+#   sandbox REFERENCE_TEMPERATURE equal to the 25 C simulation temperature
+#   disables it, but that also zeroes the carbon use efficiency adjustment, so
+#   E_C is entered pre-adjusted as 0.47 - 0.012*(25-12) = 0.314. To run the full
+#   2013 temperature response instead, set REFERENCE_TEMPERATURE back to 12.d0
+#   and E_C back to 0.47.
+#
+#   Saturation. The notebook fixes S_w = 0.9; this is a transport-only run so
+#   PFLOTRAN supplies 1.0, making K_eq 0.9 times the notebook's. This is the
+#   intended use of the live flow state, and is why the sorbed pools below sit
+#   about 2% under the reference. Imposing 0.9 would require a flow mode.
+#
+# So configured, this deck reproduces the reference implementation at steady
+# state to within 0.3% on every dissolved and particulate pool, and 0.6 to 2.2%
+# on the sorbed pools.
+
+#Description: 0D microbial degradation problem with biomass
+
+SIMULATION
+  SIMULATION_TYPE SUBSURFACE
+  PROCESS_MODELS
+    SUBSURFACE_TRANSPORT transport
+      MODE GIRT
+    /
+  /
+END
+
+SUBSURFACE
+
+REFERENCE_TEMPERATURE 25.d0
+
+#=========================== regression =======================================
+REGRESSION
+  CELL_IDS
+    1
+  /
+END
+
+#=========================== constraints ======================================
+CONSTRAINT initial
+  # assuming porosity = 0.25, soil particle density = 2600, fmw CH2O = 30
+  # [mg C/g soil] * 1.d-3 [g C/mg C] / fmw [g C/mol C] * 
+  #   (1-por) [m^3 soil/m^3 bulk] * soil particle density [kg soil/m^3 soil] *
+  #   1000 [g soil/kg soil] = 65 [mol C/m^3 bulk]
+  # [mol C/m^3 bulk] / (por*sat) [m^3 water/m^3 bulk] / 
+  #   1000. [L water/m^3 water] = 4d-3 mol/L
+  CONCENTRATIONS
+    MICROBIAL_BIOMASS  0.52   T
+    DISSOLVED          0.26   T
+    PARTICULATE        2.6    T
+    PARTICULATE_ENZYME 2.6d-6 T
+    MINERAL_ENZYME     2.6d-6 T
+    INORGANIC_CARBON   1.d-10 T
+  /
+  IMMOBILE
+    MINERAL_ASSOCIATED 325.
+    ADSORBED_QUARTZ 6.500000
+  /
+END
+
+#=========================== numerical methods ================================
+NUMERICAL_METHODS TRANSPORT
+
+  NEWTON_SOLVER
+    NUMERICAL_JACOBIAN
+  /
+
+  LINEAR_SOLVER
+    SOLVER DIRECT
+  /
+
+END
+
+#=========================== regression =======================================
+REGRESSION
+  CELL_IDS
+    1
+  /
+END
+
+#=========================== useful tranport parameters =======================
+SPECIFIED_VELOCITY
+  UNIFORM? YES
+  DATASET 0.d0 0.d0 0.d0 
+END
+
+#=========================== discretization ===================================
+GRID
+  TYPE STRUCTURED
+  NXYZ 1 1 1
+  BOUNDS
+    0.d0 0.d0 0.d0
+    1.d0 1.d0 1.d0
+  /
+END
+
+#=========================== material properties ==============================
+MATERIAL_PROPERTY soil1
+  ID 1
+  POROSITY 0.3d0
+  TORTUOSITY 1.d0
+  ROCK_DENSITY 2600. kg/m^3
+END
+
+#=========================== chemistry ========================================
+CHEMISTRY
+  PRIMARY_SPECIES
+    MICROBIAL_BIOMASS
+    DISSOLVED
+    PARTICULATE
+    PARTICULATE_ENZYME
+    MINERAL_ENZYME
+    INORGANIC_CARBON
+  /
+  IMMOBILE_SPECIES
+    MINERAL_ASSOCIATED
+    ADSORBED_QUARTZ
+  /
+  LOG_FORMULATION
+  ACTIVITY_COEFFICIENTS OFF
+  OUTPUT
+    ALL
+    TOTAL
+  /
+  CARBON_SANDBOX MEND_NQ
+    CONCENTRATION_UNITS MOLE_PER_KG_SOIL
+    B_SPECIES_NAME MICROBIAL_BIOMASS
+    D_SPECIES_NAME DISSOLVED
+    EM_SPECIES_NAME MINERAL_ENZYME
+    EP_SPECIES_NAME PARTICULATE_ENZYME
+    IC_SPECIES_NAME INORGANIC_CARBON
+    M_SPECIES_NAME MINERAL_ASSOCIATED
+    P_SPECIES_NAME PARTICULATE
+    # MEND parameters from Wang et al., 2013, Table 5.
+    # Mineral properties from slide 19 of the Iyer/MacFarlane/Zavarin deck;
+    # MW_OM, F_C, SITE_DENSITY and K_ADS_BASE from MENDnQPools.ipynb.
+    V_P 2.5 mg/mg-h
+    K_P 50 mg/g
+    V_M 1 mg/mg-h
+    K_M 250 mg/g
+    V_D 5.d-4 mg/mg-h
+    K_D 0.26 mg/g
+    M_R 2.8d-4 mg/mg-h
+    E_C 0.314
+    F_D 0.5
+    G_D 0.5
+    P_EP 0.01
+    P_EM 0.01
+    R_EP 1.d-3 mg/mg-h
+    R_EM 1.d-3 mg/mg-h
+    I_P 0.8d-4 mg/mg-h  ! I = 1.6d-4 / 2
+    I_D 0.8d-4 mg/mg-h  ! I = 1.6d-4 / 2
+    REFERENCE_TEMPERATURE 25.d0
+    MINERALOGY
+      MW_OM 500.0 g/mol
+      F_C 0.5
+      K_ADS_BASE 5.d-2 mg/mg-h
+    /
+    SORPTION_SITE quartz
+      Q_SPECIES_NAME ADSORBED_QUARTZ
+      MASS_FRACTION 1.0
+      SPECIFIC_SURFACE_AREA 1.91 m^2/g
+      SITE_DENSITY 2.31
+      KD_LSCIE 7.04 mL/g
+      MINERAL_DENSITY 2.65 g/cm^3
+    /
+  /
+END
+#=========================== output options ===================================
+OUTPUT
+  PERIODIC_OBSERVATION TIMESTEP 1
+END
+
+#=========================== times ============================================
+TIME
+  FINAL_TIME 32500.d0 y
+  INITIAL_TIMESTEP_SIZE 1. s
+  MAXIMUM_TIMESTEP_SIZE 100. y
+END
+
+#=========================== regions ==========================================
+REGION all
+  COORDINATES
+    -1.d20 -1.d20 -1.d20
+    1.d20 1.d20 1.d20
+  /
+END
+
+REGION pt
+  COORDINATE 0.5d0 0.5d0 0.5d0
+END
+
+#=========================== observation points ===============================
+OBSERVATION
+  REGION pt
+END
+
+#=========================== transport conditions =============================
+TRANSPORT_CONDITION initial
+  TYPE ZERO_GRADIENT
+  CONSTRAINT_LIST
+    0.d0 initial
+  /
+END
+
+#=========================== condition couplers ===============================
+INITIAL_CONDITION
+  TRANSPORT_CONDITION initial
+  REGION all
+END
+
+#=========================== stratigraphy couplers ============================
+STRATA
+  REGION all
+  MATERIAL soil1
+END
+
+END_SUBSURFACE
