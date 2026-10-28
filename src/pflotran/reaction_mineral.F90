@@ -1306,7 +1306,7 @@ subroutine ReactionMnrlKineticRateTSTSimple(Res,Jac, &
                                      material_auxvar,reaction,option)
     else
       rate_cap = MAX_DOUBLE
-      if (reaction%limit_mnrl_vf .and. option%tran_dt > 0.d0) then
+      if (reaction%use_rate_cap .and. option%tran_dt > 0.d0) then
         rate_cap = rt_auxvar%mnrl_volfrac(imnrl)/ &
                    (mineral%kinmnrl_molar_vol(imnrl)*option%tran_dt)
       endif
@@ -1591,7 +1591,7 @@ subroutine ReactionMnrlKineticRateTST(Res,Jac, &
                                      material_auxvar,reaction,option)
     else
       rate_cap = MAX_DOUBLE
-      if (reaction%limit_mnrl_vf .and. option%tran_dt > 0.d0) then
+      if (reaction%use_rate_cap .and. option%tran_dt > 0.d0) then
         rate_cap = rt_auxvar%mnrl_volfrac(imnrl)/ &
                    (mineral%kinmnrl_molar_vol(imnrl)*option%tran_dt)
       endif
@@ -2484,7 +2484,7 @@ function ReactionMnrlRateCap(imnrl,rt_auxvar,global_auxvar, &
   PetscReal :: water_vol, avail_mol, stoich_
 
   ReactionMnrlRateCap = MAX_DOUBLE
-  if (.not.reaction%limit_mnrl_vf) return
+  if (.not.reaction%use_rate_cap) return
   if (option%tran_dt <= 0.d0) return
 
   ! L water/m^3 bulk

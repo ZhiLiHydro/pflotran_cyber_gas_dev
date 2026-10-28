@@ -310,6 +310,9 @@ module Reaction_Aux_module
     PetscReal :: minimum_porosity
     ! LIMIT_MINERAL_VOLUME_FRACTION block present
     PetscBool :: limit_mnrl_vf
+    ! residual-level availability rate caps (verification mode); requires
+    ! patient Newton numerics (line search, generous iteration budget)
+    PetscBool :: use_rate_cap
     ! QPAC-style precip cutoff porosity (LIMIT_MINERAL_VOLUME_FRACTION);
     ! 0 = off
     PetscReal :: porosity_res
@@ -566,6 +569,7 @@ function ReactionAuxCreateAux()
   reaction%calculate_initial_porosity = PETSC_FALSE
   reaction%minimum_porosity = 0.d0
   reaction%limit_mnrl_vf = PETSC_FALSE
+  reaction%use_rate_cap = PETSC_FALSE
   reaction%porosity_res = 0.d0
   reaction%porosity_res_ramp = 0.d0
   reaction%porosity_res_fraction = 0.d0

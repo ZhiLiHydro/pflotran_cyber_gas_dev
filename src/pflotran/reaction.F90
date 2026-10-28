@@ -927,6 +927,9 @@ subroutine ReactionReadPass1(reaction,input,option)
               call InputReadDouble(input,option,reaction%tran_diff_ramp)
               call InputErrorMsg(input,option,'diffusion ramp width', &
                                  error_string)
+            case('RATE_CAP')
+              ! residual-level availability caps on kinetic rates
+              reaction%use_rate_cap = PETSC_TRUE
             case('MINIMUM_DIFFUSION_SCALE')
               call InputReadDouble(input,option, &
                                    reaction%tran_diff_min_scale)
