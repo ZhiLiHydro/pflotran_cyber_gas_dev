@@ -1240,6 +1240,7 @@ subroutine ReactionMnrlKineticRateTSTSimple(Res,Jac, &
   PetscBool :: precipitation
   PetscReal :: rate_constant
   PetscReal :: porosity_res, porosity, ramp_scale
+  PetscReal :: rate_cap, tanh_x, deriv_scale
   type(mineral_type), pointer :: mineral
 
   mineral => reaction%mineral
@@ -1297,6 +1298,27 @@ subroutine ReactionMnrlKineticRateTSTSimple(Res,Jac, &
 
     ! units: mol/sec/m^3 bulk
     Im = Im_const*sign_*dabs(affinity_factor)*rate_constant
+    ! smoothly cap the rate at what the step can pay, both branches
+    ! (see ReactionMnrlKineticRateTST)
+    deriv_scale = 1.d0
+    if (precipitation) then
+      rate_cap = ReactionMnrlRateCap(imnrl,rt_auxvar,global_auxvar, &
+                                     material_auxvar,reaction,option)
+    else
+      rate_cap = MAX_DOUBLE
+      if (reaction%limit_mnrl_vf .and. option%tran_dt > 0.d0) then
+        rate_cap = rt_auxvar%mnrl_volfrac(imnrl)/ &
+                   (mineral%kinmnrl_molar_vol(imnrl)*option%tran_dt)
+      endif
+    endif
+    if (rate_cap < MAX_DOUBLE .and. rate_cap > 0.d0) then
+      tanh_x = tanh(dabs(Im)/rate_cap)
+      Im = sign(rate_cap*tanh_x,Im)
+      deriv_scale = 1.d0 - tanh_x*tanh_x
+    else if (rate_cap <= 0.d0) then
+      Im = 0.d0
+      deriv_scale = 0.d0
+    endif
     ! store volumetric rate to be used in updating mineral volume fractions
     ! at end of time step
     if (store_rate) then
@@ -1320,11 +1342,13 @@ subroutine ReactionMnrlKineticRateTSTSimple(Res,Jac, &
     Res(icomp) = Res(icomp) + mineral%kinmnrlstoich_in_residual(i,imnrl)*Im
   enddo
 
+  ! a capped rate is constant with respect to concentrations
+
   if (.not. compute_derivative) return
 
   ! calculate derivatives of rate with respect to free
   ! units = mol/sec
-  dIm_dQK = -Im_const*rate_constant
+  dIm_dQK = deriv_scale*(-Im_const*rate_constant)
 
   ! derivatives with respect to primary species in reaction quotient
   do j = 1, mineral%kinmnrlspecid(0,imnrl)
@@ -1403,6 +1427,7 @@ subroutine ReactionMnrlKineticRateTST(Res,Jac, &
   PetscReal :: rate_constant
   PetscReal :: arrhenius_factor
   PetscReal :: porosity_res, porosity, ramp_scale
+  PetscReal :: rate_cap, tanh_x, deriv_scale, im_tst
   type(mineral_type), pointer :: mineral
 
   mineral => reaction%mineral
@@ -1551,6 +1576,34 @@ subroutine ReactionMnrlKineticRateTST(Res,Jac, &
     else
       Im = Im_const*sign_*dabs(affinity_factor)*sum_prefactor_rate
     endif
+    ! smoothly cap the rate at what the step can pay: precipitation at the
+    ! begin-step aqueous inventory, dissolution at the mineral inventory
+    ! (a cell cannot dissolve more mineral than it holds). R =
+    ! cap*tanh(|Im|/cap): for |Im| << cap the perturbation is
+    ! O((Im/cap)^2); for |Im| >> cap the rate saturates at the cap.
+    ! deriv_scale carries the consistent Jacobian factor. Bounding BOTH
+    ! branches keeps Newton from ping-ponging across the equilibrium point
+    ! between a capped slope and an uncapped cliff.
+    im_tst = Im
+    deriv_scale = 1.d0
+    if (precipitation) then
+      rate_cap = ReactionMnrlRateCap(imnrl,rt_auxvar,global_auxvar, &
+                                     material_auxvar,reaction,option)
+    else
+      rate_cap = MAX_DOUBLE
+      if (reaction%limit_mnrl_vf .and. option%tran_dt > 0.d0) then
+        rate_cap = rt_auxvar%mnrl_volfrac(imnrl)/ &
+                   (mineral%kinmnrl_molar_vol(imnrl)*option%tran_dt)
+      endif
+    endif
+    if (rate_cap < MAX_DOUBLE .and. rate_cap > 0.d0) then
+      tanh_x = tanh(dabs(Im)/rate_cap)
+      Im = sign(rate_cap*tanh_x,Im)
+      deriv_scale = 1.d0 - tanh_x*tanh_x
+    else if (rate_cap <= 0.d0) then
+      Im = 0.d0
+      deriv_scale = 0.d0
+    endif
     ! store volumetric rate to be used in updating mineral volume fractions
     ! at end of time step
     if (store_rate) then
@@ -1573,6 +1626,8 @@ subroutine ReactionMnrlKineticRateTST(Res,Jac, &
     icomp = mineral%kinmnrlspecid_in_residual(i,imnrl)
     Res(icomp) = Res(icomp) + mineral%kinmnrlstoich_in_residual(i,imnrl)*Im
   enddo
+
+  ! a capped rate is constant with respect to concentrations
 
   if (.not. compute_derivative) return
 
@@ -1605,6 +1660,9 @@ subroutine ReactionMnrlKineticRateTST(Res,Jac, &
     dIm_dQK = dIm_dQK*(1.d0/mineral%kinmnrl_mnrl_scale_factor(imnrl))/QK* &
               (1.d0-affinity_factor)
   endif
+
+  ! consistent Jacobian factor for the smooth availability cap
+  dIm_dQK = deriv_scale*dIm_dQK
 
   ! derivatives with respect to primary species in reaction quotient
   if (mineral%kinmnrl_rate_limiter(imnrl) <= 0.d0) then
@@ -1640,7 +1698,8 @@ subroutine ReactionMnrlKineticRateTST(Res,Jac, &
 
   if (mineral%kinmnrl_num_prefactors(imnrl) > 0) then
     ! add contribution of derivative in prefactor - messy
-    dIm_dsum_prefactor_rate = Im/sum_prefactor_rate
+    dIm_dsum_prefactor_rate = deriv_scale*im_tst*material_auxvar%volume/ &
+                              sum_prefactor_rate
     ! summation over parallel reactions (prefactors)
     do ipref = 1, mineral%kinmnrl_num_prefactors(imnrl)
       arrhenius_factor = 1.d0
@@ -1785,6 +1844,7 @@ subroutine ReactionMnrlNucleationKinetics(Res,Jac, &
   PetscReal :: dQK_dmj, dlnQK_dQK
   PetscReal :: nucleation_rate, dnucleation_rate_dlnQK
   PetscReal :: porosity_res, porosity, ramp_scale
+  PetscReal :: rate_cap, tanh_x
 
   mineral => reaction%mineral
 
@@ -1832,6 +1892,17 @@ subroutine ReactionMnrlNucleationKinetics(Res,Jac, &
                                 option)
     nucleation_rate = ramp_scale*nucleation_rate
     dnucleation_rate_dlnQK = ramp_scale*dnucleation_rate_dlnQK
+    ! smoothly cap at aqueous availability (see ReactionMnrlKineticRateTST)
+    rate_cap = ReactionMnrlRateCap(imnrl,rt_auxvar,global_auxvar, &
+                                   material_auxvar,reaction,option)
+    if (rate_cap < MAX_DOUBLE .and. rate_cap > 0.d0) then
+      tanh_x = tanh(nucleation_rate/rate_cap)
+      nucleation_rate = rate_cap*tanh_x
+      dnucleation_rate_dlnQK = (1.d0-tanh_x*tanh_x)*dnucleation_rate_dlnQK
+    else if (rate_cap <= 0.d0) then
+      nucleation_rate = 0.d0
+      dnucleation_rate_dlnQK = 0.d0
+    endif
 !    print *, 'nucleation rate: ', nucleation_rate
 #if 0
 print *, 'analytical derivative: ', dnucleation_rate_dlnQK
@@ -2246,8 +2317,9 @@ subroutine ReactionMnrlUpdateKineticState(rt_auxvar,global_auxvar, &
           stoich_ = reaction%mineral%kinmnrlstoich(i,imnrl)
           if (stoich_ > 0.d0) then
             icomp = reaction%mineral%kinmnrlspecid(i,imnrl)
-            ! mol/m^3 bulk available
-            avail_mol = max(rt_auxvar%total(icomp,1),0.d0)*water_vol + &
+            ! mol/m^3 bulk; begin-step basis matches the residual-level
+            ! rate cap so a solve-consistent rate is not re-capped here
+            avail_mol = max(rt_auxvar%total_prev(icomp),0.d0)*water_vol + &
                         released(icomp)
             dvf_max = min(dvf_max,avail_mol/stoich_* &
                           reaction%mineral%kinmnrl_molar_vol(imnrl))
@@ -2375,6 +2447,61 @@ subroutine ReactionMnrlReportZeroSurfArea(imnrl,surface_area,mineral, &
   endif
 
 end subroutine ReactionMnrlReportZeroSurfArea
+
+! ************************************************************************** !
+
+function ReactionMnrlRateCap(imnrl,rt_auxvar,global_auxvar, &
+                             material_auxvar,reaction,option)
+  !
+  ! Maximum precipitation rate (mol/m^3 bulk/s) the cell's begin-step
+  ! aqueous inventory can supply over the current step. Capping the rate in
+  ! the residual keeps the Newton system balanceable at extreme affinity,
+  ! so the solve can converge honestly instead of stagnating on a rate that
+  ! demands mass the water does not hold. Begin-step totals are constant
+  ! within the solve, so a capped rate is a constant source with a correct
+  ! zero Jacobian. Supply released by dissolving minerals within the same
+  ! step is not credited here (it enters the next step's totals); the
+  ! update-side availability limiter retains the same-step credit.
+  !
+  ! Author: Heeho Park
+  ! Date: 10/28/26
+  !
+  use Option_module
+  use Material_Aux_module
+
+  implicit none
+
+  PetscInt :: imnrl
+  type(reactive_transport_auxvar_type) :: rt_auxvar
+  type(global_auxvar_type) :: global_auxvar
+  type(material_auxvar_type) :: material_auxvar
+  class(reaction_rt_type) :: reaction
+  type(option_type) :: option
+
+  PetscReal :: ReactionMnrlRateCap
+
+  PetscInt :: i, icomp
+  PetscReal :: water_vol, avail_mol, stoich_
+
+  ReactionMnrlRateCap = MAX_DOUBLE
+  if (.not.reaction%limit_mnrl_vf) return
+  if (option%tran_dt <= 0.d0) return
+
+  ! L water/m^3 bulk
+  water_vol = 1.d3*material_auxvar%porosity*global_auxvar%sat(1)
+  do i = 1, reaction%mineral%kinmnrlspecid(0,imnrl)
+    stoich_ = reaction%mineral%kinmnrlstoich(i,imnrl)
+    if (stoich_ > 0.d0) then
+      icomp = reaction%mineral%kinmnrlspecid(i,imnrl)
+      ! mol/m^3 bulk, from begin-step totals (constant within the solve,
+      ! so a capped rate has a correct zero Jacobian)
+      avail_mol = max(rt_auxvar%total_prev(icomp),0.d0)*water_vol
+      ReactionMnrlRateCap = min(ReactionMnrlRateCap, &
+                                avail_mol/(stoich_*option%tran_dt))
+    endif
+  enddo
+
+end function ReactionMnrlRateCap
 
 ! ************************************************************************** !
 

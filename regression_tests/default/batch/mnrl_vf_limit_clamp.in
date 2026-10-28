@@ -1,12 +1,13 @@
 #Description: Tests the pore-volume budget clamp of
-#  LIMIT_MINERAL_VOLUME_FRACTION RESIDUAL_POROSITY with two minerals of
-#  mixed rate sign. Calcite (VF 0.949) and aragonite (VF 0.001) sum to 0.95
-#  (porosity 0.05, just above the residual porosity of 0.049999). Both start
-#  supersaturated, but aragonite is metastable with respect to calcite: as
-#  the solution equilibrates with calcite, aragonite dissolves (the cutoff
-#  must not block dissolution) while calcite growth is capped at the pore
-#  volume above the residual porosity. Calcite must land at exactly 0.950001
-#  and aragonite must dissolve away completely.
+#  LIMIT_MINERAL_VOLUME_FRACTION with two minerals of mixed rate sign under
+#  the availability rate caps. Calcite (VF 0.949) and aragonite (VF 0.001)
+#  sum to 0.95 (porosity 0.05, just above the residual porosity 0.049999).
+#  Both start supersaturated; as the solution equilibrates with calcite,
+#  aragonite dissolves through the cutoff (dissolution is never gated)
+#  while calcite growth is capped per step by the begin-step aqueous
+#  inventory, so the aragonite-to-calcite relay proceeds across steps at
+#  the pace the caps allow. The volume fraction SUM must land exactly on
+#  the 0.950001 cap, with the mid-relay partition pinned by the gold.
 
 SIMULATION
   SIMULATION_TYPE SUBSURFACE

@@ -33,6 +33,10 @@ module Reactive_Transport_Aux_module
 
     ! phase dependent totals
     PetscReal, pointer :: total(:,:)       ! mol solute/L water
+    ! liquid totals at the beginning of the step; basis for the
+    ! availability rate cap (LIMIT_MINERAL_VOLUME_FRACTION); constant
+    ! within each Newton solve
+    PetscReal, pointer :: total_prev(:)
     type(matrix_block_auxvar_type), pointer :: aqueous
 
     ! sorbed totals
@@ -239,6 +243,12 @@ recursive subroutine RTAuxVarInit(auxvar,reaction, &
 
   allocate(auxvar%total(reaction%naqcomp,reaction%nphase))
   auxvar%total = 0.d0
+  if (reaction%limit_mnrl_vf) then
+    allocate(auxvar%total_prev(reaction%naqcomp))
+    auxvar%total_prev = 0.d0
+  else
+    nullify(auxvar%total_prev)
+  endif
   auxvar%aqueous => MatrixBlockAuxVarCreate(option)
   call MatrixBlockAuxVarInit(auxvar%aqueous,reaction%naqcomp, &
                              reaction%naqcomp,reaction%nphase,option)
@@ -406,6 +416,9 @@ subroutine RTAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%pri_molal = auxvar%pri_molal
 
   auxvar2%total = auxvar%total
+  if (associated(auxvar%total_prev)) then
+    auxvar2%total_prev = auxvar%total_prev
+  endif
 
   call MatrixBlockAuxVarCopy(auxvar%aqueous,auxvar2%aqueous,option)
 
@@ -685,6 +698,7 @@ recursive subroutine RTAuxVarStrip(auxvar)
 
   call DeallocateArray(auxvar%pri_molal)
   call DeallocateArray(auxvar%total)
+  call DeallocateArray(auxvar%total_prev)
 
   call MatrixBlockAuxVarDestroy(auxvar%aqueous)
 

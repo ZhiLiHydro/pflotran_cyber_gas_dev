@@ -1,26 +1,26 @@
 -- GENERIC: pH --
-        1:   6.3585671654300E+00
+        1:   6.4558101553127E+00
 -- CONCENTRATION: Total H+ --
-        1:   9.0363599964835E-04
+        1:   8.0081263331481E-04
 -- CONCENTRATION: Total HCO3- --
-        1:   2.6701164219970E-03
+        1:   2.7729397840734E-03
 -- CONCENTRATION: Total Ca++ --
-        1:   9.8335136948435E-02
+        1:   9.8437960314491E-02
 -- VOLUME_FRACTION: Calcite VF --
-        1:   9.5000100000000E-01
+        1:   9.4908824759831E-01
 -- VOLUME_FRACTION: Aragonite VF --
-        1:   0.0000000000000E+00
+        1:   9.1275240168954E-04
 -- RATE: Calcite Rate --
-        1:  -8.8911526543049E-20
+        1:   4.8697480484516E-08
 -- RATE: Aragonite Rate --
-        1:   0.0000000000000E+00
+        1:  -5.2667430283831E-08
 -- DISCRETE: Material ID --
         1:         1
 -- SOLUTION: Transport --
-   Time (seconds):   2.5178060013786E-03
+   Time (seconds):   1.7165380008919E-03
    Time Steps:           21
-   Newton Iterations:           47
-   Linear Solver Iterations:           47
+   Newton Iterations:           53
+   Linear Solver Iterations:           53
    Time Step Cuts:            0
-   Solution 2-Norm:   9.8146552070756E-02
-   Residual 2-Norm:   1.5399928135107E-19
+   Solution 2-Norm:   9.8195272930788E-02
+   Residual 2-Norm:   5.7706144950332E-20

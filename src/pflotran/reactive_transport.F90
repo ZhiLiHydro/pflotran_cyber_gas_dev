@@ -1361,6 +1361,11 @@ subroutine RTUpdateFixedAccumulation(realization)
                         material_auxvars(ghosted_id), &
                         reaction,option, &
                         accum_t_p(istart:iendall))
+    ! snapshot begin-step totals for the availability rate cap; constant
+    ! within the step's Newton solve
+    if (reaction%limit_mnrl_vf) then
+      rt_auxvars(ghosted_id)%total_prev = rt_auxvars(ghosted_id)%total(:,1)
+    endif
 
 #if defined(DEBUG_RT_RES_ACCUMULATION)
       if (grid%nG2A(ghosted_id) == rt_debug_cell_id) then
