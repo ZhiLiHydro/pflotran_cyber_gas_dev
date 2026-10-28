@@ -32,6 +32,9 @@ module Solver_module
     ! demote convergence declared by any criterion while the residual
     ! infinity norm exceeds this multiple of ITOL; 0 = off
     PetscReal :: newton_inf_res_guard
+    ! SNES line search type for SNESNEWTONLS; '' keeps the historical
+    ! default (BASIC, i.e. full Newton steps)
+    character(len=MAXWORDLENGTH) :: newton_linesearch_type
     PetscReal :: newton_inf_upd_tol    ! infinity tolerance for update
     PetscReal :: newton_inf_rel_update_tol ! infinity norm on relative update (c(i)-c(i-1))/c(i-1)
     PetscReal :: newton_inf_scaled_res_tol ! infinity norm on scale residual (r(i)/accum(i))
@@ -143,6 +146,7 @@ function SolverCreate()
   solver%max_norm = MAX_DOUBLE    ! set to a large value
   solver%newton_inf_res_tol = UNINITIALIZED_DOUBLE
   solver%newton_inf_res_guard = 0.d0
+  solver%newton_linesearch_type = ''
   solver%newton_inf_upd_tol = UNINITIALIZED_DOUBLE
   solver%newton_inf_rel_update_tol = UNINITIALIZED_DOUBLE
   solver%newton_inf_scaled_res_tol = UNINITIALIZED_DOUBLE
@@ -1284,6 +1288,21 @@ subroutine SolverReadNewtonSelectCase(solver,input,keyword,found, &
     case('ITOL_UPDATE', 'INF_TOL_UPDATE')
       call InputReadDouble(input,option,solver%newton_inf_upd_tol)
       call InputErrorMsg(input,option,'newton_inf_upd_tol',error_string)
+
+    case('LINE_SEARCH_TYPE')
+      ! BT enables backtracking (recommended with RATE_CAP + LOG_FORMULATION;
+      ! the log formulation cannot produce negative concentrations)
+      call InputReadCard(input,option,word)
+      call InputErrorMsg(input,option,keyword,error_string)
+      call StringToUpper(word)
+      select case(trim(word))
+        case('BT','BASIC','L2','CP')
+          solver%newton_linesearch_type = trim(word)
+        case default
+          option%io_buffer = 'Unknown LINE_SEARCH_TYPE "' // trim(word) // &
+            '". Choose from BT, BASIC, L2, CP.'
+          call PrintErrMsg(option)
+      end select
 
     case('ITOL_GUARD')
       ! no positive convergence while the residual infinity norm exceeds

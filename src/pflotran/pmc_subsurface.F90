@@ -270,10 +270,9 @@ subroutine PMCSubsurfaceSetupSolvers_TimestepperSNES(this)
       endif
 
       if (solver%snes_type == SNESNEWTONLS) then
-        ! by default turn off line search
+        ! by default turn off line search; LINE_SEARCH_TYPE overrides
         call SNESGetLineSearch(solver%snes,linesearch,ierr);CHKERRQ(ierr)
-        call SNESLineSearchSetType(linesearch,SNESLINESEARCHBASIC, &
-                                   ierr);CHKERRQ(ierr)
+        call PMCSubsurfaceSetLineSearch(linesearch,solver,ierr)
       endif
 
       ! Have PETSc do a SNES_View() at the end of each solve if
@@ -452,13 +451,12 @@ subroutine PMCSubsurfaceSetupSolvers_TimestepperSNES(this)
         call MatCreateSNESMF(solver%snes,solver%M,ierr);CHKERRQ(ierr)
       endif
 
-      ! this could be changed in the future if there is a way to
-      ! ensure that the linesearch update does not perturb
-      ! concentrations negative.
+      ! linesearch off (BASIC) by default: a backtracking update could
+      ! perturb concentrations negative in non-log formulations.
+      ! LINE_SEARCH_TYPE overrides (BT is safe with LOG_FORMULATION).
       if (solver%snes_type == SNESNEWTONLS) then
         call SNESGetLineSearch(solver%snes,linesearch,ierr);CHKERRQ(ierr)
-        call SNESLineSearchSetType(linesearch,SNESLINESEARCHBASIC, &
-                                   ierr);CHKERRQ(ierr)
+        call PMCSubsurfaceSetLineSearch(linesearch,solver,ierr)
       endif
 
       ! Have PETSc do a SNES_View() at the end of each solve if
@@ -1062,6 +1060,41 @@ recursive subroutine PMCSubsurfaceDestroy(this)
   call PMCSubsurfaceStrip(this)
 
 end subroutine PMCSubsurfaceDestroy
+
+! ************************************************************************** !
+
+subroutine PMCSubsurfaceSetLineSearch(linesearch,solver,ierr)
+  !
+  ! Applies the NEWTON_SOLVER LINE_SEARCH_TYPE choice; the historical
+  ! default is BASIC (full Newton steps)
+  !
+  ! Author: Heeho Park
+  ! Date: 10/28/26
+  !
+  use Solver_module
+
+  implicit none
+
+  SNESLineSearch :: linesearch
+  type(solver_type) :: solver
+  PetscErrorCode :: ierr
+
+  select case(trim(solver%newton_linesearch_type))
+    case('BT')
+      call SNESLineSearchSetType(linesearch,SNESLINESEARCHBT, &
+                                 ierr);CHKERRQ(ierr)
+    case('L2')
+      call SNESLineSearchSetType(linesearch,SNESLINESEARCHL2, &
+                                 ierr);CHKERRQ(ierr)
+    case('CP')
+      call SNESLineSearchSetType(linesearch,SNESLINESEARCHCP, &
+                                 ierr);CHKERRQ(ierr)
+    case default ! '' or BASIC: the historical full-step default
+      call SNESLineSearchSetType(linesearch,SNESLINESEARCHBASIC, &
+                                 ierr);CHKERRQ(ierr)
+  end select
+
+end subroutine PMCSubsurfaceSetLineSearch
 
 ! ************************************************************************** !
 
