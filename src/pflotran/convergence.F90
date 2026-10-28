@@ -296,6 +296,16 @@ subroutine ConvergenceTest(snes_,i_iteration,xnorm,unorm,fnorm,reason, &
       reason%v = 11
     endif
 
+    ! optional guard against spurious convergence: no positive reason while
+    ! the residual infinity norm remains far above ITOL
+    if (solver%newton_inf_res_guard > 0.d0 .and. &
+        solver%newton_inf_res_tol > 0.d0 .and. &
+        reason%v > 0 .and. reason%v /= 999 .and. &
+        inorm_residual > solver%newton_inf_res_guard* &
+                         solver%newton_inf_res_tol) then
+      reason%v = 0
+    endif
+
     if (inorm_residual > solver%max_norm) then
       reason%v = -20
     endif

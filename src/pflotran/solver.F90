@@ -29,6 +29,9 @@ module Solver_module
     PetscReal :: newton_stol       ! relative tolerance (relative to previous iteration)
     PetscReal :: newton_dtol       ! divergence tolerance
     PetscReal :: newton_inf_res_tol    ! infinity tolerance for residual
+    ! demote convergence declared by any criterion while the residual
+    ! infinity norm exceeds this multiple of ITOL; 0 = off
+    PetscReal :: newton_inf_res_guard
     PetscReal :: newton_inf_upd_tol    ! infinity tolerance for update
     PetscReal :: newton_inf_rel_update_tol ! infinity norm on relative update (c(i)-c(i-1))/c(i-1)
     PetscReal :: newton_inf_scaled_res_tol ! infinity norm on scale residual (r(i)/accum(i))
@@ -139,6 +142,7 @@ function SolverCreate()
   solver%newton_dtol = PETSC_DEFAULT_REAL
   solver%max_norm = MAX_DOUBLE    ! set to a large value
   solver%newton_inf_res_tol = UNINITIALIZED_DOUBLE
+  solver%newton_inf_res_guard = 0.d0
   solver%newton_inf_upd_tol = UNINITIALIZED_DOUBLE
   solver%newton_inf_rel_update_tol = UNINITIALIZED_DOUBLE
   solver%newton_inf_scaled_res_tol = UNINITIALIZED_DOUBLE
@@ -1280,6 +1284,13 @@ subroutine SolverReadNewtonSelectCase(solver,input,keyword,found, &
     case('ITOL_UPDATE', 'INF_TOL_UPDATE')
       call InputReadDouble(input,option,solver%newton_inf_upd_tol)
       call InputErrorMsg(input,option,'newton_inf_upd_tol',error_string)
+
+    case('ITOL_GUARD')
+      ! no positive convergence while the residual infinity norm exceeds
+      ! this multiple of ITOL (guards against stagnation-based criteria
+      ! accepting unbalanced states); requires ITOL
+      call InputReadDouble(input,option,solver%newton_inf_res_guard)
+      call InputErrorMsg(input,option,'newton_inf_res_guard',error_string)
 
     case('ITOL_SEC','ITOL_RES_SEC','INF_TOL_SEC')
       !TODO(geh): move to PM
