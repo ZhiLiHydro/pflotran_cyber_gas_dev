@@ -120,7 +120,11 @@ Inlet1 is a Ca pulse. Inlet2 replaces Ca with Na and Mg. Inlet3 returns to the i
 \large
 
 \EQ
-\frac{\p}{\p t}\left(\phi s\,\Psi_j\right) + \bnabla\cdot\bOmega_j \eq 0
+\frac{\p}{\p t}\left(\phi s\,\Psi_j + \sum_\alpha S_{j\alpha}\right) + \bnabla\cdot\bOmega_j \eq 0
+\EN
+
+\EQ
+S_{j\alpha} \eq \sum_i \nu_{ji}\, S_{i\alpha}
 \EN
 
 \EQ
@@ -132,7 +136,10 @@ Inlet1 is a Ca pulse. Inlet2 replaces Ca with Na and Mg. Inlet3 returns to the i
 \phi &\eq \text{porosity}; \quad
 s \eq \text{liquid saturation}; \quad
 \tau \eq \text{tortuosity} \\
-\Psi_j &\eq \text{total component concentration of aqueous species } j \\
+\Psi_j &\eq \text{aqueous total component concentration of primary species } j \\
+S_{j\alpha} &\eq \text{total sorbed concentration of primary species } j \text{ on site } \alpha \\
+S_{i\alpha} &\eq \text{sorbed concentration of surface species } i \text{ on site } \alpha \\
+\nu_{ji} &\eq \text{stoichiometry of primary species } j \text{ in surface species } i \\
 \bOmega_j &\eq \text{solute flux}; \quad
 \bq \eq \text{Darcy velocity} \\
 \gD &\eq \text{species-independent diffusion coefficient}
