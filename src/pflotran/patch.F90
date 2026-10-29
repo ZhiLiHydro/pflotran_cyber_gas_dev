@@ -6947,25 +6947,26 @@ subroutine PatchGetVariable1(patch,field,reaction_base,option, &
   call VecGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
   vec_ptr(:) = UNINITIALIZED_DOUBLE
 
-  ! These two fills are not one value per cell.
-  if (ivar == K_ORTHOGONALITY_ERROR) then
-    if (grid%itype == IMPLICIT_UNSTRUCTURED_GRID) then
-      call PatchGetKOrthogonalityError(grid,material_auxvars,vec_ptr)
-    endif
-  elseif (ivar == RESIDUAL) then
-    call VecRestoreArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
-    call VecStrideGather(field%flow_r,isubvar-1,vec,INSERT_VALUES, &
-                         ierr);CHKERRQ(ierr)
-    call VecGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
-  else
-    do local_id = 1, grid%nlmax
-      ghosted_id = grid%nL2G(local_id)
-      vec_ptr(local_id) = &
-        PatchLookupVariableAtCell(patch,field,reaction_base,option, &
-                                  output_option,ghosted_id,ivar, &
-                                  isubvar,isubvar2,PETSC_FALSE)
-    enddo
-  endif
+  ! Whole-vector fills. Another one is a new case here.
+  select case(ivar)
+    case(K_ORTHOGONALITY_ERROR)
+      if (grid%itype == IMPLICIT_UNSTRUCTURED_GRID) then
+        call PatchGetKOrthogonalityError(grid,material_auxvars,vec_ptr)
+      endif
+    case(RESIDUAL)
+      call VecRestoreArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
+      call VecStrideGather(field%flow_r,isubvar-1,vec,INSERT_VALUES, &
+                           ierr);CHKERRQ(ierr)
+      call VecGetArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
+    case default
+      do local_id = 1, grid%nlmax
+        ghosted_id = grid%nL2G(local_id)
+        vec_ptr(local_id) = &
+          PatchLookupVariableAtCell(patch,field,reaction_base,option, &
+                                    output_option,ghosted_id,ivar, &
+                                    isubvar,isubvar2,PETSC_FALSE)
+      enddo
+  end select
 
   call VecRestoreArray(vec,vec_ptr,ierr);CHKERRQ(ierr)
 
