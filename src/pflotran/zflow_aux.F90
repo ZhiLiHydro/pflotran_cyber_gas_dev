@@ -283,8 +283,8 @@ subroutine ZFlowAuxVarCompute(x,zflow_auxvar,global_auxvar, &
     zflow_auxvar%conc = 0.d0
   endif
 
-  ! %porosity should never be used. set to bogus value to catch misuse
-  material_auxvar%porosity = -888.d0
+  ! Compression laws must use base porosity, not the cached effective value.
+  if (update_porosity) material_auxvar%porosity = -888.d0
 
   if (update_porosity .and. soil_compressibility_index > 0 .and. &
       zflow_auxvar%pres > 0.d0) then
@@ -296,7 +296,9 @@ subroutine ZFlowAuxVarCompute(x,zflow_auxvar,global_auxvar, &
     zflow_auxvar%dpor_dp = 0.d0
     zflow_auxvar%dpor_dbase = 1.d0
   endif
-  material_auxvar%porosity = zflow_auxvar%effective_porosity
+  ! Boundary evaluations share the interior material; preserve its porosity.
+  if (update_porosity) &
+    material_auxvar%porosity = zflow_auxvar%effective_porosity
 
   ! For a very large negative liquid pressure (e.g. -1.d18), the capillary
   ! pressure can go near infinite, resulting in ds_dp being < 1.d-40 below
