@@ -1395,6 +1395,7 @@ subroutine InitSubsurfGeomechInitSimulation(simulation, pm_geomech)
   class(pmc_geomechanics_type), pointer :: pmc_geomech
   class(timestepper_ksp_type), pointer :: timestepper
   type(geomechanics_regression_type), pointer :: geomech_regression
+  character(len=MAXWORDLENGTH) :: split_scheme_name
   PetscErrorCode :: ierr
 
   if (.not. associated(pm_geomech)) return
@@ -1402,6 +1403,19 @@ subroutine InitSubsurfGeomechInitSimulation(simulation, pm_geomech)
   nullify(pmc_dummy)
 
   option => simulation%option
+
+  select case(option%geomechanics%split_scheme)
+    case(GEOMECH_FIXED_STRAIN_SPLIT)
+      split_scheme_name = 'FIXED_STRAIN'
+    case(GEOMECH_FIXED_STRESS_SPLIT)
+      split_scheme_name = 'FIXED_STRESS'
+    case default
+      split_scheme_name = 'UNSET'
+  end select
+  if (OptionPrintToFile(option)) then
+    write(option%fid_out,'(/,a)') 'Geomechanics split scheme: ' // &
+      trim(split_scheme_name)
+  endif
   geomech_realization => simulation%geomech%realization
   subsurf_realization => simulation%realization
   pmc_geomech => simulation%geomech%process_model_coupler

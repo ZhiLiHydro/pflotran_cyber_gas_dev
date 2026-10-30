@@ -68,10 +68,25 @@ subroutine FactoryGeomechanicsInitialize(simulation)
   class(pmc_geomechanics_type), pointer :: pmc_geomech
   class(timestepper_ksp_type), pointer :: timestepper
   type(input_type), pointer :: input
+  character(len=MAXWORDLENGTH) :: split_scheme_name
   PetscErrorCode :: ierr
 
   option => simulation%option
   nullify(timestepper)
+
+  ! Drained runs remove the geomechanics process model from the list
+  ! before FactorySubsurfaceInitPostPetsc, so InitSubsurfGeomechInitSimulation
+  ! never sees it. Fixed-stress runs print from that routine instead.
+  select case(option%geomechanics%split_scheme)
+    case(GEOMECH_DRAINED_SPLIT)
+      split_scheme_name = 'DRAINED'
+    case default
+      split_scheme_name = 'UNSET'
+  end select
+  if (OptionPrintToFile(option)) then
+    write(option%fid_out,'(/,a)') 'Geomechanics split scheme: ' // &
+      trim(split_scheme_name)
+  endif
 
   nullify(prev_pm)
   cur_pm => simulation%process_model_list
