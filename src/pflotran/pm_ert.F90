@@ -49,7 +49,6 @@ module PM_ERT_class
     ! Starting sulution/potential
     PetscBool :: analytical_potential
     PetscBool :: coupled_ert_flow_jacobian
-    PetscBool :: invert_for_porosity
     PetscBool :: calc_max_tracer_concentration
     PetscBool :: calc_fluid_cond_from_chemistry
   contains
@@ -147,7 +146,6 @@ subroutine PMERTInit(pm_ert)
 
   pm_ert%analytical_potential = PETSC_TRUE
   pm_ert%coupled_ert_flow_jacobian = PETSC_FALSE
-  pm_ert%invert_for_porosity = PETSC_FALSE
   pm_ert%calc_max_tracer_concentration = PETSC_FALSE
   pm_ert%calc_fluid_cond_from_chemistry = PETSC_FALSE
 
@@ -660,14 +658,11 @@ recursive subroutine PMERTInitializeRun(this)
           call VecZeroEntries(this%dconductivity_dconcentration, &
                               ierr);CHKERRQ(ierr)
         endif
-        if (option%inversion%invert_for_porosity) then
-          this%invert_for_porosity = PETSC_TRUE
-          call DiscretizationCreateVector(this%realization%discretization, &
-                                         NGEOPDOF, &
-                                         this%dconductivity_dporosity, &
-                                         GLOBAL,option)
-          call VecZeroEntries(this%dconductivity_dporosity,ierr);CHKERRQ(ierr)
-        endif
+        call DiscretizationCreateVector(this%realization%discretization, &
+                                       NGEOPDOF, &
+                                       this%dconductivity_dporosity, &
+                                       GLOBAL,option)
+        call VecZeroEntries(this%dconductivity_dporosity,ierr);CHKERRQ(ierr)
       endif
     endif
   endif
@@ -1077,10 +1072,8 @@ subroutine PMERTPreSolve(this)
       call VecGetArray(this%dconductivity_dconcentration, &
                           dcond_dconc_vec_ptr,ierr);CHKERRQ(ierr)
     endif
-    if (this%invert_for_porosity) then
-      call VecGetArray(this%dconductivity_dporosity, &
-                          dcond_dpor_vec_ptr,ierr);CHKERRQ(ierr)
-    endif
+    call VecGetArray(this%dconductivity_dporosity, &
+                        dcond_dpor_vec_ptr,ierr);CHKERRQ(ierr)
   endif
 
   ! The flow modes do not keep the global temperature current (it is only
@@ -1199,9 +1192,7 @@ subroutine PMERTPreSolve(this)
       if (associated(rt_auxvars) .or. associated(zflow_auxvars)) then
         if (local_id > 0) dcond_dconc_vec_ptr(local_id) = dcond_dconc
       endif
-      if (this%invert_for_porosity) then
-        if (local_id > 0) dcond_dpor_vec_ptr(local_id) = dcond_dpor
-      endif
+      if (local_id > 0) dcond_dpor_vec_ptr(local_id) = dcond_dpor
     endif
   enddo
 
@@ -1217,10 +1208,8 @@ subroutine PMERTPreSolve(this)
       call VecRestoreArray(this%dconductivity_dconcentration, &
                              dcond_dconc_vec_ptr,ierr);CHKERRQ(ierr)
     endif
-    if (this%invert_for_porosity) then
-      call VecRestoreArray(this%dconductivity_dporosity, &
-                              dcond_dpor_vec_ptr,ierr);CHKERRQ(ierr)
-    endif
+    call VecRestoreArray(this%dconductivity_dporosity, &
+                            dcond_dpor_vec_ptr,ierr);CHKERRQ(ierr)
   endif
 
 end subroutine PMERTPreSolve
@@ -1710,6 +1699,7 @@ subroutine PMERTBuildCoupledJacobian(this)
   PetscInt, pointer :: cell_neighbors(:,:)
   PetscReal, allocatable :: phi_sor(:), phi_rec(:)
   PetscReal, pointer :: dsat_dparam_ptr(:),dconc_dparam_ptr(:)
+  PetscReal, pointer :: dpor_dparam_ptr(:)
   PetscReal, pointer :: dcond_dsat_vec_ptr(:),dcond_dconc_vec_ptr(:)
   PetscReal, pointer :: dcond_dpor_vec_ptr(:)
   PetscReal :: jacob,coupled_jacob
@@ -1761,15 +1751,16 @@ subroutine PMERTBuildCoupledJacobian(this)
       call VecGetArrayRead(this%dconductivity_dconcentration, &
                               dcond_dconc_vec_ptr,ierr);CHKERRQ(ierr)
     endif
-    if (this%invert_for_porosity) then
-      call VecGetArrayRead(this%dconductivity_dporosity, &
-                              dcond_dpor_vec_ptr,ierr);CHKERRQ(ierr)
-    endif
+    call VecGetArrayRead(this%dconductivity_dporosity, &
+                            dcond_dpor_vec_ptr,ierr);CHKERRQ(ierr)
     iflag = PETSC_FALSE
     do isurvey = 1, size(solutions)
       if (.not.Equal(solutions(isurvey)%time,option%time)) cycle
       iflag = PETSC_TRUE
       do iparam = 1, size(parameters)
+        call VecGetArrayRead(solutions(isurvey)% &
+                                dporosity_dparameter(iparam), &
+                                dpor_dparam_ptr,ierr);CHKERRQ(ierr)
         call VecGetArrayRead(solutions(isurvey)% &
                                 dsaturation_dparameter(iparam), &
                                 dsat_dparam_ptr,ierr);CHKERRQ(ierr)
@@ -1856,8 +1847,7 @@ subroutine PMERTBuildCoupledJacobian(this)
 
             enddo
 
-            ! dERT/dparam = dERT/dCond * dCond/dSat  * dSat/dParam + &
-            !               dERT/dCond * dCond/dConc * dConc/dParam
+            ! Chain through saturation, concentration, and effective porosity.
             coupled_jacob = coupled_jacob + jacob * dsat_dparam_ptr(local_id) *&
                             dcond_dsat_vec_ptr(local_id)
             if (Initialized(zflow_sol_tran_eq)) then
@@ -1865,12 +1855,8 @@ subroutine PMERTBuildCoupledJacobian(this)
                               jacob * dconc_dparam_ptr(local_id) * &
                               dcond_dconc_vec_ptr(local_id)
             endif
-            if (this%invert_for_porosity) then
-              if (parameters(iparam)%imat == patch%imat(ghosted_id)) then
-                coupled_jacob = coupled_jacob + &
-                                jacob * dcond_dpor_vec_ptr(local_id)
-              endif
-            endif
+            coupled_jacob = coupled_jacob + jacob * &
+              dcond_dpor_vec_ptr(local_id) * dpor_dparam_ptr(local_id)
 
             deallocate(phi_sor, phi_rec)
 
@@ -1884,6 +1870,9 @@ subroutine PMERTBuildCoupledJacobian(this)
                            iparam-1,imeasurement-1,coupled_jacob, &
                            INSERT_VALUES,ierr);CHKERRQ(ierr)
         enddo
+        call VecRestoreArrayRead(solutions(isurvey)% &
+                                    dporosity_dparameter(iparam), &
+                                    dpor_dparam_ptr,ierr);CHKERRQ(ierr)
         call VecRestoreArrayRead(solutions(isurvey)% &
                                     dsaturation_dparameter(iparam), &
                                     dsat_dparam_ptr,ierr);CHKERRQ(ierr)
@@ -1912,10 +1901,8 @@ subroutine PMERTBuildCoupledJacobian(this)
       call VecRestoreArrayRead(this%dconductivity_dconcentration, &
                                   dcond_dconc_vec_ptr,ierr);CHKERRQ(ierr)
     endif
-    if (this%invert_for_porosity) then
-      call VecRestoreArrayRead(this%dconductivity_dporosity, &
-                                  dcond_dpor_vec_ptr,ierr);CHKERRQ(ierr)
-    endif
+    call VecRestoreArrayRead(this%dconductivity_dporosity, &
+                                dcond_dpor_vec_ptr,ierr);CHKERRQ(ierr)
 
   endif
 

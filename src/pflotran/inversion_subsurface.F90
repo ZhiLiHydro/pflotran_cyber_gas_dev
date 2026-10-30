@@ -2413,6 +2413,9 @@ subroutine InvSubsurfFVSetOrigSoln(this)
       call VecCopy(solutions(i)%perturbed_saturation_solution, &
                    solutions(i)%original_saturation_solution, &
                    ierr);CHKERRQ(ierr)
+      call VecCopy(solutions(i)%perturbed_porosity_solution, &
+                   solutions(i)%original_porosity_solution, &
+                   ierr);CHKERRQ(ierr)
       if (.not.PetscObjectIsNull(solutions(i)%perturbed_solute_solution)) then
         call VecCopy(solutions(i)%perturbed_solute_solution, &
                      solutions(i)%original_solute_solution, &
@@ -2430,6 +2433,9 @@ subroutine InvSubsurfFVSetOrigSoln(this)
 !                       ierr);CHKERRQ(ierr)
       call InvAuxBCastVecForCommI(this%inversion_option%forcomm_i, &
                                   solutions(i)%original_saturation_solution, &
+                                  this%driver)
+      call InvAuxBCastVecForCommI(this%inversion_option%forcomm_i, &
+                                  solutions(i)%original_porosity_solution, &
                                   this%driver)
       if (.not.PetscObjectIsNull(solutions(i)%original_solute_solution)) then
 !print *, this%driver%comm%rank, ' Bcast13 forcomm_i'
@@ -2480,6 +2486,11 @@ subroutine InvSubsurfFVCalcPartialJs(this,idof_pert)
   solutions => this%inversion_aux%coupled_aux%solutions
   do i = 1, size(solutions)
     call InvCoupledUpdateSolnVecs(idof_pert, &
+      solutions(i)%perturbed_porosity_solution, &
+      solutions(i)%original_porosity_solution, &
+      solutions(i)%dporosity_dparameter, &
+      this%inversion_aux%perturbation%pert)
+    call InvCoupledUpdateSolnVecs(idof_pert, &
       solutions(i)%perturbed_saturation_solution, &
       solutions(i)%original_saturation_solution, &
       solutions(i)%dsaturation_dparameter, &
@@ -2506,6 +2517,15 @@ subroutine InvSubsurfFVCalcPartialJs(this,idof_pert)
         do i = 1, size(solutions)
           idof_pert_recv = idof_pert + icomm
           call VecGetArray(solutions(i)% &
+                             dporosity_dparameter(idof_pert_recv), &
+                           vec_ptr,ierr);CHKERRQ(ierr)
+          call MPI_Recv(vec_ptr,vec_size,MPI_DOUBLE_PRECISION, &
+                        recv_rank,MPI_ANY_TAG,comm%communicator, &
+                        MPI_STATUS_IGNORE,ierr);CHKERRQ(ierr)
+          call VecRestoreArray(solutions(i)% &
+                                 dporosity_dparameter(idof_pert_recv), &
+                               vec_ptr,ierr);CHKERRQ(ierr)
+          call VecGetArray(solutions(i)% &
                                 dsaturation_dparameter(idof_pert_recv), &
                               vec_ptr,ierr);CHKERRQ(ierr)
           call MPI_Recv(vec_ptr,vec_size,MPI_DOUBLE_PRECISION, &
@@ -2529,6 +2549,12 @@ subroutine InvSubsurfFVCalcPartialJs(this,idof_pert)
       enddo
     else
       do i = 1, size(solutions)
+        call VecGetArray(solutions(i)%dporosity_dparameter(idof_pert), &
+                            vec_ptr,ierr);CHKERRQ(ierr)
+        call MPI_Send(vec_ptr,vec_size,MPI_DOUBLE_PRECISION,ZERO_INTEGER_MPI, &
+                      idof_pert,comm%communicator,ierr);CHKERRQ(ierr)
+        call VecRestoreArray(solutions(i)%dporosity_dparameter(idof_pert), &
+                                vec_ptr,ierr);CHKERRQ(ierr)
         call VecGetArray(solutions(i)%dsaturation_dparameter(idof_pert), &
                             vec_ptr,ierr);CHKERRQ(ierr)
         call MPI_Send(vec_ptr,vec_size,MPI_DOUBLE_PRECISION,ZERO_INTEGER_MPI, &

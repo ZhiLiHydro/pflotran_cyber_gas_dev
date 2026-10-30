@@ -20,8 +20,11 @@ module Inversion_Coupled_Aux_module
     Vec :: perturbed_saturation_solution
     Vec :: original_solute_solution
     Vec :: perturbed_solute_solution
+    Vec :: original_porosity_solution
+    Vec :: perturbed_porosity_solution
     Vec, pointer :: dsaturation_dparameter(:)
     Vec, pointer :: dsolute_dparameter(:)
+    Vec, pointer :: dporosity_dparameter(:)
   end type inversion_coupled_soln_type
 
   public :: InversionCoupledAuxCreate, &
@@ -98,8 +101,11 @@ subroutine InversionCoupledSolutionInit(aux)
   PetscObjectNullify(aux%perturbed_saturation_solution)
   PetscObjectNullify(aux%original_solute_solution)
   PetscObjectNullify(aux%perturbed_solute_solution)
+  PetscObjectNullify(aux%original_porosity_solution)
+  PetscObjectNullify(aux%perturbed_porosity_solution)
   nullify(aux%dsaturation_dparameter)
   nullify(aux%dsolute_dparameter)
+  nullify(aux%dporosity_dparameter)
 
 end subroutine InversionCoupledSolutionInit
 
@@ -124,6 +130,13 @@ subroutine InvCoupledAllocateSolnVecs(aux,onedof_vec,num_parameters)
   PetscErrorCode :: ierr
 
   do i = 1, size(aux%solutions)
+    call VecDuplicate(onedof_vec,aux%solutions(i)%original_porosity_solution, &
+                      ierr);CHKERRQ(ierr)
+    call VecDuplicate(onedof_vec,aux%solutions(i)%perturbed_porosity_solution, &
+                      ierr);CHKERRQ(ierr)
+    call VecDuplicateVecs(onedof_vec,num_parameters, &
+                           aux%solutions(i)%dporosity_dparameter, &
+                           ierr);CHKERRQ(ierr)
     call VecDuplicate(onedof_vec,aux%solutions(i)%original_saturation_solution, &
                       ierr);CHKERRQ(ierr)
     call VecDuplicate(onedof_vec,aux%solutions(i)%perturbed_saturation_solution, &
@@ -143,6 +156,8 @@ subroutine InvCoupledAllocateSolnVecs(aux,onedof_vec,num_parameters)
                               ierr);CHKERRQ(ierr)
     endif
     do j = 1, num_parameters
+      call VecSet(aux%solutions(i)%dporosity_dparameter(j), &
+                  UNINITIALIZED_DOUBLE,ierr);CHKERRQ(ierr)
       call VecSet(aux%solutions(i)%dsaturation_dparameter(j), &
                   UNINITIALIZED_DOUBLE,ierr);CHKERRQ(ierr)
       if (Initialized(zflow_sol_tran_eq)) then
@@ -252,6 +267,8 @@ subroutine InversionCoupledSolutionDestroy(solution)
 
   call VecDestroy(solution%original_saturation_solution,ierr);CHKERRQ(ierr)
   call VecDestroy(solution%perturbed_saturation_solution,ierr);CHKERRQ(ierr)
+  call VecDestroy(solution%original_porosity_solution,ierr);CHKERRQ(ierr)
+  call VecDestroy(solution%perturbed_porosity_solution,ierr);CHKERRQ(ierr)
   ! solute is optional
   if (deallocate_solute) then
     call VecDestroy(solution%original_solute_solution,ierr);CHKERRQ(ierr)
@@ -261,11 +278,14 @@ subroutine InversionCoupledSolutionDestroy(solution)
   num_parameters = size(solution%dsaturation_dparameter)
   call VecDestroyVecs(num_parameters,solution%dsaturation_dparameter, &
                       ierr);CHKERRQ(ierr)
+  call VecDestroyVecs(num_parameters,solution%dporosity_dparameter, &
+                      ierr);CHKERRQ(ierr)
   if (deallocate_solute) then
     call VecDestroyVecs(num_parameters,solution%dsolute_dparameter, &
                         ierr);CHKERRQ(ierr)
   endif
   nullify(solution%dsaturation_dparameter)
+  nullify(solution%dporosity_dparameter)
   nullify(solution%dsolute_dparameter)
 
 end subroutine InversionCoupledSolutionDestroy

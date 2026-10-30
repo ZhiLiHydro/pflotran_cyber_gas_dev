@@ -196,6 +196,7 @@ subroutine PMInversionInversionMeasurement(this,time,ierr)
   PetscInt :: ivar
   PetscInt :: isubvar
   PetscReal :: tempreal
+  PetscReal, pointer :: porosity_ptr(:)
   PetscBool :: iflag
   PetscBool :: no_measurement_flag
 
@@ -309,6 +310,15 @@ subroutine PMInversionInversionMeasurement(this,time,ierr)
                                       solutions(icount)% &
                                         perturbed_saturation_solution, &
                                       LIQUID_SATURATION,ZERO_INTEGER)
+          call VecGetArray(solutions(icount)%perturbed_porosity_solution, &
+                              porosity_ptr,ierr);CHKERRQ(ierr)
+          do local_id = 1,this%realization%patch%grid%nlmax
+            ghosted_id = this%realization%patch%grid%nL2G(local_id)
+            porosity_ptr(local_id) = this%realization%patch%aux%ZFlow% &
+              auxvars(ZERO_INTEGER,ghosted_id)%effective_porosity
+          enddo
+          call VecRestoreArray(solutions(icount)%perturbed_porosity_solution, &
+                                  porosity_ptr,ierr);CHKERRQ(ierr)
           iflag = PETSC_FALSE
           no_measurement_flag = PETSC_FALSE
           if (solutions(icount)%perturbed_solute_solution /= &
@@ -319,7 +329,7 @@ subroutine PMInversionInversionMeasurement(this,time,ierr)
                                           perturbed_solute_solution, &
                                         SOLUTE_CONCENTRATION,ZERO_INTEGER)
           endif
-          option%io_buffer = 'Full saturation'
+          option%io_buffer = 'Full saturation and effective porosity'
           if (iflag) then
             option%io_buffer = trim(option%io_buffer) // &
               ' and solute concentration'
