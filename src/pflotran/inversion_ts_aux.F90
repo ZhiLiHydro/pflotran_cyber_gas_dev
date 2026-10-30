@@ -67,7 +67,7 @@ end function InversionForwardTSAuxCreate1
 
 ! ************************************************************************** !
 
-function InversionForwardTSAuxCreate2(prev_ts_aux)
+function InversionForwardTSAuxCreate2(prev_ts_aux,template)
   !
   ! Allocate and initialize auxiliary inversion time step object
   !
@@ -77,6 +77,7 @@ function InversionForwardTSAuxCreate2(prev_ts_aux)
   implicit none
 
   type(inversion_forward_ts_aux_type), pointer :: prev_ts_aux
+  Mat, optional :: template
 
   type(inversion_forward_ts_aux_type), pointer :: InversionForwardTSAuxCreate2
 
@@ -88,9 +89,16 @@ function InversionForwardTSAuxCreate2(prev_ts_aux)
   aux%timestep = prev_ts_aux%timestep + 1
   prev_ts_aux%next => aux
   aux%prev => prev_ts_aux
-  call InvForwardTSAuxAllocateMatrices(aux,aux%prev%dResdparam, &
-                                       size(prev_ts_aux%dRes_du_k,1), &
-                                       size(prev_ts_aux%dRes_du_k,3))
+  if (present(template)) then
+    ! avoid chained duplicates of the previous step
+    call InvForwardTSAuxAllocateMatrices(aux,template, &
+                                         size(prev_ts_aux%dRes_du_k,1), &
+                                         size(prev_ts_aux%dRes_du_k,3))
+  else
+    call InvForwardTSAuxAllocateMatrices(aux,aux%prev%dResdparam, &
+                                         size(prev_ts_aux%dRes_du_k,1), &
+                                         size(prev_ts_aux%dRes_du_k,3))
+  endif
 
   InversionForwardTSAuxCreate2 => aux
 

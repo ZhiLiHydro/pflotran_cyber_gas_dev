@@ -659,7 +659,14 @@ subroutine InvSubsurfSetupForwardRunLinkage(this)
     endif
 
     num_parameters = 0
+    this%inversion_aux%qoi_is_full_vector = &
+      len_trim(this%inversion_aux%parameters(1)%material_name) == 0
     do i = 1, size(this%inversion_aux%parameters)
+      if ((len_trim(this%inversion_aux%parameters(i)%material_name) == 0) &
+          .neqv. this%inversion_aux%qoi_is_full_vector) then
+        call this%driver%PrintErrMsg('Grouped MATERIAL parameters and &
+          &full-vector parameters cannot be combined.')
+      endif
       call InversionParameterMapNameToInt(this%inversion_aux%parameters(i), &
                                           this%driver)
       if (len_trim(this%inversion_aux%parameters(i)%material_name) > 0) then
@@ -680,6 +687,11 @@ subroutine InvSubsurfSetupForwardRunLinkage(this)
       endif
     enddo
     if (.not.associated(this%inversion_aux%perturbation)) then
+      if (this%realization%option%flow%update_flow_perm_from_por) then
+        call this%driver%PrintErrMsg('Adjoint inversion does not support &
+          &UPDATE_FLOW_PERM_FROM_POR. Its history-dependent property &
+          &derivatives are not implemented.')
+      endif
       do i = 1, size(this%inversion_aux%parameters)
         if (i == 1) then
           temp_int = this%inversion_aux%parameters(i)%itype
@@ -692,8 +704,7 @@ subroutine InvSubsurfSetupForwardRunLinkage(this)
         endif
       enddo
     endif
-    if (num_parameters == patch%grid%nmax) then
-      this%inversion_aux%qoi_is_full_vector = PETSC_TRUE
+    if (this%inversion_aux%qoi_is_full_vector) then
       this%num_parameters_local = patch%grid%nlmax*this%n_qoi_per_cell
     else
       this%num_parameters_local = PETSC_DECIDE
@@ -703,6 +714,11 @@ subroutine InvSubsurfSetupForwardRunLinkage(this)
         this%inversion_aux%qoi_is_full_vector) then
       call this%driver%PrintErrMsg('More than one parameter not currently &
                                    &supported for full vector inversion.')
+    endif
+
+    if (.not.associated(this%inversion_aux%perturbation) .and. &
+        .not.this%inversion_aux%qoi_is_full_vector) then
+      call InvAuxCheckGroupedMaterialProperties(this%inversion_aux)
     endif
 
     if (this%inversion_option%coupled_flow_ert) then
@@ -1066,14 +1082,14 @@ subroutine InvSubsurfSetupForwardRunLinkage(this)
           material_property => &
             this%inversion_aux%material_property_array(this%inversion_aux% &
                                                         parameters(i)%imat)%ptr
-          ! if PERM_HORIZONTAL and VERTICAL_ANISOTROPY_RATIO are used,
-          ! isotropic permeabilithy will be false, but tempreal will be 1.
-          ! this only works with perturbation
-          tempreal = material_property%permeability(3,3) / &
-                     material_property%permeability(1,1) / &
-                     material_property%vertical_anisotropy_ratio
           if (.not.material_property%isotropic_permeability) then
             if (associated(this%inversion_aux%perturbation)) then
+              ! if PERM_HORIZONTAL and VERTICAL_ANISOTROPY_RATIO are used,
+              ! isotropic permeabilithy will be false, but tempreal will be 1.
+              ! this only works with perturbation
+              tempreal = material_property%permeability(3,3) / &
+                         material_property%permeability(1,1) / &
+                         material_property%vertical_anisotropy_ratio
               if (.not.(tempreal > 0.999d0 .and. tempreal < 1.001d0)) then
                 call this%driver%PrintErrMsg('Anisotropic permeability is &
                   &only allowed for perturbation-based inversion when &

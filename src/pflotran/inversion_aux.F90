@@ -88,7 +88,8 @@ module Inversion_Aux_module
             InvAuxBCastVecForCommI, &
             InvAuxParamVecToMaterial, &
             InvAuxMaterialToParamVec, &
-            InvAuxInitializeParameterValues
+            InvAuxInitializeParameterValues, &
+            InvAuxCheckGroupedMaterialProperties
 
 contains
 
@@ -226,7 +227,7 @@ subroutine InversionAuxAdjointRecordTS(aux,time)
     call InvForTSAuxDupForwardJacobian(aux%M_ptr,aux%last_forward_ts_aux)
     ! append next time step
     aux%last_forward_ts_aux => &
-      InversionForwardTSAuxCreate(aux%last_forward_ts_aux)
+      InversionForwardTSAuxCreate(aux%last_forward_ts_aux,aux%M_ptr)
   endif
 
 end subroutine InversionAuxAdjointRecordTS
@@ -554,6 +555,47 @@ subroutine InvAuxInitializeParameterValues(aux)
                                      INVAUX_COPY_TO_VEC)
 
 end subroutine InvAuxInitializeParameterValues
+
+! ************************************************************************** !
+
+subroutine InvAuxCheckGroupedMaterialProperties(aux)
+  !
+  ! Stops if a grouped material parameter would be overwritten by a
+  ! permeability or porosity dataset
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date: 10/30/26
+
+  use Variables_module, only : PERMEABILITY,BASE_POROSITY
+
+  class(inversion_aux_type) :: aux
+
+  type(material_property_type), pointer :: material
+  PetscInt :: i
+  PetscBool :: dataset_override
+
+  do i = 1,size(aux%parameters)
+    material => aux%material_property_array(aux%parameters(i)%imat)%ptr
+    dataset_override = PETSC_FALSE
+    select case(aux%parameters(i)%itype)
+      case(PERMEABILITY)
+        dataset_override = associated(material%permeability_dataset) .or. &
+          associated(material%permeability_dataset_y) .or. &
+          associated(material%permeability_dataset_z) .or. &
+          associated(material%permeability_dataset_xy) .or. &
+          associated(material%permeability_dataset_xz) .or. &
+          associated(material%permeability_dataset_yz)
+      case(BASE_POROSITY)
+        dataset_override = associated(material%porosity_dataset)
+    end select
+    if (dataset_override) then
+      call aux%driver%PrintErrMsg('Grouped adjoint parameter for material "'// &
+        trim(material%name)//'" is overwritten by a property dataset. &
+        &Dataset-backed parameter maps are not supported.')
+    endif
+  enddo
+
+end subroutine InvAuxCheckGroupedMaterialProperties
 
 ! ************************************************************************** !
 
