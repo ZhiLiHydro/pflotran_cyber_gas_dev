@@ -2602,23 +2602,53 @@ subroutine UtilitySortArrayInt(array)
 
   implicit none
 
-  PetscBool :: swapped
-  PetscInt :: i
   PetscInt :: array(:)
-  PetscInt :: tempint
 
-  do
-    swapped = PETSC_FALSE
-    do i = 1, size(array)-1
-      if (array(i) > array(i+1)) then
-        tempint = array(i)
-        array(i) = array(i+1)
-        array(i+1) = tempint
-        swapped = PETSC_TRUE
-      endif
-    enddo
-    if (.not.swapped) exit
+  PetscInt :: tempint
+  PetscInt :: n,i,last
+
+  ! heapsort: O(n log n), also for heavily repeated values such as
+  ! measurement times
+  n = size(array)
+  do i = n/2, 1, -1
+    call SiftDown(i,n)
   enddo
+  do last = n, 2, -1
+    tempint = array(1)
+    array(1) = array(last)
+    array(last) = tempint
+    call SiftDown(ONE_INTEGER,last-1)
+  enddo
+
+contains
+
+  subroutine SiftDown(first,last)
+    !
+    ! Moves array(first) down the max-heap array(first:last) until
+    ! it is no smaller than its children
+    !
+    ! Author: Piyoosh Jaysaval
+    ! Date: 10/30/26
+
+    PetscInt :: first,last
+
+    PetscInt :: root,child
+
+    root = first
+    tempint = array(root)
+    do
+      child = 2*root
+      if (child > last) exit
+      if (child < last) then
+        if (array(child+1) > array(child)) child = child+1
+      endif
+      if (.not.array(child) > tempint) exit
+      array(root) = array(child)
+      root = child
+    enddo
+    array(root) = tempint
+
+  end subroutine SiftDown
 
 end subroutine UtilitySortArrayInt
 
@@ -2636,23 +2666,53 @@ subroutine UtilitySortArrayReal(array)
 
   implicit none
 
-  PetscBool :: swapped
-  PetscInt :: i
   PetscReal :: array(:)
-  PetscReal :: tempreal
 
-  do
-    swapped = PETSC_FALSE
-    do i = 1, size(array)-1
-      if (array(i) > array(i+1)) then
-        tempreal = array(i)
-        array(i) = array(i+1)
-        array(i+1) = tempreal
-        swapped = PETSC_TRUE
-      endif
-    enddo
-    if (.not.swapped) exit
+  PetscReal :: tempreal
+  PetscInt :: n,i,last
+
+  ! heapsort: O(n log n), also for heavily repeated values such as
+  ! measurement times
+  n = size(array)
+  do i = n/2, 1, -1
+    call SiftDown(i,n)
   enddo
+  do last = n, 2, -1
+    tempreal = array(1)
+    array(1) = array(last)
+    array(last) = tempreal
+    call SiftDown(ONE_INTEGER,last-1)
+  enddo
+
+contains
+
+  subroutine SiftDown(first,last)
+    !
+    ! Moves array(first) down the max-heap array(first:last) until
+    ! it is no smaller than its children
+    !
+    ! Author: Piyoosh Jaysaval
+    ! Date: 10/30/26
+
+    PetscInt :: first,last
+
+    PetscInt :: root,child
+
+    root = first
+    tempreal = array(root)
+    do
+      child = 2*root
+      if (child > last) exit
+      if (child < last) then
+        if (array(child+1) > array(child)) child = child+1
+      endif
+      if (.not.array(child) > tempreal) exit
+      array(root) = array(child)
+      root = child
+    enddo
+    array(root) = tempreal
+
+  end subroutine SiftDown
 
 end subroutine UtilitySortArrayReal
 
