@@ -134,14 +134,10 @@ subroutine InvCoupledAllocateSolnVecs(aux,onedof_vec,num_parameters)
       call VecDuplicate(onedof_vec,aux%solutions(i)%perturbed_solute_solution, &
                         ierr);CHKERRQ(ierr)
     endif
-    allocate(aux%solutions(i)%dsaturation_dparameter(num_parameters))
-    PetscObjectNullify(aux%solutions(i)%dsaturation_dparameter(:))
     call VecDuplicateVecs(onedof_vec,num_parameters, &
                              aux%solutions(i)%dsaturation_dparameter, &
                              ierr);CHKERRQ(ierr)
     if (Initialized(zflow_sol_tran_eq)) then
-      allocate(aux%solutions(i)%dsolute_dparameter(num_parameters))
-      PetscObjectNullify(aux%solutions(i)%dsolute_dparameter(:))
       call VecDuplicateVecs(onedof_vec,num_parameters, &
                               aux%solutions(i)%dsolute_dparameter, &
                               ierr);CHKERRQ(ierr)
@@ -249,7 +245,7 @@ subroutine InversionCoupledSolutionDestroy(solution)
   type(inversion_coupled_soln_type) :: solution
 
   PetscBool :: deallocate_solute
-  PetscInt :: i
+  PetscInt :: num_parameters
   PetscErrorCode :: ierr
 
   deallocate_solute = .not.PetscObjectIsNull(solution%original_solute_solution)
@@ -262,12 +258,13 @@ subroutine InversionCoupledSolutionDestroy(solution)
     call VecDestroy(solution%perturbed_solute_solution,ierr);CHKERRQ(ierr)
   endif
 
-  do i = 1, size(solution%dsaturation_dparameter)
-    call VecDestroy(solution%dsaturation_dparameter(i),ierr);CHKERRQ(ierr)
-    if (deallocate_solute) then
-      call VecDestroy(solution%dsolute_dparameter(i),ierr);CHKERRQ(ierr)
-    endif
-  enddo
+  num_parameters = size(solution%dsaturation_dparameter)
+  call VecDestroyVecs(num_parameters,solution%dsaturation_dparameter, &
+                      ierr);CHKERRQ(ierr)
+  if (deallocate_solute) then
+    call VecDestroyVecs(num_parameters,solution%dsolute_dparameter, &
+                        ierr);CHKERRQ(ierr)
+  endif
   nullify(solution%dsaturation_dparameter)
   nullify(solution%dsolute_dparameter)
 
