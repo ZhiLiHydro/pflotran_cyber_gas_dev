@@ -71,7 +71,7 @@ module ZFlow_Common_module
       use Material_Aux_module
       implicit none
       type(option_type) :: option
-      PetscInt :: ibndtype(1)
+      PetscInt :: ibndtype(:)
       PetscInt :: auxvar_mapping(ZFLOW_MAX_INDEX)
       PetscReal :: auxvars(:) ! from aux_real_var array
       type(zflow_auxvar_type) :: zflow_auxvar_up, zflow_auxvar_dn
@@ -519,7 +519,7 @@ subroutine ZFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
   implicit none
 
   type(option_type) :: option
-  PetscInt :: ibndtype(1)
+  PetscInt :: ibndtype(:)
   PetscInt :: auxvar_mapping(ZFLOW_MAX_INDEX)
   PetscReal :: auxvars(:) ! from aux_real_var array
   type(zflow_auxvar_type) :: zflow_auxvar_up, zflow_auxvar_dn
@@ -700,7 +700,8 @@ subroutine ZFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
 
 #if defined(SOLUTE_TRANSPORT)
   if (zflow_sol_tran_eq > 0) then
-    if (q >= 0) then
+    bc_type = ibndtype(auxvar_mapping(ZFLOW_COND_SOLUTE_INDEX))
+    if (q >= 0 .and. bc_type /= ZERO_GRADIENT_BC) then
       conc_upwind = zflow_auxvar_up%conc
       dconc_upwind_ddn = 0.d0
       dispersion_scale = 1.d0
@@ -732,10 +733,10 @@ subroutine ZFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
                           zflow_auxvar_dn%effective_porosity + &
                           zflow_auxvar_dn%sat * zflow_auxvar_dn%dpor_dp) * &
                          material_auxvar_dn%tortuosity * D_molecular
-        dDeff_over_dist_dpdn = dD_hyd_dn_dpdn / dist(0)
+        dDeff_over_dist_dpdn = dispersion_scale * dD_hyd_dn_dpdn / dist(0)
         Jdn(zflow_sol_tran_eq,zflow_liq_flow_eq) = &
           (dq_dpdn * conc_upwind + &
-           area * dDeff_over_dist_dpdn * (-1.d0)) * &
+           area * dDeff_over_dist_dpdn * delta_conc) * &
           L_per_m3
       endif
       if (zflow_calc_adjoint) then
@@ -805,6 +806,9 @@ subroutine ZFlowSrcSink(option,flow_aux_real_var,flow_src_sink_mapping, &
 
   Res = 0.d0
   Jdn = 0.d0
+  dResdparamdn = 0.d0
+  qsrc_m3 = 0.d0
+  ss_flow_vol_flux = 0.d0
 
   if (zflow_liq_flow_eq > 0) then
     dof_index = flow_src_sink_mapping(ZFLOW_COND_WATER_INDEX)
@@ -1052,7 +1056,7 @@ subroutine XXBCFluxDerivative(ibndtype,auxvar_mapping,auxvars, &
   implicit none
 
   type(option_type) :: option
-  PetscInt :: ibndtype(1:1)
+  PetscInt :: ibndtype(:)
   PetscInt :: auxvar_mapping(ZFLOW_MAX_INDEX)
   PetscReal :: auxvars(:) ! from aux_real_var array
   type(zflow_auxvar_type) :: zflow_auxvar_up, zflow_auxvar_dn(0:)

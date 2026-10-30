@@ -1115,6 +1115,7 @@ subroutine ZFlowResidual(snes,xx,r,A,realization,debug,ierr)
       endif
       Res = -Res
       call PetUtilVecSVBL(r_p,local_id,Res,ndof,PETSC_FALSE)
+      Jdn = -Jdn
       call PetUtilMatSVBL(A,ghosted_id,ghosted_id,Jdn,ndof)
     enddo
     source_sink => source_sink%next

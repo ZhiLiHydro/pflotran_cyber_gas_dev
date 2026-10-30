@@ -260,6 +260,7 @@ subroutine ZFlowAuxVarCompute(x,zflow_auxvar,global_auxvar, &
   PetscInt :: natural_id
 
   PetscBool :: saturated
+  PetscReal :: raw_pc
   PetscReal :: dkr_dsat
   PetscReal :: deffsat_dsat
 
@@ -298,7 +299,8 @@ subroutine ZFlowAuxVarCompute(x,zflow_auxvar,global_auxvar, &
   ! and flipping the cell to saturated, when it is really far from saturated.
   ! The large negative liquid pressure is then passed to the EOS causing it
   ! to blow up.  Therefore, we truncate to the max capillary pressure here.
-  zflow_auxvar%pc = min(option%flow%reference_pressure - zflow_auxvar%pres, &
+  raw_pc = option%flow%reference_pressure - zflow_auxvar%pres
+  zflow_auxvar%pc = min(raw_pc, &
                         characteristic_curves%saturation_function%pcmax)
 
   if (zflow_auxvar%pc > 0.d0) then
@@ -323,6 +325,12 @@ subroutine ZFlowAuxVarCompute(x,zflow_auxvar,global_auxvar, &
                               zflow_auxvar%effective_saturation, &
                               deffsat_dsat,option)
         zflow_auxvar%deffsat_dp = deffsat_dsat * zflow_auxvar%dsat_dp
+      endif
+      ! capped capillary pressure is independent of pressure
+      if (raw_pc >= characteristic_curves%saturation_function%pcmax) then
+        zflow_auxvar%dsat_dp = 0.d0
+        zflow_auxvar%dkr_dp = 0.d0
+        zflow_auxvar%deffsat_dp = 0.d0
       endif
     endif
   else
