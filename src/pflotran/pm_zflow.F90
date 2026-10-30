@@ -478,10 +478,22 @@ subroutine PMZFlowFinalizeTimestep(this)
   ! Author: Glenn Hammond
   ! Date: 08/13/21
   !
+  use ZFlow_module, only : ZFlowResidual
+
   implicit none
 
   class(pm_zflow_type) :: this
+  PetscErrorCode :: ierr
 
+  if (associated(this%realization%patch%aux%inversion_aux)) then
+    if (this%realization%patch%aux%inversion_aux%store_adjoint) then
+      ! store derivatives at the accepted state
+      this%realization%patch%aux%ZFlow%auxvars_up_to_date = PETSC_FALSE
+      call ZFlowResidual(this%solver%snes, &
+        this%realization%field%flow_xx,this%realization%field%flow_r, &
+        this%solver%M,this%realization,this%debug,ierr);CHKERRQ(ierr)
+    endif
+  endif
   call PMSubsurfaceFlowFinalizeTimestep(this)
 
 end subroutine PMZFlowFinalizeTimestep

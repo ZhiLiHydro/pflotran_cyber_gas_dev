@@ -69,6 +69,7 @@ module ZFlow_Aux_module
     PetscReal :: kr   ! relative permeability
     PetscReal :: effective_porosity
     PetscReal :: dpor_dp
+    PetscReal :: dpor_dbase
     PetscReal :: dsat_dp ! derivative of saturation wrt pressure
     PetscReal :: dkr_dp  ! derivative of rel. perm. wrt pressure
     PetscReal :: effective_saturation
@@ -186,6 +187,7 @@ subroutine ZFlowAuxVarInit(auxvar,option)
   auxvar%kr = 0.d0
   auxvar%effective_porosity = 0.d0
   auxvar%dpor_dp = 0.d0
+  auxvar%dpor_dbase = 1.d0
   auxvar%dsat_dp = 0.d0
   auxvar%dkr_dp = 0.d0
   auxvar%effective_saturation = UNINITIALIZED_DOUBLE
@@ -221,6 +223,7 @@ subroutine ZFlowAuxVarCopy(auxvar,auxvar2,option)
   auxvar2%kr = auxvar%kr
   auxvar2%effective_porosity = auxvar%effective_porosity
   auxvar2%dpor_dp = auxvar%dpor_dp
+  auxvar2%dpor_dbase = auxvar%dpor_dbase
   auxvar2%dsat_dp = auxvar%dsat_dp
   auxvar2%dkr_dp = auxvar%dkr_dp
   auxvar2%effective_saturation = auxvar%effective_saturation
@@ -287,10 +290,11 @@ subroutine ZFlowAuxVarCompute(x,zflow_auxvar,global_auxvar, &
       zflow_auxvar%pres > 0.d0) then
     call MaterialCompressSoil(material_auxvar,zflow_auxvar%pres, &
                               zflow_auxvar%effective_porosity, &
-                              zflow_auxvar%dpor_dp)
+                              zflow_auxvar%dpor_dp,zflow_auxvar%dpor_dbase)
   else
     zflow_auxvar%effective_porosity = material_auxvar%porosity_base
     zflow_auxvar%dpor_dp = 0.d0
+    zflow_auxvar%dpor_dbase = 1.d0
   endif
   material_auxvar%porosity = zflow_auxvar%effective_porosity
 

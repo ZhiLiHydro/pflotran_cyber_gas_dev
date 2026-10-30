@@ -703,7 +703,7 @@ subroutine ZFlowUpdateFixedAccum(realization)
   PetscReal :: Res(ZFLOW_MAX_DOF)
   PetscReal :: Jdum(ZFLOW_MAX_DOF,ZFLOW_MAX_DOF)
   PetscReal :: dResdparam(ZFLOW_MAX_DOF,ZFLOW_MAX_DOF)
-  PetscInt :: ndof
+  PetscInt :: ndof, irow, idof
 
   PetscErrorCode :: ierr
 
@@ -742,21 +742,48 @@ subroutine ZFlowUpdateFixedAccum(realization)
                               patch%cc_id(ghosted_id))%ptr, &
                             natural_id, &
                             PETSC_TRUE,option)
-    call ZFlowAccumulation(zflow_auxvars(ZERO_INTEGER,ghosted_id), &
-                           global_auxvars(ghosted_id), &
-                           material_auxvars(ghosted_id), &
-                           option,Res, &
-                           Jdum,dResdparam,zflow_calc_adjoint)
+    if (zflow_calc_adjoint .and. zflow_numerical_derivatives) then
+      call ZFlowAuxVarPerturb(xx_p(local_start:local_end), &
+        zflow_auxvars(:,ghosted_id),global_auxvars(ghosted_id), &
+        material_auxvars(ghosted_id), &
+        patch%aux%ZFlow%material_auxvars_pert(:,ghosted_id), &
+        patch%characteristic_curves_array(patch%cc_id(ghosted_id))%ptr, &
+        natural_id,option)
+      call ZFlowAccumDerivative(zflow_auxvars(:,ghosted_id), &
+        global_auxvars(ghosted_id),material_auxvars(ghosted_id), &
+        patch%aux%ZFlow%material_auxvars_pert(:,ghosted_id), &
+        option,Res,Jdum,dResdparam)
+    else
+      call ZFlowAccumulation(zflow_auxvars(ZERO_INTEGER,ghosted_id), &
+                             global_auxvars(ghosted_id), &
+                             material_auxvars(ghosted_id), &
+                             option,Res, &
+                             Jdum,dResdparam,zflow_calc_adjoint)
+    endif
     call PetUtilVecSVBL(accum_t_p,local_id,Res,ndof,PETSC_TRUE)
     if (zflow_calc_adjoint) then
       ! negative because the value is subtracted in residual
       patch%aux%inversion_aux%last_forward_ts_aux%dRes_du_k(:,:,local_id) = &
         -Jdum(1:ndof,1:ndof)
+      patch%aux%inversion_aux%last_forward_ts_aux% &
+        dAccum_dparam_k(:,:,local_id) = dResdparam(1:ndof,1:ndof)
     endif
   enddo
 
   call VecRestoreArrayRead(field%flow_xx,xx_p,ierr);CHKERRQ(ierr)
   call VecRestoreArray(field%flow_accum_t,accum_t_p,ierr);CHKERRQ(ierr)
+
+  if (zflow_calc_adjoint) then
+    ! zeroed (inactive/prescribed) rows carry no old-time dependence
+    do irow = 1,patch%aux%ZFlow%matrix_zeroing%n_zero_rows
+      idof = mod(patch%aux%ZFlow%matrix_zeroing% &
+                   zero_rows_local(irow)-1,ndof)+1
+      local_id = (patch%aux%ZFlow%matrix_zeroing% &
+                    zero_rows_local(irow)-1)/ndof+1
+      patch%aux%inversion_aux%last_forward_ts_aux% &
+        dRes_du_k(idof,:,local_id) = 0.d0
+    enddo
+  endif
 
 end subroutine ZFlowUpdateFixedAccum
 
@@ -933,6 +960,9 @@ subroutine ZFlowResidual(snes,xx,r,A,realization,debug,ierr)
       call PetUtilVecSVBL(accum_t_p2,local_id,Res,ndof,PETSC_TRUE)
       call PetUtilMatSVBL(A,ghosted_id,ghosted_id,Jup,ndof)
       if (store_adjoint) then
+        dResdparam(1:ndof,1:ndof) = dResdparam(1:ndof,1:ndof) - &
+          patch%aux%inversion_aux%last_forward_ts_aux% &
+            dAccum_dparam_k(:,:,local_id)
         call PetUtilMatSVBL(MatdResdparam,ghosted_id,ghosted_id, &
                             dResdparam,ndof)
       endif
@@ -1136,6 +1166,12 @@ subroutine ZFlowResidual(snes,xx,r,A,realization,debug,ierr)
                             ierr);CHKERRQ(ierr)
       call MatAssemblyEnd(MatdResdparam,MAT_FINAL_ASSEMBLY, &
                           ierr);CHKERRQ(ierr)
+      if (patch%aux%ZFlow%matrix_zeroing%zero_rows_exist) then
+        call MatZeroRowsLocal(MatdResdparam, &
+          patch%aux%ZFlow%matrix_zeroing%n_zero_rows, &
+          patch%aux%ZFlow%matrix_zeroing%zero_rows_local_ghosted, &
+          0.d0,PETSC_NULL_VEC,PETSC_NULL_VEC,ierr);CHKERRQ(ierr)
+      endif
     endif
 
     call MatrixZeroingZeroMatEntries(patch%aux%ZFlow%matrix_zeroing,A)

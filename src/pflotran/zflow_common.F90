@@ -162,7 +162,7 @@ subroutine ZFlowAccumulation(zflow_auxvar,global_auxvar,material_auxvar, &
         select case(zflow_adjoint_parameter)
           case(ZFLOW_ADJOINT_POROSITY)
             dResdparam(zflow_liq_flow_eq,1) = &
-              tempreal * zflow_auxvar%sat
+              tempreal * zflow_auxvar%sat * zflow_auxvar%dpor_dbase
         end select
       endif
     endif
@@ -189,7 +189,8 @@ subroutine ZFlowAccumulation(zflow_auxvar,global_auxvar,material_auxvar, &
         select case (zflow_adjoint_parameter)
           case(ZFLOW_ADJOINT_POROSITY)
             dResdparam(zflow_sol_tran_eq,1) = &
-              zflow_auxvar%conc * tempreal * zflow_auxvar%sat
+              zflow_auxvar%conc * tempreal * zflow_auxvar%sat * &
+              zflow_auxvar%dpor_dbase
         end select
       endif
     endif
@@ -455,33 +456,17 @@ subroutine ZFlowFluxHarmonicPermOnly(zflow_auxvar_up,global_auxvar_up, &
               area * dDeff_over_dist_dKdn * delta_conc) * &
               L_per_m3
           case(ZFLOW_ADJOINT_POROSITY)
-            tempreal = D_mech_up + &
+            ! d(D_up*D_dn/(dist_up*D_dn+dist_dn*D_up))/dphi_base
+            tempreal = zflow_auxvar_up%dpor_dbase * &
                        zflow_auxvar_up%sat * material_auxvar_up%tortuosity * &
-                       D_molecular
-            numerator = tempreal * D_hyd_dn
-            denominator = dist_up*D_hyd_dn + dist_dn*tempreal
-            if (denominator == 0.d0) then
-              ! turn off diffusion
-              numerator = 0.d0
-              denominator = 1.d0
-            endif
-            Deff_over_dist = numerator / denominator
-            dResdparamup(zflow_sol_tran_eq,1) = area * Deff_over_dist * &
-                                                delta_conc * L_per_m3
-
-            tempreal = D_mech_dn + &
+                       D_molecular * D_hyd_dn**2 * dist_up / denominator**2
+            dResdparamup(zflow_sol_tran_eq,1) = &
+              area * tempreal * delta_conc * L_per_m3
+            tempreal = zflow_auxvar_dn%dpor_dbase * &
                        zflow_auxvar_dn%sat * material_auxvar_dn%tortuosity * &
-                       D_molecular
-            numerator = D_hyd_up * tempreal
-            denominator = dist_up*tempreal + dist_dn*D_hyd_up
-            if (denominator == 0.d0) then
-              ! turn off diffusion
-              numerator = 0.d0
-              denominator = 1.d0
-            endif
-            Deff_over_dist = numerator / denominator
-            dResdparamdn(zflow_sol_tran_eq,1) = area * Deff_over_dist * &
-                                                delta_conc * L_per_m3
+                       D_molecular * D_hyd_up**2 * dist_dn / denominator**2
+            dResdparamdn(zflow_sol_tran_eq,1) = &
+              area * tempreal * delta_conc * L_per_m3
         end select
       endif
     endif
@@ -655,6 +640,7 @@ subroutine ZFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
               v_darcy = tempreal
               ddelta_pressure_dpdn = 0.d0
               dkr_dp = 0.d0
+              dperm_dK = 0.d0
             endif
           endif
         endif
@@ -748,7 +734,7 @@ subroutine ZFlowBCFluxHarmonicPermOnly(ibndtype,auxvar_mapping,auxvars, &
               area * dDeff_over_dist_dKdn * delta_conc) * &
               L_per_m3
           case(ZFLOW_ADJOINT_POROSITY)
-            tempreal = D_mech_dn + &
+            tempreal = zflow_auxvar_dn%dpor_dbase * &
                        zflow_auxvar_dn%sat * &
                        material_auxvar_dn%tortuosity * D_molecular
             Deff_over_dist = dispersion_scale * tempreal / dist(0)

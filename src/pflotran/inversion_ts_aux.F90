@@ -18,6 +18,8 @@ module Inversion_TS_Aux_module
     Mat :: dResdparam         ! matrix storing df(u)/dparameter
     ! derivative of residual wrt unknown at old time level (k)
     PetscReal, pointer :: dRes_du_k(:,:,:)  ! array storing df(u)^k+1/du^k
+    ! derivative of the old-time accumulation wrt parameter
+    PetscReal, pointer :: dAccum_dparam_k(:,:,:)
     type(inversion_forward_ts_aux_type), pointer :: prev
     type(inversion_forward_ts_aux_type), pointer :: next
   end type inversion_forward_ts_aux_type
@@ -113,6 +115,7 @@ subroutine InvForwardTSAuxInit(aux)
   PetscObjectNullify(aux%dResdparam)
 
   nullify(aux%dRes_du_k)
+  nullify(aux%dAccum_dparam_k)
   nullify(aux%prev)
   nullify(aux%next)
 
@@ -133,10 +136,14 @@ subroutine InvForwardTSAuxAllocateMatrices(aux,M_ptr,ndof,ncell)
   PetscInt :: ncell
   PetscErrorCode :: ierr
 
-  call MatDuplicate(M_ptr,MAT_SHARE_NONZERO_PATTERN,aux%dResdparam, &
+  call MatDuplicate(M_ptr,MAT_DO_NOT_COPY_VALUES,aux%dResdparam, &
+                    ierr);CHKERRQ(ierr)
+  call MatSetOption(aux%dResdparam,MAT_KEEP_NONZERO_PATTERN,PETSC_TRUE, &
                     ierr);CHKERRQ(ierr)
   allocate(aux%dRes_du_k(ndof,ndof,ncell))
   aux%dRes_du_k = 0.d0
+  allocate(aux%dAccum_dparam_k(ndof,ndof,ncell))
+  aux%dAccum_dparam_k = 0.d0
 
 end subroutine InvForwardTSAuxAllocateMatrices
 
@@ -218,6 +225,7 @@ subroutine InvForwardTSAuxDestroyMatrices(aux)
   call PUMatDestroy(aux%dResdu)
   call PUMatDestroy(aux%dResdparam)
   call DeallocateArray(aux%dRes_du_k)
+  call DeallocateArray(aux%dAccum_dparam_k)
 
   deallocate(aux)
   nullify(aux)

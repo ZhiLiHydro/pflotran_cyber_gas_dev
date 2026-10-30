@@ -111,7 +111,8 @@ module Material_Aux_module
   ! interface blocks
   interface
     subroutine MaterialCompressSoilDummy(auxvar,pressure,compressed_porosity, &
-                                         dcompressed_porosity_dp)
+                                         dcompressed_porosity_dp, &
+                                         dcompressed_porosity_dbase)
     use petscsys
     import material_auxvar_type
     implicit none
@@ -119,6 +120,7 @@ module Material_Aux_module
     PetscReal, intent(in) :: pressure
     PetscReal, intent(out) :: compressed_porosity
     PetscReal, intent(out) :: dcompressed_porosity_dp
+    PetscReal, optional, intent(out) :: dcompressed_porosity_dbase
     end subroutine MaterialCompressSoilDummy
   end interface
 
@@ -980,8 +982,9 @@ end subroutine MaterialAuxVarCompute
 ! ************************************************************************** !
 
 subroutine MaterialCompressSoilLeijnse(auxvar,pressure, &
-                                       compressed_porosity, &
-                                       dcompressed_porosity_dp)
+                                        compressed_porosity, &
+                                        dcompressed_porosity_dp, &
+                                        dcompressed_porosity_dbase)
   !
   ! Calculates soil matrix compression based on Leijnse, 1992.
   !
@@ -995,6 +998,7 @@ subroutine MaterialCompressSoilLeijnse(auxvar,pressure, &
   PetscReal, intent(in) :: pressure
   PetscReal, intent(out) :: compressed_porosity
   PetscReal, intent(out) :: dcompressed_porosity_dp
+  PetscReal, optional, intent(out) :: dcompressed_porosity_dbase
 
   PetscReal :: compressibility
   PetscReal :: compression
@@ -1007,14 +1011,17 @@ subroutine MaterialCompressSoilLeijnse(auxvar,pressure, &
   tempreal = (1.d0 - auxvar%porosity_base) * compression
   compressed_porosity = 1.d0 - tempreal
   dcompressed_porosity_dp = tempreal * compressibility
+  if (present(dcompressed_porosity_dbase)) &
+    dcompressed_porosity_dbase = compression
 
 end subroutine MaterialCompressSoilLeijnse
 
 ! ************************************************************************** !
 
 subroutine MaterialCompressSoilBRAGFLO(auxvar,pressure, &
-                                       compressed_porosity, &
-                                       dcompressed_porosity_dp)
+                                        compressed_porosity, &
+                                        dcompressed_porosity_dp, &
+                                        dcompressed_porosity_dbase)
   !
   ! Calculates soil matrix compression based on Eq. 9.6.9 of BRAGFLO
   !
@@ -1028,6 +1035,7 @@ subroutine MaterialCompressSoilBRAGFLO(auxvar,pressure, &
   PetscReal, intent(in) :: pressure
   PetscReal, intent(out) :: compressed_porosity
   PetscReal, intent(out) :: dcompressed_porosity_dp
+  PetscReal, optional, intent(out) :: dcompressed_porosity_dbase
 
   PetscReal :: compressibility
 
@@ -1039,14 +1047,19 @@ subroutine MaterialCompressSoilBRAGFLO(auxvar,pressure, &
     exp(compressibility * &
         (pressure - auxvar%soil_properties(soil_reference_pressure_index)))
   dcompressed_porosity_dp = compressibility * compressed_porosity
+  if (present(dcompressed_porosity_dbase)) &
+    dcompressed_porosity_dbase = compressed_porosity / auxvar%porosity_base * &
+      (1.d0-compressibility * &
+        (pressure-auxvar%soil_properties(soil_reference_pressure_index)))
 
 end subroutine MaterialCompressSoilBRAGFLO
 
 ! ************************************************************************** !
 
 subroutine MaterialCompressSoilLinear(auxvar,pressure, &
-                                      compressed_porosity, &
-                                      dcompressed_porosity_dp)
+                                       compressed_porosity, &
+                                       dcompressed_porosity_dp, &
+                                       dcompressed_porosity_dbase)
   !
   ! Calculates soil matrix compression for standard constant
   ! aquifer compressibility
@@ -1063,6 +1076,7 @@ subroutine MaterialCompressSoilLinear(auxvar,pressure, &
   PetscReal, intent(in) :: pressure
   PetscReal, intent(out) :: compressed_porosity
   PetscReal, intent(out) :: dcompressed_porosity_dp
+  PetscReal, optional, intent(out) :: dcompressed_porosity_dbase
 
   PetscReal :: compressibility
 
@@ -1070,14 +1084,16 @@ subroutine MaterialCompressSoilLinear(auxvar,pressure, &
   compressed_porosity = auxvar%porosity_base + compressibility * &
             (pressure - auxvar%soil_properties(soil_reference_pressure_index))
   dcompressed_porosity_dp = compressibility
+  if (present(dcompressed_porosity_dbase)) dcompressed_porosity_dbase = 1.d0
 
 end subroutine MaterialCompressSoilLinear
 
 ! ************************************************************************** !
 
 subroutine MaterialCompressSoilPoroExp(auxvar,pressure, &
-                                       compressed_porosity, &
-                                       dcompressed_porosity_dp)
+                                        compressed_porosity, &
+                                        dcompressed_porosity_dp, &
+                                        dcompressed_porosity_dbase)
   !
   ! Calculates soil matrix compression based on Eq. 9.6.9 of BRAGFLO
   !
@@ -1091,6 +1107,7 @@ subroutine MaterialCompressSoilPoroExp(auxvar,pressure, &
   PetscReal, intent(in) :: pressure
   PetscReal, intent(out) :: compressed_porosity
   PetscReal, intent(out) :: dcompressed_porosity_dp
+  PetscReal, optional, intent(out) :: dcompressed_porosity_dbase
 
   PetscReal :: compressibility
 
@@ -1099,14 +1116,18 @@ subroutine MaterialCompressSoilPoroExp(auxvar,pressure, &
     exp(compressibility * &
         (pressure - auxvar%soil_properties(soil_reference_pressure_index)))
   dcompressed_porosity_dp = compressibility * compressed_porosity
+  if (present(dcompressed_porosity_dbase)) &
+    dcompressed_porosity_dbase = exp(compressibility * &
+      (pressure-auxvar%soil_properties(soil_reference_pressure_index)))
 
 end subroutine MaterialCompressSoilPoroExp
 
 ! ************************************************************************** !
 
 subroutine MaterialCompressSoilQuadratic(auxvar,pressure, &
-                                         compressed_porosity, &
-                                         dcompressed_porosity_dp)
+                                          compressed_porosity, &
+                                          dcompressed_porosity_dp, &
+                                          dcompressed_porosity_dbase)
   !
   ! Calculates soil matrix compression based on a quadratic model
   ! This is thedefaul model adopted in ECLIPSE
@@ -1121,6 +1142,7 @@ subroutine MaterialCompressSoilQuadratic(auxvar,pressure, &
   PetscReal, intent(in) :: pressure
   PetscReal, intent(out) :: compressed_porosity
   PetscReal, intent(out) :: dcompressed_porosity_dp
+  PetscReal, optional, intent(out) :: dcompressed_porosity_dbase
 
   PetscReal :: compressibility
   PetscReal :: compress_factor
@@ -1135,6 +1157,8 @@ subroutine MaterialCompressSoilQuadratic(auxvar,pressure, &
 
   dcompressed_porosity_dp = auxvar%porosity_base * &
           ( 1.0 + compress_factor) * compressibility
+  if (present(dcompressed_porosity_dbase)) &
+    dcompressed_porosity_dbase = 1.d0+compress_factor+0.5d0*compress_factor**2
 
 end subroutine MaterialCompressSoilQuadratic
 
