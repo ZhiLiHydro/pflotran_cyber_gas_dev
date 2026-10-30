@@ -112,6 +112,7 @@ STANDARD_CFG = \
 	geomech/coupling_order/coupling_order.cfg \
 	geomech/mms/mms.cfg \
 	geomech/restart/restart.cfg \
+	geomech/rigid_plate_bcs/rigid_plate_bcs.cfg \
 	geomech/simple_tet_cube/simple_tet_cube.cfg \
 	geomech/spatially_varying/spatially_varying.cfg \
 	geomech/terzaghi/terzaghi.cfg \
@@ -187,6 +188,7 @@ GEOMECHANICS_CFG = \
 	geomech/coupling_order/coupling_order.cfg \
 	geomech/mms/mms.cfg \
 	geomech/restart/restart.cfg \
+	geomech/rigid_plate_bcs/rigid_plate_bcs.cfg \
 	geomech/simple_tet_cube/simple_tet_cube.cfg \
 	geomech/spatially_varying/spatially_varying.cfg \
 	geomech/terzaghi/terzaghi.cfg \

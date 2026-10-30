@@ -41,6 +41,10 @@ module Geomechanics_Condition_module
     type(geomech_sub_condition_type), pointer :: force_y
     type(geomech_sub_condition_type), pointer :: force_z
     type(geomech_sub_condition_type), pointer :: traction ! jaa testing
+    ! Scalar resultant [N] for a frictionless rigid plate. Not FORCE_X/Y/Z.
+    type(geomech_sub_condition_type), pointer :: rigid_plate_force_x
+    type(geomech_sub_condition_type), pointer :: rigid_plate_force_y
+    type(geomech_sub_condition_type), pointer :: rigid_plate_force_z
     type(geomech_sub_condition_ptr_type), pointer :: sub_condition_ptr(:)
     type(geomech_condition_type), pointer :: next ! pointer to next condition_type for linked-lists
   end type geomech_condition_type
@@ -78,7 +82,8 @@ module Geomechanics_Condition_module
             GeomechConditionGetPtrFromList, &
             GeomechConditionUpdate, &
             GeomechConditionPrint, &
-            GeomechConditionIsTransient
+            GeomechConditionIsTransient, &
+            GeomechConditionRigidPlate
 
 
 contains
@@ -110,6 +115,9 @@ function GeomechConditionCreate(option)
   nullify(condition%force_y)
   nullify(condition%force_z)
   nullify(condition%traction)
+  nullify(condition%rigid_plate_force_x)
+  nullify(condition%rigid_plate_force_y)
+  nullify(condition%rigid_plate_force_z)
   nullify(condition%sub_condition_ptr)
   nullify(condition%itype)
   nullify(condition%next)
@@ -218,6 +226,95 @@ end subroutine GeomechSubConditionVerify
 
 ! ************************************************************************** !
 
+subroutine GeomechConditionStoreRigidPlate(option,condition,sub_condition, &
+                                           axis,displacement,nodal_force, &
+                                           plate_force,num_sub_conditions)
+  !
+  ! Keep a rigid-plate resultant when its dataset was read, and reject
+  ! combinations that prescribe the same component another way.
+  !
+  ! Author: Jumanah Al Kubaisy
+  ! Date: 10/29/26
+  !
+
+  use Option_module
+
+  implicit none
+
+  type(option_type) :: option
+  type(geomech_condition_type) :: condition
+  type(geomech_sub_condition_type), pointer :: sub_condition
+  character(len=*) :: axis
+  type(geomech_sub_condition_type), pointer :: displacement
+  type(geomech_sub_condition_type), pointer :: nodal_force
+  type(geomech_sub_condition_type), pointer :: plate_force
+  PetscInt :: num_sub_conditions
+
+  if (.not.associated(sub_condition)) return
+
+  if (sub_condition%itype /= NEUMANN_BC) then
+    option%io_buffer = 'RIGID_PLATE_' // trim(axis) // &
+      ' must be NEUMANN in geomechanics condition "' // &
+      trim(condition%name) // '".'
+    call PrintErrMsg(option)
+  endif
+  if (associated(displacement)) then
+    option%io_buffer = 'RIGID_PLATE_' // trim(axis) // &
+      ' cannot be combined with DISPLACEMENT_' // trim(axis) // &
+      ' in geomechanics condition "' // trim(condition%name) // '".'
+    call PrintErrMsg(option)
+  endif
+  if (associated(condition%traction)) then
+    option%io_buffer = 'RIGID_PLATE_' // trim(axis) // &
+      ' cannot be combined with STRESS_TENSOR in ' // &
+      'geomechanics condition "' // trim(condition%name) // '".'
+    call PrintErrMsg(option)
+  endif
+  if (associated(nodal_force)) then
+    option%io_buffer = 'RIGID_PLATE_' // trim(axis) // &
+      ' cannot be combined with FORCE_' // trim(axis) // &
+      ' in geomechanics condition "' // trim(condition%name) // '".'
+    call PrintErrMsg(option)
+  endif
+
+  plate_force => sub_condition
+  num_sub_conditions = num_sub_conditions + 1
+  plate_force%isubtype = SIX_INTEGER
+
+end subroutine GeomechConditionStoreRigidPlate
+
+! ************************************************************************** !
+
+function GeomechConditionRigidPlate(condition,idir) result(sub_condition)
+  !
+  ! Rigid-plate resultant for one displacement component.
+  ! idir is GEOMECH_DISP_X_DOF, GEOMECH_DISP_Y_DOF, or GEOMECH_DISP_Z_DOF.
+  !
+  ! Author: Jumanah Al Kubaisy
+  ! Date: 10/29/26
+  !
+
+  implicit none
+
+  type(geomech_condition_type) :: condition
+  PetscInt :: idir
+
+  type(geomech_sub_condition_type), pointer :: sub_condition
+
+  nullify(sub_condition)
+  select case(idir)
+    case(GEOMECH_DISP_X_DOF)
+      sub_condition => condition%rigid_plate_force_x
+    case(GEOMECH_DISP_Y_DOF)
+      sub_condition => condition%rigid_plate_force_y
+    case(GEOMECH_DISP_Z_DOF)
+      sub_condition => condition%rigid_plate_force_z
+  end select
+
+end function GeomechConditionRigidPlate
+
+! ************************************************************************** !
+
 subroutine GeomechConditionRead(condition,input,option)
   !
   ! Reads a condition from the input file
@@ -243,6 +340,9 @@ subroutine GeomechConditionRead(condition,input,option)
                                        displacement_z
   type(geomech_sub_condition_type), pointer :: force_x, force_y, force_z
   type(geomech_sub_condition_type), pointer :: traction
+  type(geomech_sub_condition_type), pointer :: rigid_plate_force_x
+  type(geomech_sub_condition_type), pointer :: rigid_plate_force_y
+  type(geomech_sub_condition_type), pointer :: rigid_plate_force_z
   PetscReal :: default_time
   PetscInt :: default_iphase
   character(len=MAXWORDLENGTH) :: default_ctype
@@ -277,6 +377,9 @@ subroutine GeomechConditionRead(condition,input,option)
   force_y => GeomechSubConditionCreate(ONE_INTEGER)
   force_z => GeomechSubConditionCreate(ONE_INTEGER)
   traction => GeomechSubConditionCreate(SIX_INTEGER)
+  rigid_plate_force_x => GeomechSubConditionCreate(ONE_INTEGER)
+  rigid_plate_force_y => GeomechSubConditionCreate(ONE_INTEGER)
+  rigid_plate_force_z => GeomechSubConditionCreate(ONE_INTEGER)
   displacement_x%name = 'displacement_x'
   displacement_y%name = 'displacement_y'
   displacement_z%name = 'displacement_z'
@@ -284,6 +387,9 @@ subroutine GeomechConditionRead(condition,input,option)
   force_y%name = 'force_y'
   force_z%name = 'force_z'
   traction%name = 'traction'
+  rigid_plate_force_x%name = 'rigid_plate_force_x'
+  rigid_plate_force_y%name = 'rigid_plate_force_y'
+  rigid_plate_force_z%name = 'rigid_plate_force_z'
 
   condition%time_units = 'yr'
   condition%length_units = 'm'
@@ -298,6 +404,9 @@ subroutine GeomechConditionRead(condition,input,option)
   force_y%units = 'N'
   force_z%units = 'N'
   traction%units = 'N/m^2'
+  rigid_plate_force_x%units = 'N'
+  rigid_plate_force_y%units = 'N'
+  rigid_plate_force_z%units = 'N'
 
   default_ctype = 'dirichlet'
   default_itype = DIRICHLET_BC
@@ -373,6 +482,12 @@ subroutine GeomechConditionRead(condition,input,option)
               sub_condition_ptr => force_z
             case('TRACTION')
               sub_condition_ptr => traction
+            case('RIGID_PLATE_X')
+              sub_condition_ptr => rigid_plate_force_x
+            case('RIGID_PLATE_Y')
+              sub_condition_ptr => rigid_plate_force_y
+            case('RIGID_PLATE_Z')
+              sub_condition_ptr => rigid_plate_force_z
             case default
               call InputKeywordUnrecognized(input,word, &
                      'geomechanics condition type',option)
@@ -439,6 +554,24 @@ subroutine GeomechConditionRead(condition,input,option)
                                  traction%dataset, &
                                  traction%units, &
                                  internal_units)
+      case('RIGID_PLATE_FORCE_X')
+        internal_units = 'N'
+        call ConditionReadValues(input,option,word, &
+                                 rigid_plate_force_x%dataset, &
+                                 rigid_plate_force_x%units, &
+                                 internal_units)
+      case('RIGID_PLATE_FORCE_Y')
+        internal_units = 'N'
+        call ConditionReadValues(input,option,word, &
+                                 rigid_plate_force_y%dataset, &
+                                 rigid_plate_force_y%units, &
+                                 internal_units)
+      case('RIGID_PLATE_FORCE_Z')
+        internal_units = 'N'
+        call ConditionReadValues(input,option,word, &
+                                 rigid_plate_force_z%dataset, &
+                                 rigid_plate_force_z%units, &
+                                 internal_units)
       case default
         call InputKeywordUnrecognized(input,word, &
                      'geomechanics condition',option)
@@ -477,6 +610,19 @@ subroutine GeomechConditionRead(condition,input,option)
 
   word = 'traction'
   call GeomechSubConditionVerify(option,condition,word,traction, &
+                                 default_time_storage, &
+                                 PETSC_TRUE)
+
+  word = 'rigid_plate_force_x'
+  call GeomechSubConditionVerify(option,condition,word,rigid_plate_force_x, &
+                                 default_time_storage, &
+                                 PETSC_TRUE)
+  word = 'rigid_plate_force_y'
+  call GeomechSubConditionVerify(option,condition,word,rigid_plate_force_y, &
+                                 default_time_storage, &
+                                 PETSC_TRUE)
+  word = 'rigid_plate_force_z'
+  call GeomechSubConditionVerify(option,condition,word,rigid_plate_force_z, &
                                  default_time_storage, &
                                  PETSC_TRUE)
 
@@ -524,6 +670,16 @@ subroutine GeomechConditionRead(condition,input,option)
     condition%traction%isubtype = THREE_INTEGER
   endif
 
+  call GeomechConditionStoreRigidPlate(option,condition,rigid_plate_force_x, &
+       'X',displacement_x,force_x,condition%rigid_plate_force_x, &
+       num_sub_conditions)
+  call GeomechConditionStoreRigidPlate(option,condition,rigid_plate_force_y, &
+       'Y',displacement_y,force_y,condition%rigid_plate_force_y, &
+       num_sub_conditions)
+  call GeomechConditionStoreRigidPlate(option,condition,rigid_plate_force_z, &
+       'Z',displacement_z,force_z,condition%rigid_plate_force_z, &
+       num_sub_conditions)
+
   if (num_sub_conditions == 0) then
     option%io_buffer = 'displacement/force condition null in condition: ' // &
                         trim(condition%name)
@@ -566,6 +722,18 @@ subroutine GeomechConditionRead(condition,input,option)
   if (associated(traction)) then
     count = count + 1
     condition%sub_condition_ptr(count)%ptr => traction
+  endif
+  if (associated(rigid_plate_force_x)) then
+    count = count + 1
+    condition%sub_condition_ptr(count)%ptr => rigid_plate_force_x
+  endif
+  if (associated(rigid_plate_force_y)) then
+    count = count + 1
+    condition%sub_condition_ptr(count)%ptr => rigid_plate_force_y
+  endif
+  if (associated(rigid_plate_force_z)) then
+    count = count + 1
+    condition%sub_condition_ptr(count)%ptr => rigid_plate_force_z
   endif
 
   condition%default_time_storage => default_time_storage
@@ -819,6 +987,12 @@ function GeomechConditionIsTransient(condition)
     GeomechConditionIsTransient = PETSC_TRUE
   endif
 
+  if (GeomechSubConditionIsTransient(condition%rigid_plate_force_x) .or. &
+      GeomechSubConditionIsTransient(condition%rigid_plate_force_y) .or. &
+      GeomechSubConditionIsTransient(condition%rigid_plate_force_z)) then
+    GeomechConditionIsTransient = PETSC_TRUE
+  endif
+
 end function GeomechConditionIsTransient
 
 ! ************************************************************************** !
@@ -924,6 +1098,9 @@ subroutine GeomechConditionDestroy(condition)
   nullify(condition%force_y)
   nullify(condition%force_z)
   nullify(condition%traction)
+  nullify(condition%rigid_plate_force_x)
+  nullify(condition%rigid_plate_force_y)
+  nullify(condition%rigid_plate_force_z)
 
   nullify(condition%next)
 

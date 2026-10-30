@@ -9,6 +9,14 @@ module Geomechanics_Field_module
 
   private
 
+  ! One frictionless rigid plate, tied to a single displacement component.
+  type, public :: geomech_rigid_plate_type
+    PetscBool :: active
+    PetscInt :: n
+    ! Ghosted ids of owned plate nodes. Owned ghosted_id equals local_id.
+    PetscInt, pointer :: ghosted_ids(:)
+  end type geomech_rigid_plate_type
+
   type, public :: geomech_field_type
     Vec :: work
     Vec :: work_loc
@@ -57,6 +65,19 @@ module Geomechanics_Field_module
 
     Mat :: A ! stores the matrix of the linear system
 
+    ! Stiffness before MatZeroRowsLocal. Needed to recover a rigid-plate
+    ! reaction after those rows have been replaced by the identity.
+    Mat :: A_original
+    Vec :: rigid_plate_u_unit
+    Vec :: rigid_plate_u0
+    Vec :: rigid_plate_f
+    Vec :: rigid_plate_work
+    ! Index is GEOMECH_DISP_X/Y/Z_DOF. K(j,i) is the reaction on plate j
+    ! from a unit displacement of plate i with the other plates held at 0.
+    type(geomech_rigid_plate_type) :: rigid_plate(3)
+    PetscReal :: rigid_plate_K(3,3)
+    PetscBool :: rigid_plate_active
+
   end type geomech_field_type
 
   public :: GeomechFieldCreate, &
@@ -79,6 +100,8 @@ function GeomechFieldCreate()
 
   type(geomech_field_type), pointer :: GeomechFieldCreate
   type(geomech_field_type), pointer :: geomech_field
+
+  PetscInt :: idir
 
   allocate(geomech_field)
 
@@ -130,6 +153,18 @@ function GeomechFieldCreate()
   PetscObjectNullify(geomech_field%fluid_density_init_loc)
 
   PetscObjectNullify(geomech_field%A)
+  PetscObjectNullify(geomech_field%A_original)
+  PetscObjectNullify(geomech_field%rigid_plate_u_unit)
+  PetscObjectNullify(geomech_field%rigid_plate_u0)
+  PetscObjectNullify(geomech_field%rigid_plate_f)
+  PetscObjectNullify(geomech_field%rigid_plate_work)
+  geomech_field%rigid_plate_active = PETSC_FALSE
+  geomech_field%rigid_plate_K = 0.d0
+  do idir = 1, 3
+    geomech_field%rigid_plate(idir)%active = PETSC_FALSE
+    geomech_field%rigid_plate(idir)%n = 0
+    nullify(geomech_field%rigid_plate(idir)%ghosted_ids)
+  enddo
 
   GeomechFieldCreate => geomech_field
 
@@ -149,6 +184,8 @@ subroutine GeomechFieldDestroy(geomech_field)
   implicit none
 
   type(geomech_field_type), pointer :: geomech_field
+
+  PetscInt :: idir
 
   if (.not.associated(geomech_field)) return
 
@@ -192,7 +229,19 @@ subroutine GeomechFieldDestroy(geomech_field)
   call PUVecDestroy(geomech_field%fluid_density_loc)
   call PUVecDestroy(geomech_field%fluid_density_init_loc)
 
+  ! A is the solver matrix. A_original is a duplicate owned here.
   PetscObjectNullify(geomech_field%A)
+  call PUMatDestroy(geomech_field%A_original)
+  call PUVecDestroy(geomech_field%rigid_plate_u_unit)
+  call PUVecDestroy(geomech_field%rigid_plate_u0)
+  call PUVecDestroy(geomech_field%rigid_plate_f)
+  call PUVecDestroy(geomech_field%rigid_plate_work)
+  do idir = 1, 3
+    if (associated(geomech_field%rigid_plate(idir)%ghosted_ids)) then
+      deallocate(geomech_field%rigid_plate(idir)%ghosted_ids)
+    endif
+    nullify(geomech_field%rigid_plate(idir)%ghosted_ids)
+  enddo
 
   if (associated(geomech_field)) deallocate(geomech_field)
   nullify(geomech_field)

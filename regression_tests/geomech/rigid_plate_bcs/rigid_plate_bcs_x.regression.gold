@@ -1,0 +1,30 @@
+-- PRESSURE: Liquid Pressure --
+      Max:   2.0145001117765E+05
+      Min:   2.0144997396278E+05
+     Mean:   2.0144999542484E+05
+       10:   2.0145000113408E+05
+       13:   2.0145001117765E+05
+       16:   2.0144997396278E+05
+-- DISPLACEMENT: displacement_y --
+      Max:   1.5624714051974E-03
+      Min:   0.0000000000000E+00
+     Mean:   7.8125079778304E-04
+       52:   0.0000000000000E+00
+       57:   2.6042035121973E-04
+       62:   7.8127344053127E-04
+       67:   1.3020887919668E-03
+       72:   1.5624714051974E-03
+-- SOLUTION: Flow --
+   Time (seconds):   6.1554810004054E-03
+   Time Steps:           13
+   Newton Iterations:           13
+   Linear Solver Iterations:           13
+   Time Step Cuts:            0
+   Solution 2-Norm:   1.0467648817810E+06
+   Residual 2-Norm:   1.8419372902394E-13
+-- SOLUTION: Geomechanics --
+   Time (seconds):   1.0224699999526E-03
+   Time Steps:           13
+   Solver Iterations:           14
+   Time Step Cuts:            0
+   Solution 2-Norm:   1.5516225277100E-02

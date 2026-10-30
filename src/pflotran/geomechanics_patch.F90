@@ -407,7 +407,10 @@ subroutine GeomechPatchInitCouplerAuxVars(coupler_list,patch,option)
             associated(coupler%geomech_condition%displacement_z) .or. &
             associated(coupler%geomech_condition%force_x) .or. &
             associated(coupler%geomech_condition%force_y) .or. &
-            associated(coupler%geomech_condition%force_z)) then
+            associated(coupler%geomech_condition%force_z) .or. &
+            associated(coupler%geomech_condition%rigid_plate_force_x) .or. &
+            associated(coupler%geomech_condition%rigid_plate_force_y) .or. &
+            associated(coupler%geomech_condition%rigid_plate_force_z)) then
           ! allocate arrays that match the number of boundary vertices
           allocate(coupler%geomech_aux_real_var(option%ngeomechdof,num_verts))
           allocate(coupler%geomech_aux_int_var(1,num_verts))
@@ -481,8 +484,10 @@ subroutine GeomechPatchUpdateCouplerAuxVars(patch,coupler_list, &
 
   type(geomech_coupler_type), pointer :: coupler
   type(geomech_condition_type), pointer :: geomech_condition
+  type(geomech_sub_condition_type), pointer :: rigid_plate
 
-  PetscInt :: num_verts
+  PetscInt :: num_verts, idir
+  character(len=1) :: axis
 
   if (.not.associated(coupler_list)) return
 
@@ -558,6 +563,30 @@ subroutine GeomechPatchUpdateCouplerAuxVars(patch,coupler_list, &
               call PrintErrMsg(option)
           end select
         endif
+        do idir = 1, THREE_INTEGER
+          rigid_plate => GeomechConditionRigidPlate(geomech_condition,idir)
+          if (.not.associated(rigid_plate)) cycle
+          select case(idir)
+            case(GEOMECH_DISP_X_DOF)
+              axis = 'X'
+            case(GEOMECH_DISP_Y_DOF)
+              axis = 'Y'
+            case(GEOMECH_DISP_Z_DOF)
+              axis = 'Z'
+          end select
+          select case(rigid_plate%itype)
+            case(NEUMANN_BC)
+              ! One resultant, stored on every vertex the way a transient
+              ! displacement is. The solve reads the dataset, not the sum.
+              coupler%geomech_aux_real_var(idir,1:num_verts) = &
+                rigid_plate%dataset%rarray(1)
+            case default
+              option%io_buffer = 'RIGID_PLATE_' // axis // &
+                ' must be NEUMANN in geomechanics condition "' // &
+                trim(geomech_condition%name) // '".'
+              call PrintErrMsg(option)
+          end select
+        enddo
       endif
     endif
 
