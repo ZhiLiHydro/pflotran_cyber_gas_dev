@@ -45,7 +45,7 @@ module PM_ERT_class
     PetscReal :: temperature_coefficient
     ! For Brace's empirical model drho = slope * dstress
     PetscReal :: brace_stress_resistivity_slope
-    ! Optional Brace update dcond = slope * dstress [S/m per kbar].
+    ! Optional Brace update dcond = slope * dstress [S/m per MPa].
     ! UNINITIALIZED selects BRACE_STRESS_RESISTIVITY_SLOPE instead.
     PetscReal :: brace_stress_conductivity_slope
     character(len=MAXSTRINGLENGTH) :: survey_time_units
@@ -313,7 +313,7 @@ subroutine PMERTReadSimOptionsBlock(this,input)
         call InputErrorMsg(input,option,keyword,error_string)
         resistivity_slope_specified = PETSC_TRUE
       case('BRACE_STRESS_CONDUCTIVITY_SLOPE')
-        ! Conductivity per kbar. Replaces BRACE_STRESS_RESISTIVITY_SLOPE.
+        ! Conductivity per MPa. Replaces BRACE_STRESS_RESISTIVITY_SLOPE.
         call InputReadDouble(input,option, &
                              this%brace_stress_conductivity_slope)
         call InputErrorMsg(input,option,keyword,error_string)

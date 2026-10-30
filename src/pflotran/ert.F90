@@ -687,10 +687,10 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
 
     if (use_geomech .and. cond > 1d-12) then
       if (use_brace_conductivity_slope) then
-        ! Slope is conductivity per kbar. dstress is Pa; 1 kbar = 1.0d8 Pa.
+        ! Slope is conductivity per MPa. dstress is Pa; 1 MPa = 1.0d6 Pa.
         ! Additive update, so saturation, concentration, and porosity
         ! derivatives are unchanged.
-        cond = cond + brace_stress_conductivity_slope * dstress * 1.0d-8
+        cond = cond + brace_stress_conductivity_slope * dstress * 1.0d-6
         geomech_factor = 1.d0
       else
         ! Geomechanics coupling
@@ -716,9 +716,9 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
   elseif (.not. use_flow .and. .not. use_trans .and. use_geomech .and. &
           cond_baseline > 1e-12) then
     if (use_brace_conductivity_slope) then
-      ! Slope is conductivity per kbar. dstress is Pa; 1 kbar = 1.0d8 Pa.
+      ! Slope is conductivity per MPa. dstress is Pa; 1 MPa = 1.0d6 Pa.
       cond = cond_baseline + &
-        brace_stress_conductivity_slope * dstress * 1.0d-8
+        brace_stress_conductivity_slope * dstress * 1.0d-6
     else
       ! get updated resistivity
       rho_min = 1.d0 / cond_max
