@@ -18,6 +18,13 @@ module Grid_Unstructured_Aux_module
   private
 
   PetscInt, parameter, public :: UGRID_UPWIND_FRACTION_PT_PROJ = 1
+
+  ! Partition of the last grid partitioned on this rank (new rank of each cell
+  ! read here) and its key: grid type, global cells, ranks, first read row and
+  ! rows read. Repartitioning the same grid reuses it, so repeated realizations
+  ! (inversion forward runs) keep one decomposition.
+  PetscInt, allocatable :: partition_cache(:)
+  PetscInt :: partition_key(5) = -1
   PetscInt, parameter, public :: UGRID_UPWIND_FRACTION_CELL_VOL = 2
   PetscInt, parameter, public :: UGRID_UPWIND_FRACTION_ABS_DIST = 3
 
@@ -1008,7 +1015,8 @@ subroutine UGridPartition(ugrid,option,Dual_mat,is_new, &
   !
   ! UGridGet_Dual_Part_IS: Given an adjacency matrix, calculates the dual
   ! partitions, and provides a new IS with the ids
-  ! of the local cells on the processor
+  ! of the local cells on the processor; the same grid partitioned again on
+  ! the same ranks reuses the first partition
   !
   ! Author: Glenn Hammond
   ! Date: 10/05/12
@@ -1026,8 +1034,10 @@ subroutine UGridPartition(ugrid,option,Dual_mat,is_new, &
 
   MatPartitioning :: Part
   PetscInt, allocatable :: cell_counts(:)
+  PetscInt, pointer :: index_ptr(:)
   PetscInt :: iflag
   PetscInt :: tempint
+  PetscInt :: key(5),first_row,last_row
 #if UGRID_DEBUG
   PetscViewer :: viewer
 #endif
@@ -1037,17 +1047,39 @@ subroutine UGridPartition(ugrid,option,Dual_mat,is_new, &
   call PrintMsg(option,'Partitioning')
 #endif
 
-  ! create the partitioning
-  call MatPartitioningCreate(option%mycomm,Part,ierr);CHKERRQ(ierr)
-  ! MatPartitioningSetAdjacency sets the adjacency graph (matrix) of the
-  ! thing to be partitioned.  - petsc
-  call MatPartitioningSetAdjacency(Part,Dual_mat,ierr);CHKERRQ(ierr)
-  call MatPartitioningSetFromOptions(Part,ierr);CHKERRQ(ierr)
-  ! MatPartitioningApply gets a partitioning for a matrix. For each local cell
-  ! this tells the processor number that that cell is assigned to. - petsc
-  ! is_new holds this information
-  call MatPartitioningApply(Part,is_new,ierr);CHKERRQ(ierr)
-  call MatPartitioningDestroy(Part,ierr);CHKERRQ(ierr)
+  ! the partitioner need not reproduce itself; reuse the partition of the
+  ! same grid when every rank has it
+  call MatGetOwnershipRange(Dual_mat,first_row,last_row,ierr);CHKERRQ(ierr)
+  key = [ugrid%grid_type,ugrid%nmax,option%comm%size,first_row, &
+         last_row-first_row]
+  iflag = 0
+  if (allocated(partition_cache)) then
+    if (all(key == partition_key)) iflag = 1
+  endif
+  call MPI_Allreduce(MPI_IN_PLACE,iflag,ONE_INTEGER_MPI,MPIU_INTEGER, &
+                     MPI_MIN,option%mycomm,ierr);CHKERRQ(ierr)
+  if (iflag == 1) then
+    call ISCreateGeneral(option%mycomm,last_row-first_row,partition_cache, &
+                         PETSC_COPY_VALUES,is_new,ierr);CHKERRQ(ierr)
+  else
+    ! create the partitioning
+    call MatPartitioningCreate(option%mycomm,Part,ierr);CHKERRQ(ierr)
+    ! MatPartitioningSetAdjacency sets the adjacency graph (matrix) of the
+    ! thing to be partitioned.  - petsc
+    call MatPartitioningSetAdjacency(Part,Dual_mat,ierr);CHKERRQ(ierr)
+    call MatPartitioningSetFromOptions(Part,ierr);CHKERRQ(ierr)
+    ! MatPartitioningApply gets a partitioning for a matrix. For each local cell
+    ! this tells the processor number that that cell is assigned to. - petsc
+    ! is_new holds this information
+    call MatPartitioningApply(Part,is_new,ierr);CHKERRQ(ierr)
+    call MatPartitioningDestroy(Part,ierr);CHKERRQ(ierr)
+    if (allocated(partition_cache)) deallocate(partition_cache)
+    allocate(partition_cache(last_row-first_row))
+    call ISGetIndices(is_new,index_ptr,ierr);CHKERRQ(ierr)
+    partition_cache = index_ptr
+    call ISRestoreIndices(is_new,index_ptr,ierr);CHKERRQ(ierr)
+    partition_key = key
+  endif
 
 #if UGRID_DEBUG
   if (ugrid%grid_type == THREE_DIM_GRID) then
