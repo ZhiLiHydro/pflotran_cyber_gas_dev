@@ -505,6 +505,7 @@ module PM_Well_class
     PetscInt, pointer :: well_cells_ghosted(:)
     PetscInt, pointer :: well_cells_bc_type(:)
     PetscReal :: inlet_temperature
+    PetscReal :: initial_temperature
     PetscReal :: nusselt_laminar
     PetscReal :: nusselt_z_ref
     PetscReal :: pipe_inner_diameter
@@ -512,7 +513,7 @@ module PM_Well_class
     PetscReal :: pipe_wall_thermal_conductivity
     PetscReal :: insulator_thickness
     PetscReal :: insulator_thermal_conductivity
-    PetscReal :: flow_velocity
+    PetscReal :: mass_flow_rate ! [kg/s]
     PetscReal :: heat_flux(2,2)
     type(connection_set_type), pointer :: connection_set
     type(connection_set_type), pointer :: bc_connection_set
@@ -568,6 +569,7 @@ module PM_Well_class
             PMWellInitializeWellFlow, &
             PMWellUpdateStrata, &
             PMWellBaseInit, &
+            PMWellAssignInitTempClosedLoop, &
             PMWellCopyReservoir, &
             PMWellSequentialInit, &
             PMWellQIInit, &
@@ -635,6 +637,46 @@ subroutine PMWellBaseInit(pm_well)
   pm_well%print_output = PETSC_FALSE
 
 end subroutine PMWellBaseInit
+
+! ************************************************************************** !
+
+subroutine PMWellAssignInitTempClosedLoop(this)
+  !
+  ! Assign an initial temperature to the fluid in a closed-loop well.
+  !
+
+  use Discretization_module
+
+  implicit none
+
+  class(pm_well_closed_loop_type) :: this
+
+  type(option_type), pointer :: option
+  PetscReal, pointer :: vec_ptr(:)
+  PetscInt :: icell
+  PetscInt :: local_id
+  PetscInt :: offset
+  PetscErrorCode :: ierr
+
+  if (.not. Initialized(this%initial_temperature) .or. &
+      .not. associated(this%well_cells_ghosted)) return
+
+  option => this%option
+  call VecGetArray(this%realization%field%flow_xx,vec_ptr, &
+                   ierr);CHKERRQ(ierr)
+  do icell = 1, size(this%well_cells_ghosted)
+    local_id = this%well_cells_ghosted(icell)
+    offset = (local_id-1)*option%nflowdof
+    vec_ptr(offset+THREE_INTEGER) = this%initial_temperature
+  enddo
+  call VecRestoreArray(this%realization%field%flow_xx,vec_ptr, &
+                       ierr);CHKERRQ(ierr)
+  call DiscretizationGlobalToLocal(this%realization%discretization, &
+                                   this%realization%field%flow_xx, &
+                                   this%realization%field%flow_xx_loc, &
+                                   NFLOWDOF)
+
+end subroutine PMWellAssignInitTempClosedLoop
 
 ! ************************************************************************** !
 
@@ -741,6 +783,7 @@ function PMWellUShapeCreate()
   pm_well%use_nusselt_entrance_factor = PETSC_FALSE
   pm_well%setup_complete = PETSC_FALSE
   pm_well%inlet_temperature = UNINITIALIZED_DOUBLE
+  pm_well%initial_temperature = UNINITIALIZED_DOUBLE
   pm_well%nusselt_laminar = 4.36d0
   pm_well%nusselt_z_ref = 1.d0
   pm_well%pipe_inner_diameter = UNINITIALIZED_DOUBLE
@@ -748,7 +791,7 @@ function PMWellUShapeCreate()
   pm_well%pipe_wall_thermal_conductivity = UNINITIALIZED_DOUBLE
   pm_well%insulator_thickness = UNINITIALIZED_DOUBLE
   pm_well%insulator_thermal_conductivity = UNINITIALIZED_DOUBLE
-  pm_well%flow_velocity = UNINITIALIZED_DOUBLE
+  pm_well%mass_flow_rate = UNINITIALIZED_DOUBLE
   pm_well%heat_flux = 0.d0
   nullify(pm_well%well_cells_ghosted)
   nullify(pm_well%well_cells_bc_type)
@@ -4342,9 +4385,10 @@ subroutine PMWellReadWell(pm_well,input,option,keyword,error_string,found)
             end select
             call InputErrorMsg(input,option,'WELL_INDEX_MODEL',error_string)
         !-----------------------------
-          case('INLET_TEMPERATURE','PIPE_INNER_DIAMETER', &
+          case('INLET_TEMPERATURE','INITIAL_TEMPERATURE','PIPE_INNER_DIAMETER', &
                'PIPE_WALL_THICKNESS','PIPE_WALL_THERMAL_CONDUCTIVITY', &
-               'PIPE_FLOW_VELOCITY','USE_WELL_INDEX', &
+               'PIPE_FLOW_VELOCITY','PIPE_MASS_FLOW_RATE', &
+               'USE_WELL_INDEX', &
                'INSULATOR_THICKNESS','INSULATOR_THERMAL_CONDUCTIVITY', &
                'NUSSELT_MODE','NUSSELT_LAMINAR','NUSSELT_Z_REF', &
                'USE_NUSSELT_ENTRANCE_FACTOR')
@@ -4380,6 +4424,9 @@ subroutine PMWellReadWell(pm_well,input,option,keyword,error_string,found)
                   case('INLET_TEMPERATURE')
                     call InputReadDouble(input,option,pm%inlet_temperature)
                     call InputErrorMsg(input,option,word,error_string)
+                  case('INITIAL_TEMPERATURE')
+                    call InputReadDouble(input,option,pm%initial_temperature)
+                    call InputErrorMsg(input,option,word,error_string)
                   case('PIPE_INNER_DIAMETER')
                     call InputReadDouble(input,option,pm%pipe_inner_diameter)
                     call InputErrorMsg(input,option,word,error_string)
@@ -4390,18 +4437,37 @@ subroutine PMWellReadWell(pm_well,input,option,keyword,error_string,found)
                     call InputReadDouble(input,option, &
                                          pm%pipe_wall_thermal_conductivity)
                     call InputErrorMsg(input,option,word,error_string)
+                    call InputReadAndConvertUnits(input, &
+                           pm%pipe_wall_thermal_conductivity,'W/m-C', &
+                           trim(error_string)// &
+                           ',PIPE_WALL_THERMAL_CONDUCTIVITY',option)
+                    ! W/m-C -> MW/m-C
+                    pm%pipe_wall_thermal_conductivity = &
+                      pm%pipe_wall_thermal_conductivity * 1.d-6
                   case('INSULATOR_THICKNESS')
                     call InputReadDouble(input,option,pm%insulator_thickness)
                     call InputErrorMsg(input,option,word,error_string)
                   case('INSULATOR_THERMAL_CONDUCTIVITY')
                     call InputReadDouble(input,option,pm%insulator_thermal_conductivity)
                     call InputErrorMsg(input,option,word,error_string)
+                    call InputReadAndConvertUnits(input, &
+                           pm%insulator_thermal_conductivity,'W/m-C', &
+                           trim(error_string)// &
+                           ',INSULATOR_THERMAL_CONDUCTIVITY',option)
+                    ! W/m-C -> MW/m-C
+                    pm%insulator_thermal_conductivity = &
+                      pm%insulator_thermal_conductivity * 1.d-6
                   case('PIPE_FLOW_VELOCITY')
-                    call InputReadDouble(input,option,pm%flow_velocity)
+                    option%io_buffer = 'PIPE_FLOW_VELOCITY is no longer &
+                      &supported in ' // trim(error_string) // '. Please &
+                      &specify PIPE_MASS_FLOW_RATE [kg/s] instead.'
+                    call PrintErrMsg(option)
+                  case('PIPE_MASS_FLOW_RATE')
+                    call InputReadDouble(input,option,pm%mass_flow_rate)
                     call InputErrorMsg(input,option,word,error_string)
-                    call InputReadAndConvertUnits(input,pm%flow_velocity, &
-                           'm/s',trim(error_string)//',PIPE_FLOW_VELOCITY', &
-                           option)
+                    call InputReadAndConvertUnits(input,pm%mass_flow_rate, &
+                           'kg/sec',trim(error_string)// &
+                           ',PIPE_MASS_FLOW_RATE',option)
                 end select
               class default
                 option%io_buffer = &
@@ -8549,7 +8615,7 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
   use Grid_module
   use EOS_Water_module
   use EOS_Gas_module
-  use SCO2_Aux_module, only : fmw_comp, SCO2BrineDensity
+  use SCO2_Aux_module, only : sco2_fmw_comp, SCO2BrineDensity
   use Hydrate_Aux_module, only : hydrate_fmw_comp
 
   implicit none
@@ -8602,7 +8668,7 @@ subroutine PMWellSolveFlowHydrostatic(this,perturbation_index,ierr)
 
   select case (option%iflowmode)
     case (SCO2_MODE)
-      fmw_comp_temp(:) = fmw_comp(:)
+      fmw_comp_temp(:) = sco2_fmw_comp(:)
     case (H_MODE)
       fmw_comp_temp(:) = hydrate_fmw_comp(:)
     case (RICHARDS_MODE)
@@ -9269,25 +9335,25 @@ subroutine PMWellUpdatePropertiesSCO2Flow(pm_well,well,option)
                           xco2g, xwg, xco2l, xsl, xwl, &
                           xmolco2g, xmolwg, xmolco2l, xmolsl, xmolwl, option)
 
-      xmolco2g = (well%gas%xmass(i,co2_id)/fmw_comp(2)) / &
-                ((well%gas%xmass(i,co2_id)/fmw_comp(2)) + &
-                  (well%gas%xmass(i,wid)/fmw_comp(1)))
+      xmolco2g = (well%gas%xmass(i,co2_id)/sco2_fmw_comp(2)) / &
+                ((well%gas%xmass(i,co2_id)/sco2_fmw_comp(2)) + &
+                  (well%gas%xmass(i,wid)/sco2_fmw_comp(1)))
       xmolwg = 1.d0 - xmolco2g
-      xmolco2l = (well%liq%xmass(i,co2_id)/fmw_comp(2)) / &
-                ((well%gas%xmass(i,co2_id)/fmw_comp(2)) + &
-                (well%gas%xmass(i,wid)/fmw_comp(1)) + &
-                (well%gas%xmass(i,sid)/fmw_comp(3)))
-      xmolwl = (well%liq%xmass(i,wid)/fmw_comp(2)) / &
-                ((well%gas%xmass(i,co2_id)/fmw_comp(2)) + &
-                (well%gas%xmass(i,wid)/fmw_comp(1)) + &
-                (well%gas%xmass(i,sid)/fmw_comp(3)))
+      xmolco2l = (well%liq%xmass(i,co2_id)/sco2_fmw_comp(2)) / &
+                ((well%gas%xmass(i,co2_id)/sco2_fmw_comp(2)) + &
+                (well%gas%xmass(i,wid)/sco2_fmw_comp(1)) + &
+                (well%gas%xmass(i,sid)/sco2_fmw_comp(3)))
+      xmolwl = (well%liq%xmass(i,wid)/sco2_fmw_comp(2)) / &
+                ((well%gas%xmass(i,co2_id)/sco2_fmw_comp(2)) + &
+                (well%gas%xmass(i,wid)/sco2_fmw_comp(1)) + &
+                (well%gas%xmass(i,sid)/sco2_fmw_comp(3)))
       xmolsl = 1.d0 - xmolco2l - xmolwl
 
       !Gas Density
       Pva = max(well%pg(i),Prvap)
       call EOSGasDensity(well%temp(i),Pva, &
                         den_mol_co2,drho_dT,drho_dP,ierr)
-      den_kg_co2 = den_mol_co2 * fmw_comp(2)
+      den_kg_co2 = den_mol_co2 * sco2_fmw_comp(2)
       den_kg_gas = well%gas%xmass(i,option%co2_id) * &
                   den_kg_co2 + &
                   well%gas%xmass(i,option%water_id) * &
@@ -9319,14 +9385,14 @@ subroutine PMWellUpdatePropertiesSCO2Flow(pm_well,well,option)
         call EOSWaterEnthalpy(well%temp(i),well%pg(i), &
                               well%liq%H(i),ierr)
         ! J/kmol --> J/kg
-        well%liq%H(i) = well%liq%H(i) / fmw_comp(wid)
+        well%liq%H(i) = well%liq%H(i) / sco2_fmw_comp(wid)
         call SCO2BrineEnthalpy(well%temp(i), well%liq%xmass(i,sid), &
                               well%liq%H(i),H_temp)
         ! CO2 density, internal energy, enthalpy
         call EOSGasDensityEnergy(well%temp(i),well%pg(i),den_co2, &
                                 well%gas%H(i),U_temp,ierr)
         ! J/kmol --> J/kg
-        well%gas%H(i) = well%gas%H(i) / fmw_comp(co2_id)
+        well%gas%H(i) = well%gas%H(i) / sco2_fmw_comp(co2_id)
 
         ! Liquid phase enthalpy
         well%liq%H(i) = SCO2EnthalpyCompositeLiquid(well%temp(i), &
@@ -9342,7 +9408,7 @@ subroutine PMWellUpdatePropertiesSCO2Flow(pm_well,well,option)
                                           den_steam, &
                                           H_steam,ierr)
         ! J/kmol -> MJ/kg
-        H_steam = H_steam / fmw_comp(wid) * 1.d-6
+        H_steam = H_steam / sco2_fmw_comp(wid) * 1.d-6
       else
         den_steam = 0.d0
         H_steam = 0.d0

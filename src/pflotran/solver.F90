@@ -246,6 +246,17 @@ subroutine SolverSetKSPOptions(solver, option)
   ! KSPSetFromOptions must come after custom setup in order to override
   ! from command line
   call KSPSetFromOptions(solver%ksp,ierr);CHKERRQ(ierr)
+
+  ! Update the solver%pc_type and solver%ksp_type fields after the
+  ! KSPSetFromOptions(), as the PC and KSP types may have been changed via
+  ! the options database. SolverSetSNESOptions() does this, but not all
+  ! PFLOTRAN modes use SNES!
+  ! Not doing this step can result in the SolverSetupPCShiftAndPivoting() call
+  ! failing when it tries to set a shift for a preconditioner that does not
+  ! support this operation.
+  call PCGetType(solver%pc,solver%pc_type,ierr);CHKERRQ(ierr)
+  call KSPGetType(solver%ksp,solver%ksp_type,ierr);CHKERRQ(ierr)
+
   call SolverSetupPCShiftAndPivoting(solver,option)
   call KSPGetTolerances(solver%ksp,solver%linear_rtol,solver%linear_atol, &
                         solver%linear_dtol,solver%linear_max_iterations, &
@@ -435,13 +446,19 @@ subroutine SolverCreateSNES(solver,comm,options_prefix,option)
   call SNESGetType(solver%snes,solver%snes_type,ierr);CHKERRQ(ierr)
 
   select case(solver%snes_type)
+    ! Note: Currently, nothing special needs to be done for any SNES type,
+    !       but the skeleton below can be filled in we determine that any
+    !       of these cases needs special handling or settings.
     case(SNESNEWTONLS,SNESNEWTONTR)
 
     case(SNESNEWTONTRDC)
 
     case default
-      option%io_buffer = 'Unsupported SNES type: ' // trim(solver%snes_type)
-      call PrintErrMsg(option)
+!   We currently allow the use of all SNES types, but, if some should not be
+!   permitted, adjust the 'select case' logic appropriately and uncomment
+!   the following:
+!      option%io_buffer = 'Unsupported SNES type: ' // trim(solver%snes_type)
+!      call PrintErrMsg(option)
   end select
 
   ! grab handles for ksp and pc
@@ -1414,6 +1431,7 @@ subroutine SolverReadNewtonSelectCase(solver,input,keyword,found, &
             call InputKeywordUnrecognized(input,keyword,error_string,option)
         end select
       enddo
+      call InputPopBlock(input,option)
     case default
       found = PETSC_FALSE
   end select
@@ -1856,7 +1874,7 @@ subroutine SolverLinearPrintFailedReason(solver,option)
         call PCGetFailedReason(pc,pc_failed_reason,ierr);CHKERRQ(ierr)
         ! have to perform global reduction on pc_failed_reason
         temp_int = pc_failed_reason%v
-        call MPI_Allreduce(MPI_IN_PLACE,temp_int,ONE_INTEGER_MPI,MPI_INTEGER, &
+        call MPI_Allreduce(MPI_IN_PLACE,temp_int,ONE_INTEGER_MPI,MPIU_INTEGER, &
                            MPI_MAX,option%mycomm,ierr);CHKERRQ(ierr)
         global_pc_failed_reason%v = temp_int
         if (global_pc_failed_reason == PC_SUBPC_ERROR) then
@@ -1881,7 +1899,7 @@ subroutine SolverLinearPrintFailedReason(solver,option)
         endif
         ! have to perform global reduction (again) on pc_failed_reason
         temp_int = pc_failed_reason%v
-        call MPI_Allreduce(MPI_IN_PLACE,temp_int,ONE_INTEGER_MPI,MPI_INTEGER, &
+        call MPI_Allreduce(MPI_IN_PLACE,temp_int,ONE_INTEGER_MPI,MPIU_INTEGER, &
                            MPI_MAX,option%mycomm,ierr);CHKERRQ(ierr)
         global_pc_failed_reason%v = temp_int
         select case(global_pc_failed_reason%v)

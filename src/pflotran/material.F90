@@ -65,11 +65,13 @@ module Material_module
     PetscReal :: archie_tortuosity_constant
     PetscReal :: surface_electrical_conductivity
     PetscReal :: waxman_smits_clay_conductivity
+    PetscReal :: mean_soil_grain_size
     class(dataset_base_type), pointer :: archie_cem_exp_dataset
     class(dataset_base_type), pointer :: archie_sat_exp_dataset
     class(dataset_base_type), pointer :: archie_tor_con_dataset
     class(dataset_base_type), pointer :: surf_elec_cond_dataset
     class(dataset_base_type), pointer :: waxman_smits_clay_cond_dataset
+    class(dataset_base_type), pointer :: mean_soil_grain_size_dataset
 
     class(fracture_type), pointer :: fracture
 
@@ -239,6 +241,8 @@ function MaterialPropertyCreate(option)
   nullify(material_property%surf_elec_cond_dataset)
   nullify(material_property%waxman_smits_clay_cond_dataset)
   material_property%waxman_smits_clay_conductivity = UNINITIALIZED_DOUBLE
+  material_property%mean_soil_grain_size = UNINITIALIZED_DOUBLE
+  nullify(material_property%mean_soil_grain_size_dataset)
 
   nullify(material_property%fracture)
   nullify(material_property%geomechanics_subsurface_properties)
@@ -1040,6 +1044,11 @@ subroutine MaterialPropertyRead(material_property,input,option)
                       material_property%waxman_smits_clay_conductivity, &
                       material_property%waxman_smits_clay_cond_dataset, &
                       keyword,error_str,option)
+      case('MEAN_SOIL_GRAIN_SIZE')
+        call DatasetReadDoubleOrDataset(input, &
+                      material_property%mean_soil_grain_size, &
+                      material_property%mean_soil_grain_size_dataset, &
+                      keyword,error_str,option)
       case default
         call InputKeywordUnrecognized(input,keyword,error_str,option)
     end select
@@ -1670,6 +1679,7 @@ subroutine MaterialInitAuxIndices(material_property_ptrs,option)
   PetscInt :: num_ws_clay_conduct
   PetscInt :: num_tortuosity_yy
   PetscInt :: num_tortuosity_zz
+  PetscInt :: num_mean_soil_grain_size
   PetscBool :: error_found
 
   procedure(MaterialCompressSoilDummy), pointer :: &
@@ -1686,6 +1696,7 @@ subroutine MaterialInitAuxIndices(material_property_ptrs,option)
   num_ws_clay_conduct = 0
   num_tortuosity_yy = 0
   num_tortuosity_zz = 0
+  num_mean_soil_grain_size = 0
 
   soil_compressibility_index = 0
   soil_reference_pressure_index = 0
@@ -1697,6 +1708,7 @@ subroutine MaterialInitAuxIndices(material_property_ptrs,option)
   ws_clay_conduct_index = 0
   tortuosity_yy_index = 0
   tortuosity_zz_index = 0
+  mean_soil_grain_size_index = 0
   ! ADD_SOIL_PROPERTY_INDEX_HERE - also need to add num_xxx counter above
   max_material_index = 0
 
@@ -1831,6 +1843,14 @@ subroutine MaterialInitAuxIndices(material_property_ptrs,option)
       endif
       num_tortuosity_zz = num_tortuosity_zz + 1
     endif
+    if (Initialized(material_property_ptrs(i)%ptr% &
+                      mean_soil_grain_size)) then
+      if (mean_soil_grain_size_index == 0) then
+        icount = icount + 1
+        mean_soil_grain_size_index = icount
+      endif
+      num_mean_soil_grain_size = num_mean_soil_grain_size + 1
+    endif
     ! ADD_SOIL_PROPERTY_INDEX_HERE
   enddo
   max_material_index = icount
@@ -1914,6 +1934,12 @@ subroutine MaterialInitAuxIndices(material_property_ptrs,option)
       num_tortuosity_zz /= num_material_properties) then
     error_found = PETSC_TRUE
     option%io_buffer = 'TORTUOSITY_Z must be defined for all materials.'
+    call PrintMsg(option)
+  endif
+  if (num_mean_soil_grain_size > 0 .and. &
+      num_mean_soil_grain_size /= num_material_properties) then
+    error_found = PETSC_TRUE
+    option%io_buffer = 'MEAN_SOIL_GRAIN_SIZE must be defined for all materials.'
     call PrintMsg(option)
   endif
   ! ADD_SOIL_PROPERTY_INDEX_HERE
@@ -2019,6 +2045,10 @@ subroutine MaterialAssignPropertyToAux(material_auxvar,material_property, &
     if (tortuosity_zz_index > 0) then
       material_auxvar%soil_properties(tortuosity_zz_index) = &
         material_property%tortuosity_anisotropic(3)
+    endif
+    if (mean_soil_grain_size_index > 0) then
+      material_auxvar%soil_properties(mean_soil_grain_size_index) = &
+        material_property%mean_soil_grain_size
     endif
     ! ADD_SOIL_PROPERTY_INDEX_HERE
   endif
@@ -2242,7 +2272,7 @@ subroutine MaterialGetAuxVarVecLoc(Material,vec_loc,ivar)
   PetscErrorCode :: ierr
 
   material_auxvars => Material%auxvars
-  call VecGetArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
   select case(ivar)
     case(VOLUME)
@@ -2312,7 +2342,7 @@ subroutine MaterialGetAuxVarVecLoc(Material,vec_loc,ivar)
       endif
   end select
 
-  call VecRestoreArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
 end subroutine MaterialGetAuxVarVecLoc
 
@@ -2753,6 +2783,7 @@ recursive subroutine MaterialPropertyDestroy(material_property)
   nullify(material_property%waxman_smits_clay_cond_dataset)
   nullify(material_property%compressibility_dataset)
   nullify(material_property%soil_reference_pressure_dataset)
+  nullify(material_property%mean_soil_grain_size_dataset)
 
   if (associated(material_property%multicontinuum)) then
     nullify(material_property%multicontinuum%half_matrix_width_dataset)

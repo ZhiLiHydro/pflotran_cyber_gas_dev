@@ -735,6 +735,9 @@ subroutine THUpdateAuxVars(realization,pm_well)
 
   call VecGetArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
+  ! TH_UPDATE_FOR_ACCUM indicates call from non-perturbation
+  option%iflag = TH_UPDATE_FOR_ACCUM
+
   do ghosted_id = 1, grid%ngmax
     if (grid%nG2L(ghosted_id) < 0) cycle ! bypass ghosted corner cells
 
@@ -4827,6 +4830,8 @@ subroutine THJacobianInternalConn(A,realization,debug,ierr)
     enddo
     cur_connection_set => cur_connection_set%next
   enddo
+
+  call VecRestoreArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
   if (debug%matview_Matrix_detailed) then
     call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)

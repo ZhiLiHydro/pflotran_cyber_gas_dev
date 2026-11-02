@@ -12,6 +12,12 @@ module Output_Aux_module
   PetscInt, parameter, public :: INSTANTANEOUS_VARS = 1
   PetscInt, parameter, public :: AVERAGED_VARS = 2
 
+  ! Output basis for internal energy and enthalpy. Zero matches the
+  ! default output_variable%isubvar and is MJ/kmol.
+  PetscInt, parameter, public :: ENERGY_PER_MOLE = 0
+  PetscInt, parameter, public :: ENERGY_PER_MASS = 1
+  PetscInt, parameter, public :: ENERGY_PER_VOLUME = 2
+
   ! IMPORTANT!!!! If you add new variables to any of the derived types below
   !               You MUST add the same variable to the "create" and
   !               "duplicate" routines below.
@@ -1031,13 +1037,37 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       units = 'MJ/kmol'
       category = OUTPUT_GENERIC
       id = LIQUID_ENERGY
-      subvar = ZERO_INTEGER
+      subvar = ENERGY_PER_MOLE
+    case ('LIQUID_ENERGY_PER_MASS')
+      name = 'Liquid Energy'
+      units = 'MJ/kg'
+      category = OUTPUT_GENERIC
+      id = LIQUID_ENERGY
+      subvar = ENERGY_PER_MASS
     case ('LIQUID_ENERGY_PER_VOLUME')
       name = 'Liquid Energy'
       units = 'MJ/m^3'
       category = OUTPUT_GENERIC
       id = LIQUID_ENERGY
-      subvar = ONE_INTEGER
+      subvar = ENERGY_PER_VOLUME
+    case ('LIQUID_ENTHALPY')
+      name = 'Liquid Enthalpy'
+      units = 'MJ/kmol'
+      category = OUTPUT_GENERIC
+      id = LIQUID_ENTHALPY
+      subvar = ENERGY_PER_MOLE
+    case ('LIQUID_ENTHALPY_PER_MASS')
+      name = 'Liquid Enthalpy'
+      units = 'MJ/kg'
+      category = OUTPUT_GENERIC
+      id = LIQUID_ENTHALPY
+      subvar = ENERGY_PER_MASS
+    case ('LIQUID_ENTHALPY_PER_VOLUME')
+      name = 'Liquid Enthalpy'
+      units = 'MJ/m^3'
+      category = OUTPUT_GENERIC
+      id = LIQUID_ENTHALPY
+      subvar = ENERGY_PER_VOLUME
     case ('GAS_PRESSURE')
       name = 'Gas Pressure'
       units = 'Pa'
@@ -1073,13 +1103,37 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       units = 'MJ/kmol'
       category = OUTPUT_GENERIC
       id = GAS_ENERGY
-      subvar = ZERO_INTEGER
+      subvar = ENERGY_PER_MOLE
+    case ('GAS_ENERGY_PER_MASS')
+      name = 'Gas Energy'
+      units = 'MJ/kg'
+      category = OUTPUT_GENERIC
+      id = GAS_ENERGY
+      subvar = ENERGY_PER_MASS
     case ('GAS_ENERGY_PER_VOLUME')
       name = 'Gas Energy'
       units = 'MJ/m^3'
       category = OUTPUT_GENERIC
       id = GAS_ENERGY
-      subvar = ONE_INTEGER
+      subvar = ENERGY_PER_VOLUME
+    case ('GAS_ENTHALPY')
+      name = 'Gas Enthalpy'
+      units = 'MJ/kmol'
+      category = OUTPUT_GENERIC
+      id = GAS_ENTHALPY
+      subvar = ENERGY_PER_MOLE
+    case ('GAS_ENTHALPY_PER_MASS')
+      name = 'Gas Enthalpy'
+      units = 'MJ/kg'
+      category = OUTPUT_GENERIC
+      id = GAS_ENTHALPY
+      subvar = ENERGY_PER_MASS
+    case ('GAS_ENTHALPY_PER_VOLUME')
+      name = 'Gas Enthalpy'
+      units = 'MJ/m^3'
+      category = OUTPUT_GENERIC
+      id = GAS_ENTHALPY
+      subvar = ENERGY_PER_VOLUME
     case ('ICE_SATURATION')
       name = 'Ice Saturation'
       units = ''
@@ -1092,6 +1146,11 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       id = HYDRATE_SATURATION
     case ('PRECIPITATE_SATURATION')
       name = 'Precipitate Saturation'
+      units = ''
+      category = OUTPUT_SATURATION
+      id = PRECIPITATE_SATURATION
+    case ('SALT_PRECIPITATE_SATURATION')
+      name = 'Salt Precipitate Saturation'
       units = ''
       category = OUTPUT_SATURATION
       id = PRECIPITATE_SATURATION
@@ -1411,6 +1470,11 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       units = ''
       category = OUTPUT_GENERIC
       id = WELL_CELLS
+    case ('WELL_BHP')
+      name = 'Well BHP'
+      units = 'Pa'
+      category = OUTPUT_PRESSURE
+      id = WELL_BHP
     case('ELECTRICAL_CONDUCTIVITY','ELECTRICAL_POTENTIAL', &
          'ELECTRICAL_JACOBIAN','ELECTRICAL_POTENTIAL_DIPOLE', &
          'ARCHIE_CEMENTATION_EXPONENT','ARCHIE_SATURATION_EXPONENT', &
@@ -1487,6 +1551,11 @@ subroutine OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
       name = 'Solute Concentration'
       category = OUTPUT_GENERIC
       id = SOLUTE_CONCENTRATION
+    case ('MEAN_SOIL_GRAIN_SIZE')
+      units = 'm'
+      name = 'Mean Soil Grain Size'
+      category = OUTPUT_GENERIC
+      id = MEAN_SOIL_GRAIN_SIZE
     case ('PARAMETER')
       units = '?'
       name = 'Parameter'

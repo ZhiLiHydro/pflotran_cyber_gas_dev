@@ -19,6 +19,7 @@ module THC_module
             THCUpdateAuxVars, &
             THCUpdateFixedAccum, &
             THCComputeMassBalance, &
+            THCComputeConservation, &
             THCZeroMassBalanceDelta, &
             THCResidual, &
             THCSetPlotVariables, &
@@ -46,8 +47,8 @@ subroutine THCSetup(realization)
   use Material_Aux_module
   use Output_Aux_module
   use Characteristic_Curves_module
+  use Characteristic_Curves_Thermal_module
   use Matrix_Zeroing_module
-  use EOS_Water_module, only : EOSWaterSetViscosity
 
   implicit none
 
@@ -64,7 +65,7 @@ subroutine THCSetup(realization)
   PetscInt :: ghosted_id, iconn, sum_connection, local_id
   PetscBool :: error_found
   PetscInt :: flag(10)
-  PetscInt :: temp_int, idof, imat
+  PetscInt :: temp_int, idof, imat, icct
   PetscBool, allocatable :: dof_is_active(:)
   PetscErrorCode :: ierr
                                                 ! extra index for derivatives
@@ -76,8 +77,6 @@ subroutine THCSetup(realization)
   option => realization%option
   patch => realization%patch
   grid => patch%grid
-
-  call EOSWaterSetViscosity('BATZLE_AND_WANG')
 
   patch%aux%THC => THCAuxCreate(option)
   thc_parameter => patch%aux%THC%thc_parameter
@@ -129,9 +128,37 @@ subroutine THCSetup(realization)
   ! dry/wet interpolation when both ckdry/ckwet are set, otherwise the
   ! grain-Somerton model from the global thc_kappa_solid.
   ! --------------------------------------------------------------------------
+  ! longitudinal dispersivity; transverse dispersion is not implemented
+  allocate(thc_parameter%alpha_l(temp_int))
+  do imat = 1, temp_int
+    if (maxval(patch%material_property_array(imat)%ptr% &
+                 dispersivity(2:3)) > 0.d0) then
+      option%io_buffer = 'Transverse dispersion is not implemented in &
+        &MODE THC; only LONGITUDINAL_DISPERSIVITY is supported (material "' // &
+        trim(patch%material_property_array(imat)%ptr%name) // '").'
+      call PrintErrMsg(option)
+    endif
+    thc_parameter%alpha_l(imat) = &
+      patch%material_property_array(imat)%ptr%dispersivity(1)
+  enddo
   allocate(thc_parameter%dencpr(temp_int))
   allocate(thc_parameter%ckdry(temp_int))
   allocate(thc_parameter%ckwet(temp_int))
+  ! per-material THERMAL_CHARACTERISTIC_CURVES, when supplied.  This is the
+  ! only conductivity path that returns d(kappa_eff)/dT (POWER,
+  ! CUBIC_POLYNOMIAL, LINEAR_RESISTIVITY); DEFAULT reproduces ckdry/ckwet.
+  if (associated(patch%char_curves_thermal_array)) then
+    allocate(thc_parameter%thermal_cc(temp_int))
+    do imat = 1, temp_int
+      nullify(thc_parameter%thermal_cc(imat)%ptr)
+      icct = patch%material_property_array(imat)%ptr% &
+               thermal_conductivity_function_id
+      if (Initialized(icct)) then
+        thc_parameter%thermal_cc(imat)%ptr => &
+          patch%char_curves_thermal_array(icct)%ptr
+      endif
+    enddo
+  endif
   do imat = 1, temp_int
     ! solid volumetric heat capacity rho_s * c_s
     if (Initialized(patch%material_property_array(imat)%ptr%rock_density) .and. &
@@ -230,6 +257,8 @@ subroutine THCSetup(realization)
     if (cur_fluid_property%phase_id == LIQUID_PHASE) then
       patch%aux%THC%thc_parameter%diffusion_coef = &
         cur_fluid_property%diffusion_coefficient
+      patch%aux%THC%thc_parameter%diffusion_activation_energy = &
+        cur_fluid_property%diffusion_activation_energy
       exit
     endif
     cur_fluid_property => cur_fluid_property%next
@@ -418,6 +447,69 @@ end subroutine THCComputeMassBalance
 
 ! ************************************************************************** !
 
+subroutine THCComputeConservation(realization,water_kg,energy_mj,solute_mol)
+  !
+  ! Global sums for the conservation (-con.dat) output: water [kg],
+  ! energy [MJ], solute [mol]
+  !
+  use Realization_Subsurface_class
+  use Option_module
+  use Grid_module
+  use Patch_module
+  use Material_Aux_module, only : material_auxvar_type
+
+  implicit none
+
+  class(realization_subsurface_type) :: realization
+  PetscReal :: water_kg
+  PetscReal :: energy_mj
+  PetscReal :: solute_mol
+
+  type(option_type), pointer :: option
+  type(patch_type), pointer :: patch
+  type(grid_type), pointer :: grid
+  type(material_auxvar_type), pointer :: material_auxvars(:)
+  type(thc_auxvar_type), pointer :: thc_auxvars(:,:)
+
+  PetscInt :: local_id, ghosted_id
+  PetscReal :: por_sat_vol, liq_energy
+
+  option => realization%option
+  patch => realization%patch
+  grid => patch%grid
+  material_auxvars => patch%aux%Material%auxvars
+  thc_auxvars => patch%aux%THC%auxvars
+
+  water_kg = 0.d0
+  energy_mj = 0.d0
+  solute_mol = 0.d0
+
+  do local_id = 1, grid%nlmax
+    ghosted_id = grid%nL2G(local_id)
+    if (patch%imat(ghosted_id) <= 0) cycle
+    associate (aux => thc_auxvars(ZERO_INTEGER,ghosted_id))
+    por_sat_vol = aux%effective_porosity * aux%sat * &
+                  material_auxvars(ghosted_id)%volume
+    water_kg = water_kg + por_sat_vol * aux%den_kg
+    ! liquid energy per kg: u(P,T) under FULL_EOS, c_p*T otherwise
+    if (thc_energy_mode == THC_ENERGY_FULL_EOS) then
+      liq_energy = aux%u
+    else
+      liq_energy = thc_specific_heat_liquid * aux%temp
+    endif
+    ! [J] -> [MJ] via option%scale
+    energy_mj = energy_mj + option%scale * &
+      (por_sat_vol * aux%den_kg * liq_energy + &
+       (1.d0 - aux%effective_porosity) * &
+       material_auxvars(ghosted_id)%volume * aux%heat_cap_solid * aux%temp)
+    solute_mol = solute_mol + por_sat_vol * aux%conc * 1.d3
+    end associate
+  enddo
+
+end subroutine THCComputeConservation
+
+! ************************************************************************** !
+
 subroutine THCZeroMassBalanceDelta(realization)
   !
   ! Zeros mass balance delta array
@@ -487,15 +579,22 @@ subroutine THCUpdateMassBalance(realization)
   global_auxvars_bc => patch%aux%Global%auxvars_bc
   global_auxvars_ss => patch%aux%Global%auxvars_ss
 
+  ! water delta is kmol -> kg as in TH; solute delta stays mol
   do iconn = 1, patch%aux%THC%num_aux_bc
     global_auxvars_bc(iconn)%mass_balance(1,1) = &
       global_auxvars_bc(iconn)%mass_balance(1,1) + &
-      global_auxvars_bc(iconn)%mass_balance_delta(1,1)*option%flow_dt
+      global_auxvars_bc(iconn)%mass_balance_delta(1,1)*FMWH2O*option%flow_dt
+    global_auxvars_bc(iconn)%mass_balance(2,1) = &
+      global_auxvars_bc(iconn)%mass_balance(2,1) + &
+      global_auxvars_bc(iconn)%mass_balance_delta(2,1)*option%flow_dt
   enddo
   do iconn = 1, patch%aux%THC%num_aux_ss
     global_auxvars_ss(iconn)%mass_balance(1,1) = &
       global_auxvars_ss(iconn)%mass_balance(1,1) + &
-      global_auxvars_ss(iconn)%mass_balance_delta(1,1)*option%flow_dt
+      global_auxvars_ss(iconn)%mass_balance_delta(1,1)*FMWH2O*option%flow_dt
+    global_auxvars_ss(iconn)%mass_balance(2,1) = &
+      global_auxvars_ss(iconn)%mass_balance(2,1) + &
+      global_auxvars_ss(iconn)%mass_balance_delta(2,1)*option%flow_dt
   enddo
 
 end subroutine THCUpdateMassBalance
@@ -629,8 +728,8 @@ subroutine THCUpdateAuxVars(realization)
              HYDROSTATIC_BC,HYDROSTATIC_SEEPAGE_BC,HYDROSTATIC_CONDUCTANCE_BC)
           xxbc(thc_temperature_dof) = &
             boundary_condition%flow_aux_real_var(energy_index,iconn)
-        case(NEUMANN_BC,ZERO_GRADIENT_BC)
-          ! prescribed-heat-flux / zero-gradient: ghost carries the interior T
+        case(NEUMANN_BC,ZERO_GRADIENT_BC,CONVECTIVE_BC)
+          ! prescribed-flux / zero-gradient / Robin: ghost carries interior T
           xxbc(thc_temperature_dof) = &
             xx_loc_p(ghosted_offset+thc_temperature_dof)
         case default
@@ -990,6 +1089,10 @@ subroutine THCResidual(snes,xx,r,A,realization,debug,ierr)
         if (associated(patch%internal_flow_fluxes)) then
           patch%internal_flow_fluxes(1,sum_connection) = &
             Res(thc_pressure_dof)
+          patch%internal_flow_fluxes(2,sum_connection) = &
+            Res(thc_temperature_dof)
+          patch%internal_flow_fluxes(3,sum_connection) = &
+            Res(thc_concentration_dof)
         endif
 
         if (local_id_up > 0) then
@@ -1049,12 +1152,19 @@ subroutine THCResidual(snes,xx,r,A,realization,debug,ierr)
         if (associated(patch%boundary_flow_fluxes)) then
           patch%boundary_flow_fluxes(1,sum_connection) = &
             Res(thc_pressure_dof)
+          patch%boundary_flow_fluxes(2,sum_connection) = &
+            Res(thc_temperature_dof)
+          patch%boundary_flow_fluxes(3,sum_connection) = &
+            Res(thc_concentration_dof)
         endif
         if (option%compute_mass_balance_new) then
           ! contribution to boundary
           global_auxvars_bc(sum_connection)%mass_balance_delta(1,1) = &
             global_auxvars_bc(sum_connection)%mass_balance_delta(1,1) - &
             Res(thc_pressure_dof)
+          global_auxvars_bc(sum_connection)%mass_balance_delta(2,1) = &
+            global_auxvars_bc(sum_connection)%mass_balance_delta(2,1) - &
+            Res(thc_concentration_dof)
         endif
         Res = -Res
         call PetUtilVecSVBL(r_p,local_id,Res,ndof,PETSC_FALSE)
@@ -1100,13 +1210,32 @@ subroutine THCResidual(snes,xx,r,A,realization,debug,ierr)
         global_auxvars_ss(sum_connection)%mass_balance_delta(1,1) = &
           global_auxvars_ss(sum_connection)%mass_balance_delta(1,1) - &
           Res(thc_pressure_dof)
+        global_auxvars_ss(sum_connection)%mass_balance_delta(2,1) = &
+          global_auxvars_ss(sum_connection)%mass_balance_delta(2,1) - &
+          Res(thc_concentration_dof)
       endif
       Res = -Res
       call PetUtilVecSVBL(r_p,local_id,Res,ndof,PETSC_FALSE)
+      Jdn = -Jdn
       call PetUtilMatSVBL(A,ghosted_id,ghosted_id,Jdn,ndof)
     enddo
     source_sink => source_sink%next
   enddo
+
+  ! Solute decay reaction term -----------------------------
+  if (thc_decay_rate_constant > 0.d0) then
+    do local_id = 1, grid%nlmax  ! For each local node do...
+      ghosted_id = grid%nL2G(local_id)
+      imat = patch%imat(ghosted_id)
+      if (imat <= 0) cycle
+      call THCReactDerivative(thc_auxvars(:,ghosted_id), &
+                              global_auxvars(ghosted_id), &
+                              material_auxvars(ghosted_id), &
+                              option,Res,Jup)
+      call PetUtilVecSVBL(r_p,local_id,Res,ndof,PETSC_FALSE)
+      call PetUtilMatSVBL(A,ghosted_id,ghosted_id,Jup,ndof)
+    enddo
+  endif
 
   call VecRestoreArray(r,r_p,ierr);CHKERRQ(ierr)
 
@@ -1280,8 +1409,14 @@ subroutine THCMapBCAuxVarsToGlobal(realization)
     cur_connection_set => boundary_condition%connection_set
     do iconn = 1, cur_connection_set%num_connections
       sum_connection = sum_connection + 1
+      global_auxvars_bc(sum_connection)%den_kg = &
+        thc_auxvars_bc(sum_connection)%den_kg
       global_auxvars_bc(sum_connection)%sat = &
         thc_auxvars_bc(sum_connection)%sat
+      global_auxvars_bc(sum_connection)%temp = &
+        thc_auxvars_bc(sum_connection)%temp
+      global_auxvars_bc(sum_connection)%pres(1) = &
+        thc_auxvars_bc(sum_connection)%pres
     enddo
     boundary_condition => boundary_condition%next
   enddo

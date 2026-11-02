@@ -13,6 +13,7 @@ module ERT_module
   public :: ERTSetup, &
             ERTCalculateMatrix, &
             ERTCalculateAnalyticPotential, &
+            ERTFluidConductivity, &
             ERTConductivityFromEmpiricalEqs, &
             ERTCalculateAverageConductivity
 
@@ -384,16 +385,16 @@ subroutine ERTCalculateMatrix(realization,M,compute_delM,debug)
         coef_up = - coef_up
         coef_dn = - coef_dn
 
-        ! For dM/dcond matrix
-        dcoef_up =   dcond_avg_dn * area
-        dcoef_dn = - dcoef_up               ! - dcond_avg_dn * area
-
         call PUMSetValuesLocal(M,1,ghosted_id_dn-1,1,ghosted_id_dn-1,coef_dn, &
                                ADD_VALUES,ierr);CHKERRQ(ierr)
         call PUMSetValuesLocal(M,1,ghosted_id_dn-1,1,ghosted_id_up-1,coef_up, &
                                ADD_VALUES,ierr);CHKERRQ(ierr)
 
         if (compute_delM) then
+          ! For dM/dcond matrix
+          dcoef_up =   dcond_avg_dn * area
+          dcoef_dn = - dcoef_up               ! - dcond_avg_dn * area
+
           ! For dM/dcond_dn matrix
           num_neighbors_dn = grid%cell_neighbors_local_ghosted(0,local_id_dn)
           ineighbor = FindLocNeighbor(grid%cell_neighbors_local_ghosted      &
@@ -451,6 +452,12 @@ subroutine ERTCalculateMatrix(realization,M,compute_delM,debug)
         call PUMSetValuesLocal(M,1,ghosted_id-1,1,ghosted_id-1,coef_dn, &
                                ADD_VALUES,ierr);CHKERRQ(ierr)
 
+        if (compute_delM) then
+          ! d(coef_dn)/dcond_dn for the grounded boundary
+          ert_auxvars(ghosted_id)%delM(1) = &
+            ert_auxvars(ghosted_id)%delM(1) - area / dist_0
+        endif
+
       enddo
     endif
     boundary_condition => boundary_condition%next
@@ -488,7 +495,7 @@ contains
     ! Add values for self
     delM(1) = delM(1) + dcoef_self
     ! insert values for neighbor
-    delM(1+ineighbor) = dcoef_neighbor
+    delM(1+ineighbor) = delM(1+ineighbor) + dcoef_neighbor
 
     ! Not storing following as these can be retrieved from ineighbor's value
     !delM(1 + num_neighbor + 2*ineighbor -1) = dcoef_neighbor
@@ -521,11 +528,50 @@ end subroutine ERTCalculateMatrix
 
 ! ************************************************************************** !
 
+subroutine ERTFluidConductivity(conc,tracer_scale,cond_water,contrast, &
+                                 clamp_concentration,cond,dcond_dconc)
+  !
+  ! Calculates fluid conductivity from tracer concentration by linear mixing
+  ! between the background water and the tracer, and its derivative with
+  ! respect to concentration
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date: 10/21/26
+  !
+
+  implicit none
+
+  PetscReal :: conc         ! tracer concentration
+  PetscReal :: tracer_scale ! 1 / max tracer concentration
+  PetscReal :: cond_water   ! background water conductivity
+  PetscReal :: contrast     ! tracer minus background water conductivity
+  PetscBool :: clamp_concentration ! use max(conc,0)
+
+  ! calculated fluid conductivity and dconductivity/dconcentration
+  PetscReal :: cond
+  PetscReal :: dcond_dconc
+
+  ! local variables
+  PetscReal :: concentration
+
+  concentration = conc
+  dcond_dconc = tracer_scale * contrast
+  if (clamp_concentration) then
+    concentration = max(conc,0.d0)
+    ! Select the inactive branch at the concentration kink.
+    if (conc <= 0.d0) dcond_dconc = 0.d0
+  endif
+  cond = cond_water + tracer_scale * concentration * contrast
+
+end subroutine ERTFluidConductivity
+
+! ************************************************************************** !
+
 subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
                                            cond_c,empirical_law,cond, &
                                            temp_dependence, scaled_temp_diff, &
                                            drho_geomech, cond_baseline, &
-                                           tracer_scale,dcond_dsat, &
+                                           dfluid_dconc,dcond_dsat, &
                                            dcond_dconc,dcond_dpor,option)
   !
   ! Calculates conductivity using petrophysical empirical relations
@@ -566,14 +612,14 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
   PetscReal :: cond_baseline
 
   ! to get dconductivty/dsaturation
-  PetscReal :: tracer_scale
+  PetscReal :: dfluid_dconc
   PetscReal :: dcond_dsat
   PetscReal :: dcond_dconc
   PetscReal :: dcond_dpor
-  PetscReal :: cond_ws
 
   ! local variables
   PetscReal :: rho, dcond_geomech, cond_min, cond_max, rho_min
+  PetscReal :: temperature_factor,geomech_factor
   PetscBool :: use_flow, use_trans, use_geomech
 
   use_flow    = (option%iflowmode   /= NULL_MODE)
@@ -583,45 +629,54 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
   ! Minimum allowable conductivity/resistivity
   cond_min = 1.d-5
   cond_max = 1.d2
+  dcond_dsat = 0.d0
+  dcond_dconc = 0.d0
+  dcond_dpor = 0.d0
 
   if (use_flow .or. use_trans) then
 
+    temperature_factor = 1.d0
     if (use_flow .and. .not. option%flow%isothermal) then
       if (temp_dependence == LINEAR) then
-        cond_w = cond_w * (1 + scaled_temp_diff)
+        temperature_factor = 1.d0 + scaled_temp_diff
       elseif (temp_dependence == EXPONENTIAL) then
-        cond_w = cond_w * exp(scaled_temp_diff)
+        temperature_factor = exp(scaled_temp_diff)
       else
         option%io_buffer = 'ERTConductivityFromEmpiricalEqs: ' // &
           'Unknown temperature dependence for conductivity.'
         call PrintErrMsg(option)
       endif
     endif
+    cond_w = cond_w * temperature_factor
 
     ! Archie's law
     cond = cond_w * (por**m) * (sat**n) / a
 
     ! dcond/dsat
-    dcond_dsat = n * cond / sat
+    if (n /= 0.d0) dcond_dsat = &
+      n * cond_w * por**m * sat**(n-1.d0) / a
 
     !dcond/dpor
-    dcond_dpor = m * cond / por
+    if (m /= 0.d0) dcond_dpor = &
+      m * cond_w * por**(m-1.d0) * sat**n / a
 
     ! Modify by adding surface conductivity
     cond = cond + cond_s
 
     !dcond/dconc
-    dcond_dconc = tracer_scale * (por**m) * (sat**n) / a
+    dcond_dconc = dfluid_dconc * temperature_factor * por**m * sat**n / a
 
     select case(empirical_law)
       case(ARCHIE)
         ! do nothing
       case(WAXMAN_SMITS)
         ! Waxmax-Smits equations/Dual-Water model
-        cond_ws = cond_c * Vc * (1.d0-por) * sat**(n-1.d0)
-        cond = cond + cond_ws
-        dcond_dsat = dcond_dsat + (n-1.d0) * cond_ws / sat
-        dcond_dpor = dcond_dpor - cond_c * Vc * sat**(n-1.d0)
+        if (cond_c * Vc /= 0.d0) then
+          cond = cond + cond_c * Vc * (1.d0-por) * sat**(n-1.d0)
+          if (n /= 1.d0) dcond_dsat = dcond_dsat + &
+            (n-1.d0) * cond_c * Vc * (1.d0-por) * sat**(n-2.d0)
+          dcond_dpor = dcond_dpor - cond_c * Vc * sat**(n-1.d0)
+        endif
     end select
 
     if (use_geomech .and. cond > 1d-12) then
@@ -631,12 +686,17 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
       rho = 1.d0 / cond + drho_geomech
       if (rho > rho_min) then
         ! get conductivity from resistivity
+        geomech_factor = 1.d0 / (1.d0 + drho_geomech*cond)**2
         cond = 1.d0 / rho
       else
         ! resistivity is too low/negative, use linearized approx for Brace eq.
+        geomech_factor = 1.d0 - 2.d0 * drho_geomech * cond
         dcond_geomech = - drho_geomech * cond * cond
         cond = cond + dcond_geomech
       endif
+      dcond_dsat = dcond_dsat * geomech_factor
+      dcond_dconc = dcond_dconc * geomech_factor
+      dcond_dpor = dcond_dpor * geomech_factor
     endif
 
   elseif (.not. use_flow .and. .not. use_trans .and. use_geomech .and. &
@@ -654,6 +714,11 @@ subroutine ERTConductivityFromEmpiricalEqs(por,sat,a,m,n,Vc,cond_w,cond_s, &
     endif
   endif
 
+  if (cond <= cond_min .or. cond >= cond_max) then
+    dcond_dsat = 0.d0
+    dcond_dconc = 0.d0
+    dcond_dpor = 0.d0
+  endif
   cond = min(max(cond, cond_min), cond_max)
 
 end subroutine ERTConductivityFromEmpiricalEqs
@@ -669,6 +734,7 @@ subroutine ERTCalculateAnalyticPotential(realization,ielec,average_conductivity)
   ! Date: 02/05/21
   !
   use Realization_Subsurface_class
+  use Material_Aux_module
   use Option_module
   use Grid_module
   use Patch_module
@@ -685,6 +751,7 @@ subroutine ERTCalculateAnalyticPotential(realization,ielec,average_conductivity)
   type(grid_type), pointer :: grid
   type(survey_type), pointer :: survey
   type(ert_auxvar_type), pointer :: ert_auxvars(:)
+  type(material_auxvar_type), pointer :: material_auxvars(:)
 
   PetscReal :: cond
   PetscReal :: r,epos(3),cell_center(3)
@@ -697,6 +764,7 @@ subroutine ERTCalculateAnalyticPotential(realization,ielec,average_conductivity)
   patch => realization%patch
   grid => patch%grid
   ert_auxvars => patch%aux%ERT%auxvars
+  material_auxvars => patch%aux%Material%auxvars
 
   if (present(average_conductivity)) then
     cond = average_conductivity
@@ -725,6 +793,9 @@ subroutine ERTCalculateAnalyticPotential(realization,ielec,average_conductivity)
     r = norm2(epos - cell_center)
     ! Add small value to avoid overshooting at electrode position
     r = r + 1.0d-15
+    ! Limit to half the cell size so the potential stays finite at an
+    ! electrode located at the cell center
+    r = max(r,0.5d0*material_auxvars(ghosted_id)%volume**(1.d0/3.d0))
     ert_auxvars(ghosted_id)%potential(ielec) = 1 / (2*pi*r*cond)
   enddo
 

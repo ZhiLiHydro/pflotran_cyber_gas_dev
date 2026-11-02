@@ -57,6 +57,7 @@ module PM_ERT_class
     procedure, public :: ReadSimulationOptionsBlock => PMERTReadSimOptionsBlock
     procedure, public :: SetRealization => PMERTSetRealization
     procedure, public :: InitializeRun => PMERTInitializeRun
+    procedure, public :: CanonicalizeSurveyTimes => PMERTCanonicalizeSurveyTimes
     procedure, public :: SetupSolvers => PMERTSetupSolvers
     procedure, public :: PreSolve => PMERTPreSolve
     procedure, public :: Solve => PMERTSolve
@@ -71,6 +72,7 @@ module PM_ERT_class
   public :: PMERTCreate, &
             PMERTInit, &
             PMERTCast, &
+            PMERTFindTime, &
             PMERTStrip
 
 contains
@@ -343,6 +345,13 @@ subroutine PMERTSetup(this)
 
   option => this%option
 
+  ! coupled flow-ERT sensitivities require delM
+  if (associated(option%inversion)) then
+    if (option%inversion%coupled_flow_ert) then
+      option%geophysics%compute_jacobian = PETSC_TRUE
+    endif
+  endif
+
   call this%SetRealization()
   call ERTSetup(this%realization)
 
@@ -470,6 +479,69 @@ end subroutine PMERTSetRealization
 
 ! ************************************************************************** !
 
+function PMERTFindTime(first,time) result(match)
+  !
+  ! Returns the waypoint in a list at the given time: an exact match, else
+  ! the nearest within waypoint rounding error (null if none)
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date: 10/21/26
+  !
+  use Utility_module, only : Equal
+
+  implicit none
+
+  type(waypoint_type), pointer :: first,match,waypoint
+  PetscReal :: time
+  PetscReal :: distance,best_distance
+
+  nullify(match)
+  best_distance = MAX_DOUBLE
+  waypoint => first
+  do while (associated(waypoint))
+    if (Equal(time,waypoint%time)) then
+      match => waypoint
+      return
+    endif
+    if (time > 0.d0 .and. waypoint%time > 0.d0) then
+      distance = abs(time-waypoint%time)/max(time,waypoint%time)
+      ! Same rounding scale as WaypointInsertInList, not a survey window.
+      if (distance < 1.d-14 .and. distance < best_distance) then
+        match => waypoint
+        best_distance = distance
+      endif
+    endif
+    waypoint => waypoint%next
+  enddo
+
+end function PMERTFindTime
+
+! ************************************************************************** !
+
+subroutine PMERTCanonicalizeSurveyTimes(this,first)
+  !
+  ! Snaps survey times to the merged subsurface waypoint list, as a copied
+  ! survey waypoint may have merged into an existing output waypoint
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date: 10/21/26
+  !
+  implicit none
+
+  class(pm_ert_type) :: this
+  type(waypoint_type), pointer :: first,waypoint,match
+
+  waypoint => this%waypoint_list%first
+  do while (associated(waypoint))
+    match => PMERTFindTime(first,waypoint%time)
+    if (associated(match)) waypoint%time = match%time
+    waypoint => waypoint%next
+  enddo
+
+end subroutine PMERTCanonicalizeSurveyTimes
+
+! ************************************************************************** !
+
 recursive subroutine PMERTInitializeRun(this)
   !
   ! Initializes the time stepping
@@ -482,12 +554,14 @@ recursive subroutine PMERTInitializeRun(this)
   use Discretization_module
   use Grid_module
   use Input_Aux_module
+  use Inversion_Measurement_Aux_module
   use Material_Aux_module
   use Patch_module
   use Reaction_Aux_module
   use Reactive_Transport_Aux_module
   use String_module
   use Transport_Constraint_RT_module
+  use Utility_module, only : Equal
   use ZFlow_Aux_module
   use Variables_module, only : MATERIAL_ELECTRICAL_CONDUCTIVITY
 
@@ -509,6 +583,8 @@ recursive subroutine PMERTInitializeRun(this)
   type(coupler_type), pointer :: source_sink
   type(connection_set_type), pointer :: cur_connection_set
   type(patch_type), pointer :: patch
+  type(waypoint_type), pointer :: waypoint
+  type(inversion_measurement_aux_type), pointer :: measurements(:)
   PetscInt :: ispecies
   PetscBool :: flag
   PetscReal :: tempreal
@@ -526,10 +602,32 @@ recursive subroutine PMERTInitializeRun(this)
   grid => patch%grid
   option => this%option
 
-  call DiscretizationDuplicateVector(this%realization%discretization, &
-                                     this%realization%field%work,this%rhs)
+  if (associated(option%inversion)) then
+    if (option%inversion%coupled_flow_ert) then
+      measurements => patch%aux%inversion_aux%measurements
+      do i = 1, size(measurements)
+        if (measurements(i)%iobs_var /= OBS_ERT_MEASUREMENT) cycle
+        flag = PETSC_FALSE
+        waypoint => this%waypoint_list%first
+        do while (associated(waypoint))
+          if (measurements(i)%time > 0.d0 .and. &
+              Equal(measurements(i)%time,waypoint%time)) then
+            flag = PETSC_TRUE
+            exit
+          endif
+          waypoint => waypoint%next
+        enddo
+        if (.not.flag) then
+          option%io_buffer = 'ERT measurement time must match a positive &
+            &SURVEY_TIMES entry for measurement ' // trim(StringWrite(i))
+          call PrintErrMsg(option)
+        endif
+      enddo
+    endif
+  endif
 
-  ! Initialize to zeros
+  call DiscretizationCreateVector(this%realization%discretization,NGEOPDOF, &
+                                  this%rhs,GLOBAL,option)
   call VecZeroEntries(this%rhs,ierr);CHKERRQ(ierr)
 
   ! copy conductivities if defined
@@ -549,22 +647,25 @@ recursive subroutine PMERTInitializeRun(this)
         option%inversion%calculate_ert_jacobian) then
       this%coupled_ert_flow_jacobian = PETSC_TRUE
       if (option%iflowmode == ZFLOW_MODE) then
-        call DiscretizationDuplicateVector(this%realization%discretization, &
-                                           this%realization%field%work, &
-                                           this%dconductivity_dsaturation)
+        call DiscretizationCreateVector(this%realization%discretization, &
+                                       NGEOPDOF, &
+                                       this%dconductivity_dsaturation, &
+                                       GLOBAL,option)
         call VecZeroEntries(this%dconductivity_dsaturation,ierr);CHKERRQ(ierr)
         if (zflow_sol_tran_eq > 0 .or. option%itranmode == RT_MODE) then
-          call DiscretizationDuplicateVector(this%realization%discretization, &
-                                             this%realization%field%work, &
-                                             this%dconductivity_dconcentration)
+          call DiscretizationCreateVector(this%realization%discretization, &
+                                         NGEOPDOF, &
+                                         this%dconductivity_dconcentration, &
+                                         GLOBAL,option)
           call VecZeroEntries(this%dconductivity_dconcentration, &
                               ierr);CHKERRQ(ierr)
         endif
         if (option%inversion%invert_for_porosity) then
           this%invert_for_porosity = PETSC_TRUE
-          call DiscretizationDuplicateVector(this%realization%discretization, &
-                                           this%realization%field%work, &
-                                           this%dconductivity_dporosity)
+          call DiscretizationCreateVector(this%realization%discretization, &
+                                         NGEOPDOF, &
+                                         this%dconductivity_dporosity, &
+                                         GLOBAL,option)
           call VecZeroEntries(this%dconductivity_dporosity,ierr);CHKERRQ(ierr)
         endif
       endif
@@ -580,7 +681,7 @@ recursive subroutine PMERTInitializeRun(this)
         if (patch%imat(ghosted_id) <= 0) cycle
         this%max_tracer_concentration = &
           max(this%max_tracer_concentration, &
-              zflow_auxvars(ZERO_INTEGER,local_id)%conc)
+              zflow_auxvars(ZERO_INTEGER,ghosted_id)%conc)
       enddo
       zflow_auxvars_bcss => patch%aux%ZFlow%auxvars_bc
       boundary_condition => patch%boundary_condition_list%first
@@ -619,7 +720,7 @@ recursive subroutine PMERTInitializeRun(this)
         if (patch%imat(ghosted_id) <= 0) cycle
         this%max_tracer_concentration = &
           max(this%max_tracer_concentration, &
-              rt_auxvars(local_id)%total(ispecies,1))
+              rt_auxvars(ghosted_id)%total(ispecies,1))
       enddo
       boundary_condition => patch%boundary_condition_list%first
       sum_connection = 0
@@ -650,7 +751,7 @@ recursive subroutine PMERTInitializeRun(this)
                        option%mycomm,ierr);CHKERRQ(ierr)
   endif
 
-  call DiscretizationCreateVector(this%realization%discretization,ONEDOF, &
+  call DiscretizationCreateVector(this%realization%discretization,NGEOPDOF, &
                                   natural_vec,NATURAL,option)
   call VecZeroEntries(natural_vec,ierr);CHKERRQ(ierr)
   do i = 1, size(this%survey%ipos_electrode)
@@ -712,14 +813,16 @@ recursive subroutine PMERTInitializeRun(this)
     if (local_id <= 0) cycle ! not on process
     ghosted_id = grid%nL2G(local_id)
     if (patch%imat(ghosted_id) <= 0) then
-      option%io_buffer = 'Electrode in inactive grid cell: ' // &
+      option%io_buffer = 'Electrode (' // trim(StringWrite(i)) // &
+        ') in inactive grid cell: ' // &
         trim(StringWrite(grid%nG2A(ghosted_id)))
       call PrintErrMsgNoStopByRank(option)
       flag = PETSC_TRUE
     else
       ! Check if the electrode is in a prescribed condition cell
       if (vec_ptr(local_id) > 0.d0) then
-        option%io_buffer = 'Electrode in prescribed condition cell: ' // &
+        option%io_buffer = 'Electrode (' // trim(StringWrite(i)) // &
+          ') in prescribed condition cell: ' // &
           trim(StringWrite(grid%nG2A(ghosted_id)))
         call PrintErrMsgNoStopByRank(option)
         flag = PETSC_TRUE
@@ -776,6 +879,7 @@ subroutine PMERTSetupSolvers(this)
   type(option_type), pointer :: option
   type(solver_type), pointer :: solver
 
+  PetscBool :: dm_mat_type_found
   PetscErrorCode :: ierr
   character(len=MAXSTRINGLENGTH) :: string
 
@@ -793,9 +897,15 @@ subroutine PMERTSetupSolvers(this)
   ! if the user has not specified otherwise.
   if (Uninitialized(solver%Mpre_mat_type) .and. &
       Uninitialized(solver%M_mat_type)) then
-        ! Matrix types not specified, so set to default.
-    solver%M_mat_type = MATAIJ
-    solver%Mpre_mat_type = MATAIJ
+    call PetscOptionsGetString(PETSC_NULL_OPTIONS,'geop_', &
+                               '-dm_mat_type',string, &
+                               dm_mat_type_found,ierr);CHKERRQ(ierr)
+    if (dm_mat_type_found) then
+      solver%Mpre_mat_type = trim(string)
+    else
+      solver%Mpre_mat_type = MATAIJ
+    endif
+    solver%M_mat_type = solver%Mpre_mat_type
   else if (Uninitialized(solver%Mpre_mat_type)) then
     if (solver%M_mat_type == MATMFFD) then
       solver%Mpre_mat_type = MATAIJ
@@ -807,7 +917,7 @@ subroutine PMERTSetupSolvers(this)
   endif
 
   call DiscretizationCreateMatrix(this%realization%discretization, &
-                                  ONEDOF, &
+                                  NGEOPDOF, &
                                   solver%Mpre_mat_type, &
                                   solver%Mpre, &
                                   PUCast(associated(this%realization%patch% &
@@ -847,6 +957,7 @@ subroutine PMERTPreSolve(this)
   ! Author: Glenn Hammond
   ! Date: 03/29/21
   !
+  use Discretization_module
   use Field_module
   use Global_Aux_module
   use Grid_module
@@ -873,6 +984,7 @@ subroutine PMERTPreSolve(this)
   type(reactive_transport_auxvar_type), pointer :: rt_auxvars(:)
   type(zflow_auxvar_type), pointer :: zflow_auxvars(:,:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
+  PetscReal, pointer :: temp_loc_p(:)
   type(ert_auxvar_type), pointer :: ert_auxvars(:)
   class(reaction_rt_type), pointer :: reaction
   PetscInt :: ghosted_id,local_id
@@ -880,6 +992,7 @@ subroutine PMERTPreSolve(this)
   PetscInt :: empirical_law
   PetscInt :: temp_dependence
   PetscInt :: parameter_index
+  PetscInt :: parameter_0_index
   PetscReal :: a,m,n,cond_w,cond_s,cond_c,Vc,cond  ! variables for Archie's law
   PetscReal :: temp, temp_ref, temp_coeff ! variables for temperature dependence
   PetscReal :: scaled_temp_diff
@@ -889,7 +1002,7 @@ subroutine PMERTPreSolve(this)
   PetscReal :: tracer_scale
   PetscReal :: cond_w_no_tracer
   PetscReal :: diff_water_cond
-  PetscReal :: relative_tracer_concentration
+  PetscReal :: dfluid_dconc
   PetscReal :: dstress,drho_geomech
   PetscReal :: cond_baseline
   PetscReal, pointer :: dcond_dsat_vec_ptr(:),dcond_dconc_vec_ptr(:)
@@ -970,10 +1083,37 @@ subroutine PMERTPreSolve(this)
     endif
   endif
 
+  ! The flow modes do not keep the global temperature current (it is only
+  ! filled for transport), so take it from the flow solution.
+  if (.not.option%flow%isothermal) then
+    call RealizationGetVariable(this%realization,this%realization%field%work, &
+                                TEMPERATURE,ZERO_INTEGER)
+    call DiscretizationGlobalToLocal(this%realization%discretization, &
+                                     this%realization%field%work, &
+                                     this%realization%field%work_loc,ONEDOF)
+    call VecGetArrayRead(this%realization%field%work_loc,temp_loc_p, &
+                         ierr);CHKERRQ(ierr)
+  endif
+
+  ! Hoist the parameter id lookups out of the cell loop
+  parameter_index = UNINITIALIZED_INTEGER
+  parameter_0_index = UNINITIALIZED_INTEGER
+  if (option%geomechanics%geophysics_coupling == GEOMECH_ERT_COUPLING) then
+    parameter_index = ParameterGetIDFromName('geomechanics_stress',option)
+    parameter_0_index = ParameterGetIDFromName('geomechanics_stress_0', &
+                                                 option)
+  endif
+
   do ghosted_id = 1, grid%ngmax
     local_id = grid%nG2L(ghosted_id)
+    cond_w = UNINITIALIZED_DOUBLE
     dcond_dsat = 0.d0
     dcond_dconc = 0.d0
+    dcond_dpor = 0.d0
+    dfluid_dconc = 0.d0
+    cond_w = cond_w_no_tracer
+    scaled_temp_diff = 0.d0
+    drho_geomech = 0.d0
     if (patch%imat(ghosted_id) <= 0) cycle
     if (option%iflowmode == ZFLOW_MODE) then
       por = zflow_auxvars(ZERO_INTEGER,ghosted_id)%effective_porosity
@@ -991,16 +1131,15 @@ subroutine PMERTPreSolve(this)
         cond_w = cond_w_no_tracer + cond_sp
       else if (Initialized(this%max_tracer_concentration)) then
         species_id = 1
-        cond_sp = tracer_scale * diff_water_cond * &
-                  rt_auxvars(ghosted_id)%total(species_id,1)
-        cond_w = cond_w_no_tracer + cond_sp
+        call ERTFluidConductivity( &
+          rt_auxvars(ghosted_id)%total(species_id,1),tracer_scale, &
+          cond_w_no_tracer,diff_water_cond,PETSC_FALSE,cond_w,dfluid_dconc)
       endif
     endif
     if (associated(zflow_auxvars)) then
-      relative_tracer_concentration = tracer_scale * &
-        max(zflow_auxvars(ZERO_INTEGER,ghosted_id)%conc,0.d0)
-      cond_w = cond_w_no_tracer + &
-               relative_tracer_concentration * diff_water_cond
+      call ERTFluidConductivity(zflow_auxvars(ZERO_INTEGER,ghosted_id)%conc, &
+        tracer_scale,cond_w_no_tracer,diff_water_cond,PETSC_TRUE, &
+        cond_w,dfluid_dconc)
     endif
     if (Uninitialized(cond_w)) cond_w = cond_w_no_tracer
     ! compute conductivity
@@ -1029,17 +1168,21 @@ subroutine PMERTPreSolve(this)
                                       MATERIAL_ELECTRICAL_CONDUCTIVITY)
     endif
 
+    drho_geomech = 0.d0
     if (option%geomechanics%geophysics_coupling == GEOMECH_ERT_COUPLING) then
-      parameter_index = ParameterGetIDFromName('geomechanics_stress',option)
-      dstress = patch%aux% &
-              Global%auxvars(ghosted_id)%parameters(parameter_index)
-      drho_geomech = 0.d0
-      ! Brace's regression equation rho = 21054*pressure (kbar) + 3457.9
+      ! Brace's regression equation rho = 21054*pressure (kbar) + 3457.9 is
+      ! expressed in terms of a compression-positive effective pressure, and is
+      ! relative to the initial state.
+      dstress = -(patch%aux% &
+                    Global%auxvars(ghosted_id)%parameters(parameter_index) - &
+                  patch%aux% &
+                    Global%auxvars(ghosted_id)%parameters(parameter_0_index))
+      ! dstress is in Pa; 1 kbar = 1.0d8 Pa
       drho_geomech = this%brace_stress_resistivity_slope * dstress * 1.0d-8
     endif
 
     if (.not.option%flow%isothermal) then
-      temp = patch%aux%Global%auxvars(ghosted_id)%temp
+      temp = temp_loc_p(ghosted_id)
       scaled_temp_diff = temp_coeff * (temp - temp_ref)
     endif
 
@@ -1047,7 +1190,7 @@ subroutine PMERTPreSolve(this)
                                          cond_c,empirical_law,cond, &
                                          temp_dependence, scaled_temp_diff, &
                                          drho_geomech, cond_baseline, &
-                                         tracer_scale,dcond_dsat,dcond_dconc, &
+                                         dfluid_dconc,dcond_dsat,dcond_dconc, &
                                          dcond_dpor, option)
     ert_auxvars(ghosted_id)%bulk_conductivity = cond
     ert_auxvars(ghosted_id)%fluid_conductivity = cond_w
@@ -1061,6 +1204,11 @@ subroutine PMERTPreSolve(this)
       endif
     endif
   enddo
+
+  if (.not.option%flow%isothermal) then
+    call VecRestoreArrayRead(this%realization%field%work_loc,temp_loc_p, &
+                             ierr);CHKERRQ(ierr)
+  endif
 
   if (this%coupled_ert_flow_jacobian) then
     call VecRestoreArray(this%dconductivity_dsaturation, &
@@ -1118,6 +1266,7 @@ subroutine PMERTSolve(this,time,ierr)
   PetscReal :: val
   PetscReal :: average_cond
   PetscReal, pointer :: vec_ptr(:)
+  PetscBool :: solve_ghost
   character(len=MAXSTRINGLENGTH) :: string
 
   !PetscLogDouble :: log_start_time
@@ -1155,11 +1304,20 @@ subroutine PMERTSolve(this,time,ierr)
   nelec = survey%num_electrode
   this%linear_iterations_in_step = 0
 
+  ! Pole receivers with a ghost return need the ghost solution K^-1 e_g in the
+  ! Jacobian (its own sink overwrites its source in the RHS below)
+  solve_ghost = PETSC_FALSE
+  if (survey%ghost_electrode_exist .and. &
+      this%option%geophysics%compute_jacobian) then
+    solve_ghost = any((survey%config(3,:) == 0) .neqv. &
+                      (survey%config(4,:) == 0))
+  endif
+
   this%option%io_buffer = '  Solving for electrode:'
   call PrintMsgNoAdvance(this%option)
   do ielec=1,nelec
     ! cycle if it's a ghost electrode
-    if (survey%flag_electrode(ielec) == -1) cycle
+    if (survey%flag_electrode(ielec) == -1 .and. .not.solve_ghost) cycle
     write(this%option%io_buffer,'(x,a)') trim(StringWrite(ielec))
     call PrintMsgNoAdvance(this%option)
     if (this%analytical_potential) then
@@ -1223,7 +1381,7 @@ subroutine PMERTSolve(this,time,ierr)
     endif
 
     call DiscretizationGlobalToLocal(discretization,field%work, &
-                                     field%work_loc,ONEDOF)
+                                     field%work_loc,NGEOPDOF)
     call VecGetArray(field%work_loc,vec_ptr,ierr);CHKERRQ(ierr)
     ! store potentials for each electrode
     do ghosted_id=1,grid%ngmax
@@ -1237,7 +1395,22 @@ subroutine PMERTSolve(this,time,ierr)
     call KSPGetConvergedReason(solver%ksp,ksp_reason,ierr);CHKERRQ(ierr)
     this%linear_iterations_in_step = this%linear_iterations_in_step + &
                                      num_linear_iterations
+    if (ksp_reason%v < 0) then
+      write(string,'(i0)') ksp_reason%v
+      call PrintMsg(this%option,'')
+      this%option%io_buffer = 'ERT linear solve for electrode ' // &
+        trim(StringWrite(ielec)) // ' did not converge (KSP reason ' // &
+        trim(string) // ' after ' // &
+        trim(StringWrite(num_linear_iterations)) // ' iterations).'
+      call PrintMsg(this%option)
+      solve_ierr = 1
+      exit
+    endif
   enddo
+  if (solve_ierr /= 0) then
+    ierr = solve_ierr
+    return
+  endif
   call PrintMsg(this%option,'')
 
   ! Assemble solutions
@@ -1410,6 +1583,11 @@ subroutine PMERTBuildJacobian(this)
     ib = survey%config(2,idata)
     im = survey%config(3,idata)
     in = survey%config(4,idata)
+    ! a pole receiver is referenced to the ghost solution K^-1 e_g
+    if (survey%ghost_electrode_exist) then
+      if (im == 0 .and. in /= 0) im = survey%ghost_electrode_id
+      if (in == 0 .and. im /= 0) in = survey%ghost_electrode_id
+    endif
 
     do local_id=1,grid%nlmax
 
@@ -1505,6 +1683,7 @@ subroutine PMERTBuildCoupledJacobian(this)
   use Patch_module
   use Grid_module
   use Inversion_Coupled_Aux_module
+  use Inversion_Measurement_Aux_module
   use Inversion_Parameter_module
   use Inversion_Aux_module
   use String_module
@@ -1525,6 +1704,7 @@ subroutine PMERTBuildCoupledJacobian(this)
   type(ert_auxvar_type), pointer :: ert_auxvars(:)
   class(timer_type), pointer ::timer
   type(inversion_coupled_soln_type), pointer :: solutions(:)
+  type(inversion_measurement_aux_type), pointer :: measurements(:)
   type(inversion_parameter_type), pointer :: parameters(:)
 
   PetscInt, pointer :: cell_neighbors(:,:)
@@ -1533,7 +1713,7 @@ subroutine PMERTBuildCoupledJacobian(this)
   PetscReal, pointer :: dcond_dsat_vec_ptr(:),dcond_dconc_vec_ptr(:)
   PetscReal, pointer :: dcond_dpor_vec_ptr(:)
   PetscReal :: jacob,coupled_jacob
-  PetscInt :: idata,ndata,imeasurement
+  PetscInt :: idata,imeasurement
   PetscInt :: ia,ib,im,in,isurvey,iparam
   PetscInt :: local_id,ghosted_id
   PetscInt :: inbr,num_neighbors
@@ -1549,6 +1729,20 @@ subroutine PMERTBuildCoupledJacobian(this)
   ert_auxvars => patch%aux%ERT%auxvars
   cell_neighbors => grid%cell_neighbors_local_ghosted
 
+  ! skip surveys without requested measurements
+  if (this%coupled_ert_flow_jacobian) then
+    measurements => patch%aux%inversion_aux%measurements
+    iflag = PETSC_FALSE
+    do imeasurement = 1, size(measurements)
+      if (measurements(imeasurement)%iobs_var /= OBS_ERT_MEASUREMENT) cycle
+      if (Equal(measurements(imeasurement)%time,option%time)) then
+        iflag = PETSC_TRUE
+        exit
+      endif
+    enddo
+    if (.not.iflag) return
+  endif
+
   call MPI_Barrier(option%mycomm,ierr);CHKERRQ(ierr)
   timer => TimerCreate()
   call timer%Start()
@@ -1556,8 +1750,6 @@ subroutine PMERTBuildCoupledJacobian(this)
   if (OptionPrintToScreen(this%option)) then
     write(*,'(/," --> Building partial ERT FLOW Coupled Jacobian matrix:")')
   endif
-
-  ndata = survey%num_measurement
 
   if (this%coupled_ert_flow_jacobian) then
     solutions => patch%aux%inversion_aux%coupled_aux%solutions
@@ -1587,15 +1779,21 @@ subroutine PMERTBuildCoupledJacobian(this)
                                   dconc_dparam_ptr,ierr);CHKERRQ(ierr)
         endif
 
-        do idata=1,ndata
+        do imeasurement = 1, size(measurements)
+          if (measurements(imeasurement)%iobs_var /= OBS_ERT_MEASUREMENT) cycle
+          if (.not.Equal(measurements(imeasurement)%time,option%time)) cycle
+          idata = measurements(imeasurement)%cell_id
 
           ! for A and B electrodes
           ia = survey%config(1,idata)
           ib = survey%config(2,idata)
           im = survey%config(3,idata)
           in = survey%config(4,idata)
-
-          imeasurement = idata + (isurvey - 1) * ndata
+          ! a pole receiver is referenced to the ghost solution K^-1 e_g
+          if (survey%ghost_electrode_exist) then
+            if (im == 0 .and. in /= 0) im = survey%ghost_electrode_id
+            if (in == 0 .and. im /= 0) in = survey%ghost_electrode_id
+          endif
 
           jacob = 0.d0
           coupled_jacob = 0.d0
