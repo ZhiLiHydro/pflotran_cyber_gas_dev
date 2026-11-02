@@ -1366,6 +1366,8 @@ subroutine InitSubsurfGeomechInitSimulation(simulation, pm_geomech)
   use PMC_Geomechanics_class
   use PFLOTRAN_Constants_module
   use Geomechanics_Discretization_module
+  use Geomechanics_Grid_Aux_module
+  use GMDM_Pointer_module
   use Geomechanics_Force_module
   use Geomechanics_Realization_class
   use Geomechanics_Regression_module
@@ -1406,6 +1408,13 @@ subroutine InitSubsurfGeomechInitSimulation(simulation, pm_geomech)
   timestepper => TimestepperKSPCast(pmc_geomech%timestepper)
 
   geomech_regression => simulation%geomech%regression
+
+  if (option%flow%creep_closure_on) then
+    option%io_buffer = 'Creep closure is not supported with geomechanics&
+      &-subsurface coupling. Disable creep closure or geomechanics &
+      &coupling in InitSubsurfGeomechInitSimulation.'
+    call PrintErrMsg(option)
+  endif
 
   ! initialize geomech realization
   call InitSubsurfGeomechSetupRealization(simulation%realization,&
@@ -1501,6 +1510,10 @@ subroutine InitSubsurfGeomechInitSimulation(simulation, pm_geomech)
                       'to geomechanics InitSubsurfGeomechInitSimulation'
       call PrintErrMsg(option)
   end select
+
+  ! Map geomechanics material ids onto flow cells for fixed-stress approach
+  call GeomechMapMaterialIdsToFlow(subsurf_realization,geomech_realization)
+
   ! update auxvars once pointer is set
   call simulation%process_model_list%UpdateAuxVars()
 
@@ -1562,6 +1575,8 @@ subroutine InitSubsurfGeomechChkInactiveCells(geomech_realization, &
   use Realization_Subsurface_class
   use Geomechanics_Realization_class
   use Geomechanics_Discretization_module
+  use Geomechanics_Grid_Aux_module
+  use GMDM_Pointer_module
   use Option_module
 
   implicit none
@@ -1614,6 +1629,8 @@ subroutine InitSubsurfGeomechChkInactiveCells(geomech_realization, &
                          nL2G(geomech_local_id)
     if (nint(subsurf_vec_1dof(geomech_local_id)) <= 0) error_found = PETSC_TRUE
   enddo
+  call VecRestoreArray(geomech_realization%geomech_field%press, &
+                       subsurf_vec_1dof, ierr);CHKERRQ(ierr)
   call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_C_BOOL, &
                      MPI_LOR,option%mycomm,ierr);CHKERRQ(ierr)
   if (error_found)then

@@ -8,8 +8,8 @@ module Discretization_module
   use Grid_Unstructured_module
   use Grid_Unstructured_Aux_module
   use Grid_Unstructured_Explicit_module
+  use UGDM_Pointer_module
   use Grid_Unstructured_Polyhedra_module
-  use DM_Custom_module
 
   use PFLOTRAN_Constants_module
 
@@ -29,10 +29,11 @@ module Discretization_module
     type(dm_ptr_type), pointer :: dmc_nflowdof(:), dmc_ntrandof(:)
       ! Arrays containing hierarchy of coarsened DMs, for use with Galerkin
       ! multigrid.  Element i of each array is a *finer* DM than element i-1.
-    PetscInt :: dm_index_to_ndof(5) ! mapping between a dm_ptr to the number of degrees of freedom
+    PetscInt :: dm_index_to_ndof(7) ! mapping between a dm_ptr to the number of degrees of freedom
     type(dm_ptr_type), pointer :: dm_1dof
     type(dm_ptr_type), pointer :: dm_nflowdof
     type(dm_ptr_type), pointer :: dm_ntrandof
+    type(dm_ptr_type), pointer :: dm_geopdof
     type(dm_ptr_type), pointer :: dm_n_stress_strain_dof
     VecScatter :: tvd_ghost_scatter
 
@@ -95,14 +96,17 @@ function DiscretizationCreate()
   allocate(discretization%dm_1dof)
   allocate(discretization%dm_nflowdof)
   allocate(discretization%dm_ntrandof)
+  allocate(discretization%dm_geopdof)
   allocate(discretization%dm_n_stress_strain_dof)
   PetscObjectNullify(discretization%dm_1dof%dm)
   PetscObjectNullify(discretization%dm_nflowdof%dm)
   PetscObjectNullify(discretization%dm_ntrandof%dm)
+  PetscObjectNullify(discretization%dm_geopdof%dm)
   PetscObjectNullify(discretization%dm_n_stress_strain_dof%dm)
   nullify(discretization%dm_1dof%ugdm)
   nullify(discretization%dm_nflowdof%ugdm)
   nullify(discretization%dm_ntrandof%ugdm)
+  nullify(discretization%dm_geopdof%ugdm)
   nullify(discretization%dm_n_stress_strain_dof%ugdm)
 
   nullify(discretization%grid)
@@ -636,32 +640,32 @@ subroutine DiscretizationDecomposeDomain(discretization,option)
 
       select case(discretization%grid%itype)
         case(IMPLICIT_UNSTRUCTURED_GRID)
-          ! petsc will call parmetis to calculate the graph/dual
-#if !defined(PETSC_HAVE_PARMETIS)
+          ! petsc will call parmetis/metis to calculate the graph/dual
+#if !defined(PETSC_HAVE_PARMETIS) && !defined(PETSC_HAVE_METIS)
             option%io_buffer = &
-             'Must compile with Parmetis in order to use implicit unstructured grids.'
+             'Must compile with Parmetis or Metis in order to use implicit unstructured grids.'
             call PrintErrMsg(option)
 #endif
           call UGridDecompose(discretization%grid%unstructured_grid, &
                               option)
         case(EXPLICIT_UNSTRUCTURED_GRID)
-#if !defined(PETSC_HAVE_PARMETIS) && !defined(PETSC_HAVE_PTSCOTCH)
+#if (!defined(PETSC_HAVE_PARMETIS) && !defined(PETSC_HAVE_METIS)) && !defined(PETSC_HAVE_PTSCOTCH)
             option%io_buffer = &
-             'Must compile with either Parmetis or PTSCOTCH in order to use explicit unstructured grids.'
+             'Must compile with either Parmetis/Metis or PTSCOTCH in order to use explicit unstructured grids.'
             call PrintErrMsg(option)
 #endif
           call UGridExplicitDecompose(discretization%grid%unstructured_grid,option)
         case(POLYHEDRA_UNSTRUCTURED_GRID)
-#if !defined(PETSC_HAVE_PARMETIS)
+#if !defined(PETSC_HAVE_PARMETIS) && !defined(PETSC_HAVE_METIS)
             option%io_buffer = &
-             'Must compile with Parmetis in order to use implicit unstructured grids.'
+             'Must compile with Parmetis or Metis in order to use implicit unstructured grids.'
             call PrintErrMsg(option)
 #endif
           call UGridPolyhedraDecompose(discretization%grid%unstructured_grid,option)
         case(ECLIPSE_UNSTRUCTURED_GRID)
-#if !defined(PETSC_HAVE_PARMETIS) && !defined(PETSC_HAVE_PTSCOTCH)
+#if (!defined(PETSC_HAVE_PARMETIS) && !defined(PETSC_HAVE_METIS)) && !defined(PETSC_HAVE_PTSCOTCH)
             option%io_buffer = &
-             'Must compile with either Parmetis or PTSCOTCH in order to use Eclipse grids.'
+             'Must compile with either Parmetis/Metis or PTSCOTCH in order to use Eclipse grids.'
             call PrintErrMsg(option)
 #endif
           call UGridExplicitDecompose(discretization%grid%unstructured_grid,option)
@@ -681,7 +685,7 @@ end subroutine DiscretizationDecomposeDomain
 
 subroutine DiscretizationCreateDMs(discretization, o_nflowdof, o_ntrandof, &
                                    o_nphase, o_ngeomechdof, &
-                                   o_n_stress_strain_dof, option)
+                                   o_n_stress_strain_dof, o_ngeopdof, option)
 
   !
   ! creates distributed, parallel meshes/grids
@@ -704,6 +708,7 @@ subroutine DiscretizationCreateDMs(discretization, o_nflowdof, o_ntrandof, &
   PetscInt, intent(in) :: o_nphase
   PetscInt, intent(in) :: o_ngeomechdof
   PetscInt, intent(in) :: o_n_stress_strain_dof
+  PetscInt, intent(in) :: o_ngeopdof
   type(option_type) :: option
 
   PetscInt :: ndof
@@ -714,6 +719,7 @@ subroutine DiscretizationCreateDMs(discretization, o_nflowdof, o_ntrandof, &
       discretization%dm_index_to_ndof(NPHASEDOF) = o_nphase
       discretization%dm_index_to_ndof(NFLOWDOF) = o_nflowdof
       discretization%dm_index_to_ndof(NTRANDOF) = o_ntrandof
+      discretization%dm_index_to_ndof(NGEOPDOF) = o_ngeopdof
     case(UNSTRUCTURED_GRID)
       select case(discretization%grid%itype)
         case(IMPLICIT_UNSTRUCTURED_GRID)
@@ -729,27 +735,35 @@ subroutine DiscretizationCreateDMs(discretization, o_nflowdof, o_ntrandof, &
   ndof = 1
   call DiscretizationCreateDM(discretization,discretization%dm_1dof, &
                               ndof,discretization%stencil_width, &
-                              discretization%stencil_type,option)
+                              discretization%stencil_type,option,'')
 
   if (o_nflowdof > 0) then
     ndof = o_nflowdof
     call DiscretizationCreateDM(discretization,discretization%dm_nflowdof, &
                                 ndof,discretization%stencil_width, &
-                                discretization%stencil_type,option)
+                                discretization%stencil_type,option,"flow_")
   endif
 
   if (o_ntrandof > 0) then
     ndof = o_ntrandof
     call DiscretizationCreateDM(discretization,discretization%dm_ntrandof, &
                                 ndof,discretization%stencil_width, &
-                                discretization%stencil_type,option)
+                                discretization%stencil_type,option,"tran_")
+  endif
+
+  if (o_ngeopdof > 0) then
+    ndof = o_ngeopdof
+    call DiscretizationCreateDM(discretization,discretization%dm_geopdof, &
+                                ndof,discretization%stencil_width, &
+                                discretization%stencil_type,option,"geop_")
   endif
 
   if (o_ngeomechdof > 0) then
     ndof = o_n_stress_strain_dof
-    call DiscretizationCreateDM(discretization,discretization%dm_n_stress_strain_dof, &
+    call DiscretizationCreateDM(discretization, &
+                                discretization%dm_n_stress_strain_dof, &
                                 ndof,discretization%stencil_width, &
-                                discretization%stencil_type,option)
+                                discretization%stencil_type,option,'')
   endif
 
   select case(discretization%itype)
@@ -769,7 +783,7 @@ end subroutine DiscretizationCreateDMs
 ! ************************************************************************** !
 
 subroutine DiscretizationCreateDM(discretization,dm_ptr,ndof,stencil_width, &
-                                  stencil_type,option)
+                                  stencil_type,option,options_prefix)
   !
   ! creates a distributed, parallel mesh/grid
   !
@@ -787,14 +801,16 @@ subroutine DiscretizationCreateDM(discretization,dm_ptr,ndof,stencil_width, &
   PetscInt :: stencil_width
   DMDAStencilType :: stencil_type
   type(option_type) :: option
+  character(len=*) :: options_prefix
 
   select case(discretization%itype)
     case(STRUCTURED_GRID)
       call StructGridCreateDM(discretization%grid%structured_grid, &
-                              dm_ptr%dm,ndof,stencil_width,stencil_type,option)
+                              dm_ptr%dm,ndof,stencil_width,stencil_type, &
+                              option,options_prefix)
     case(UNSTRUCTURED_GRID)
       call UGridCreateUGDMShell(discretization%grid%unstructured_grid, &
-                           dm_ptr%dm,dm_ptr%ugdm,ndof,option)
+                           dm_ptr,ndof,option,options_prefix)
   end select
 
 end subroutine DiscretizationCreateDM
@@ -835,8 +851,7 @@ subroutine DiscretizationCreateVector(discretization,dm_index,vector, &
           call DMDACreateNaturalVector(dm_ptr%dm,vector,ierr);CHKERRQ(ierr)
         case(UNSTRUCTURED_GRID)
           call UGridDMCreateVector(discretization%grid%unstructured_grid, &
-                                   dm_ptr%ugdm,vector, &
-                                   vector_type,option)
+                                   dm_ptr,vector,vector_type,option)
         end select
   end select
 
@@ -890,6 +905,8 @@ function DiscretizationGetDMPtrFromIndex(discretization,dm_index)
       DiscretizationGetDMPtrFromIndex => discretization%dm_nflowdof
     case(NTRANDOF)
       DiscretizationGetDMPtrFromIndex => discretization%dm_ntrandof
+    case(NGEOPDOF)
+      DiscretizationGetDMPtrFromIndex => discretization%dm_geopdof
     case(NGEODOF)
       DiscretizationGetDMPtrFromIndex => discretization%dm_n_stress_strain_dof
   end select
@@ -1162,10 +1179,20 @@ subroutine DiscretizationLocalToGlobalAdd(discretization,local_vec,global_vec,dm
 
   dm_ptr => DiscretizationGetDMPtrFromIndex(discretization,dm_index)
 
-  call DMLocalToGlobalBegin(dm_ptr%dm,local_vec,ADD_VALUES,global_vec, &
-                            ierr);CHKERRQ(ierr)
-  call DMLocalToGlobalEnd(dm_ptr%dm,local_vec,ADD_VALUES,global_vec, &
-                          ierr);CHKERRQ(ierr)
+  select case(discretization%itype)
+    case(UNSTRUCTURED_GRID)
+      ! the shell DM's local-to-global scatter skips ghost cells; add them
+      ! to their owners through the reverse global-to-local scatter
+      call VecScatterBegin(dm_ptr%ugdm%scatter_gtol,local_vec,global_vec, &
+                           ADD_VALUES,SCATTER_REVERSE,ierr);CHKERRQ(ierr)
+      call VecScatterEnd(dm_ptr%ugdm%scatter_gtol,local_vec,global_vec, &
+                         ADD_VALUES,SCATTER_REVERSE,ierr);CHKERRQ(ierr)
+    case default
+      call DMLocalToGlobalBegin(dm_ptr%dm,local_vec,ADD_VALUES,global_vec, &
+                                ierr);CHKERRQ(ierr)
+      call DMLocalToGlobalEnd(dm_ptr%dm,local_vec,ADD_VALUES,global_vec, &
+                              ierr);CHKERRQ(ierr)
+  end select
 
 end subroutine DiscretizationLocalToGlobalAdd
 
@@ -1488,6 +1515,7 @@ subroutine DiscretizationDestroy(discretization)
       call PUDMDestroy(discretization%dm_1dof%dm)
       call PUDMDestroy(discretization%dm_nflowdof%dm)
       call PUDMDestroy(discretization%dm_ntrandof%dm)
+      call PUDMDestroy(discretization%dm_geopdof%dm)
       call PUDMDestroy(discretization%dm_n_stress_strain_dof%dm)
       if (associated(discretization%dmc_nflowdof)) then
         do i=1,size(discretization%dmc_nflowdof)
@@ -1510,6 +1538,8 @@ subroutine DiscretizationDestroy(discretization)
         call UGridDMDestroy(discretization%dm_nflowdof%ugdm)
       if (associated(discretization%dm_ntrandof%ugdm)) &
         call UGridDMDestroy(discretization%dm_ntrandof%ugdm)
+      if (associated(discretization%dm_geopdof%ugdm)) &
+        call UGridDMDestroy(discretization%dm_geopdof%ugdm)
       if (associated(discretization%dm_n_stress_strain_dof%ugdm)) &
         call UGridDMDestroy(discretization%dm_n_stress_strain_dof%ugdm)
   end select
@@ -1522,6 +1552,9 @@ subroutine DiscretizationDestroy(discretization)
   if (associated(discretization%dm_ntrandof)) &
     deallocate(discretization%dm_ntrandof)
   nullify(discretization%dm_ntrandof)
+  if (associated(discretization%dm_geopdof)) &
+    deallocate(discretization%dm_geopdof)
+  nullify(discretization%dm_geopdof)
   if (associated(discretization%dm_n_stress_strain_dof)) &
     deallocate(discretization%dm_n_stress_strain_dof)
   nullify(discretization%dm_n_stress_strain_dof)

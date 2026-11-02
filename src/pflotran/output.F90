@@ -41,7 +41,7 @@ contains
 
 ! ************************************************************************** !
 
-subroutine OutputInit(option,num_steps)
+subroutine OutputInit(option,output_option,num_steps)
   !
   ! Initializes variables
   !
@@ -49,12 +49,14 @@ subroutine OutputInit(option,num_steps)
   ! Date: 01/22/09
   !
   use Option_module
+  use Output_Aux_module
   use Output_Common_module
   use Output_EKG_module
 
   implicit none
 
   type(option_type) :: option
+  type(output_option_type) :: output_option
   PetscInt :: num_steps
 
   call OutputCommonInit()
@@ -62,6 +64,8 @@ subroutine OutputInit(option,num_steps)
   call OutputConservationInit(num_steps)
   call OutputHDF5Init(num_steps)
   call OutputEKGInit(option,num_steps)
+  call OutputSetASCIIPrecision(output_option)
+
 
 end subroutine OutputInit
 
@@ -112,6 +116,7 @@ subroutine OutputFileRead(input,realization,output_option, &
   PetscReal :: units_conversion
   PetscReal :: time_increment
   PetscInt :: k
+  PetscInt :: temp_int
   PetscBool :: added
   PetscBool :: vel_cent, vel_face
   PetscBool :: fluxes
@@ -578,7 +583,29 @@ subroutine OutputFileRead(input,realization,output_option, &
         aveg_mass_flowrate = PETSC_TRUE
       case('AVERAGE_ENERGY_FLOWRATE')
         aveg_energy_flowrate = PETSC_TRUE
-
+      case('ASCII_DIGITS_OF_PRECISION')
+        call InputReadInt(input,option,temp_int)
+        call InputErrorMsg(input,option,word,'OUTPUT')
+        if (temp_int < 1 .or. temp_int > 16) then
+          option%io_buffer = 'OUTPUT,ASCII_DIGITS_OF_PRECISION must be an &
+                             &integer between 1 and 16.'
+          call PrintErrMsg(option)
+        endif
+        output_option%digits_of_precision = temp_int
+        call InputReadInt(input,option,temp_int)
+        if (.not.InputError(input%ierr)) then
+          if (temp_int == 3) then
+            output_option%digits_of_precision = &
+                 output_option%digits_of_precision + 1000
+          else
+            if (temp_int /= 2) then
+              option%io_buffer = 'OUTPUT,ASCII_DIGITS_OF_PRECISION: &
+                &2 or 3 is the only supported option for the &
+                &number of digits in the ASCII exponent.'
+              call PrintErrMsg(option)
+            endif
+          endif
+        endif
 !.................
       case default
         string = 'OUTPUT,' // trim(block_name)
@@ -701,14 +728,18 @@ subroutine OutputVariableRead(input,option,output_variable_list)
                                 option)
         call OutputVariableAddToList(output_variable_list,name, &
                                      category,units,id)
-      case ('LIQUID_ENERGY')
+      case ('LIQUID_ENERGY','GAS_ENERGY','LIQUID_ENTHALPY','GAS_ENTHALPY')
+        name = word
         call InputReadCard(input,option,word2)
         if (.not.InputError(input)) then
           if (StringCompareIgnoreCase(word2,'PER_VOLUME')) then
             word = trim(word) // '_PER_VOLUME'
+          elseif (StringCompareIgnoreCase(word2,'PER_MASS')) then
+            word = trim(word) // '_PER_MASS'
           else
+            input%ierr = INPUT_ERROR_DEFAULT
             call InputErrorMsg(input,option,'optional keyword', &
-                               'VARIABLES,LIQUID_ENERGY')
+                               'VARIABLES,' // trim(name))
           endif
         endif
         call OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
@@ -729,21 +760,7 @@ subroutine OutputVariableRead(input,option,output_variable_list)
                                 option)
         call OutputVariableAddToList(output_variable_list,name, &
                                      category,units,id)
-      case ('GAS_ENERGY')
-        call InputReadCard(input,option,word2)
-        if (.not.InputError(input)) then
-          if (StringCompareIgnoreCase(word2,'PER_VOLUME')) then
-            word = trim(word) // '_PER_VOLUME'
-          else
-            input%ierr = INPUT_ERROR_DEFAULT
-            call InputErrorMsg(input,option,'optional keyword', &
-                               'VARIABLES,GAS_ENERGY')
-          endif
-        endif
-        call OutputVariableToID(word,name,units,category,id,subvar,subsubvar, &
-                                option)
-        call OutputVariableAddToList(output_variable_list,name, &
-                                     category,units,id,subvar)
+
       case ('OIL_DENSITY')
         call InputReadCard(input,option,word2)
         if (.not.InputError(input)) then
@@ -791,7 +808,7 @@ subroutine OutputVariableRead(input,option,output_variable_list)
         call InputReadCard(input,option,word2)
         if (.not.InputError(input)) then
           if (StringCompareIgnoreCase(word2,'PER_VOLUME')) then
-            word = trim(word) // 'PER_VOLUME'
+            word = trim(word) // '_PER_VOLUME'
           else
             input%ierr = INPUT_ERROR_DEFAULT
             call InputErrorMsg(input,option,'optional keyword', &
@@ -1880,6 +1897,7 @@ subroutine OutputPrintCouplers(realization_base,debug,istep)
   use ZFlow_Aux_module
   use PNF_Aux_module
   use Richards_Aux_module
+  use Immiscible_Aux_module
 
   class(realization_base_type) :: realization_base
   type(debug_type) :: debug
@@ -1923,6 +1941,11 @@ subroutine OutputPrintCouplers(realization_base,debug,istep)
     case(PNF_MODE)
       iauxvars(1) = PNF_LIQUID_PRESSURE_DOF
       auxvar_names(1) = 'pressure'
+    case(IMMISCIBLE_MODE)
+      iauxvars(1) = IMMIS_GAS_PRESSURE_DOF
+      auxvar_names(1) = 'gas pressure'
+      iauxvars(2) = IMMIS_GAS_SATURATION_DOF
+      auxvar_names(2) = 'gas saturation'
     case(G_MODE)
       iauxvars(1) = GENERAL_LIQUID_PRESSURE_DOF
       auxvar_names(1) = 'liquid_pressure'
@@ -1968,6 +1991,7 @@ subroutine OutputPrintCouplers(realization_base,debug,istep)
           vec_ptr(local_id) = coupler%flow_aux_real_var(iauxvars(iaux),iconn)
         enddo
       endif
+      call VecRestoreArray(field%work,vec_ptr,ierr);CHKERRQ(ierr)
 
       if (istep > 0) then
         write(string,*) istep
@@ -2022,6 +2046,7 @@ subroutine OutputPrintCouplersH5(realization_base,debug,istep)
   use SCO2_Aux_module
   use PNF_Aux_module
   use ZFlow_Aux_module
+  use Immiscible_Aux_module
   use String_module
   use Discretization_module
   use Output_Common_module
@@ -2087,6 +2112,11 @@ subroutine OutputPrintCouplersH5(realization_base,debug,istep)
     case(PNF_MODE)
       iauxvars(1) = PNF_LIQUID_PRESSURE_DOF
       auxvar_names(1) = 'pressure'
+    case(IMMISCIBLE_MODE)
+      iauxvars(1) = IMMIS_GAS_PRESSURE_DOF
+      auxvar_names(1) = 'gas pressure'
+      iauxvars(2) = IMMIS_GAS_SATURATION_DOF
+      auxvar_names(2) = 'gas saturation'
     case(G_MODE)
       iauxvars(1) = GENERAL_LIQUID_PRESSURE_DOF
       auxvar_names(1) = 'liquid_pressure'
@@ -2413,11 +2443,13 @@ subroutine OutputFindNaNOrInfInVec(vec,grid,option)
      if (PetscIsInfOrNanReal(vec_p(i))) then
 !    if (ieee_is_nan(vec_p(i)) .or. .not.ieee_is_finite(vec_p(i))) then
       local_count = local_count + 1
-      icell = int(float(i-1)/float(block_size))+1
-      iarray(1,local_count) = grid%nG2A(grid%nL2G(icell))
-      idof = i-(icell-1)*block_size
-!      if (ieee_is_nan(vec_p(i))) idof = -idof
-      iarray(2,local_count) = idof
+      if (local_count <= max_number_to_print) then
+        icell = int(float(i-1)/float(block_size))+1
+        iarray(1,local_count) = grid%nG2A(grid%nL2G(icell))
+        idof = i-(icell-1)*block_size
+!        if (ieee_is_nan(vec_p(i))) idof = -idof
+        iarray(2,local_count) = idof
+      endif
     endif
   enddo
   call VecRestoreArrayRead(vec,vec_p,ierr);CHKERRQ(ierr)

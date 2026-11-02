@@ -91,7 +91,7 @@ module Reactive_Transport_Aux_module
     PetscInt :: ncomp
     PetscInt :: naqcomp
     PetscInt :: nimcomp
-    PetscInt :: ngas
+    PetscInt :: nactive_gas
     PetscInt :: offset_aqueous
     PetscInt :: offset_immobile
     PetscInt :: offset_auxiliary
@@ -186,7 +186,7 @@ function RTAuxCreate(naqcomp,nphase,ndiffcoef)
   nullify(aux%rt_parameter%sec_spec_diff_coef)
   aux%rt_parameter%ncomp = 0
   aux%rt_parameter%nimcomp = 0
-  aux%rt_parameter%ngas = 0
+  aux%rt_parameter%nactive_gas = 0
   aux%rt_parameter%offset_aqueous = 0
   aux%rt_parameter%offset_immobile = 0
   aux%rt_parameter%offset_auxiliary = 0
@@ -288,6 +288,10 @@ recursive subroutine RTAuxVarInit(auxvar,reaction, &
 
       allocate(auxvar%kinsrfcplx_conc_kp1(surface_complexation%nkinsrfcplx,1))
       auxvar%kinsrfcplx_conc_kp1 = 0.d0
+
+      allocate(auxvar%kinsrfcplx_free_site_conc( &
+                 surface_complexation%nkinsrfcplxrxn))
+      auxvar%kinsrfcplx_free_site_conc = 0.d0
     endif
     if (surface_complexation%nkinmrsrfcplxrxn > 0) then
       ! the zeroth entry here stores the equilibrium concentration used in the

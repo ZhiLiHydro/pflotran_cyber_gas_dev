@@ -583,7 +583,7 @@ subroutine InvSubsurfSetupForwardRunLinkage(this)
   use PM_ERT_class
   use PM_Subsurface_Flow_class
   use String_module
-  use Variables_module, only : PERMEABILITY, POROSITY, &
+  use Variables_module, only : PERMEABILITY, BASE_POROSITY, &
                   ARCHIE_CEMENTATION_EXPONENT, ARCHIE_SATURATION_EXPONENT, &
                   ARCHIE_TORTUOSITY_CONSTANT
   use Waypoint_module
@@ -712,7 +712,7 @@ subroutine InvSubsurfSetupForwardRunLinkage(this)
                                                      parameter_name, &
                                                    this%driver)
         select case(param_id)
-          case(PERMEABILITY,POROSITY)
+          case(PERMEABILITY,BASE_POROSITY)
           case default
             string = 'COUPLED_ZFLOW_ERT does not currently support &
               &inversion for "' // &
@@ -866,6 +866,10 @@ subroutine InvSubsurfSetupForwardRunLinkage(this)
     do i = 1, num_measurements
       if (this%inversion_aux%measurements(i)%iobs_var == &
           OBS_ERT_MEASUREMENT) then
+        if (this%inversion_aux%measurements(i)%cell_id < 1) then
+          call this%driver%PrintErrMsg('ERT_MEASUREMENT_ID must be positive &
+            &for measurement ' // trim(StringWrite(i)) // '.')
+        endif
         max_int(1) = max(max_int(1),this%inversion_aux%measurements(i)%cell_id)
       else
         if (Initialized(this%inversion_aux%measurements(i)%coordinate%x)) then
@@ -890,14 +894,14 @@ subroutine InvSubsurfSetupForwardRunLinkage(this)
         call this%driver%PrintErrMsg('The ERT_MEASUREMENT_ID assigned to a &
           &measurement is greater than the number of measurements in an &
           &survey (survey size = ' // &
-          trim(StringWrite(num_measurements)) // &
+          trim(StringWrite(size(this%realization%survey%dsim))) // &
           ' vs. maximum ERT_MEASUREMENT_ID = ' // &
-          trim(StringWrite(size(this%realization%survey%dsim))) // ').')
+          trim(StringWrite(max_int(1))) // ').')
       endif
     endif
-    if (max_int(1) > patch%grid%nmax) then
+    if (max_int(2) > patch%grid%nmax) then
       call this%driver%PrintErrMsg('A measurement cell ID is &
-        &beyond the maximum cell ID of ' // StringWrite(i))
+        &beyond the maximum cell ID of ' // StringWrite(patch%grid%nmax))
     endif
     ! ensure that all cell ids have been found
     mpi_int = num_measurements
@@ -1156,6 +1160,7 @@ subroutine InvSubsurfConnectToForwardRun(this)
   use Factory_Subsurface_module
   use Init_Subsurface_module
   use Material_module
+  use PM_ERT_class, only : pm_ert_type, PMERTCast, PMERTFindTime
   use String_module
   use Timestepper_Base_class, only : TS_STOP_END_SIMULATION
   use Utility_module
@@ -1166,16 +1171,22 @@ subroutine InvSubsurfConnectToForwardRun(this)
 
   PetscReal :: final_time
   PetscInt :: i, sync_count
-  type(waypoint_type), pointer :: waypoint
+  type(waypoint_type), pointer :: waypoint,match
+  class(pm_ert_type), pointer :: pm_ert
   type(inversion_perturbation_type), pointer :: perturbation
   PetscReal, pointer :: real_array(:)
   PetscReal, pointer :: vec_ptr(:)
   PetscMPIInt :: mpi_int
   PetscBool :: iflag
-  PetscInt :: iqoi(2)
   PetscErrorCode :: ierr
 
   perturbation => this%inversion_aux%perturbation
+
+  nullify(pm_ert)
+  if (this%inversion_option%coupled_flow_ert) then
+    pm_ert => PMERTCast(this%forward_simulation% &
+                          geop_process_model_coupler%pm_ptr%pm)
+  endif
 
   ! the allocation of sync_times come before the call to
   ! InvCoupledAllocateSolnVecs()
@@ -1189,6 +1200,16 @@ subroutine InvSubsurfConnectToForwardRun(this)
     do i = 1, size(this%inversion_aux%measurements)
       if (Uninitialized(this%inversion_aux%measurements(i)%time)) then
         this%inversion_aux%measurements(i)%time = final_time
+      endif
+      ! snap ERT measurement times to the canonical survey times
+      if (associated(pm_ert)) then
+        if (this%inversion_aux%measurements(i)%iobs_var == &
+            OBS_ERT_MEASUREMENT) then
+          match => PMERTFindTime(pm_ert%waypoint_list%first, &
+                                 this%inversion_aux%measurements(i)%time)
+          if (associated(match)) &
+            this%inversion_aux%measurements(i)%time = match%time
+        endif
       endif
       if (this%inversion_aux%measurements(i)%time > final_time) then
         iflag = PETSC_TRUE
@@ -1248,12 +1269,10 @@ subroutine InvSubsurfConnectToForwardRun(this)
   if (associated(this%inversion_option%invcomm) .and. &
       this%inversion_aux%startup_phase) then
     if (this%inversion_aux%qoi_is_full_vector) then
-      iqoi = InversionParameterIntToQOIArray( &
-                                  this%inversion_aux%parameters(1))
       ! on first iteration of inversion, store the values
       call MaterialGetAuxVarVecLoc(this%realization%patch%aux%Material, &
                                   this%realization%field%work_loc, &
-                                  iqoi(1),iqoi(2))
+                                  this%inversion_aux%parameters(1)%itype)
       call DiscretizationLocalToGlobal(this%realization%discretization, &
                                       this%realization%field%work_loc, &
                                       this%realization%field%work,ONEDOF)
@@ -1340,7 +1359,7 @@ subroutine InvSubsurfSetAdjointVariable(this,iparameter_type)
   ! Date: 03/30/22
 
   use String_module
-  use Variables_module, only : PERMEABILITY, POROSITY, VG_ALPHA, VG_M, &
+  use Variables_module, only : PERMEABILITY, BASE_POROSITY, VG_ALPHA, VG_M, &
                                VG_SR, ARCHIE_CEMENTATION_EXPONENT, &
                                ARCHIE_SATURATION_EXPONENT, &
                                ARCHIE_TORTUOSITY_CONSTANT, &
@@ -1365,7 +1384,7 @@ subroutine InvSubsurfSetAdjointVariable(this,iparameter_type)
   select case(iparameter_type)
     case(PERMEABILITY)
       zflow_adjoint_parameter = ZFLOW_ADJOINT_PERMEABILITY
-    case(POROSITY)
+    case(BASE_POROSITY)
       zflow_adjoint_parameter = ZFLOW_ADJOINT_POROSITY
     case(VG_ALPHA,VG_M,VG_SR,ARCHIE_CEMENTATION_EXPONENT, &
          ARCHIE_SATURATION_EXPONENT,ARCHIE_TORTUOSITY_CONSTANT, &
@@ -1652,7 +1671,7 @@ subroutine InvSubsurfPostProcMeasurements(this)
         vec_ptr2(imeasurement)
     enddo
     call VecRestoreArray(dobs_dunknown_vec,vec_ptr,ierr);CHKERRQ(ierr)
-    call VecRestoreArray(dobs_dparam_vec,vec_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(dobs_dparam_vec,vec_ptr2,ierr);CHKERRQ(ierr)
     call VecDestroy(dist_dobs_dunknown_vec,ierr);CHKERRQ(ierr)
     call VecDestroy(dobs_dunknown_vec,ierr);CHKERRQ(ierr)
     call VecDestroy(dist_dobs_dparam_vec,ierr);CHKERRQ(ierr)
@@ -2068,7 +2087,6 @@ subroutine InvSubsurfPertCalcSensitivity(this)
 
   type(option_type), pointer :: option
   PetscInt :: idof_pert
-  PetscInt :: iqoi(2)
   PetscErrorCode :: ierr
 
   ! destroy non-perturbed forward run
@@ -2148,7 +2166,6 @@ subroutine InvSubsurfPertCalcSensitivity(this)
 
   ! reset parameters to base copy
   if (this%inversion_aux%qoi_is_full_vector) then
-    iqoi = InversionParameterIntToQOIArray(this%inversion_aux%parameters(1))
     call VecCopy(this%inversion_aux%perturbation%base_parameter_vec, &
                  this%inversion_aux%dist_parameter_vec, &
                  ierr);CHKERRQ(ierr)
@@ -2161,7 +2178,7 @@ subroutine InvSubsurfPertCalcSensitivity(this)
                                      this%realization%field%work_loc,ONEDOF)
     call MaterialSetAuxVarVecLoc(this%realization%patch%aux%Material, &
                                  this%realization%field%work_loc, &
-                                 iqoi(1),iqoi(2))
+                                 this%inversion_aux%parameters(1)%itype)
   else
     call InvAuxParamVecToMaterial(this%inversion_aux)
   endif
@@ -2398,12 +2415,12 @@ subroutine InvSubsurfFVSetOrigSoln(this)
       call InvAuxBCastVecForCommI(this%inversion_option%forcomm_i, &
                                   solutions(i)%original_saturation_solution, &
                                   this%driver)
-      if (.not.PetscObjectIsNull(solutions(i)%perturbed_solute_solution)) then
+      if (.not.PetscObjectIsNull(solutions(i)%original_solute_solution)) then
 !print *, this%driver%comm%rank, ' Bcast13 forcomm_i'
 !        call MPI_Barrier(this%inversion_option%forcomm_i%communicator, &
 !                         ierr);CHKERRQ(ierr)
         call InvAuxBCastVecForCommI(this%inversion_option%forcomm_i, &
-                                    solutions(i)%perturbed_solute_solution, &
+                                    solutions(i)%original_solute_solution, &
                                     this%driver)
       endif
     enddo
@@ -2509,8 +2526,8 @@ subroutine InvSubsurfFVCalcPartialJs(this,idof_pert)
           call MPI_Send(vec_ptr,vec_size,MPI_DOUBLE_PRECISION, &
                         ZERO_INTEGER_MPI,idof_pert,comm%communicator, &
                         ierr);CHKERRQ(ierr)
-          call VecGetArray(solutions(i)%dsolute_dparameter(idof_pert), &
-                              vec_ptr,ierr);CHKERRQ(ierr)
+          call VecRestoreArray(solutions(i)%dsolute_dparameter(idof_pert), &
+                               vec_ptr,ierr);CHKERRQ(ierr)
         endif
       enddo
     endif

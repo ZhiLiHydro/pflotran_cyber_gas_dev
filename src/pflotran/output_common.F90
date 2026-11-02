@@ -1,7 +1,9 @@
 module Output_Common_module
 
 #include "petsc/finclude/petscvec.h"
+#include "petsc/finclude/petscdm.h"
   use petscvec
+  use petscdm
   use Logging_module
   use Output_Aux_module
 
@@ -880,6 +882,7 @@ subroutine OutputGetFaceVelUGrid(realization_base)
   use Grid_module
   use Option_module
   use Grid_Unstructured_Aux_module
+  use UGDM_Pointer_module
   use Grid_Unstructured_Cell_module
   use Variables_module
   use Connection_module
@@ -901,6 +904,7 @@ subroutine OutputGetFaceVelUGrid(realization_base)
   type(ugdm_type),pointer :: ugdm
   type(output_option_type), pointer :: output_option
   type(field_type), pointer :: field
+  type(dm_ptr_type) :: dm_ptr
 
   PetscInt :: local_id
   PetscInt :: ghosted_id
@@ -940,15 +944,18 @@ subroutine OutputGetFaceVelUGrid(realization_base)
   field => realization_base%field
 
   ! Create UGDM for
-  call UGridCreateUGDM(grid%unstructured_grid,ugdm, &
+  PetscObjectNullify(dm_ptr%dm)
+  nullify(dm_ptr%ugdm)
+  call UGridCreateUGDM(grid%unstructured_grid,dm_ptr, &
                        (option%nflowspec*MAX_FACE_PER_CELL + 1),option)
+  ugdm => dm_ptr%ugdm
 
   ! Create vectors in natural order for velocity in x/y/z direction
-  call UGridDMCreateVector(grid%unstructured_grid,ugdm,natural_vx_vec, &
+  call UGridDMCreateVector(grid%unstructured_grid,dm_ptr,natural_vx_vec, &
                            NATURAL,option)
-  call UGridDMCreateVector(grid%unstructured_grid,ugdm,natural_vy_vec, &
+  call UGridDMCreateVector(grid%unstructured_grid,dm_ptr,natural_vy_vec, &
                            NATURAL,option)
-  call UGridDMCreateVector(grid%unstructured_grid,ugdm,natural_vz_vec, &
+  call UGridDMCreateVector(grid%unstructured_grid,dm_ptr,natural_vz_vec, &
                            NATURAL,option)
 
   allocate(vx(option%nflowspec,MAX_FACE_PER_CELL,ugrid%nlmax))
@@ -1176,6 +1183,7 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
   use Grid_module
   use Option_module
   use Grid_Unstructured_Aux_module
+  use UGDM_Pointer_module
   use Grid_Unstructured_Cell_module
   use Variables_module
   use Connection_module
@@ -1197,6 +1205,7 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
   type(ugdm_type),pointer :: ugdm
   type(output_option_type), pointer :: output_option
   type(field_type), pointer :: field
+  type(dm_ptr_type) :: dm_ptr
 
   PetscInt :: local_id
   PetscInt :: ghosted_id
@@ -1228,12 +1237,15 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
   field => realization_base%field
 
   ! Create UGDM for
-  call UGridCreateUGDM(grid%unstructured_grid,ugdm, &
+  PetscObjectNullify(dm_ptr%dm)
+  nullify(dm_ptr%ugdm)
+  call UGridCreateUGDM(grid%unstructured_grid,dm_ptr, &
                        (option%nflowdof*MAX_FACE_PER_CELL + 1),option)
+  ugdm => dm_ptr%ugdm
 
   ! Create a flowrate vector in natural order
-  call UGridDMCreateVector(grid%unstructured_grid,ugdm,natural_flowrates_vec, &
-                           NATURAL,option)
+  call UGridDMCreateVector(grid%unstructured_grid,dm_ptr, &
+                           natural_flowrates_vec,NATURAL,option)
 
   allocate(flowrates(option%nflowdof,MAX_FACE_PER_CELL,ugrid%nlmax))
   flowrates = 0.d0
@@ -1384,6 +1396,7 @@ subroutine OutputGetExplicitIDsFlowrates(realization_base,count,vec_proc, &
   use Grid_module
   use Option_module
   use Grid_Unstructured_Aux_module
+  use UGDM_Pointer_module
   use Field_module
   use Connection_module
 
@@ -1398,6 +1411,7 @@ subroutine OutputGetExplicitIDsFlowrates(realization_base,count,vec_proc, &
   type(ugdm_type), pointer :: ugdm
   type(connection_set_list_type), pointer :: connection_set_list
   type(connection_set_type), pointer :: cur_connection_set
+  type(dm_ptr_type) :: dm_ptr
 
 
   PetscReal, pointer :: vec_ptr(:)
@@ -1425,10 +1439,13 @@ subroutine OutputGetExplicitIDsFlowrates(realization_base,count,vec_proc, &
                     PETSC_DETERMINE,vec_proc,ierr);CHKERRQ(ierr)
   call VecSet(vec_proc,0.d0,ierr);CHKERRQ(ierr)
 
-  call UGridCreateUGDM(grid%unstructured_grid,ugdm,ONE_INTEGER,option)
-  call UGridDMCreateVector(grid%unstructured_grid,ugdm,global_vec, &
+  PetscObjectNullify(dm_ptr%dm)
+  nullify(dm_ptr%ugdm)
+  call UGridCreateUGDM(grid%unstructured_grid,dm_ptr,ONE_INTEGER,option)
+  ugdm => dm_ptr%ugdm
+  call UGridDMCreateVector(grid%unstructured_grid,dm_ptr,global_vec, &
                            GLOBAL,option)
-  call UGridDMCreateVector(grid%unstructured_grid,ugdm,local_vec, &
+  call UGridDMCreateVector(grid%unstructured_grid,dm_ptr,local_vec, &
                            LOCAL,option)
   call VecGetArray(global_vec,vec_ptr,ierr);CHKERRQ(ierr)
   vec_ptr = option%myrank
@@ -1694,6 +1711,7 @@ subroutine OutputGetExplicitDensity(realization_base,count,vec_proc, &
         end select
 
         if (is_flowing) then
+          upweight = 0.5
           if (global_auxvar(ghosted_id_up)%sat(1) <eps) then
             upweight = 0.d0
           else if (global_auxvar(ghosted_id_dn)%sat(1) <eps) then
@@ -1796,7 +1814,8 @@ subroutine OutputCollectVelocityOrFlux(realization_base, iphase, direction, &
   use Field_module
   use Connection_module
   use Coupler_module
-  use DM_Custom_module
+  use Grid_Unstructured_Aux_module
+  use UGDM_Pointer_module
 
   implicit none
 
@@ -2005,11 +2024,10 @@ subroutine OutputCommonMapFlowFormulaWeight(option,flow_dof_scale)
   ! Author: Glenn Hammond
   ! Date: 12/04/25
   !
-  use General_Aux_module, only : general_fmw => fmw_comp
+  use General_Aux_module, only : gen_fmw_comp
   use Option_module, only : option_type
   use Richards_Aux_module, only : richards_density_kmol_to_kg
-  use SCO2_Aux_module, only : sco2_fmw => fmw_comp
-  use WIPP_Flow_Aux_module, only : wipp_flow_fmw => fmw_comp
+  use WIPP_Flow_Aux_module, only : wipp_fmw_comp
 
   implicit none
 
@@ -2022,20 +2040,26 @@ subroutine OutputCommonMapFlowFormulaWeight(option,flow_dof_scale)
       flow_dof_scale(1) = richards_density_kmol_to_kg
     case(TH_MODE,TH_TS_MODE)
       flow_dof_scale(1) = FMWH2O
-    case(G_MODE,H_MODE)
+    case(THC_MODE)
+      ! residuals: water kmol/s, energy MJ/s (option%scale applied in the
+      ! kernels), solute mol/s
       flow_dof_scale(1) = FMWH2O
-      flow_dof_scale(2) = general_fmw(2)
+    case(G_MODE,H_MODE)
+      ! mass residuals are kmol/s; energy residual is MJ/s
+      flow_dof_scale(1) = FMWH2O
+      flow_dof_scale(2) = gen_fmw_comp(2)
+      if (option%nflowdof >= 4) then
+        flow_dof_scale(3) = gen_fmw_comp(3)
+      endif
     case(WF_MODE)
       flow_dof_scale(1) = FMWH2O
-      flow_dof_scale(2) = wipp_flow_fmw(2)
+      flow_dof_scale(2) = wipp_fmw_comp(2)
     case(MPH_MODE)
       flow_dof_scale(1) = FMWH2O
       flow_dof_scale(2) = FMWCO2
     case(SCO2_MODE)
-      !MAN: double check if this is mass or molar
-      flow_dof_scale(1) = sco2_fmw(1)
-      flow_dof_scale(2) = sco2_fmw(2)
-      flow_dof_scale(3) = sco2_fmw(3)
+      ! SCO2 residuals are already in kg/s (mass) and MJ/s (energy)
+      flow_dof_scale(1:option%nflowdof) = 1.d0
   end select
 
 end subroutine OutputCommonMapFlowFormulaWeight
@@ -2045,7 +2069,7 @@ end subroutine OutputCommonMapFlowFormulaWeight
 subroutine OutputCommonGlobalMassHeader(realization_base,fid,icol, &
                                         include_energy)
   !
-  ! Maps the formula weights for flow mode to an array
+  ! Writes header for global mass and energy output to file
   !
   ! Author: Glenn Hammond
   ! Date: 12/04/25
@@ -2053,6 +2077,7 @@ subroutine OutputCommonGlobalMassHeader(realization_base,fid,icol, &
   use Option_module
   use NW_Transport_Aux_module
   use Reaction_Aux_module
+  use SCO2_Aux_module, only : sco2_thermal
 
   implicit none
 
@@ -2073,13 +2098,13 @@ subroutine OutputCommonGlobalMassHeader(realization_base,fid,icol, &
   reaction_nw => NWTReactionCast(realization_base%reaction_base)
   output_option => realization_base%output_option
 
-  ! catch request of energy header when not supported
   select case(option%iflowmode)
-    case(NULL_MODE,RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE)
-    case(TH_MODE,TH_TS_MODE)
+    case(NULL_MODE,RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE,ZFLOW_MODE, &
+         TH_MODE,TH_TS_MODE,THC_MODE,H_MODE,G_MODE,WF_MODE,IMMISCIBLE_MODE, &
+         MPH_MODE,SCO2_MODE)
     case default
-      option%io_buffer = 'Energy headers must be added for flow mode "' // &
-        trim(option%flowmode) // &
+      option%io_buffer = 'Global mass headers must be added for flow mode "' &
+        // trim(option%flowmode) // &
         '" in output_common.F90:OutputCommonGlobalMassHeader().'
       call PrintErrMsg(option)
   end select
@@ -2104,9 +2129,12 @@ subroutine OutputCommonGlobalMassHeader(realization_base,fid,icol, &
     case(TH_MODE,TH_TS_MODE)
       call OutputWriteToHeader(fid,'Global Water Mass in Liquid Phase', &
                                'kg','',icol)
-      if (include_energy) then
-        call OutputWriteToHeader(fid,'Global Energy','MJ','',icol)
-      endif
+    case(THC_MODE)
+      ! DOF order: water, energy, solute
+      call OutputWriteToHeader(fid,'Global Water Mass in Liquid Phase', &
+                               'kg','',icol)
+      call OutputWriteToHeader(fid,'Global Energy','MJ','',icol)
+      call OutputWriteToHeader(fid,'Global Solute','mol','',icol)
     case(H_MODE)
       call OutputWriteToHeader(fid,'Global Water Mass in Liquid Phase', &
                                'kg','',icol)
@@ -2136,7 +2164,7 @@ subroutine OutputCommonGlobalMassHeader(realization_base,fid,icol, &
         call OutputWriteToHeader(fid,'Global Air Mass in Gas Phase', &
                                  'kg','',icol)
       endif
-    case(WF_MODE)
+    case(WF_MODE,IMMISCIBLE_MODE)
       call OutputWriteToHeader(fid,'Global Water Mass in Liquid Phase', &
                                'kg','',icol)
       call OutputWriteToHeader(fid,'Global Gas Component Mass in Gas &
@@ -2168,6 +2196,17 @@ subroutine OutputCommonGlobalMassHeader(realization_base,fid,icol, &
       call OutputWriteToHeader(fid,'Global Trapped CO2 Mass', &
                                'kg','',icol)
   end select
+
+  if (include_energy) then
+    select case(option%iflowmode)
+      case(TH_MODE,TH_TS_MODE,G_MODE,H_MODE,MPH_MODE)
+        call OutputWriteToHeader(fid,'Global Energy','MJ','',icol)
+      case(SCO2_MODE)
+        if (sco2_thermal) then
+          call OutputWriteToHeader(fid,'Global Energy','MJ','',icol)
+        endif
+    end select
+  endif
 
   if (option%ntrandof > 0) then
     select case(option%itranmode)
@@ -2250,7 +2289,7 @@ end subroutine OutputCommonGlobalMassHeader
 subroutine OutputCommonFluxHeader(realization_base,name,fid,icol, &
                                   include_energy)
   !
-  ! Maps the formula weights for flow mode to an array
+  ! Writes header for flux output to file
   !
   ! Author: Glenn Hammond
   ! Date: 12/04/25
@@ -2259,6 +2298,7 @@ subroutine OutputCommonFluxHeader(realization_base,name,fid,icol, &
   use Option_module
   use NW_Transport_Aux_module
   use Reaction_Aux_module
+  use SCO2_Aux_module, only : sco2_thermal
 
   implicit none
 
@@ -2281,12 +2321,12 @@ subroutine OutputCommonFluxHeader(realization_base,name,fid,icol, &
   reaction_nw => NWTReactionCast(realization_base%reaction_base)
   output_option => realization_base%output_option
 
-  ! catch request of energy header when not supported
   select case(option%iflowmode)
-    case(NULL_MODE,RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE)
-    case(TH_MODE,TH_TS_MODE)
+    case(NULL_MODE,RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE,ZFLOW_MODE, &
+         TH_MODE,TH_TS_MODE,THC_MODE,H_MODE,G_MODE,WF_MODE,IMMISCIBLE_MODE, &
+         MPH_MODE,SCO2_MODE)
     case default
-      option%io_buffer = 'Energy headers must be added for flow mode "' // &
+      option%io_buffer = 'Flux headers must be added for flow mode "' // &
         trim(option%flowmode) // &
         '" in output_common.F90:OutputCommonFluxHeader().'
       call PrintErrMsg(option)
@@ -2310,133 +2350,107 @@ subroutine OutputCommonFluxHeader(realization_base,name,fid,icol, &
       call OutputWriteToHeader(fid,string,'kg','',icol)
       units = 'kg/' // trim(output_option%tunit) // ''
       call OutputWriteToHeader(fid,string,units,'',icol)
-      if (include_energy) then
+    case(THC_MODE)
+      ! DOF order: water, energy, solute
+      string = trim(name) // ' Water Mass'
+      call OutputWriteToHeader(fid,string,'kg','',icol)
+      units = 'kg/' // trim(output_option%tunit) // ''
+      call OutputWriteToHeader(fid,string,units,'',icol)
+      string = trim(name) // ' Energy'
+      call OutputWriteToHeader(fid,string,'MJ','',icol)
+      units = 'MJ/' // trim(output_option%tunit) // ''
+      call OutputWriteToHeader(fid,string,units,'',icol)
+      string = trim(name) // ' Solute'
+      call OutputWriteToHeader(fid,string,'mol','',icol)
+      units = 'mol/' // trim(output_option%tunit) // ''
+      call OutputWriteToHeader(fid,string,units,'',icol)
+    case(H_MODE)
+      units = 'kg/' // trim(output_option%tunit) // ''
+      string = trim(name) // ' Water Mass'
+      call OutputWriteToHeader(fid,string,'kg','',icol)
+      call OutputWriteToHeader(fid,string,units,'',icol)
+      string = trim(name) // ' Air Mass'
+      call OutputWriteToHeader(fid,string,'kg','',icol)
+      call OutputWriteToHeader(fid,string,units,'',icol)
+    case(G_MODE)
+      units = 'kg/' // trim(output_option%tunit) // ''
+      string = trim(name) // ' Water Mass'
+      call OutputWriteToHeader(fid,string,'kg','',icol)
+      call OutputWriteToHeader(fid,string,units,'',icol)
+      string = trim(name) // ' Air Mass'
+      call OutputWriteToHeader(fid,string,'kg','',icol)
+      call OutputWriteToHeader(fid,string,units,'',icol)
+      if (option%nphase > 2) then
+        string = trim(name) // ' Salt Mass'
+        call OutputWriteToHeader(fid,string,'kg','',icol)
+        call OutputWriteToHeader(fid,string,units,'',icol)
+      endif
+    case(WF_MODE,IMMISCIBLE_MODE)
+      units = 'kg/' // trim(output_option%tunit) // ''
+      string = trim(name) // ' Water Mass'
+      call OutputWriteToHeader(fid,string,'kg','',icol)
+      call OutputWriteToHeader(fid,string,units,'',icol)
+      string = trim(name) // ' Gas Component Mass'
+      call OutputWriteToHeader(fid,string,'kg','',icol)
+      call OutputWriteToHeader(fid,string,units,'',icol)
+    case(MPH_MODE)
+      units = 'kmol/' // trim(output_option%tunit) // ''
+      string = trim(name) // ' Water Mass'
+      call OutputWriteToHeader(fid,string,'kmol','',icol)
+      call OutputWriteToHeader(fid,string,units,'',icol)
+      string = trim(name) // ' CO2 Mass'
+      call OutputWriteToHeader(fid,string,'kmol','',icol)
+      call OutputWriteToHeader(fid,string,units,'',icol)
+    case(SCO2_MODE)
+      units = 'kg/' // trim(output_option%tunit) // ''
+      string = trim(name) // ' Water Mass'
+      call OutputWriteToHeader(fid,string,'kg','',icol)
+      call OutputWriteToHeader(fid,string,units,'',icol)
+      string = trim(name) // ' CO2 Mass'
+      call OutputWriteToHeader(fid,string,'kg','',icol)
+      call OutputWriteToHeader(fid,string,units,'',icol)
+      string = trim(name) // ' Salt Mass'
+      call OutputWriteToHeader(fid,string,'kg','',icol)
+      call OutputWriteToHeader(fid,string,units,'',icol)
+  end select
+
+  ! energy pairs last among flow quantities (matches residual energy DOF)
+  if (include_energy) then
+    select case(option%iflowmode)
+      case(TH_MODE,TH_TS_MODE,G_MODE,H_MODE,MPH_MODE)
         string = trim(name) // ' Energy'
         call OutputWriteToHeader(fid,string,'MJ','',icol)
         units = 'MJ/' // trim(output_option%tunit) // ''
         call OutputWriteToHeader(fid,string,units,'',icol)
-      endif
-    case(H_MODE)
-      string = trim(name) // ' Water Mass'
-      call OutputWriteToHeader(fid,string,'kg','',icol)
-      string = trim(name) // ' Air Mass'
-      call OutputWriteToHeader(fid,string,'kg','',icol)
-      units = 'kg/' // trim(output_option%tunit) // ''
-      string = trim(name) // ' Water Mass'
-      call OutputWriteToHeader(fid,string,units,'',icol)
-      string = trim(name) // ' Air Mass'
-      call OutputWriteToHeader(fid,string,units,'',icol)
-    case(G_MODE)
-      string = trim(name) // ' Water Mass'
-      call OutputWriteToHeader(fid,string,'kg','',icol)
-      string = trim(name) // ' Air Mass'
-      call OutputWriteToHeader(fid,string,'kg','',icol)
-      units = 'kg/' // trim(output_option%tunit) // ''
-      if (option%nphase > 2) then
-        string = trim(name) // ' Salt Mass'
-        call OutputWriteToHeader(fid,string,'kg','',icol)
-        string = trim(name) // ' Water Mass'
-        call OutputWriteToHeader(fid,string,units,'',icol)
-        string = trim(name) // ' Air Mass'
-        call OutputWriteToHeader(fid,string,units,'',icol)
-        string = trim(name) // ' Salt Mass'
-        call OutputWriteToHeader(fid,string,units,'',icol)
-      else
-        string = trim(name) // ' Water Mass'
-        call OutputWriteToHeader(fid,string,units,'',icol)
-        string = trim(name) // ' Air Mass'
-        call OutputWriteToHeader(fid,string,units,'',icol)
-      endif
-    case(WF_MODE)
-      string = trim(name) // ' Water Mass'
-      call OutputWriteToHeader(fid,string,'kg','',icol)
-      string = trim(name) // ' Gas Component Mass'
-      call OutputWriteToHeader(fid,string,'kg','',icol)
-
-      units = 'kg/' // trim(output_option%tunit) // ''
-      string = trim(name) // ' Water Mass'
-      call OutputWriteToHeader(fid,string,units,'',icol)
-      string = trim(name) // ' Gas Component Mass'
-      call OutputWriteToHeader(fid,string,units,'',icol)
-    case(MPH_MODE)
-      string = trim(name) // ' Water Mass'
-      call OutputWriteToHeader(fid,string,'kmol','',icol)
-      string = trim(name) // ' CO2 Mass'
-      call OutputWriteToHeader(fid,string,'kmol','',icol)
-
-      units = 'kmol/' // trim(output_option%tunit) // ''
-      string = trim(name) // ' Water Mass'
-      call OutputWriteToHeader(fid,string,units,'',icol)
-      string = trim(name) // ' CO2 Mass'
-      call OutputWriteToHeader(fid,string,units,'',icol)
-    case(SCO2_MODE)
-      string = trim(name) // ' Water Mass'
-      call OutputWriteToHeader(fid,string,'kg','',icol)
-      string = trim(name) // ' CO2 Mass'
-      call OutputWriteToHeader(fid,string,'kg','',icol)
-
-      units = 'kg/' // trim(output_option%tunit) // ''
-      string = trim(name) // ' Water Mass'
-      call OutputWriteToHeader(fid,string,units,'',icol)
-      string = trim(name) // ' CO2 Mass'
-      call OutputWriteToHeader(fid,string,units,'',icol)
-  end select
+      case(SCO2_MODE)
+        if (sco2_thermal) then
+          string = trim(name) // ' Energy'
+          call OutputWriteToHeader(fid,string,'MJ','',icol)
+          units = 'MJ/' // trim(output_option%tunit) // ''
+          call OutputWriteToHeader(fid,string,units,'',icol)
+        endif
+    end select
+  endif
 
   if (option%ntrandof > 0) then
+    ! same column order as integral flux: cum, inst pairs per species
     select case(option%itranmode)
       case(RT_MODE)
+        units = 'mol/' // trim(output_option%tunit) // ''
         do i=1,reaction%naqcomp
           if (reaction%primary_species_print(i)) then
             string = trim(name) // ' ' // &
                      trim(reaction%primary_species_names(i))
             call OutputWriteToHeader(fid,string,'mol','',icol)
-          endif
-        enddo
-
-        ! header for gas contributions to cumulative flux
-        if (reaction%gas%nactive_gas > 0) then
-          do i=1,reaction%naqcomp
-            if (reaction%primary_species_print(i)) then
-              string = trim(name) // ' ' // &
-                       trim(reaction%primary_species_names(i)) // &
-                       ' (gas phase)'
-              call OutputWriteToHeader(fid,string,'mol','',icol)
-            endif
-          enddo
-        endif
-
-        units = 'mol/' // trim(output_option%tunit) // ''
-        do i=1,reaction%naqcomp
-          if (reaction%primary_species_print(i)) then
-            string = trim(name) // ' ' // &
-                     trim(reaction%primary_species_names(i))
             call OutputWriteToHeader(fid,string,units,'',icol)
           endif
         enddo
-
-        ! header for gas contributions to flux
-        if (reaction%gas%nactive_gas > 0) then
-          do i=1,reaction%naqcomp
-            if (reaction%primary_species_print(i)) then
-              string = trim(name) // ' ' // &
-                       trim(reaction%primary_species_names(i)) // &
-                       ' (gas phase)'
-              call OutputWriteToHeader(fid,string,units,'',icol)
-            endif
-          enddo
-        endif
-
       case(NWT_MODE)
+        units = 'mol/' // trim(output_option%tunit) // ''
         do i=1,reaction_nw%params%nspecies
           string = trim(name) // ' ' // &
                    trim(reaction_nw%species_names(i))
           call OutputWriteToHeader(fid,string,'mol','',icol)
-        enddo
-
-        units = 'mol/' // trim(output_option%tunit) // ''
-        do i=1,reaction_nw%params%nspecies
-          string = trim(name) // ' ' // &
-                   trim(reaction_nw%species_names(i))
           call OutputWriteToHeader(fid,string,units,'',icol)
         enddo
     end select

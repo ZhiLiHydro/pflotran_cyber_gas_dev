@@ -52,7 +52,6 @@ subroutine SubsurfAllocMatPropDataStructs(realization)
   ! Date: 10/07/14
   !
   use Realization_Subsurface_class
-  use Material_module
   use Option_module
   use Discretization_module
   use Grid_module
@@ -75,10 +74,6 @@ subroutine SubsurfAllocMatPropDataStructs(realization)
   patch => realization%patch
   grid => patch%grid
 
-  ! initialize material auxiliary indices.  this does not have to be done
-  ! for each patch, just once.
-  call MaterialInitAuxIndices(realization%patch%material_property_array,option)
-
   ! create mappinging
   if (.not.associated(patch%imat)) then
     allocate(patch%imat(grid%ngmax))
@@ -86,7 +81,7 @@ subroutine SubsurfAllocMatPropDataStructs(realization)
     patch%imat = UNINITIALIZED_INTEGER
     select case(option%iflowmode)
       case(NULL_MODE,PNF_MODE)
-      case(RICHARDS_MODE,WF_MODE,ZFLOW_MODE)
+      case(RICHARDS_MODE,WF_MODE,ZFLOW_MODE,THC_MODE,IMMISCIBLE_MODE)
         allocate(patch%cc_id(grid%ngmax))
         patch%cc_id = UNINITIALIZED_INTEGER
       case default
@@ -356,7 +351,8 @@ subroutine InitSubsurfAssignMatProperties(realization)
                                SURFACE_ELECTRICAL_CONDUCTIVITY, &
                                WAXMAN_SMITS_CLAY_CONDUCTIVITY, &
                                HALF_MATRIX_WIDTH, NUMBER_SECONDARY_CELLS, &
-                               TORTUOSITY_Y,TORTUOSITY_Z
+                               TORTUOSITY_Y,TORTUOSITY_Z, &
+                               BASE_POROSITY, INITIAL_POROSITY
 
   use HDF5_module
   use Grid_Eclipse_module
@@ -466,7 +462,7 @@ subroutine InitSubsurfAssignMatProperties(realization)
                              material_property%creep_closure_name, &
                              material_property%name,option)
         ! copy creep closure table id from material to material_aux
-        material_auxvars(ghosted_id)%creep_closure_id = &
+        material_auxvars(ghosted_id)%secondary_material_id = &
           material_property%creep_closure_id
       endif
     endif
@@ -705,28 +701,28 @@ subroutine InitSubsurfAssignMatProperties(realization)
     call DiscretizationGlobalToLocal(discretization,field%perm0_xx, &
                                      field%work_loc,ONEDOF)
     call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                 PERMEABILITY_X,ZERO_INTEGER)
+                                 PERMEABILITY_X)
     call DiscretizationGlobalToLocal(discretization,field%perm0_yy, &
                                      field%work_loc,ONEDOF)
     call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                 PERMEABILITY_Y,ZERO_INTEGER)
+                                 PERMEABILITY_Y)
     call DiscretizationGlobalToLocal(discretization,field%perm0_zz, &
                                      field%work_loc,ONEDOF)
     call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                 PERMEABILITY_Z,ZERO_INTEGER)
+                                 PERMEABILITY_Z)
     if (option%flow%full_perm_tensor) then
       call DiscretizationGlobalToLocal(discretization,field%perm0_xy, &
                                        field%work_loc,ONEDOF)
       call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                   PERMEABILITY_XY,ZERO_INTEGER)
+                                   PERMEABILITY_XY)
       call DiscretizationGlobalToLocal(discretization,field%perm0_xz, &
                                        field%work_loc,ONEDOF)
       call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                   PERMEABILITY_XZ,ZERO_INTEGER)
+                                   PERMEABILITY_XZ)
       call DiscretizationGlobalToLocal(discretization,field%perm0_yz, &
                                        field%work_loc,ONEDOF)
       call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                   PERMEABILITY_YZ,ZERO_INTEGER)
+                                   PERMEABILITY_YZ)
     endif
 
     if (associated(patch%cc_id)) then
@@ -740,31 +736,31 @@ subroutine InitSubsurfAssignMatProperties(realization)
       call DiscretizationGlobalToLocal(discretization,field%compressibility0, &
                                        field%work_loc,ONEDOF)
       call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                   SOIL_COMPRESSIBILITY,ZERO_INTEGER)
+                                   SOIL_COMPRESSIBILITY)
     endif
   endif
 
   call DiscretizationGlobalToLocal(discretization,field%porosity0, &
                                    field%work_loc,ONEDOF)
   call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                               POROSITY,POROSITY_INITIAL)
+                               INITIAL_POROSITY)
   call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                               POROSITY,POROSITY_BASE)
+                               BASE_POROSITY)
   call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                               POROSITY,POROSITY_CURRENT)
+                               POROSITY)
   call DiscretizationGlobalToLocal(discretization,field%tortuosity0, &
                                     field%work_loc,ONEDOF)
   call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                               TORTUOSITY,ZERO_INTEGER)
+                               TORTUOSITY)
   if (option%transport%anisotropic_tortuosity) then
     call DiscretizationGlobalToLocal(discretization,tort_yy, &
                                      field%work_loc,ONEDOF)
     call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                 TORTUOSITY_Y,ZERO_INTEGER)
+                                 TORTUOSITY_Y)
     call DiscretizationGlobalToLocal(discretization,tort_zz, &
                                      field%work_loc,ONEDOF)
     call MaterialSetAuxVarVecLoc(patch%aux%Material,field%work_loc, &
-                                 TORTUOSITY_Z,ZERO_INTEGER)
+                                 TORTUOSITY_Z)
     call VecDestroy(tort_yy,ierr);CHKERRQ(ierr)
     call VecDestroy(tort_zz,ierr);CHKERRQ(ierr)
   endif
@@ -1464,7 +1460,7 @@ subroutine SubsurfAssignVolsToMatAuxVars(realization)
   call DiscretizationGlobalToLocal(realization%discretization,field%volume0, &
                                    field%work_loc,ONEDOF)
   call MaterialSetAuxVarVecLoc(realization%patch%aux%Material, &
-                               field%work_loc,VOLUME,ZERO_INTEGER)
+                               field%work_loc,VOLUME)
 
 end subroutine SubsurfAssignVolsToMatAuxVars
 

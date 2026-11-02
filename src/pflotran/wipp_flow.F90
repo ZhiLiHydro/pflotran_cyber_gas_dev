@@ -326,7 +326,7 @@ subroutine WIPPFloComputeMassBalance(realization,mass_balance)
       ! mass = volume_phase*density
       mass_balance(iphase) = mass_balance(iphase) + &
         wippflo_auxvars(ZERO_INTEGER,ghosted_id)%den(iphase)* &
-        fmw_comp(iphase)*vol_phase
+        wipp_fmw_comp(iphase)*vol_phase
     enddo
   enddo
 
@@ -411,7 +411,7 @@ subroutine WIPPFloUpdateMassBalance(realization)
       global_auxvars_bc(iconn)%mass_balance(icomp,:) = &
         global_auxvars_bc(iconn)%mass_balance(icomp,:) + &
         global_auxvars_bc(iconn)%mass_balance_delta(icomp,:)* &
-        fmw_comp(icomp)*option%flow_dt
+        wipp_fmw_comp(icomp)*option%flow_dt
     enddo
   enddo
   do iconn = 1, patch%aux%WIPPFlo%num_aux_ss
@@ -419,7 +419,7 @@ subroutine WIPPFloUpdateMassBalance(realization)
       global_auxvars_ss(iconn)%mass_balance(icomp,:) = &
         global_auxvars_ss(iconn)%mass_balance(icomp,:) + &
         global_auxvars_ss(iconn)%mass_balance_delta(icomp,:)* &
-        fmw_comp(icomp)*option%flow_dt
+        wipp_fmw_comp(icomp)*option%flow_dt
     enddo
   enddo
 
@@ -1853,7 +1853,7 @@ subroutine WIPPFloCreepShutDown(realization)
   wippflo_auxvars => realization%patch%aux%WIPPFlo%auxvars
 
   do ghosted_id = 1, grid%ngmax
-    creep_closure_id = material_auxvars(ghosted_id)%creep_closure_id
+    creep_closure_id = material_auxvars(ghosted_id)%secondary_material_id
     creep_closure => wipp%creep_closure_tables_array(creep_closure_id)%ptr
     if (associated(creep_closure)) then
       cell_pressure = wippflo_auxvars(ZERO_INTEGER,ghosted_id)%&
@@ -1869,7 +1869,7 @@ subroutine WIPPFloCreepShutDown(realization)
         ! which will shut down creep closure permanently since the pointer
         ! creep_closure => wipp%creep_closure_tables_array(creep_closure_id)%ptr
         ! will no longer be associated in future conditionals
-        material_auxvars(ghosted_id)%creep_closure_id = 1
+        material_auxvars(ghosted_id)%secondary_material_id = 1
       endif
     endif
   enddo

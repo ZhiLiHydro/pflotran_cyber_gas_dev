@@ -324,7 +324,8 @@ subroutine SCO2InitializeTimestep(realization)
                     sco2_auxvars(ZERO_INTEGER,ghosted_id)%den_kg(gid) * &
                     sco2_auxvars(ZERO_INTEGER,ghosted_id)%xmass(wid,gid)
         ! mol/m^3 bulk = kg/m^3 pore * m^3 pore/m^3 bulk / (g/mol * kg/g)
-        water_moles_per_m3bulk = water_mass * porosity / (fmw_comp(1) * 1.d-3)
+        water_moles_per_m3bulk = water_mass * porosity / &
+                                 (sco2_fmw_comp(1) * 1.d-3)
         ! units: [kg co2/m^3 pore]
         co2_mass = sco2_auxvars(ZERO_INTEGER,ghosted_id)%sat(lid) * &
                     sco2_auxvars(ZERO_INTEGER,ghosted_id)%den_kg(lid) * &
@@ -332,7 +333,7 @@ subroutine SCO2InitializeTimestep(realization)
                     sco2_auxvars(ZERO_INTEGER,ghosted_id)%sat(gid) * &
                     sco2_auxvars(ZERO_INTEGER,ghosted_id)%den_kg(gid) * &
                     sco2_auxvars(ZERO_INTEGER,ghosted_id)%xmass(co2_id,gid)
-        co2_moles_per_m3bulk = co2_mass * porosity / (fmw_comp(2) * 1.d-3)
+        co2_moles_per_m3bulk = co2_mass * porosity / (sco2_fmw_comp(2) * 1.d-3)
 
         ! Reaction rate = mineralization rate. positive means sink
         ! reaction_rate units coming in: mole/m^3 bulk
@@ -519,7 +520,8 @@ end subroutine SCO2TimeCut
 
 ! ************************************************************************** !
 
-subroutine SCO2ComputeMassBalance(realization,mass_balance,mass_trapped)
+subroutine SCO2ComputeMassBalance(realization,mass_balance,mass_trapped, &
+                                  energy_balance)
   !
   ! Initializes mass balance
   !
@@ -540,6 +542,7 @@ subroutine SCO2ComputeMassBalance(realization,mass_balance,mass_trapped)
   PetscReal :: mass_balance(realization%option%nflowspec, &
                             realization%option%nphase)
   PetscReal :: mass_trapped(realization%option%nphase)
+  PetscReal :: energy_balance
 
   type(option_type), pointer :: option
   type(patch_type), pointer :: patch
@@ -547,11 +550,14 @@ subroutine SCO2ComputeMassBalance(realization,mass_balance,mass_trapped)
   type(grid_type), pointer :: grid
   type(sco2_auxvar_type), pointer :: sco2_auxvars(:,:)
   type(material_auxvar_type), pointer :: material_auxvars(:)
+  type(material_parameter_type), pointer :: material_parameter
 
   PetscInt :: local_id
   PetscInt :: ghosted_id
-  PetscInt :: iphase, icomp
+  PetscInt :: iphase, icomp, imat
   PetscReal :: vol_phase
+  PetscReal :: porosity
+  PetscReal :: volume
   PetscInt :: tgid, gid, co2_id
 
   option => realization%option
@@ -561,6 +567,7 @@ subroutine SCO2ComputeMassBalance(realization,mass_balance,mass_trapped)
 
   sco2_auxvars => patch%aux%SCO2%auxvars
   material_auxvars => patch%aux%Material%auxvars
+  material_parameter => patch%aux%Material%material_parameter
 
   tgid = option%trapped_gas_phase
   gid = option%gas_phase
@@ -568,16 +575,19 @@ subroutine SCO2ComputeMassBalance(realization,mass_balance,mass_trapped)
 
   mass_balance = 0.d0
   mass_trapped = 0.d0
+  energy_balance = 0.d0
 
   do local_id = 1, grid%nlmax
     ghosted_id = grid%nL2G(local_id)
-    if (patch%imat(ghosted_id) <= 0) cycle
+    imat = patch%imat(ghosted_id)
+    if (imat <= 0) cycle
+    volume = material_auxvars(ghosted_id)%volume
+    porosity = sco2_auxvars(ZERO_INTEGER,ghosted_id)%effective_porosity
     do iphase = 1, option%nphase
       ! volume_phase = saturation*porosity*volume
       vol_phase = &
         sco2_auxvars(ZERO_INTEGER,ghosted_id)%sat(iphase)* &
-        sco2_auxvars(ZERO_INTEGER,ghosted_id)%effective_porosity* &
-        material_auxvars(ghosted_id)%volume
+        porosity*volume
       ! mass = volume_phase*density
       do icomp = 1, option%nflowspec
         mass_balance(icomp,iphase) = mass_balance(icomp,iphase) + &
@@ -585,16 +595,31 @@ subroutine SCO2ComputeMassBalance(realization,mass_balance,mass_trapped)
           sco2_auxvars(ZERO_INTEGER,ghosted_id)%xmass(icomp,iphase) * &
           vol_phase
       enddo
+      if (sco2_thermal) then
+        ! [MJ] = sat * den_kg [kg/m^3] * U [MJ/kg] * por * vol
+        energy_balance = energy_balance + &
+          sco2_auxvars(ZERO_INTEGER,ghosted_id)%sat(iphase)* &
+          sco2_auxvars(ZERO_INTEGER,ghosted_id)%den_kg(iphase)* &
+          sco2_auxvars(ZERO_INTEGER,ghosted_id)%U(iphase)* &
+          porosity*volume
+      endif
     enddo
     ! Trapped gas mass
     vol_phase = &
         sco2_auxvars(ZERO_INTEGER,ghosted_id)%sat(tgid)* &
-        sco2_auxvars(ZERO_INTEGER,ghosted_id)%effective_porosity* &
-        material_auxvars(ghosted_id)%volume
+        porosity*volume
     mass_trapped(co2_id) = mass_trapped(co2_id) + &
         sco2_auxvars(ZERO_INTEGER,ghosted_id)%den_kg(gid)* &
         sco2_auxvars(ZERO_INTEGER,ghosted_id)%xmass(co2_id,gid) * &
         vol_phase
+    if (sco2_thermal) then
+      ! rock energy [MJ] = (1-por) * rho_rock [kg/m^3] * Cp [MJ/kg-C] * T [C] * V
+      energy_balance = energy_balance + &
+        (1.d0 - porosity)* &
+        material_auxvars(ghosted_id)%soil_particle_density* &
+        material_parameter%soil_heat_capacity(imat)* &
+        sco2_auxvars(ZERO_INTEGER,ghosted_id)%temp*volume
+    endif
   enddo
 
 end subroutine SCO2ComputeMassBalance
@@ -653,7 +678,8 @@ subroutine SCO2ComputeComponentMassBalance(realization,num_cells,num_comp, &
 
     if (patch%imat(ghosted_id) <= 0) cycle
     volume = material_auxvars(ghosted_id)%volume
-
+    Srg = patch%characteristic_curves_array(patch%cc_id(ghosted_id))% &
+          ptr%gas_rel_perm_function%Srg
 
     do iphase = 1,num_phase
       do icomp = 1,num_comp
@@ -664,8 +690,6 @@ subroutine SCO2ComputeComponentMassBalance(realization,num_cells,num_comp, &
         endif
         if (iphase == option%trapped_gas_phase) then
           ! SPE11 definition of "immobile gas"
-          Srg = patch%characteristic_curves_array(patch%cc_id(ghosted_id))% &
-                ptr%gas_rel_perm_function%Srg
           if (sco2_auxvars(ZERO_INTEGER,ghosted_id)% &
               sat(option%gas_phase) <= Srg) then
             sum_kg(icomp,iphase) = sum_kg(icomp,iphase) + &

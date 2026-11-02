@@ -918,12 +918,17 @@ subroutine PMHydrateSetup(this)
 
   use Hydrate_module
   use Material_module
+  use EOS_Gas_module
+  use EOS_module
 
   implicit none
 
   class(pm_hydrate_type) :: this
 
+  call EOSGasSetFMW(hydrate_fmw_comp(2))
   call this%SetRealization()
+  call EOSGasTableProcess(this%realization%option)
+  call EOSReferenceDensity(this%realization%option)
   call MaterialSetupThermal( &
          this%realization%patch%aux%Material%material_parameter, &
          this%realization%patch%material_property_array, &
@@ -1024,8 +1029,7 @@ subroutine PMHydrateInitializeTimestep(this)
 !geh:remove   everywhere
   call MaterialAuxVarCommunicate(this%comm1, &
                                  this%realization%patch%aux%Material, &
-                                 this%realization%field%work_loc,TORTUOSITY, &
-                                 ZERO_INTEGER)
+                                 this%realization%field%work_loc,TORTUOSITY)
 
   call HydrateInitializeTimestep(this%realization)
   if (associated(this%pmwell_ptr)) then

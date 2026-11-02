@@ -67,6 +67,7 @@ module EOS_Water_module
   procedure(EOSWaterViscosityDummy), pointer :: EOSWaterViscosityPtr => null()
   procedure(EOSWaterSatPressDummy), pointer :: &
     EOSWaterSaturationPressurePtr => null()
+  PetscBool :: water_density_is_brine = PETSC_FALSE
   procedure(EOSWaterDensityDummy), pointer :: EOSWaterDensityPtr => null()
   procedure(EOSWaterEnthalpyDummy), pointer :: EOSWaterEnthalpyPtr => null()
   procedure(EOSWaterSteamDenEnthDummy), pointer :: &
@@ -288,6 +289,7 @@ module EOS_Water_module
   public :: EOSWaterSetDensity, &
             EOSWaterSetEnthalpy, &
             EOSWaterSetViscosity, &
+            EOSWaterDensityIsBrine, &
             EOSWaterSetSaturationPressure, &
             EOSWaterSetSteamDensity, &
             EOSWaterSetSteamEnthalpy, &
@@ -331,6 +333,9 @@ subroutine EOSWaterInit()
   quadratic_reference_density = UNINITIALIZED_DOUBLE
   quadratic_reference_pressure = UNINITIALIZED_DOUBLE
   quadratic_wat_compressibility = UNINITIALIZED_DOUBLE
+  linear_reference_density = UNINITIALIZED_DOUBLE
+  linear_reference_pressure = UNINITIALIZED_DOUBLE
+  linear_water_compressibility = UNINITIALIZED_DOUBLE
   halite_saturated_brine = PETSC_FALSE
 
   ! standard versions
@@ -449,12 +454,29 @@ end subroutine EOSWaterVerify
 
 ! ************************************************************************** !
 
+function EOSWaterDensityIsBrine()
+  !
+  ! Reports whether the selected water density correlation accepts a salinity
+  ! argument
+  !
+  implicit none
+
+  PetscBool :: EOSWaterDensityIsBrine
+
+  EOSWaterDensityIsBrine = water_density_is_brine
+
+end function EOSWaterDensityIsBrine
+
+! ************************************************************************** !
+
 subroutine EOSWaterSetDensity(keyword,aux)
 
   implicit none
 
   character(len=*) :: keyword
   PetscReal, optional :: aux(*)
+
+  water_density_is_brine = PETSC_FALSE
 
   select case(keyword)
     case('CONSTANT')
@@ -488,17 +510,17 @@ subroutine EOSWaterSetDensity(keyword,aux)
       exp_p_water_compressibility = aux(3)
       EOSWaterDensityPtr => EOSWaterDensityBRAGFLO
     case('QUADRATIC')
-      if (Initialized(aux(1))) then
+      if (Uninitialized(aux(1))) then
         quadratic_reference_density = 999.014d0 !kg/m3
       else
         quadratic_reference_density = aux(1)
       end if
-      if (Initialized(aux(2))) then
+      if (Uninitialized(aux(2))) then
         quadratic_reference_pressure = 1.0d5 !Pa
       else
         quadratic_reference_pressure = aux(2)
       end if
-      if (Initialized(aux(3))) then
+      if (Uninitialized(aux(3))) then
         quadratic_wat_compressibility = 3.94769306686405d-10 !1/Pa
       else
         quadratic_wat_compressibility = aux(3)
@@ -516,10 +538,13 @@ subroutine EOSWaterSetDensity(keyword,aux)
     case('BATZLE_AND_WANG')
       EOSWaterDensityPtr => EOSWaterDensityBatzleAndWang
       EOSWaterDensityExtPtr => EOSWaterDensityBatzleAndWangExt
+      water_density_is_brine = PETSC_TRUE
     case('SPARROW')
       EOSWaterDensityExtPtr => EOSWaterDensitySparrowExt
+      water_density_is_brine = PETSC_TRUE
     case('DRIESNER')
       EOSWaterDensityExtPtr => EOSWaterDensityDriesnerExt
+      water_density_is_brine = PETSC_TRUE
     case default
       print *, 'Unknown pointer type "' // trim(keyword) // &
         '" in EOSWaterSetDensity().'
@@ -1547,7 +1572,8 @@ subroutine EOSWaterSatPresWagnerPruss(T, calculate_derivatives, &
     dpolynomial_dtau = a(1)+1.5d0*a(2)*sqrt(tau)+3.d0*a(3)*tau*tau+ &
                        3.5d0*a(4)*tau**2.5d0+4.d0*a(5)*tau**3.d0+ &
                        7.5d0*a(6)*tau**6.5d0
-    dPS_dT = PS*(dpolynomial_dtau/T_over_Tc*dtau_dT+polynomial*Tc)
+    dPS_dT = PS*(dpolynomial_dtau/T_over_Tc*dtau_dT - &
+                 polynomial/(T_over_Tc*T_over_Tc*Tc))
   else
     dPS_dT = UNINITIALIZED_DOUBLE
   endif
@@ -3932,7 +3958,7 @@ subroutine EOSWaterEnthalpyTPPlanarSetup()
   PetscReal, parameter :: p0 = 1.d6
   PetscReal, parameter :: t0 = 30.d0
   PetscReal, parameter :: dh_dp = 1.65d-2
-  PetscReal, parameter :: dh_dT = 7.5d4
+  PetscReal, parameter :: dh_dT = 7.53762d4
   PetscReal, parameter :: h_reference = 2.27d6 ! J/kmol
 
   call GeomComputePlaneWithGradients(water_enthalpy_tp_plane,p0,t0, &
@@ -4651,12 +4677,13 @@ subroutine EOSWaterViscosityKestinExt(T, P, PS, dPS_dT, aux, &
   data b1,b2,b3 / -3.96d-2, 1.02d-2, -7.02d-4 /
   data c1,c2,c3,c4 / 1.2378d0, -1.303d-3, 3.06d-6, 2.55d-8 /
 
+  PetscReal :: xn,dxn_dtt,dck_dT,dms_dT,dfac_dT
+  PetscReal :: dbetaw_dT,dbetas_dT,dbetap_dfac,dbeta_dT,dmu0_dT
+
   data wnacl / 58.44277d-3 / ! (kg/mol NaCl)
 
-  if (calculate_derivatives) then
-    print *, 'Derivatives not set up in EOSWaterViscosityKestinExt().'
-    stop
-  endif
+  dVW_dT = 0.d0
+  dVW_dP = 0.d0
 
   !convert pressure to GPa
   p_GPa = P*1.d-9
@@ -4664,7 +4691,8 @@ subroutine EOSWaterViscosityKestinExt(T, P, PS, dPS_dT, aux, &
   xnacl = aux(1)
   mnacl = xnacl/(1.d0-xnacl)/wnacl
   tt = 20.d0-t
-  ck = (c1 + (c2 + (c3+c4*tt)*tt)*tt)*tt/(96.d0+t)
+  xn = (c1 + (c2 + (c3+c4*tt)*tt)*tt)*tt
+  ck = xn/(96.d0+t)
   ak = (a1 + (a2 + a3*mnacl)*mnacl)*mnacl
   bk = (b1 + (b2 + b3*mnacl)*mnacl)*mnacl
 
@@ -4678,6 +4706,22 @@ subroutine EOSWaterViscosityKestinExt(T, P, PS, dPS_dT, aux, &
   mu0 = 1001.74d-6 * 10.d0**(ak + ck*(bk + 1.d0))
 
   VW = mu0*(1.d0 + beta*p_GPa)
+
+  if (calculate_derivatives) then
+    ! d(tt)/dT = -1; quotient rule on ck = xn(tt)/(96+T)
+    dxn_dtt = c1 + (2.d0*c2 + (3.d0*c3 + 4.d0*c4*tt)*tt)*tt
+    dck_dT = (-dxn_dtt*(96.d0+t) - xn)/(96.d0+t)**2
+    dms_dT = 2.8d-3 + 7.2d-5*t
+    dfac_dT = -mnacl/ms**2*dms_dT
+    dbetaw_dT = 5.74d-2 + (-2.d0*6.97d-4 + (3.d0*4.47d-6 - &
+                4.d0*1.05d-8*t)*t)*t
+    dbetas_dT = 2.8d-3 - dbetaw_dT
+    dbetap_dfac = 2.5d0 + (-4.d0 + 1.5d0*fac)*fac
+    dbeta_dT = dbetas_dT*betap + betas*dbetap_dfac*dfac_dT + dbetaw_dT
+    dmu0_dT = mu0*log(10.d0)*(bk + 1.d0)*dck_dT
+    dVW_dT = dmu0_dT*(1.d0 + beta*p_GPa) + mu0*dbeta_dT*p_GPa
+    dVW_dP = mu0*beta*1.d-9
+  endif
 
 end subroutine EOSWaterViscosityKestinExt
 
@@ -5260,7 +5304,7 @@ subroutine EOSWaterViscosityBatzleAndWang(T, P, PS, dPS_dT, &
   PetscReal :: exponential_term
   PetscReal :: temperature_term
 
-  t_C = T
+  t_C = max(T,1.d-3)
 
   ! this is Eq. 32 without all the salt terms.
   ! -0.057138d0 = -1.d0*0.42d0*(-0.17d0)**2.d0+0.045d0
@@ -5310,7 +5354,7 @@ subroutine EOSWaterViscosityBatzleAndWangExt(T, P, PS, dPS_dT, aux, &
   PetscReal :: temperature_term
 
   s = aux(1)
-  t_C = T
+  t_C = max(T,1.d-3)
 
   exponential_term = -1.d0*(0.42d0*(s**0.8d0-0.17d0)**2.d0 + 0.045d0)* &
                      t_C**0.8d0

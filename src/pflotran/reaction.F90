@@ -2411,7 +2411,7 @@ subroutine ReactionPrintConstraint(global_auxvar,rt_auxvar, &
         option%flow%reference_density(option%liquid_phase)
       global_auxvar%temp = option%transport%reference_temperature
       global_auxvar%sat(iphase) = option%flow%reference_saturation
-    case(RICHARDS_MODE,RICHARDS_TS_MODE,ZFLOW_MODE,PNF_MODE)
+    case(RICHARDS_MODE,RICHARDS_TS_MODE,ZFLOW_MODE,PNF_MODE,IMMISCIBLE_MODE)
       global_auxvar%temp = option%transport%reference_temperature
   end select
 
@@ -4216,8 +4216,8 @@ subroutine RReact(istep,guess,rt_auxvar,global_auxvar,material_auxvar, &
     last_5_norms(2:5) = last_5_norms(1:4)
     last_5_norms(1) = two_norm_r
     if (num_iterations == 1) two_norm_r0 = two_norm_r
-    rel_residual = two_norm_r/two_norm_r0
     if (maxval(abs(residual)) < reaction%max_residual_tolerance) exit
+    rel_residual = two_norm_r/two_norm_r0
     if (rel_residual < reaction%max_rel_residual_tolerance) exit
 
     conc(1:naqcomp) = rt_auxvar%pri_molal(1:naqcomp)
@@ -5806,7 +5806,8 @@ subroutine RTAccumulation(rt_auxvar,global_auxvar,material_auxvar, &
   iphase = 1
   Res = 0.d0
 
-  if (global_auxvar%sat(LIQUID_PHASE) < rt_min_saturation) return
+  if (global_auxvar%sat(LIQUID_PHASE) < rt_min_saturation .and. &
+      reaction%gas%nactive_gas == 0) return
 
   ! units = (mol solute/L water)*(m^3 por/m^3 bulk)*(m^3 water/m^3 por)*
   !         (m^3 bulk)*(1000L water/m^3 water)/(sec) = mol/sec
@@ -5876,7 +5877,8 @@ subroutine RTAccumulationDerivative(rt_auxvar,global_auxvar, &
 
   J = 0.d0
 
-  if (global_auxvar%sat(LIQUID_PHASE) < rt_min_saturation) then
+  if (global_auxvar%sat(LIQUID_PHASE) < rt_min_saturation .and. &
+      reaction%gas%nactive_gas == 0) then
     ! set diagonal to 1 and return as this cell is dry and inert
     do idof = 1, reaction%ncomp
       J(idof,idof) = 1.d0
@@ -6610,7 +6612,7 @@ subroutine RTSetPlotVariables(list,reaction,option,time_unit)
   endif
 
   if (reaction%print%electrical_conductivity) then
-    name = 'Electrical Conductivity'
+    name = 'Aqueous Electrical Conductivity'
     units = 'S/m'
     call OutputVariableAddToList(list,name,OUTPUT_GENERIC,units, &
                                  AQUEOUS_ELECTRICAL_CONDUCTIVITY)
