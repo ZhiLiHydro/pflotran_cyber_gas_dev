@@ -62,11 +62,13 @@ module Material_module
     PetscReal :: archie_tortuosity_constant
     PetscReal :: surface_electrical_conductivity
     PetscReal :: waxman_smits_clay_conductivity
+    PetscReal :: mean_soil_grain_size
     class(dataset_base_type), pointer :: archie_cem_exp_dataset
     class(dataset_base_type), pointer :: archie_sat_exp_dataset
     class(dataset_base_type), pointer :: archie_tor_con_dataset
     class(dataset_base_type), pointer :: surf_elec_cond_dataset
     class(dataset_base_type), pointer :: waxman_smits_clay_cond_dataset
+    class(dataset_base_type), pointer :: mean_soil_grain_size_dataset
 
     class(fracture_type), pointer :: fracture
 
@@ -144,6 +146,7 @@ module Material_module
             MaterialSetAuxVarVecLoc, &
             MaterialGetAuxVarVecLoc, &
             MaterialAuxVarCommunicate, &
+            MaterialCommunicatePerms, &
             MaterialPropertyRead, &
             MaterialInitAuxIndices, &
             MaterialAssignPropertyToAux, &
@@ -234,6 +237,8 @@ function MaterialPropertyCreate(option)
   nullify(material_property%surf_elec_cond_dataset)
   nullify(material_property%waxman_smits_clay_cond_dataset)
   material_property%waxman_smits_clay_conductivity = UNINITIALIZED_DOUBLE
+  material_property%mean_soil_grain_size = UNINITIALIZED_DOUBLE
+  nullify(material_property%mean_soil_grain_size_dataset)
 
   nullify(material_property%fracture)
   nullify(material_property%geomechanics_subsurface_properties)
@@ -560,6 +565,15 @@ subroutine MaterialPropertyRead(material_property,input,option)
             case('ANISOTROPIC')
               material_property%isotropic_permeability = PETSC_FALSE
             case('FULL_TENSOR')
+              material_property%full_permeability_tensor = PETSC_TRUE
+              option%flow%full_perm_tensor = PETSC_TRUE
+            case('INCLUDE_OFF_DIAGONAL')
+              ! Include off-diagonal terms in flux calculations (i.e. not just
+              ! tensor to scalar operations)
+              ! Note. Presence of this keyword in a single permeability block
+              ! will enable off-diagonal terms on all connections, not just
+              ! connections in/adjacent to the relevant material.
+              option%connections_with_aniso_data = PETSC_TRUE
               material_property%full_permeability_tensor = PETSC_TRUE
               option%flow%full_perm_tensor = PETSC_TRUE
             case('VERTICAL_ANISOTROPY_RATIO')
@@ -1023,6 +1037,11 @@ subroutine MaterialPropertyRead(material_property,input,option)
                       material_property%waxman_smits_clay_conductivity, &
                       material_property%waxman_smits_clay_cond_dataset, &
                       keyword,error_str,option)
+      case('MEAN_SOIL_GRAIN_SIZE')
+        call DatasetReadDoubleOrDataset(input, &
+                      material_property%mean_soil_grain_size, &
+                      material_property%mean_soil_grain_size_dataset, &
+                      keyword,error_str,option)
       case default
         call InputKeywordUnrecognized(input,keyword,error_str,option)
     end select
@@ -1485,7 +1504,8 @@ subroutine MaterialSetupThermal(material_parameter, material_property_array, &
   num_mat_prop = size(material_property_array)
 
   select case(option%iflowmode)
-    case(RICHARDS_MODE,RICHARDS_TS_MODE,ZFLOW_MODE,WF_MODE,PNF_MODE)
+    case(RICHARDS_MODE,RICHARDS_TS_MODE,ZFLOW_MODE,WF_MODE,PNF_MODE, &
+         IMMISCIBLE_MODE)
       option%io_buffer = 'MaterialSetupThermal should not be used in &
         &Flow mode: ' // option%flowmode
       call PrintErrMsg(option)
@@ -1652,6 +1672,7 @@ subroutine MaterialInitAuxIndices(material_property_ptrs,option)
   PetscInt :: num_ws_clay_conduct
   PetscInt :: num_tortuosity_yy
   PetscInt :: num_tortuosity_zz
+  PetscInt :: num_mean_soil_grain_size
   PetscBool :: error_found
 
   procedure(MaterialCompressSoilDummy), pointer :: &
@@ -1668,6 +1689,7 @@ subroutine MaterialInitAuxIndices(material_property_ptrs,option)
   num_ws_clay_conduct = 0
   num_tortuosity_yy = 0
   num_tortuosity_zz = 0
+  num_mean_soil_grain_size = 0
 
   soil_compressibility_index = 0
   soil_reference_pressure_index = 0
@@ -1679,6 +1701,7 @@ subroutine MaterialInitAuxIndices(material_property_ptrs,option)
   ws_clay_conduct_index = 0
   tortuosity_yy_index = 0
   tortuosity_zz_index = 0
+  mean_soil_grain_size_index = 0
   ! ADD_SOIL_PROPERTY_INDEX_HERE - also need to add num_xxx counter above
   max_material_index = 0
 
@@ -1813,6 +1836,14 @@ subroutine MaterialInitAuxIndices(material_property_ptrs,option)
       endif
       num_tortuosity_zz = num_tortuosity_zz + 1
     endif
+    if (Initialized(material_property_ptrs(i)%ptr% &
+                      mean_soil_grain_size)) then
+      if (mean_soil_grain_size_index == 0) then
+        icount = icount + 1
+        mean_soil_grain_size_index = icount
+      endif
+      num_mean_soil_grain_size = num_mean_soil_grain_size + 1
+    endif
     ! ADD_SOIL_PROPERTY_INDEX_HERE
   enddo
   max_material_index = icount
@@ -1896,6 +1927,12 @@ subroutine MaterialInitAuxIndices(material_property_ptrs,option)
       num_tortuosity_zz /= num_material_properties) then
     error_found = PETSC_TRUE
     option%io_buffer = 'TORTUOSITY_Z must be defined for all materials.'
+    call PrintMsg(option)
+  endif
+  if (num_mean_soil_grain_size > 0 .and. &
+      num_mean_soil_grain_size /= num_material_properties) then
+    error_found = PETSC_TRUE
+    option%io_buffer = 'MEAN_SOIL_GRAIN_SIZE must be defined for all materials.'
     call PrintMsg(option)
   endif
   ! ADD_SOIL_PROPERTY_INDEX_HERE
@@ -1998,6 +2035,10 @@ subroutine MaterialAssignPropertyToAux(material_auxvar,material_property, &
       material_auxvar%soil_properties(tortuosity_zz_index) = &
         material_property%tortuosity_anisotropic(3)
     endif
+    if (mean_soil_grain_size_index > 0) then
+      material_auxvar%soil_properties(mean_soil_grain_size_index) = &
+        material_property%mean_soil_grain_size
+    endif
     ! ADD_SOIL_PROPERTY_INDEX_HERE
   endif
 
@@ -2005,7 +2046,7 @@ end subroutine MaterialAssignPropertyToAux
 
 ! ************************************************************************** !
 
-subroutine MaterialSetAuxVarScalar(Material,value,ivar,isubvar)
+subroutine MaterialSetAuxVarScalar(Material,value,ivar)
   !
   ! Sets values of a material auxvar data using a scalar value.
   !
@@ -2020,7 +2061,6 @@ subroutine MaterialSetAuxVarScalar(Material,value,ivar,isubvar)
   type(material_type) :: Material ! from realization%patch%aux%Material
   PetscReal :: value
   PetscInt :: ivar
-  PetscInt :: isubvar
 
   PetscInt :: i
   PetscInt :: index_
@@ -2034,20 +2074,17 @@ subroutine MaterialSetAuxVarScalar(Material,value,ivar,isubvar)
         material_auxvars(i)%volume = value
       enddo
     case(POROSITY)
-      select case(isubvar)
-        case(POROSITY_CURRENT)
-          do i=1, Material%num_aux
-            material_auxvars(i)%porosity = value
-          enddo
-        case(POROSITY_BASE)
-          do i=1, Material%num_aux
-            material_auxvars(i)%porosity_base = value
-          enddo
-        case(POROSITY_INITIAL)
-          do i=1, Material%num_aux
-            material_auxvars(i)%porosity_0 = value
-          enddo
-      end select
+      do i=1, Material%num_aux
+        material_auxvars(i)%porosity = value
+      enddo
+    case(BASE_POROSITY)
+      do i=1, Material%num_aux
+        material_auxvars(i)%porosity_base = value
+      enddo
+    case(INITIAL_POROSITY)
+      do i=1, Material%num_aux
+        material_auxvars(i)%porosity_0 = value
+      enddo
     case(TORTUOSITY)
       do i=1, Material%num_aux
         material_auxvars(i)%tortuosity = value
@@ -2091,7 +2128,7 @@ end subroutine MaterialSetAuxVarScalar
 
 ! ************************************************************************** !
 
-subroutine MaterialSetAuxVarVecLoc(Material,vec_loc,ivar,isubvar)
+subroutine MaterialSetAuxVarVecLoc(Material,vec_loc,ivar)
   !
   ! Sets values of material auxvar data using a vector.
   !
@@ -2106,7 +2143,6 @@ subroutine MaterialSetAuxVarVecLoc(Material,vec_loc,ivar,isubvar)
   type(material_type) :: Material ! from realization%patch%aux%Material
   Vec :: vec_loc
   PetscInt :: ivar
-  PetscInt :: isubvar
 
   PetscInt :: ghosted_id
   PetscInt :: index_
@@ -2123,23 +2159,17 @@ subroutine MaterialSetAuxVarVecLoc(Material,vec_loc,ivar,isubvar)
         material_auxvars(ghosted_id)%volume = vec_loc_p(ghosted_id)
       enddo
     case(POROSITY)
-      select case(isubvar)
-        case(POROSITY_CURRENT)
-          do ghosted_id=1, Material%num_aux
-            material_auxvars(ghosted_id)%porosity = vec_loc_p(ghosted_id)
-          enddo
-        case(POROSITY_BASE)
-          do ghosted_id=1, Material%num_aux
-            material_auxvars(ghosted_id)%porosity_base = vec_loc_p(ghosted_id)
-          enddo
-        case(POROSITY_INITIAL)
-          do ghosted_id=1, Material%num_aux
-            material_auxvars(ghosted_id)%porosity_0 = vec_loc_p(ghosted_id)
-          enddo
-        case default
-          print *, 'Error indexing porosity in MaterialSetAuxVarVecLoc()'
-          stop
-      end select
+      do ghosted_id=1, Material%num_aux
+        material_auxvars(ghosted_id)%porosity = vec_loc_p(ghosted_id)
+      enddo
+    case(BASE_POROSITY)
+      do ghosted_id=1, Material%num_aux
+        material_auxvars(ghosted_id)%porosity_base = vec_loc_p(ghosted_id)
+      enddo
+    case(INITIAL_POROSITY)
+      do ghosted_id=1, Material%num_aux
+        material_auxvars(ghosted_id)%porosity_0 = vec_loc_p(ghosted_id)
+      enddo
     case(TORTUOSITY)
       do ghosted_id=1, Material%num_aux
         material_auxvars(ghosted_id)%tortuosity = vec_loc_p(ghosted_id)
@@ -2205,7 +2235,7 @@ end subroutine MaterialSetAuxVarVecLoc
 
 ! ************************************************************************** !
 
-subroutine MaterialGetAuxVarVecLoc(Material,vec_loc,ivar,isubvar)
+subroutine MaterialGetAuxVarVecLoc(Material,vec_loc,ivar)
   !
   ! Gets values of material auxvar data using a vector.
   !
@@ -2219,7 +2249,6 @@ subroutine MaterialGetAuxVarVecLoc(Material,vec_loc,ivar,isubvar)
   type(material_type) :: Material ! from realization%patch%aux%Material
   Vec :: vec_loc
   PetscInt :: ivar
-  PetscInt :: isubvar
 
   PetscInt :: ghosted_id
   PetscInt :: index_
@@ -2228,7 +2257,7 @@ subroutine MaterialGetAuxVarVecLoc(Material,vec_loc,ivar,isubvar)
   PetscErrorCode :: ierr
 
   material_auxvars => Material%auxvars
-  call VecGetArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
   select case(ivar)
     case(VOLUME)
@@ -2236,24 +2265,18 @@ subroutine MaterialGetAuxVarVecLoc(Material,vec_loc,ivar,isubvar)
         vec_loc_p(ghosted_id) = material_auxvars(ghosted_id)%volume
       enddo
     case(POROSITY)
-      select case(isubvar)
-        case(POROSITY_CURRENT)
-          do ghosted_id=1, Material%num_aux
-            vec_loc_p(ghosted_id) = &
-              material_auxvars(ghosted_id)%porosity
-          enddo
-        case(POROSITY_BASE)
-          do ghosted_id=1, Material%num_aux
-            vec_loc_p(ghosted_id) = material_auxvars(ghosted_id)%porosity_base
-          enddo
-        case(POROSITY_INITIAL)
-          do ghosted_id=1, Material%num_aux
-            vec_loc_p(ghosted_id) = material_auxvars(ghosted_id)%porosity_0
-          enddo
-        case default
-          print *, 'Error indexing porosity in MaterialGetAuxVarVecLoc()'
-          stop
-      end select
+      do ghosted_id=1, Material%num_aux
+        vec_loc_p(ghosted_id) = &
+          material_auxvars(ghosted_id)%porosity
+      enddo
+    case(BASE_POROSITY)
+      do ghosted_id=1, Material%num_aux
+        vec_loc_p(ghosted_id) = material_auxvars(ghosted_id)%porosity_base
+      enddo
+    case(INITIAL_POROSITY)
+      do ghosted_id=1, Material%num_aux
+        vec_loc_p(ghosted_id) = material_auxvars(ghosted_id)%porosity_0
+      enddo
     case(TORTUOSITY)
       do ghosted_id=1, Material%num_aux
         vec_loc_p(ghosted_id) = material_auxvars(ghosted_id)%tortuosity
@@ -2300,7 +2323,7 @@ subroutine MaterialGetAuxVarVecLoc(Material,vec_loc,ivar,isubvar)
       endif
   end select
 
-  call VecRestoreArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
 end subroutine MaterialGetAuxVarVecLoc
 
@@ -2332,8 +2355,7 @@ subroutine MaterialWeightAuxVars(Material,weight,field,comm1)
   call VecAXPBY(field%work,weight,1.d0-weight,field%porosity_tpdt, &
                 ierr);CHKERRQ(ierr)
   call comm1%GlobalToLocal(field%work,field%work_loc)
-  call MaterialSetAuxVarVecLoc(Material,field%work_loc,POROSITY, &
-                               POROSITY_CURRENT)
+  call MaterialSetAuxVarVecLoc(Material,field%work_loc,POROSITY)
 
 end subroutine MaterialWeightAuxVars
 
@@ -2406,7 +2428,7 @@ end subroutine MaterialUpdateAuxVars
 
 ! ************************************************************************** !
 
-subroutine MaterialAuxVarCommunicate(comm,Material,vec_loc,ivar,isubvar)
+subroutine MaterialAuxVarCommunicate(comm,Material,vec_loc,ivar)
   !
   ! Sets values of material auxvar data using a vector.
   !
@@ -2422,13 +2444,46 @@ subroutine MaterialAuxVarCommunicate(comm,Material,vec_loc,ivar,isubvar)
   type(material_type) :: Material ! from realization%patch%aux%Material
   Vec :: vec_loc
   PetscInt :: ivar
-  PetscInt :: isubvar
 
-  call MaterialGetAuxVarVecLoc(Material,vec_loc,ivar,isubvar)
+  call MaterialGetAuxVarVecLoc(Material,vec_loc,ivar)
   call comm%LocalToLocal(vec_loc,vec_loc)
-  call MaterialSetAuxVarVecLoc(Material,vec_loc,ivar,isubvar)
+  call MaterialSetAuxVarVecLoc(Material,vec_loc,ivar)
 
 end subroutine MaterialAuxVarCommunicate
+
+! ************************************************************************** !
+
+subroutine MaterialCommunicatePerms(comm,Material,vec_loc,option)
+  !
+  ! Updates the ghost values of the permeability auxiliary variables.
+  !
+  ! Author: Glenn Hammond
+  ! Date: 04/27/26
+  !
+
+  use Communicator_Base_class
+  use Option_module
+  use Variables_module, only : &
+    PERMEABILITY_X, PERMEABILITY_Y, PERMEABILITY_Z, &
+    PERMEABILITY_XY, PERMEABILITY_XZ, PERMEABILITY_YZ
+
+  implicit none
+
+  class(communicator_type), pointer :: comm
+  type(material_type) :: Material
+  Vec :: vec_loc
+  type(option_type) :: option
+
+  call MaterialAuxVarCommunicate(comm,Material,vec_loc,PERMEABILITY_X)
+  call MaterialAuxVarCommunicate(comm,Material,vec_loc,PERMEABILITY_Y)
+  call MaterialAuxVarCommunicate(comm,Material,vec_loc,PERMEABILITY_Z)
+  if (option%flow%full_perm_tensor) then
+    call MaterialAuxVarCommunicate(comm,Material,vec_loc,PERMEABILITY_XY)
+    call MaterialAuxVarCommunicate(comm,Material,vec_loc,PERMEABILITY_XZ)
+    call MaterialAuxVarCommunicate(comm,Material,vec_loc,PERMEABILITY_YZ)
+  endif
+
+end subroutine MaterialCommunicatePerms
 
 ! ************************************************************************** !
 
@@ -2709,6 +2764,7 @@ recursive subroutine MaterialPropertyDestroy(material_property)
   nullify(material_property%waxman_smits_clay_cond_dataset)
   nullify(material_property%compressibility_dataset)
   nullify(material_property%soil_reference_pressure_dataset)
+  nullify(material_property%mean_soil_grain_size_dataset)
 
   if (associated(material_property%multicontinuum)) then
     nullify(material_property%multicontinuum%half_matrix_width_dataset)

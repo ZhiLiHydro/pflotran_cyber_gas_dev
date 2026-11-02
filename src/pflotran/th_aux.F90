@@ -128,7 +128,8 @@ module TH_Aux_module
   end type th_ice_type
 
   type, public :: th_well_auxvar_type
-    PetscInt :: local_id
+    PetscInt :: ghosted_id
+    PetscReal :: z
     PetscReal :: temp
     PetscReal :: u
     PetscReal :: h
@@ -476,12 +477,12 @@ subroutine THAuxPorosity(th_auxvar,material_auxvar,global_auxvar, &
   PetscReal :: por
 
   PetscInt :: id_press_0, id_temp_0
-  PetscInt :: id_vstrain_0, id_vstrain, id_press_mech
+  PetscInt :: id_vstrain_0, id_vstrain, id_press_mech, id_temp_mech
   PetscInt :: id_porosity_mech, id_porosity_flow
   PetscInt :: mat_id
   PetscReal :: porosity_0, C1, C2, press_0, temp_0
   PetscReal :: vstrain_0, vstrain, del_vstrain, alpha
-  PetscReal :: press_mech
+  PetscReal :: press_mech, temp_mech
 
   geomech_param => th_parameter%geomech_parameter
 
@@ -508,8 +509,9 @@ subroutine THAuxPorosity(th_auxvar,material_auxvar,global_auxvar, &
         case(GEOMECH_TWO_WAY_COUPLED)
           select case(option%geomechanics%split_scheme)
             case(GEOMECH_FIXED_STRESS_SPLIT)
-              mat_id = material_auxvar%id
-              ! get geomech and flow material properties
+              ! geomechanics mat id corresponding to cell
+              mat_id = material_auxvar%secondary_material_id
+              ! get geomech material properties
               youngs_mod = geomech_param%youngs_modulus(mat_id)
               poissons_ratio = geomech_param%poissons_ratio(mat_id)
               biot_coeff = geomech_param%biot_coeff(mat_id)
@@ -528,6 +530,7 @@ subroutine THAuxPorosity(th_auxvar,material_auxvar,global_auxvar, &
               id_vstrain_0 = geomech_param%vol_strain_0_id
               id_vstrain = geomech_param%vol_strain_id
               id_press_mech = geomech_param%stored_pressure_id
+              id_temp_mech = geomech_param%stored_temperature_id
               id_porosity_mech = geomech_param%stored_porosity_id
               id_porosity_flow = geomech_param%flow_porosity_id
               alpha = geomech_param%thermal_exp_coeff(mat_id)
@@ -535,6 +538,7 @@ subroutine THAuxPorosity(th_auxvar,material_auxvar,global_auxvar, &
               press_0 = global_auxvar%parameters(id_press_0)
               press_mech = global_auxvar%parameters(id_press_mech)
               temp_0 = global_auxvar%parameters(id_temp_0)
+              temp_mech = global_auxvar%parameters(id_temp_mech)
               vstrain_0 = global_auxvar%parameters(id_vstrain_0)
               vstrain = global_auxvar%parameters(id_vstrain)
               if (option%iflag == TH_UPDATE_FOR_FIXED_ACCUM) then
@@ -547,7 +551,12 @@ subroutine THAuxPorosity(th_auxvar,material_auxvar,global_auxvar, &
                 por = porosity_0 + (biot_coeff * del_vstrain) + &
                       ( C1 * ( press_mech - press_0 )) + &
                       ( (C2 + C1) * ( th_auxvar%pres - press_mech )) + &
-                      ( alpha * (th_auxvar%temp - temp_0 ))
+                      ! thermal term from continuous strain-based law
+                      ( -3.d0*alpha*(biot_coeff - porosity_0) * &
+                        ( temp_mech - temp_0 )) + &
+                      ! thermal term for fixed-stress increment
+                      ( 3.d0*alpha*porosity_0 * &
+                        ( th_auxvar%temp - temp_mech ))
                 ! store new (mass conserved) flow porosity for threshold check
                 global_auxvar%parameters(id_porosity_flow) = por
 
@@ -556,7 +565,7 @@ subroutine THAuxPorosity(th_auxvar,material_auxvar,global_auxvar, &
                 th_auxvar%dpor_dp = (biot_coeff**2)/dr_bulk_modulus + &
                     ((biot_coeff-porosity_0)*(1.d0-biot_coeff)) / &
                     dr_bulk_modulus
-                th_auxvar%dpor_dT = alpha
+                th_auxvar%dpor_dT = 3.d0*alpha*porosity_0
               endif
           end select
       end select
@@ -816,6 +825,10 @@ subroutine THAuxVarComputeNoFreezing(x,auxvar,global_auxvar, &
   auxvar%dKe_dp = alpha*(auxvar%sat + epsilon)**(alpha - 1.d0)* &
                   auxvar%dsat_dp
   auxvar%dKe_dT = 0.d0
+
+  if (option%iflag /= TH_UPDATE_FOR_PERTURBATION) then
+    global_auxvar%sat(1) = auxvar%sat
+  endif
 
 end subroutine THAuxVarComputeNoFreezing
 
@@ -1321,6 +1334,7 @@ subroutine THAuxVarPerturb(th_auxvar,global_auxvar, &
   x(TH_TEMPERATURE_DOF) = th_auxvar%temp
   do idof = 1, option%nflowdof
     pert = x(idof)*th_rel_pert+th_min_pert(idof)
+    if (dabs(pert) < 1.d-40) pert = th_min_pert(idof)
     th_auxvar%auxvar_pert(idof)%pert = pert
     x_pert = x
     x_pert(idof) = x(idof) + pert
@@ -1355,7 +1369,8 @@ recursive subroutine THWellAuxVarInit(auxvar,option,allocate_perturbation)
 
   PetscInt :: i
 
-  auxvar%local_id = 0
+  auxvar%ghosted_id = 0
+  auxvar%z = 0.d0
   auxvar%temp = 0.d0
   auxvar%u = 0.d0
   auxvar%h = 0.d0
@@ -1405,7 +1420,8 @@ recursive subroutine THWellAuxVarCopyParamsToPert(auxvar)
   PetscInt :: i
 
   do i = 1, size(auxvar%auxvar_pert)
-    auxvar%auxvar_pert(i)%local_id = auxvar%local_id
+    auxvar%auxvar_pert(i)%ghosted_id = auxvar%ghosted_id
+    auxvar%auxvar_pert(i)%z = auxvar%z
     auxvar%auxvar_pert(i)%volume = auxvar%volume
     auxvar%auxvar_pert(i)%segment_length = auxvar%segment_length
     auxvar%auxvar_pert(i)%heat_transfer_coef = auxvar%heat_transfer_coef
@@ -1540,6 +1556,7 @@ subroutine THWellAuxVarPerturb(liquid_pressure,auxvar_well, &
   x(th_well_dof) = auxvar_well%temp
   do idof = 1, option%nflowdof
     pert = x(idof)*th_rel_pert+th_min_pert(idof)
+    if (dabs(pert) < 1.d-40) pert = th_min_pert(idof)
     auxvar_well%auxvar_pert(idof)%pert = pert
     x_pert(1:option%nflowdof) = x
     x_pert(idof) = x(idof) + pert

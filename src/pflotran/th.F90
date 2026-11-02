@@ -735,6 +735,9 @@ subroutine THUpdateAuxVars(realization,pm_well)
 
   call VecGetArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
 
+  ! TH_UPDATE_FOR_ACCUM indicates call from non-perturbation
+  option%iflag = TH_UPDATE_FOR_ACCUM
+
   do ghosted_id = 1, grid%ngmax
     if (grid%nG2L(ghosted_id) < 0) cycle ! bypass ghosted corner cells
 
@@ -3802,25 +3805,25 @@ subroutine THUpdateLocalVecs(xx,realization,ierr)
   call DiscretizationGlobalToLocal(discretization,xx,field%flow_xx_loc,NFLOWDOF)
 
   call MaterialGetAuxVarVecLoc(realization%patch%aux%Material,field%work_loc, &
-                               PERMEABILITY_X,ZERO_INTEGER)
+                               PERMEABILITY_X)
   call DiscretizationLocalToLocal(discretization,field%work_loc, &
                                   field%work_loc,ONEDOF)
   call MaterialSetAuxVarVecLoc(realization%patch%aux%Material,field%work_loc, &
-                               PERMEABILITY_X,ZERO_INTEGER)
+                               PERMEABILITY_X)
 
   call MaterialGetAuxVarVecLoc(realization%patch%aux%Material,field%work_loc, &
-                               PERMEABILITY_Y,ZERO_INTEGER)
+                               PERMEABILITY_Y)
   call DiscretizationLocalToLocal(discretization,field%work_loc, &
                                   field%work_loc,ONEDOF)
   call MaterialSetAuxVarVecLoc(realization%patch%aux%Material,field%work_loc, &
-                               PERMEABILITY_Y,ZERO_INTEGER)
+                               PERMEABILITY_Y)
 
   call MaterialGetAuxVarVecLoc(realization%patch%aux%Material,field%work_loc, &
-                               PERMEABILITY_Z,ZERO_INTEGER)
+                               PERMEABILITY_Z)
   call DiscretizationLocalToLocal(discretization,field%work_loc, &
                                   field%work_loc,ONEDOF)
   call MaterialSetAuxVarVecLoc(realization%patch%aux%Material,field%work_loc, &
-                               PERMEABILITY_Z,ZERO_INTEGER)
+                               PERMEABILITY_Z)
 
 end subroutine THUpdateLocalVecs
 
@@ -4828,6 +4831,8 @@ subroutine THJacobianInternalConn(A,realization,debug,ierr)
     cur_connection_set => cur_connection_set%next
   enddo
 
+  call VecRestoreArray(field%flow_xx_loc,xx_loc_p,ierr);CHKERRQ(ierr)
+
   if (debug%matview_Matrix_detailed) then
     call MatAssemblyBegin(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
     call MatAssemblyEnd(A,MAT_FINAL_ASSEMBLY,ierr);CHKERRQ(ierr)
@@ -5740,11 +5745,11 @@ subroutine THSetPlotVariables(realization,list)
                                 TEMPERATURE)
 
     if (Initialized(th_well_dof)) then
-      name = 'Pipe Temperature'
+      name = 'Well Temperature'
       units = 'C'
       call OutputVariableAddToList(list,name,OUTPUT_GENERIC,units, &
                                    WELL_TEMPERATURE)
-      name = 'Pipe Cells'
+      name = 'Well Cells'
       units = ''
       call OutputVariableAddToList(list,name,OUTPUT_GENERIC,units, &
                                    WELL_CELLS)

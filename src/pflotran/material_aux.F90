@@ -16,12 +16,6 @@ module Material_Aux_module
   PetscInt, parameter, public :: perm_yz_index = 5
   PetscInt, parameter, public :: perm_xz_index = 6
 
-  ! do not use 0 as an index as there is a case statement in material.F90
-  ! designed to catch erroneous values outside [1,2].
-  PetscInt, parameter, public :: POROSITY_CURRENT = 1
-  PetscInt, parameter, public :: POROSITY_BASE = 2
-  PetscInt, parameter, public :: POROSITY_INITIAL = 3
-
   ! Tensor to scalar conversion models
   ! default for structured grids = TENSOR_TO_SCALAR_LINEAR
   ! default for unstructured grids = TENSOR_TO_SCALAR_POTENTIAL
@@ -51,6 +45,7 @@ module Material_Aux_module
   PetscInt, public :: ws_clay_conduct_index
   PetscInt, public :: tortuosity_yy_index
   PetscInt, public :: tortuosity_zz_index
+  PetscInt, public :: mean_soil_grain_size_index
   PetscInt, public :: max_material_index
 
   type, public :: material_auxvar_type
@@ -71,7 +66,11 @@ module Material_Aux_module
     type(fracture_auxvar_type), pointer :: fracture
     type(secondary_auxvar_type), pointer :: secondary_prop
     PetscReal, pointer :: geomechanics_subsurface_prop(:)
-    PetscInt :: creep_closure_id
+    ! Dual-purpose secondary material index:
+    !   - creep closure table id (when creep closure is active)
+    !   - geomechanics material id mapped onto this flow cell (fixed-stress)
+    ! Creep closure and geomechanics-subsurface coupling are mutually exclusive.
+    PetscInt :: secondary_material_id
 !    procedure(SaturationFunction), nopass, pointer :: SaturationFunction
 !  contains
 !    procedure, public :: PermeabilityTensorToScalar
@@ -174,7 +173,8 @@ function MaterialAuxCreate(option)
                                SURFACE_ELECTRICAL_CONDUCTIVITY, &
                                WAXMAN_SMITS_CLAY_CONDUCTIVITY, &
                                NUMBER_SECONDARY_CELLS, &
-                               TORTUOSITY_Y, TORTUOSITY_Z
+                               TORTUOSITY_Y, TORTUOSITY_Z, &
+                               MEAN_SOIL_GRAIN_SIZE
 
   implicit none
 
@@ -226,6 +226,9 @@ function MaterialAuxCreate(option)
     call MaterialAuxInitSoilPropertyMap(aux,tortuosity_zz_index, &
                                         TORTUOSITY_Z, &
                                         'Anisotropic Tortuosity Z')
+    call MaterialAuxInitSoilPropertyMap(aux,mean_soil_grain_size_index, &
+                                        MEAN_SOIL_GRAIN_SIZE, &
+                                        'Mean Soil Grain Size')
     ! ADD_SOIL_PROPERTY_INDEX_HERE
     do i = 1, max_material_index
       if (Uninitialized(aux%soil_properties_ivar(i))) then
@@ -298,7 +301,7 @@ subroutine MaterialAuxVarInit(auxvar,option)
   else
     nullify(auxvar%secondary_prop)
   endif
-  auxvar%creep_closure_id = 1
+  auxvar%secondary_material_id = 1
 
   if (max_material_index > 0) then
     allocate(auxvar%soil_properties(max_material_index))
@@ -350,6 +353,7 @@ subroutine MaterialAuxVarCopy(auxvar,auxvar2,option)
   type(material_auxvar_type) :: auxvar, auxvar2
   type(option_type) :: option
 
+  auxvar2%id = auxvar%id
   auxvar2%volume = auxvar%volume
   auxvar2%porosity_0 = auxvar%porosity_0
   auxvar2%porosity_base = auxvar%porosity_base
@@ -365,7 +369,7 @@ subroutine MaterialAuxVarCopy(auxvar,auxvar2,option)
   if (associated(auxvar%soil_properties)) then
     auxvar2%soil_properties = auxvar%soil_properties
   endif
-  auxvar2%creep_closure_id = auxvar%creep_closure_id
+  auxvar2%secondary_material_id = auxvar%secondary_material_id
 
 end subroutine MaterialAuxVarCopy
 
@@ -781,7 +785,8 @@ function MaterialAuxVarGetSoilPropIndex(ivar)
                                SURFACE_ELECTRICAL_CONDUCTIVITY, &
                                WAXMAN_SMITS_CLAY_CONDUCTIVITY, &
                                NUMBER_SECONDARY_CELLS, &
-                               TORTUOSITY_Y, TORTUOSITY_Z
+                               TORTUOSITY_Y, TORTUOSITY_Z, &
+                               MEAN_SOIL_GRAIN_SIZE
 
   implicit none
 
@@ -812,6 +817,8 @@ function MaterialAuxVarGetSoilPropIndex(ivar)
       index_ = tortuosity_yy_index
     case(TORTUOSITY_Z)
       index_ = tortuosity_zz_index
+    case(MEAN_SOIL_GRAIN_SIZE)
+      index_ = mean_soil_grain_size_index
     ! ADD_SOIL_PROPERTY_INDEX_HERE
     case default
       print *, 'Unrecognized variable in MaterialAuxVarGetSoilPropIndex: ', &

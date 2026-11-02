@@ -16,7 +16,9 @@ module Global_module
          GlobalGetAuxVarVecLoc, &
          GlobalWeightAuxVars, &
          GlobalUpdateState, &
-         GlobalSetAuxVarsAtTimeLevel
+         GlobalSetAuxVarsAtTimeLevel, &
+         GlobalParameterQualityCheck, &
+         GlobalUpdateParameter
 
 contains
 
@@ -36,7 +38,7 @@ subroutine GlobalSetup(realization)
 
   implicit none
 
-  class(realization_subsurface_type) :: realization
+  class(realization_subsurface_type), pointer :: realization
 
   type(option_type), pointer :: option
   type(patch_type),pointer :: patch
@@ -518,12 +520,12 @@ end subroutine GlobalGetAuxVarVecLoc
 
 ! ************************************************************************** !
 
-subroutine GlobalUpdateParameterArray(realization)
+subroutine GlobalUpdateParameter(realization,parameter)
   !
   ! Updates values in the parameter array
   !
   ! Author: Glenn Hammond
-  ! Date: 01/05/24
+  ! Date: 05/28/26
   !
   use Dataset_Base_class
   use Dataset_Common_HDF5_class
@@ -533,16 +535,17 @@ subroutine GlobalUpdateParameterArray(realization)
   use HDF5_module
   use Option_module
   use Parameter_module
+  use Realization_Base_class
   use Realization_Subsurface_class
 
   class(realization_subsurface_type) :: realization
+  type(parameter_type) :: parameter
 
   class(dataset_base_type), pointer :: dataset
-  type(parameter_type), pointer :: cur_parameter
   type(grid_type), pointer :: grid
   type(option_type), pointer :: option
   type(global_auxvar_type), pointer :: auxvars(:)
-  character(len=:), allocatable :: err_string
+  character(len=MAXSTRINGLENGTH) :: err_string
   character(len=MAXSTRINGLENGTH) :: string, string2
 
   PetscInt :: ghosted_id
@@ -553,26 +556,42 @@ subroutine GlobalUpdateParameterArray(realization)
 
   auxvars => realization%patch%aux%Global%auxvars
 
-  ! at this point, field%work and field%work_loc are available to perform
-  ! operations such as reading datasets
-  cur_parameter => realization%parameter_list
-  do
-    if (.not.associated(cur_parameter)) exit
-    if (len_trim(cur_parameter%dataset_name) > 0) then
-      err_string = 'PARAMETER "' // trim(cur_parameter%name) // '"'
+  select case(parameter%itype)
+    case(PARAMETER_SCALAR)
+      do ghosted_id = 1, grid%ngmax
+        auxvars(ghosted_id)%parameters(parameter%id) = &
+          parameter%value
+      enddo
+    case(PARAMETER_VARIABLE)
+      if (Uninitialized(parameter%ivar)) then
+        do ghosted_id = 1, grid%ngmax
+          auxvars(ghosted_id)%parameters(parameter%id) = UNINITIALIZED_DOUBLE
+        enddo
+      else
+        call RealizationGetVariable(realization, &
+                                    realization%field%work, &
+                                    parameter%ivar,parameter%isubvar)
+        call realization%comm1%GlobalToLocal(realization%field%work, &
+                                      realization%field%work_loc)
+        call GlobalSetParameterVecLoc(realization, &
+                                      realization%field%work_loc, &
+                                      parameter%id)
+      endif
+    case(PARAMETER_DATASET)
+      err_string = 'PARAMETER "' // trim(parameter%name) // '"'
       dataset => &
         DatasetBaseGetPointer(realization%datasets, &
-                              cur_parameter%dataset_name,err_string,option)
+                              parameter%linkage_name,err_string,option)
       select type(dataset)
         class is(dataset_gridded_hdf5_type)
           call DatasetGriddedHDF5Load(dataset,option)
           do ghosted_id = 1, grid%ngmax
             call DatasetGriddedHDF5InterpolateReal(dataset, &
-                                                   grid%x(ghosted_id), &
-                                                   grid%y(ghosted_id), &
-                                                   grid%z(ghosted_id), &
-                                                   tempreal,option)
-            auxvars(ghosted_id)%parameters(cur_parameter%id) = tempreal
+                                                  grid%x(ghosted_id), &
+                                                  grid%y(ghosted_id), &
+                                                  grid%z(ghosted_id), &
+                                                  tempreal,option)
+            auxvars(ghosted_id)%parameters(parameter%id) = tempreal
           enddo
         class is(dataset_common_hdf5_type)
           string = ''
@@ -583,21 +602,40 @@ subroutine GlobalUpdateParameterArray(realization)
                                             string,string2, &
                                             dataset%realization_dependent)
           call DiscretizationGlobalToLocal(realization%discretization, &
-                                           realization%field%work, &
-                                           realization%field%work_loc,ONEDOF)
+                                          realization%field%work, &
+                                          realization%field%work_loc,ONEDOF)
           call GlobalSetParameterVecLoc(realization, &
                                         realization%field%work_loc, &
-                                        cur_parameter%id)
+                                        parameter%id)
         class default
           option%io_buffer = 'Unrecognized dataset type in &
             &GlobalSetup() for ' // trim(err_string)
           call PrintErrMsg(option)
       end select
-    else
-      do ghosted_id = 1, grid%ngmax
-        auxvars(ghosted_id)%parameters(cur_parameter%id) = cur_parameter%value
-      enddo
-    endif
+  end select
+
+end subroutine GlobalUpdateParameter
+
+! ************************************************************************** !
+
+subroutine GlobalUpdateParameterArray(realization)
+  !
+  ! Updates values in the parameter array
+  !
+  ! Author: Glenn Hammond
+  ! Date: 01/05/24
+  !
+  use Parameter_module
+  use Realization_Subsurface_class
+
+  class(realization_subsurface_type), pointer :: realization
+
+  type(parameter_type), pointer :: cur_parameter
+
+  cur_parameter => realization%parameter_list
+  do
+    if (.not.associated(cur_parameter)) exit
+    call GlobalUpdateParameter(realization,cur_parameter)
     cur_parameter => cur_parameter%next
   enddo
 
@@ -635,6 +673,64 @@ subroutine GlobalSetParameterVecLoc(realization,vec_loc,iparameter)
   call VecRestoreArrayRead(vec_loc,vec_loc_p,ierr);CHKERRQ(ierr)
 
 end subroutine GlobalSetParameterVecLoc
+
+! ************************************************************************** !
+
+subroutine GlobalParameterQualityCheck(realization)
+  !
+  ! Updates values in the parameter array
+  !
+  ! Author: Glenn Hammond
+  ! Date: 01/05/24
+  !
+  use Grid_module
+  use Option_module
+  use Parameter_module
+  use Realization_Subsurface_class
+  use String_module
+  use Utility_module
+
+  class(realization_subsurface_type), pointer :: realization
+
+  type(parameter_type), pointer :: cur_parameter
+  type(grid_type), pointer :: grid
+  type(option_type), pointer :: option
+  type(global_auxvar_type), pointer :: auxvars(:)
+  PetscBool :: error_found
+  PetscInt :: ghosted_id
+  PetscInt:: iparameter
+  PetscErrorCode :: ierr
+
+  option => realization%option
+  grid => realization%patch%grid
+  auxvars => realization%patch%aux%Global%auxvars
+
+  cur_parameter => realization%parameter_list
+  error_found = PETSC_FALSE
+  do
+    if (.not.associated(cur_parameter)) exit
+    iparameter = cur_parameter%id
+    do ghosted_id = 1, grid%ngmax
+      if (Uninitialized(auxvars(ghosted_id)%parameters(iparameter))) then
+        option%io_buffer = 'Uninitialized PARAMETER "' // &
+          trim(cur_parameter%name) // '" at cell ' // &
+          StringWrite(grid%nG2A(ghosted_id)) // '.'
+        call PrintErrMsgByRank(option)
+        error_found = PETSC_TRUE
+        exit
+      endif
+    enddo
+    cur_parameter => cur_parameter%next
+  enddo
+
+  call MPI_Allreduce(MPI_IN_PLACE,error_found,ONE_INTEGER_MPI,MPI_C_BOOL, &
+                     MPI_LOR,option%mycomm,ierr);CHKERRQ(ierr)
+  if (error_found) then
+    option%io_buffer = 'Errors found in PARAMETERs. See messages above.'
+    call PrintErrMsg(option)
+  endif
+
+end subroutine GlobalParameterQualityCheck
 
 ! ************************************************************************** !
 
@@ -681,7 +777,7 @@ subroutine GlobalWeightAuxVars(realization,weight)
   end select
 
   select case(option%iflowmode)
-    case(TH_MODE,G_MODE,H_MODE,SCO2_MODE)
+    case(TH_MODE,TH_TS_MODE,THC_MODE,G_MODE,H_MODE,SCO2_MODE)
       do ghosted_id = 1, realization%patch%aux%Global%num_aux
         auxvars(ghosted_id)%pres(:) = &
           (weight*auxvars(ghosted_id)%pres_store(:,TIME_TpDT)+ &
@@ -811,7 +907,7 @@ subroutine GlobalSetAuxVarsAtTimeLevel(realization,time_level,time)
   ! gas saturation
   flag = PETSC_FALSE
   select case(option%iflowmode)
-    case(RICHARDS_MODE,TH_MODE,TH_TS_MODE,ZFLOW_MODE)
+    case(RICHARDS_MODE,TH_MODE,TH_TS_MODE,THC_MODE,ZFLOW_MODE)
       if (option%transport%nphase > 1) flag = PETSC_TRUE
     case default
       flag = PETSC_TRUE
@@ -829,21 +925,19 @@ subroutine GlobalSetAuxVarsAtTimeLevel(realization,time_level,time)
       call GlobalUpdateSingleAuxVar(realization,GAS_PRESSURE,time_level)
       call GlobalUpdateSingleAuxVar(realization,TEMPERATURE,time_level)
       call GlobalUpdateSingleAuxVar(realization,SC_FUGA_COEFF,time_level)
-    case(TH_MODE,TH_TS_MODE)
+    case(TH_MODE,TH_TS_MODE,THC_MODE)
       call GlobalUpdateSingleAuxVar(realization,LIQUID_PRESSURE,time_level)
-      call GlobalUpdateSingleAuxVar(realization,LIQUID_DENSITY,time_level)
       call GlobalUpdateSingleAuxVar(realization,TEMPERATURE,time_level)
-    case(G_MODE,WF_MODE)
-      call GlobalUpdateSingleAuxVar(realization,LIQUID_DENSITY,time_level)
-      if (option%iflowmode == G_MODE) then
-        call GlobalUpdateSingleAuxVar(realization,TEMPERATURE,time_level)
-      endif
+    case(G_MODE)
+      call GlobalUpdateSingleAuxVar(realization,TEMPERATURE,time_level)
+      call GlobalUpdateSingleAuxVar(realization,GAS_PRESSURE,time_level)
+      call GlobalUpdateSingleAuxVar(realization,GAS_DENSITY,time_level)
+    case(WF_MODE)
       call GlobalUpdateSingleAuxVar(realization,GAS_PRESSURE,time_level)
       call GlobalUpdateSingleAuxVar(realization,GAS_DENSITY,time_level)
     case(SCO2_MODE)
       if (option%ntrandof > 0 .or. &
           option%flow%store_state_variables_in_global) then
-        call GlobalUpdateSingleAuxVar(realization,LIQUID_DENSITY,time_level)
         call GlobalUpdateSingleAuxVar(realization,GAS_DENSITY,time_level)
         call GlobalUpdateSingleAuxVar(realization,GAS_DENSITY_MOL,time_level)
         call GlobalUpdateSingleAuxVar(realization,LIQUID_PRESSURE,time_level)

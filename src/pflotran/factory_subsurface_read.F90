@@ -45,8 +45,10 @@ subroutine FactorySubsurfReadFlowPM(input,option,pm)
   use PM_Richards_TS_class
   use PM_TH_TS_class
   use PM_ZFlow_class
+  use PM_THC_class
   use PM_PNF_class
   use PM_SCO2_class
+  use PM_Immiscible_class
   use Init_Common_module
 
   implicit none
@@ -105,10 +107,14 @@ subroutine FactorySubsurfReadFlowPM(input,option,pm)
             pm => PMTHTSCreate()
           case ('ZFLOW')
             pm => PMZFlowCreate()
+          case ('THC')
+            pm => PMTHCCreate()
           case ('PORE_FLOW')
             pm => PMPNFCreate()
           case ('STOMP-CO2','SCO2')
             pm => PMSCO2Create()
+          case ('IMMISCIBLE')
+            pm => PMImmiscibleCreate()
           case default
             error_string = trim(error_string) // ',MODE'
             call InputKeywordUnrecognized(input,word,error_string,option)
@@ -548,8 +554,9 @@ subroutine FactorySubsurfReadWellPM(input,option,pm)
             pm => PMWellWIPPQICreate()
             option%flow%well_coupling = WELL_MODEL_WIPP_QI
           case('CLOSED_LOOP_COAXIAL')
-            pm => PMWellCoaxialCreate()
-            option%flow%well_coupling = WELL_MODEL_COAXIAL
+            option%io_buffer = 'The CLOSED_LOOP_COAXIAL well model is not &
+              &yet supported in ' // trim(error_string) // '.'
+            call PrintErrMsg(option)
           case('CLOSED_LOOP_U_SHAPE')
             pm => PMWellUShapeCreate()
             option%flow%well_coupling = WELL_MODEL_U_SHAPE
@@ -780,7 +787,6 @@ subroutine FactorySubsurfReadRequiredCards(simulation,input)
         call InputPushCard(input,card,option)
         call InputReadInt(input,option,option%hdf5_write_group_size)
         call InputErrorMsg(input,option,'HDF5_WRITE_GROUP_SIZE','Group size')
-        call InputSkipToEnd(input,option,'HDF5_WRITE_GROUP_SIZE')
 
       case('HDF5_READ_GROUP_SIZE')
         call InputPushCard(input,card,option)
@@ -1202,7 +1208,7 @@ subroutine FactorySubsurfReadInput(simulation,input)
         call InputErrorMsg(input,option,'FLOW_CONDITION','name')
         call PrintMsg(option,flow_condition%name)
         select case(option%iflowmode)
-          case(G_MODE,WF_MODE)
+          case(G_MODE,WF_MODE,IMMISCIBLE_MODE)
             call FlowConditionGeneralRead(flow_condition,input,option)
           case(H_MODE)
             call FlowConditionHydrateRead(flow_condition,input,option)
@@ -1425,8 +1431,13 @@ subroutine FactorySubsurfReadInput(simulation,input)
 
 !......................
 
+      case('UPDATE_FLOW_PERM_FROM_POR')
+        option%flow%update_flow_perm_from_por = PETSC_TRUE
+
+!......................
+
       case('UPDATE_FLOW_PERMEABILITY')
-        option%flow%update_flow_perm = PETSC_TRUE
+        option%flow%update_flow_perm_from_pres = PETSC_TRUE
 
 !......................
 
@@ -2170,6 +2181,29 @@ subroutine FactorySubsurfReadInput(simulation,input)
               output_option%extend_hdf5_time_format = PETSC_TRUE
             case ('ACKNOWLEDGE_VTK_FLAW')
               output_option%vtk_acknowledgment = PETSC_TRUE
+            case('ASCII_DIGITS_OF_PRECISION')
+              call InputReadInt(input,option,temp_int)
+              call InputErrorMsg(input,option,word,'OUTPUT')
+              if (temp_int < 1 .or. temp_int > 16) then
+                option%io_buffer = 'OUTPUT,ASCII_DIGITS_OF_PRECISION must be an &
+                                  &integer between 1 and 16.'
+                call PrintErrMsg(option)
+              endif
+              output_option%digits_of_precision = temp_int
+              call InputReadInt(input,option,temp_int)
+              if (.not.InputError(input%ierr)) then
+                if (temp_int == 3) then
+                  output_option%digits_of_precision = &
+                      output_option%digits_of_precision + 1000
+                else
+                  if (temp_int /= 2) then
+                    option%io_buffer = 'OUTPUT,ASCII_DIGITS_OF_PRECISION: &
+                      &2 or 3 is the only supported option for the &
+                      &number of digits in the ASCII exponent.'
+                    call PrintErrMsg(option)
+                  endif
+                endif
+              endif
             case default
               call InputKeywordUnrecognized(input,word,'OUTPUT',option)
           end select

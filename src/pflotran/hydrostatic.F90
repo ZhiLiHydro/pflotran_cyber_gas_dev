@@ -44,6 +44,7 @@ subroutine HydrostaticUpdateCoupler(coupler,option,grid)
   use Hydrate_Aux_module
   use WIPP_Flow_Aux_module
   use ZFlow_Aux_module
+  use THC_Aux_module
   use SCO2_Aux_module
 
   implicit none
@@ -568,6 +569,12 @@ subroutine HydrostaticUpdateCoupler(coupler,option,grid)
       conductance_index = coupler%flow_aux_mapping(ZFLOW_COND_WATER_AUX_INDEX)
       energy_index = coupler%flow_aux_mapping(ZFLOW_COND_ENERGY_INDEX)
       solute_index = coupler%flow_aux_mapping(ZFLOW_COND_SOLUTE_INDEX)
+    case(THC_MODE)
+      water_index = coupler%flow_aux_mapping(THC_COND_WATER_INDEX)
+      conductance_index = &
+        coupler%flow_aux_mapping(THC_COND_WATER_AUX_INDEX)
+      energy_index = coupler%flow_aux_mapping(THC_COND_ENERGY_INDEX)
+      solute_index = coupler%flow_aux_mapping(THC_COND_SOLUTE_INDEX)
   end select
 
   do iconn=1, num_faces !geh: this should really be num_faces!
@@ -633,7 +640,7 @@ subroutine HydrostaticUpdateCoupler(coupler,option,grid)
 
     ! assign pressure
     select case(option%iflowmode)
-      case(G_MODE,WF_MODE,H_MODE,SCO2_MODE)
+      case(G_MODE,WF_MODE,H_MODE,SCO2_MODE,IMMISCIBLE_MODE)
         coupler%flow_aux_real_var(1,iconn) = pressure
       case(MPH_MODE)
         coupler%flow_aux_real_var(1,iconn) = pressure
@@ -644,7 +651,7 @@ subroutine HydrostaticUpdateCoupler(coupler,option,grid)
             &a different type of FLOW_CONDITION.'
           call PrintErrMsgByRank(option)
         endif
-      case(ZFLOW_MODE)
+      case(ZFLOW_MODE,THC_MODE)
       case default
         if (condition%pressure%itype == HYDROSTATIC_SEEPAGE_BC) then
           coupler%flow_aux_real_var(1,iconn) = &
@@ -683,7 +690,7 @@ subroutine HydrostaticUpdateCoupler(coupler,option,grid)
 
     ! assign other dofs
     select case(option%iflowmode)
-      case(ZFLOW_MODE)
+      case(ZFLOW_MODE,THC_MODE)
         if (energy_index > 0) then
           coupler%flow_aux_real_var(energy_index,iconn) = temperature
         endif
@@ -709,6 +716,7 @@ subroutine HydrostaticUpdateCoupler(coupler,option,grid)
         coupler%flow_aux_real_var(TH_TEMPERATURE_DOF,iconn) = temperature
         coupler%flow_aux_int_var(TH_PRESSURE_DOF,iconn) = condition%iphase
       case(WF_MODE)
+      case(IMMISCIBLE_MODE)
       case(G_MODE)
         temperature = temperature_at_datum + &
                     ! gradient in K/m

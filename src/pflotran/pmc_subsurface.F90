@@ -136,6 +136,7 @@ subroutine PMCSubsurfaceSetupSolvers_TimestepperSNES(this)
   use PM_UFD_Decay_class
   use PM_Well_class
   use PM_SCO2_class
+  use PM_Immiscible_class
   use Solver_module
   use Timestepper_Base_class
   use Timestepper_SNES_class
@@ -152,6 +153,7 @@ subroutine PMCSubsurfaceSetupSolvers_TimestepperSNES(this)
   character(len=MAXSTRINGLENGTH) :: string
   PetscBool :: add_pre_check, check_update, check_post_convergence
   PetscBool :: keep_non_zero_pattern
+  PetscBool :: dm_mat_type_found
   PetscInt :: itranmode
   PetscInt :: reactive_transport_coupling
   PetscErrorCode :: ierr
@@ -185,12 +187,16 @@ subroutine PMCSubsurfaceSetupSolvers_TimestepperSNES(this)
           string = " mode = PNF: h"
         case(ZFLOW_MODE)
           string = " mode = ZFlow: p"
+        case(THC_MODE)
+          string = " mode = THC: p, T, C"
         case(G_MODE)
           string = " mode = General: p, sg/X, T"
         case(H_MODE)
           string = " mode = Hydrate: p, sg/sh/si/X, T"
         case(WF_MODE)
           string = " mode = WIPP Flow: p, sg"
+        case(IMMISCIBLE_MODE)
+          string = " mode = Immiscble: pg, sg"
         case(SCO2_MODE)
           string = " mode = SCO2: p, x/sg/p, T, x"
         case default
@@ -211,8 +217,14 @@ subroutine PMCSubsurfaceSetupSolvers_TimestepperSNES(this)
 
       if (Uninitialized(solver%Mpre_mat_type) .and. &
           Uninitialized(solver%M_mat_type)) then
-        ! Matrix types not specified, so set to default.
-        solver%Mpre_mat_type = MATBAIJ
+        call PetscOptionsGetString(PETSC_NULL_OPTIONS,'flow_', &
+                                   '-dm_mat_type',string, &
+                                   dm_mat_type_found,ierr);CHKERRQ(ierr)
+        if (dm_mat_type_found) then
+          solver%Mpre_mat_type = trim(string)
+        else
+          solver%Mpre_mat_type = MATBAIJ
+        endif
         solver%M_mat_type = solver%Mpre_mat_type
       else if (Uninitialized(solver%Mpre_mat_type)) then
         if (solver%M_mat_type == MATMFFD) then
@@ -329,6 +341,8 @@ subroutine PMCSubsurfaceSetupSolvers_TimestepperSNES(this)
           add_pre_check = PETSC_TRUE
         class is(pm_zflow_type)
           add_pre_check = PETSC_TRUE
+        class is(pm_immiscible_type)
+          add_pre_check = PETSC_TRUE
         class is(pm_sco2_type)
           add_pre_check = PETSC_TRUE
         class is(pm_th_type)
@@ -384,8 +398,14 @@ subroutine PMCSubsurfaceSetupSolvers_TimestepperSNES(this)
     if (reactive_transport_coupling == GLOBAL_IMPLICIT) then
       if (Uninitialized(solver%Mpre_mat_type) .and. &
           Uninitialized(solver%M_mat_type)) then
-        ! Matrix types not specified, so set to default.
-        solver%Mpre_mat_type = MATBAIJ
+        call PetscOptionsGetString(PETSC_NULL_OPTIONS,'tran_', &
+                                   '-dm_mat_type',string, &
+                                   dm_mat_type_found,ierr);CHKERRQ(ierr)
+        if (dm_mat_type_found) then
+          solver%Mpre_mat_type = trim(string)
+        else
+          solver%Mpre_mat_type = MATBAIJ
+        endif
         solver%M_mat_type = solver%Mpre_mat_type
       else if (Uninitialized(solver%Mpre_mat_type)) then
         if (solver%M_mat_type == MATMFFD) then
@@ -404,8 +424,15 @@ subroutine PMCSubsurfaceSetupSolvers_TimestepperSNES(this)
                                       keep_non_zero_pattern, &
                                       option)
     else
-      solver%M_mat_type = MATAIJ
-      solver%Mpre_mat_type = MATAIJ
+      call PetscOptionsGetString(PETSC_NULL_OPTIONS,'tran_', &
+                                 '-dm_mat_type',string, &
+                                 dm_mat_type_found,ierr);CHKERRQ(ierr)
+      if (dm_mat_type_found) then
+        solver%Mpre_mat_type = trim(string)
+      else
+        solver%Mpre_mat_type = MATAIJ
+      endif
+      solver%M_mat_type = solver%Mpre_mat_type
       call DiscretizationCreateMatrix(discretization, &
                                       ONEDOF, &
                                       solver%Mpre_mat_type, &
@@ -533,7 +560,9 @@ subroutine PMCSubsurfaceSetupSolvers_TS(this)
 
   type(solver_type), pointer :: solver
   type(option_type), pointer :: option
+  character(len=MAXSTRINGLENGTH) :: string
   PetscBool :: keep_non_zero_pattern
+  PetscBool :: dm_mat_type_found
   PetscErrorCode :: ierr
 
   option => this%option
@@ -583,7 +612,17 @@ subroutine PMCSubsurfaceSetupSolvers_TS(this)
 
         call SolverCheckCommandLine(solver)
 
-        solver%Mpre_mat_type = MATBAIJ
+        if (Uninitialized(solver%Mpre_mat_type)) then
+          call PetscOptionsGetString(PETSC_NULL_OPTIONS,'flow_', &
+                                     '-dm_mat_type',string, &
+                                     dm_mat_type_found, &
+                                     ierr);CHKERRQ(ierr)
+          if (dm_mat_type_found) then
+            solver%Mpre_mat_type = trim(string)
+          else
+            solver%Mpre_mat_type = MATBAIJ
+          endif
+        endif
 
         call DiscretizationCreateMatrix(pm%realization%discretization, &
                                         NFLOWDOF, &

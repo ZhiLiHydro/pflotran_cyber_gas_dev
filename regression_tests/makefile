@@ -61,10 +61,12 @@ STANDARD_CFG = \
 	co2/sco2.cfg \
 	default/543/543.cfg \
 	default/anisothermal/anisothermal.cfg \
+	default/anisotropic_perm/aniso_perm1.cfg \
 	default/batch/batch.cfg \
 	default/batch/nucleation/nucleation.cfg \
 	default/capillarity/capillarity.cfg \
 	default/carbon_sandbox/carbon_sandbox.cfg \
+	default/cfl/cfl.cfg \
 	default/column/column.cfg \
 	default/constraint/constraint.cfg \
 	default/condition/condition.cfg \
@@ -95,6 +97,7 @@ STANDARD_CFG = \
 	default/restart/skip/skip.cfg \
 	default/reaction_sandbox/reaction_sandbox.cfg \
 	default/regions/cell_mapping/cell_mapping.cfg \
+	default/regions/planar_patch/planar_patch.cfg \
 	default/regions/regions.cfg \
 	default/salinity/salinity.cfg \
 	default/scco2/mphase/mphase.cfg \
@@ -135,6 +138,7 @@ STANDARD_CFG = \
 	shortcourse/electron_tower/electron_tower.cfg \
 	surfaceflow/inlinesurface/inlinesurface.cfg \
 	templates/templates.cfg \
+	thc/thc.cfg \
 	ufd/ufd.cfg \
 	well_model/heat_pipe/heat_pipe.cfg \
 	well_model/richards/richards.cfg \
@@ -197,6 +201,7 @@ GEOMECHANICS_CFG = \
 
 FLOW_CFG = \
 	default/543/543.cfg \
+	default/anisotropic_perm/aniso_perm1.cfg \
 	default/condition/condition.cfg \
 	default/eos/eos.cfg \
 	default/infiltration1d/infiltration1d.cfg \
@@ -210,7 +215,8 @@ FLOW_CFG = \
 	pnf/unit_cube/unit_cube.cfg \
 	ntrdc/ntrdc.cfg \
 	shortcourse/1D_variably_saturated_flow/vsat_flow.cfg \
-	shortcourse/copper_leaching/cu_leaching.cfg
+	shortcourse/copper_leaching/cu_leaching.cfg \
+	thc/thc.cfg
 
 TRANSPORT_CFG = \
 	default/543/543.cfg \
