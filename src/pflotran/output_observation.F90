@@ -2018,9 +2018,9 @@ subroutine OutputIntegralFlux(realization_base)
   use Integral_Flux_module
   use Utility_module
   use Immiscible_Aux_module, only : immis_fmw
-  use General_Aux_module, only : general_fmw => fmw_comp
-  use WIPP_Flow_Aux_module, only : wipp_flow_fmw => fmw_comp
-  use SCO2_Aux_module, only : sco2_fmw => fmw_comp
+  use General_Aux_module, only : gen_fmw_comp
+  use WIPP_Flow_Aux_module, only : wipp_fmw_comp
+  use SCO2_Aux_module, only : sco2_fmw_comp
   use Richards_Aux_module, only : richards_density_kmol_to_kg
 
   implicit none
@@ -2067,10 +2067,10 @@ subroutine OutputIntegralFlux(realization_base)
       flow_dof_scale(1) = FMWH2O
     case(G_MODE,H_MODE)
       flow_dof_scale(1) = FMWH2O
-      flow_dof_scale(2) = general_fmw(2)
+      flow_dof_scale(2) = gen_fmw_comp(2)
     case(WF_MODE)
       flow_dof_scale(1) = FMWH2O
-      flow_dof_scale(2) = wipp_flow_fmw(2)
+      flow_dof_scale(2) = wipp_fmw_comp(2)
     case(IMMISCIBLE_MODE)
       flow_dof_scale(1) = immis_fmw(1)
       flow_dof_scale(2) = immis_fmw(2)
@@ -2079,9 +2079,9 @@ subroutine OutputIntegralFlux(realization_base)
       flow_dof_scale(2) = FMWCO2
     case(SCO2_MODE)
       !MAN: double check if this is mass or molar
-      flow_dof_scale(1) = sco2_fmw(1)
-      flow_dof_scale(2) = sco2_fmw(2)
-      flow_dof_scale(3) = sco2_fmw(3)
+      flow_dof_scale(1) = sco2_fmw_comp(1)
+      flow_dof_scale(2) = sco2_fmw_comp(2)
+      flow_dof_scale(3) = sco2_fmw_comp(3)
   end select
 
   if (len_trim(output_option%plot_name) > 2) then
@@ -2327,6 +2327,7 @@ subroutine OutputMassBalance(realization_base)
   use Richards_module, only : RichardsComputeMassBalance
   use Mphase_module, only : MphaseComputeMassBalance
   use TH_module, only : THComputeMassBalance
+  use THC_module, only : THCComputeConservation
   use Reactive_Transport_module, only : RTComputeMassBalance
   use NW_Transport_module, only : NWTComputeMassBalance
   use General_module, only : GeneralComputeMassBalance
@@ -2342,8 +2343,8 @@ subroutine OutputMassBalance(realization_base)
   use Reaction_Aux_module
   use NW_Transport_Aux_module
   use Material_Aux_module
-  use General_Aux_module, only : general_fmw => fmw_comp
-  use WIPP_Flow_Aux_module, only : wipp_flow_fmw => fmw_comp
+  use General_Aux_module, only : gen_fmw_comp
+  use WIPP_Flow_Aux_module, only : wipp_fmw_comp
   use Richards_Aux_module, only : richards_density_kmol_to_kg
 
   implicit none
@@ -2380,6 +2381,8 @@ subroutine OutputMassBalance(realization_base)
                realization_base%option%nphase)
   PetscReal :: sum_kg_global(realization_base%option%nflowspec, &
                realization_base%option%nphase)
+  PetscReal :: sum_thc(2), sum_thc_global(2)
+  PetscReal :: sum_thc2(2), sum_thc2_global(2)
   PetscReal, allocatable :: sum_mol(:,:), sum_mol_delta(:,:), &
                             sum_mol_global(:,:)
   PetscReal, allocatable :: global_total_mass(:,:), total_mass(:,:)
@@ -2448,6 +2451,10 @@ subroutine OutputMassBalance(realization_base)
         case(TH_MODE,TH_TS_MODE)
           call OutputWriteToHeader(fid,'Global Water Mass in Liquid Phase', &
                                     'kg','',icol)
+        case(THC_MODE)
+          call OutputWriteToHeader(fid,'Global Water Mass in Liquid Phase', &
+                                    'kg','',icol)
+          call OutputWriteToHeader(fid,'Global Solute','mol','',icol)
         case(H_MODE)
           call OutputWriteToHeader(fid,'Global Water Mass in Liquid Phase', &
                                     'kg','',icol)
@@ -2616,6 +2623,17 @@ subroutine OutputMassBalance(realization_base)
             call OutputWriteToHeader(fid,string,'kg','',icol)
             units = 'kg/' // trim(output_option%tunit) // ''
             string = trim(coupler%name) // ' Water Mass'
+            call OutputWriteToHeader(fid,string,units,'',icol)
+          case(THC_MODE)
+            string = trim(coupler%name) // ' Water Mass'
+            call OutputWriteToHeader(fid,string,'kg','',icol)
+            units = 'kg/' // trim(output_option%tunit) // ''
+            string = trim(coupler%name) // ' Water Mass'
+            call OutputWriteToHeader(fid,string,units,'',icol)
+            string = trim(coupler%name) // ' Solute'
+            call OutputWriteToHeader(fid,string,'mol','',icol)
+            units = 'mol/' // trim(output_option%tunit) // ''
+            string = trim(coupler%name) // ' Solute'
             call OutputWriteToHeader(fid,string,units,'',icol)
           case(H_MODE)
             string = trim(coupler%name) // ' Water Mass'
@@ -2987,6 +3005,14 @@ subroutine OutputMassBalance(realization_base)
           case(TH_MODE,TH_TS_MODE)
             call THComputeMassBalance(realization_base,sum_kg(1,1), &
                                       dummy_energy)
+          case(THC_MODE)
+            call THCComputeConservation(realization_base,sum_thc(1), &
+                                        dummy_energy,sum_thc(2))
+            int_mpi = TWO_INTEGER
+            call MPI_Reduce(sum_thc,sum_thc_global,int_mpi, &
+                            MPI_DOUBLE_PRECISION,MPI_SUM, &
+                            option%comm%io_rank,option%mycomm, &
+                            ierr);CHKERRQ(ierr)
           case(MPH_MODE)
             call MphaseComputeMassBalance(realization_base,sum_kg(:,:), &
                                           sum_trapped(:))
@@ -3030,6 +3056,9 @@ subroutine OutputMassBalance(realization_base)
               call WriteRealNoAdv(fid,sum_kg_global(ispec,iphase))
             enddo
           enddo
+        case(THC_MODE)
+          call WriteRealNoAdv(fid,sum_thc_global(1))
+          call WriteRealNoAdv(fid,sum_thc_global(2))
         case(G_MODE)
           do iphase = 1, option%nphase
             do ispec = 1, option%nflowspec
@@ -3333,6 +3362,35 @@ subroutine OutputMassBalance(realization_base)
             call WriteRealNoAdv(fid,-sum_kg_global(1,1)*output_option%tconv)
           endif
 
+        case(THC_MODE)
+          ! cumulative: water already kg, solute mol (THCUpdateMassBalance)
+          sum_thc = 0.d0
+          sum_thc2 = 0.d0
+          do iconn = 1, coupler%connection_set%num_connections
+            sum_thc = sum_thc + &
+              global_auxvars_bc_or_ss(offset+iconn)%mass_balance(1:2,1)
+            sum_thc2 = sum_thc2 + &
+              global_auxvars_bc_or_ss(offset+iconn)%mass_balance_delta(1:2,1)
+          enddo
+          ! rates: water delta kmol -> kg, solute delta already mol
+          sum_thc2(1) = sum_thc2(1)*FMWH2O
+
+          int_mpi = TWO_INTEGER
+          call MPI_Reduce(sum_thc,sum_thc_global,int_mpi, &
+                          MPI_DOUBLE_PRECISION,MPI_SUM,option%comm%io_rank, &
+                          option%mycomm,ierr);CHKERRQ(ierr)
+          call MPI_Reduce(sum_thc2,sum_thc2_global,int_mpi, &
+                          MPI_DOUBLE_PRECISION,MPI_SUM,option%comm%io_rank, &
+                          option%mycomm,ierr);CHKERRQ(ierr)
+
+          if (OptionIsIORank(option)) then
+            ! change sign for positive in / negative out
+            call WriteRealNoAdv(fid,-sum_thc_global(1))
+            call WriteRealNoAdv(fid,-sum_thc2_global(1)*output_option%tconv)
+            call WriteRealNoAdv(fid,-sum_thc_global(2))
+            call WriteRealNoAdv(fid,-sum_thc2_global(2)*output_option%tconv)
+          endif
+
         case(MPH_MODE)
         ! print out cumulative H2O & CO2 fluxes in kmol and kmol/time
           sum_kg = 0.d0
@@ -3439,7 +3497,7 @@ subroutine OutputMassBalance(realization_base)
               global_auxvars_bc_or_ss(offset+iconn)%mass_balance_delta(:,1)
           enddo
           sum_kg(1,1) = sum_kg(1,1)*FMWH2O
-          sum_kg(2,1) = sum_kg(2,1)*general_fmw(2)
+          sum_kg(2,1) = sum_kg(2,1)*gen_fmw_comp(2)
 
           int_mpi = option%nphase
           call MPI_Reduce(sum_kg(:,1),sum_kg_global(:,1),int_mpi, &
@@ -3474,7 +3532,7 @@ subroutine OutputMassBalance(realization_base)
               global_auxvars_bc_or_ss(offset+iconn)%mass_balance_delta(:,1)
           enddo
           sum_kg(1,1) = sum_kg(1,1)*FMWH2O
-          sum_kg(2,1) = sum_kg(2,1)*wipp_flow_fmw(2)
+          sum_kg(2,1) = sum_kg(2,1)*wipp_fmw_comp(2)
 
           int_mpi = option%nphase
           call MPI_Reduce(sum_kg(:,1),sum_kg_global(:,1),int_mpi, &

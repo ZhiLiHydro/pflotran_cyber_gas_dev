@@ -6,6 +6,7 @@ SIMULATION
     SUBSURFACE_FLOW flow
       MODE THC
       OPTIONS
+        ADVECTIVE_DENSITY UPWIND
         SPECIFIC_HEAT_LIQUID 4184.d0 J/kg-C
         SPECIFIC_HEAT_SOLID 800.d0 J/kg-C
         SOLID_DENSITY 2650.d0 kg/m^3
@@ -16,6 +17,11 @@ SIMULATION
 END
 
 SUBSURFACE
+
+#=========================== equations of state ===============================
+EOS WATER
+  DENSITY DRIESNER
+END
 
 #=========================== numerical methods ================================
 NUMERICAL_METHODS FLOW
@@ -56,10 +62,17 @@ GRID
   /
 END
 
+#=========================== fluid properties =================================
+FLUID_PROPERTY
+  DIFFUSION_COEFFICIENT 1.d-9
+END
+
 #=========================== material properties ==============================
 MATERIAL_PROPERTY soil1
   ID 1
   POROSITY 0.25d0
+  TORTUOSITY 1.d0
+  LONGITUDINAL_DISPERSIVITY 0.5d0
   PERMEABILITY
     PERM_ISO 1.d-12
   /
@@ -69,6 +82,8 @@ END
 MATERIAL_PROPERTY soil2
   ID 2
   POROSITY 0.3
+  TORTUOSITY 0.5d0
+  LONGITUDINAL_DISPERSIVITY 0.2d0
   PERMEABILITY
     PERM_ISO 1.d-14
   /

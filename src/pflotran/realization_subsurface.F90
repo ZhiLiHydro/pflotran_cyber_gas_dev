@@ -217,7 +217,6 @@ subroutine RealizationCreateDiscretization(realization)
   use Coupler_module
   use Discretization_module
   use Grid_Unstructured_Cell_module
-  use DM_Custom_module
   use Communicator_Structured_class, only : StructuredCommunicatorCreate
   use Communicator_Unstructured_class, only : UnstructuredCommunicatorCreate
   use String_module
@@ -242,7 +241,7 @@ subroutine RealizationCreateDiscretization(realization)
   call DiscretizationCreateDMs(discretization, option%nflowdof, &
                                option%ntrandof, option%nphase, &
                                option%ngeomechdof, option%n_stress_strain_dof, &
-                               option)
+                               option%ngeopdof, option)
 
   ! 1 degree of freedom, global
   call DiscretizationCreateVector(discretization,ONEDOF,field%work, &
@@ -800,6 +799,7 @@ subroutine RealProcessMatPropAndSatFunc(realization)
           &not been set under THERMAL_CHARACTERISTIC_CURVES "' // &
           trim(thermal_cc%name) // '" intended for material ID #'// &
           trim(adjustl(mat_string)) // '. '
+        call PrintErrMsg(option)
       endif
       call CharCurvesThermalAddToList(thermal_cc, &
         realization%characteristic_curves_thermal)
@@ -3134,7 +3134,8 @@ subroutine RealizationProcessOutputVarList(output_variable_list,realization)
                                   archie_saturation_exp_index, &
                                   archie_tortuosity_index, &
                                   surf_elec_conduct_index, &
-                                  ws_clay_conduct_index
+                                  ws_clay_conduct_index, &
+                                  mean_soil_grain_size_index
   use Option_module
   use Output_Aux_module
   use Parameter_module
@@ -3198,6 +3199,11 @@ subroutine RealizationProcessOutputVarList(output_variable_list,realization)
         endif
       case(WAXMAN_SMITS_CLAY_CONDUCTIVITY)
         if (ws_clay_conduct_index == 0) then
+          error_flag = PETSC_TRUE
+          error_string = ' - must be defined under MATERIAL_PROPERTY'
+        endif
+      case(MEAN_SOIL_GRAIN_SIZE)
+        if (mean_soil_grain_size_index == 0) then
           error_flag = PETSC_TRUE
           error_string = ' - must be defined under MATERIAL_PROPERTY'
         endif

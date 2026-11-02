@@ -1,7 +1,9 @@
 module Output_Common_module
 
 #include "petsc/finclude/petscvec.h"
+#include "petsc/finclude/petscdm.h"
   use petscvec
+  use petscdm
   use Logging_module
   use Output_Aux_module
 
@@ -880,6 +882,7 @@ subroutine OutputGetFaceVelUGrid(realization_base)
   use Grid_module
   use Option_module
   use Grid_Unstructured_Aux_module
+  use UGDM_Pointer_module
   use Grid_Unstructured_Cell_module
   use Variables_module
   use Connection_module
@@ -901,6 +904,7 @@ subroutine OutputGetFaceVelUGrid(realization_base)
   type(ugdm_type),pointer :: ugdm
   type(output_option_type), pointer :: output_option
   type(field_type), pointer :: field
+  type(dm_ptr_type) :: dm_ptr
 
   PetscInt :: local_id
   PetscInt :: ghosted_id
@@ -940,15 +944,18 @@ subroutine OutputGetFaceVelUGrid(realization_base)
   field => realization_base%field
 
   ! Create UGDM for
-  call UGridCreateUGDM(grid%unstructured_grid,ugdm, &
+  PetscObjectNullify(dm_ptr%dm)
+  nullify(dm_ptr%ugdm)
+  call UGridCreateUGDM(grid%unstructured_grid,dm_ptr, &
                        (option%nflowspec*MAX_FACE_PER_CELL + 1),option)
+  ugdm => dm_ptr%ugdm
 
   ! Create vectors in natural order for velocity in x/y/z direction
-  call UGridDMCreateVector(grid%unstructured_grid,ugdm,natural_vx_vec, &
+  call UGridDMCreateVector(grid%unstructured_grid,dm_ptr,natural_vx_vec, &
                            NATURAL,option)
-  call UGridDMCreateVector(grid%unstructured_grid,ugdm,natural_vy_vec, &
+  call UGridDMCreateVector(grid%unstructured_grid,dm_ptr,natural_vy_vec, &
                            NATURAL,option)
-  call UGridDMCreateVector(grid%unstructured_grid,ugdm,natural_vz_vec, &
+  call UGridDMCreateVector(grid%unstructured_grid,dm_ptr,natural_vz_vec, &
                            NATURAL,option)
 
   allocate(vx(option%nflowspec,MAX_FACE_PER_CELL,ugrid%nlmax))
@@ -1176,6 +1183,7 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
   use Grid_module
   use Option_module
   use Grid_Unstructured_Aux_module
+  use UGDM_Pointer_module
   use Grid_Unstructured_Cell_module
   use Variables_module
   use Connection_module
@@ -1197,6 +1205,7 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
   type(ugdm_type),pointer :: ugdm
   type(output_option_type), pointer :: output_option
   type(field_type), pointer :: field
+  type(dm_ptr_type) :: dm_ptr
 
   PetscInt :: local_id
   PetscInt :: ghosted_id
@@ -1228,12 +1237,15 @@ subroutine OutputGetFaceFlowrateUGrid(realization_base)
   field => realization_base%field
 
   ! Create UGDM for
-  call UGridCreateUGDM(grid%unstructured_grid,ugdm, &
+  PetscObjectNullify(dm_ptr%dm)
+  nullify(dm_ptr%ugdm)
+  call UGridCreateUGDM(grid%unstructured_grid,dm_ptr, &
                        (option%nflowdof*MAX_FACE_PER_CELL + 1),option)
+  ugdm => dm_ptr%ugdm
 
   ! Create a flowrate vector in natural order
-  call UGridDMCreateVector(grid%unstructured_grid,ugdm,natural_flowrates_vec, &
-                           NATURAL,option)
+  call UGridDMCreateVector(grid%unstructured_grid,dm_ptr, &
+                           natural_flowrates_vec,NATURAL,option)
 
   allocate(flowrates(option%nflowdof,MAX_FACE_PER_CELL,ugrid%nlmax))
   flowrates = 0.d0
@@ -1384,6 +1396,7 @@ subroutine OutputGetExplicitIDsFlowrates(realization_base,count,vec_proc, &
   use Grid_module
   use Option_module
   use Grid_Unstructured_Aux_module
+  use UGDM_Pointer_module
   use Field_module
   use Connection_module
 
@@ -1398,6 +1411,7 @@ subroutine OutputGetExplicitIDsFlowrates(realization_base,count,vec_proc, &
   type(ugdm_type), pointer :: ugdm
   type(connection_set_list_type), pointer :: connection_set_list
   type(connection_set_type), pointer :: cur_connection_set
+  type(dm_ptr_type) :: dm_ptr
 
 
   PetscReal, pointer :: vec_ptr(:)
@@ -1425,10 +1439,13 @@ subroutine OutputGetExplicitIDsFlowrates(realization_base,count,vec_proc, &
                     PETSC_DETERMINE,vec_proc,ierr);CHKERRQ(ierr)
   call VecSet(vec_proc,0.d0,ierr);CHKERRQ(ierr)
 
-  call UGridCreateUGDM(grid%unstructured_grid,ugdm,ONE_INTEGER,option)
-  call UGridDMCreateVector(grid%unstructured_grid,ugdm,global_vec, &
+  PetscObjectNullify(dm_ptr%dm)
+  nullify(dm_ptr%ugdm)
+  call UGridCreateUGDM(grid%unstructured_grid,dm_ptr,ONE_INTEGER,option)
+  ugdm => dm_ptr%ugdm
+  call UGridDMCreateVector(grid%unstructured_grid,dm_ptr,global_vec, &
                            GLOBAL,option)
-  call UGridDMCreateVector(grid%unstructured_grid,ugdm,local_vec, &
+  call UGridDMCreateVector(grid%unstructured_grid,dm_ptr,local_vec, &
                            LOCAL,option)
   call VecGetArray(global_vec,vec_ptr,ierr);CHKERRQ(ierr)
   vec_ptr = option%myrank
@@ -1797,7 +1814,8 @@ subroutine OutputCollectVelocityOrFlux(realization_base, iphase, direction, &
   use Field_module
   use Connection_module
   use Coupler_module
-  use DM_Custom_module
+  use Grid_Unstructured_Aux_module
+  use UGDM_Pointer_module
 
   implicit none
 
@@ -2006,11 +2024,10 @@ subroutine OutputCommonMapFlowFormulaWeight(option,flow_dof_scale)
   ! Author: Glenn Hammond
   ! Date: 12/04/25
   !
-  use General_Aux_module, only : general_fmw => fmw_comp
+  use General_Aux_module, only : gen_fmw_comp
   use Option_module, only : option_type
   use Richards_Aux_module, only : richards_density_kmol_to_kg
-  use SCO2_Aux_module, only : sco2_fmw => fmw_comp
-  use WIPP_Flow_Aux_module, only : wipp_flow_fmw => fmw_comp
+  use WIPP_Flow_Aux_module, only : wipp_fmw_comp
 
   implicit none
 
@@ -2023,16 +2040,20 @@ subroutine OutputCommonMapFlowFormulaWeight(option,flow_dof_scale)
       flow_dof_scale(1) = richards_density_kmol_to_kg
     case(TH_MODE,TH_TS_MODE)
       flow_dof_scale(1) = FMWH2O
+    case(THC_MODE)
+      ! residuals: water kmol/s, energy MJ/s (option%scale applied in the
+      ! kernels), solute mol/s
+      flow_dof_scale(1) = FMWH2O
     case(G_MODE,H_MODE)
       ! mass residuals are kmol/s; energy residual is MJ/s
       flow_dof_scale(1) = FMWH2O
-      flow_dof_scale(2) = general_fmw(2)
+      flow_dof_scale(2) = gen_fmw_comp(2)
       if (option%nflowdof >= 4) then
-        flow_dof_scale(3) = general_fmw(3)
+        flow_dof_scale(3) = gen_fmw_comp(3)
       endif
     case(WF_MODE)
       flow_dof_scale(1) = FMWH2O
-      flow_dof_scale(2) = wipp_flow_fmw(2)
+      flow_dof_scale(2) = wipp_fmw_comp(2)
     case(MPH_MODE)
       flow_dof_scale(1) = FMWH2O
       flow_dof_scale(2) = FMWCO2
@@ -2079,7 +2100,7 @@ subroutine OutputCommonGlobalMassHeader(realization_base,fid,icol, &
 
   select case(option%iflowmode)
     case(NULL_MODE,RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE,ZFLOW_MODE, &
-         TH_MODE,TH_TS_MODE,H_MODE,G_MODE,WF_MODE,IMMISCIBLE_MODE, &
+         TH_MODE,TH_TS_MODE,THC_MODE,H_MODE,G_MODE,WF_MODE,IMMISCIBLE_MODE, &
          MPH_MODE,SCO2_MODE)
     case default
       option%io_buffer = 'Global mass headers must be added for flow mode "' &
@@ -2108,6 +2129,12 @@ subroutine OutputCommonGlobalMassHeader(realization_base,fid,icol, &
     case(TH_MODE,TH_TS_MODE)
       call OutputWriteToHeader(fid,'Global Water Mass in Liquid Phase', &
                                'kg','',icol)
+    case(THC_MODE)
+      ! DOF order: water, energy, solute
+      call OutputWriteToHeader(fid,'Global Water Mass in Liquid Phase', &
+                               'kg','',icol)
+      call OutputWriteToHeader(fid,'Global Energy','MJ','',icol)
+      call OutputWriteToHeader(fid,'Global Solute','mol','',icol)
     case(H_MODE)
       call OutputWriteToHeader(fid,'Global Water Mass in Liquid Phase', &
                                'kg','',icol)
@@ -2296,7 +2323,7 @@ subroutine OutputCommonFluxHeader(realization_base,name,fid,icol, &
 
   select case(option%iflowmode)
     case(NULL_MODE,RICHARDS_MODE,RICHARDS_TS_MODE,PNF_MODE,ZFLOW_MODE, &
-         TH_MODE,TH_TS_MODE,H_MODE,G_MODE,WF_MODE,IMMISCIBLE_MODE, &
+         TH_MODE,TH_TS_MODE,THC_MODE,H_MODE,G_MODE,WF_MODE,IMMISCIBLE_MODE, &
          MPH_MODE,SCO2_MODE)
     case default
       option%io_buffer = 'Flux headers must be added for flow mode "' // &
@@ -2322,6 +2349,20 @@ subroutine OutputCommonFluxHeader(realization_base,name,fid,icol, &
       string = trim(name) // ' Water Mass'
       call OutputWriteToHeader(fid,string,'kg','',icol)
       units = 'kg/' // trim(output_option%tunit) // ''
+      call OutputWriteToHeader(fid,string,units,'',icol)
+    case(THC_MODE)
+      ! DOF order: water, energy, solute
+      string = trim(name) // ' Water Mass'
+      call OutputWriteToHeader(fid,string,'kg','',icol)
+      units = 'kg/' // trim(output_option%tunit) // ''
+      call OutputWriteToHeader(fid,string,units,'',icol)
+      string = trim(name) // ' Energy'
+      call OutputWriteToHeader(fid,string,'MJ','',icol)
+      units = 'MJ/' // trim(output_option%tunit) // ''
+      call OutputWriteToHeader(fid,string,units,'',icol)
+      string = trim(name) // ' Solute'
+      call OutputWriteToHeader(fid,string,'mol','',icol)
+      units = 'mol/' // trim(output_option%tunit) // ''
       call OutputWriteToHeader(fid,string,units,'',icol)
     case(H_MODE)
       units = 'kg/' // trim(output_option%tunit) // ''

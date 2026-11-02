@@ -578,7 +578,7 @@ subroutine GeneralComputeMassBalance(realization,num_cells,cell_ids, &
         mass_balance(icomp,iphase) = mass_balance(icomp,iphase) + &
           general_auxvars(ZERO_INTEGER,ghosted_id)%den(iphase)* &
           general_auxvars(ZERO_INTEGER,ghosted_id)%xmol(icomp,iphase) * &
-          fmw_comp(icomp)*vol_phase
+          gen_fmw_comp(icomp)*vol_phase
       enddo
       ! energy [MJ] = sat * den [kmol/m^3] * U [MJ/kmol] * por * vol
       energy_balance = energy_balance + &
@@ -676,7 +676,7 @@ subroutine GeneralUpdateMassBalance(realization)
       global_auxvars_bc(iconn)%mass_balance(icomp,:) = &
         global_auxvars_bc(iconn)%mass_balance(icomp,:) + &
         global_auxvars_bc(iconn)%mass_balance_delta(icomp,:)* &
-        fmw_comp(icomp)*option%flow_dt
+        gen_fmw_comp(icomp)*option%flow_dt
     enddo
   enddo
   do iconn = 1, patch%aux%General%num_aux_ss
@@ -684,7 +684,7 @@ subroutine GeneralUpdateMassBalance(realization)
       global_auxvars_ss(iconn)%mass_balance(icomp,:) = &
         global_auxvars_ss(iconn)%mass_balance(icomp,:) + &
         global_auxvars_ss(iconn)%mass_balance_delta(icomp,:)* &
-        fmw_comp(icomp)*option%flow_dt
+        gen_fmw_comp(icomp)*option%flow_dt
     enddo
   enddo
 
@@ -1111,7 +1111,7 @@ subroutine GeneralUpdateAuxVars(realization,update_state,update_state_bc)
         !     source_sink%flow_condition%general%effective_porosity%dataset%rarray(1)
         ! else
         gen_auxvars_ss(ZERO_INTEGER,sum_connection)%effective_porosity = &
-          gen_auxvars(ZERO_INTEGER,sum_connection)%effective_porosity
+          gen_auxvars(ZERO_INTEGER,ghosted_id)%effective_porosity
         !endif
       endif
       xxss(1) = maxval(gen_auxvars_ss(ZERO_INTEGER,sum_connection)%pres(option% &

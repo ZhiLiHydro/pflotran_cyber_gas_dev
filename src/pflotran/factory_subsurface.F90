@@ -393,6 +393,7 @@ subroutine FactorySubsurfaceInitSimulation(simulation)
   select case(option%geomechanics%geophysics_coupling)
     case(GEOMECH_ERT_COUPLING)
       call RealizationRegisterParameter(realization,'geomechanics_stress')
+      call RealizationRegisterParameter(realization,'geomechanics_stress_0')
       call RealizationRegisterParameter(realization,'geomechanics_strain')
   end select
 
@@ -416,6 +417,10 @@ subroutine FactorySubsurfaceInitSimulation(simulation)
                                             'stored_porosity')
           call RealizationRegisterParameter(realization, &
                                             'stored_pressure')
+          if (option%iflowmode == TH_MODE) then
+            call RealizationRegisterParameter(realization, &
+                                              'stored_temperature')
+          endif
     end select
   end select
 
@@ -673,6 +678,7 @@ subroutine FactorySubsurfSetupWaypointList(simulation)
   use Checkpoint_module
   use Realization_Subsurface_class
   use Option_module
+  use PM_ERT_class, only : pm_ert_type, PMERTCast, PMERTFindTime
   use Waypoint_module
   use Debug_module
 
@@ -681,7 +687,9 @@ subroutine FactorySubsurfSetupWaypointList(simulation)
   class(simulation_subsurface_type) :: simulation
 
   class(realization_subsurface_type), pointer :: realization
-  type(waypoint_list_type), pointer :: sync_waypoint_list
+  class(pm_ert_type), pointer :: pm_ert
+  type(waypoint_list_type), pointer :: sync_waypoint_list,outer_waypoint_list
+  type(waypoint_type), pointer :: waypoint,match,next_waypoint
   type(debug_type), pointer :: debug
   type(option_type), pointer :: option
 
@@ -711,6 +719,26 @@ subroutine FactorySubsurfSetupWaypointList(simulation)
                                       option)
   call WaypointListFindDuplicateTimes(simulation%waypoint_list_subsurface, &
                                       option)
+
+  if (associated(simulation%geop_process_model_coupler)) then
+    pm_ert => PMERTCast(simulation%geop_process_model_coupler%pm_ptr%pm)
+    ! survey copies may have merged with rounding-equivalent waypoints
+    call pm_ert%CanonicalizeSurveyTimes( &
+      simulation%waypoint_list_subsurface%first)
+    ! rebuild the outer list with the canonical times
+    outer_waypoint_list => simulation%waypoint_list_outer
+    waypoint => outer_waypoint_list%first
+    nullify(outer_waypoint_list%first,outer_waypoint_list%last)
+    outer_waypoint_list%num_waypoints = 0
+    do while (associated(waypoint))
+      next_waypoint => waypoint%next
+      nullify(waypoint%prev,waypoint%next)
+      match => PMERTFindTime(pm_ert%waypoint_list%first,waypoint%time)
+      if (associated(match)) waypoint%time = match%time
+      call WaypointInsertInList(waypoint,outer_waypoint_list,option)
+      waypoint => next_waypoint
+    enddo
+  endif
 
   ! debugging output
   nullify(debug)
@@ -785,6 +813,7 @@ subroutine FactorySubsurfaceInsertWellCells(simulation)
   use Realization_Subsurface_class
   use Grid_module
   use Grid_Unstructured_Aux_module
+  use UGDM_Pointer_module
   use Grid_Unstructured_module, only : UGridEnsureRightHandRule
   use Grid_Structured_module, only : StructGridCreateTVDGhosts
   use Discretization_module
@@ -796,7 +825,6 @@ subroutine FactorySubsurfaceInsertWellCells(simulation)
   use PM_Hydrate_class
   use Option_module
   use Field_module
-  use DM_Custom_module
   use Utility_module
 
   implicit none
@@ -851,7 +879,7 @@ subroutine FactorySubsurfaceInsertWellCells(simulation)
     allocate(dm_ptr)
     call DiscretizationCreateDM(discretization, dm_ptr, &
                                  ONE_INTEGER, discretization%stencil_width, &
-                                 discretization%stencil_type, option)
+                                 discretization%stencil_type, option, '')
 
     grid => discretization%grid
     select case(discretization%itype)
@@ -983,7 +1011,6 @@ subroutine FactorySubsurfaceInsertWellCells(simulation)
   endif
 
   ! Destroy the dummy DM's
-  ! Eventually put this in a seperate subroutine (down in dm_custom?)
   if (associated(dm_ptr)) call UGridDMDestroy(dm_ptr%ugdm)
   nullify(dm_ptr)
   call DeallocateArray(grid%nG2L)
