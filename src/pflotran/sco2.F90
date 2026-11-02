@@ -324,7 +324,8 @@ subroutine SCO2InitializeTimestep(realization)
                     sco2_auxvars(ZERO_INTEGER,ghosted_id)%den_kg(gid) * &
                     sco2_auxvars(ZERO_INTEGER,ghosted_id)%xmass(wid,gid)
         ! mol/m^3 bulk = kg/m^3 pore * m^3 pore/m^3 bulk / (g/mol * kg/g)
-        water_moles_per_m3bulk = water_mass * porosity / (fmw_comp(1) * 1.d-3)
+        water_moles_per_m3bulk = water_mass * porosity / &
+                                 (sco2_fmw_comp(1) * 1.d-3)
         ! units: [kg co2/m^3 pore]
         co2_mass = sco2_auxvars(ZERO_INTEGER,ghosted_id)%sat(lid) * &
                     sco2_auxvars(ZERO_INTEGER,ghosted_id)%den_kg(lid) * &
@@ -332,7 +333,7 @@ subroutine SCO2InitializeTimestep(realization)
                     sco2_auxvars(ZERO_INTEGER,ghosted_id)%sat(gid) * &
                     sco2_auxvars(ZERO_INTEGER,ghosted_id)%den_kg(gid) * &
                     sco2_auxvars(ZERO_INTEGER,ghosted_id)%xmass(co2_id,gid)
-        co2_moles_per_m3bulk = co2_mass * porosity / (fmw_comp(2) * 1.d-3)
+        co2_moles_per_m3bulk = co2_mass * porosity / (sco2_fmw_comp(2) * 1.d-3)
 
         ! Reaction rate = mineralization rate. positive means sink
         ! reaction_rate units coming in: mole/m^3 bulk
@@ -677,7 +678,8 @@ subroutine SCO2ComputeComponentMassBalance(realization,num_cells,num_comp, &
 
     if (patch%imat(ghosted_id) <= 0) cycle
     volume = material_auxvars(ghosted_id)%volume
-
+    Srg = patch%characteristic_curves_array(patch%cc_id(ghosted_id))% &
+          ptr%gas_rel_perm_function%Srg
 
     do iphase = 1,num_phase
       do icomp = 1,num_comp
@@ -688,8 +690,6 @@ subroutine SCO2ComputeComponentMassBalance(realization,num_cells,num_comp, &
         endif
         if (iphase == option%trapped_gas_phase) then
           ! SPE11 definition of "immobile gas"
-          Srg = patch%characteristic_curves_array(patch%cc_id(ghosted_id))% &
-                ptr%gas_rel_perm_function%Srg
           if (sco2_auxvars(ZERO_INTEGER,ghosted_id)% &
               sat(option%gas_phase) <= Srg) then
             sum_kg(icomp,iphase) = sum_kg(icomp,iphase) + &

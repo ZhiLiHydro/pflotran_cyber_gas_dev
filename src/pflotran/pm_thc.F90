@@ -140,6 +140,7 @@ subroutine PMTHCReadSimOptionsBlock(this,input)
   !
   use THC_module
   use THC_Aux_module
+  use THC_EOS_Utils_module, only : thc_molar_mass_solute
   use Input_Aux_module
   use String_module
   use Option_module
@@ -186,6 +187,12 @@ subroutine PMTHCReadSimOptionsBlock(this,input)
         thc_calc_bcflux = PETSC_FALSE
       case('TENSORIAL_RELATIVE_PERMEABILITY')
         thc_tensorial_rel_perm = PETSC_TRUE
+      case('SOLUTE_MOLAR_MASS')
+        call InputReadDouble(input,option,thc_molar_mass_solute)
+        call InputErrorMsg(input,option,keyword,error_string)
+        call InputReadAndConvertUnits(input,thc_molar_mass_solute, &
+                                      'kg/mol',trim(error_string)//','// &
+                                      keyword,option)
       case('SOLID_DENSITY','SOLID_GRAIN_DENSITY','ROCK_DENSITY')
         call InputReadDouble(input,option,thc_density_solid)
         call InputErrorMsg(input,option,keyword,error_string)
@@ -231,9 +238,37 @@ subroutine PMTHCReadSimOptionsBlock(this,input)
             call InputKeywordUnrecognized(input,word, &
                    'THC Mode,ENERGY_FORMULATION',option)
         end select
+      case('ADVECTIVE_DENSITY')
+        call InputReadCard(input,option,word)
+        call InputErrorMsg(input,option,keyword,error_string)
+        call StringToUpper(word)
+        select case(trim(word))
+          case('UPWIND')
+            thc_advective_density_mode = THC_ADVECTIVE_DENSITY_UPWIND
+          case('TH_COMPATIBLE')
+            thc_advective_density_mode = &
+              THC_ADVECTIVE_DENSITY_TH_COMPATIBLE
+          case default
+            call InputKeywordUnrecognized(input,word, &
+                   'THC Mode,ADVECTIVE_DENSITY',option)
+        end select
       case('DEBUG_CELL_ID')
         call InputReadInt(input,option,thc_debug_cell_id)
         call InputErrorMsg(input,option,keyword,error_string)
+      case('SHEAR_THINNING_FLUID')
+        ! store_darcy_vel allocates global_auxvar%darcy_vel; the velocity
+        ! is filled in GlobalSetAuxVarsAtTimeLevel, which is only called
+        ! when store_state_variables_in_global is set (and that flag also
+        ! allocates the TIME_T / TIME_TpDT store arrays that routine writes).
+        option%flow%store_darcy_vel = PETSC_TRUE
+        option%flow%store_state_variables_in_global = PETSC_TRUE
+        thc_shear_thinning = PETSC_TRUE
+      case('SOLUTE_DECAY_RATE_CONSTANT')
+        call InputReadDouble(input,option,thc_decay_rate_constant)
+        call InputErrorMsg(input,option,keyword,error_string)
+        call InputReadAndConvertUnits(input,thc_decay_rate_constant, &
+                                      '1/sec',trim(error_string)//','// &
+                                      keyword,option)
       case default
         call InputKeywordUnrecognized(input,keyword,'THC Mode',option)
     end select

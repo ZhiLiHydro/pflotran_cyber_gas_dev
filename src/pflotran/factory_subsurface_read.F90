@@ -554,8 +554,9 @@ subroutine FactorySubsurfReadWellPM(input,option,pm)
             pm => PMWellWIPPQICreate()
             option%flow%well_coupling = WELL_MODEL_WIPP_QI
           case('CLOSED_LOOP_COAXIAL')
-            pm => PMWellCoaxialCreate()
-            option%flow%well_coupling = WELL_MODEL_COAXIAL
+            option%io_buffer = 'The CLOSED_LOOP_COAXIAL well model is not &
+              &yet supported in ' // trim(error_string) // '.'
+            call PrintErrMsg(option)
           case('CLOSED_LOOP_U_SHAPE')
             pm => PMWellUShapeCreate()
             option%flow%well_coupling = WELL_MODEL_U_SHAPE
@@ -786,7 +787,6 @@ subroutine FactorySubsurfReadRequiredCards(simulation,input)
         call InputPushCard(input,card,option)
         call InputReadInt(input,option,option%hdf5_write_group_size)
         call InputErrorMsg(input,option,'HDF5_WRITE_GROUP_SIZE','Group size')
-        call InputSkipToEnd(input,option,'HDF5_WRITE_GROUP_SIZE')
 
       case('HDF5_READ_GROUP_SIZE')
         call InputPushCard(input,card,option)

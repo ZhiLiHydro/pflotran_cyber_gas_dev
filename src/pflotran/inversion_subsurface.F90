@@ -866,6 +866,10 @@ subroutine InvSubsurfSetupForwardRunLinkage(this)
     do i = 1, num_measurements
       if (this%inversion_aux%measurements(i)%iobs_var == &
           OBS_ERT_MEASUREMENT) then
+        if (this%inversion_aux%measurements(i)%cell_id < 1) then
+          call this%driver%PrintErrMsg('ERT_MEASUREMENT_ID must be positive &
+            &for measurement ' // trim(StringWrite(i)) // '.')
+        endif
         max_int(1) = max(max_int(1),this%inversion_aux%measurements(i)%cell_id)
       else
         if (Initialized(this%inversion_aux%measurements(i)%coordinate%x)) then
@@ -890,14 +894,14 @@ subroutine InvSubsurfSetupForwardRunLinkage(this)
         call this%driver%PrintErrMsg('The ERT_MEASUREMENT_ID assigned to a &
           &measurement is greater than the number of measurements in an &
           &survey (survey size = ' // &
-          trim(StringWrite(num_measurements)) // &
+          trim(StringWrite(size(this%realization%survey%dsim))) // &
           ' vs. maximum ERT_MEASUREMENT_ID = ' // &
-          trim(StringWrite(size(this%realization%survey%dsim))) // ').')
+          trim(StringWrite(max_int(1))) // ').')
       endif
     endif
-    if (max_int(1) > patch%grid%nmax) then
+    if (max_int(2) > patch%grid%nmax) then
       call this%driver%PrintErrMsg('A measurement cell ID is &
-        &beyond the maximum cell ID of ' // StringWrite(i))
+        &beyond the maximum cell ID of ' // StringWrite(patch%grid%nmax))
     endif
     ! ensure that all cell ids have been found
     mpi_int = num_measurements
@@ -1156,6 +1160,7 @@ subroutine InvSubsurfConnectToForwardRun(this)
   use Factory_Subsurface_module
   use Init_Subsurface_module
   use Material_module
+  use PM_ERT_class, only : pm_ert_type, PMERTCast, PMERTFindTime
   use String_module
   use Timestepper_Base_class, only : TS_STOP_END_SIMULATION
   use Utility_module
@@ -1166,7 +1171,8 @@ subroutine InvSubsurfConnectToForwardRun(this)
 
   PetscReal :: final_time
   PetscInt :: i, sync_count
-  type(waypoint_type), pointer :: waypoint
+  type(waypoint_type), pointer :: waypoint,match
+  class(pm_ert_type), pointer :: pm_ert
   type(inversion_perturbation_type), pointer :: perturbation
   PetscReal, pointer :: real_array(:)
   PetscReal, pointer :: vec_ptr(:)
@@ -1175,6 +1181,12 @@ subroutine InvSubsurfConnectToForwardRun(this)
   PetscErrorCode :: ierr
 
   perturbation => this%inversion_aux%perturbation
+
+  nullify(pm_ert)
+  if (this%inversion_option%coupled_flow_ert) then
+    pm_ert => PMERTCast(this%forward_simulation% &
+                          geop_process_model_coupler%pm_ptr%pm)
+  endif
 
   ! the allocation of sync_times come before the call to
   ! InvCoupledAllocateSolnVecs()
@@ -1188,6 +1200,16 @@ subroutine InvSubsurfConnectToForwardRun(this)
     do i = 1, size(this%inversion_aux%measurements)
       if (Uninitialized(this%inversion_aux%measurements(i)%time)) then
         this%inversion_aux%measurements(i)%time = final_time
+      endif
+      ! snap ERT measurement times to the canonical survey times
+      if (associated(pm_ert)) then
+        if (this%inversion_aux%measurements(i)%iobs_var == &
+            OBS_ERT_MEASUREMENT) then
+          match => PMERTFindTime(pm_ert%waypoint_list%first, &
+                                 this%inversion_aux%measurements(i)%time)
+          if (associated(match)) &
+            this%inversion_aux%measurements(i)%time = match%time
+        endif
       endif
       if (this%inversion_aux%measurements(i)%time > final_time) then
         iflag = PETSC_TRUE
@@ -1649,7 +1671,7 @@ subroutine InvSubsurfPostProcMeasurements(this)
         vec_ptr2(imeasurement)
     enddo
     call VecRestoreArray(dobs_dunknown_vec,vec_ptr,ierr);CHKERRQ(ierr)
-    call VecRestoreArray(dobs_dparam_vec,vec_ptr,ierr);CHKERRQ(ierr)
+    call VecRestoreArray(dobs_dparam_vec,vec_ptr2,ierr);CHKERRQ(ierr)
     call VecDestroy(dist_dobs_dunknown_vec,ierr);CHKERRQ(ierr)
     call VecDestroy(dobs_dunknown_vec,ierr);CHKERRQ(ierr)
     call VecDestroy(dist_dobs_dparam_vec,ierr);CHKERRQ(ierr)
@@ -2393,12 +2415,12 @@ subroutine InvSubsurfFVSetOrigSoln(this)
       call InvAuxBCastVecForCommI(this%inversion_option%forcomm_i, &
                                   solutions(i)%original_saturation_solution, &
                                   this%driver)
-      if (.not.PetscObjectIsNull(solutions(i)%perturbed_solute_solution)) then
+      if (.not.PetscObjectIsNull(solutions(i)%original_solute_solution)) then
 !print *, this%driver%comm%rank, ' Bcast13 forcomm_i'
 !        call MPI_Barrier(this%inversion_option%forcomm_i%communicator, &
 !                         ierr);CHKERRQ(ierr)
         call InvAuxBCastVecForCommI(this%inversion_option%forcomm_i, &
-                                    solutions(i)%perturbed_solute_solution, &
+                                    solutions(i)%original_solute_solution, &
                                     this%driver)
       endif
     enddo
@@ -2504,8 +2526,8 @@ subroutine InvSubsurfFVCalcPartialJs(this,idof_pert)
           call MPI_Send(vec_ptr,vec_size,MPI_DOUBLE_PRECISION, &
                         ZERO_INTEGER_MPI,idof_pert,comm%communicator, &
                         ierr);CHKERRQ(ierr)
-          call VecGetArray(solutions(i)%dsolute_dparameter(idof_pert), &
-                              vec_ptr,ierr);CHKERRQ(ierr)
+          call VecRestoreArray(solutions(i)%dsolute_dparameter(idof_pert), &
+                               vec_ptr,ierr);CHKERRQ(ierr)
         endif
       enddo
     endif

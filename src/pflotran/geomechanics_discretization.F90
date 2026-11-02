@@ -6,16 +6,12 @@ module Geomechanics_Discretization_module
   use petscdmda
   use Geomechanics_Grid_module
   use Geomechanics_Grid_Aux_module
+  use GMDM_Pointer_module
   use PFLOTRAN_Constants_module
 
   implicit none
 
   private
-
-  type, public :: gmdm_ptr_type
-    DM :: dm  ! PETSc DM
-    type(gmdm_type), pointer :: gmdm
-  end type gmdm_ptr_type
 
   type, public :: geomech_discretization_type
     PetscInt :: itype                          ! type of discretization (e.g. structured, unstructured, etc.)
@@ -162,9 +158,15 @@ subroutine GeomechDiscretizationCreateDM(geomech_discretization,dm_ptr, &
              'unstructured grids.'
             call PrintErrMsg(option)
 #endif
-      call GMCreateGMDM(geomech_discretization%grid, &
-                        dm_ptr%gmdm,ndof,option)
       call DMShellCreate(option%mycomm,dm_ptr%dm,ierr);CHKERRQ(ierr)
+      if (ndof > 1) then
+        call DMSetMatType(dm_ptr%dm,MATBAIJ,ierr);CHKERRQ(ierr)
+      else
+        call DMSetMatType(dm_ptr%dm,MATAIJ,ierr);CHKERRQ(ierr)
+      endif
+      call DMSetOptionsPrefix(dm_ptr%dm,"geomech_",ierr);CHKERRQ(ierr)
+      call DMSetFromOptions(dm_ptr%dm,ierr);CHKERRQ(ierr)
+      call GMCreateGMDM(geomech_discretization%grid,dm_ptr,ndof,option)
       call DMShellSetGlobalToLocalVecScatter(dm_ptr%dm, &
                                              dm_ptr%gmdm%scatter_gtol, &
                                              ierr);CHKERRQ(ierr)
@@ -199,7 +201,7 @@ subroutine GeomechDiscretizationCreateVector(geomech_discretization, &
   dm_ptr => GeomechDiscretizationGetDMPtrFromIndex(geomech_discretization, &
                                                    dm_index)
 
-  call GMGridDMCreateVector(geomech_discretization%grid,dm_ptr%gmdm,vector, &
+  call GMGridDMCreateVector(geomech_discretization%grid,dm_ptr,vector, &
                             vector_type,option)
 
   call VecSet(vector,0.d0,ierr);CHKERRQ(ierr)

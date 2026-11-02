@@ -28,6 +28,7 @@ module Geomechanics_Force_module
             GeomechStoreInitialPorosity, &
             GeomechForceSetupLinearSystem, &
             GeomechForceAssembleCoeffMatrix, &
+            GeomechForceEffectiveStress, &
             GeomechMapMaterialIdsToFlow
 
 contains
@@ -183,6 +184,10 @@ subroutine GeomechForceSetupPatch(geomech_realization)
             ParameterGetIDFromName('vol_strain',option)
           geomech_parameter%stored_pressure_id = &
             ParameterGetIDFromName('stored_pressure',option)
+          if (option%iflowmode == TH_MODE) then
+            geomech_parameter%stored_temperature_id = &
+              ParameterGetIDFromName('stored_temperature',option)
+          endif
           geomech_parameter%stored_porosity_id = &
             ParameterGetIDFromName('stored_porosity',option)
           geomech_parameter%flow_porosity_id = &
@@ -1877,6 +1882,11 @@ subroutine GeomechForceAssembleCoeffMatrix(A,geomech_realization)
     boundary_condition => boundary_condition%next
   enddo
 
+  ! rows may list the same node more than once when Dirichlet regions
+  ! overlap. That is safe only while MAT_NO_OFF_PROC_ZERO_ROWS is off.
+  ! GeomechDiscretizationCreateMatrix does not set that option. Do not
+  ! set it on this matrix without first making rows unique: PETSc's fast
+  ! path writes one slot per requested row into a buffer of length nlocal.
   call MatZeroRowsLocal(A,count,rows,1.d0,PETSC_NULL_VEC,PETSC_NULL_VEC, &
                         ierr);CHKERRQ(ierr)
   call MatSetOption(A,MAT_NEW_NONZERO_LOCATIONS,PETSC_FALSE, &
@@ -1906,6 +1916,7 @@ subroutine GeomechUpdateFromSubsurf(realization,geomech_realization)
   use Geomechanics_Grid_Aux_module
   use Geomechanics_Field_module
   use Geomechanics_Discretization_module
+  use GMDM_Pointer_module
   use Option_module
   use Option_Geomechanics_module
   use Grid_Structured_module
@@ -2076,6 +2087,7 @@ subroutine GeomechUpdateSubsurfFromGeomech(realization,geomech_realization)
   use Geomechanics_Grid_Aux_module
   use Geomechanics_Field_module
   use Geomechanics_Discretization_module
+  use GMDM_Pointer_module
   use Option_module
   use Option_Geomechanics_module
 
@@ -2576,6 +2588,119 @@ end subroutine GeomechForceStressStrain
 
 ! ************************************************************************** !
 
+subroutine GeomechForceEffectiveStress(geomech_realization,stress_eff)
+  !
+  ! Computes effective stress for ERT
+  !
+  ! Author: Piyoosh Jaysaval
+  ! Date: 08/11/26
+  !
+  use Geomechanics_Realization_class
+  use Geomechanics_Field_module
+  use Geomechanics_Patch_module
+  use Geomechanics_Grid_Aux_module
+  use Geomechanics_Auxiliary_module
+  use Option_module
+
+  implicit none
+
+  class(realization_geomech_type) :: geomech_realization
+  Vec :: stress_eff
+
+  type(geomech_field_type), pointer :: field
+  type(geomech_patch_type), pointer :: patch
+  type(geomech_grid_type), pointer :: grid
+  type(option_type), pointer :: option
+  type(geomech_linear_parameter_type), pointer :: geomech_parameter
+
+  PetscReal, pointer :: stress_eff_p(:)
+  PetscReal, pointer :: stress_loc_p(:)
+  PetscReal, pointer :: temp_loc_p(:), temp_init_loc_p(:)
+  PetscReal, pointer :: imech_loc_p(:)
+  PetscReal, pointer :: youngs_loc_p(:), poissons_loc_p(:), alpha_loc_p(:)
+  PetscReal :: E, nu, alpha, lambda, mu, dT, thermal_term
+  PetscInt :: local_id, ghosted_id, idof, imat
+  PetscErrorCode :: ierr
+
+  field => geomech_realization%geomech_field
+  patch => geomech_realization%geomech_patch
+  grid => patch%geomech_grid
+  option => geomech_realization%option
+  geomech_parameter => patch%geomech_aux%Linear%linear_parameter
+
+  call VecGetArray(stress_eff,stress_eff_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%stress_loc,stress_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%temp_loc,temp_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%temp_init_loc,temp_init_loc_p,ierr);CHKERRQ(ierr)
+  call VecGetArray(field%imech_loc,imech_loc_p,ierr);CHKERRQ(ierr)
+  if (geomech_parameter%youngs_modulus_spatially_varying) then
+    call VecGetArray(field%youngs_modulus_loc,youngs_loc_p,ierr);CHKERRQ(ierr)
+  endif
+  if (geomech_parameter%poissons_ratio_spatially_varying) then
+    call VecGetArray(field%poissons_ratio_loc,poissons_loc_p,ierr);CHKERRQ(ierr)
+  endif
+  if (geomech_parameter%thermal_exp_coeff_spatially_varying) then
+    call VecGetArray(field%thermal_exp_coeff_loc,alpha_loc_p,ierr);CHKERRQ(ierr)
+  endif
+
+  do local_id = 1, grid%nlmax_node
+    ghosted_id = grid%nL2G(local_id)
+    imat = nint(imech_loc_p(ghosted_id))
+
+    if (geomech_parameter%youngs_modulus_spatially_varying) then
+      E = youngs_loc_p(ghosted_id)
+    else
+      E = geomech_parameter%youngs_modulus(imat)
+    endif
+    if (geomech_parameter%poissons_ratio_spatially_varying) then
+      nu = poissons_loc_p(ghosted_id)
+    else
+      nu = geomech_parameter%poissons_ratio(imat)
+    endif
+    if (geomech_parameter%thermal_exp_coeff_spatially_varying) then
+      alpha = alpha_loc_p(ghosted_id)
+    else
+      alpha = geomech_parameter%thermal_exp_coeff(imat)
+    endif
+    call GeomechGetLambdaMu(lambda,mu,E,nu)
+
+    dT = temp_loc_p(ghosted_id) - temp_init_loc_p(ghosted_id)
+    thermal_term = alpha*dT*(3.0d0*lambda + 2.0d0*mu)
+
+    ! The thermal contribution is isotropic, so only the normal components
+    ! (Voigt 1-3) are corrected; the shear components carry over unchanged.
+    do idof = 1, SIX_INTEGER
+      stress_eff_p(idof + (local_id-1)*SIX_INTEGER) = &
+        stress_loc_p(idof + (ghosted_id-1)*SIX_INTEGER)
+    enddo
+    do idof = 1, THREE_INTEGER
+      stress_eff_p(idof + (local_id-1)*SIX_INTEGER) = &
+        stress_eff_p(idof + (local_id-1)*SIX_INTEGER) - thermal_term
+    enddo
+  enddo
+
+  if (geomech_parameter%youngs_modulus_spatially_varying) then
+    call VecRestoreArray(field%youngs_modulus_loc,youngs_loc_p, &
+                         ierr);CHKERRQ(ierr)
+  endif
+  if (geomech_parameter%poissons_ratio_spatially_varying) then
+    call VecRestoreArray(field%poissons_ratio_loc,poissons_loc_p, &
+                         ierr);CHKERRQ(ierr)
+  endif
+  if (geomech_parameter%thermal_exp_coeff_spatially_varying) then
+    call VecRestoreArray(field%thermal_exp_coeff_loc,alpha_loc_p, &
+                         ierr);CHKERRQ(ierr)
+  endif
+  call VecRestoreArray(field%imech_loc,imech_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%temp_init_loc,temp_init_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%temp_loc,temp_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(field%stress_loc,stress_loc_p,ierr);CHKERRQ(ierr)
+  call VecRestoreArray(stress_eff,stress_eff_p,ierr);CHKERRQ(ierr)
+
+end subroutine GeomechForceEffectiveStress
+
+! ************************************************************************** !
+
 subroutine GeomechForceLocalElemStressStrain(size_elenodes,local_coordinates, &
                                              local_disp,local_temp, &
                                              local_press, &
@@ -2834,6 +2959,7 @@ subroutine GeomechMapMaterialIdsToFlow(realization,geomech_realization)
   use Geomechanics_Discretization_module
   use Geomechanics_Field_module
   use Geomechanics_Grid_Aux_module
+  use GMDM_Pointer_module
   use Grid_module
   use Material_Aux_module
   use Option_module

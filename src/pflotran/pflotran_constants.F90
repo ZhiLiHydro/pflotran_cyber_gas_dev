@@ -155,6 +155,7 @@ module PFLOTRAN_Constants_module
   PetscInt, parameter, public :: THREENPDOF = 3
   PetscInt, parameter, public :: NFLOWDOF = 4
   PetscInt, parameter, public :: NTRANDOF = 5
+  PetscInt, parameter, public :: NGEOPDOF = 6
   PetscInt, parameter, public :: NGEODOF = 7
 
   PetscInt, parameter, public :: GLOBAL = 1
@@ -227,6 +228,7 @@ module PFLOTRAN_Constants_module
   PetscInt, parameter, public :: AT_SOLUBILITY_BC = 33
   PetscInt, parameter, public :: PRES_REG_MASS_RATE_SS = 34
   PetscInt, parameter, public :: PONDED_WATER_BC = 35
+  PetscInt, parameter, public :: CONVECTIVE_BC = 36
 
   PetscInt, parameter, public :: WELL_SS = 100
 
@@ -547,7 +549,8 @@ function UninitializedMatType(value)
   MatType :: value
   PetscBool :: UninitializedMatType
 
-  UninitializedMatType = (value == PETSC_NULL_CHARACTER)
+  UninitializedMatType = (value == PETSC_NULL_CHARACTER .or. &
+                          len_trim(value) == 0)
 
 end function UninitializedMatType
 

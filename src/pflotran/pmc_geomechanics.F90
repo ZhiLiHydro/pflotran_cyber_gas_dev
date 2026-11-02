@@ -14,6 +14,7 @@ module PMC_Geomechanics_class
   type, public, extends(pmc_base_type) :: pmc_geomechanics_type
     class(realization_subsurface_type), pointer :: subsurf_realization
     class(realization_geomech_type), pointer :: geomech_realization
+    PetscBool :: stress_0_stored
   contains
     procedure, public :: Init => PMCGeomechanicsInit
     procedure, public :: SetupSolvers => PMCGeomechanicsSetupSolvers
@@ -80,6 +81,7 @@ subroutine PMCGeomechanicsInit(this)
   call PMCBaseInit(this)
   nullify(this%subsurf_realization)
   nullify(this%geomech_realization)
+  this%stress_0_stored = PETSC_FALSE
 
 end subroutine PMCGeomechanicsInit
 
@@ -106,6 +108,7 @@ subroutine PMCGeomechanicsSetupSolvers(this)
   type(solver_type), pointer :: solver
   type(option_type), pointer :: option
   character(len=MAXSTRINGLENGTH) :: string
+  PetscBool :: dm_mat_type_found
   PetscErrorCode :: ierr
 
 #ifdef DEBUG
@@ -132,8 +135,14 @@ subroutine PMCGeomechanicsSetupSolvers(this)
 
   if (Uninitialized(solver%Mpre_mat_type) .and. &
       Uninitialized(solver%M_mat_type)) then
-    ! Matrix types not specified, so set to default.
-    solver%Mpre_mat_type = MATBAIJ
+    call PetscOptionsGetString(PETSC_NULL_OPTIONS,'geomech_', &
+                               '-dm_mat_type',string, &
+                               dm_mat_type_found,ierr);CHKERRQ(ierr)
+    if (dm_mat_type_found) then
+      solver%Mpre_mat_type = trim(string)
+    else
+      solver%Mpre_mat_type = MATBAIJ
+    endif
     solver%M_mat_type = solver%Mpre_mat_type
   else if (Uninitialized(solver%Mpre_mat_type)) then
     if (solver%M_mat_type == MATMFFD) then
@@ -414,6 +423,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
   use Grid_module
   use Discretization_module
   use Geomechanics_Subsurface_Properties_module
+  use Geomechanics_Force_module, only : GeomechForceEffectiveStress
   use Parameter_module
   use Global_Aux_module
 
@@ -429,6 +439,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
   PetscScalar, pointer :: perm_p(:)
   PetscScalar, pointer :: strain_p(:)
   PetscScalar, pointer :: stress_p(:)
+  PetscScalar, pointer :: stress_eff_p(:)
   PetscScalar, pointer :: press_p(:)
   PetscReal, pointer :: vec_ptr(:)
   PetscReal :: local_stress(6), local_strain(6)
@@ -438,6 +449,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
   PetscReal :: perm_new
   PetscInt :: i
   PetscInt :: parameter_index
+  PetscInt :: parameter_0_index
 
   PetscInt :: strainv_0_id, press_0_id
   PetscInt :: strainv_id
@@ -450,11 +462,15 @@ subroutine PMCGeomechanicsSetAuxData(this)
 
   Vec :: geomech_vec
   Vec :: subsurf_vec
+  ! transient, only allocated when the ERT stress coupling is active
+  Vec :: geomech_stress_eff
+  Vec :: subsurf_stress_eff
 
   PetscReal :: strain_vol
   PetscInt :: imat
   PetscInt :: id_porosity_mech
   PetscInt :: id_pressure_mech
+  PetscInt :: id_temperature_mech
 
 #if GEOMECH_DEBUG
   PetscViewer :: viewer
@@ -532,6 +548,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
                            pmc%sim_aux%subsurf_stress,ADD_VALUES, &
                            SCATTER_FORWARD,ierr);CHKERRQ(ierr)
 
+
 #if GEOMECH_DEBUG
   call PetscViewerASCIIOpen(option%mycomm, &
                             'subsurf_stress_vector_before_averaging.out', &
@@ -557,6 +574,7 @@ subroutine PMCGeomechanicsSetAuxData(this)
                                 pmc%sim_aux%subsurf_stress,subsurf_vec, &
                                 ierr);CHKERRQ(ierr)
 
+
 #if GEOMECH_DEBUG
   call PetscViewerASCIIOpen(option%mycomm, &
                             'subsurf_stress_vector_after_averaging.out', &
@@ -574,17 +592,41 @@ subroutine PMCGeomechanicsSetAuxData(this)
 
         if (option%geomechanics%geophysics_coupling == &
                                 GEOMECH_ERT_COUPLING) then
-          ! stress
+          ! Mean effective stress, 1/3 tr(sigma'), passed to the ERT process
+          ! model.
+          call VecDuplicate(pmc%geomech_realization%geomech_field%stress, &
+                            geomech_stress_eff,ierr);CHKERRQ(ierr)
+          call GeomechForceEffectiveStress(pmc%geomech_realization, &
+                                           geomech_stress_eff)
+
+          call VecDuplicate(pmc%sim_aux%subsurf_stress,subsurf_stress_eff, &
+                            ierr);CHKERRQ(ierr)
+          call VecSet(subsurf_stress_eff,0.d0,ierr);CHKERRQ(ierr)
+          call VecScatterBegin(pmc%sim_aux%geomechanics_to_subsurf, &
+                               geomech_stress_eff,subsurf_stress_eff, &
+                               ADD_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+          call VecScatterEnd(pmc%sim_aux%geomechanics_to_subsurf, &
+                             geomech_stress_eff,subsurf_stress_eff, &
+                             ADD_VALUES,SCATTER_FORWARD,ierr);CHKERRQ(ierr)
+          ! subsurf_vec holds the geomech-node count per flow cell
+          call VecPointwiseDivide(subsurf_stress_eff,subsurf_stress_eff, &
+                                  subsurf_vec,ierr);CHKERRQ(ierr)
+
+          call VecGetArray(subsurf_stress_eff,stress_eff_p,ierr);CHKERRQ(ierr)
           call VecGetArray(pmc%subsurf_realization%field%work, &
                               vec_ptr,ierr);CHKERRQ(ierr)
           do local_id = 1, grid%nlmax
             vec_ptr(local_id) = 0.d0
             do i = 1, 3
               vec_ptr(local_id) = vec_ptr(local_id) + &
-                              stress_p((local_id - 1)*SIX_INTEGER + i)
+                              stress_eff_p((local_id - 1)*SIX_INTEGER + i)
             enddo
             vec_ptr(local_id) = vec_ptr(local_id) / 3.d0
           enddo
+          call VecRestoreArray(subsurf_stress_eff,stress_eff_p, &
+                                  ierr);CHKERRQ(ierr)
+          call VecDestroy(subsurf_stress_eff,ierr);CHKERRQ(ierr)
+          call VecDestroy(geomech_stress_eff,ierr);CHKERRQ(ierr)
           call VecRestoreArray(pmc%subsurf_realization%field%work, &
                                   vec_ptr,ierr);CHKERRQ(ierr)
           call DiscretizationGlobalToLocal( &
@@ -595,11 +637,32 @@ subroutine PMCGeomechanicsSetAuxData(this)
                               vec_ptr,ierr);CHKERRQ(ierr)
           parameter_index = ParameterGetIDFromName('geomechanics_stress', &
                                                    option)
+          parameter_0_index = &
+            ParameterGetIDFromName('geomechanics_stress_0',option)
           do ghosted_id = 1, grid%ngmax
             pmc%subsurf_realization%patch%aux% &
               Global%auxvars(ghosted_id)%parameters(parameter_index) = &
                 vec_ptr(ghosted_id)
           enddo
+          ! Latch the initial mean effective stress as the reference state, so
+          ! that the Brace correction is applied to (sigma_m - sigma_m,0) and
+          ! vanishes at t=0 rather than offsetting the baseline resistivity by
+          ! the in-situ (e.g. lithostatic) stress.
+          !
+          ! KNOWN LIMITATION: this reference is not checkpointed (the subsurface
+          ! parameters array never is), so a restarted run re-anchors it to the
+          ! restart time instead of t=0 and the Brace correction restarts from
+          ! zero. Fixing it requires persisting the t=0 effective stress as a
+          ! checkpointed field, which in turn requires two unrelated
+          ! pre-existing checkpoint bugs to be resolved first.
+          if (.not.pmc%stress_0_stored) then
+            do ghosted_id = 1, grid%ngmax
+              pmc%subsurf_realization%patch%aux% &
+                Global%auxvars(ghosted_id)%parameters(parameter_0_index) = &
+                  vec_ptr(ghosted_id)
+            enddo
+            pmc%stress_0_stored = PETSC_TRUE
+          endif
           call VecRestoreArray(pmc%subsurf_realization%field%work_loc, &
                                   vec_ptr,ierr);CHKERRQ(ierr)
           ! strain
@@ -658,6 +721,10 @@ subroutine PMCGeomechanicsSetAuxData(this)
             temp_0_id = ParameterGetIDFromName('temp_0',option)
             id_porosity_mech=ParameterGetIDFromName('stored_porosity',option)
             id_pressure_mech=ParameterGetIDFromName('stored_pressure', option)
+            if (option%iflowmode == TH_MODE) then
+              id_temperature_mech = &
+                ParameterGetIDFromName('stored_temperature',option)
+            endif
           endif
 
           do local_id = 1, grid%nlmax
@@ -731,6 +798,9 @@ subroutine PMCGeomechanicsSetAuxData(this)
 
               global_auxvar%parameters(id_pressure_mech) = &
                 local_pressure
+              if (option%iflowmode == TH_MODE) then
+                global_auxvar%parameters(id_temperature_mech) = local_temp
+              endif
             end select
           enddo
 
