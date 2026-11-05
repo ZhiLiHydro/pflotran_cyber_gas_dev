@@ -184,6 +184,7 @@ subroutine GeneralDerivativeDriver(option)
     case(BOUNDARY_FLUX)
       ibndtype = DIRICHLET_BC
     !  ibndtype = NEUMANN_BC
+      auxvar_mapping = 0
       auxvar_mapping(GENERAL_LIQUID_FLUX_INDEX) = 1
       auxvar_mapping(GENERAL_GAS_FLUX_INDEX) = 2
       auxvar_mapping(GENERAL_ENERGY_FLUX_INDEX) = 3

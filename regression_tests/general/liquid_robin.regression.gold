@@ -1,0 +1,40 @@
+-- PRESSURE: Liquid Pressure --
+        1:   2.0000547655619E+05
+-- PRESSURE: Gas Pressure --
+        1:   0.0000000000000E+00
+-- SATURATION: Liquid Saturation --
+        1:   1.0000000000000E+00
+-- SATURATION: Gas Saturation --
+        1:   0.0000000000000E+00
+-- GENERIC: Liquid Density --
+        1:   9.9964814772141E+02
+-- GENERIC: Gas Density --
+        1:   0.0000000000000E+00
+-- GENERIC: Liquid Density --
+        1:   5.5488719486916E+01
+-- GENERIC: Gas Density --
+        1:   0.0000000000000E+00
+-- GENERIC: X_g^l --
+        1:   0.0000000000000E+00
+-- GENERIC: X_l^l --
+        1:   1.0000000000000E+00
+-- GENERIC: X_g^g --
+        1:   0.0000000000000E+00
+-- GENERIC: X_l^g --
+        1:   0.0000000000000E+00
+-- GENERIC: Liquid Viscosity --
+        1:   1.2300387498361E-03
+-- GENERIC: Temperature --
+        1:   1.2000000000000E+01
+-- DISCRETE: Thermodynamic State --
+        1:         1
+-- DISCRETE: Material ID --
+        1:         1
+-- SOLUTION: Flow --
+   Time (seconds):   2.4834989999931E-03
+   Time Steps:           18
+   Newton Iterations:           36
+   Linear Solver Iterations:           36
+   Time Step Cuts:            0
+   Solution 2-Norm:   2.0000547691618E+05
+   Residual 2-Norm:   6.0572122269125E-15

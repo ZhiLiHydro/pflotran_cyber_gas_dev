@@ -113,7 +113,8 @@ module General_Aux_module
   PetscInt, parameter, public :: GENERAL_SALT_INDEX = 14
   PetscInt, parameter, public :: GENERAL_POROSITY_INDEX = 15
   PetscInt, parameter, public :: GENERAL_PRECIPITATE_SAT_INDEX = 16
-  PetscInt, parameter, public :: GENERAL_MAX_INDEX = 16
+  PetscInt, parameter, public :: GENERAL_LIQUID_ROBIN_INDEX = 17
+  PetscInt, parameter, public :: GENERAL_MAX_INDEX = 17
 
   PetscInt, parameter, public :: GENERAL_UPDATE_FOR_DERIVATIVE = -1
   PetscInt, parameter, public :: GENERAL_UPDATE_FOR_FIXED_ACCUM = 0

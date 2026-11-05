@@ -980,6 +980,14 @@ subroutine PatchInitCouplerAuxVars(coupler_list,patch,option)
 
       ! FLOW
       if (associated(coupler%flow_condition)) then
+        if (associated(coupler%flow_condition%general)) then
+          if (coupler%flow_condition%general%liquid_robin_coefficient >= 0.d0 &
+              .and. coupler%itype /= BOUNDARY_COUPLER_TYPE) then
+            option%io_buffer = 'LIQUID_ROBIN_COEFFICIENT is only supported &
+              &in a BOUNDARY_CONDITION.'
+            call PrintErrMsg(option)
+          endif
+        endif
         ! determine whether flow_condition is transient
         coupler%flow_condition%is_transient = &
           FlowConditionIsTransient(coupler%flow_condition)
@@ -1774,6 +1782,10 @@ subroutine PatchUpdateCouplerAuxVarsG(patch,coupler,option)
       coupler%flow_aux_mapping(GENERAL_PRECIPITATE_SAT_INDEX) = 4
       coupler%flow_aux_mapping(GENERAL_POROSITY_INDEX) = 4
     endif
+    ! Reserve the fifth real slot for the constant liquid Robin coefficient.
+    coupler%flow_aux_mapping(GENERAL_LIQUID_ROBIN_INDEX) = 5
+    coupler%flow_aux_real_var(FIVE_INTEGER,1:num_connections) = &
+      general%liquid_robin_coefficient
   endif
 
   select case(flow_condition%iphase)

@@ -2556,6 +2556,7 @@ subroutine GeneralBCFlux(ibndtype,auxvar_mapping,auxvars, &
   PetscReal :: uH
   PetscReal :: perm_dn_adj(option%nphase)
   PetscReal :: perm_ave_over_dist
+  PetscReal :: liquid_robin_coefficient, liquid_robin_weight, cell_conductivity
   PetscReal :: dist_gravity
   PetscReal :: delta_pressure, delta_xmol, delta_temp
   PetscReal :: delta_xsmol
@@ -2656,6 +2657,13 @@ subroutine GeneralBCFlux(ibndtype,auxvar_mapping,auxvars, &
 
 #ifdef CONVECTION
 #ifdef LIQUID_DARCY_FLUX
+  idof = auxvar_mapping(GENERAL_LIQUID_ROBIN_INDEX)
+  if (idof > 0) then
+    if (auxvars(idof) >= 0.d0 .and. general_non_darcy_flow) then
+      option%io_buffer = 'Liquid Robin currently supports Darcy flow only.'
+      call PrintErrMsg(option)
+    endif
+  endif
   iphase = LIQUID_PHASE
   mobility = 0.d0
   xmol_bool = 1.d0
@@ -2781,6 +2789,36 @@ subroutine GeneralBCFlux(ibndtype,auxvar_mapping,auxvars, &
            dv_darcy_ddelta_pressure = perm_ave_over_dist * mobility
            v_darcy(iphase) = dv_darcy_ddelta_pressure * delta_pressure
            dv_darcy_dmobility = perm_ave_over_dist * delta_pressure
+           ! Liquid Robin: eliminate the face pressure between cell Darcy resistance
+           ! and an external film. q_in = beta*(p_ext-p_face), beta [m/(Pa s)].
+           ! q_in = (K_cell^-1 + beta^-1)^-1 * delta_pressure including gravity.
+           ! Keep upwind composition and the exact derivative through liquid mobility.
+           idof = auxvar_mapping(GENERAL_LIQUID_ROBIN_INDEX)
+           if (idof > 0) then
+             liquid_robin_coefficient = auxvars(idof)
+             if (liquid_robin_coefficient >= 0.d0) then
+               cell_conductivity = perm_ave_over_dist * mobility
+               if (liquid_robin_coefficient == 0.d0) then
+                 dv_darcy_ddelta_pressure = 0.d0
+                 dv_darcy_dmobility = 0.d0
+               elseif (cell_conductivity <= 0.d0) then
+                 dv_darcy_ddelta_pressure = 0.d0
+                 dv_darcy_dmobility = perm_ave_over_dist * delta_pressure
+               else
+                 ! Stable beta/(K_cell+beta), including widely separated scales.
+                 if (cell_conductivity <= liquid_robin_coefficient) then
+                   liquid_robin_weight = 1.d0 / &
+                     (1.d0 + cell_conductivity/liquid_robin_coefficient)
+                 else
+                   liquid_robin_weight = (liquid_robin_coefficient/cell_conductivity) / &
+                                          (1.d0 + liquid_robin_coefficient/cell_conductivity)
+                 endif
+                 dv_darcy_ddelta_pressure = cell_conductivity * liquid_robin_weight
+                 dv_darcy_dmobility = perm_ave_over_dist * liquid_robin_weight**2 * delta_pressure
+               endif
+               v_darcy(iphase) = dv_darcy_ddelta_pressure * delta_pressure
+             endif
+           endif
 
         else
            !Taken from (Liu, 2014)

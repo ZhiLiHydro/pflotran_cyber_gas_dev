@@ -67,6 +67,8 @@ module Condition_module
     type(flow_sub_condition_type), pointer :: liquid_flux
     type(flow_sub_condition_type), pointer :: gas_flux
     type(flow_sub_condition_type), pointer :: energy_flux
+    ! Constant hydraulic transfer coefficient [m/(Pa s)]; negative disables.
+    PetscReal :: liquid_robin_coefficient
     ! any new sub conditions must be added to FlowConditionIsTransient
   end type flow_general_condition_type
 
@@ -362,6 +364,7 @@ function FlowGeneralConditionCreate(option)
   nullify(general_condition%gas_flux)
   nullify(general_condition%energy_flux)
   nullify(general_condition%rate)
+  general_condition%liquid_robin_coefficient = -1.d0
 
   FlowGeneralConditionCreate => general_condition
 
@@ -2356,6 +2359,20 @@ subroutine FlowConditionGeneralRead(condition,input,option)
           nullify(sub_condition_ptr)
         enddo
         call InputPopBlock(input,option)
+      case('LIQUID_ROBIN_COEFFICIENT')
+        ! Constant SI coefficient; unlike CONDUCTANCE [m], this includes viscosity.
+        if (general%liquid_robin_coefficient >= 0.d0) then
+          option%io_buffer = 'Duplicate LIQUID_ROBIN_COEFFICIENT.'
+          call PrintErrMsg(option)
+        endif
+        call InputReadDouble(input,option,general%liquid_robin_coefficient)
+        call InputErrorMsg(input,option,'LIQUID_ROBIN_COEFFICIENT','CONDITION')
+        if (.not.(general%liquid_robin_coefficient >= 0.d0) .or. &
+            general%liquid_robin_coefficient > huge(1.d0)) then
+          option%io_buffer = 'LIQUID_ROBIN_COEFFICIENT must be finite &
+            &and nonnegative, in m/(Pa s).'
+          call PrintErrMsg(option)
+        endif
       case('CONDUCTANCE')
         word = 'LIQUID_PRESSURE'
         select case(option%iflowmode)
@@ -2597,6 +2614,26 @@ subroutine FlowConditionGeneralRead(condition,input,option)
     if (condition%iphase == GEN_NULL_STATE) then
       option%io_buffer = 'General Phase non-rate/flux condition contains &
         &an unsupported combination of primary dependent variables.'
+      call PrintErrMsg(option)
+    endif
+  endif
+
+  if (general%liquid_robin_coefficient >= 0.d0) then
+    if (option%iflowmode /= G_MODE .or. condition%iphase /= GEN_LIQUID_STATE .or. &
+        .not.associated(general%liquid_pressure)) then
+      option%io_buffer = 'Liquid Robin requires GENERAL and a liquid-state external reservoir.'
+      call PrintErrMsg(option)
+    endif
+    if (associated(general%liquid_flux) .or. &
+        associated(general%gas_flux) .or. associated(general%rate) .or. &
+        associated(general%salt_mole_fraction)) then
+      option%io_buffer = 'Liquid Robin cannot share a FLOW_CONDITION &
+        &with flux, rate, or salt.'
+      call PrintErrMsg(option)
+    endif
+    if (general%liquid_pressure%itype /= DIRICHLET_BC .and. &
+        general%liquid_pressure%itype /= HYDROSTATIC_BC) then
+      option%io_buffer = 'Liquid Robin requires LIQUID_PRESSURE DIRICHLET or HYDROSTATIC.'
       call PrintErrMsg(option)
     endif
   endif
